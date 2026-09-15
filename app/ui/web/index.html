@@ -209,8 +209,12 @@
       </div>
 
       <div class="settings-group">
-        <label>Timeout (seconds)</label>
+        <label>Page Load Timeout (seconds)</label>
         <input id="setTimeout" type="number" min="10" max="600">
+      </div>
+      <div class="settings-group">
+        <label>Generation / Waiting Max Time (seconds) — user configurable, e.g. 120 = 2 min</label>
+        <input id="setGenerationTimeout" type="number" min="30" max="600" placeholder="120">
       </div>
       <div class="settings-group">
         <label>Max Retries</label>

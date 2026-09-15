@@ -413,6 +413,7 @@ class Bridge(QObject):
         browser = settings_dict.get("browser", {})
         settings_js = {
             "timeout_seconds": timeouts.get("page_load", 30),
+            "generation_timeout": timeouts.get("generation", 180),
             "max_retries": settings_dict.get("retries", {}).get("max_attempts", 3),
             "naming_suffix": output.get("suffix", "_AI"),
             "supported_types": d.get("folder", {}).get("supported_types", [".png",".jpg"]),
@@ -933,6 +934,13 @@ class Bridge(QObject):
             # Map to AppSettings structure
             if "timeout_seconds" in data:
                 self.state.settings.timeouts["page_load"] = int(data["timeout_seconds"])
+            if "generation_timeout" in data:
+                # User-configurable waiting max time — up to 2 min+ as requested
+                gt = int(data["generation_timeout"])
+                # Clamp 30-600 seconds
+                gt = max(30, min(600, gt))
+                self.state.settings.timeouts["generation"] = gt
+                self._log(f"Generation timeout set to {gt}s (waiting max time)", "info")
             if "max_retries" in data:
                 self.state.settings.retries["max_attempts"] = int(data["max_retries"])
             if "naming_suffix" in data:
@@ -1501,33 +1509,56 @@ class Bridge(QObject):
                             if not new_src:
                                 raise RuntimeError("No new_src from previous block")
                             self._log(f"[{correlation_id}] Downloading highest-quality image: {new_src[:120]}", "info")
-                            # Retry download up to 3 times with different strategies (fetch + canvas fallback already in ctrl.download_image)
+                            # Retry download up to 5 times — now includes Python direct fallback for R2 presigned URLs (CORS bypass)
+                            # Previously fetch+canvas failed for https://messages-prod.*.r2.cloudflarestorage.com due to CORS taint
+                            # Now ctrl.download_image tries: JS fetch → canvas → Python urllib direct (bypasses CORS) → canvas retry
                             success = False
                             fb = b""
                             ct = ""
                             last_err = ""
-                            for attempt in range(3):
+                            max_attempts = 5
+                            for attempt in range(max_attempts):
                                 try:
                                     s, f, c = await ctrl.download_image(new_src)
                                     if s and f and len(f) > 100:
                                         success = True
                                         fb = f
                                         ct = c
+                                        self._log(f"[{correlation_id}] ✅ Download attempt {attempt+1} succeeded: {len(f)} bytes {c}", "success")
                                         break
                                     else:
                                         last_err = c
-                                        self._log(f"[{correlation_id}] Download attempt {attempt+1} failed: {c[:200]}", "warn")
+                                        self._log(f"[{correlation_id}] Download attempt {attempt+1} failed: {c[:300]}", "warn")
                                 except Exception as e:
                                     last_err = str(e)
                                     self._log(f"[{correlation_id}] Download attempt {attempt+1} exception: {e}", "warn")
-                                await asyncio.sleep(1)
+                                # Exponential backoff: 1s, 2s, 3s, 5s
+                                await asyncio.sleep(1 + attempt)
                             if not success:
-                                raise RuntimeError(f"Download failed after 3 attempts: {last_err} src={new_src[:120]}")
+                                # Do NOT return error immediately if waiting block detected image — try to re-detect new output
+                                # User reported image was done but download failed, should not abort job as error if waiting up to 2 min
+                                # Try one more time to capture baseline and re-find latest src (in case presigned URL expired, try new src)
+                                try:
+                                    self._log(f"[{correlation_id}] Download failed after {max_attempts}, trying to re-capture latest output src", "warn")
+                                    latest_baseline = await ctrl.capture_baseline()
+                                    latest_srcs = latest_baseline.get("output_srcs", [])
+                                    if latest_srcs and latest_srcs[-1] != new_src:
+                                        self._log(f"[{correlation_id}] Found newer src after failure, trying download {latest_srcs[-1][:120]}", "info")
+                                        s, f, c = await ctrl.download_image(latest_srcs[-1])
+                                        if s and f and len(f) > 100:
+                                            success = True
+                                            fb = f
+                                            ct = c
+                                            new_src = latest_srcs[-1]
+                                except Exception as e:
+                                    self._log(f"[{correlation_id}] Re-capture attempt failed: {e}", "warn")
+                            if not success:
+                                raise RuntimeError(f"Download failed after {max_attempts} attempts (incl Python direct fallback): {last_err} src={new_src[:120]}. Tip: If R2 URL, Python direct should bypass CORS — check network/firewall, or URL expired (presigned 3600s).")
                             if len(fb) == 0:
                                 raise RuntimeError("Downloaded empty file")
                             file_bytes = fb
                             ctype = ct
-                            self._emit_job_action_status(job_id, block, "success", f"Downloaded {len(fb)} bytes {ct} method={ct}")
+                            self._emit_job_action_status(job_id, block, "success", f"Downloaded {len(fb)} bytes {ct} method={ct} (Python direct fallback for R2)")
 
                         elif btype == "VALIDATE":
                             if not file_bytes:
