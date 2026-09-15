@@ -161,6 +161,28 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
     }
   },
 
+  isDevTab(t) {
+    if (!t) return true;
+    const url = (t.url || '').toLowerCase();
+    const title = (t.title || '').toLowerCase();
+    // DevTools, chrome internal, extensions, etc.
+    if (url.startsWith('devtools://')) return true;
+    if (url.startsWith('chrome://')) return true;
+    if (url.startsWith('chrome-extension://')) return true;
+    if (url.startsWith('about:')) return true;
+    if (url.startsWith('edge://')) return true;
+    if (title.startsWith('devtools')) return true;
+    if (title.includes('devtools') && url.includes('devtools')) return true;
+    // Bundled devtools app
+    if (url.includes('devtools/bundled') || url.includes('device_mode_emulation_frame')) return true;
+    return false;
+  },
+
+  getRealTabs(tabs) {
+    const src = tabs || this.tabs || [];
+    return src.filter(t => !this.isDevTab(t));
+  },
+
   onTabsReceived(payload) {
     try {
       if (payload === 'pending') return;
@@ -183,7 +205,37 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
       if (this.tabs.length === 0) {
         LogConsole.log('⚠ Received 0 tabs — Chrome running but no pages? Open a page in the dedicated Chrome (C:\\arena-images-chrome) and click Diagnose.', 'warn');
       } else {
-        LogConsole.log(`📑 Received ${this.tabs.length} unique Chrome tab(s)`, 'success');
+        const real = this.getRealTabs(this.tabs);
+        const devCount = this.tabs.length - real.length;
+        if (devCount > 0) {
+          LogConsole.log(`📑 Received ${this.tabs.length} tab(s) (${real.length} real + ${devCount} devtools ignored)`, 'success');
+        } else {
+          LogConsole.log(`📑 Received ${this.tabs.length} unique Chrome tab(s)`, 'success');
+        }
+        // Auto-connect if only one real tab (ignore dev tabs) — user request
+        if (real.length === 1) {
+          const only = real[0];
+          const alreadySelected = this.selectedWs === only.ws_url;
+          const now = Date.now();
+          const isSameAsLastAuto = only.ws_url === this._lastAutoConnectWs && (now - this._lastAutoConnectTs) < 5000;
+          const isSameAsLastConnect = only.ws_url === this._lastConnectWs && (now - this._lastConnectTs) < 5000;
+          if (!isSameAsLastAuto && !isSameAsLastConnect) {
+            LogConsole.log(`🤖 Only one real tab detected (ignoring ${devCount} devtools) — auto-connecting to ${only.title} — ${only.url}`, 'info');
+            // Select in dropdown
+            const sel = document.getElementById('tabSelect');
+            if (sel) {
+              sel.value = only.ws_url;
+              this.selectedWs = only.ws_url;
+            }
+            this._lastAutoConnectWs = only.ws_url;
+            this._lastAutoConnectTs = now;
+            if (App.bridge && App.bridge.connect_tab) {
+              App.bridge.connect_tab(only.ws_url);
+            }
+          } else {
+            console.debug('auto-connect single real tab debounced', only.ws_url.slice(0,60));
+          }
+        }
       }
       this.updateUrlRowsConnection();
     } catch (e) {
@@ -196,13 +248,22 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
     if (!sel) return;
     const prev = sel.value;
     sel.innerHTML = '<option value="">— Select Chrome Tab —</option>';
-    tabs.forEach(t => {
+    // Sort: real tabs first, dev tabs last
+    const sorted = [...(tabs||[])].sort((a,b)=>{
+      const aDev = this.isDevTab(a) ? 1 : 0;
+      const bDev = this.isDevTab(b) ? 1 : 0;
+      if (aDev !== bDev) return aDev - bDev;
+      return 0;
+    });
+    sorted.forEach(t => {
       const opt = document.createElement('option');
       opt.value = t.ws_url;
+      const isDev = this.isDevTab(t);
       const title = (t.title || '').slice(0, 60);
       const url = (t.url || '').slice(0, 80);
-      opt.textContent = `${title} — ${url}`;
-      opt.title = `${t.title}\n${t.url}`;
+      opt.textContent = isDev ? `[DEV] ${title} — ${url}` : `${title} — ${url}`;
+      opt.title = `${t.title}\n${t.url}${isDev ? '\n(DevTools - ignored for auto-connect)' : ''}`;
+      if (isDev) opt.style.color = 'var(--text-muted)';
       sel.appendChild(opt);
     });
     if (prev) sel.value = prev;
@@ -428,10 +489,12 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
 
   findBestTabForUrl(url) {
     if (!this.tabs || this.tabs.length === 0) return null;
+    const realTabs = this.getRealTabs(this.tabs);
+    const searchPool = realTabs.length > 0 ? realTabs : this.tabs;
     const q = url.toLowerCase();
     let best = null;
     let bestScore = -1;
-    for (const t of this.tabs) {
+    for (const t of searchPool) {
       const tabUrl = (t.url || '').toLowerCase();
       let score = 0;
       let kind = 'keyword';

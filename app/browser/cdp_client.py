@@ -95,7 +95,28 @@ def _normalize_ws_url(ws_url: str, preferred_host: str, preferred_port: int) -> 
     except Exception:
         return ws_url
 
-def _parse_tabs(items: List[dict], preferred_host: str = "127.0.0.1", preferred_port: int = 9222) -> List[TabInfo]:
+def _is_devtools_url(url: str, title: str = "") -> bool:
+    if not url:
+        return True
+    u = url.lower()
+    t = (title or "").lower()
+    if u.startswith("devtools://"):
+        return True
+    if u.startswith("chrome://"):
+        return True
+    if u.startswith("chrome-extension://"):
+        return True
+    if u.startswith("about:"):
+        return True
+    if u.startswith("edge://"):
+        return True
+    if "devtools/bundled" in u or "device_mode_emulation_frame" in u:
+        return True
+    if t.startswith("devtools"):
+        return True
+    return False
+
+def _parse_tabs(items: List[dict], preferred_host: str = "127.0.0.1", preferred_port: int = 9222, include_devtools: bool = True) -> List[TabInfo]:
     tabs = []
     for item in items or []:
         if not isinstance(item, dict):
@@ -103,19 +124,29 @@ def _parse_tabs(items: List[dict], preferred_host: str = "127.0.0.1", preferred_
         t = item.get("type", "")
         if t and t != "page":
             continue
+        url = item.get("url") or ""
+        title = item.get("title") or ""
+        # Optionally filter devtools here — but keep for frontend transparency if include_devtools=True
+        # For auto-connect logic, frontend will ignore devtools; backend keeps them but marks
+        # If include_devtools=False, skip devtools entirely
+        if not include_devtools and _is_devtools_url(url, title):
+            continue
         ws_url = item.get("webSocketDebuggerUrl") or ""
-        if not item.get("url"):
+        if not url:
             continue
         # Normalize ws_url to preferred host/port for connection stability
         ws_normalized = _normalize_ws_url(ws_url, preferred_host, preferred_port) if ws_url else ws_url
         tabs.append(TabInfo(
             id=item.get("id",""),
             title=item.get("title",""),
-            url=item.get("url",""),
+            url=url,
             ws_url=ws_normalized,
             type=item.get("type","page")
         ))
     return tabs
+
+def _filter_real_tabs(tabs: List[TabInfo]) -> List[TabInfo]:
+    return [t for t in tabs if not _is_devtools_url(t.url, t.title)]
 
 def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222, timeout: float = 3.0) -> Tuple[List[TabInfo], str, List[str]]:
     """Try to fetch tabs synchronously, trying candidate hosts and merging results.
