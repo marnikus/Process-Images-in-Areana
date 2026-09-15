@@ -72,6 +72,20 @@ JS uses `BridgeReady.ready((bridge)=>...)` pattern from old app.
 - Store layouts via `config/session.json` `grid_layout` + `window_states` + `window_presets.json`
 - Window presets system fully functional: save/load/import/export with preview
 
+## Undo system (added back)
+
+Reused from Old App `stores/undo_store.py` + `services/undo_service.py` + `bridge/undo_bridge.py`:
+
+- **UndoStore** `config/undo.json` shape `{"history": [...], "index": N}`, capped at 100, clamps pointer, atomic write
+- **UndoService** with kinds `grid, urls, folder, queue, prompt, settings, window_states, arena` — push drops redo tail, undo moves index to -1..len-1, redo forward
+- **Bridge** methods: `get_undo_history`, `push_global_history(kind, value_json)`, `undo`, `redo`, `get_stack_history`, `push_stack_history`, `save_stack_history`, `undo_stack`, `redo_stack`, `undo_grid_layout`, `redo_grid_layout`, plus signals `history_changed`, `undo_state_changed` JSON `{history,index,canUndo,canRedo,count}`
+- **JS** `arena-history.js` (based on old `app-history.js`): local mirror `globalHistory`/`globalHistoryIndex`, `recordGlobal(kind,value,options)` with dedup and cap 100, `loadGlobalHistory`, `_syncGlobalHistory` via `get_undo_history`, `_applyGlobalKind` restores grid via `SashGrid._applySerialized`, window_states via localStorage, urls via `UrlList.render`, folder via `FolderPicker`, queue via `ImageQueue`, prompt via textarea, settings via `SettingsPanel`, arena snapshot via all panels
+- **Header**: undo/redo buttons `#undoBtn` `#redoBtn` with badge `#undoCountBadge` showing `index+1/count`, disabled when nothing to undo/redo, tooltips show kind
+- **Keyboard**: Ctrl+Z undo, Ctrl+Y / Ctrl+Shift+Z redo
+- **Auto push**: backend pushes undo on every arena mutation (`add_url`, `remove_url`, `toggle_url`, `edit_url`, `pick_folder`, `set_folder_path`, `set_image_selected`, `bulk_select`, `retry_failed`, `reset_all`, `retry_image`, `reset_image`, `set_prompt`, `save_settings`, `save_grid_layout`, `reset_grid_layout`, `save_window_states`) and emits `undo_state_changed`
+- **Persistence**: `config/undo.json` saved on close via `MainWindow.closeEvent`, loaded on boot via `ConfigManager`, initial load via `get_app_state` includes `undo_history`/`undo_history_index`, then `ArenaHistory.loadGlobalHistory`
+- **Compatibility**: `App.recordGlobal` alias for old `sash-grid.js` that calls `App.recordGlobal('grid', payload, {localOnly:true})` — now delegates to `ArenaHistory.recordGlobal`, backend also pushes via `save_grid_layout`
+
 ## Acceptance
 
 - [x] Dark-mode UI reused
@@ -80,5 +94,6 @@ JS uses `BridgeReady.ready((bridge)=>...)` pattern from old app.
 - [x] Store layouts / window presets system
 - [x] Rect highlight overlay with configurable duration
 - [x] Preset JSON saves all UI params
+- [x] Undo system added back: global timeline 100 steps, undo/redo buttons, Ctrl+Z/Y, persistence in `config/undo.json`, kinds grid/urls/folder/queue/prompt/settings/window_states/arena
 - [x] 38 unit tests still pass
 - [x] Persistence atomic, no DB

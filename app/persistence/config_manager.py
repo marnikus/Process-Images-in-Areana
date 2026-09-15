@@ -107,14 +107,18 @@ class WindowPresetStore:
         self.save()
         return True
 
+from .undo_store import UndoStore
+
 class ConfigManager:
     def __init__(self, config_dir: str = "config"):
         self.dir = Path(config_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.session = SessionStore(self.dir / "session.json")
         self.window_presets = WindowPresetStore(self.dir / "window_presets.json")
+        self.undo = UndoStore(self.dir / "undo.json")
         self.session.load()
         self.window_presets.load()
+        self.undo.load()
 
     def get_state(self, key: str, default=None):
         return self.session.get(key, default)

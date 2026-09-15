@@ -51,6 +51,9 @@ class MainWindow(QMainWindow):
         try:
             self.config_manager.session.save()
             self.config_manager.window_presets.save()
+            self.config_manager.undo.save()
+            # also flush sash grid if available
+            self.view.page().runJavaScript("typeof SashGrid !== 'undefined' && SashGrid.flushPersistence && SashGrid.flushPersistence()")
         except Exception:
             pass
         super().closeEvent(event)

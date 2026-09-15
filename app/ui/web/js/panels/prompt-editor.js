@@ -34,6 +34,8 @@ const PromptEditor = {
     const ta = document.getElementById('promptTextarea');
     if (!ta) return;
     const val = ta.value;
+    // record undo before save (local mirror)
+    if (typeof ArenaHistory !== 'undefined') ArenaHistory.recordGlobal('prompt', val);
     if (App.bridge && App.bridge.set_prompt) {
       App.bridge.set_prompt(val, (res)=>{
         try{ const r=JSON.parse(res); if(r.ok) LogConsole.log('Prompt saved','success'); else LogConsole.log('Save failed: '+r.error,'error'); }catch(e){}

@@ -8,6 +8,20 @@ const App = {
   ready: false,
   state: null, // arena state from backend
   gridLoaded: false,
+  globalHistory: [],
+  globalHistoryIndex: -1,
+  UNDO_KINDS: ['grid', 'urls', 'folder', 'queue', 'prompt', 'settings', 'window_states', 'arena'],
+};
+
+// compatibility: App.recordGlobal used by sash-grid.js
+App.recordGlobal = function(kind, value, options) {
+  if (typeof ArenaHistory !== 'undefined' && ArenaHistory.recordGlobal) {
+    return ArenaHistory.recordGlobal(kind, value, options);
+  }
+  // fallback: directly push if bridge available
+  if (this.bridge && this.bridge.push_global_history && !(options && options.localOnly)) {
+    try { this.bridge.push_global_history(kind, JSON.stringify(value)); } catch(e){}
+  }
 };
 
 function initApp() {
@@ -32,7 +46,6 @@ function initApp() {
 }
 
 function setupHeader() {
-  // theme toggle already in old app-bridge; keep simple
   const themeBtn = document.getElementById('themeToggleBtn');
   if (themeBtn) {
     themeBtn.addEventListener('click', () => {
@@ -45,6 +58,27 @@ function setupHeader() {
     const saved = localStorage.getItem('arena.theme') || 'dark';
     document.documentElement.setAttribute('data-theme', saved);
   }
+  // undo/redo buttons
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
+  if (undoBtn) undoBtn.addEventListener('click', () => {
+    if (typeof ArenaHistory !== 'undefined') ArenaHistory.undoGlobal();
+  });
+  if (redoBtn) redoBtn.addEventListener('click', () => {
+    if (typeof ArenaHistory !== 'undefined') ArenaHistory.redoGlobal();
+  });
+  // keyboard shortcuts Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z
+  document.addEventListener('keydown', (e) => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    if (e.key.toLowerCase() === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      if (typeof ArenaHistory !== 'undefined') ArenaHistory.undoGlobal();
+    } else if ((e.key.toLowerCase() === 'y') || (e.key.toLowerCase() === 'z' && e.shiftKey)) {
+      e.preventDefault();
+      if (typeof ArenaHistory !== 'undefined') ArenaHistory.redoGlobal();
+    }
+  });
 }
 
 function initWithBridge() {
@@ -56,6 +90,18 @@ function initWithBridge() {
   }
 
   if (typeof WindowPresets !== 'undefined') WindowPresets.refresh();
+
+  // Load undo history first
+  if (App.bridge.get_undo_history) {
+    App.bridge.get_undo_history((json) => {
+      try {
+        const data = JSON.parse(json);
+        if (typeof ArenaHistory !== 'undefined') ArenaHistory.loadGlobalHistory(data);
+        // sync local mirror
+        if (typeof ArenaHistory !== 'undefined') ArenaHistory._syncGlobalHistory();
+      } catch (e) {}
+    });
+  }
 
   // Load full app state
   if (App.bridge.get_app_state) {
@@ -158,6 +204,16 @@ function setupBridgeListeners() {
       if (typeof WindowPresets !== 'undefined' && WindowPresets.onListUpdated) {
         WindowPresets.onListUpdated(json);
       }
+    });
+  }
+  if (b.history_changed) {
+    b.history_changed.connect(() => {
+      if (typeof ArenaHistory !== 'undefined') ArenaHistory._syncGlobalHistory();
+    });
+  }
+  if (b.undo_state_changed) {
+    b.undo_state_changed.connect((json) => {
+      if (typeof ArenaHistory !== 'undefined') ArenaHistory.onUndoStateChanged(json);
     });
   }
 }

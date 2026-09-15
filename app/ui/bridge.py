@@ -36,6 +36,7 @@ from app.core.models import AppState, UrlRow, ImageItem
 from app.core.persistence import load_state, save_state, save_preset, load_preset
 from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
+from app.core.undo_service import UndoService
 
 log = logging.getLogger("arena")
 
@@ -48,6 +49,8 @@ class Bridge(QObject):
     arena_state_updated = Signal(str)
     progress_updated = Signal(str)
     highlight_rect = Signal(str)
+    history_changed = Signal()
+    undo_state_changed = Signal(str)  # JSON {history,index,canUndo,canRedo}
 
     def __init__(self, config_manager: ConfigManager, state_path: Path, parent=None):
         super().__init__(parent)
@@ -56,6 +59,12 @@ class Bridge(QObject):
         self.state = load_state(self.state_path)
         self._run_state = "idle"
         self._exported_paths = {}
+        self.undo_service = UndoService(self.config.undo)
+        # ensure undo history loaded
+        try:
+            self.config.undo.load()
+        except Exception:
+            pass
 
     def _save_arena(self):
         try:
@@ -154,11 +163,14 @@ class Bridge(QObject):
         theme = self.config.get_state("theme", "dark")
         grid_layout = self.config.get_state("grid_layout", None)
         window_states = self.config.get_state("window_states", None)
+        hist, idx = self.undo_service.history()
         payload = {
             "theme": theme,
             "state": {
                 "grid_layout": grid_layout,
                 "window_states": window_states,
+                "undo_history": hist,
+                "undo_history_index": idx,
             }
         }
         return json.dumps(payload, ensure_ascii=False)
@@ -187,6 +199,11 @@ class Bridge(QObject):
         self.config.set_state(grid_layout=payload)
         self.grid_layout_changed.emit(payload)
         self.grid_layout_persisted.emit(True)
+        try:
+            self.undo_service.push("grid", payload)
+            self._emit_undo_state()
+        except Exception:
+            pass
         return True
 
     @Slot(result=str)
@@ -196,6 +213,12 @@ class Bridge(QObject):
         self.grid_layout_changed.emit(payload)
         self.grid_layout_persisted.emit(True)
         self._log("Grid layout reset to default", "info")
+        try:
+            self.undo_service.push("grid", payload)
+            self.undo_service.push("window_states", {"closed": [], "minimized": []})
+            self._emit_undo_state()
+        except Exception:
+            pass
         return payload
 
     @Slot(result=str)
@@ -217,7 +240,13 @@ class Bridge(QObject):
             return False
         closed = [i for i in data.get("closed", []) if isinstance(i, str) and i in WINDOW_IDS]
         minimized = [i for i in data.get("minimized", []) if isinstance(i, str) and i in WINDOW_IDS and i not in closed]
-        self.config.set_state(window_states={"closed": closed, "minimized": minimized})
+        payload = {"closed": closed, "minimized": minimized}
+        self.config.set_state(window_states=payload)
+        try:
+            self.undo_service.push("window_states", payload)
+            self._emit_undo_state()
+        except Exception:
+            pass
         return True
 
     @Slot(result=str)
@@ -352,10 +381,26 @@ class Bridge(QObject):
         for u in self.state.urls:
             if u.url == url:
                 return json.dumps({"ok": False, "error": "URL already exists"})
+        # push undo before change? We'll push after with new state
         item = UrlRow.create(url, enabled=True)
         self.state.urls.append(item)
         self._save_arena()
+        # push urls snapshot to undo
+        try:
+            js_urls = self._arena_to_js()["urls"]
+            self.undo_service.push("urls", js_urls)
+            self._emit_undo_state()
+        except Exception:
+            pass
         return json.dumps({"ok": True, "id": item.id})
+
+    def _push_urls_undo(self):
+        try:
+            js_urls = self._arena_to_js()["urls"]
+            self.undo_service.push("urls", js_urls)
+            self._emit_undo_state()
+        except Exception:
+            pass
 
     @Slot(str, result=str)
     def remove_url(self, url_id: str):
@@ -364,6 +409,7 @@ class Bridge(QObject):
         if len(self.state.urls) == before:
             return json.dumps({"ok": False, "error": "not found"})
         self._save_arena()
+        self._push_urls_undo()
         return json.dumps({"ok": True})
 
     @Slot(str, result=str)
@@ -372,6 +418,7 @@ class Bridge(QObject):
             if u.id == url_id:
                 u.enabled = not u.enabled
                 self._save_arena()
+                self._push_urls_undo()
                 return json.dumps({"ok": True, "enabled": u.enabled})
         return json.dumps({"ok": False, "error": "not found"})
 
@@ -386,6 +433,7 @@ class Bridge(QObject):
                 u.last_status = "unchecked"
                 u.error = None
                 self._save_arena()
+                self._push_urls_undo()
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
 
@@ -405,6 +453,13 @@ class Bridge(QObject):
                     return json.dumps({"ok": False, "error": "Invalid URL"})
         return json.dumps({"ok": False, "error": "not found"})
 
+    def _push_folder_undo(self):
+        try:
+            self.undo_service.push("folder", self.state.folder.copy())
+            self._emit_undo_state()
+        except Exception:
+            pass
+
     @Slot(result=str)
     def pick_folder(self):
         if QFileDialog is None:
@@ -414,6 +469,7 @@ class Bridge(QObject):
             return json.dumps({"ok": False, "cancelled": True})
         self.state.folder["root_path"] = folder
         self._save_arena()
+        self._push_folder_undo()
         return json.dumps({"ok": True, "path": folder})
 
     @Slot(str, result=str)
@@ -423,6 +479,7 @@ class Bridge(QObject):
             return json.dumps({"ok": False, "error": "Folder does not exist"})
         self.state.folder["root_path"] = str(p)
         self._save_arena()
+        self._push_folder_undo()
         return json.dumps({"ok": True, "path": str(p)})
 
     @Slot(result=str)
@@ -457,6 +514,14 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
+    def _push_queue_undo(self):
+        try:
+            js_images = self._arena_to_js()["images"]
+            self.undo_service.push("queue", js_images)
+            self._emit_undo_state()
+        except Exception:
+            pass
+
     @Slot(str, bool, result=str)
     def set_image_selected(self, img_id: str, selected: bool):
         for img in self.state.images:
@@ -466,6 +531,7 @@ class Bridge(QObject):
                     img.status = "pending"
                 self.state.recalculate_progress()
                 self._save_arena()
+                self._push_queue_undo()
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
 
@@ -478,6 +544,7 @@ class Bridge(QObject):
                 count += 1
         self.state.recalculate_progress()
         self._save_arena()
+        self._push_queue_undo()
         return json.dumps({"ok": True, "count": count})
 
     @Slot(result=str)
@@ -491,6 +558,7 @@ class Bridge(QObject):
                 count += 1
         self.state.recalculate_progress()
         self._save_arena()
+        self._push_queue_undo()
         return json.dumps({"ok": True, "count": count})
 
     @Slot(result=str)
@@ -505,6 +573,7 @@ class Bridge(QObject):
         self.state.jobs = []
         self.state.recalculate_progress()
         self._save_arena()
+        self._push_queue_undo()
         return json.dumps({"ok": True})
 
     @Slot(str, result=str)
@@ -516,6 +585,7 @@ class Bridge(QObject):
                 img.error = None
                 self.state.recalculate_progress()
                 self._save_arena()
+                self._push_queue_undo()
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
 
@@ -531,13 +601,22 @@ class Bridge(QObject):
                 img.attempt_count = 0
                 self.state.recalculate_progress()
                 self._save_arena()
+                self._push_queue_undo()
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
+
+    def _push_prompt_undo(self, tmpl: str):
+        try:
+            self.undo_service.push("prompt", tmpl)
+            self._emit_undo_state()
+        except Exception:
+            pass
 
     @Slot(str, result=str)
     def set_prompt(self, template: str):
         self.state.prompt["user_prompt"] = template
         self._save_arena()
+        self._push_prompt_undo(template)
         return json.dumps({"ok": True})
 
     @Slot(str, result=str)
@@ -560,6 +639,11 @@ class Bridge(QObject):
                 self.state.settings.highlight["duration_seconds"] = int(data["highlight_duration"])
                 self.config.set_state(highlight_duration=int(data["highlight_duration"]))
             self._save_arena()
+            try:
+                self.undo_service.push("settings", self._arena_to_js()["settings"])
+                self._emit_undo_state()
+            except Exception:
+                pass
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -646,6 +730,332 @@ class Bridge(QObject):
     def highlight_image(self, img_id: str):
         self._emit_highlight_demo()
         return json.dumps({"ok": True})
+
+    # ---- undo system ----
+    def _emit_undo_state(self):
+        try:
+            hist, idx = self.undo_service.history()
+            can_undo = idx >= 0
+            can_redo = idx < len(hist) - 1
+            payload = json.dumps({
+                "history": hist,
+                "index": idx,
+                "canUndo": can_undo,
+                "canRedo": can_redo,
+                "count": len(hist),
+            }, ensure_ascii=False)
+            self.undo_state_changed.emit(payload)
+            self.history_changed.emit()
+        except Exception as e:
+            log.warning(f"emit undo state failed: {e}")
+
+    @Slot(result=str)
+    def get_undo_history(self):
+        hist, idx = self.undo_service.history()
+        return json.dumps({"history": hist, "index": idx}, ensure_ascii=False)
+
+    @Slot(str, str, result=bool)
+    def push_global_history(self, kind: str, value_json: str):
+        try:
+            # parse value
+            try:
+                value = json.loads(value_json) if value_json else None
+            except json.JSONDecodeError:
+                # for grid, value_json is already canonical payload string; keep raw
+                value = value_json
+            # validate grid
+            if kind == "grid":
+                payload, err = canonical_grid_payload(value if isinstance(value, str) else json.dumps(value))
+                if err:
+                    return False
+                value = payload
+            # push
+            self.undo_service.push(kind, value)
+            self._remember_global_edit(kind, value)
+            self._emit_undo_state()
+            return True
+        except Exception as e:
+            log.warning(f"push_global_history failed: {e}")
+            return False
+
+    def _remember_global_edit(self, kind: str, value):
+        try:
+            if kind == "grid":
+                self.config.set_state(grid_layout=value)
+                self.grid_layout_changed.emit(value)
+                self.grid_layout_persisted.emit(True)
+            elif kind == "window_states":
+                if isinstance(value, dict):
+                    self.config.set_state(window_states=value)
+            elif kind == "urls":
+                # value is list of url dicts (js shape) -> convert to UrlRow
+                if isinstance(value, list):
+                    self.state.urls = [UrlRow(
+                        id=u.get("id", f"url_{i}"),
+                        url=u.get("url",""),
+                        enabled=u.get("enabled",True),
+                        last_status=u.get("status","unchecked"),
+                        last_checked=u.get("last_checked"),
+                        error=u.get("last_error") or u.get("error")
+                    ) for i, u in enumerate(value)]
+                    self._save_arena()
+            elif kind == "folder":
+                if isinstance(value, dict):
+                    self.state.folder.update(value)
+                    self._save_arena()
+            elif kind == "queue":
+                # value is list of images js shape with selection
+                if isinstance(value, list):
+                    # map by id
+                    sel_map = {img.get("id"): img.get("selected") for img in value}
+                    for im in self.state.images:
+                        if im.id in sel_map:
+                            im.selected = bool(sel_map[im.id])
+                    self.state.recalculate_progress()
+                    self._save_arena()
+            elif kind == "prompt":
+                if isinstance(value, str):
+                    self.state.prompt["user_prompt"] = value
+                    self._save_arena()
+                elif isinstance(value, dict):
+                    tmpl = value.get("template") or value.get("user_prompt") or ""
+                    self.state.prompt["user_prompt"] = tmpl
+                    self._save_arena()
+            elif kind == "settings":
+                if isinstance(value, dict):
+                    # reuse save_settings logic
+                    self.state.settings.timeouts.update(value.get("timeouts", {}))
+                    self.state.settings.output.update(value.get("output", {}))
+                    self.state.settings.highlight.update(value.get("highlight", {}))
+                    if "supported_types" in value:
+                        self.state.folder["supported_types"] = value["supported_types"]
+                    self._save_arena()
+            elif kind == "arena":
+                # full arena snapshot
+                if isinstance(value, dict):
+                    # try to restore from dict
+                    try:
+                        # value is from to_dict() or js shape?
+                        if "urls" in value and isinstance(value["urls"], list) and value["urls"] and "url" in value["urls"][0]:
+                            # js shape
+                            self.state.urls = [UrlRow(
+                                id=u.get("id"), url=u.get("url"), enabled=u.get("enabled",True),
+                                last_status=u.get("status","unchecked"), error=u.get("last_error")
+                            ) for u in value["urls"]]
+                        if "folder" in value:
+                            self.state.folder.update(value["folder"])
+                        if "prompt" in value:
+                            tmpl = value["prompt"].get("template") if isinstance(value["prompt"], dict) else value["prompt"]
+                            if tmpl:
+                                self.state.prompt["user_prompt"] = tmpl
+                        self.state.recalculate_progress()
+                        self._save_arena()
+                    except Exception as e:
+                        log.warning(f"remember arena edit failed: {e}")
+        except Exception as e:
+            log.warning(f"_remember_global_edit {kind} failed: {e}")
+
+    def _apply_undo_entry(self, entry):
+        if not entry or not isinstance(entry, dict):
+            return False
+        kind = entry.get("kind")
+        value = entry.get("value")
+        try:
+            if kind == "grid":
+                if isinstance(value, str):
+                    self.config.set_state(grid_layout=value)
+                    self.grid_layout_changed.emit(value)
+                    self.grid_layout_persisted.emit(True)
+                    self._log(f"↩ Undo grid layout", "info")
+            elif kind == "window_states":
+                if isinstance(value, dict):
+                    self.config.set_state(window_states=value)
+                    self._log(f"↩ Undo window states", "info")
+            elif kind == "urls":
+                if isinstance(value, list):
+                    self.state.urls = [UrlRow(
+                        id=u.get("id", f"url_{i}"),
+                        url=u.get("url",""),
+                        enabled=u.get("enabled",True),
+                        last_status=u.get("status","unchecked"),
+                        last_checked=u.get("last_checked"),
+                        error=u.get("last_error") or u.get("error")
+                    ) for i, u in enumerate(value)]
+                    self._save_arena()
+                    self._log(f"↩ Undo URLs ({len(value)} items)", "info")
+            elif kind == "folder":
+                if isinstance(value, dict):
+                    self.state.folder = value
+                    self._save_arena()
+                    self._log(f"↩ Undo folder", "info")
+            elif kind == "queue":
+                if isinstance(value, list):
+                    sel_map = {img.get("id"): img for img in value}
+                    for im in self.state.images:
+                        if im.id in sel_map:
+                            js = sel_map[im.id]
+                            im.selected = bool(js.get("selected", im.selected))
+                            im.status = js.get("status", im.status)
+                    self.state.recalculate_progress()
+                    self._save_arena()
+                    self._log(f"↩ Undo queue selection", "info")
+            elif kind == "prompt":
+                tmpl = value if isinstance(value, str) else (value.get("template") if isinstance(value, dict) else "")
+                self.state.prompt["user_prompt"] = tmpl
+                self._save_arena()
+                self._log(f"↩ Undo prompt", "info")
+            elif kind == "settings":
+                if isinstance(value, dict):
+                    if "timeouts" in value:
+                        self.state.settings.timeouts.update(value["timeouts"])
+                    if "output" in value:
+                        self.state.settings.output.update(value["output"])
+                    if "highlight" in value:
+                        self.state.settings.highlight.update(value["highlight"])
+                    if "supported_types" in value:
+                        self.state.folder["supported_types"] = value["supported_types"]
+                        self.state.settings.supported_types = value["supported_types"]
+                    self._save_arena()
+                    self._log(f"↩ Undo settings", "info")
+            elif kind == "arena":
+                # full snapshot
+                if isinstance(value, dict):
+                    try:
+                        if "urls" in value:
+                            self.state.urls = [UrlRow(
+                                id=u.get("id"), url=u.get("url"), enabled=u.get("enabled",True),
+                                last_status=u.get("status","unchecked"), error=u.get("last_error")
+                            ) for u in value["urls"]]
+                        if "folder" in value:
+                            self.state.folder.update(value["folder"])
+                        if "prompt" in value:
+                            tmpl = value["prompt"].get("template") if isinstance(value["prompt"], dict) else str(value["prompt"])
+                            self.state.prompt["user_prompt"] = tmpl
+                        self.state.recalculate_progress()
+                        self._save_arena()
+                        self._log(f"↩ Undo arena snapshot", "info")
+                    except Exception as e:
+                        log.warning(f"apply arena undo failed: {e}")
+            else:
+                # unknown kind, try generic
+                self._log(f"↩ Undo {kind} (no specific handler)", "info")
+            return True
+        except Exception as e:
+            log.warning(f"_apply_undo_entry {kind} failed: {e}")
+            return False
+
+    @Slot(result=str)
+    def undo(self):
+        result = self.undo_service.undo()
+        if not result:
+            self._log("⚠ Nothing to undo", "warn")
+            self._emit_undo_state()
+            return "null"
+        # result contains kind/value/index
+        # apply the entry that is now at index, or if index -1, clear?
+        hist, idx = self.undo_service.history()
+        if idx == -1:
+            # undo to empty — we should restore empty state for that kind? For now, log
+            # apply inverse: if undone was urls, clear urls?
+            undone = result.get("undone")
+            if undone and undone.get("kind") == "urls":
+                self.state.urls = []
+                self._save_arena()
+            self._log(f"↩ Undo {result.get('kind')} → empty", "info")
+        else:
+            # apply the current pointer's entry
+            current_entry = hist[idx] if 0 <= idx < len(hist) else None
+            if current_entry:
+                self._apply_undo_entry(current_entry)
+            else:
+                # fallback apply result itself
+                self._apply_undo_entry(result)
+        self._emit_undo_state()
+        return json.dumps(result, ensure_ascii=False)
+
+    @Slot(result=str)
+    def redo(self):
+        result = self.undo_service.redo()
+        if not result:
+            self._log("⚠ Nothing to redo", "warn")
+            self._emit_undo_state()
+            return "null"
+        self._apply_undo_entry(result)
+        self._emit_undo_state()
+        self._log(f"↪ Redo {result.get('kind')}", "success")
+        return json.dumps(result, ensure_ascii=False)
+
+    @Slot(result=str)
+    def get_stack_history(self):
+        hist, idx = self.undo_service.stack_projection()
+        return json.dumps({"history": hist, "index": idx}, ensure_ascii=False)
+
+    @Slot(str)
+    def push_stack_history(self, stack_json: str):
+        try:
+            blocks = json.loads(stack_json or "[]")
+        except json.JSONDecodeError:
+            return
+        if isinstance(blocks, list):
+            self.undo_service.push_stack(blocks)
+            self._emit_undo_state()
+
+    @Slot(str, int)
+    def save_stack_history(self, history_json: str, index: int):
+        try:
+            hist = json.loads(history_json or "[]")
+        except json.JSONDecodeError:
+            return
+        if not isinstance(hist, list):
+            return
+        if not isinstance(index, int):
+            index = -1
+        self.undo_service.set_stack_projection(hist, index)
+        self._emit_undo_state()
+
+    @Slot(result=str)
+    def undo_stack(self):
+        raw = self.undo()
+        try:
+            result = json.loads(raw)
+            if isinstance(result, dict) and result.get("kind") in ("prompt","arena","urls","settings","queue","folder"):
+                return json.dumps(result.get("value"), ensure_ascii=False)
+            return "null"
+        except Exception:
+            return "null"
+
+    @Slot(result=str)
+    def redo_stack(self):
+        raw = self.redo()
+        try:
+            result = json.loads(raw)
+            if isinstance(result, dict) and result.get("kind") in ("prompt","arena","urls","settings","queue","folder"):
+                return json.dumps(result.get("value"), ensure_ascii=False)
+            return "null"
+        except Exception:
+            return "null"
+
+    @Slot(result=str)
+    def undo_grid_layout(self):
+        raw = self.undo()
+        try:
+            result = json.loads(raw)
+            if isinstance(result, dict) and result.get("kind") == "grid":
+                return result.get("value") or "null"
+            return "null"
+        except Exception:
+            return "null"
+
+    @Slot(result=str)
+    def redo_grid_layout(self):
+        raw = self.redo()
+        try:
+            result = json.loads(raw)
+            if isinstance(result, dict) and result.get("kind") == "grid":
+                return result.get("value") or "null"
+            return "null"
+        except Exception:
+            return "null"
 
     def _emit_highlight_demo(self):
         duration = self.config.get_state("highlight_duration", 3)

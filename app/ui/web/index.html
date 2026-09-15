@@ -19,6 +19,11 @@
     <div class="header-left">
       <span class="app-title">🖼️ Arena Image Processor</span>
       <span id="runStatus" style="font-size:11px; color:var(--text-muted); margin-left:12px;">idle</span>
+      <div style="display:flex; align-items:center; gap:4px; margin-left:12px;">
+        <button id="undoBtn" class="btn-icon-sm" title="Undo (Ctrl+Z)" disabled><span class="material-icons" style="font-size:18px;">undo</span></button>
+        <button id="redoBtn" class="btn-icon-sm" title="Redo (Ctrl+Y)" disabled><span class="material-icons" style="font-size:18px;">redo</span></button>
+        <span id="undoCountBadge" style="font-size:10px; color:var(--text-muted); min-width:32px;">0/0</span>
+      </div>
     </div>
     <div class="header-right">
       <button id="windowsMenuBtn" class="btn-icon" title="Windows — open, close, minimize"><span class="material-icons">widgets</span></button>
@@ -261,6 +266,7 @@
 
 <script src="js/core/bridge-ready.js"></script>
 <script src="js/core/ui-helpers.js"></script>
+<script src="js/core/dialog.js"></script>
 <script src="js/sash-core.js"></script>
 <script src="js/sash-grid-tree.js"></script>
 <script src="js/sash-grid-windows.js"></script>
@@ -284,6 +290,7 @@
 <script src="js/panels/settings.js"></script>
 <script src="js/panels/browser-preview.js"></script>
 <script src="js/panels/highlight.js"></script>
+<script src="js/arena-history.js"></script>
 <script src="js/arena-app.js"></script>
 </body>
 </html>

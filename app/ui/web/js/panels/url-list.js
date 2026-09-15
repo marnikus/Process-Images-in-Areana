@@ -57,6 +57,10 @@ const UrlList = {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   },
 
+  _snapshotUrls() {
+    return (App.state && App.state.urls) ? App.state.urls : [];
+  },
+
   addUrl() {
     const input = document.getElementById('urlInput');
     const val = input.value.trim();
@@ -69,6 +73,10 @@ const UrlList = {
           else {
             input.value = '';
             LogConsole.log('URL added: ' + val, 'success');
+            // record new state for undo
+            if (typeof ArenaHistory !== 'undefined') {
+              setTimeout(()=>ArenaHistory.recordGlobal('urls', App.state.urls), 100);
+            }
           }
         } catch (e) { console.error(e); }
       });
