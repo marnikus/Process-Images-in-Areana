@@ -371,3 +371,66 @@ All selectors will be centralized in `app/browser/site_adapter.py` as constants 
 ---
 
 *This document is auto-verified against saved HTML and live CDP probes. Last verified: 2026-09-15. Next verification when arena.ai DOM changes — update `site_adapter.py` and this file in same change (RULE 17).*
+
+## E2. Output / Generated Image — Exact Above Prompt Order (Fix 2026-09-16 v2)
+
+**User report:** "still have problem with andestanding what image should be taken. the app should clearly understand where was the prompt generated for what image. if generated image is above the prompt this image do not belongs to the current prompt. and should await next image generated above (if still generating icon) Exact above the prompt (not after next one more prompt) create clear order and understand what image where should be appear and taken! Now it still mess what image it take without verify it it corrrect image or not!"
+
+**Example HTML order provided:**
+```
+<ol class="... flex-col-reverse ...">
+  <div class="h-0"></div>
+  <div><img src=".../1789507366571-01a0a6f2...png (50vh) — gen_A"></div>
+  <div class="group flex ..."><img alt="01-c.jpeg" class="w-32"> + [JOB-ID: 20260915-232151-8ZO0] Transform...</div>
+  <div><img src=".../1789506957478-01a0a6ec...png (50vh) — gen_B"></div>
+  <div class="group"><img alt="01-b.jpeg" class="w-32"> + [JOB-ID: 20260915-231500-HT32] Transform...</div>
+</ol>
+```
+- Each gen is immediately before its user in DOM (gen above user visually if file order = visual top to bottom).
+- Reference images inside user bubble: `w-32` small, `h-16 w-16`, not 50vh.
+- Generated: `h-[50vh] w-[50vh] aspect-square object-cover` large.
+
+**Previous fix flaw:** Preferred AFTER job container (FOLLOWING), but example shows correct is BEFORE (above). Also didn't verify intervening JOB-ID — could take image belonging to previous prompt.
+
+**New fix — exact above verification with clear order:**
+
+1. Collect all JOB-ID prompts: search `div,span,p,pre` for `/\[JOB-ID:\s*([^\]\s]+)\]/`, extract jobId, find container via ancestor heuristics (height 20..0.95vh, width <0.98vw, contains img or flex), get bounding rect top/left, deduplicate by jobId, sort by visual top ascending (top to bottom).
+
+2. For current correlationId, find its index, `jobTop`, `prevJobTop` (previous prompt above), `nextJobTop`, `prevJobId`, `nextJobId`.
+
+3. Candidate images: selectors for R2 large images, exclude blob, oldSrcs, reference images (inside any job container and small `w-32`/`h-16` or width <=140), only large `width>=200` or `50vh` or `object-cover` + `aspect-square` >=200.
+
+4. Exact above filter:
+   - Must be above: `image.top < jobTop -5`
+   - Must be between previous and current: `prevJobTop < image.top < jobTop` if prev exists, else just `< jobTop`
+   - Must have no intervening JOB-ID: no other job with top between image.top and jobTop
+   - ValidAbove = passes all, InvalidAbove = above but fails between or has intervening (belongs to previous prompt)
+   - BelowCandidates = image.top > jobTop
+
+5. Pick closest above: sort validAbove by `b.top - a.top` descending (largest top < jobTop first) — exact above, not after next prompt.
+
+6. If no validAbove but invalidAbove exists → reason `image_above_belongs_to_previous_prompt_await_next` — await next image above current (if still generating icon visible).
+
+7. If spinning (`div.animate-spin` visible) → reason `generating_spinner_visible` — await next above.
+
+8. Logging: `orderCheck` string `exact above: prev {prevId}({prevTop}) < img {top} < curr {id}({top})`, `jobFound`, `jobTop`, `prevJobTop`, `validAbove`, `invalidAbove`, `allJobs`, `jobIndex`.
+
+**Bridge handling:**
+- Logs orderCheck on completed and timeout
+- Special handling for `image_above_belongs_to_previous_prompt_await_next` and `no_exact_above_found_wait_next`: await next image, check `is_generating`, if generating continue waiting without reload, if not generating and first cycle reload (bad cache), second cycle fail.
+
+**Selectors updated:**
+- Generated: `div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]` + `h-[50vh] w-[50vh] aspect-square object-cover` + `naturalWidth>=200` + `visible` + `complete` + `top < jobTop` + between prev and curr + no intervening job
+- Reference to exclude: inside any job container and small `w-32`/`h-16`/`w-16` or width <=140
+- Job container: contains JOB-ID text, height 20..0.95vh, width <0.98vw, contains img or flex/group, not `no-scrollbar`
+
+**Risks & fallbacks:**
+- If JOB-ID not found (render delay): fallback to bottom-most large new image but logs jobFound=false — still better than random, but will be caught by exact above check returning no validAbove and awaiting next.
+- If top positions are 0 (hidden or not rendered): fallback to document order via `compareDocumentPosition` previous logic.
+- If multiple large images in valid range (Response A/B): picks closest above (largest top), logs validAbove count.
+- If reference image also large 50vh: still excluded by container containment + small check, not size alone.
+
+**Verification:**
+- For JOB-ID 8ZO0: prev none, validAbove gen_A (0) → exact above verified.
+- For new prompt at bottom (400): prev is 01-b (300), valid range 300-400, only new gen in that range qualifies.
+

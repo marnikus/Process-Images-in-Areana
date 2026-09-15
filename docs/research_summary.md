@@ -213,3 +213,46 @@ For MVP, we will implement with fallback strategies and structured logging of se
 - Old app had similar security pause logic in `bridge.py` checking `is_security_dialog_visible()` and pausing.
 - New watcher extends that to passive monitoring even outside job run, with configurable interval and timeouts, and visual overlay on page left center.
 
+
+## Fix 2026-09-16 (4): Exact Above Prompt — clear order for correct image matching
+
+**User report:** "still have problem with andestanding what image should be taken. the app should clearly understand where was the prompt generated for what image. if generated image is above the prompt this image do not belongs to the current prompt. and should await next image generated above (if still generating icon) Exact above the prompt (not after next one more prompt) create clear order and understand what image where should be appear and taken! Now it still mess what image it take without verify it it corrrect image or not!"
+
+**Example HTML provided:**
+- Outer `<ol class="... flex-col-reverse ...">` containing alternating gen and user messages.
+- DOM order (top to bottom as in file): gen_A (1789507366571-01a0a6f2), user 01-c (JOB-ID 8ZO0), gen_B (1789506957478-01a0a6ec), user 01-b (JOB-ID HT32)
+- Each gen is immediately before its user in DOM (gen above user visually if file order = visual top to bottom).
+- Reference images inside user bubble: `w-32` small, not `50vh`.
+- Generated images: `h-[50vh] w-[50vh] aspect-square object-cover` large, R2 URL.
+
+**Problem with previous logic:**
+- Previous `JS_CHECK_NEW_OUTPUT` preferred `afterJobCandidates` (images after job container via `compareDocumentPosition FOLLOWING`), but example shows correct image is **before** job container (above).
+- It only excluded images inside jobContainer, but didn't verify that image belongs to current prompt vs previous prompt — could take image that belongs to previous prompt if no exact above found.
+- No check for intervening JOB-ID between image and current prompt.
+
+**New logic — exact above verification:**
+- Collect **all JOB-ID prompts** with their bounding rect `top`, container, jobId. Sort by visual top ascending (top to bottom). Deduplicate by jobId.
+- For current `correlationId`, find its index, `jobTop`, `prevJobTop` (previous prompt above), `nextJobTop`.
+- Collect candidate images: R2, large (`width>=200` or `50vh` or `object-cover`), not blob, not in `oldSrcs`, not reference (inside any job container and small `w-32`/`h-16`), visible.
+- **Exact above filter:**
+  - Image must be above prompt: `image.top < jobTop -5`
+  - Must be between previous and current: `prevJobTop < image.top < jobTop` (if prev exists), otherwise just `image.top < jobTop`
+  - Must have **no intervening JOB-ID** between image and current: loop allJobs, if any job with top between image.top and jobTop (excluding current), then invalid.
+  - Valid above = passes above + between + no intervening. Invalid above = above but fails between or has intervening.
+  - Below candidates = image.top > jobTop.
+- Pick **closest above**: sort validAbove by `b.top - a.top` descending (largest top < jobTop first) — exact above, not after next prompt.
+- If no validAbove but invalidAbove exists → reason `image_above_belongs_to_previous_prompt_await_next` — image above belongs to previous prompt, await next image above (if still generating icon).
+- If no validAbove and no invalidAbove but allNew exists → `no_exact_above_found_wait_next` — await next.
+- If spinning visible (`div.animate-spin`), return not ready `generating_spinner_visible` even if candidate exists — await next above if still generating.
+- Logging: `orderCheck` string with `prev {prevId}({prevTop}) < img {top} < curr {id}({top})`, `jobFound`, `jobTop`, `prevJobTop`, `validAbove`, `invalidAbove`, `allJobs`.
+
+**Bridge handling:**
+- Logs orderCheck on both completed and timeout.
+- Special handling for reasons `image_above_belongs_to_previous_prompt_await_next` and `no_exact_above_found_wait_next`: logs awaiting next above, checks `is_generating`, if generating continues waiting without immediate reload, if not generating and first cycle reloads (bad cache chance), second cycle fails.
+- Ensures app clearly understands where prompt was generated for what image, verifies correct image, awaits next image generated above if still generating.
+
+**Verification:**
+- `py_compile` ok, `pytest 45 passed`
+- Expected for JOB-ID 8ZO0: prevJob HT32? Actually sorted top ascending: 01-c (100), 01-b (300) — for 8ZO0 (100) prev none, validAbove gen_A (0) → exact above verified.
+- For new prompt at bottom (400): prev is 01-b (300), valid range 300-400, only new gen in that range qualifies, not gen_B which is below prev.
+

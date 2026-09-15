@@ -1795,6 +1795,19 @@ class Bridge(QObject):
                                 status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id)
 
                                 if status == "completed":
+                                    # Log order verification details from new JS logic
+                                    try:
+                                        order_check = data.get("orderCheck") or data.get("order_check") or ""
+                                        job_found = data.get("jobFound")
+                                        job_top = data.get("jobTop")
+                                        prev_top = data.get("prevJobTop")
+                                        valid_above = data.get("validAbove")
+                                        invalid_above = data.get("invalidAbove")
+                                        all_jobs = data.get("allJobs")
+                                        if order_check or job_found is not None:
+                                            self._log(f"[{correlation_id}] Order check: {order_check} jobFound={job_found} jobTop={jobTop} prevTop={prev_top} validAbove={valid_above} invalidAbove={invalid_above} allJobs={all_jobs}", "info")
+                                    except Exception:
+                                        pass
                                     tmp_src = data.get("new_src")
                                     if tmp_src:
                                         # Try to download immediately to verify it's actually downloadable
@@ -1888,8 +1901,34 @@ class Bridge(QObject):
                                             self._log(f"[{correlation_id}] {label} done without new src (await block)", "info")
                                             break
                                 else:
-                                    # status failed = timeout
-                                    last_wait_error = data.get("error", "timeout")
+                                    # status failed = timeout or no exact above found
+                                    last_wait_error = data.get("error") or data.get("reason") or "timeout"
+                                    order_check = data.get("orderCheck") or ""
+                                    valid_above = data.get("validAbove")
+                                    invalid_above = data.get("invalidAbove")
+                                    if order_check:
+                                        self._log(f"[{correlation_id}] Order check on timeout: {order_check} validAbove={valid_above} invalidAbove={invalid_above} reason={last_wait_error}", "info")
+                                    # Special handling for exact above logic — if image above belongs to previous prompt, await next
+                                    if last_wait_error in ("image_above_belongs_to_previous_prompt_await_next", "no_exact_above_found_wait_next", "no_exact_above_found_wait_next"):
+                                        self._log(f"[{correlation_id}] ⏳ No exact above image for {correlationId} — found {invalid_above} invalid above (belongs to previous), awaiting next image above (if still generating)", "warn")
+                                        self._emit_job_action_status(job_id, block, "waiting", f"No exact above, awaiting next above current prompt (prev belongs to previous) — {order_check}")
+                                        # Check if still generating — if yes, continue waiting without reload yet
+                                        is_gen, gen_details = await ctrl.is_generating()
+                                        if is_gen:
+                                            self._log(f"[{correlation_id}] Still generating {gen_details} — continue waiting for exact above", "info")
+                                            await asyncio.sleep(2)
+                                            # Try again within same cycle — don't count as failure yet
+                                            continue
+                                        else:
+                                            # Not generating but no exact above — maybe need reload? Try reload if first cycle
+                                            if wait_cycle == 0:
+                                                ok_r, r_msg = await ctrl.reload_page()
+                                                self._log(f"[{correlation_id}] Reload after no exact above (not generating): {ok_r} {r_msg}", "warn")
+                                                await asyncio.sleep(3)
+                                                baseline = await ctrl.capture_baseline()
+                                                continue
+                                            continue
+
                                     is_gen, gen_details = await ctrl.is_generating()
                                     self._log(f"[{correlation_id}] ⏳ Wait timeout after {wait_timeout}ms cycle {wait_cycle+1}/{max_wait_cycles} — is_generating={is_gen} {gen_details}, error={last_wait_error}", "warn")
                                     if is_gen:

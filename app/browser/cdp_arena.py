@@ -253,74 +253,150 @@ JS_CHECK_NEW_OUTPUT = """
       }
     } catch(e) {}
 
-    let jobEl = null;
-    let jobContainer = null;
-    let jobTop = null;
-    let jobFound = false;
-    if (correlationId) {
-      try {
-        const token1 = String(correlationId);
-        const token2 = `[JOB-ID: ${token1}]`;
-        const token3 = `JOB-ID: ${token1}`;
-        const token4 = `JOB-ID:${token1}`;
-        const allEls = document.querySelectorAll('div, span, p, pre');
-        let bestLen = Infinity;
-        for (const el of allEls) {
-          if (!el.textContent) continue;
-          if (el.tagName === 'TEXTAREA' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
-          const txt = el.textContent;
-          if (txt.includes(token1) && (txt.includes('JOB-ID') || txt.length < 500)) {
-            const hasJob = txt.includes(token2) || txt.includes(token3) || txt.includes(token4) || (txt.includes(token1) && txt.includes('JOB-ID'));
-            if (hasJob || (txt.includes(token1) && txt.length < 200)) {
-              if (txt.length < bestLen) {
-                bestLen = txt.length;
-                jobEl = el;
-              }
-            }
-          }
-        }
-        if (!jobEl) {
-          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-          let node;
-          while (node = walker.nextNode()) {
-            const val = node.nodeValue || '';
-            if (val.includes(token1)) {
-              let parent = node.parentElement;
-              if (parent && parent.tagName !== 'TEXTAREA' && parent.tagName !== 'SCRIPT') {
-                jobEl = parent;
-                break;
-              }
-            }
-          }
-        }
-        if (jobEl) {
-          jobFound = true;
-          let cur = jobEl;
-          let container = null;
-          for (let i=0; i<8 && cur; i++) {
+    // --- Collect all JOB-ID prompts with their visual top positions ---
+    let allJobs = [];
+    try {
+      const jobRegex = /\[JOB-ID:\s*([^\]\s]+)\]/g;
+      const allEls = document.querySelectorAll('div, span, p, pre');
+      let seenContainers = new Set();
+      for (const el of allEls) {
+        if (!el.textContent) continue;
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+        const txt = el.textContent;
+        if (txt.length > 2000) continue;
+        let match;
+        // Reset regex
+        jobRegex.lastIndex = 0;
+        while ((match = jobRegex.exec(txt)) !== null) {
+          const jobId = match[1];
+          if (!jobId || jobId.length < 3) continue;
+          // Find container for this JOB-ID
+          let container = el;
+          // Walk up to find reasonable container with height >30 and width <95vw
+          let cur = el;
+          for (let i=0; i<10 && cur; i++) {
             if (cur.getBoundingClientRect) {
               const r = cur.getBoundingClientRect();
-              if (r.height > 30 && r.height < window.innerHeight * 0.9 && r.width < window.innerWidth * 0.95) {
-                if (cur.textContent && cur.textContent.includes(token1)) {
-                  if (cur.querySelector('img') || cur.classList.contains('flex') || cur.classList.contains('group')) {
+              if (r.height > 20 && r.height < window.innerHeight * 0.95 && r.width < window.innerWidth * 0.98) {
+                // Prefer containers that have img or flex
+                if (cur.querySelector('img') || cur.classList.contains('flex') || cur.classList.contains('group') || cur.textContent.includes(jobId)) {
+                  if (!cur.classList.contains('no-scrollbar')) {
                     container = cur;
-                    if (cur.classList.contains('no-scrollbar')) break;
                   }
-                  if (!container) container = cur;
                 }
               }
             }
             if (cur.classList && cur.classList.contains('no-scrollbar')) break;
             cur = cur.parentElement;
           }
-          if (!container) {
-            container = jobEl.closest('div.group, div.flex.flex-col, div[data-message-id], div.min-w-0.flex-1, div.flex.w-full') || jobEl.closest('div') || jobEl;
-          }
-          jobContainer = container;
+          if (!container) container = el.closest('div.group, div.flex.flex-col, div[data-message-id], div.min-w-0.flex-1, div.flex.w-full') || el.closest('div') || el;
+          // Avoid duplicate containers for same jobId
+          let key = jobId + '|' + (container ? (container.getBoundingClientRect().top + '|' + container.getBoundingClientRect().left) : el.getBoundingClientRect().top);
+          if (seenContainers.has(key)) continue;
+          seenContainers.add(key);
           try {
-            const rect = jobContainer.getBoundingClientRect();
-            jobTop = rect.top;
+            const rect = container.getBoundingClientRect();
+            allJobs.push({
+              jobId: jobId,
+              el: el,
+              container: container,
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height,
+              text: txt.slice(0,200)
+            });
           } catch(e) {}
+        }
+      }
+      // Also check text nodes for JOB-ID not caught
+      if (allJobs.length === 0 && correlationId) {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let node;
+        while (node = walker.nextNode()) {
+          const val = node.nodeValue || '';
+          if (val.includes(correlationId)) {
+            let parent = node.parentElement;
+            if (parent && parent.tagName !== 'TEXTAREA' && parent.tagName !== 'SCRIPT') {
+              try {
+                const r = parent.getBoundingClientRect();
+                allJobs.push({
+                  jobId: correlationId,
+                  el: parent,
+                  container: parent.closest('div.group, div.flex.flex-col') || parent,
+                  top: r.top,
+                  left: r.left,
+                  width: r.width,
+                  height: r.height,
+                  text: val.slice(0,200)
+                });
+                break;
+              } catch(e) {}
+            }
+          }
+        }
+      }
+      // Sort by visual top ascending (top to bottom)
+      allJobs.sort((a,b) => {
+        if (Math.abs(a.top - b.top) > 5) return a.top - b.top;
+        return a.left - b.left;
+      });
+      // Deduplicate by jobId keeping first occurrence (closest to top? Actually keep all but unique)
+      let deduped = [];
+      let seenIds = new Set();
+      for (const j of allJobs) {
+        if (!seenIds.has(j.jobId)) {
+          seenIds.add(j.jobId);
+          deduped.push(j);
+        }
+      }
+      allJobs = deduped;
+    } catch(e) {}
+
+    let jobEl = null;
+    let jobContainer = null;
+    let jobTop = null;
+    let jobFound = false;
+    let jobIndex = -1;
+    let prevJobTop = null;
+    let nextJobTop = null;
+    let prevJobId = null;
+    let nextJobId = null;
+
+    if (correlationId) {
+      try {
+        for (let i=0; i<allJobs.length; i++) {
+          const j = allJobs[i];
+          if (j.jobId === correlationId || j.text.includes(correlationId) || (j.el && j.el.textContent && j.el.textContent.includes(correlationId))) {
+            jobEl = j.el;
+            jobContainer = j.container;
+            jobTop = j.top;
+            jobFound = true;
+            jobIndex = i;
+            if (i > 0) {
+              prevJobTop = allJobs[i-1].top;
+              prevJobId = allJobs[i-1].jobId;
+            }
+            if (i < allJobs.length - 1) {
+              nextJobTop = allJobs[i+1].top;
+              nextJobId = allJobs[i+1].jobId;
+            }
+            break;
+          }
+        }
+        // Fallback: search again without dedup if not found
+        if (!jobFound) {
+          const allEls = document.querySelectorAll('div, span, p, pre');
+          for (const el of allEls) {
+            if (!el.textContent) continue;
+            if (el.textContent.includes(correlationId)) {
+              jobEl = el;
+              jobContainer = el.closest('div.group, div.flex.flex-col, div[data-message-id], div.min-w-0.flex-1, div.flex.w-full') || el.closest('div') || el;
+              try { jobTop = jobContainer.getBoundingClientRect().top; } catch(e) {}
+              jobFound = true;
+              break;
+            }
+          }
         }
       } catch(e) {}
     }
@@ -338,37 +414,28 @@ JS_CHECK_NEW_OUTPUT = """
       'img[src*=".r2.cloudflarestorage.com/"]'
     ];
 
-    let afterJobCandidates = [];
-    let beforeJobCandidates = [];
     let allNew = [];
+    let validAbove = [];
+    let invalidAbove = [];
+    let belowCandidates = [];
 
-    function pushCandidate(el, sel, isAfter) {
-      if (!el.src) return;
-      if (el.src.startsWith('blob:')) return;
-      if (oldSrcs.includes(el.src)) return;
-      if (el.naturalWidth && el.naturalWidth < 50 && el.naturalHeight < 50) return;
-      const rect = el.getBoundingClientRect();
-      const visible = el.offsetParent !== null;
-      const width = el.naturalWidth || rect.width || 0;
-      const height = el.naturalHeight || rect.height || 0;
-      const className = el.className || '';
-      const isLarge = width >= 200 || rect.width >= 200 || className.includes('50vh') || className.includes('object-cover') || (el.classList && el.classList.contains('aspect-square'));
-      const info = {
-        el: el,
-        src: el.src,
-        rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height},
-        width: width,
-        height: height,
-        visible: visible,
-        complete: el.complete,
-        naturalWidth: el.naturalWidth,
-        selector: sel,
-        isLarge: isLarge,
-        top: rect.top
-      };
-      allNew.push(info);
-      if (isAfter) afterJobCandidates.push(info);
-      else beforeJobCandidates.push(info);
+    function isReferenceImage(el) {
+      // Reference image inside user bubble is small w-32, not 50vh, and inside jobContainer
+      try {
+        if (jobContainer && jobContainer.contains(el)) return true;
+        // Check if inside any job container
+        for (const j of allJobs) {
+          if (j.container && j.container.contains(el)) {
+            // If this container is for a different jobId, it's still a reference image for that job, not a generated image
+            // But we need to distinguish: reference images are small (w-32) vs generated large (50vh)
+            const cls = el.className || '';
+            const rect = el.getBoundingClientRect();
+            const isSmall = rect.width <= 140 || cls.includes('w-32') || cls.includes('h-16') || cls.includes('w-16');
+            if (isSmall) return true;
+          }
+        }
+      } catch(e) {}
+      return false;
     }
 
     for (const sel of selectors) {
@@ -378,84 +445,148 @@ JS_CHECK_NEW_OUTPUT = """
           if (!el.src) continue;
           if (el.src.startsWith('blob:')) continue;
           if (oldSrcs.includes(el.src)) continue;
-          if (jobContainer && jobContainer.contains(el)) {
-            continue;
-          }
-          let isAfter = false;
-          if (jobContainer) {
-            try {
-              const pos = jobContainer.compareDocumentPosition(el);
-              isAfter = (pos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-              if (pos & Node.DOCUMENT_POSITION_CONTAINED_BY) {
-                continue;
+          if (el.naturalWidth && el.naturalWidth < 50 && el.naturalHeight < 50) continue;
+          if (isReferenceImage(el)) continue;
+
+          const rect = el.getBoundingClientRect();
+          const visible = el.offsetParent !== null;
+          const width = el.naturalWidth || rect.width || 0;
+          const height = el.naturalHeight || rect.height || 0;
+          const className = el.className || '';
+          const isLarge = width >= 200 || rect.width >= 200 || className.includes('50vh') || className.includes('object-cover') || (el.classList && el.classList.contains('aspect-square') && rect.width >= 200);
+
+          // Skip small reference images
+          if (!isLarge) continue;
+
+          const info = {
+            el: el,
+            src: el.src,
+            rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height},
+            width: width,
+            height: height,
+            visible: visible,
+            complete: el.complete,
+            naturalWidth: el.naturalWidth,
+            selector: sel,
+            isLarge: isLarge,
+            top: rect.top,
+            left: rect.left
+          };
+          allNew.push(info);
+
+          if (jobFound && jobTop !== null) {
+            // Exact above logic: image must be above prompt (top < jobTop)
+            // And must be between previous job and current job (if previous exists)
+            // So: prevJobTop < imageTop < jobTop
+            // If no previous job, just imageTop < jobTop
+            const above = rect.top < jobTop - 5;
+            const below = rect.top > jobTop + 5;
+
+            if (above) {
+              let between = true;
+              if (prevJobTop !== null) {
+                // Image must be below previous job (top > prevJobTop) to be exact above current, not after next prompt
+                if (rect.top <= prevJobTop + 5) {
+                  between = false;
+                }
               }
-            } catch(e) {
-              try {
-                const elTop = el.getBoundingClientRect().top;
-                if (jobTop !== null) isAfter = elTop > jobTop + 5;
-              } catch(e2) {}
+              // Also ensure no other job between image and current
+              if (between) {
+                let hasInterveningJob = false;
+                for (const j of allJobs) {
+                  if (j.jobId === correlationId) continue;
+                  if (j.top > rect.top + 5 && j.top < jobTop - 5) {
+                    hasInterveningJob = true;
+                    break;
+                  }
+                }
+                if (!hasInterveningJob) {
+                  validAbove.push(info);
+                } else {
+                  invalidAbove.push(info);
+                }
+              } else {
+                invalidAbove.push(info);
+              }
+            } else if (below) {
+              belowCandidates.push(info);
             }
           } else {
-            isAfter = false;
+            // No job found — collect all as fallback but prefer bottom-most
+            validAbove.push(info);
           }
-          pushCandidate(el, sel, isAfter);
         }
       } catch(e) {}
-      if (afterJobCandidates.length > 0) break;
+      if (validAbove.length > 0) break;
     }
 
-    let pool = afterJobCandidates.length > 0 ? afterJobCandidates : beforeJobCandidates;
-    if (pool.length === 0) pool = allNew;
+    // If we have validAbove (exact above current prompt), pick closest above (largest top < jobTop)
+    let pool = [];
+    if (validAbove.length > 0) {
+      validAbove.sort((a,b) => b.top - a.top); // descending, closest above first (largest top)
+      pool = validAbove;
+    } else if (belowCandidates.length > 0 && !jobFound) {
+      // Fallback when no job found: bottom-most
+      belowCandidates.sort((a,b) => b.top - a.top);
+      pool = belowCandidates;
+    } else {
+      // No valid above — we should wait for next image, not take invalid
+      pool = [];
+    }
 
+    // Large filter already done, but ensure
     let largePool = pool.filter(c => c.isLarge);
-    if (largePool.length > 0) {
-      let afterLarge = afterJobCandidates.filter(c => c.isLarge);
-      if (afterLarge.length > 0) pool = afterLarge;
-      else pool = largePool;
-    }
+    if (largePool.length > 0) pool = largePool;
 
-    if (jobFound && jobTop !== null && afterJobCandidates.length > 0) {
+    // Sort pool by closest above (largest top)
+    if (jobFound && pool.length > 0) {
       pool.sort((a,b) => {
-        const da = a.top - jobTop;
-        const db = b.top - jobTop;
-        if (da >= 0 && db >= 0 && Math.abs(da - db) > 5) return da - db;
-        return b.width - a.width;
+        // Closest above = largest top that is still < jobTop
+        return b.top - a.top;
       });
     } else {
       pool.sort((a,b) => {
         if (a.visible !== b.visible) return a.visible ? -1 : 1;
-        if (Math.abs(b.top - a.top) > 50) return b.top - a.top;
-        return b.width - a.width;
+        return b.top - a.top;
       });
     }
 
     for (const cand of pool) {
       const el = cand.el;
       if (!el.complete) {
-        return {ready:false, reason:'not_complete', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length, isLarge: cand.isLarge};
+        return {ready:false, reason:'not_complete', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, belowCount: belowCandidates.length, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, isLarge: cand.isLarge, top: cand.top, jobId: correlationId, orderCheck: `exact above: prev ${prevJobId||'none'}(${prevJobTop}) < img ${cand.top} < curr ${correlationId}(${jobTop})`};
       }
       if (el.naturalWidth === 0) {
-        return {ready:false, reason:'zero_width', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, isLarge: cand.isLarge};
+        return {ready:false, reason:'zero_width', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, isLarge: cand.isLarge};
       }
       if (!cand.visible) {
         continue;
       }
       if (spinning) {
-        return {ready:false, reason:'generating_spinner_visible', src: cand.src, spinning: true, spinCount: spinCount, spinDetails: spinDetails, width: cand.width, height: cand.height, rect: cand.rect, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length, isLarge: cand.isLarge};
+        return {ready:false, reason:'generating_spinner_visible', src: cand.src, spinning: true, spinCount: spinCount, spinDetails: spinDetails, width: cand.width, height: cand.height, rect: cand.rect, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, isLarge: cand.isLarge, top: cand.top, orderCheck: `exact above but spinning, await next above if still generating`};
       }
-      return {ready:true, src: cand.src, width: cand.width, height: cand.height, spinning: false, rect: cand.rect, selector: cand.selector, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length, isLarge: cand.isLarge};
+      return {ready:true, src: cand.src, width: cand.width, height: cand.height, spinning: false, rect: cand.rect, selector: cand.selector, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, belowCount: belowCandidates.length, isLarge: cand.isLarge, top: cand.top, orderCheck: `exact above verified: prev ${prevJobId||'none'} < img < curr ${correlationId}`};
     }
 
     if (pool.length > 0) {
       const first = pool[0];
       const reason = !first.visible ? 'hidden' : (!first.complete ? 'not_complete' : 'loading');
-      return {ready:false, reason: reason, src: first.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length};
+      return {ready:false, reason: reason, src: first.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop};
+    }
+
+    // No valid above found — check if there are invalid above (belongs to previous prompt)
+    if (invalidAbove.length > 0) {
+      return {ready:false, reason:'image_above_belongs_to_previous_prompt_await_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, invalidAbove: invalidAbove.length, validAbove: 0, allJobs: allJobs.length, jobId: correlationId, orderCheck: `no exact above, found ${invalidAbove.length} images above previous prompt, awaiting next above current`};
+    }
+
+    if (allNew.length > 0) {
+      return {ready:false, reason:'no_exact_above_found_wait_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, allNew: allNew.length, validAbove: 0, invalidAbove: invalidAbove.length, belowCount: belowCandidates.length, jobId: correlationId};
     }
 
     if (spinning) {
-      return {ready:false, reason:'generating_no_new_yet', spinning: true, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length};
+      return {ready:false, reason:'generating_no_new_yet', spinning: true, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, jobIndex: jobIndex, allJobs: allJobs.length};
     }
-    return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length};
+    return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, jobIndex: jobIndex, allJobs: allJobs.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length};
   } catch(e) { return {ready:false, reason:String(e), spinning: false}; }
 })
 """
