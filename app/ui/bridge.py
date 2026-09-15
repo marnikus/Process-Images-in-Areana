@@ -1295,6 +1295,12 @@ class Bridge(QObject):
     def save_arena_preset(self, name: str):
         try:
             js_state = self._arena_to_js()
+            cdp_cfg = {
+                "host": self.config.get_state("cdp_host", "127.0.0.1"),
+                "port": self.config.get_state("cdp_port", 9222),
+                "user_data_dir": self.config.get_state("cdp_user_data_dir", "C:\\arena-images-chrome"),
+                "extra_args": self.config.get_state("cdp_extra_args", ""),
+            }
             doc = {
                 "name": name,
                 "urls": js_state.get("urls", []),
@@ -1302,6 +1308,7 @@ class Bridge(QObject):
                 "prompt": js_state.get("prompt", {}),
                 "settings": js_state.get("settings", {}),
                 "images": js_state.get("images", []),
+                "cdp": cdp_cfg,
                 "updated_at": datetime.utcnow().isoformat() + "Z",
                 "app_version": "arena-1.0",
             }
@@ -1343,6 +1350,18 @@ class Bridge(QObject):
                         self.state.settings.highlight.update(s["highlight"])
                     if "supported_types" in s:
                         self.state.folder["supported_types"] = s["supported_types"]
+            if "cdp" in doc and isinstance(doc["cdp"], dict):
+                c = doc["cdp"]
+                host = c.get("host", "127.0.0.1")
+                port = c.get("port", 9222)
+                user_data_dir = c.get("user_data_dir", "C:\\arena-images-chrome")
+                extra = c.get("extra_args", "")
+                self.config.set_state(cdp_host=host, cdp_port=int(port), cdp_user_data_dir=user_data_dir, cdp_extra_args=extra)
+                if self.cdp:
+                    try:
+                        self.cdp.set_host_port(host, int(port))
+                    except Exception:
+                        pass
             self.state.recalculate_progress()
             self._save_arena()
             self._log(f"Arena preset loaded: {name}", "success")
@@ -1457,6 +1476,87 @@ class Bridge(QObject):
             self._log("Highlights cleared", "info")
         except Exception as e:
             self._log(f"Clear highlights failed: {e}", "error")
+
+    # ---- CDP config user decides port and user-data-dir ----
+    @Slot(result=str)
+    def get_cdp_config(self):
+        try:
+            host = self.config.get_state("cdp_host", "127.0.0.1")
+            port = self.config.get_state("cdp_port", 9222)
+            user_data_dir = self.config.get_state("cdp_user_data_dir", "C:\\arena-images-chrome")
+            extra = self.config.get_state("cdp_extra_args", "")
+            payload = {
+                "host": host,
+                "port": int(port),
+                "user_data_dir": user_data_dir,
+                "extra_args": extra,
+                "base_url": f"http://{host}:{port}",
+                "is_connected": bool(self.cdp and self.cdp.is_connected),
+                "current_host": self.cdp._host if self.cdp else host,
+                "current_port": self.cdp._port if self.cdp else int(port),
+            }
+            return json.dumps(payload, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def set_cdp_config(self, config_json: str):
+        try:
+            data = json.loads(config_json or "{}")
+            host = data.get("host") or data.get("cdp_host") or "127.0.0.1"
+            port = data.get("port") or data.get("cdp_port") or 9222
+            user_data_dir = data.get("user_data_dir") or data.get("cdp_user_data_dir") or "C:\\arena-images-chrome"
+            extra = data.get("extra_args") or data.get("cdp_extra_args") or ""
+            # validate
+            try:
+                port_i = int(port)
+                if not (1 <= port_i <= 65535):
+                    return json.dumps({"ok": False, "error": "port must be 1-65535"})
+            except:
+                return json.dumps({"ok": False, "error": "invalid port"})
+            # save to session
+            self.config.set_state(cdp_host=host, cdp_port=port_i, cdp_user_data_dir=user_data_dir, cdp_extra_args=extra)
+            # update cdp client
+            if self.cdp:
+                try:
+                    self.cdp.set_host_port(host, port_i)
+                except Exception:
+                    pass
+            self._log(f"CDP config saved: {host}:{port_i} dir={user_data_dir}", "success")
+            return json.dumps({"ok": True, "host": host, "port": port_i, "user_data_dir": user_data_dir})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_chrome_launch_command(self):
+        try:
+            host = self.config.get_state("cdp_host", "127.0.0.1")
+            port = self.config.get_state("cdp_port", 9222)
+            user_data_dir = self.config.get_state("cdp_user_data_dir", "C:\\arena-images-chrome")
+            extra = self.config.get_state("cdp_extra_args", "")
+            # Windows command
+            win_cmd = f'"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port={port} --user-data-dir="{user_data_dir}"'
+            if extra:
+                win_cmd += f" {extra}"
+            # Also with URL placeholder
+            win_cmd_with_url = win_cmd + " https://arena.ai"
+            # Linux/Mac
+            linux_cmd = f'google-chrome --remote-debugging-port={port} --user-data-dir="{user_data_dir}"'
+            if extra:
+                linux_cmd += f" {extra}"
+            payload = {
+                "host": host,
+                "port": int(port),
+                "user_data_dir": user_data_dir,
+                "extra_args": extra,
+                "windows": win_cmd,
+                "windows_with_url": win_cmd_with_url,
+                "linux": linux_cmd,
+                "test_url": f"http://{host}:{port}/json/list",
+            }
+            return json.dumps(payload, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
 
     @Slot(str, result=str)
     def refresh_users(self):

@@ -183,6 +183,20 @@ class CDPClient(QObject):
     def is_connected(self) -> bool:
         return bool(self._connected and self._ws is not None)
 
+    def set_host_port(self, host: str = None, port: int = None):
+        if host:
+            self._host = str(host).strip() or self._host
+        if port:
+            try:
+                p = int(port)
+                if 1 <= p <= 65535:
+                    self._port = p
+            except Exception:
+                pass
+
+    def get_host_port(self):
+        return self._host, self._port
+
     # ---- sync API used by bridge when asyncio loop not available or for diagnostics ----
     def fetch_tabs_sync(self, host: str = None, port: int = None):
         h = host or self._host

@@ -96,7 +96,8 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
   },
 
   fetchTabs() {
-    LogConsole.log('🔍 Fetching Chrome tabs from http://127.0.0.1:9222/json/list … (also tries localhost, host.docker.internal)', 'info');
+    const cfg = this.currentConfig || {host:'127.0.0.1', port:9222};
+    LogConsole.log(`🔍 Fetching Chrome tabs from http://${cfg.host}:${cfg.port}/json/list … (also tries localhost, host.docker.internal)`, 'info');
     if (App.bridge && App.bridge.get_tabs) {
       try {
         App.bridge.get_tabs((res) => {
@@ -115,8 +116,24 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
     }
   },
 
+  currentConfig: {host:'127.0.0.1', port:9222, user_data_dir:'C:\\arena-images-chrome'},
+
+  updateChromeToolbar(cfg) {
+    if (!cfg) return;
+    this.currentConfig = cfg;
+    const toolbar = document.getElementById('chromeToolbar');
+    if (!toolbar) return;
+    const codeEl = toolbar.querySelector('code');
+    if (codeEl) {
+      let cmd = `"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=${cfg.port} --user-data-dir="${cfg.user_data_dir || cfg.user_data_dir}"`;
+      if (cfg.extra_args) cmd += ` ${cfg.extra_args}`;
+      codeEl.textContent = cmd;
+    }
+  },
+
   diagnose() {
-    LogConsole.log('🩺 Diagnosing Chrome remote debugging… checking 127.0.0.1:9222, localhost, host.docker.internal', 'info');
+    const cfg = this.currentConfig || {host:'127.0.0.1', port:9222};
+    LogConsole.log(`🩺 Diagnosing Chrome remote debugging on ${cfg.host}:${cfg.port}… checking 127.0.0.1, localhost, host.docker.internal`, 'info');
     if (App.bridge && App.bridge.diagnose_chrome) {
       App.bridge.diagnose_chrome((res) => {
         try {

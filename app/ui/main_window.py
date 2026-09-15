@@ -30,11 +30,13 @@ class MainWindow(QMainWindow):
         self.state_path = Path(state_path)
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # CDP client for Chrome remote debugging
+        # CDP client for Chrome remote debugging — host/port from config so user can choose
         self.cdp_client = None
         if CDPClient:
             try:
-                self.cdp_client = CDPClient(host="127.0.0.1", port=9222, parent=self)
+                host = self.config_manager.get_state("cdp_host", "127.0.0.1")
+                port = self.config_manager.get_state("cdp_port", 9222)
+                self.cdp_client = CDPClient(host=host, port=port, parent=self)
             except Exception as e:
                 print(f"CDP client init failed: {e}")
 

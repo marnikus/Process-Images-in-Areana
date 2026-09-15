@@ -13,6 +13,10 @@ DEFAULT_SESSION = {
     "theme": "dark",
     "last_folder": "",
     "highlight_duration": 3,
+    "cdp_host": "127.0.0.1",
+    "cdp_port": 9222,
+    "cdp_user_data_dir": "C:\\arena-images-chrome",
+    "cdp_extra_args": "",
 }
 
 DEFAULT_WINDOW_PRESETS = {"window_presets": {}}
