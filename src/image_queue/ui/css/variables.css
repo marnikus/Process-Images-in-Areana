@@ -1,0 +1,133 @@
+/* ═══════════════════════════════════════════════════════════════
+   variables.css — Theme tokens for ChatBot Automator
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* — Surface — */
+  --bg-app:         #0f1117;
+  --bg-panel:       #1a1d27;
+  --bg-panel-hover: #22263a;
+  --bg-input:       #12141c;
+  --bg-card:        #1e2233;
+  --bg-card-hover:  #252a40;
+  --bg-header:      #141620;
+  --bg-modal:       rgba(0,0,0,.65);
+
+  /* — Text — */
+  --text-primary:   #e8eaf0;
+  --text-secondary: #8b90a5;
+  --text-muted:     #5a5f73;
+  --text-inverse:   #0f1117;
+
+  /* — Accent — */
+  --accent:         #6c8cff;
+  --accent-hover:   #859dff;
+  --accent-dim:     #3a4a7a;
+  --green:          #4ade80;
+  --green-dim:      #1a3a2a;
+  --red:            #f87171;
+  --red-dim:        #3a1a1a;
+  --yellow:         #fbbf24;
+  --yellow-dim:     #3a3a1a;
+  --orange:         #fb923c;
+  --purple:         #a78bfa;
+
+  /* — Border — */
+  --border:         #2a2e3e;
+  --border-light:   #363b50;
+  --border-focus:   #6c8cff;
+
+  /* — Radius — */
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+
+  /* — Shadows — */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,.3);
+  --shadow-md:  0 4px 12px rgba(0,0,0,.4);
+  --shadow-lg:  0 8px 30px rgba(0,0,0,.5);
+
+  /* — Typography — */
+  --font: 'Segoe UI', 'Roboto', -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --font-size-xs:  11px;
+  --font-size-sm:  12px;
+  --font-size-md:  13px;
+  --font-size-lg:  15px;
+  --font-size-xl:  18px;
+
+  /* — Spacing — */
+  --gap-xs:  4px;
+  --gap-sm:  8px;
+  --gap-md:  12px;
+  --gap-lg:  16px;
+  --gap-xl:  24px;
+
+  /* semantic fills (2026-09-09 token completion — every remaining
+     hard-coded colour now maps to one of these) */
+  --text-on-accent: #ffffff;   /* text/icons on accent or solid fills  */
+  --danger-solid:   #ff3b30;   /* destructive ✕ (Label Manager)        */
+  --success-hover:  #1f4a30;   /* hover of solid success buttons       */
+  --danger-hover:   #4a1e1e;   /* hover of solid danger buttons        */
+  --accent-soft:    #a9c0ff;   /* light accent stop for gradients      */
+  --gender-female:  #e91e8c;
+  --gender-male:    #4dabf5;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font);
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--accent); color: var(--text-on-accent); }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── light theme (opt-in via <html data-theme="light">) ──────────
+   Only the core palette flips; every component already reads these
+   tokens, so the switch is one attribute. Dark stays the default. */
+[data-theme="light"] {
+  --bg-app:         #f3f4f8;
+  --bg-panel:       #ffffff;
+  --bg-panel-hover: #eceef5;
+  --bg-input:       #e9ebf2;
+  --bg-card:        #ffffff;
+  --bg-card-hover:  #f0f2f8;
+  --bg-header:      #e6e8f0;
+  --bg-modal:       rgba(0,0,0,.35);
+
+  --text-primary:   #1c2030;
+  --text-secondary: #5a6070;
+  --text-muted:     #8a8f9e;
+  --text-inverse:   #ffffff;
+
+  --accent:         #3f5fd7;
+  --accent-hover:   #2f4cbe;
+  --accent-dim:     #b9c6ee;
+  --accent-soft:    #8fa7f2;
+
+  --green:          #1d9a52;
+  --green-dim:      #d3f0dd;
+  --red:            #d64545;
+  --red-dim:        #f6dcdc;
+  --yellow:         #b8860b;
+  --yellow-dim:     #f6ecc8;
+
+  --border:         #d4d8e4;
+  --border-light:   #c3c9da;
+  --border-focus:   #3f5fd7;
+
+  --shadow-sm:  0 1px 3px rgba(20,24,40,.12);
+  --shadow-md:  0 4px 12px rgba(20,24,40,.16);
+  --shadow-lg:  0 8px 30px rgba(20,24,40,.22);
+}

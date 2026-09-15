@@ -1,0 +1,72 @@
+[
+  {
+    "file": "js/core/ui-helpers.js",
+    "source": "Process Images in Areana/Old App/ui/js/core/ui-helpers.js",
+    "sha256": "7a4f917b7bb3e5215ff23552a929bd70f4697d55c2907ad795f83e9c3f7f8ecf"
+  },
+  {
+    "file": "js/sash-core.js",
+    "source": "Process Images in Areana/Old App/ui/js/sash-core.js",
+    "sha256": "50649dd805b7feb10c33a652072ffb66fc9efda7dcc4617b844f8da6e71f7ad3"
+  },
+  {
+    "file": "js/sash-grid-tree.js",
+    "source": "Process Images in Areana/Old App/ui/js/sash-grid-tree.js",
+    "sha256": "526a6db102c5f9274de2c9fa205e4128ad59e3689066d657a2abe07fe8d5b930"
+  },
+  {
+    "file": "js/sash-grid-windows.js",
+    "source": "Process Images in Areana/Old App/ui/js/sash-grid-windows.js",
+    "sha256": "66069cfca7c1b779d870ccac6d19a4902fe7b57fd84a33644998a27fe7610165"
+  },
+  {
+    "file": "js/sash-grid-presets.js",
+    "source": "Process Images in Areana/Old App/ui/js/sash-grid-presets.js",
+    "sha256": "366a7dfe742c0c51323901fa7d5d607b9faca72df2ad1a0c52bbecf0e9b83283"
+  },
+  {
+    "file": "js/sash-grid-drag-core.js",
+    "source": "Process Images in Areana/Old App/ui/js/sash-grid-drag-core.js",
+    "sha256": "ed677faa0bda3beddea05df35069861892a831cfdcc13be545dbd64baae2946c"
+  },
+  {
+    "file": "js/sash-grid-drag-spec.js",
+    "source": "Process Images in Areana/Old App/ui/js/sash-grid-drag-spec.js",
+    "sha256": "93bb3ac1061d712f73cbdd3ab4bf6cb456015662eca205b8a6d999b3ef9a44b9"
+  },
+  {
+    "file": "js/sash-grid-drag-resize.js",
+    "source": "Process Images in Areana/Old App/ui/js/sash-grid-drag-resize.js",
+    "sha256": "e4e372440981c551e0c219612b8fefb4718ca49f2ce75bcd87fdfe8ead6c506b"
+  },
+  {
+    "file": "js/sash-grid-drag.js",
+    "source": "Process Images in Areana/Old App/ui/js/sash-grid-drag.js",
+    "sha256": "0041e733688c4870f1f0fcb95e1d24ec9f4589f8b29ceb6bf51b44cc78c1d39e"
+  },
+  {
+    "file": "js/sash-grid.js",
+    "source": "Process Images in Areana/Old App/ui/js/sash-grid.js",
+    "sha256": "f0651f4f9836946e48d1e2c793d58ba35a3f861aeee6bb10f396fe55a48d4002"
+  },
+  {
+    "file": "css/variables.css",
+    "source": "Process Images in Areana/Old App/ui/css/variables.css",
+    "sha256": "719075a31bffe9cc3fd05ada13c92c12ac84308531ff11522deade3fb384538c"
+  },
+  {
+    "file": "css/sash-layout.css",
+    "source": "Process Images in Areana/Old App/ui/css/sash-layout.css",
+    "sha256": "cacf10cf6ba8a4184553132ddf62a2c53665ab289e4b01471149df0eb8106a78"
+  },
+  {
+    "file": "css/layout.css",
+    "source": "Process Images in Areana/Old App/ui/css/layout.css",
+    "sha256": "1bede360d0d20bbcf48ad4d2aab187b750d21beca24ddfa114ff5ffcd9694442"
+  },
+  {
+    "file": "css/window-presets.css",
+    "source": "Process Images in Areana/Old App/ui/css/window-presets.css",
+    "sha256": "60c234c2d982f8169952f620293c4130eed3450ff10f9c155ddd48fa50b45a8f"
+  }
+]

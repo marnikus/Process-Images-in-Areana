@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: image-queue-quality
+        name: Image Queue behavior, quality and retained-system checks
+        entry: python tools/check.py
+        language: system
+        pass_filenames: false
+        always_run: true

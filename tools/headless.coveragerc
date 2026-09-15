@@ -1,0 +1,10 @@
+[run]
+branch = True
+source = image_queue
+omit =
+    */image_queue/desktop/app.py
+    */image_queue/desktop/window.py
+    */image_queue/desktop/dialogs.py
+[report]
+show_missing = True
+fail_under = 90

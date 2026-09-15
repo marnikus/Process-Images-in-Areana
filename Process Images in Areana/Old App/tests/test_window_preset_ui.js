@@ -1,7 +1,5 @@
 /* Real WindowPresets rendering contract with a small DOM implementation. */
 'use strict';
-const fs = require('fs');
-const vm = require('vm');
 
 let passed = 0, failed = 0;
 function test(name, fn) { try { fn(); passed++; } catch (e) { failed++; console.error('FAIL', name, e.message); } }
@@ -39,9 +37,9 @@ global.localStorage = { data: {}, getItem(k) { return this.data[k] || null; }, s
 global.Dialog = {};
 global.LogConsole = { log() {} };
 global.App = { bridge: null };
-vm.runInThisContext(fs.readFileSync('ui/js/window-presets.js', 'utf8') +
-  '\nglobalThis.__WindowPresets = WindowPresets;');
-const presets = global.__WindowPresets;
+const { FAMILIES, loadFamily } = require('./js_family');
+loadFamily(FAMILIES.windowPresets);
+const presets = global.WindowPresets;
 presets.init();
 
 test('saved presets render as visible quick buttons and panel rows', () => {
@@ -96,6 +94,9 @@ test('invalid imported file reports an error and does not open a preview', () =>
 
 test('export uses the native folder response and show-in-folder bridge action', () => {
   global.App.bridge = {
+    load_window_preset(name, callback) {
+      callback(JSON.stringify({ name }));
+    },
     export_window_preset(name, callback) {
       callback(JSON.stringify({ ok: true, name, path: '/exports/window-preset-Desk.json' }));
     },
@@ -111,6 +112,17 @@ test('export uses the native folder response and show-in-folder bridge action', 
     callback(JSON.stringify({ ok: false, cancelled: true }));
   presets.export('Desk');
   assert(elements.windowPresetStatus.textContent.includes('cancelled'), 'cancelled export');
+});
+
+test('missing preset never invokes native export', () => {
+  let exported = false;
+  global.App.bridge = {
+    load_window_preset(_name, callback) { callback('null'); },
+    export_window_preset() { exported = true; },
+  };
+  presets.export('Missing');
+  assert(!exported, 'must not export an absent preset');
+  assert(elements.windowPresetStatus.textContent.includes('not found'), 'missing is explicit');
 });
 
 if (failed) process.exit(1);

@@ -1,0 +1,20 @@
+{
+  "format": "image-queue/connection-preset",
+  "schema_version": 1,
+  "endpoint": {
+    "host": "127.0.0.1",
+    "port": 9222
+  },
+  "highlight": {
+    "highlight_enabled": true,
+    "confirm_pause_ms": 700,
+    "highlight_ms": 1200
+  },
+  "urls": [
+    {
+      "row_id": "example-row",
+      "exact_url": "https://arena.ai/c/replace-with-your-conversation",
+      "enabled": false
+    }
+  ]
+}

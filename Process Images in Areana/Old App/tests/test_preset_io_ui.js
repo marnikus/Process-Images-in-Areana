@@ -86,11 +86,10 @@ global.LogConsole = { log(msg, level) { logs.push({ msg, level }); } };
 global.App = { bridge: null };
 global.StackDnD = { stack: [] };
 
-// load the REAL shipped modules
-require(path.join(__dirname, '..', 'ui', 'js', 'core', 'ui-helpers.js'));
-const PresetsUI = new Function(
-  fs.readFileSync(path.join(__dirname, '..', 'ui', 'js', 'presets-ui.js'),
-                  'utf8') + '\nreturn PresetsUI;')();
+// Load all REAL shipped parts in the same order as index.html.
+const { FAMILIES, loadFamily } = require('./js_family');
+loadFamily(FAMILIES.presetsUI);
+const PresetsUI = global.PresetsUI;
 
 // ── tiny assertion kit ───────────────────────────────────────────
 let passed = 0, failed = 0;

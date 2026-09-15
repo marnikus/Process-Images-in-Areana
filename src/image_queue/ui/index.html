@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' qrc:; script-src 'self' qrc:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'">
+<title>Image Queue · Workspace</title>
+<link rel="stylesheet" href="css/variables.css"><link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/sash-layout.css"><link rel="stylesheet" href="css/window-presets.css">
+<link rel="stylesheet" href="css/workspace.css">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script><script src="js/boot.js"></script>
+</head>
+<body>
+<div class="app-layout">
+<header class="app-header">
+<div class="header-left"><span class="brand-mark">▧</span><span class="app-title">Image Queue</span><span class="edition">WORKSPACE</span></div>
+<div class="header-right"><button id="undoBtn" disabled>↶ Undo</button><button id="redoBtn" disabled>↷ Redo</button><button id="windowsMenuBtn">Windows ▾</button><button id="layoutMenuBtn">Layouts ▾</button></div>
+</header>
+<div class="workspace-toolbar"><span class="status-pill">● LOCAL WORKSPACE</span><span>Drag a title to move · drop on an edge to split · resize between panels</span><button id="startBtn" disabled title="Processing is not implemented yet">Start batch</button></div>
+<div id="connectionNotice" role="status">Opening local workspace…</div>
+<main class="sash-grid" id="sashGrid" aria-label="Draggable workspace"></main>
+<footer><span id="saveStatus" role="status">Loading…</span><span id="revisionLabel"></span><span>JSON only · user-owned Chrome · no submission in this build</span></footer>
+</div>
+<div id="windowsMenu" class="windows-menu hidden"><div class="menu-heading">Workspace windows</div><div><button id="windowsShowAllBtn">Show all</button><button id="windowsHideAllBtn">Close all</button></div><div id="windowsMenuList"></div></div>
+<div id="layoutMenu" class="layout-menu hidden"><div class="menu-heading">Layout library</div><div class="layout-options"><button data-layout="default">Default</button><button data-layout="a">A · Rows</button><button data-layout="b">B · Split</button><button data-layout="c">C · Column</button><button id="resetLayoutBtn">Reset / show all</button></div><label for="layoutName">Save current arrangement</label><div class="input-row"><input id="layoutName" maxlength="80" placeholder="e.g. Editing desk"><button id="saveLayoutBtn">Save</button></div><div id="namedLayouts"></div><p class="muted">Applying a layout is one undo step. Portable preset import/export follows in Step 4.</p></div>
+<div id="busyShield" hidden aria-live="polite">Saving changes…</div>
+<script src="js/core/ui-helpers.js"></script><script src="js/sash-core.js"></script>
+<script src="js/panels.js"></script><script src="js/sash-grid-tree.js"></script>
+<script src="js/sash-grid-windows.js"></script><script src="js/sash-grid-presets.js"></script>
+<script src="js/sash-grid-drag-core.js"></script><script src="js/sash-grid-drag-spec.js"></script>
+<script src="js/sash-grid-drag-resize.js"></script><script src="js/sash-grid-drag.js"></script>
+<script src="js/sash-grid.js"></script><script src="js/workspace-view.js"></script>
+<script src="js/wire.js"></script><script src="js/workspace.js"></script><script src="js/connect.js"></script>
+</body></html>

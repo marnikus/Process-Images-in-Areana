@@ -1,0 +1,539 @@
+/* ═══════════════════════════════════════════════════════════════
+   sash-layout.css — Flexible grid window system ("sash layout")
+
+   #sashGrid (everything below the pinned header + URL toolbar) is a
+   rendered split tree:
+
+     .sash-split   flex row/column container (one node of the tree)
+     .sash-window  frame around ONE persistent panel (a leaf)
+     .sash         6px draggable separator between two siblings
+
+   See docs/SASH_LAYOUT_DESIGN_2026-09-05.md for the data model.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* — grid container (fills the space under the pinned top row) — */
+.sash-grid {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  background: var(--bg-app);
+  overflow: hidden;
+}
+
+/* — split nodes — */
+:root { --sash-min-panel: 96px; }
+.sash-split {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.sash-row { flex-direction: row; }
+.sash-col { flex-direction: column; }
+/* Every direct child gets a usable floor in BOTH axes. The resize handler
+   applies the same floor in pixels before it commits the model sizes. */
+.sash-split > .sash-window,
+.sash-split > .sash-split {
+  min-width: var(--sash-min-panel);
+  min-height: var(--sash-min-panel);
+}
+.sash-split > .sash-window.sash-win-hidden { min-width: 0; min-height: 0; }
+
+/* — window (leaf) — */
+.sash-window {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  background: var(--bg-panel);
+}
+/* A window whose panel is currently hidden (Block Config before its first
+   open) releases its grid space — the visible siblings expand to fill it.
+   The class is set by sash-grid.js (plain class, works on every Chromium
+   version); the :has() rule is belt-and-braces on modern engines. */
+.sash-window.sash-win-hidden { display: none; }
+.sash-window:has(> .hidden) { display: none; }
+/* sashes touching a hidden window disappear too */
+.sash.sash-hidden { display: none; }
+.sash-window > .panel {
+  flex: 1;
+  min-width: var(--sash-min-panel);
+  min-height: var(--sash-min-panel);
+}
+.sash-window.sash-win-hidden > .panel { min-width: 0; min-height: 0; }
+
+/* — title bar = drag handle (full-bleed via negative margins) — */
+.sash-window > .panel > .win-title {
+  margin: calc(-1 * var(--gap-md)) calc(-1 * var(--gap-md)) var(--gap-sm);
+  padding: 4px 6px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.sash-window > .panel > .win-title:active { cursor: grabbing; }
+.sash-window .win-title .win-grip {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.sash-window > .panel > .win-title:hover .win-grip { color: var(--accent); }
+
+/* — sashes (draggable separators) — */
+.sash {
+  flex: 0 0 6px;
+  position: relative;
+  z-index: 5;
+  background: transparent;
+  touch-action: none;
+}
+.sash-v { cursor: col-resize; }
+.sash-h { cursor: row-resize; }
+.sash::before {
+  content: '';
+  position: absolute;
+  background: var(--border);
+  transition: background .12s;
+}
+.sash-v::before { inset: 0 2px; }
+.sash-h::before { inset: 2px 0; }
+.sash:hover::before,
+.sash-active::before,
+.sash-target::before { background: var(--accent); }
+
+/* — drag & drop visuals — */
+body.sash-dragging,
+body.sash-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.sash-drag-source { opacity: .35; }
+.sash-drag-source > .panel {
+  outline: 2px dashed var(--accent-dim);
+  outline-offset: -2px;
+}
+.sash-drag-target > .panel {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* floating clone that follows the cursor */
+.sash-drag-clone {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 160;
+  pointer-events: none;
+  box-shadow: var(--shadow-lg);
+  outline: 1px solid var(--accent);
+  opacity: .96;
+  background: var(--bg-panel);
+}
+/* compact ghost for very large windows (full table, long log) */
+.sash-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 160;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 230px;
+  height: 56px;
+  background: var(--bg-panel-hover);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sash-drag-ghost .material-icons { color: var(--accent); font-size: 20px; }
+
+/* glowing line showing exactly where the split/insert will land */
+.sash-drop-indicator {
+  position: fixed;
+  z-index: 150;
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(108, 140, 255, .9);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* "Composer → left of Action Stack" badge next to the cursor */
+.sash-drag-badge {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 170;
+  pointer-events: none;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 9px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+}
+
+/* the just-dropped window pulses once */
+.sash-landed > .panel { animation: sash-land .6s ease; }
+@keyframes sash-land {
+  0%   { outline: 3px solid var(--accent); outline-offset: -3px; }
+  100% { outline: 3px solid transparent; outline-offset: -3px; }
+}
+
+/* — sash resize cursor lock — */
+body.sash-resizing-row, body.sash-resizing-row * { cursor: col-resize; user-select: none !important; }
+body.sash-resizing-col, body.sash-resizing-col * { cursor: row-resize; user-select: none !important; }
+
+/* — Layouts menu (in the pinned header) — */
+.layout-menu {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: var(--gap-xs);
+  min-width: 240px;
+}
+.layout-menu-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-muted);
+  padding: 6px 10px 4px;
+}
+.layout-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+.layout-menu button:hover { background: var(--bg-card-hover); }
+.layout-menu button .lm-sub {
+  display: block;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+/* ── layout menu: grid undo/redo + reset to default ─────────────── */
+.layout-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+.layout-menu-row {
+  display: flex;
+  gap: 6px;
+}
+.layout-menu-row .lm-mini {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.layout-menu-row .lm-mini .material-icons { font-size: 15px; }
+.layout-menu .lm-reset {
+  margin-top: 6px;
+  font-weight: 600;
+}
+.layout-menu .lm-reset:hover { background: var(--accent-soft, rgba(255,255,255,.06)); }
+
+/* Block Config empty state — shown when no block is selected. */
+.config-empty {
+  padding: 14px 12px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.config-panel.has-block .config-empty { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════
+   WINDOW CONTROLS — minimize / restore / close per window
+   Clean standard glyphs (dark theme): ─ minimize, □ maximize/restore, ✕
+   close, with a hover tooltip on each. The toggle shows ─ while the window
+   is open and □ once it is minimized (docked at the bottom strip).
+   ═══════════════════════════════════════════════════════════════ */
+
+/* title bar flex: grip + title text + spacer + controls + other buttons */
+.sash-window > .panel > .win-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* container for win controls (right side of title bar) — compact */
+.win-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+/* Every window-control button: equal 20px hit area, centered glyph, no
+   border — the standard ─ □ ✕ trio (here the toggle is ─ or □ by state). */
+.win-controls .win-btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background .12s, color .12s, transform .08s;
+  padding: 0;
+  border: none;
+  font-size: 13px;
+  line-height: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  user-select: none;
+}
+.win-controls .win-btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  transform: scale(1.06);
+}
+.win-controls .win-btn:active {
+  transform: scale(0.94);
+}
+/* close keeps the familiar destructive hover tint */
+.win-controls .win-btn.win-close:hover {
+  background: var(--red-dim, rgba(248,113,113,.16));
+  color: var(--red);
+}
+/* minimize/restore hover tint matches the window-manager accent */
+.win-controls .win-btn.win-toggle:hover {
+  background: var(--accent-soft, rgba(108,140,255,.15));
+  color: var(--accent);
+}
+
+/* ── minimized windows ────────────────────────────────────────────
+   A minimized window leaves the grid entirely (its .sash-window wrapper is
+   given .sash-win-hidden → display:none, exactly like a closed window), so
+   the visible siblings expand into the freed space. Its title bar lives on
+   the bottom dock strip (.sash-min-dock). No in-place shrink rules are
+   needed — display:none releases the whole slot, guaranteeing zero gaps. */
+
+/* ── minimized dock — slim strip pinned under the grid ─────────── */
+.sash-min-dock {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-header);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 0;
+}
+.sash-min-chip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  height: 26px;
+  max-width: 240px;
+  padding: 0 2px 0 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: border-color .12s, background .12s, box-shadow .12s;
+}
+.sash-min-chip:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-card);
+  box-shadow: 0 0 0 1px rgba(108,140,255,.25);
+}
+.sash-min-chip .smc-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+}
+.sash-min-chip:hover .smc-label { color: var(--text-primary); }
+.sash-min-chip .smc-label::before {
+  content: '▤ ';
+  color: var(--text-muted);
+  font-size: 9px;
+}
+/* reuse the window-control button look inside the dock chips */
+.sash-min-chip .win-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  transition: background .12s, color .12s;
+}
+.sash-min-chip .win-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.sash-min-chip .win-btn.win-toggle:hover {
+  background: var(--accent-soft, rgba(108,140,255,.15));
+  color: var(--accent);
+}
+.sash-min-chip .win-btn.win-close:hover {
+  background: var(--red-dim, rgba(248,113,113,.16));
+  color: var(--red);
+}
+
+/* when a window is closed via closedWindows set, wrapper hidden */
+.sash-window.sash-win-closed {
+  display: none !important;
+}
+
+/* empty splits (rows/cols where all windows are closed) — auto hidden */
+.sash-split.sash-split-hidden {
+  display: none !important;
+}
+.sash-split.sash-split-hidden > .panel {
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WINDOWS MENU — dropdown listing all windows — CLEAN ICONS
+   ═══════════════════════════════════════════════════════════════ */
+.windows-menu {
+  min-width: 300px;
+  max-width: 380px;
+}
+.windows-menu #windowsMenuList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.wm-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  transition: background .12s;
+  user-select: none;
+  line-height: 1.2;
+}
+.wm-item:hover { background: var(--bg-card-hover); }
+.wm-item.wm-closed { opacity: .58; }
+.wm-item.wm-closed .wm-title { text-decoration: line-through; text-decoration-color: var(--text-muted); }
+.wm-state-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  line-height: 1;
+}
+.wm-state-icon.open { color: var(--green); }
+.wm-state-icon.closed { color: var(--text-muted); }
+.wm-state-icon.minimized { color: var(--yellow); }
+.wm-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+}
+.wm-badge {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.wm-badge.b-open { background: rgba(74,222,128,.12); color: var(--green); }
+.wm-badge.b-closed { background: var(--bg-card); color: var(--text-muted); }
+.wm-badge.b-min { background: rgba(250,204,21,.12); color: var(--yellow); }
+.wm-actions {
+  display: inline-flex;
+  gap: 1px;
+  margin-left: 4px;
+}
+.wm-actions .wm-mini-btn {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+  transition: background .12s, color .12s;
+}
+.wm-actions .wm-mini-btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+/* empty grid placeholder when all windows closed */
+.sash-grid-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+}
+.sash-grid-empty .sash-empty-icon {
+  font-size: 28px;
+  opacity: .6;
+  line-height: 1;
+}
