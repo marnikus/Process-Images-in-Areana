@@ -1,4 +1,10 @@
-# Essential Rules for Code Creating and Testing (Kept from Old Project)
+# Essential Rules — DEPRECATED, use docs/current/AGENT_RULES.md
+
+> **This file is kept as legacy pointer.** The authoritative detailed rules are now in [`current/AGENT_RULES.md`](current/AGENT_RULES.md) (adapted from Old App's 730-line detailed version with 19 rules + 4 new, preserving thresholds, override format, remediation order).
+> See also [`current/SYSTEM_OF_RECORD.md`](current/SYSTEM_OF_RECORD.md) and [`current/DOM_SELECTORS.md`](current/DOM_SELECTORS.md).
+> Doc map: [`README.md`](README.md)
+
+## Summary of Essential Rules for Code Creating and Testing (Kept from Old Project) — Full version in current/AGENT_RULES.md
 
 ## Core Principles
 1. **Correctness, Traceability, User Control** prioritized over speed.

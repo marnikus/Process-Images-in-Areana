@@ -1,0 +1,67 @@
+# Docs Map — Arena Image Processor
+
+## Current truth (read these first)
+
+These three files in `docs/current/` are the **single source of truth** for what the system does today. If not true today, it does not belong here (RULE 17).
+
+| File | What it is | When to read |
+|---|---|---|
+| [`current/SYSTEM_OF_RECORD.md`](current/SYSTEM_OF_RECORD.md) | Authoritative spec: behaviour table (20 capabilities), state machine 00-22, core flow plan→execute, invariants I-1..I-23, storage map JSON-only, key modules & layers, tests, quality gates, UI 11 windows, history pointers | Before any code change — understand what system actually does |
+| [`current/AGENT_RULES.md`](current/AGENT_RULES.md) | Detailed code-quality rules (23 rules, adapted from Old App's 19 rules + 4 new for Arena). Includes RULE 1 visual runner, RULE 16 hard gates LOC 30/150 params 4 methods 15 CC 10 cognitive 15 nesting 4 coverage 80%/75%, override format, anti-gaming, remediation order RULE 19, selector priority, CAPTCHA compliance | Before adding/changing production code — mandatory gates |
+| [`current/DOM_SELECTORS.md`](current/DOM_SELECTORS.md) | Living selector reference for arena.ai: verified selectors from saved HTML, primary+fallbacks, scope, visibility, expectedCount, verification, evidence, JS probes, visual runner colours, readiness composite, missing selectors list | Before touching `app/browser/site_adapter.py` or action blocks |
+
+**Rule numbers are stable** — production code cites them (`RULE 1` … `RULE 23`). Never renumber; append instead.
+
+---
+
+## Supporting docs (still relevant, but not current truth)
+
+These are kept for context, but `docs/current/` is authoritative if conflict:
+
+| File | What it holds | Status |
+|---|---|---|
+| `data_model.md` | Data structures: ImageItem, URLItem, AppState, etc. | Supporting — should match SYSTEM_OF_RECORD §6 |
+| `workflow_diagram.md` | Visual workflow of scan→select→attach→prompt→submit→wait→download→save | Supporting — state machine in SYSTEM_OF_RECORD §3 is authoritative |
+| `implementation_plan.md` | Step-by-step build plan | Historical — implementation done |
+| `selector_map.md` | Detailed selector map with evidence (181 lines) — source for DOM_SELECTORS.md | Supporting — DOM_SELECTORS.md is living reference |
+| `research_summary.md` | Findings from saved HTML inspection | Historical research |
+| `risks.md` | Risks, mitigations | Supporting |
+| `known_limitations.md` | Known limitations | Supporting |
+| `manual_test_checklist.md` | Manual testing steps | Supporting |
+| `modern_ui_integration.md` | How sash-grid, win-grip, dark-mode variables.css reused from Old App | Supporting |
+| `rules.md` | Old simplified rules (40 lines) — **deprecated**, use `current/AGENT_RULES.md` (730+ lines detailed) | Deprecated — pointer to current |
+| `research/` | Saved HTML + assets from arena.ai | Evidence for selectors |
+
+---
+
+## Archive (dated, never edited to catch up)
+
+`docs/archive/<YYYY-MM-DD>-<topic>/` — every design/plan/root-cause doc goes here, dated by day written. Archived docs are record of what was believed then, never edited.
+
+Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
+
+---
+
+## How to add new doc
+
+1. Write design into `docs/archive/<YYYY-MM-DD>-<topic>/design.md` (dated)
+2. Update rows in `docs/current/SYSTEM_OF_RECORD.md` it affects (behaviour table, invariants, flows, history links)
+3. Update `docs/current/AGENT_RULES.md` if new rule, or `DOM_SELECTORS.md` if new selector
+4. Update this map
+
+Do not add new top-level doc for feature — pointer outward beats wall of prose (RULE 17, RULE 18 context files 60-200 lines ideal).
+
+---
+
+## Quick links for agent workflow (RULE 16 §16.6)
+
+1. Read `current/SYSTEM_OF_RECORD.md` + `current/AGENT_RULES.md` rules 1-15 + RULE 18 size ideals
+2. Research saved HTML in `research/` + `selector_map.md` + `current/DOM_SELECTORS.md`
+3. Design in `archive/<date>-<topic>/` if complexity moves across files — record radon numbers, target numbers, dishonest reductions rejected
+4. Tests first (RULE 8)
+5. Measure: `radon cc -s path/to/file.py` — any new function C or worse (CC≥11) → stop and redesign in order RULE 19
+6. Update current docs in same change (RULE 17)
+
+---
+
+*Last updated: 2026-09-15 — migrated to detailed rules from Old App `docs/current/` (AGENT_RULES.md 730 lines, DOM_SELECTORS.md 339 lines, SYSTEM_OF_RECORD.md 344 lines) adapted to Arena app, preserving thresholds, invariants pattern, selector verification approach.*
