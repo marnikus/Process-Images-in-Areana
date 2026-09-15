@@ -278,6 +278,27 @@
   font-size: 12px;
 }
 
+/* Status dot for CDP connection */
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin: 0 4px;
+}
+.status-dot.connected { background: var(--green, #4ade80); box-shadow: 0 0 6px var(--green, #4ade80); }
+.status-dot.disconnected { background: var(--text-muted, #6b7280); }
+.status-dot.error { background: var(--red, #f87171); box-shadow: 0 0 6px var(--red, #f87171); }
+
+/* URL toolbar & chips */
+.url-toolbar { font-family: var(--font-base, sans-serif); }
+.chip-wrap { min-height: 24px; }
+.chip { user-select: none; }
+.chip:hover { border-color: var(--accent, #6c8cff) !important; }
+
+/* Preset chips list */
+#arenaPresetChips .chip, #urlBookmarkChips .chip { transition: border-color .2s; }
+
 /* Log */
 #arenaLog {
   font-family: var(--font-mono);

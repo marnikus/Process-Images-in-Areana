@@ -11,6 +11,11 @@ from PySide6.QtWebChannel import QWebChannel
 from app.persistence.config_manager import ConfigManager
 from app.ui.bridge import Bridge
 
+try:
+    from app.browser.cdp_client import CDPClient
+except Exception:
+    CDPClient = None
+
 
 class MainWindow(QMainWindow):
     def __init__(self, state_path: Path = Path("config/app_state.json")):
@@ -25,12 +30,20 @@ class MainWindow(QMainWindow):
         self.state_path = Path(state_path)
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # CDP client for Chrome remote debugging
+        self.cdp_client = None
+        if CDPClient:
+            try:
+                self.cdp_client = CDPClient(host="127.0.0.1", port=9222, parent=self)
+            except Exception as e:
+                print(f"CDP client init failed: {e}")
+
         # Web view
         self.view = QWebEngineView(self)
         self.setCentralWidget(self.view)
 
         # Bridge
-        self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, parent=self)
+        self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, cdp_client=self.cdp_client, parent=self)
 
         # WebChannel
         self.channel = QWebChannel(self.view.page())
@@ -40,20 +53,23 @@ class MainWindow(QMainWindow):
         # Load UI
         index_path = Path(__file__).parent / "web" / "index.html"
         if not index_path.exists():
-            # fallback to old location check
             raise FileNotFoundError(f"UI index.html not found at {index_path}")
         self.view.load(QUrl.fromLocalFile(str(index_path.resolve())))
 
-        # optional: enable dev tools via right click? Keep simple
-
     def closeEvent(self, event):
-        # Save arena state already handled by bridge, but ensure config saved
         try:
             self.config_manager.session.save()
             self.config_manager.window_presets.save()
             self.config_manager.undo.save()
-            # also flush sash grid if available
+            self.config_manager.presets.save()
             self.view.page().runJavaScript("typeof SashGrid !== 'undefined' && SashGrid.flushPersistence && SashGrid.flushPersistence()")
         except Exception:
             pass
+        # disconnect CDP
+        if self.cdp_client:
+            try:
+                import asyncio
+                asyncio.ensure_future(self.cdp_client.disconnect())
+            except Exception:
+                pass
         super().closeEvent(event)

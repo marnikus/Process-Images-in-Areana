@@ -26,12 +26,32 @@
       </div>
     </div>
     <div class="header-right">
+      <div class="tab-select-wrap" style="display:flex; align-items:center; gap:6px;">
+        <select id="tabSelect" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; min-width:260px;"><option value="">— Select Chrome Tab —</option></select>
+        <button id="refreshTabsBtn" class="btn-icon" title="Refresh tabs"><span class="material-icons">refresh</span></button>
+      </div>
+      <span id="connectionStatus" class="status-dot disconnected" title="Disconnected"></span>
+      <button id="connectBtn" class="btn-primary" title="Connect to selected tab"><span class="material-icons">link</span> Connect</button>
       <button id="windowsMenuBtn" class="btn-icon" title="Windows — open, close, minimize"><span class="material-icons">widgets</span></button>
       <button id="layoutMenuBtn" class="btn-icon" title="Grid view — layouts and window presets"><span class="material-icons">grid_view</span></button>
       <button id="themeToggleBtn" class="btn-icon" title="Toggle dark/light theme"><span class="material-icons">brightness_6</span></button>
-      <span id="connectionStatus" class="status-dot connected" title="Connected"></span>
     </div>
   </header>
+
+  <!-- Chrome connection + URL bookmarks toolbar (restored from Old App) -->
+  <div id="chromeToolbar" class="url-toolbar" style="display:flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg-header); border-bottom:1px solid var(--border); flex-wrap:wrap;">
+    <span class="url-toolbar-label" style="display:flex; align-items:center; gap:4px; color:var(--text-secondary); font-size:12px; font-weight:600;"><span class="material-icons" style="font-size:14px; color:var(--accent);">language</span> Chrome: use <code style="background:var(--bg-input); padding:2px 6px; border-radius:3px; font-size:11px;">chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\arena-images-chrome"</code></span>
+    <span class="spacer" style="flex:1;"></span>
+    <span style="font-size:11px; color:var(--text-muted);">Connection shows if desired page is open and working</span>
+  </div>
+
+  <div id="urlBookmarksToolbar" class="url-toolbar" style="display:flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg-header); border-bottom:1px solid var(--border); flex-wrap:wrap;">
+    <span class="url-toolbar-label" style="display:flex; align-items:center; gap:4px; color:var(--text-secondary); font-size:12px; font-weight:600;"><span class="material-icons" style="font-size:14px; color:var(--accent);">bookmark</span> URL Bookmarks</span>
+    <input id="urlBookmarkInput" type="text" spellcheck="false" placeholder="Paste URL or keyword — e.g. https://example.com/page" autocomplete="off" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:5px 10px; font-size:12px; min-width:260px; width:320px;">
+    <button id="urlBookmarkConnectBtn" class="btn-primary btn-compact" title="Find matching tab and connect"><span class="material-icons" style="font-size:16px;">link</span> Auto-Connect</button>
+    <button id="addUrlBookmarkBtn" class="btn-icon" title="Save as bookmark"><span class="material-icons">add</span></button>
+    <div id="urlBookmarkChips" class="chip-wrap" style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;"></div>
+  </div>
 
   <main class="sash-grid" id="sashGrid">
 
@@ -44,7 +64,7 @@
       </div>
       <div style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px;">
         <table class="url-table">
-          <thead><tr><th>En</th><th>URL</th><th>Status</th><th>Error</th><th>Actions</th></tr></thead>
+          <thead><tr><th>En</th><th>URL</th><th>Status</th><th>Conn</th><th>Error</th><th>Actions</th></tr></thead>
           <tbody id="urlTableBody"></tbody>
         </table>
       </div>
@@ -290,6 +310,8 @@
 <script src="js/panels/settings.js"></script>
 <script src="js/panels/browser-preview.js"></script>
 <script src="js/panels/highlight.js"></script>
+<script src="js/panels/cdp.js"></script>
+<script src="js/panels/arena-presets.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app.js"></script>
 </body>

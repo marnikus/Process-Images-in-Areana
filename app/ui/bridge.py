@@ -37,6 +37,8 @@ from app.core.persistence import load_state, save_state, save_preset, load_prese
 from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
+from app.browser.tab_matcher import best_matches
+from app.browser.dom_highlight import build_highlight_js, build_clear_js
 
 log = logging.getLogger("arena")
 
@@ -51,8 +53,13 @@ class Bridge(QObject):
     highlight_rect = Signal(str)
     history_changed = Signal()
     undo_state_changed = Signal(str)  # JSON {history,index,canUndo,canRedo}
+    tabs_received = Signal(str)
+    connection_status = Signal(str)
+    tab_match_result = Signal(str, str)
+    url_presets_updated = Signal(str)
+    presets_changed = Signal(str, str)  # kind, payload
 
-    def __init__(self, config_manager: ConfigManager, state_path: Path, parent=None):
+    def __init__(self, config_manager: ConfigManager, state_path: Path, cdp_client=None, parent=None):
         super().__init__(parent)
         self.config = config_manager
         self.state_path = Path(state_path)
@@ -60,11 +67,20 @@ class Bridge(QObject):
         self._run_state = "idle"
         self._exported_paths = {}
         self.undo_service = UndoService(self.config.undo)
+        self.cdp = cdp_client
         # ensure undo history loaded
         try:
             self.config.undo.load()
         except Exception:
             pass
+        # install CDP status forwarding if client exists
+        if self.cdp:
+            try:
+                self.cdp.connected.connect(lambda: self.connection_status.emit("connected"))
+                self.cdp.disconnected.connect(lambda: self.connection_status.emit("disconnected"))
+                self.cdp.error.connect(lambda e: self.connection_status.emit("error"))
+            except Exception:
+                pass
 
     def _save_arena(self):
         try:
@@ -1068,3 +1084,311 @@ class Bridge(QObject):
             "label": "Clicked element"
         }
         self.highlight_rect.emit(json.dumps(rect))
+
+    # ---- CDP Chrome connection ----
+    def _schedule_coro(self, coro):
+        try:
+            import asyncio
+            asyncio.ensure_future(coro)
+        except RuntimeError:
+            try:
+                coro.close()
+            except Exception:
+                pass
+
+    @Slot(result=str)
+    def get_tabs(self):
+        if not self.cdp:
+            return json.dumps([], ensure_ascii=False)
+        self._schedule_coro(self._do_fetch_tabs())
+        return "pending"
+
+    async def _do_fetch_tabs(self):
+        try:
+            tabs = await self.cdp.fetch_tabs()
+            payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs], ensure_ascii=False)
+            self.tabs_received.emit(payload)
+        except Exception as e:
+            self._log(f"❌ Tab fetch failed: {e}", "error")
+
+    @Slot(str)
+    def connect_tab(self, ws_url: str):
+        if not self.cdp:
+            self._log("CDP client not available", "error")
+            return
+        self._schedule_coro(self._do_connect_tab(ws_url))
+
+    async def _do_connect_tab(self, ws_url: str):
+        try:
+            ok = await self.cdp.connect(ws_url)
+            if ok:
+                self._log(f"🔗 Connected to {ws_url[:60]}", "success")
+                self.connection_status.emit("connected")
+            else:
+                self._log(f"❌ Connect failed", "error")
+                self.connection_status.emit("error")
+        except Exception as e:
+            self._log(f"❌ Connect failed: {e}", "error")
+            self.connection_status.emit("error")
+
+    @Slot(str)
+    def find_tab_by_url(self, query: str):
+        if not self.cdp:
+            self._log("CDP not available", "error")
+            return
+        self._schedule_coro(self._do_find_tab(query))
+
+    async def _do_find_tab(self, query: str):
+        query = (query or "").strip()
+        if not query:
+            self._log("⚠ URL field empty", "warn")
+            self.tab_match_result.emit(query, "[]")
+            return
+        try:
+            tabs = await self.cdp.fetch_tabs()
+            if not tabs:
+                self._log("⚠ No Chrome tabs found — start Chrome with --remote-debugging-port=9222 --user-data-dir=\"C:\\\\arena-images-chrome\"", "warn")
+                self.tab_match_result.emit(query, "[]")
+                return
+            tab_dicts = [{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs]
+            matches = best_matches(query, tab_dicts)
+            if not matches:
+                self._log(f"❌ No tab matches “{query}”. Available: " + "; ".join(f"{t.title} — {t.url}" for t in tabs[:5]), "error")
+                self.tab_match_result.emit(query, "[]")
+                return
+            for m in matches[:3]:
+                self._log(f"  · match ({m['kind']}): {m['title']} — {m['url']}", "success")
+            self.tab_match_result.emit(query, json.dumps(matches, ensure_ascii=False))
+        except Exception as e:
+            self._log(f"❌ Tab matching failed: {e}", "error")
+            self.tab_match_result.emit(query, "[]")
+
+    # URL bookmarks (from old app, now using arena_presets)
+    @Slot(result=str)
+    def get_url_presets(self):
+        try:
+            presets = self.config.presets.get_url_presets()
+            return json.dumps(presets, ensure_ascii=False)
+        except Exception:
+            return "[]"
+
+    @Slot(str)
+    def add_url_preset(self, url: str):
+        url = (url or "").strip()
+        if not url:
+            self._log("⚠ URL field empty — nothing added", "warn")
+            return
+        try:
+            if self.config.presets.add_url_preset(url):
+                self._log(f"💾 URL bookmark added: {url}", "success")
+            else:
+                self._log(f"ℹ URL bookmark already exists: {url}", "info")
+            payload = json.dumps(self.config.presets.get_url_presets(), ensure_ascii=False)
+            self.url_presets_updated.emit(payload)
+            self.presets_changed.emit("urls", payload)
+        except Exception as e:
+            self._log(f"Add bookmark failed: {e}", "error")
+
+    @Slot(str)
+    def remove_url_preset(self, url: str):
+        try:
+            if self.config.presets.remove_url_preset(url):
+                self._log(f"🗑 URL bookmark removed: {url}", "warn")
+            payload = json.dumps(self.config.presets.get_url_presets(), ensure_ascii=False)
+            self.url_presets_updated.emit(payload)
+            self.presets_changed.emit("urls", payload)
+        except Exception as e:
+            self._log(f"Remove bookmark failed: {e}", "error")
+
+    @Slot(str)
+    def set_last_url_preset(self, url: str):
+        url = (url or "").strip()
+        if not url:
+            return
+        self.config.set_state(last_url_preset=url)
+        self._log(f"🔖 Bookmark remembered: {url}", "info")
+
+    # Arena presets (full)
+    @Slot(result=str)
+    def list_arena_presets(self):
+        try:
+            presets = self.config.presets.list_arena_presets()
+            payload = json.dumps(presets, ensure_ascii=False)
+            self.presets_changed.emit("arena", payload)
+            return payload
+        except Exception as e:
+            return json.dumps([], ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def save_arena_preset(self, name: str):
+        try:
+            js_state = self._arena_to_js()
+            doc = {
+                "name": name,
+                "urls": js_state.get("urls", []),
+                "folder": js_state.get("folder", {}),
+                "prompt": js_state.get("prompt", {}),
+                "settings": js_state.get("settings", {}),
+                "images": js_state.get("images", []),
+                "updated_at": datetime.utcnow().isoformat() + "Z",
+                "app_version": "arena-1.0",
+            }
+            self.config.presets.save_arena_preset(name, doc)
+            self.list_arena_presets()
+            self._log(f"Arena preset saved: {name}", "success")
+            return json.dumps({"ok": True, "name": name})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def load_arena_preset(self, name: str):
+        try:
+            doc = self.config.presets.load_arena_preset(name)
+            if not doc:
+                return json.dumps({"ok": False, "error": "not found"})
+            # restore
+            if "urls" in doc:
+                self.state.urls = [UrlRow(
+                    id=u.get("id", f"url_{i}"),
+                    url=u.get("url",""),
+                    enabled=u.get("enabled",True),
+                    last_status=u.get("status","unchecked"),
+                    error=u.get("last_error")
+                ) for i, u in enumerate(doc.get("urls", []))]
+            if "folder" in doc:
+                self.state.folder.update(doc["folder"])
+            if "prompt" in doc:
+                tmpl = doc["prompt"].get("template") if isinstance(doc["prompt"], dict) else str(doc["prompt"])
+                self.state.prompt["user_prompt"] = tmpl
+            if "settings" in doc:
+                s = doc["settings"]
+                if isinstance(s, dict):
+                    if "timeouts" in s:
+                        self.state.settings.timeouts.update(s["timeouts"])
+                    if "output" in s:
+                        self.state.settings.output.update(s["output"])
+                    if "highlight" in s:
+                        self.state.settings.highlight.update(s["highlight"])
+                    if "supported_types" in s:
+                        self.state.folder["supported_types"] = s["supported_types"]
+            self.state.recalculate_progress()
+            self._save_arena()
+            self._log(f"Arena preset loaded: {name}", "success")
+            return json.dumps({"ok": True, "name": name})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def delete_arena_preset(self, name: str):
+        try:
+            if self.config.presets.delete_arena_preset(name):
+                self.list_arena_presets()
+                self._log(f"Arena preset deleted: {name}", "info")
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "not found"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    # Prompt presets
+    @Slot(result=str)
+    def list_prompt_presets(self):
+        try:
+            presets = self.config.presets.list_prompt_presets()
+            return json.dumps(presets, ensure_ascii=False)
+        except Exception:
+            return "[]"
+
+    @Slot(str, str, result=str)
+    def save_prompt_preset(self, name: str, template: str):
+        try:
+            self.config.presets.save_prompt_preset(name, template)
+            self._log(f"Prompt preset saved: {name}", "success")
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def load_prompt_preset(self, name: str):
+        try:
+            doc = self.config.presets.load_prompt_preset(name)
+            if not doc:
+                return json.dumps({"ok": False, "error": "not found"})
+            tmpl = doc.get("template","")
+            self.state.prompt["user_prompt"] = tmpl
+            self._save_arena()
+            return json.dumps({"ok": True, "template": tmpl})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def delete_prompt_preset(self, name: str):
+        try:
+            if self.config.presets.delete_prompt_preset(name):
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "not found"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    # Highlight via CDP
+    @Slot(str, str, int, str, result=str)
+    def highlight_selector(self, selector: str, color: str, duration_ms: int, caption: str):
+        if not self.cdp or not self.cdp.is_connected:
+            # fallback to UI overlay
+            rect = {
+                "x": 200, "y": 200, "width": 320, "height": 180,
+                "duration": duration_ms / 1000 if duration_ms>0 else 2,
+                "label": caption or selector,
+                "color": color
+            }
+            self.highlight_rect.emit(json.dumps(rect))
+            return json.dumps({"ok": True, "fallback": True})
+        # schedule async highlight
+        self._schedule_coro(self._do_highlight(selector, color, duration_ms, caption))
+        return json.dumps({"ok": True})
+
+    async def _do_highlight(self, selector: str, color: str, duration_ms: int, caption: str):
+        try:
+            js = build_highlight_js(selector, color or "#FF0000", duration_ms or 2000, caption or selector, clear_first=True)
+            result_json = await self.cdp.evaluate(js)
+            if result_json:
+                try:
+                    data = json.loads(result_json) if isinstance(result_json, str) else result_json
+                    if data.get("found") and data.get("rect"):
+                        r = data["rect"]
+                        rect = {
+                            "x": r.get("x",0), "y": r.get("y",0),
+                            "width": r.get("width",100), "height": r.get("height",100),
+                            "duration": (duration_ms or 2000)/1000,
+                            "label": caption or selector,
+                            "color": color
+                        }
+                        self.highlight_rect.emit(json.dumps(rect))
+                        self._log(f"🔍 Highlighted {selector} at {r}", "success")
+                    else:
+                        self._log(f"⚠ Highlight not found: {selector}", "warn")
+                except Exception as e:
+                    self._log(f"Highlight parse failed: {e}", "warn")
+        except Exception as e:
+            self._log(f"Highlight failed: {e}", "error")
+
+    @Slot(result=str)
+    def clear_highlights(self):
+        if not self.cdp or not self.cdp.is_connected:
+            return json.dumps({"ok": True})
+        self._schedule_coro(self._do_clear_highlights())
+        return json.dumps({"ok": True})
+
+    async def _do_clear_highlights(self):
+        try:
+            js = build_clear_js()
+            await self.cdp.evaluate(js)
+            self._log("Highlights cleared", "info")
+        except Exception as e:
+            self._log(f"Clear highlights failed: {e}", "error")
+
+    @Slot(str, result=str)
+    def refresh_users(self):
+        # compatibility with old app: just emit arena state
+        self._emit_arena_state()
+        return json.dumps({"ok": True})
+

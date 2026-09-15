@@ -39,6 +39,8 @@ function initApp() {
   if (typeof SettingsPanel !== 'undefined') SettingsPanel.init();
   if (typeof BrowserPreview !== 'undefined') BrowserPreview.init();
   if (typeof HighlightOverlay !== 'undefined') HighlightOverlay.init();
+  if (typeof CDPPanel !== 'undefined') CDPPanel.init();
+  if (typeof ArenaPresets !== 'undefined') ArenaPresets.init();
 
   document.getElementById('clearLogBtn')?.addEventListener('click', () => LogConsole.clear());
 
@@ -214,6 +216,33 @@ function setupBridgeListeners() {
   if (b.undo_state_changed) {
     b.undo_state_changed.connect((json) => {
       if (typeof ArenaHistory !== 'undefined') ArenaHistory.onUndoStateChanged(json);
+    });
+  }
+  // CDP
+  if (b.tabs_received) {
+    b.tabs_received.connect((payload) => {
+      if (typeof CDPPanel !== 'undefined') CDPPanel.onTabsReceived(payload);
+    });
+  }
+  if (b.connection_status) {
+    b.connection_status.connect((status) => {
+      if (typeof CDPPanel !== 'undefined') CDPPanel.onConnectionStatus(status);
+    });
+  }
+  if (b.tab_match_result) {
+    b.tab_match_result.connect((query, payload) => {
+      if (typeof CDPPanel !== 'undefined') CDPPanel.onTabMatchResult(query, payload);
+    });
+  }
+  if (b.url_presets_updated) {
+    b.url_presets_updated.connect((payload) => {
+      if (typeof CDPPanel !== 'undefined') CDPPanel.renderBookmarks(payload);
+    });
+  }
+  if (b.presets_changed) {
+    b.presets_changed.connect((kind, payload) => {
+      if (kind === 'arena' && typeof ArenaPresets !== 'undefined') ArenaPresets.renderArenaPresets(payload);
+      if (kind === 'urls' && typeof CDPPanel !== 'undefined') CDPPanel.renderBookmarks(payload);
     });
   }
 }

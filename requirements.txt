@@ -3,3 +3,5 @@ playwright>=1.40.0
 qasync>=0.27.1
 pytest>=7.0.0
 Pillow>=10.0.0
+aiohttp>=3.9.0
+websockets>=12.0

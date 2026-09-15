@@ -12,6 +12,13 @@ const UrlList = {
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.addUrl(); });
 
     tableBody.addEventListener('click', (e) => {
+      const chk = e.target.closest('input[type=checkbox]');
+      if (chk) {
+        const urlId = chk.dataset.urlId;
+        const action = chk.dataset.action;
+        if (action === 'toggle' && urlId) this.toggleUrl(urlId);
+        return;
+      }
       const btn = e.target.closest('button');
       if (!btn) return;
       const urlId = btn.dataset.urlId;
@@ -21,6 +28,7 @@ const UrlList = {
       if (action === 'toggle') this.toggleUrl(urlId);
       if (action === 'remove') this.removeUrl(urlId);
       if (action === 'edit') this.editUrl(urlId);
+      if (action === 'connect') this.connectUrl(urlId);
     });
   },
 
@@ -35,12 +43,16 @@ const UrlList = {
     tbody.innerHTML = '';
     urls.forEach(u => {
       const tr = document.createElement('tr');
+      tr.dataset.urlId = u.id;
+      tr.dataset.url = u.url;
       tr.innerHTML = `
         <td><input type="checkbox" ${u.enabled !== false ? 'checked' : ''} data-action="toggle" data-url-id="${u.id}"></td>
-        <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.esc(u.url)}">${this.esc(u.url)}</td>
+        <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.esc(u.url)}">${this.esc(u.url)}</td>
         <td><span class="url-status url-status-${u.status || 'pending'}">${this.esc(u.status || 'pending')}</span></td>
+        <td class="url-conn-status" style="font-size:11px;"><span style="color:var(--text-muted);">○ checking…</span></td>
         <td style="font-size:10px; color:var(--text-muted)">${this.esc(u.last_error || '')}</td>
         <td>
+          <button class="btn-small" data-action="connect" data-url-id="${u.id}" title="Find Chrome tab matching this URL and connect">Connect</button>
           <button class="btn-small" data-action="test" data-url-id="${u.id}">Test</button>
           <button class="btn-small" data-action="edit" data-url-id="${u.id}">Edit</button>
           <button class="btn-small" data-action="remove" data-url-id="${u.id}">✕</button>
@@ -50,6 +62,10 @@ const UrlList = {
     });
     const countEl = document.getElementById('urlCount');
     if (countEl) countEl.textContent = `${urls.length} URLs`;
+    // update connection status if CDPPanel has tabs
+    if (typeof CDPPanel !== 'undefined' && CDPPanel.updateUrlRowsConnection) {
+      setTimeout(()=>CDPPanel.updateUrlRowsConnection(), 50);
+    }
   },
 
   esc(s) {
@@ -118,5 +134,17 @@ const UrlList = {
         } catch (e) {}
       });
     }
+  },
+
+  connectUrl(id) {
+    const urlObj = (App.state && App.state.urls) ? App.state.urls.find(u => u.id === id) : null;
+    const url = urlObj ? urlObj.url : '';
+    if (!url) { LogConsole.log('⚠ URL not found', 'warn'); return; }
+    LogConsole.log(`🔍 Connect: finding tab for ${url}`, 'info');
+    if (App.bridge && App.bridge.find_tab_by_url) {
+      App.bridge.find_tab_by_url(url);
+    }
+    const inp = document.getElementById('urlBookmarkInput');
+    if (inp) inp.value = url;
   }
 };

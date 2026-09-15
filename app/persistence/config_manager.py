@@ -108,6 +108,7 @@ class WindowPresetStore:
         return True
 
 from .undo_store import UndoStore
+from .preset_store import PresetStore
 
 class ConfigManager:
     def __init__(self, config_dir: str = "config"):
@@ -116,9 +117,11 @@ class ConfigManager:
         self.session = SessionStore(self.dir / "session.json")
         self.window_presets = WindowPresetStore(self.dir / "window_presets.json")
         self.undo = UndoStore(self.dir / "undo.json")
+        self.presets = PresetStore(self.dir / "arena_presets.json")
         self.session.load()
         self.window_presets.load()
         self.undo.load()
+        self.presets.load()
 
     def get_state(self, key: str, default=None):
         return self.session.get(key, default)
