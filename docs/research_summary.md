@@ -256,3 +256,41 @@ For MVP, we will implement with fallback strategies and structured logging of se
 - Expected for JOB-ID 8ZO0: prevJob HT32? Actually sorted top ascending: 01-c (100), 01-b (300) — for 8ZO0 (100) prev none, validAbove gen_A (0) → exact above verified.
 - For new prompt at bottom (400): prev is 01-b (300), valid range 300-400, only new gen in that range qualifies, not gen_B which is below prev.
 
+
+## Fix 2026-09-16 (5): Baseline preservation across reload — correct image lost after reload
+
+**Failure log:**
+```
+[23:42:59] Spinner disappeared but no new image yet — waiting...
+[23:43:03] Wait timeout after 180000ms cycle 1/2 — is_generating=False spinning False spinCount 0
+Baseline after reload: 4 outputs
+Wait cycle 2/2 after reload
+```
+**Provided HTML order top→bottom:**
+- gen 01a0a703 1789508459484 50vh R2 (correct for ISAN)
+- user 02-c w-32 [JOB-ID: 20260915-233957-ISAN]
+- gen 01a0a6ff + user 3OS3
+- gen 01a0a6f2 (opacity-0 spinner) + user 8ZO0
+- gen 01a0a6ec (opacity-0) + user HT32
+
+Correct image exists immediately above ISAN prompt but wasn't downloaded — timeout.
+
+**Root cause:**
+- `app/ui/bridge.py` after reload did `baseline = await ctrl.capture_baseline()` which captured 4 outputs including the new gen 01a0a703.
+- `wait_for_new_output` uses `baseline.get("output_srcs")` as `oldSrcs` to exclude. After overwrite, oldSrcs now contains the correct new image, so `allNew` becomes empty, JS returns `no_new_image` or `no_exact_above_found_wait_next`, second cycle never downloads.
+- Logs showed `is_generating=False` after spinner disappeared but image present — generation finished but detection failed before reload; after reload detection should succeed if oldSrcs preserved.
+
+**Fix:**
+- Preserve `original_old_srcs` across reloads:
+  - At `OBSERVE_BASELINE`, store `original_old_srcs = list(baseline.get("output_srcs", []))`.
+  - At every reload path (`WAIT_OUTPUT` and `DOWNLOAD` cycles), capture `_new_baseline_tmp = await ctrl.capture_baseline()` but keep `baseline = {"output_count": _new_baseline_tmp.count, "output_srcs": original_old_srcs, ...}` — keep original old srcs for new detection, update count only for logging.
+  - For `latest_baseline` download retry path, use only NEW src not in original_old_srcs, preserve original_old_srcs for next detection.
+- Enhance JS `JS_CHECK_NEW_OUTPUT` logging:
+  - When `no_exact_above_found_wait_next` or `image_above_belongs_to_previous_prompt_await_next`, return detailed `allNewDetails`, `invalidAboveDetails`, `belowDetails`, `allJobs` map, `jobTop`, `prevJobTop`, `nextJobTop`, `jobIndex`, `orderCheck` for debugging.
+  - Bridge logs these details on both completed and timeout paths.
+- Ensure exact above logic handles `prevJobTop=null` (topmost job) — already does `if prevJobTop !== null` check, so any image above topmost qualifies if no intervening JOB-ID.
+
+**Result:**
+- After reload, correct image 01a0a703 remains in `allNew` (not in original_old_srcs), `validAbove` should contain it, closest above picked, download succeeds.
+- `pytest 45 passed`, `py_compile` ok.
+

@@ -576,17 +576,26 @@ JS_CHECK_NEW_OUTPUT = """
 
     // No valid above found — check if there are invalid above (belongs to previous prompt)
     if (invalidAbove.length > 0) {
-      return {ready:false, reason:'image_above_belongs_to_previous_prompt_await_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, invalidAbove: invalidAbove.length, validAbove: 0, allJobs: allJobs.length, jobId: correlationId, orderCheck: `no exact above, found ${invalidAbove.length} images above previous prompt, awaiting next above current`};
+      let invalidDetails = [];
+      try { for (const inv of invalidAbove.slice(0,5)) invalidDetails.push({src: inv.src.slice(-60), top: inv.top}); } catch(e) {}
+      return {ready:false, reason:'image_above_belongs_to_previous_prompt_await_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, invalidAbove: invalidAbove.length, invalidAboveDetails: invalidDetails, validAbove: 0, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), allNew: allNew.length, jobId: correlationId, orderCheck: `no exact above, found ${invalidAbove.length} images above previous prompt (prev ${prevJobId} ${prevJobTop}), awaiting next above current ${correlationId} ${jobTop}`};
     }
 
     if (allNew.length > 0) {
-      return {ready:false, reason:'no_exact_above_found_wait_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, allNew: allNew.length, validAbove: 0, invalidAbove: invalidAbove.length, belowCount: belowCandidates.length, jobId: correlationId};
+      // Detailed logging for debugging exact above
+      let allNewDetails = [];
+      try {
+        for (const n of allNew.slice(0,10)) {
+          allNewDetails.push({src: n.src.slice(-60), top: n.top, isLarge: n.isLarge, width: n.width, selector: n.selector});
+        }
+      } catch(e) {}
+      return {ready:false, reason:'no_exact_above_found_wait_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), allNew: allNew.length, allNewDetails: allNewDetails, validAbove: 0, invalidAbove: invalidAbove.length, invalidAboveDetails: invalidAbove.slice(0,5).map(i=>({src:i.src.slice(-60), top:i.top})), belowCount: belowCandidates.length, belowDetails: belowCandidates.slice(0,5).map(b=>({src:b.src.slice(-60), top:b.top})), jobId: correlationId, orderCheck: `no exact above: jobTop ${jobTop} prevTop ${prevJobTop} nextTop ${nextJobTop} allNew ${allNew.length} valid 0 invalid ${invalidAbove.length}`};
     }
 
     if (spinning) {
       return {ready:false, reason:'generating_no_new_yet', spinning: true, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, jobIndex: jobIndex, allJobs: allJobs.length};
     }
-    return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, jobIndex: jobIndex, allJobs: allJobs.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length};
+    return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), validAbove: validAbove.length, invalidAbove: invalidAbove.length, allNew: allNew.length, jobId: correlationId, orderCheck: `no new images at all, oldSrcs ${oldSrcs.length}`};
   } catch(e) { return {ready:false, reason:String(e), spinning: false}; }
 })
 """

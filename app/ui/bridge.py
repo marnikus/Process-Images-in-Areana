@@ -1458,6 +1458,7 @@ class Bridge(QObject):
 
                 # Variables shared across blocks
                 baseline = None
+                original_old_srcs = []  # preserve original baseline srcs across reloads — fix for image matching after reload
                 new_src = None
                 file_bytes = None
                 ctype = None
@@ -1605,7 +1606,11 @@ class Bridge(QObject):
 
                         elif btype == "OBSERVE_BASELINE":
                             baseline = await ctrl.capture_baseline()
-                            self._log(f"[{correlation_id}] Baseline: {baseline.get('output_count')} existing outputs", "info")
+                            try:
+                                original_old_srcs = list(baseline.get("output_srcs", []) or [])
+                            except Exception:
+                                original_old_srcs = []
+                            self._log(f"[{correlation_id}] Baseline: {baseline.get('output_count')} existing outputs, original_old_srcs={len(original_old_srcs)}", "info")
                             self._emit_job_action_status(job_id, block, "success", f"Baseline {baseline.get('output_count')} outputs")
 
                         elif btype == "CHECK_SECURITY":
@@ -1795,17 +1800,26 @@ class Bridge(QObject):
                                 status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id)
 
                                 if status == "completed":
-                                    # Log order verification details from new JS logic
+                                    # Log order verification details from new JS logic — enhanced with allNewDetails for debugging exact above
                                     try:
                                         order_check = data.get("orderCheck") or data.get("order_check") or ""
                                         job_found = data.get("jobFound")
                                         job_top = data.get("jobTop")
                                         prev_top = data.get("prevJobTop")
+                                        next_top = data.get("nextJobTop")
                                         valid_above = data.get("validAbove")
                                         invalid_above = data.get("invalidAbove")
                                         all_jobs = data.get("allJobs")
-                                        if order_check or job_found is not None:
-                                            self._log(f"[{correlation_id}] Order check: {order_check} jobFound={job_found} jobTop={jobTop} prevTop={prev_top} validAbove={valid_above} invalidAbove={invalid_above} allJobs={all_jobs}", "info")
+                                        all_new = data.get("allNew")
+                                        all_new_details = data.get("allNewDetails")
+                                        invalid_details = data.get("invalidAboveDetails")
+                                        below_count = data.get("belowCount")
+                                        if order_check or job_found is not None or all_new is not None:
+                                            self._log(f"[{correlation_id}] Order check: {order_check} jobFound={job_found} jobTop={jobTop} prevTop={prev_top} nextTop={next_top} validAbove={valid_above} invalidAbove={invalid_above} allNew={all_new} below={below_count} allJobs={all_jobs}", "info")
+                                            if all_new_details:
+                                                self._log(f"[{correlation_id}] allNewDetails: {all_new_details}", "info")
+                                            if invalid_details:
+                                                self._log(f"[{correlation_id}] invalidAboveDetails: {invalid_details}", "info")
                                     except Exception:
                                         pass
                                     tmp_src = data.get("new_src")
@@ -1849,7 +1863,20 @@ class Bridge(QObject):
                                                                 ok_r, r_msg = await ctrl.reload_page()
                                                                 self._log(f"[{correlation_id}] Reload after download test failure: {ok_r} {r_msg}", "warn")
                                                                 await asyncio.sleep(3)
-                                                                baseline = await ctrl.capture_baseline()
+                                                                # Preserve original_old_srcs across reload — fix: new image should still be detected as new after reload
+                                                                try:
+                                                                    _new_baseline_tmp = await ctrl.capture_baseline()
+                                                                    # Keep original_old_srcs for detection, but update count for logging
+                                                                    _orig_srcs = original_old_srcs if 'original_old_srcs' in locals() and original_old_srcs else _new_baseline_tmp.get("output_srcs", [])
+                                                                    baseline = {
+                                                                        "output_count": _new_baseline_tmp.get("output_count", 0),
+                                                                        "output_srcs": _orig_srcs,
+                                                                        "timestamp": _new_baseline_tmp.get("timestamp", 0),
+                                                                        "new_count_after_reload": _new_baseline_tmp.get("output_count", 0),
+                                                                    }
+                                                                    self._log(f"[{correlation_id}] Baseline after reload: {baseline.get('output_count')} outputs (preserving original {len(_orig_srcs)} old srcs for new detection)", "info")
+                                                                except Exception as _e:
+                                                                    self._log(f"[{correlation_id}] Baseline after reload failed: {_e}, keeping original", "warn")
                                                                 continue
                                                             else:
                                                                 last_wait_error = f"Download test failed after reload: {c2}"
@@ -1859,7 +1886,20 @@ class Bridge(QObject):
                                                         if wait_cycle == 0:
                                                             ok_r, r_msg = await ctrl.reload_page()
                                                             await asyncio.sleep(3)
-                                                            baseline = await ctrl.capture_baseline()
+                                                            # Preserve original_old_srcs across reload — fix: new image should still be detected as new after reload
+                                                            try:
+                                                                _new_baseline_tmp = await ctrl.capture_baseline()
+                                                                # Keep original_old_srcs for detection, but update count for logging
+                                                                _orig_srcs = original_old_srcs if 'original_old_srcs' in locals() and original_old_srcs else _new_baseline_tmp.get("output_srcs", [])
+                                                                baseline = {
+                                                                    "output_count": _new_baseline_tmp.get("output_count", 0),
+                                                                    "output_srcs": _orig_srcs,
+                                                                    "timestamp": _new_baseline_tmp.get("timestamp", 0),
+                                                                    "new_count_after_reload": _new_baseline_tmp.get("output_count", 0),
+                                                                }
+                                                                self._log(f"[{correlation_id}] Baseline after reload: {baseline.get('output_count')} outputs (preserving original {len(_orig_srcs)} old srcs for new detection)", "info")
+                                                            except Exception as _e:
+                                                                self._log(f"[{correlation_id}] Baseline after reload failed: {_e}, keeping original", "warn")
                                                             continue
                                                         continue
                                                 else:
@@ -1869,7 +1909,20 @@ class Bridge(QObject):
                                                     if wait_cycle == 0:
                                                         ok_r, r_msg = await ctrl.reload_page()
                                                         await asyncio.sleep(3)
-                                                        baseline = await ctrl.capture_baseline()
+                                                        # Preserve original_old_srcs across reload — fix: new image should still be detected as new after reload
+                                                        try:
+                                                            _new_baseline_tmp = await ctrl.capture_baseline()
+                                                            # Keep original_old_srcs for detection, but update count for logging
+                                                            _orig_srcs = original_old_srcs if 'original_old_srcs' in locals() and original_old_srcs else _new_baseline_tmp.get("output_srcs", [])
+                                                            baseline = {
+                                                                "output_count": _new_baseline_tmp.get("output_count", 0),
+                                                                "output_srcs": _orig_srcs,
+                                                                "timestamp": _new_baseline_tmp.get("timestamp", 0),
+                                                                "new_count_after_reload": _new_baseline_tmp.get("output_count", 0),
+                                                            }
+                                                            self._log(f"[{correlation_id}] Baseline after reload: {baseline.get('output_count')} outputs (preserving original {len(_orig_srcs)} old srcs for new detection)", "info")
+                                                        except Exception as _e:
+                                                            self._log(f"[{correlation_id}] Baseline after reload failed: {_e}, keeping original", "warn")
                                                         continue
                                                     continue
                                         except Exception as e:
@@ -1883,7 +1936,20 @@ class Bridge(QObject):
                                             if wait_cycle == 0:
                                                 ok_r, r_msg = await ctrl.reload_page()
                                                 await asyncio.sleep(3)
-                                                baseline = await ctrl.capture_baseline()
+                                                # Preserve original_old_srcs across reload — fix: new image should still be detected as new after reload
+                                                try:
+                                                    _new_baseline_tmp = await ctrl.capture_baseline()
+                                                    # Keep original_old_srcs for detection, but update count for logging
+                                                    _orig_srcs = original_old_srcs if 'original_old_srcs' in locals() and original_old_srcs else _new_baseline_tmp.get("output_srcs", [])
+                                                    baseline = {
+                                                        "output_count": _new_baseline_tmp.get("output_count", 0),
+                                                        "output_srcs": _orig_srcs,
+                                                        "timestamp": _new_baseline_tmp.get("timestamp", 0),
+                                                        "new_count_after_reload": _new_baseline_tmp.get("output_count", 0),
+                                                    }
+                                                    self._log(f"[{correlation_id}] Baseline after reload: {baseline.get('output_count')} outputs (preserving original {len(_orig_srcs)} old srcs for new detection)", "info")
+                                                except Exception as _e:
+                                                    self._log(f"[{correlation_id}] Baseline after reload failed: {_e}, keeping original", "warn")
                                                 continue
                                             continue
                                     else:
@@ -1892,7 +1958,20 @@ class Bridge(QObject):
                                             if wait_cycle == 0:
                                                 ok_r, r_msg = await ctrl.reload_page()
                                                 await asyncio.sleep(3)
-                                                baseline = await ctrl.capture_baseline()
+                                                # Preserve original_old_srcs across reload — fix: new image should still be detected as new after reload
+                                                try:
+                                                    _new_baseline_tmp = await ctrl.capture_baseline()
+                                                    # Keep original_old_srcs for detection, but update count for logging
+                                                    _orig_srcs = original_old_srcs if 'original_old_srcs' in locals() and original_old_srcs else _new_baseline_tmp.get("output_srcs", [])
+                                                    baseline = {
+                                                        "output_count": _new_baseline_tmp.get("output_count", 0),
+                                                        "output_srcs": _orig_srcs,
+                                                        "timestamp": _new_baseline_tmp.get("timestamp", 0),
+                                                        "new_count_after_reload": _new_baseline_tmp.get("output_count", 0),
+                                                    }
+                                                    self._log(f"[{correlation_id}] Baseline after reload: {baseline.get('output_count')} outputs (preserving original {len(_orig_srcs)} old srcs for new detection)", "info")
+                                                except Exception as _e:
+                                                    self._log(f"[{correlation_id}] Baseline after reload failed: {_e}, keeping original", "warn")
                                                 continue
                                             continue
                                         else:
@@ -1906,8 +1985,18 @@ class Bridge(QObject):
                                     order_check = data.get("orderCheck") or ""
                                     valid_above = data.get("validAbove")
                                     invalid_above = data.get("invalidAbove")
-                                    if order_check:
-                                        self._log(f"[{correlation_id}] Order check on timeout: {order_check} validAbove={valid_above} invalidAbove={invalid_above} reason={last_wait_error}", "info")
+                                    all_new = data.get("allNew")
+                                    all_new_details = data.get("allNewDetails")
+                                    invalid_details = data.get("invalidAboveDetails")
+                                    below_details = data.get("belowDetails")
+                                    if order_check or all_new is not None:
+                                        self._log(f"[{correlation_id}] Order check on timeout: {order_check} validAbove={valid_above} invalidAbove={invalid_above} allNew={all_new} reason={last_wait_error} allJobs={data.get('allJobs')} jobTop={data.get('jobTop')} prevTop={data.get('prevJobTop')}", "info")
+                                        if all_new_details:
+                                            self._log(f"[{correlation_id}] allNewDetails timeout: {all_new_details}", "info")
+                                        if invalid_details:
+                                            self._log(f"[{correlation_id}] invalidDetails timeout: {invalid_details}", "info")
+                                        if below_details:
+                                            self._log(f"[{correlation_id}] belowDetails timeout: {below_details}", "info")
                                     # Special handling for exact above logic — if image above belongs to previous prompt, await next
                                     if last_wait_error in ("image_above_belongs_to_previous_prompt_await_next", "no_exact_above_found_wait_next", "no_exact_above_found_wait_next"):
                                         self._log(f"[{correlation_id}] ⏳ No exact above image for {correlationId} — found {invalid_above} invalid above (belongs to previous), awaiting next image above (if still generating)", "warn")
@@ -1925,7 +2014,20 @@ class Bridge(QObject):
                                                 ok_r, r_msg = await ctrl.reload_page()
                                                 self._log(f"[{correlation_id}] Reload after no exact above (not generating): {ok_r} {r_msg}", "warn")
                                                 await asyncio.sleep(3)
-                                                baseline = await ctrl.capture_baseline()
+                                                # Preserve original_old_srcs across reload — fix: new image should still be detected as new after reload
+                                                try:
+                                                    _new_baseline_tmp = await ctrl.capture_baseline()
+                                                    # Keep original_old_srcs for detection, but update count for logging
+                                                    _orig_srcs = original_old_srcs if 'original_old_srcs' in locals() and original_old_srcs else _new_baseline_tmp.get("output_srcs", [])
+                                                    baseline = {
+                                                        "output_count": _new_baseline_tmp.get("output_count", 0),
+                                                        "output_srcs": _orig_srcs,
+                                                        "timestamp": _new_baseline_tmp.get("timestamp", 0),
+                                                        "new_count_after_reload": _new_baseline_tmp.get("output_count", 0),
+                                                    }
+                                                    self._log(f"[{correlation_id}] Baseline after reload: {baseline.get('output_count')} outputs (preserving original {len(_orig_srcs)} old srcs for new detection)", "info")
+                                                except Exception as _e:
+                                                    self._log(f"[{correlation_id}] Baseline after reload failed: {_e}, keeping original", "warn")
                                                 continue
                                             continue
 
@@ -2064,7 +2166,20 @@ class Bridge(QObject):
                                                 # Before retrying, try reload as per user: after 2 min try reload first but not fail yet
                                                 ok_r, r_msg = await ctrl.reload_page()
                                                 await asyncio.sleep(3)
-                                                baseline = await ctrl.capture_baseline()
+                                                # Preserve original_old_srcs across reload — fix: new image should still be detected as new after reload
+                                                try:
+                                                    _new_baseline_tmp = await ctrl.capture_baseline()
+                                                    # Keep original_old_srcs for detection, but update count for logging
+                                                    _orig_srcs = original_old_srcs if 'original_old_srcs' in locals() and original_old_srcs else _new_baseline_tmp.get("output_srcs", [])
+                                                    baseline = {
+                                                        "output_count": _new_baseline_tmp.get("output_count", 0),
+                                                        "output_srcs": _orig_srcs,
+                                                        "timestamp": _new_baseline_tmp.get("timestamp", 0),
+                                                        "new_count_after_reload": _new_baseline_tmp.get("output_count", 0),
+                                                    }
+                                                    self._log(f"[{correlation_id}] Baseline after reload: {baseline.get('output_count')} outputs (preserving original {len(_orig_srcs)} old srcs for new detection)", "info")
+                                                except Exception as _e:
+                                                    self._log(f"[{correlation_id}] Baseline after reload failed: {_e}, keeping original", "warn")
                                                 continue
                                             continue
                                         else:
@@ -2072,7 +2187,20 @@ class Bridge(QObject):
                                                 ok_r, r_msg = await ctrl.reload_page()
                                                 self._log(f"[{correlation_id}] Reload after download failure while generating: {ok_r} {r_msg}", "warn")
                                                 await asyncio.sleep(3)
-                                                baseline = await ctrl.capture_baseline()
+                                                # Preserve original_old_srcs across reload — fix: new image should still be detected as new after reload
+                                                try:
+                                                    _new_baseline_tmp = await ctrl.capture_baseline()
+                                                    # Keep original_old_srcs for detection, but update count for logging
+                                                    _orig_srcs = original_old_srcs if 'original_old_srcs' in locals() and original_old_srcs else _new_baseline_tmp.get("output_srcs", [])
+                                                    baseline = {
+                                                        "output_count": _new_baseline_tmp.get("output_count", 0),
+                                                        "output_srcs": _orig_srcs,
+                                                        "timestamp": _new_baseline_tmp.get("timestamp", 0),
+                                                        "new_count_after_reload": _new_baseline_tmp.get("output_count", 0),
+                                                    }
+                                                    self._log(f"[{correlation_id}] Baseline after reload: {baseline.get('output_count')} outputs (preserving original {len(_orig_srcs)} old srcs for new detection)", "info")
+                                                except Exception as _e:
+                                                    self._log(f"[{correlation_id}] Baseline after reload failed: {_e}, keeping original", "warn")
                                                 continue
                                             continue
                                     else:
@@ -2088,14 +2216,26 @@ class Bridge(QObject):
                                                 latest_baseline = await ctrl.capture_baseline()
                                                 latest_srcs = latest_baseline.get("output_srcs", [])
                                                 if latest_srcs:
-                                                    # Use latest src if different
-                                                    if latest_srcs[-1] != new_src:
-                                                        new_src = latest_srcs[-1]
-                                                        self._log(f"[{correlation_id}] Using latest src after reload: {new_src[:120]}", "info")
+                                                    # Use latest NEW src that is not in original_old_srcs
+                                                    _found_new = None
+                                                    for _src in reversed(latest_srcs):
+                                                        if _src not in (original_old_srcs if 'original_old_srcs' in locals() else []):
+                                                            _found_new = _src
+                                                            break
+                                                    if _found_new:
+                                                        if _found_new != new_src:
+                                                            new_src = _found_new
+                                                            self._log(f"[{correlation_id}] Using latest NEW src after reload (not in original): {new_src[:120]}", "info")
+                                                        else:
+                                                            self._log(f"[{correlation_id}] Retrying same src after reload (still new)", "info")
                                                     else:
-                                                        # Try same src again after reload
-                                                        self._log(f"[{correlation_id}] Retrying same src after reload", "info")
-                                                baseline = latest_baseline
+                                                        self._log(f"[{correlation_id}] No new src in latest_baseline after reload (all old), keeping {new_src[:80] if new_src else 'None'}", "warn")
+                                                # Preserve original_old_srcs for next detection
+                                                baseline = {
+                                                    "output_count": latest_baseline.get("output_count", 0),
+                                                    "output_srcs": original_old_srcs if 'original_old_srcs' in locals() else latest_baseline.get("output_srcs", []),
+                                                    "timestamp": latest_baseline.get("timestamp", 0),
+                                                }
                                             except Exception as e:
                                                 self._log(f"[{correlation_id}] Baseline after reload failed: {e}", "warn")
                                             continue
