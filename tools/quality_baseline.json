@@ -95,9 +95,9 @@
     "func_count": 17
   },
   "app/browser/cdp_arena.py": {
-    "max_func_loc": 60,
-    "max_class_loc": 517,
-    "func_count": 31
+    "max_func_loc": 30,
+    "max_class_loc": 302,
+    "func_count": 26
   },
   "app/browser/probe_requests.py": {
     "max_func_loc": 0,
@@ -135,8 +135,8 @@
     "func_count": 2
   },
   "app/ui/bridge.py": {
-    "max_func_loc": 1025,
-    "max_class_loc": 3588,
+    "max_func_loc": 1030,
+    "max_class_loc": 3593,
     "func_count": 146
   },
   "app/utils/__init__.py": {
@@ -178,5 +178,20 @@
     "max_func_loc": 124,
     "max_class_loc": 269,
     "func_count": 15
+  },
+  "app/browser/output_probes.py": {
+    "max_func_loc": 3,
+    "max_class_loc": 0,
+    "func_count": 4
+  },
+  "app/browser/output_state.py": {
+    "max_func_loc": 19,
+    "max_class_loc": 0,
+    "func_count": 5
+  },
+  "app/browser/output_wait.py": {
+    "max_func_loc": 25,
+    "max_class_loc": 0,
+    "func_count": 14
   }
 }
