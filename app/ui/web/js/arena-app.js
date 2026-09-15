@@ -41,6 +41,7 @@ function initApp() {
   if (typeof HighlightOverlay !== 'undefined') HighlightOverlay.init();
   if (typeof CDPPanel !== 'undefined') CDPPanel.init();
   if (typeof ArenaPresets !== 'undefined') ArenaPresets.init();
+  if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.init();
 
   document.getElementById('clearLogBtn')?.addEventListener('click', () => LogConsole.clear());
 
@@ -246,6 +247,27 @@ function setupBridgeListeners() {
     b.presets_changed.connect((kind, payload) => {
       if (kind === 'arena' && typeof ArenaPresets !== 'undefined') ArenaPresets.renderArenaPresets(payload);
       if (kind === 'urls' && typeof CDPPanel !== 'undefined') CDPPanel.renderBookmarks(payload);
+    });
+  }
+  // Action Blocks — stacking jobs
+  if (b.action_blocks_updated) {
+    b.action_blocks_updated.connect((payload) => {
+      if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.onBlocksUpdated(payload);
+    });
+  }
+  if (b.job_action_status) {
+    b.job_action_status.connect((jobId, blockId, statusJson) => {
+      if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.onJobActionStatus(jobId, blockId, statusJson);
+    });
+  }
+  if (b.job_started) {
+    b.job_started.connect((jobId, imagePath) => {
+      if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.onJobStarted(jobId, imagePath);
+    });
+  }
+  if (b.job_finished) {
+    b.job_finished.connect((jobId, resultJson) => {
+      if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.onJobFinished(jobId, resultJson);
     });
   }
 }

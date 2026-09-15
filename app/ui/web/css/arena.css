@@ -305,3 +305,29 @@
   font-size: 11px;
   line-height: 1.5;
 }
+
+/* Action Blocks — stacking jobs */
+.action-block {
+  user-select: none;
+}
+.action-block:hover {
+  background: var(--bg-card-hover) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.action-block.dragging {
+  opacity: 0.5;
+}
+#actionBlocksStack {
+  scrollbar-width: thin;
+}
+#jobActionStack {
+  scrollbar-width: thin;
+}
+.job-block-row {
+  animation: slideIn 0.2s ease-out;
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}

@@ -17,6 +17,8 @@ DEFAULT_SESSION = {
     "cdp_port": 9222,
     "cdp_user_data_dir": "C:\\arena-images-chrome",
     "cdp_extra_args": "",
+    "action_blocks": None,  # will be default stack if None
+    "action_blocks_version": 1,
 }
 
 DEFAULT_WINDOW_PRESETS = {"window_presets": {}}

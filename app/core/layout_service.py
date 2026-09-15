@@ -9,7 +9,7 @@ from typing import Any
 
 log = logging.getLogger("arena")
 
-WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "log", "settings", "browser"]
+WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "log", "settings", "browser", "action_blocks", "arena_presets"]
 WINDOWS = [
     {"id": "url_list", "title": "URL List"},
     {"id": "folder", "title": "Folder Picker"},
@@ -20,6 +20,8 @@ WINDOWS = [
     {"id": "log", "title": "Activity Log"},
     {"id": "settings", "title": "Settings"},
     {"id": "browser", "title": "Browser Preview"},
+    {"id": "action_blocks", "title": "Action Blocks — Stacking Jobs"},
+    {"id": "arena_presets", "title": "Arena Presets"},
 ]
 WINDOW_TITLES = {w["id"]: w["title"] for w in WINDOWS}
 GRID_VERSION = 4
@@ -35,10 +37,11 @@ def default_grid_tree() -> dict:
         ], [60,40]),
         split("row", [
             leaf("queue"),
-            split("col", [leaf("browser"), leaf("progress")], [70,30]),
-        ], [62,38]),
+            split("col", [leaf("action_blocks"), leaf("browser")], [50,50]),
+            split("col", [leaf("arena_presets"), leaf("progress")], [60,40]),
+        ], [50,30,20]),
         leaf("log"),
-    ], [38,45,17])
+    ], [38,40,22])
 
 def default_payload() -> str:
     return json.dumps({"v": GRID_VERSION, "tree": default_grid_tree()}, ensure_ascii=False, separators=(",",":"))

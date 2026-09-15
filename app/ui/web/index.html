@@ -252,6 +252,51 @@
       <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Rect highlight shows above clicked element for N seconds (configurable). All UI params storable in preset JSON.</div>
     </div>
 
+    <!-- ACTION BLOCKS — Stacking Jobs with visual confirmations (restored from Old App) -->
+    <div class="panel" id="winActionBlocks" data-window="action_blocks">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">view_module</span> Action Blocks — Stacking Jobs <span class="spacer"></span><span id="actionBlocksCount" style="font-size:10px; color:var(--text-muted)">0 blocks</span></h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+        <button id="addActionBlockBtn" class="btn-small" title="Add block"><span class="material-icons" style="font-size:14px;">add</span> Add</button>
+        <button id="resetActionBlocksBtn" class="btn-small" title="Reset to default stack">Reset</button>
+        <button id="saveActionBlocksBtn" class="btn-small btn-primary" title="Save stack">Save</button>
+        <button id="exportActionBlocksBtn" class="btn-small" title="Export JSON">Export</button>
+        <button id="importActionBlocksBtn" class="btn-small" title="Import JSON">Import</button>
+      </div>
+      <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">
+        Drag <span class="material-icons" style="font-size:12px; vertical-align:middle;">drag_indicator</span> to reorder, toggle enable, double-click to highlight selector. Visual rect confirmation on each click. Stored in preset JSON.
+      </div>
+      <div id="actionBlocksStack" style="flex:1; overflow:auto; max-height:320px; border:1px solid var(--border); border-radius:4px; padding:4px; background:var(--bg-card);"></div>
+      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:14px;">play_circle</span> Current Job Stack — live execution</div>
+        <div id="jobActionStack" style="min-height:80px; max-height:260px; overflow:auto; border:1px dashed var(--border); border-radius:4px; padding:4px; background:var(--bg-input);">
+          <span style="font-size:11px; color:var(--text-muted);">No job running — start a job to see live blocks with rect confirmations</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ARENA PRESETS — URLs, prompt, settings, highlight, custom variables -->
+    <div class="panel" id="winArenaPresets" data-window="arena_presets">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">bookmarks</span> Arena Presets <span class="spacer"></span><span id="arenaPresetsCount" style="font-size:10px; color:var(--text-muted)">0 presets</span></h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input id="arenaPresetNameInput" type="text" placeholder="preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
+        <button id="arenaPresetSaveBtn" class="btn-small btn-primary">Save</button>
+      </div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <button id="arenaPresetExportBtn" class="btn-small">Export</button>
+        <button id="arenaPresetImportBtn" class="btn-small">Import</button>
+        <input id="arenaPresetFileInput" type="file" accept=".json" style="display:none;">
+      </div>
+      <div id="arenaPresetsList" style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px; padding:4px; max-height:300px;"></div>
+      <div style="margin-top:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">Prompt Presets</div>
+        <div style="display:flex; gap:6px; margin-bottom:6px;">
+          <input id="promptPresetNameInput" type="text" placeholder="prompt preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:11px;">
+          <button id="promptPresetSaveBtn" class="btn-small">Save Prompt</button>
+        </div>
+        <div id="promptPresetsList" style="border:1px solid var(--border); border-radius:4px; padding:4px; max-height:150px; overflow:auto;"></div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -361,6 +406,7 @@
 <script src="js/panels/highlight.js"></script>
 <script src="js/panels/cdp.js"></script>
 <script src="js/panels/arena-presets.js"></script>
+<script src="js/panels/action-blocks.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app.js"></script>
 </body>

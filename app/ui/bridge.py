@@ -39,6 +39,7 @@ from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
 from app.browser.tab_matcher import best_matches
 from app.browser.dom_highlight import build_highlight_js, build_clear_js
+from app.core.action_blocks import default_stack, stack_to_dicts, load_stack_from_dicts, parse_stack_json, validate_stack, create_default_block
 
 log = logging.getLogger("arena")
 
@@ -58,6 +59,10 @@ class Bridge(QObject):
     tab_match_result = Signal(str, str)
     url_presets_updated = Signal(str)
     presets_changed = Signal(str, str)  # kind, payload
+    action_blocks_updated = Signal(str)  # JSON array of blocks
+    job_action_status = Signal(str, str, str)  # jobId, blockId, statusJson
+    job_started = Signal(str, str)  # jobId, imagePath
+    job_finished = Signal(str, str)  # jobId, resultJson
 
     def __init__(self, config_manager: ConfigManager, state_path: Path, cdp_client=None, parent=None):
         super().__init__(parent)
@@ -99,6 +104,169 @@ class Bridge(QObject):
             self.connection_status.emit("error")
         except Exception:
             pass
+
+    # ---- Action Blocks — stacking jobs with visual confirmations ----
+    def _get_action_blocks(self):
+        """Load action blocks from session or default."""
+        try:
+            raw = self.config.get_state("action_blocks", None)
+            if raw is None:
+                stack = default_stack()
+                return stack
+            if isinstance(raw, list):
+                return load_stack_from_dicts(raw)
+            if isinstance(raw, str):
+                return parse_stack_json(raw)
+            return default_stack()
+        except Exception as e:
+            log.warning(f"Failed to load action blocks: {e}")
+            return default_stack()
+
+    def _save_action_blocks(self, stack):
+        try:
+            dicts = stack_to_dicts(stack)
+            self.config.set_state(action_blocks=dicts)
+            payload = json.dumps(dicts, ensure_ascii=False)
+            self.action_blocks_updated.emit(payload)
+            # Also push to undo
+            try:
+                self.undo_service.push("action_blocks", dicts)
+                self._emit_undo_state()
+            except Exception:
+                pass
+            return True
+        except Exception as e:
+            log.warning(f"Failed to save action blocks: {e}")
+            return False
+
+    def _emit_action_blocks(self):
+        try:
+            stack = self._get_action_blocks()
+            payload = json.dumps(stack_to_dicts(stack), ensure_ascii=False)
+            self.action_blocks_updated.emit(payload)
+        except Exception as e:
+            log.warning(f"emit action blocks failed: {e}")
+
+    def _emit_job_action_status(self, job_id: str, block: Any, status: str, message: str = "", rect: dict = None):
+        try:
+            # block can be ActionBlock or dict or block_id string
+            if isinstance(block, str):
+                block_id = block
+                block_name = block
+                color = "#FF0000"
+                highlight_ms = 2000
+            else:
+                block_id = getattr(block, 'id', '') or getattr(block, 'block_id', '') or str(block)
+                block_name = getattr(block, 'display_name', None) or getattr(block, 'name', block_id)
+                if callable(block_name):
+                    block_name = block_name()
+                color = getattr(block, 'color', '#FF0000')
+                highlight_ms = getattr(block, 'highlight_duration_ms', 2000)
+            payload = json.dumps({
+                "job_id": job_id,
+                "block_id": block_id,
+                "block_name": block_name,
+                "status": status,  # pending, running, success, failed, skipped
+                "message": message,
+                "rect": rect,
+                "color": color,
+                "highlight_duration_ms": highlight_ms,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            }, ensure_ascii=False)
+            self.job_action_status.emit(job_id, block_id, payload)
+            # Also emit highlight rect if rect provided
+            if rect and status in ("running", "success"):
+                try:
+                    hr = {
+                        "x": rect.get("x", 0),
+                        "y": rect.get("y", 0),
+                        "width": rect.get("width", 100),
+                        "height": rect.get("height", 100),
+                        "duration": highlight_ms / 1000 if highlight_ms else 2,
+                        "label": block_name,
+                        "color": color,
+                    }
+                    self.highlight_rect.emit(json.dumps(hr))
+                except Exception:
+                    pass
+        except Exception as e:
+            log.warning(f"emit job action status failed: {e}")
+
+    @Slot(result=str)
+    def get_action_blocks(self):
+        try:
+            stack = self._get_action_blocks()
+            payload = json.dumps(stack_to_dicts(stack), ensure_ascii=False)
+            self.action_blocks_updated.emit(payload)
+            return payload
+        except Exception as e:
+            return json.dumps([], ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def save_action_blocks(self, blocks_json: str):
+        try:
+            data = json.loads(blocks_json or "[]")
+            if not isinstance(data, list):
+                return json.dumps({"ok": False, "error": "must be array"})
+            stack = load_stack_from_dicts(data)
+            ok, err = validate_stack(stack)
+            if not ok:
+                return json.dumps({"ok": False, "error": err})
+            if self._save_action_blocks(stack):
+                self._log(f"Action blocks saved: {len(stack)} blocks", "success")
+                return json.dumps({"ok": True, "count": len(stack)})
+            return json.dumps({"ok": False, "error": "save failed"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def add_action_block(self, block_type: str):
+        try:
+            block_type = (block_type or "").strip().upper()
+            if not block_type:
+                return json.dumps({"ok": False, "error": "empty block type"})
+            stack = self._get_action_blocks()
+            new_block = create_default_block(block_type)
+            stack.append(new_block)
+            if self._save_action_blocks(stack):
+                self._log(f"Added action block {block_type}", "success")
+                return json.dumps({"ok": True, "id": new_block.id})
+            return json.dumps({"ok": False, "error": "save failed"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def reset_action_blocks(self):
+        try:
+            stack = default_stack()
+            if self._save_action_blocks(stack):
+                self._log(f"Action blocks reset to default ({len(stack)} blocks)", "info")
+                return json.dumps({"ok": True, "count": len(stack)})
+            return json.dumps({"ok": False, "error": "save failed"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def delete_action_block(self, block_id: str):
+        try:
+            stack = self._get_action_blocks()
+            before = len(stack)
+            stack = [b for b in stack if b.id != block_id and b.block_id != block_id]
+            if len(stack) == before:
+                # Try by block_id type
+                stack = [b for b in self._get_action_blocks() if b.id != block_id]
+                if len(stack) == before:
+                    return json.dumps({"ok": False, "error": "not found"})
+            # Ensure required blocks still present
+            ok, err = validate_stack(stack)
+            if not ok:
+                return json.dumps({"ok": False, "error": err})
+            if self._save_action_blocks(stack):
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "save failed"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
 
     def _save_arena(self):
         try:
@@ -821,6 +989,10 @@ class Bridge(QObject):
             self._log(f"Highlight failed: {e}", "warn")
 
     async def _do_run_batch(self):
+        """Run batch using action blocks stack with visual confirmations — restored from old app idea.
+        Each job is a stack of blocks: observe baseline, attach, prompt, submit, wait, download, save.
+        Emits job_started, job_action_status (with rect), job_finished, highlight_rect.
+        """
         try:
             from app.browser.cdp_arena import CDPArenaController
             from app.utils.correlation import generate_correlation_id, build_final_prompt
@@ -842,6 +1014,11 @@ class Bridge(QObject):
             unique_tpl = self.state.settings.output.get("unique_suffix_template", "{base}_AI_{n}{ext}")
             gen_timeout = self.state.settings.timeouts.get("generation", 180) * 1000
             highlight_duration = self.config.get_state("highlight_duration", 3)
+
+            # Load action blocks stack
+            action_stack = self._get_action_blocks()
+            self._emit_action_blocks()
+            self._log(f"📦 Action blocks stack: {len(action_stack)} blocks — " + ", ".join(f"{b.display_name}({'ON' if b.enabled else 'OFF'})" for b in action_stack[:6]) + ("..." if len(action_stack)>6 else ""), "info")
 
             url_idx = 0
             for img in selected_images:
@@ -866,127 +1043,255 @@ class Bridge(QObject):
                 self._save_arena()
 
                 correlation_id = generate_correlation_id()
+                job_id = correlation_id  # use correlation_id as job_id for traceability
                 final_prompt = build_final_prompt(correlation_id, prompt_template)
+
                 self._log(f"[{correlation_id}] Starting {img.relative_path} with URL {url_row.url if url_row else 'N/A'}", "info")
-
                 try:
-                    baseline = await ctrl.capture_baseline()
-                    self._log(f"[{correlation_id}] Baseline: {baseline.get('output_count')} existing outputs", "info")
+                    self.job_started.emit(job_id, img.absolute_path)
+                except Exception:
+                    pass
 
-                    if await ctrl.is_security_dialog_visible():
-                        self._log(f"[{correlation_id}] ⚠ Security verification detected — please solve manually in Chrome, then resume", "error")
-                        self._run_state = "paused"
-                        self._pause_requested = True
-                        self._emit_arena_state()
-                        while await ctrl.is_security_dialog_visible():
-                            if self._cancel_requested:
-                                raise RuntimeError("Cancelled during CAPTCHA")
-                            await asyncio.sleep(2)
-                        self._log(f"[{correlation_id}] Security dialog gone, continuing", "success")
-                        self._pause_requested = False
-                        self._run_state = "running"
+                # Variables shared across blocks
+                baseline = None
+                new_src = None
+                file_bytes = None
+                ctype = None
+                output_path = None
+                ext = None
 
-                    self._log(f"[{correlation_id}] Attaching {img.absolute_path}", "info")
+                job_failed = False
+                job_error = ""
+
+                # Helper to find block by block_id type
+                def find_block(btype):
+                    for b in action_stack:
+                        if b.block_id == btype:
+                            return b
+                    return None
+
+                # Iterate through action blocks stack
+                for block in action_stack:
+                    if not block.enabled:
+                        self._emit_job_action_status(job_id, block, "skipped", f"Skipped (disabled)")
+                        continue
+
+                    btype = block.block_id
+                    # Pre-delay
+                    if block.pre_delay_ms and block.pre_delay_ms > 0:
+                        await asyncio.sleep(block.pre_delay_ms / 1000.0)
+
+                    self._emit_job_action_status(job_id, block, "running", f"Running {block.display_name}")
+                    self._log(f"[{correlation_id}] ▶ Block {block.display_name} ({btype}) running", "info")
+
                     try:
-                        await ctrl.highlight_selector('input[type="file"]', color="#00FF00", duration_ms=int(highlight_duration*1000), caption="Attach image")
-                    except Exception:
-                        pass
-                    ok, reason = await ctrl.attach_image(img.absolute_path)
-                    if not ok:
-                        raise RuntimeError(f"Attach failed: {reason}")
-                    self._log(f"[{correlation_id}] Attachment verified: {reason}", "success")
+                        if btype == "OBSERVE_BASELINE":
+                            baseline = await ctrl.capture_baseline()
+                            self._log(f"[{correlation_id}] Baseline: {baseline.get('output_count')} existing outputs", "info")
+                            self._emit_job_action_status(job_id, block, "success", f"Baseline {baseline.get('output_count')} outputs")
 
-                    self._log(f"[{correlation_id}] Inserting prompt with token [{correlation_id}]", "info")
-                    try:
-                        await ctrl.highlight_selector('textarea[name="message"]', color="#00AAFF", duration_ms=int(highlight_duration*1000), caption="Prompt")
-                    except Exception:
-                        pass
-                    ok, reason = await ctrl.insert_prompt(final_prompt)
-                    if not ok:
-                        raise RuntimeError(f"Prompt insert failed: {reason}")
-                    verified, vreason = await ctrl.verify_prompt(final_prompt)
-                    if not verified:
-                        self._log(f"[{correlation_id}] Prompt mismatch {vreason}, retrying", "warn")
-                        ok, reason = await ctrl.insert_prompt(final_prompt)
-                        verified, vreason = await ctrl.verify_prompt(final_prompt)
-                        if not verified:
-                            raise RuntimeError(f"Prompt verification failed: {vreason}")
+                        elif btype == "CHECK_SECURITY":
+                            if await ctrl.is_security_dialog_visible():
+                                self._log(f"[{correlation_id}] ⚠ Security verification detected — please solve manually in Chrome, then resume", "error")
+                                self._emit_job_action_status(job_id, block, "running", "Security dialog visible — waiting for manual solve")
+                                self._run_state = "paused"
+                                self._pause_requested = True
+                                self._emit_arena_state()
+                                while await ctrl.is_security_dialog_visible():
+                                    if self._cancel_requested:
+                                        raise RuntimeError("Cancelled during CAPTCHA")
+                                    await asyncio.sleep(2)
+                                self._log(f"[{correlation_id}] Security dialog gone, continuing", "success")
+                                self._pause_requested = False
+                                self._run_state = "running"
+                                self._emit_job_action_status(job_id, block, "success", "Security dialog solved")
+                            else:
+                                self._emit_job_action_status(job_id, block, "success", "No security dialog")
 
-                    self._log(f"[{correlation_id}] Submitting once", "info")
-                    try:
-                        await ctrl.highlight_selector('button[aria-label="Send message"]', color="#FFAA00", duration_ms=int(highlight_duration*1000), caption="Send")
-                    except Exception:
-                        pass
-                    ok, reason = await ctrl.submit()
-                    if not ok:
-                        raise RuntimeError(f"Submit failed: {reason}")
-                    self._log(f"[{correlation_id}] Submitted", "success")
+                        elif btype == "HIGHLIGHT_ATTACH":
+                            try:
+                                rect = await ctrl.highlight_selector(block.selector or 'input[type="file"]', color=block.color, duration_ms=block.highlight_duration_ms, caption=block.display_name)
+                                self._emit_job_action_status(job_id, block, "success", f"Highlighted {block.selector}", rect=rect if isinstance(rect, dict) else None)
+                            except Exception as e:
+                                self._emit_job_action_status(job_id, block, "success", f"Highlight skipped: {e}")
 
-                    self._log(f"[{correlation_id}] Waiting for generation (timeout {gen_timeout}ms)", "info")
-                    status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout)
-                    if status == "failed":
-                        raise RuntimeError(f"Generation timeout or failed: {data.get('error')}")
-                    new_src = data.get("new_src")
-                    if not new_src:
-                        raise RuntimeError("New output src not found after generation")
+                        elif btype == "ATTACH_IMAGE":
+                            self._log(f"[{correlation_id}] Attaching {img.absolute_path}", "info")
+                            ok, reason = await ctrl.attach_image(img.absolute_path)
+                            if not ok:
+                                raise RuntimeError(f"Attach failed: {reason}")
+                            self._log(f"[{correlation_id}] Attachment verified: {reason}", "success")
+                            # Try to get rect for visual confirmation
+                            try:
+                                rect = await ctrl.highlight_selector(block.selector or 'input[type="file"]', color=block.color, duration_ms=block.highlight_duration_ms, caption=f"Attached {img.filename}")
+                                if isinstance(rect, dict) and rect.get("rect"):
+                                    rect = rect.get("rect")
+                                self._emit_job_action_status(job_id, block, "success", f"{reason}", rect=rect if isinstance(rect, dict) else None)
+                            except Exception:
+                                self._emit_job_action_status(job_id, block, "success", f"{reason}")
 
-                    self._log(f"[{correlation_id}] New output detected: {new_src[:80]}...", "success")
+                        elif btype == "HIGHLIGHT_PROMPT":
+                            try:
+                                rect = await ctrl.highlight_selector(block.selector or 'textarea[name="message"]', color=block.color, duration_ms=block.highlight_duration_ms, caption=block.display_name)
+                                self._emit_job_action_status(job_id, block, "success", f"Highlighted {block.selector}", rect=rect if isinstance(rect, dict) else None)
+                            except Exception as e:
+                                self._emit_job_action_status(job_id, block, "success", f"Highlight skipped: {e}")
 
-                    self._log(f"[{correlation_id}] Downloading highest-quality image", "info")
-                    success, file_bytes, ctype = await ctrl.download_image(new_src)
-                    if not success:
-                        raise RuntimeError(f"Download failed: {ctype}")
-                    if len(file_bytes) == 0:
-                        raise RuntimeError("Downloaded empty file")
+                        elif btype == "INSERT_PROMPT":
+                            self._log(f"[{correlation_id}] Inserting prompt with token [{correlation_id}]", "info")
+                            ok, reason = await ctrl.insert_prompt(final_prompt)
+                            if not ok:
+                                raise RuntimeError(f"Prompt insert failed: {reason}")
+                            self._emit_job_action_status(job_id, block, "success", f"{reason}")
 
-                    ext = None
-                    try:
-                        from PIL import Image
-                        import io
-                        im = Image.open(io.BytesIO(file_bytes))
-                        fmt = im.format or "PNG"
-                        ext = f".{fmt.lower()}" if fmt else ".png"
-                        if im.width == 0 or im.height == 0:
-                            raise ValueError("Zero dimension image")
-                    except Exception:
-                        if ".png" in new_src:
-                            ext = ".png"
-                        elif ".jpg" in new_src or ".jpeg" in new_src:
-                            ext = ".jpg"
-                        elif ".webp" in new_src:
-                            ext = ".webp"
+                        elif btype == "VERIFY_PROMPT":
+                            verified, vreason = await ctrl.verify_prompt(final_prompt)
+                            if not verified:
+                                self._log(f"[{correlation_id}] Prompt mismatch {vreason}, retrying", "warn")
+                                ok, reason = await ctrl.insert_prompt(final_prompt)
+                                verified, vreason = await ctrl.verify_prompt(final_prompt)
+                                if not verified:
+                                    raise RuntimeError(f"Prompt verification failed: {vreason}")
+                            self._emit_job_action_status(job_id, block, "success", f"Verified {vreason}")
+
+                        elif btype == "HIGHLIGHT_SUBMIT":
+                            try:
+                                rect = await ctrl.highlight_selector(block.selector or 'button[aria-label="Send message"]', color=block.color, duration_ms=block.highlight_duration_ms, caption=block.display_name)
+                                self._emit_job_action_status(job_id, block, "success", f"Highlighted {block.selector}", rect=rect if isinstance(rect, dict) else None)
+                            except Exception as e:
+                                self._emit_job_action_status(job_id, block, "success", f"Highlight skipped: {e}")
+
+                        elif btype == "SUBMIT":
+                            self._log(f"[{correlation_id}] Submitting once", "info")
+                            ok, reason = await ctrl.submit()
+                            if not ok:
+                                raise RuntimeError(f"Submit failed: {reason}")
+                            self._log(f"[{correlation_id}] Submitted", "success")
+                            self._emit_job_action_status(job_id, block, "success", f"{reason}")
+
+                        elif btype == "WAIT_OUTPUT":
+                            self._log(f"[{correlation_id}] Waiting for generation (timeout {gen_timeout}ms)", "info")
+                            self._emit_job_action_status(job_id, block, "running", f"Waiting generation timeout {gen_timeout}ms")
+                            status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout)
+                            if status == "failed":
+                                raise RuntimeError(f"Generation timeout or failed: {data.get('error')}")
+                            new_src = data.get("new_src")
+                            if not new_src:
+                                raise RuntimeError("New output src not found after generation")
+                            self._log(f"[{correlation_id}] New output detected: {new_src[:80]}...", "success")
+                            self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}...")
+
+                        elif btype == "DOWNLOAD":
+                            if not new_src:
+                                raise RuntimeError("No new_src from previous block")
+                            self._log(f"[{correlation_id}] Downloading highest-quality image", "info")
+                            success, fb, ct = await ctrl.download_image(new_src)
+                            if not success:
+                                raise RuntimeError(f"Download failed: {ct}")
+                            if len(fb) == 0:
+                                raise RuntimeError("Downloaded empty file")
+                            file_bytes = fb
+                            ctype = ct
+                            self._emit_job_action_status(job_id, block, "success", f"Downloaded {len(fb)} bytes {ct}")
+
+                        elif btype == "VALIDATE":
+                            if not file_bytes:
+                                raise RuntimeError("No file_bytes from download")
+                            try:
+                                from PIL import Image
+                                import io
+                                im = Image.open(io.BytesIO(file_bytes))
+                                fmt = im.format or "PNG"
+                                ext = f".{fmt.lower()}" if fmt else ".png"
+                                if im.width == 0 or im.height == 0:
+                                    raise ValueError("Zero dimension image")
+                                self._emit_job_action_status(job_id, block, "success", f"Valid {fmt} {im.width}x{im.height}")
+                            except Exception as e:
+                                # Fallback ext from URL
+                                if ".png" in (new_src or ""):
+                                    ext = ".png"
+                                elif ".jpg" in (new_src or "") or ".jpeg" in (new_src or ""):
+                                    ext = ".jpg"
+                                elif ".webp" in (new_src or ""):
+                                    ext = ".webp"
+                                else:
+                                    ext = ".png"
+                                # If PIL failed but we have bytes, still consider valid for now, but log
+                                if len(file_bytes) < 100:
+                                    raise RuntimeError(f"Validation failed: {e}")
+                                self._emit_job_action_status(job_id, block, "success", f"Validation fallback ext {ext}, bytes {len(file_bytes)}")
+
+                        elif btype == "SAVE":
+                            if not file_bytes:
+                                raise RuntimeError("No file_bytes to save")
+                            from pathlib import Path
+                            source_path = Path(img.absolute_path)
+                            if not ext:
+                                ext = ".png"
+                            output_path = get_output_path(
+                                source_path,
+                                suffix=suffix,
+                                preserve_format=preserve_format,
+                                overwrite=overwrite,
+                                downloaded_ext=ext,
+                                unique_template=unique_tpl
+                            )
+                            atomic_write_bytes(source_path.parent, output_path, file_bytes)
+                            img.output_path = str(output_path)
+                            self._log(f"[{correlation_id}] ✅ Saved to {output_path} ({len(file_bytes)} bytes)", "success")
+                            try:
+                                self.highlight_rect.emit(json.dumps({"x": 100, "y": 100, "width": 200, "height": 200, "duration": highlight_duration, "label": f"Saved {output_path.name}"}))
+                            except Exception:
+                                pass
+                            self._emit_job_action_status(job_id, block, "success", f"Saved {output_path.name} {len(file_bytes)} bytes")
+
+                        elif btype == "ADVANCE":
+                            img.status = ImageStatus.COMPLETED.value
+                            img.error = None
+                            self.state.recalculate_progress()
+                            self._save_arena()
+                            self._emit_job_action_status(job_id, block, "success", f"Advanced to completed")
+
                         else:
-                            ext = ".png"
+                            # Unknown block type — skip with warning
+                            self._log(f"[{correlation_id}] Unknown block type {btype}, skipping", "warn")
+                            self._emit_job_action_status(job_id, block, "skipped", f"Unknown type {btype}")
 
-                    from pathlib import Path
-                    source_path = Path(img.absolute_path)
-                    output_path = get_output_path(
-                        source_path,
-                        suffix=suffix,
-                        preserve_format=preserve_format,
-                        overwrite=overwrite,
-                        downloaded_ext=ext,
-                        unique_template=unique_tpl
-                    )
-                    atomic_write_bytes(source_path.parent, output_path, file_bytes)
-                    img.output_path = str(output_path)
-                    img.status = ImageStatus.COMPLETED.value
-                    img.error = None
-                    self._log(f"[{correlation_id}] ✅ Saved to {output_path} ({len(file_bytes)} bytes)", "success")
+                    except Exception as e:
+                        job_failed = True
+                        job_error = str(e)
+                        self._log(f"[{correlation_id}] ❌ Block {block.display_name} failed: {e}", "error")
+                        self._emit_job_action_status(job_id, block, "failed", f"{e}")
+                        # If required block fails, break job
+                        if getattr(block, 'required', False):
+                            self._log(f"[{correlation_id}] Required block {btype} failed, aborting job", "error")
+                            break
+                        else:
+                            # For non-required, continue but log
+                            self._log(f"[{correlation_id}] Non-required block {btype} failed, continuing", "warn")
+                            continue
+
+                # End of blocks loop
+                if job_failed:
+                    img.status = ImageStatus.FAILED.value
+                    img.error = job_error
+                    self._log(f"[{correlation_id}] ❌ Failed {img.relative_path}: {job_error}", "error")
                     try:
-                        self.highlight_rect.emit(json.dumps({"x": 100, "y": 100, "width": 200, "height": 200, "duration": highlight_duration, "label": f"Saved {output_path.name}"}))
+                        self.job_finished.emit(job_id, json.dumps({"status": "failed", "message": job_error, "output_path": img.output_path or ""}, ensure_ascii=False))
+                    except Exception:
+                        pass
+                else:
+                    if img.status != ImageStatus.COMPLETED.value:
+                        img.status = ImageStatus.COMPLETED.value
+                    self._log(f"[{correlation_id}] ✅ Job completed {img.relative_path}", "success")
+                    try:
+                        self.job_finished.emit(job_id, json.dumps({"status": "completed", "message": f"Saved to {img.output_path}", "output_path": img.output_path or ""}, ensure_ascii=False))
                     except Exception:
                         pass
 
-                except Exception as e:
-                    img.status = ImageStatus.FAILED.value
-                    img.error = str(e)
-                    self._log(f"[{correlation_id}] ❌ Failed {img.relative_path}: {e}", "error")
-
-                finally:
-                    self.state.recalculate_progress()
-                    self._save_arena()
-                    await asyncio.sleep(1)
+                self.state.recalculate_progress()
+                self._save_arena()
+                await asyncio.sleep(1)
 
             self._log("🏁 Batch complete", "success")
             self._run_state = "idle"
@@ -998,6 +1303,8 @@ class Bridge(QObject):
             traceback.print_exc()
             self._run_state = "idle"
             self._emit_arena_state()
+
+
 
 
     # ---- undo system ----
@@ -1099,6 +1406,14 @@ class Bridge(QObject):
                     if "supported_types" in value:
                         self.state.folder["supported_types"] = value["supported_types"]
                     self._save_arena()
+            elif kind == "action_blocks":
+                if isinstance(value, list):
+                    try:
+                        self.config.set_state(action_blocks=value)
+                        self.action_blocks_updated.emit(json.dumps(value, ensure_ascii=False))
+                        self._log(f"↩ Remember action_blocks ({len(value)} blocks)", "info")
+                    except Exception as e:
+                        log.warning(f"remember action_blocks failed: {e}")
             elif kind == "arena":
                 # full arena snapshot
                 if isinstance(value, dict):
@@ -1186,6 +1501,22 @@ class Bridge(QObject):
                         self.state.settings.supported_types = value["supported_types"]
                     self._save_arena()
                     self._log(f"↩ Undo settings", "info")
+            elif kind == "action_blocks":
+                if isinstance(value, list):
+                    try:
+                        self.config.set_state(action_blocks=value)
+                        self.action_blocks_updated.emit(json.dumps(value, ensure_ascii=False))
+                        self._log(f"↩ Remember action_blocks ({len(value)} blocks)", "info")
+                    except Exception as e:
+                        log.warning(f"remember action_blocks failed: {e}")
+            elif kind == "action_blocks":
+                if isinstance(value, list):
+                    try:
+                        self.config.set_state(action_blocks=value)
+                        self.action_blocks_updated.emit(json.dumps(value, ensure_ascii=False))
+                        self._log(f"↩ Undo action_blocks ({len(value)} blocks)", "info")
+                    except Exception as e:
+                        log.warning(f"apply action_blocks undo failed: {e}")
             elif kind == "arena":
                 # full snapshot
                 if isinstance(value, dict):
@@ -1643,6 +1974,14 @@ class Bridge(QObject):
                 "user_data_dir": self.config.get_state("cdp_user_data_dir", "C:\\arena-images-chrome"),
                 "extra_args": self.config.get_state("cdp_extra_args", ""),
             }
+            # Include action blocks in preset
+            try:
+                action_blocks = self.config.get_state("action_blocks", None)
+                if action_blocks is None:
+                    from app.core.action_blocks import default_stack, stack_to_dicts
+                    action_blocks = stack_to_dicts(default_stack())
+            except Exception:
+                action_blocks = []
             doc = {
                 "name": name,
                 "urls": js_state.get("urls", []),
@@ -1651,6 +1990,7 @@ class Bridge(QObject):
                 "settings": js_state.get("settings", {}),
                 "images": js_state.get("images", []),
                 "cdp": cdp_cfg,
+                "action_blocks": action_blocks,
                 "updated_at": datetime.utcnow().isoformat() + "Z",
                 "app_version": "arena-1.0",
             }
@@ -1704,6 +2044,13 @@ class Bridge(QObject):
                         self.cdp.set_host_port(host, int(port))
                     except Exception:
                         pass
+            if "action_blocks" in doc and isinstance(doc["action_blocks"], list):
+                try:
+                    self.config.set_state(action_blocks=doc["action_blocks"])
+                    self.action_blocks_updated.emit(json.dumps(doc["action_blocks"], ensure_ascii=False))
+                    self._log(f"Restored {len(doc['action_blocks'])} action blocks from preset", "info")
+                except Exception as e:
+                    log.warning(f"Failed to restore action blocks from preset: {e}")
             self.state.recalculate_progress()
             self._save_arena()
             self._log(f"Arena preset loaded: {name}", "success")
