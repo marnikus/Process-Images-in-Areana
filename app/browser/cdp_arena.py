@@ -878,6 +878,38 @@ class CDPArenaController:
         except Exception as e:
             log.debug(f"clear_highlights failed: {e}")
 
+    async def show_watcher_overlay(self, message: str = "wait for finish generation", kind: str = "generation") -> bool:
+        """Show watcher overlay rectangle on left center page with message.
+        kind: 'generation' or 'captcha' — different colors.
+        Used by watcher window that passively rechecks every x ms.
+        """
+        try:
+            from .dom_highlight import build_watcher_overlay_js
+            js = build_watcher_overlay_js(message=message, kind=kind)
+            raw = await self.cdp.evaluate(js)
+            if raw:
+                try:
+                    import json as _json
+                    data = _json.loads(raw) if isinstance(raw, str) else raw
+                    return bool(data.get("shown")) if isinstance(data, dict) else True
+                except Exception:
+                    return True
+            return False
+        except Exception as e:
+            log.debug(f"show_watcher_overlay failed: {e}")
+            return False
+
+    async def hide_watcher_overlay(self) -> bool:
+        """Hide watcher overlay rectangle."""
+        try:
+            from .dom_highlight import build_watcher_clear_js
+            js = build_watcher_clear_js()
+            await self.cdp.evaluate(js)
+            return True
+        except Exception as e:
+            log.debug(f"hide_watcher_overlay failed: {e}")
+            return False
+
     async def is_page_ready(self) -> Tuple[bool, List[str]]:
         """Check readiness via JS."""
         js = """

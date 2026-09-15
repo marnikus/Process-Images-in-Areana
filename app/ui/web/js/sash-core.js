@@ -17,6 +17,7 @@
     { id: 'prompt',   title: 'Prompt Editor' },
     { id: 'run',      title: 'Run Controls' },
     { id: 'progress', title: 'Progress' },
+    { id: 'watcher',  title: 'Watcher — Generation & Captcha' },
     { id: 'log',      title: 'Activity Log' },
     { id: 'settings', title: 'Settings' },
     { id: 'browser',  title: 'Browser Preview' },
@@ -56,7 +57,7 @@
       split('row', [
         leaf('queue'),
         split('col', [leaf('action_blocks'), leaf('block_config')], [55, 45]),
-        split('col', [leaf('browser'), leaf('arena_presets'), leaf('progress')], [40, 35, 25]),
+        split('col', [leaf('browser'), leaf('arena_presets'), leaf('progress'), leaf('watcher')], [30, 25, 20, 25]),
       ], [45, 35, 20]),
       leaf('log'),
     ], [38, 40, 22]);
@@ -65,16 +66,16 @@
   function layoutA() {
     return split('col', [
       leaf('url_list'), leaf('folder'), leaf('queue'),
-      leaf('prompt'), leaf('run'), leaf('progress'),
+      leaf('prompt'), leaf('run'), leaf('progress'), leaf('watcher'),
       leaf('log'), leaf('settings'), leaf('browser'),
       leaf('action_blocks'), leaf('block_config'), leaf('arena_presets'),
-    ], [10, 6, 16, 12, 8, 8, 8, 6, 6, 6, 7, 7]);
+    ], [9, 6, 14, 11, 7, 7, 7, 7, 6, 6, 7, 7]);
   }
 
   function layoutB() {
     return split('row', [
       split('col', [leaf('url_list'), leaf('folder'), leaf('queue'), leaf('action_blocks')], [25, 15, 35, 25]),
-      split('col', [leaf('prompt'), leaf('block_config'), leaf('progress'), leaf('log')], [30, 25, 20, 25]),
+      split('col', [leaf('prompt'), leaf('block_config'), leaf('progress'), leaf('watcher'), leaf('log')], [25, 20, 15, 20, 20]),
       split('col', [leaf('browser'), leaf('settings'), leaf('arena_presets'), leaf('run')], [40, 20, 20, 20]),
     ], [35, 35, 30]);
   }
@@ -87,7 +88,7 @@
       ], [45, 55]),
       split('row', [
         leaf('queue'),
-        split('col', [leaf('folder'), leaf('run'), leaf('settings'), leaf('progress'), leaf('arena_presets')], [20, 15, 25, 20, 20]),
+        split('col', [leaf('folder'), leaf('run'), leaf('settings'), leaf('progress'), leaf('watcher'), leaf('arena_presets')], [15, 15, 20, 15, 15, 20]),
       ], [60, 40]),
       leaf('log'),
     ], [35, 48, 17]);

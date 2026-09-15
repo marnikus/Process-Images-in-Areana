@@ -76,6 +76,8 @@ class Bridge(QObject):
     job_action_status = Signal(str, str, str)  # jobId, blockId, statusJson
     job_started = Signal(str, str)  # jobId, imagePath
     job_finished = Signal(str, str)  # jobId, resultJson
+    watcher_status = Signal(str)  # JSON status
+    watcher_log = Signal(str, str)  # msg, level
 
     def __init__(self, config_manager: ConfigManager, state_path: Path, cdp_client=None, parent=None):
         super().__init__(parent)
@@ -115,6 +117,54 @@ class Bridge(QObject):
                 self.cdp.error.connect(lambda e: self._on_cdp_error(e))
             except Exception:
                 pass
+
+        # Watcher service — passive recheck every x ms for generating icon or captcha
+        self._watcher = None
+        self._watcher_loop_task = None
+        try:
+            from app.services.watcher import WatcherService, WatcherConfig
+            cfg = WatcherConfig(
+                enabled=bool(self.config.get_state("watcher_enabled", False)),
+                check_interval_ms=int(self.config.get_state("watcher_interval_ms", 2000)),
+                captcha_timeout_sec=int(self.config.get_state("watcher_captcha_timeout_sec", 300)),
+                generation_timeout_sec=int(self.config.get_state("watcher_generation_timeout_sec", 600)),
+                auto_pause_jobs=bool(self.config.get_state("watcher_auto_pause", True)),
+            )
+            self._watcher = WatcherService(
+                config=cfg,
+                cdp_controller_getter=lambda: self._get_watcher_cdp_controller(),
+                job_runner_getter=lambda: self,
+                logger=lambda msg, level="info": self._log(f"[Watcher] {msg}", level)
+            )
+            # Callback to emit watcher_status to UI
+            def _watcher_cb(payload):
+                try:
+                    import json as _json
+                    self.watcher_status.emit(_json.dumps(payload, ensure_ascii=False))
+                except Exception:
+                    pass
+            # Use sync callback that will be called from async loop — need to handle via signal
+            # We'll wrap to emit via log as well
+            self._watcher.add_callback(lambda p: self._on_watcher_state(p))
+            # Auto-start if enabled
+            if cfg.enabled:
+                # Start will be called when event loop is ready — schedule
+                try:
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        self._watcher.start()
+                    else:
+                        # Will start on first get_watcher_config call or explicit start
+                        pass
+                except Exception:
+                    pass
+        except Exception as e:
+            try:
+                self._log(f"Watcher init failed: {e}", "warn")
+            except Exception:
+                pass
+            self._watcher = None
 
     def _on_cdp_error(self, err_msg: str):
         try:
@@ -1132,6 +1182,197 @@ class Bridge(QObject):
         self._log("✖ Cancel requested — stopping", "error")
         self._emit_arena_state()
         return json.dumps({"ok": True})
+
+    # ---- watcher win — passive recheck every x ms for generating icon or captcha ----
+    def _get_watcher_cdp_controller(self):
+        """Get CDP controller for watcher — creates CDPArenaController from current cdp client."""
+        try:
+            if not self.cdp or not getattr(self.cdp, 'is_connected', False):
+                return None
+            from app.browser.cdp_arena import CDPArenaController
+            return CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+        except Exception:
+            return None
+
+    def _on_watcher_state(self, payload: dict):
+        """Callback from watcher service — emit to UI."""
+        try:
+            import json as _json
+            self.watcher_status.emit(_json.dumps(payload, ensure_ascii=False))
+            # Also log important transitions
+            status = payload.get("status","")
+            if status in ("waiting_captcha", "waiting_generation"):
+                kind = payload.get("waiting_kind","")
+                dur = payload.get("waiting_duration",0)
+                if dur % 10 == 0 or dur < 5:  # log every 10s and first 5s
+                    self._log(f"👁️ Watcher {status}: {kind} for {dur}s", "warn" if "captcha" in status else "info")
+        except Exception as e:
+            try:
+                self._log(f"Watcher state emit failed: {e}", "warn")
+            except Exception:
+                pass
+
+    @Slot(result=str)
+    def get_watcher_config(self):
+        try:
+            if self._watcher:
+                # Ensure task is running if enabled and loop now available
+                try:
+                    self._watcher.ensure_task()
+                except Exception:
+                    pass
+                cfg = self._watcher.get_config()
+            else:
+                cfg = {
+                    "enabled": bool(self.config.get_state("watcher_enabled", False)),
+                    "check_interval_ms": int(self.config.get_state("watcher_interval_ms", 2000)),
+                    "captcha_timeout_sec": int(self.config.get_state("watcher_captcha_timeout_sec", 300)),
+                    "generation_timeout_sec": int(self.config.get_state("watcher_generation_timeout_sec", 600)),
+                    "auto_pause_jobs": bool(self.config.get_state("watcher_auto_pause", True)),
+                }
+            return json.dumps(cfg, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    @Slot(str, result=str)
+    def set_watcher_config(self, cfg_json: str):
+        try:
+            import json as _json
+            data = _json.loads(cfg_json or "{}")
+            # Validate
+            enabled = bool(data.get("enabled", False))
+            interval = int(data.get("check_interval_ms", 2000))
+            interval = max(500, min(interval, 30000))  # 0.5s to 30s
+            captcha_to = int(data.get("captcha_timeout_sec", 300))
+            captcha_to = max(10, min(captcha_to, 3600))
+            gen_to = int(data.get("generation_timeout_sec", 600))
+            gen_to = max(30, min(gen_to, 3600))
+            auto_pause = bool(data.get("auto_pause_jobs", True))
+
+            # Persist to session
+            self.config.set_state(
+                watcher_enabled=enabled,
+                watcher_interval_ms=interval,
+                watcher_captcha_timeout_sec=captcha_to,
+                watcher_generation_timeout_sec=gen_to,
+                watcher_auto_pause=auto_pause,
+            )
+
+            # Update watcher service
+            if self._watcher:
+                self._watcher.update_config(
+                    enabled=enabled,
+                    check_interval_ms=interval,
+                    captcha_timeout_sec=captcha_to,
+                    generation_timeout_sec=gen_to,
+                    auto_pause_jobs=auto_pause,
+                )
+            else:
+                # Create watcher if not exists and enabled
+                if enabled:
+                    from app.services.watcher import WatcherService, WatcherConfig
+                    cfg_obj = WatcherConfig(
+                        enabled=enabled,
+                        check_interval_ms=interval,
+                        captcha_timeout_sec=captcha_to,
+                        generation_timeout_sec=gen_to,
+                        auto_pause_jobs=auto_pause,
+                    )
+                    self._watcher = WatcherService(
+                        config=cfg_obj,
+                        cdp_controller_getter=lambda: self._get_watcher_cdp_controller(),
+                        job_runner_getter=lambda: self,
+                        logger=lambda msg, level="info": self._log(f"[Watcher] {msg}", level)
+                    )
+                    self._watcher.add_callback(lambda p: self._on_watcher_state(p))
+                    self._watcher.start()
+
+            self._log(f"Watcher config saved: enabled={enabled} interval={interval}ms captcha_to={captcha_to}s gen_to={gen_to}s", "success")
+            return json.dumps({"ok": True, "config": {
+                "enabled": enabled,
+                "check_interval_ms": interval,
+                "captcha_timeout_sec": captcha_to,
+                "generation_timeout_sec": gen_to,
+                "auto_pause_jobs": auto_pause,
+            }}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def start_watcher(self):
+        try:
+            if not self._watcher:
+                from app.services.watcher import WatcherService, WatcherConfig
+                cfg = WatcherConfig(
+                    enabled=True,
+                    check_interval_ms=int(self.config.get_state("watcher_interval_ms", 2000)),
+                    captcha_timeout_sec=int(self.config.get_state("watcher_captcha_timeout_sec", 300)),
+                    generation_timeout_sec=int(self.config.get_state("watcher_generation_timeout_sec", 600)),
+                    auto_pause_jobs=bool(self.config.get_state("watcher_auto_pause", True)),
+                )
+                self._watcher = WatcherService(
+                    config=cfg,
+                    cdp_controller_getter=lambda: self._get_watcher_cdp_controller(),
+                    job_runner_getter=lambda: self,
+                    logger=lambda msg, level="info": self._log(f"[Watcher] {msg}", level)
+                )
+                self._watcher.add_callback(lambda p: self._on_watcher_state(p))
+            self._watcher.update_config(enabled=True)
+            self.config.set_state(watcher_enabled=True)
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def stop_watcher(self):
+        try:
+            if self._watcher:
+                self._watcher.update_config(enabled=False)
+            self.config.set_state(watcher_enabled=False)
+            self._log("Watcher stopped by user", "warn")
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_watcher_state(self):
+        try:
+            if not self._watcher:
+                return json.dumps({"status": "idle", "enabled": False}, ensure_ascii=False)
+            state = self._watcher.get_state()
+            cfg = self._watcher.get_config()
+            return json.dumps({**state, "config": cfg}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    @Slot(result=str)
+    def clear_watcher_overlay(self):
+        try:
+            if self._watcher:
+                import asyncio
+                # Schedule clear
+                cdp = self._get_watcher_cdp_controller()
+                if cdp:
+                    self._schedule_coro(cdp.hide_watcher_overlay())
+                self._schedule_coro(self._watcher.force_clear())
+            else:
+                cdp = self._get_watcher_cdp_controller()
+                if cdp:
+                    self._schedule_coro(cdp.hide_watcher_overlay())
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def check_watcher_now(self):
+        try:
+            if not self._watcher:
+                return json.dumps({"ok": False, "error": "watcher not initialized"})
+            # Schedule immediate check
+            self._schedule_coro(self._watcher.check_once())
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
 
     @Slot(str, result=str)
     def highlight_image(self, img_id: str):

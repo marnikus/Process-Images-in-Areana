@@ -162,6 +162,84 @@
       <div style="margin-top:8px; font-size:11px; color:var(--text-muted);">Skipped: <span id="progSkipped">0</span></div>
     </div>
 
+    <!-- WATCHER — passive recheck every x ms for generating icon or captcha -->
+    <div class="panel" id="winWatcher" data-window="watcher">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">visibility</span> Watcher — Generation & Captcha <span class="spacer"></span><span id="watcherStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">idle</span></h3>
+
+      <div style="display:flex; flex-direction:column; gap:10px; padding:4px;">
+
+        <!-- Enable + interval -->
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600;">
+            <input id="watcherEnabled" type="checkbox"> Enable Watcher
+          </label>
+          <span class="spacer"></span>
+          <button id="watcherStartBtn" class="btn-small btn-primary" title="Start watcher"><span class="material-icons" style="font-size:14px;">play_arrow</span> Start</button>
+          <button id="watcherStopBtn" class="btn-small" title="Stop watcher"><span class="material-icons" style="font-size:14px;">stop</span> Stop</button>
+          <button id="watcherCheckNowBtn" class="btn-small" title="Check now"><span class="material-icons" style="font-size:14px;">search</span> Check Now</button>
+          <button id="watcherClearOverlayBtn" class="btn-small" title="Clear overlay rectangle"><span class="material-icons" style="font-size:14px;">clear</span> Clear Overlay</button>
+        </div>
+
+        <!-- Settings: interval, timeouts -->
+        <div style="border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
+          <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; text-transform:uppercase;">Watcher Settings (user configurable, stored in session.json)</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+            <div class="settings-group">
+              <label>Check interval (ms) — every x ms</label>
+              <input id="watcherIntervalMs" type="number" min="500" max="30000" step="100" placeholder="2000">
+              <div style="font-size:10px; color:var(--text-muted);">How often to recheck page (500-30000 ms)</div>
+            </div>
+            <div class="settings-group">
+              <label>Auto-pause jobs</label>
+              <select id="watcherAutoPause"><option value="true">Yes — pause run when detected</option><option value="false">No — only show overlay</option></select>
+            </div>
+            <div class="settings-group">
+              <label>Captcha timeout (seconds) — time to solve</label>
+              <input id="watcherCaptchaTimeout" type="number" min="10" max="3600" placeholder="300">
+              <div style="font-size:10px; color:var(--text-muted);">Max wait for user to solve captcha (10-3600s)</div>
+            </div>
+            <div class="settings-group">
+              <label>Generation timeout (seconds)</label>
+              <input id="watcherGenerationTimeout" type="number" min="30" max="3600" placeholder="600">
+              <div style="font-size:10px; color:var(--text-muted);">Max wait for generation to finish (30-3600s)</div>
+            </div>
+          </div>
+          <div style="margin-top:8px; display:flex; gap:6px;">
+            <button id="watcherSaveBtn" class="btn-small btn-primary"><span class="material-icons" style="font-size:14px;">save</span> Save Settings</button>
+            <span style="font-size:11px; color:var(--text-muted); align-self:center;">Saved to config/session.json — auto restored on launch, position & size also storable on closing</span>
+          </div>
+        </div>
+
+        <!-- Current status -->
+        <div style="border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-input);">
+          <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; text-transform:uppercase;">Current Status</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; font-size:12px;">
+            <div>Status: <b id="watcherCurrentStatus">idle</b></div>
+            <div>Last check: <span id="watcherLastCheck">never</span></div>
+            <div>Checks: <b id="watcherChecksCount">0</b></div>
+            <div>Waiting: <span id="watcherWaitingInfo">—</span></div>
+            <div>Gen waits: <b id="watcherGenWaits">0</b></div>
+            <div>Captcha waits: <b id="watcherCaptchaWaits">0</b></div>
+          </div>
+          <div style="margin-top:8px; font-size:11px;">
+            <div>Last generation: <code id="watcherLastGen" style="font-size:10px; word-break:break-all;">—</code></div>
+            <div>Captcha detected: <b id="watcherLastCaptcha">false</b></div>
+          </div>
+        </div>
+
+        <!-- How it works -->
+        <div style="font-size:11px; color:var(--text-muted); border:1px dashed var(--border); border-radius:6px; padding:8px;">
+          <b>How watcher works:</b><br>
+          • Passively rechecks every <b>x ms</b> if page has awaiting icon (<code>div.animate-spin</code>) as it generating or detects captcha (<code>div[role=dialog] Security Verification</code> + <code>iframe[title=reCAPTCHA]</code>)<br>
+          • If generating: draws rectangle on <b>left center</b> page with msg <code>wait for finish generation</code>, pauses job circle, sleeps and waits until spinner disappears or timeout<br>
+          • If captcha: draws rectangle <code>wait for user. Captcha</code> on left center, pauses jobs, waits for user to solve manually (never bypass), respects timeout setting from this win<br>
+          • Overlay is large, left 2%, top 50% centered, blue for generation, red for captcha, with spinner and timestamp<br>
+          • All settings storable in preset JSON and session, window position/size auto saved on closing
+        </div>
+
+      </div>
+    </div>
+
     <!-- ACTIVITY LOG -->
     <div class="panel log-panel" id="winLog" data-window="log">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">terminal</span> Activity Log <span class="spacer"></span><button id="clearLogBtn" class="btn-small">Clear</button></h3>
@@ -467,6 +545,7 @@
 <script src="js/panels/cdp.js"></script>
 <script src="js/panels/arena-presets.js"></script>
 <script src="js/panels/action-blocks.js"></script>
+<script src="js/panels/watcher.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app.js"></script>
 </body>

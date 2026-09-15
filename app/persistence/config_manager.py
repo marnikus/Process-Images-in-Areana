@@ -20,6 +20,11 @@ DEFAULT_SESSION = {
     "cdp_extra_args": "",
     "action_blocks": None,  # will be default stack if None
     "action_blocks_version": 1,
+    "watcher_enabled": False,
+    "watcher_interval_ms": 2000,
+    "watcher_captcha_timeout_sec": 300,
+    "watcher_generation_timeout_sec": 600,
+    "watcher_auto_pause": True,
 }
 
 DEFAULT_WINDOW_PRESETS = {"window_presets": {}}

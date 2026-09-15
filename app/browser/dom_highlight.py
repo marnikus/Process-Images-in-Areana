@@ -457,3 +457,130 @@ def build_highlight_rect_js(x: float, y: float, w: float, h: float, color: str =
   }} catch(e) {{ return JSON.stringify({{found:false}}); }}
 }})()
 """
+
+# ── watcher overlay ────────────────────────────────────────────────
+WATCHER_ATTR = "data-arena-watcher-overlay"
+
+def build_watcher_overlay_js(message: str = "wait for finish generation", kind: str = "generation") -> str:
+    """Build JS that shows a large rectangle msg on left center page for watcher.
+    kind: 'generation' -> blue/orange, 'captcha' -> red/yellow
+    Message is displayed prominently, persists until cleared.
+    """
+    msg_json = json.dumps(message or "wait")
+    kind_json = json.dumps(kind or "generation")
+    return f"""
+;(function(){{
+  try {{
+    var ATTR = "{WATCHER_ATTR}";
+    var msg = {msg_json};
+    var kind = {kind_json};
+    // Remove existing watcher overlays
+    var olds = document.querySelectorAll('['+ATTR+']');
+    for (var i=0;i<olds.length;i++) {{ if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]); }}
+
+    var isCaptcha = (kind === 'captcha' || msg.toLowerCase().indexOf('captcha') >=0);
+    var bg = isCaptcha ? 'rgba(180, 20, 20, 0.92)' : 'rgba(20, 80, 180, 0.92)';
+    var borderColor = isCaptcha ? '#ff4444' : '#44aaff';
+    var icon = isCaptcha ? '🛡️' : '⏳';
+
+    var overlay = document.createElement('div');
+    overlay.setAttribute(ATTR, kind);
+    overlay.style.cssText = [
+      'position:fixed',
+      'left:2%',
+      'top:50%',
+      'transform:translateY(-50%)',
+      'width:36%',
+      'min-width:320px',
+      'max-width:520px',
+      'min-height:140px',
+      'background:'+bg,
+      'border:3px solid '+borderColor,
+      'border-radius:12px',
+      'box-shadow:0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1) inset',
+      'z-index:2147483646',
+      'display:flex',
+      'flex-direction:column',
+      'align-items:center',
+      'justify-content:center',
+      'padding:20px 24px',
+      'font-family:system-ui, -apple-system, sans-serif',
+      'color:#fff',
+      'pointer-events:none',
+      'animation: arenaWatcherPulse 1.5s ease-in-out infinite'
+    ].join(';');
+
+    // Add keyframes if not exists
+    if (!document.getElementById('arena-watcher-style')) {{
+      var st = document.createElement('style');
+      st.id = 'arena-watcher-style';
+      st.textContent = `
+        @keyframes arenaWatcherPulse {{
+          0%, 100% {{ transform: translateY(-50%) scale(1); box-shadow: 0 8px 32px rgba(0,0,0,0.6); }}
+          50% {{ transform: translateY(-50%) scale(1.02); box-shadow: 0 12px 40px rgba(0,0,0,0.7); }}
+        }}
+        @keyframes arenaWatcherSpin {{
+          0% {{ transform: rotate(0deg); }}
+          100% {{ transform: rotate(360deg); }}
+        }}
+      `;
+      document.head.appendChild(st);
+    }}
+
+    var iconEl = document.createElement('div');
+    iconEl.textContent = icon;
+    iconEl.style.cssText = 'font-size:48px; margin-bottom:12px; line-height:1;';
+
+    var titleEl = document.createElement('div');
+    titleEl.textContent = msg;
+    titleEl.style.cssText = 'font-size:18px; font-weight:700; text-align:center; line-height:1.3; letter-spacing:0.3px; text-transform:uppercase;';
+
+    var subEl = document.createElement('div');
+    subEl.textContent = isCaptcha ? 'Please solve captcha manually — watcher is waiting' : 'Generation in progress — watcher is waiting';
+    subEl.style.cssText = 'font-size:12px; opacity:0.9; margin-top:10px; text-align:center; font-weight:400;';
+
+    var spinner = document.createElement('div');
+    spinner.style.cssText = 'width:28px; height:28px; border:3px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; margin-top:14px; animation: arenaWatcherSpin 1s linear infinite;';
+
+    var timeEl = document.createElement('div');
+    timeEl.id = 'arena-watcher-time';
+    timeEl.textContent = new Date().toLocaleTimeString();
+    timeEl.style.cssText = 'font-size:10px; opacity:0.7; margin-top:8px; font-family:monospace;';
+
+    overlay.appendChild(iconEl);
+    overlay.appendChild(titleEl);
+    overlay.appendChild(subEl);
+    overlay.appendChild(spinner);
+    overlay.appendChild(timeEl);
+
+    (document.body || document.documentElement).appendChild(overlay);
+
+    // Update time every second
+    var interval = setInterval(function(){{
+      var te = document.getElementById('arena-watcher-time');
+      if (te) te.textContent = new Date().toLocaleTimeString() + ' — watching';
+      else clearInterval(interval);
+    }}, 1000);
+
+    return JSON.stringify({{shown: true, kind: kind, message: msg}});
+  }} catch(e) {{
+    return JSON.stringify({{shown: false, error: String(e && e.message || e)}});
+  }}
+}})()
+"""
+
+def build_watcher_clear_js() -> str:
+    """Clear watcher overlay."""
+    return f"""
+;(function(){{
+  try {{
+    var ATTR = "{WATCHER_ATTR}";
+    var olds = document.querySelectorAll('['+ATTR+']');
+    var count = olds.length;
+    for (var i=0;i<olds.length;i++) {{ if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]); }}
+    return JSON.stringify({{cleared: count}});
+  }} catch(e) {{
+    return JSON.stringify({{cleared: 0, error: String(e && e.message || e)}});
+  }}
+}})()
+"""

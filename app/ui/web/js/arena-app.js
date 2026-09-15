@@ -36,6 +36,7 @@ function initApp() {
   if (typeof PromptEditor !== 'undefined') PromptEditor.init();
   if (typeof RunControls !== 'undefined') RunControls.init();
   if (typeof ProgressPanel !== 'undefined') ProgressPanel.init();
+  if (typeof WatcherPanel !== 'undefined') WatcherPanel.init();
   if (typeof SettingsPanel !== 'undefined') SettingsPanel.init();
   if (typeof BrowserPreview !== 'undefined') BrowserPreview.init();
   if (typeof HighlightOverlay !== 'undefined') HighlightOverlay.init();
@@ -268,6 +269,17 @@ function setupBridgeListeners() {
   if (b.job_finished) {
     b.job_finished.connect((jobId, resultJson) => {
       if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.onJobFinished(jobId, resultJson);
+    });
+  }
+  // Watcher — generation & captcha passive monitoring
+  if (b.watcher_status) {
+    b.watcher_status.connect((payload) => {
+      if (typeof WatcherPanel !== 'undefined') WatcherPanel.onStatusUpdate(payload);
+    });
+  }
+  if (b.watcher_log) {
+    b.watcher_log.connect((msg, level) => {
+      if (typeof LogConsole !== 'undefined') LogConsole.log(msg, level);
     });
   }
 }
