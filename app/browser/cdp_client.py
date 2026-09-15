@@ -329,9 +329,17 @@ class CDPClient(QObject):
         candidates = uniq_candidates
 
         last_exc = None
+        # Check websockets availability upfront with clear error
+        try:
+            import websockets
+        except ImportError as e:
+            err = f"❌ Missing dependency 'websockets' — required for Chrome CDP connection. Install with: pip install websockets aiohttp\nOriginal error: {e}\nCurrent Python: {__import__('sys').executable}"
+            log.error(err)
+            self.error.emit(err)
+            return False
+
         for cand in candidates:
             try:
-                import websockets
                 # ping_interval=None avoids Chrome closing due to ping timeout
                 self._ws = await websockets.connect(
                     cand,
@@ -353,6 +361,12 @@ class CDPClient(QObject):
                 log.info(f"CDP connected: {cand[:120]}")
                 self.connected.emit()
                 return True
+            except ImportError as e:
+                last_exc = e
+                err = f"Missing websockets: {e} — pip install websockets aiohttp"
+                log.error(err)
+                self.error.emit(err)
+                return False
             except Exception as e:
                 last_exc = e
                 log.warning(f"CDP connect try {cand[:120]} failed: {e}")
@@ -364,6 +378,9 @@ class CDPClient(QObject):
                     self._ws = None
                 continue
         err = f"Connect failed for {ws_url[:120]} tried {candidates} last={last_exc}"
+        # Add helpful hint if last_exc is ModuleNotFoundError
+        if last_exc and isinstance(last_exc, ModuleNotFoundError):
+            err += "\n💡 Fix: pip install websockets aiohttp — then restart app"
         log.error(err)
         self.error.emit(err)
         return False
