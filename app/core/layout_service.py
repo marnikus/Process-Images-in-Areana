@@ -9,7 +9,7 @@ from typing import Any
 
 log = logging.getLogger("arena")
 
-WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "log", "settings", "browser", "action_blocks", "block_config", "arena_presets"]
+WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log", "settings", "browser", "action_blocks", "block_config", "arena_presets"]
 WINDOWS = [
     {"id": "url_list", "title": "URL List"},
     {"id": "folder", "title": "Folder Picker"},
@@ -17,6 +17,7 @@ WINDOWS = [
     {"id": "prompt", "title": "Prompt Editor"},
     {"id": "run", "title": "Run Controls"},
     {"id": "progress", "title": "Progress"},
+    {"id": "watcher", "title": "Watcher — Generation & Captcha"},
     {"id": "log", "title": "Activity Log"},
     {"id": "settings", "title": "Settings"},
     {"id": "browser", "title": "Browser Preview"},
@@ -39,7 +40,7 @@ def default_grid_tree() -> dict:
         split("row", [
             leaf("queue"),
             split("col", [leaf("action_blocks"), leaf("block_config")], [55,45]),
-            split("col", [leaf("browser"), leaf("arena_presets"), leaf("progress")], [40,35,25]),
+            split("col", [leaf("browser"), leaf("arena_presets"), leaf("progress"), leaf("watcher")], [30,25,20,25]),
         ], [45,35,20]),
         leaf("log"),
     ], [38,40,22])
