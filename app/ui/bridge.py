@@ -9,6 +9,7 @@ Handles:
 
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,8 @@ from app.core.layout_service import (
 from app.core.models import AppState, UrlRow, ImageItem
 from app.core.persistence import load_state, save_state, save_preset, load_preset
 from app.core.scanner import scan_folder
+from app.core.thumbnails import image_data_url
+from app.core.reveal import reveal_in_file_manager
 from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
 from app.browser.tab_matcher import best_matches
@@ -1021,6 +1024,30 @@ class Bridge(QObject):
                 self._save_arena()
                 self._push_queue_undo()
                 return json.dumps({"ok": True})
+        return json.dumps({"ok": False, "error": "not found"})
+
+    @Slot(str, str, result=str)
+    def get_image_thumbnail(self, img_id: str, kind: str):
+        # Silent on miss: frontend keeps the placeholder (no per-row log spam).
+        for img in self.state.images:
+            if img.id == img_id:
+                src = img.output_path if img.output_path and os.path.isfile(img.output_path) else img.absolute_path
+                url = image_data_url(src, kind)
+                if url:
+                    return json.dumps({"ok": True, "data_url": url})
+                return json.dumps({"ok": False, "error": "unreadable"})
+        return json.dumps({"ok": False, "error": "not found"})
+
+    @Slot(str, result=str)
+    def open_in_explorer(self, img_id: str):
+        for img in self.state.images:
+            if img.id == img_id:
+                src = img.output_path if img.output_path and os.path.isfile(img.output_path) else img.absolute_path
+                ok, err = reveal_in_file_manager(src)
+                if ok:
+                    self._log(f"📁 Opened in Explorer: {src}", "info")
+                    return json.dumps({"ok": True, "path": src})
+                return json.dumps({"ok": False, "error": err})
         return json.dumps({"ok": False, "error": "not found"})
 
     def _push_prompt_undo(self, tmpl: str):

@@ -4,6 +4,8 @@
 const ImageQueue = {
   _filter: 'all',
   _images: [],
+  _thumbCache: {},
+  _thumbLoading: {},
 
   init() {
     const filterSel = document.getElementById('queueFilter');
@@ -35,6 +37,7 @@ const ImageQueue = {
         if (act === 'reset') this.resetOne(id);
         if (act === 'exclude') this.excludeOne(id);
         if (act === 'preview') this.previewOne(id);
+        if (act === 'reveal') this.revealOne(id);
       });
     }
   },
@@ -56,10 +59,13 @@ const ImageQueue = {
     tbody.innerHTML = '';
     filtered.forEach(img => {
       const tr = document.createElement('tr');
-      const thumb = img.absolute_path ? '' : '';
+      const cached = this._thumbCache[img.id];
+      const thumbCell = cached
+        ? `<img class="queue-thumb" src="${cached}" alt="">`
+        : `<img class="queue-thumb" data-thumb-for="${this.esc(img.id)}" alt="">`;
       tr.innerHTML = `
         <td><input type="checkbox" ${img.selected ? 'checked' : ''} data-img-id="${img.id}"></td>
-        <td>${img.thumbnail ? `<img class="queue-thumb" src="file://${img.absolute_path}" onerror="this.style.display='none'">` : '<div class="queue-thumb"></div>'}</td>
+        <td>${thumbCell}</td>
         <td title="${this.esc(img.relative_path)}" style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.esc(img.relative_path)}</td>
         <td><span class="status-badge s-${img.status}">${this.esc(img.status)}</span></td>
         <td style="font-size:10px;">${this.esc(img.assigned_url || '')}</td>
@@ -67,7 +73,8 @@ const ImageQueue = {
         <td style="font-size:10px; max-width:120px; overflow:hidden; text-overflow:ellipsis;">${this.esc(img.output_path || '')}</td>
         <td style="font-size:10px; color:var(--red); max-width:120px; overflow:hidden; text-overflow:ellipsis;" title="${this.esc(img.error || '')}">${this.esc((img.error||'').slice(0,60))}</td>
         <td>
-          <button class="btn-small" data-action="preview" data-img-id="${img.id}">👁</button>
+          <button class="btn-small" data-action="preview" data-img-id="${img.id}" title="Preview">👁</button>
+          <button class="btn-small" data-action="reveal" data-img-id="${img.id}" title="Open in Explorer">📁</button>
           <button class="btn-small" data-action="retry" data-img-id="${img.id}">↻</button>
           <button class="btn-small" data-action="reset" data-img-id="${img.id}">Reset</button>
         </td>
@@ -76,6 +83,42 @@ const ImageQueue = {
     });
     const countEl = document.getElementById('queueCount');
     if (countEl) countEl.textContent = `${filtered.length}/${this._images.length} images`;
+    this._loadThumbs();
+  },
+
+  _loadThumbs() {
+    // Lazy-load each visible thumb once via backend data URLs (file:// is
+    // unusable in WebEngine, esp. with Windows paths). Failures keep the
+    // CSS placeholder square.
+    if (!App.bridge || !App.bridge.get_image_thumbnail) return;
+    const tbody = document.getElementById('queueTableBody');
+    if (!tbody) return;
+    tbody.querySelectorAll('img[data-thumb-for]').forEach(el => {
+      const id = el.getAttribute('data-thumb-for');
+      if (!id || this._thumbCache[id] || this._thumbLoading[id]) return;
+      this._thumbLoading[id] = true;
+      try {
+        App.bridge.get_image_thumbnail(id, 'thumb', (res) => {
+          delete this._thumbLoading[id];
+          let url = '';
+          try { const r = JSON.parse(res); if (r.ok) url = r.data_url || ''; } catch (e) {}
+          // Row may have re-rendered while loading — look the cell up fresh.
+          const fresh = tbody.querySelector(`img[data-thumb-for="${id}"]`);
+          if (!fresh) return;
+          if (url) {
+            this._thumbCache[id] = url;
+            fresh.src = url;
+            fresh.removeAttribute('data-thumb-for');
+          } else {
+            const ph = document.createElement('div');
+            ph.className = 'queue-thumb';
+            fresh.replaceWith(ph);
+          }
+        });
+      } catch (e) {
+        delete this._thumbLoading[id];
+      }
+    });
   },
 
   esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
@@ -136,5 +179,20 @@ const ImageQueue = {
     const img = this._images.find(i=>i.id===id);
     if (!img) return;
     if (typeof BrowserPreview !== 'undefined' && BrowserPreview.showImage) BrowserPreview.showImage(img);
-  }
+  },
+
+  revealOne(id){
+    if (App.bridge && App.bridge.open_in_explorer) {
+      App.bridge.open_in_explorer(id, (res)=>{
+        try {
+          const r = JSON.parse(res);
+          if (!r.ok) LogConsole.log('Open in Explorer failed: '+(r.error||res),'error');
+        } catch(e){
+          LogConsole.log('Open in Explorer failed: '+res,'error');
+        }
+      });
+    } else {
+      LogConsole.log('Open in Explorer unavailable (no bridge)','warn');
+    }
+  },
 };
