@@ -74,6 +74,7 @@ const SashGrid = {
     } catch (e) {
       console.warn('sash-grid: close-time backend save failed', e);
     }
+    // fallback when bridge missing
     if (typeof App !== 'undefined' && App.recordGlobal) App.recordGlobal('grid', payload, { localOnly: true });
     return false;
   },

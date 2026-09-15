@@ -78,13 +78,16 @@ const SashGridWindowStore = {
   _save() {
     const payload = SashCore.serialize(this.root);
     try { localStorage.setItem(this.STORAGE_KEY, payload); } catch (e) {}
-    let backendAccepted = false;
     try {
       if (typeof App !== 'undefined' && App.bridge && App.bridge.save_grid_layout) {
-        backendAccepted = App.bridge.save_grid_layout(payload) !== false;
+        // Backend will push to undo and emit undo_state_changed -> ArenaHistory syncs
+        // Don't also push localOnly to avoid double history; backend is source of truth
+        App.bridge.save_grid_layout(payload);
+        return;
       }
     } catch (e) {}
-    if (typeof App !== 'undefined' && App.recordGlobal && (!App.bridge || !App.bridge.save_grid_layout || backendAccepted)) {
+    // Fallback when bridge unavailable (e.g. static preview): keep local history
+    if (typeof App !== 'undefined' && App.recordGlobal) {
       App.recordGlobal('grid', payload, { localOnly: true });
     }
   },
@@ -156,7 +159,7 @@ const SashGridWindows = {
       if (typeof App !== 'undefined' && App.bridge && App.bridge.reset_grid_layout) {
         App.bridge.reset_grid_layout((raw) => { if (raw) this._applySerialized(raw, true); });
         saved = true;
-        if (App.recordGlobal) App.recordGlobal('grid', SashCore.serialize(this.root), { localOnly: true });
+        // backend reset_grid_layout already pushes grid + window_states to undo and emits
       }
     } catch (e) {}
     if (!saved) this._save();

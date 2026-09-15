@@ -26,28 +26,42 @@ class UndoService:
 
     def undo(self):
         hist, idx = self.store.get()
-        if idx <= 0:
-            # if idx == 0, undo to empty state (index -1) and return that entry's undo?
-            # For simplicity, if idx ==0, we move to -1 and return previous entry as undo result
-            # Actually we want to return the entry that was undone, and new index is idx-1
-            if idx == 0:
-                # undo first entry -> go to -1, return entry at 0 with index -1
-                entry = hist[0] if hist else None
-                if entry:
-                    self.store.set(hist, -1)
-                    return {"kind": entry["kind"], "value": entry["value"], "index": -1, "entry": entry}
+        if idx < 0 or not hist:
             return None
-        # idx >0
+        if idx == 0:
+            # undo first entry -> go to -1, return empty marker with undone info
+            # This allows clearing or reverting to default for that kind
+            entry = hist[0] if hist else None
+            if entry:
+                self.store.set(hist, -1)
+                return {
+                    "kind": entry["kind"],
+                    "value": None,
+                    "index": -1,
+                    "undone": entry,
+                    "empty": True,
+                }
+            return None
+        # idx > 0
         new_idx = idx - 1
-        # entry that we are undoing is at idx, but we return the state at new_idx? Old system returned the undone entry?
-        # We'll return the entry at new_idx as the state to restore, plus the undone entry for info
         self.store.set(hist, new_idx)
         target = hist[new_idx] if 0 <= new_idx < len(hist) else None
         undone = hist[idx] if 0 <= idx < len(hist) else None
         if target:
-            return {"kind": target["kind"], "value": target["value"], "index": new_idx, "undone": undone}
-        # if new_idx == -1, we return empty with index -1
-        return {"kind": "empty", "value": None, "index": -1, "undone": undone}
+            return {
+                "kind": target["kind"],
+                "value": target["value"],
+                "index": new_idx,
+                "undone": undone,
+            }
+        # fallback empty
+        return {
+            "kind": "empty",
+            "value": None,
+            "index": -1,
+            "undone": undone,
+            "empty": True,
+        }
 
     def redo(self):
         hist, idx = self.store.get()

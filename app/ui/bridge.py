@@ -967,24 +967,49 @@ class Bridge(QObject):
             self._log("⚠ Nothing to undo", "warn")
             self._emit_undo_state()
             return "null"
-        # result contains kind/value/index
-        # apply the entry that is now at index, or if index -1, clear?
         hist, idx = self.undo_service.history()
         if idx == -1:
-            # undo to empty — we should restore empty state for that kind? For now, log
-            # apply inverse: if undone was urls, clear urls?
-            undone = result.get("undone")
-            if undone and undone.get("kind") == "urls":
-                self.state.urls = []
-                self._save_arena()
-            self._log(f"↩ Undo {result.get('kind')} → empty", "info")
+            # undo to empty — restore default/empty for the undone kind
+            undone = result.get("undone") or result
+            undone_kind = (undone.get("kind") if isinstance(undone, dict) else None) or result.get("kind")
+            try:
+                if undone_kind == "grid":
+                    payload = default_payload()
+                    self.config.set_state(grid_layout=payload)
+                    self.grid_layout_changed.emit(payload)
+                    self.grid_layout_persisted.emit(True)
+                    self._log("↩ Undo grid → default", "info")
+                elif undone_kind == "window_states":
+                    empty_ws = {"closed": [], "minimized": []}
+                    self.config.set_state(window_states=empty_ws)
+                    self._log("↩ Undo window states → empty", "info")
+                elif undone_kind == "urls":
+                    self.state.urls = []
+                    self._save_arena()
+                    self._log("↩ Undo urls → empty", "info")
+                elif undone_kind == "folder":
+                    self.state.folder = {"root_path": "", "supported_types": [".png",".jpg",".jpeg",".webp"], "ignore_ai_suffix": True}
+                    self._save_arena()
+                    self._log("↩ Undo folder → empty", "info")
+                elif undone_kind == "queue":
+                    # keep images but clear selection? For empty we keep as is and log
+                    self._log(f"↩ Undo {undone_kind} → empty", "info")
+                elif undone_kind == "prompt":
+                    self.state.prompt["user_prompt"] = ""
+                    self._save_arena()
+                    self._log("↩ Undo prompt → empty", "info")
+                elif undone_kind == "settings":
+                    self._log(f"↩ Undo {undone_kind} → empty", "info")
+                else:
+                    self._log(f"↩ Undo {undone_kind or result.get('kind')} → empty", "info")
+            except Exception as e:
+                log.warning(f"undo empty handling failed: {e}")
         else:
-            # apply the current pointer's entry
+            # apply the current pointer's entry (previous state)
             current_entry = hist[idx] if 0 <= idx < len(hist) else None
             if current_entry:
                 self._apply_undo_entry(current_entry)
             else:
-                # fallback apply result itself
                 self._apply_undo_entry(result)
         self._emit_undo_state()
         return json.dumps(result, ensure_ascii=False)

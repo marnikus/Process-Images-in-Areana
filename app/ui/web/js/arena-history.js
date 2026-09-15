@@ -60,10 +60,33 @@ const ArenaHistory = {
     let result;
     try { result = JSON.parse(raw); } catch (e) { return false; }
     if (!result || !result.kind) {
-      // result may be {kind,value,index} or direct value
       return false;
     }
     if (Number.isInteger(result.index)) this.globalHistoryIndex = result.index;
+    // If undo went to empty (index -1, value null, empty flag), handle specially
+    if (result.index === -1 && (result.empty || result.value === null || result.value === undefined)) {
+      const undone = result.undone || {};
+      const undoneKind = undone.kind || result.kind;
+      if (undoneKind === 'grid' && typeof SashGrid !== 'undefined') {
+        // Apply default tree when grid undone to empty
+        try {
+          if (typeof SashCore !== 'undefined' && SashCore.defaultTree) {
+            SashGrid.root = SashCore.defaultTree();
+            SashGrid.render();
+            try { localStorage.setItem(SashGrid.STORAGE_KEY, SashCore.serialize(SashGrid.root)); } catch (e) {}
+          }
+        } catch (e) {}
+        if (typeof LogConsole !== 'undefined') LogConsole.log('↩ Undo grid → default', 'info');
+        this._updateUndoButtons();
+        return true;
+      }
+      // For other kinds, let _applyGlobalKind handle empty (e.g. clear urls)
+      // Fall through to _applyGlobalKind with undone kind but empty value
+      const emptyResult = { kind: undoneKind, value: result.value, index: -1, empty: true, undone: undone };
+      this._applyGlobalKind(emptyResult);
+      this._updateUndoButtons();
+      return true;
+    }
     this._applyGlobalKind(result);
     this._updateUndoButtons();
     return true;
@@ -72,57 +95,78 @@ const ArenaHistory = {
   _applyGlobalKind(result) {
     const kind = result.kind;
     const value = result.value;
+    const isEmpty = result.empty || value === null || value === undefined;
     if (kind === 'grid' && typeof SashGrid !== 'undefined') {
-      SashGrid._applySerialized(value, false);
+      if (isEmpty) {
+        // empty grid -> default
+        try {
+          if (typeof SashCore !== 'undefined' && SashCore.defaultTree) {
+            SashGrid.root = SashCore.defaultTree();
+            SashGrid.render();
+            try { localStorage.setItem(SashGrid.STORAGE_KEY, SashCore.serialize(SashGrid.root)); } catch (e) {}
+          }
+        } catch (e) {}
+      } else {
+        SashGrid._applySerialized(value, false);
+      }
     } else if (kind === 'window_states' && typeof SashGrid !== 'undefined') {
-      // SashGrid loads from backend on next _loadFromBackend, but we can try to apply via localStorage
       try {
-        if (value && typeof value === 'object') {
+        if (isEmpty) {
+          localStorage.setItem(SashGrid.STORAGE_CLOSED, '[]');
+          localStorage.setItem(SashGrid.STORAGE_MINIMIZED, '[]');
+          SashGrid.closedWindows = new Set();
+          SashGrid.minimizedWindows = new Set();
+          SashGrid._applyStates();
+        } else if (value && typeof value === 'object') {
           localStorage.setItem(SashGrid.STORAGE_CLOSED, JSON.stringify(value.closed||[]));
           localStorage.setItem(SashGrid.STORAGE_MINIMIZED, JSON.stringify(value.minimized||[]));
-          // force reload
           SashGrid.closedWindows = new Set((value.closed||[]).filter(id=>SashCore.WINDOW_IDS.includes(id)));
           SashGrid.minimizedWindows = new Set((value.minimized||[]).filter(id=>SashCore.WINDOW_IDS.includes(id) && !SashGrid.closedWindows.has(id)));
           SashGrid._applyStates();
         }
       } catch (e) {}
     } else if (kind === 'urls' && typeof UrlList !== 'undefined') {
-      UrlList.render(value.map(v=>({
+      const list = isEmpty ? [] : (Array.isArray(value) ? value : []);
+      UrlList.render(list.map(v=>({
         id: v.id, url: v.url, enabled: v.enabled, status: v.status||v.last_status||'pending', last_error: v.last_error||v.error||''
       })));
-      // also update App.state if present
-      if (App.state) App.state.urls = value;
+      if (App.state) App.state.urls = list;
     } else if (kind === 'folder' && typeof FolderPicker !== 'undefined') {
       if (App.state) {
-        App.state.folder = value;
+        App.state.folder = isEmpty ? { root_path: '', supported_types: ['.png','.jpg','.jpeg','.webp'], ignore_ai_suffix: true } : value;
         FolderPicker.restore(App.state);
       }
     } else if (kind === 'queue' && typeof ImageQueue !== 'undefined') {
       if (App.state) {
-        // value is list of images with selection
-        ImageQueue.render(value);
-        App.state.images = value;
+        const list = isEmpty ? [] : value;
+        if (Array.isArray(list)) {
+          ImageQueue.render(list);
+          App.state.images = list;
+        }
       }
     } else if (kind === 'prompt' && typeof PromptEditor !== 'undefined') {
-      const tmpl = typeof value === 'string' ? value : (value.template || value.user_prompt || '');
+      const tmpl = isEmpty ? '' : (typeof value === 'string' ? value : (value.template || value.user_prompt || ''));
       const ta = document.getElementById('promptTextarea');
       if (ta) ta.value = tmpl;
       PromptEditor.updatePreview();
       if (App.state && App.state.prompt) App.state.prompt.template = tmpl;
     } else if (kind === 'settings' && typeof SettingsPanel !== 'undefined') {
-      if (App.state) {
+      if (App.state && !isEmpty) {
         App.state.settings = value;
         SettingsPanel.restore(App.state);
       }
     } else if (kind === 'arena' && App.state) {
-      // full snapshot - restore all panels
       try {
-        if (value.urls) UrlList.render(value.urls);
-        if (value.folder) FolderPicker.restore({folder:value.folder, images: value.images||App.state.images});
-        if (value.images) ImageQueue.render(value.images);
-        if (value.prompt) PromptEditor.restore({prompt:value.prompt});
-        if (value.settings) SettingsPanel.restore({settings:value.settings});
-        if (value.progress) ProgressPanel.update(value.progress);
+        if (isEmpty) {
+          // clear arena? keep as is
+        } else {
+          if (value.urls) UrlList.render(value.urls);
+          if (value.folder) FolderPicker.restore({folder:value.folder, images: value.images||App.state.images});
+          if (value.images) ImageQueue.render(value.images);
+          if (value.prompt) PromptEditor.restore({prompt:value.prompt});
+          if (value.settings) SettingsPanel.restore({settings:value.settings});
+          if (value.progress) ProgressPanel.update(value.progress);
+        }
       } catch (e) { console.warn('arena restore failed', e); }
     }
     if (typeof LogConsole !== 'undefined') {
