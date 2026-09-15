@@ -37,6 +37,7 @@ function initApp() {
   if (typeof RunControls !== 'undefined') RunControls.init();
   if (typeof ProgressPanel !== 'undefined') ProgressPanel.init();
   if (typeof WatcherPanel !== 'undefined') WatcherPanel.init();
+  if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.init();
   if (typeof SettingsPanel !== 'undefined') SettingsPanel.init();
   if (typeof BrowserPreview !== 'undefined') BrowserPreview.init();
   if (typeof HighlightOverlay !== 'undefined') HighlightOverlay.init();
@@ -283,6 +284,12 @@ function setupBridgeListeners() {
   if (b.watcher_log) {
     b.watcher_log.connect((msg, level) => {
       if (typeof LogConsole !== 'undefined') LogConsole.log(msg, level);
+    });
+  }
+  // PagePool — multi-page steady/busy
+  if (b.page_pool_updated) {
+    b.page_pool_updated.connect((payload) => {
+      if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.onUpdate(payload);
     });
   }
 }

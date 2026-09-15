@@ -241,6 +241,34 @@
       </div>
     </div>
 
+    <!-- PAGE POOL — multi-page steady/busy tracking -->
+    <div class="panel" id="winPagePool" data-window="page_pool">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tab</span> Page Pool — Multi-Tab Parallel <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
+      <div style="display:flex; flex-direction:column; gap:10px; padding:4px;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
+          <button id="poolRefreshBtn" class="btn-small" title="Refresh pool status"><span class="material-icons" style="font-size:14px;">refresh</span> Refresh</button>
+          <button id="poolConnectBtn" class="btn-small btn-primary" title="Add selected Chrome tab to pool as steady page"><span class="material-icons" style="font-size:14px;">add_link</span> Add Selected Tab to Pool</button>
+          <button id="poolClearBtn" class="btn-small" style="background:var(--bg-danger,#3a1a1a); border-color:var(--red,#ff4d4d); color:var(--red,#ff6b6b);" title="Clear all pages from pool">🗑 Clear Pool</button>
+          <span class="spacer"></span>
+          <span style="font-size:11px; color:var(--text-muted);">Total: <b id="poolTotal">0</b> • Steady/Free: <b id="poolSteady">0</b> • Busy: <b id="poolBusy">0</b> • Free: <b id="poolFree">0</b></span>
+        </div>
+        <div style="border:1px solid var(--border); border-radius:6px; padding:4px; background:var(--bg-input); max-height:220px; overflow:auto;">
+          <table class="queue-table" style="font-size:11px;">
+            <thead><tr><th>Tab ID</th><th>Title</th><th>URL</th><th>Status</th><th>Job</th><th>Action</th></tr></thead>
+            <tbody id="poolTableBody"></tbody>
+          </table>
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); border:1px dashed var(--border); border-radius:6px; padding:8px;">
+          <b>How pool works:</b><br>
+          • When 2+ webpages connected (CDP tabs) and 2+ images selected, Run uses <b>parallel mode</b> — dispatches to different pages, always selects steady (not processing) page.<br>
+          • Each page marked <span style="color:#4ade80;">steady</span> when free, <span style="color:#4dabf7;">busy</span> when processing. Busy pages never receive double-send.<br>
+          • Visual confirmation (RED find, ORANGE click, GREEN collect) still on correct webpage per tab.<br>
+          • Stop/Pause honoured per tab via shared flags; pool waits for free page with timeout, respects cancel.<br>
+          • Use <b>Add Selected Tab to Pool</b> to add extra tabs from Chrome — connect multiple arena.ai tabs for parallel.
+        </div>
+      </div>
+    </div>
+
     <!-- ACTIVITY LOG -->
     <div class="panel log-panel" id="winLog" data-window="log">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">terminal</span> Activity Log <span class="spacer"></span><button id="clearLogBtn" class="btn-small">Clear</button></h3>
@@ -548,6 +576,7 @@
 <script src="js/panels/arena-presets.js"></script>
 <script src="js/panels/action-blocks.js"></script>
 <script src="js/panels/watcher.js"></script>
+<script src="js/panels/page-pool.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app.js"></script>
 </body>
