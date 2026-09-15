@@ -1,9 +1,10 @@
-/* image-queue.js */
+/* image-queue.js — fixed thumbnails */
 'use strict';
 
 const ImageQueue = {
   _filter: 'all',
   _images: [],
+  _thumbCache: {},
 
   init() {
     const filterSel = document.getElementById('queueFilter');
@@ -45,6 +46,65 @@ const ImageQueue = {
     this.render(state.images);
   },
 
+  _fileUrl(pathOrUrl) {
+    const raw = String(pathOrUrl == null ? '' : pathOrUrl);
+    if (!raw) return '';
+    if (/^(file|https?|data|blob|qrc):/i.test(raw)) return raw;
+    let p = raw.replace(/\\/g, '/');
+    if (/^[A-Za-z]:\//.test(p)) p = '/' + p;
+    if (p.charAt(0) !== '/') p = '/' + p;
+    return 'file://' + encodeURI(p).replace(/#/g, '%23').replace(/\?/g, '%3F');
+  },
+
+  _requestThumb(imgId, imgEl) {
+    if (!imgId) return;
+    if (this._thumbCache[imgId]) {
+      const cached = this._thumbCache[imgId];
+      const el = imgEl || document.querySelector(`img.queue-thumb[data-img-id="${imgId}"]`);
+      if (el) {
+        el.src = cached;
+        el.style.display = 'block';
+        if (el.nextElementSibling) el.nextElementSibling.style.display = 'none';
+      }
+      return;
+    }
+    if (App.bridge && App.bridge.get_image_thumbnail) {
+      try {
+        App.bridge.get_image_thumbnail(imgId, (res) => {
+          try {
+            const r = typeof res === 'string' ? JSON.parse(res) : res;
+            if (r.ok && r.data_url) {
+              this._thumbCache[imgId] = r.data_url;
+              const el = imgEl || document.querySelector(`img.queue-thumb[data-img-id="${imgId}"]`);
+              if (el) {
+                el.src = r.data_url;
+                el.style.display = 'block';
+                if (el.nextElementSibling) el.nextElementSibling.style.display = 'none';
+              }
+            }
+          } catch (e) {}
+        });
+      } catch (e) {}
+    }
+  },
+
+  _fetchAllThumbs(images) {
+    if (!App.bridge || !App.bridge.get_image_thumbnail) return;
+    const list = (images || []).slice(0, 80);
+    list.forEach((img, idx) => {
+      if (this._thumbCache[img.id]) {
+        const el = document.querySelector(`img.queue-thumb[data-img-id="${img.id}"]`);
+        if (el) {
+          el.src = this._thumbCache[img.id];
+          el.style.display = 'block';
+          if (el.nextElementSibling) el.nextElementSibling.style.display = 'none';
+        }
+        return;
+      }
+      setTimeout(() => this._requestThumb(img.id, null), idx * 60);
+    });
+  },
+
   render(images) {
     this._images = images || this._images;
     const tbody = document.getElementById('queueTableBody');
@@ -56,10 +116,13 @@ const ImageQueue = {
     tbody.innerHTML = '';
     filtered.forEach(img => {
       const tr = document.createElement('tr');
-      const thumb = img.absolute_path ? '' : '';
+      const thumbSrc = img.absolute_path ? this._fileUrl(img.absolute_path) : '';
+      const thumbHtml = thumbSrc
+        ? `<img class="queue-thumb" data-img-id="${img.id}" src="${thumbSrc}" alt="${this.esc(img.filename||'')}" loading="lazy" onerror="this.onerror=null; this.dataset.fileFailed='1'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex'; if(typeof ImageQueue!=='undefined') ImageQueue._requestThumb(this.dataset.imgId, this);"><div class="queue-thumb queue-thumb-fallback" style="display:none; align-items:center; justify-content:center; font-size:10px;">${this.esc((img.extension||'').replace('.','').toUpperCase())}</div>`
+        : `<div class="queue-thumb queue-thumb-fallback" style="display:flex; align-items:center; justify-content:center; font-size:10px;">${this.esc((img.extension||'').replace('.','').toUpperCase())}</div>`;
       tr.innerHTML = `
         <td><input type="checkbox" ${img.selected ? 'checked' : ''} data-img-id="${img.id}"></td>
-        <td>${img.thumbnail ? `<img class="queue-thumb" src="file://${img.absolute_path}" onerror="this.style.display='none'">` : '<div class="queue-thumb"></div>'}</td>
+        <td>${thumbHtml}</td>
         <td title="${this.esc(img.relative_path)}" style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.esc(img.relative_path)}</td>
         <td><span class="status-badge s-${img.status}">${this.esc(img.status)}</span></td>
         <td style="font-size:10px;">${this.esc(img.assigned_url || '')}</td>
@@ -76,9 +139,10 @@ const ImageQueue = {
     });
     const countEl = document.getElementById('queueCount');
     if (countEl) countEl.textContent = `${filtered.length}/${this._images.length} images`;
+    this._fetchAllThumbs(filtered);
   },
 
-  esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+  esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); },
 
   toggleSelect(id, selected) {
     if (App.bridge && App.bridge.set_image_selected) {
