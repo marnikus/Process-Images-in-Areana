@@ -176,3 +176,40 @@ For MVP, we will implement with fallback strategies and structured logging of se
 - `py_compile` ok, `pytest 40 passed`
 - Expected log after fix: single `New output detected ... Python direct 1729034 bytes` then `Download already done during wait verification` then `Saved to ..._AI.jpeg` with real path, no `Wait cycle 2/2 after reload`.
 
+
+## Fix 2026-09-16 (3): Add Watcher Win — passive recheck for generating icon or captcha
+
+**User request:** "Add a win watcher. it passively rechecking (every x ms) if the page has awaiting icon as it generating or it detects capcha. in both situations it should give a draw rectangle msg on lot left center page with msg 'wait for finish generation' or 'wait for user. Captcha' in both situations it sleep circle run and wait it solve. (time to solve timeout add user in win this setting)"
+
+**Implementation:**
+
+- **New window** `watcher` added to `sash-core.js` WINDOWS list, defaultTree and layoutA/B/C, `index.html` panel `winWatcher`, JS `watcher.js`, backend `app/services/watcher.py`.
+- **WatcherConfig** stored in `config/session.json` via `config_manager.py` DEFAULT_SESSION:
+  - `watcher_enabled` bool, `watcher_interval_ms` 500-30000 ms (every x ms), `watcher_captcha_timeout_sec` 10-3600 s, `watcher_generation_timeout_sec` 30-3600 s, `watcher_auto_pause` bool.
+  - All UI params storable, window position/size auto saved on closing (existing main_window geometry persistence).
+- **WatcherService** loop:
+  - Every `check_interval_ms`, calls `cdp.is_security_dialog_visible()` (checks `div[role=dialog][data-state=open]` containing Security Verification + `iframe[title=reCAPTCHA]`) and `cdp.is_generating()` (checks `div.animate-spin` visible + processing text).
+  - If captcha: draws overlay via `cdp.show_watcher_overlay("wait for user. Captcha", kind="captcha")` — red `rgba(180,20,20,0.92)`, border `#ff4444`, icon 🛡️, left 2%, top 50% centered, 36% width min 320px max 520px, pulse animation, spinner, timestamp updating every 1s. Pauses jobs via `pause_run()` if `auto_pause_jobs`, sets status `waiting_captcha`, logs, waits until captcha gone or timeout. Timeout from win setting — logs timeout but keeps waiting (user must solve manually, never bypass per RULE 20).
+  - If generating: draws overlay `wait for finish generation` — blue `rgba(20,80,180,0.92)`, border `#44aaff`, icon ⏳, same position left center, pauses jobs, waits until `is_generating` false or generation timeout.
+  - When condition cleared: hides overlay `hide_watcher_overlay()`, resumes jobs via `resume_run()`, status back to `watching`, logs success.
+  - `force_clear()` and `ensure_task()` for qasync loop readiness.
+- **Overlay JS** in `dom_highlight.py`:
+  - `build_watcher_overlay_js(message, kind)` creates fixed div with `data-arena-watcher-overlay` attr, pulse keyframes, spin keyframes, time element updating.
+  - `build_watcher_clear_js()` removes overlay.
+- **CDP methods** in `cdp_arena.py`: `show_watcher_overlay`, `hide_watcher_overlay`.
+- **Bridge** `app/ui/bridge.py`:
+  - Signals `watcher_status` (JSON) and `watcher_log`, init watcher service with getters for CDP controller and job runner, callbacks to emit status to UI.
+  - Slots: `get_watcher_config`, `set_watcher_config`, `start_watcher`, `stop_watcher`, `get_watcher_state`, `clear_watcher_overlay`, `check_watcher_now` — all persisted to session.
+  - `_get_watcher_cdp_controller()` creates `CDPArenaController` from current `cdp_client`.
+- **UI** `watcher.js`:
+  - Controls: enable checkbox, interval ms input, captcha timeout, generation timeout, auto-pause select, save/start/stop/check now/clear overlay buttons.
+  - Status display: current status, last check human, checks count, waiting info with duration and timeout, gen waits, captcha waits, last generation details, captcha detected bool.
+  - Badge colors: red for captcha, blue for generation, green for watching, muted for idle.
+  - Polls render every 1s for waiting duration, loads config on bridge ready (1.5s delay), listens `watcher_status` signal.
+- **Tests**: 5 new watcher tests, total 45 passed.
+- **Compliance**: Never bypasses captcha — draws rectangle and waits for user manual solve, respects timeout setting from win, pauses job circle run and sleeps until solved.
+
+**Evidence:**
+- Old app had similar security pause logic in `bridge.py` checking `is_security_dialog_visible()` and pausing.
+- New watcher extends that to passive monitoring even outside job run, with configurable interval and timeouts, and visual overlay on page left center.
+
