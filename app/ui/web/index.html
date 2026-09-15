@@ -229,11 +229,12 @@
 
         <!-- How it works -->
         <div style="font-size:11px; color:var(--text-muted); border:1px dashed var(--border); border-radius:6px; padding:8px;">
-          <b>How watcher works:</b><br>
+          <b>How watcher works — visual confirmation on webpage (CDP):</b><br>
           • Passively rechecks every <b>x ms</b> if page has awaiting icon (<code>div.animate-spin</code>) as it generating or detects captcha (<code>div[role=dialog] Security Verification</code> + <code>iframe[title=reCAPTCHA]</code>)<br>
-          • If generating: draws rectangle on <b>left center</b> page with msg <code>wait for finish generation</code>, pauses job circle, sleeps and waits until spinner disappears or timeout<br>
-          • If captcha: draws rectangle <code>wait for user. Captcha</code> on left center, pauses jobs, waits for user to solve manually (never bypass), respects timeout setting from this win<br>
-          • Overlay is large, left 2%, top 50% centered, blue for generation, red for captcha, with spinner and timestamp<br>
+          • If generating: draws <b>large rectangle msg on left center page</b> with msg <code>wait for finish generation</code>, <b>sleep circle spinner running</b>, waits until spinner disappears or timeout (user setting from win)<br>
+          • If captcha: draws rectangle <code>wait for user. Captcha</code> on left center, <b>sleep circle</b>, pauses jobs, waits for user to solve manually (never bypass), respects <b>captcha_timeout_sec from win settings</b><br>
+          • Overlay is large, left 2%, top 50% centered, width 38% min 360px, blue for generation, red for captcha, with spinner + elapsed time + timeout remaining (user configurable)<br>
+          • Also job runner now draws same overlay during WAIT_OUTPUT/AWAIT blocks — visual confirmation when in awaiting mode<br>
           • All settings storable in preset JSON and session, window position/size auto saved on closing
         </div>
 
@@ -293,8 +294,9 @@
         <input id="setTimeout" type="number" min="10" max="600">
       </div>
       <div class="settings-group">
-        <label>Generation / Waiting Max Time (seconds) — user configurable, e.g. 120 = 2 min</label>
-        <input id="setGenerationTimeout" type="number" min="30" max="600" placeholder="120">
+        <label>Generation / Waiting Max Time (seconds) — user configurable, e.g. 120 = 2 min, now synced to watcher win (30-3600s)</label>
+        <input id="setGenerationTimeout" type="number" min="30" max="3600" placeholder="120">
+        <div style="font-size:10px; color:var(--text-muted);">User setting from win — controls rect overlay timeout for "wait for finish generation" and watcher generation timeout</div>
       </div>
       <div class="settings-group">
         <label>Max Retries</label>

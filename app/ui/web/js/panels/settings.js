@@ -83,19 +83,30 @@ const SettingsPanel = {
 
   save() {
     const getVal = (id) => document.getElementById(id)?.value;
+    const genTo = parseInt(getVal('setGenerationTimeout'))||120;
     const payload = {
       timeout_seconds: parseInt(getVal('setTimeout'))||120,
-      generation_timeout: parseInt(getVal('setGenerationTimeout'))||120,
+      generation_timeout: genTo,
       max_retries: parseInt(getVal('setRetries'))||3,
       naming_suffix: getVal('setNaming')||'_AI',
       supported_types: (getVal('setFileTypes')||'.png,.jpg').split(',').map(x=>x.trim()).filter(Boolean),
       overwrite: getVal('setOverwrite')==='true',
       highlight_duration: parseInt(getVal('setHighlightDur'))||3,
       max_concurrent: parseInt(getVal('setMaxConcurrent'))||1,
+      watcher_generation_timeout_sec: genTo, // sync to watcher win setting (user timeout from win)
     };
     if (App.bridge && App.bridge.save_settings) {
       App.bridge.save_settings(JSON.stringify(payload), (res)=>{
-        try{ const r=JSON.parse(res); LogConsole.log(r.ok?'Settings saved':'Save failed: '+r.error, r.ok?'success':'error'); }catch(e){}
+        try{
+          const r=JSON.parse(res);
+          LogConsole.log(r.ok?`Settings saved — generation timeout ${genTo}s synced to watcher win`:'Save failed: '+r.error, r.ok?'success':'error');
+          // Also update watcher panel UI if exists
+          if (r.ok && typeof WatcherPanel !== 'undefined') {
+            WatcherPanel.config.generation_timeout_sec = genTo;
+            const el = document.getElementById('watcherGenerationTimeout');
+            if (el) el.value = genTo;
+          }
+        }catch(e){}
       });
     }
     // also save CDP if changed

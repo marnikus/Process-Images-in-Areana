@@ -461,25 +461,33 @@ def build_highlight_rect_js(x: float, y: float, w: float, h: float, color: str =
 # ── watcher overlay ────────────────────────────────────────────────
 WATCHER_ATTR = "data-arena-watcher-overlay"
 
-def build_watcher_overlay_js(message: str = "wait for finish generation", kind: str = "generation") -> str:
+def build_watcher_overlay_js(message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, elapsed_sec: int = 0) -> str:
     """Build JS that shows a large rectangle msg on left center page for watcher.
-    kind: 'generation' -> blue/orange, 'captcha' -> red/yellow
-    Message is displayed prominently, persists until cleared.
+    kind: 'generation' -> blue, 'captcha' -> red
+    - Left 2%, top 50% translateY(-50%), width 38% min 360 max 560 min-height 160
+    - Includes sleep circle spinner animation running
+    - Shows timeout from user win settings
+    - Persists until cleared
     """
     msg_json = json.dumps(message or "wait")
     kind_json = json.dumps(kind or "generation")
+    timeout_json = json.dumps(int(timeout_sec or 600))
+    elapsed_json = json.dumps(int(elapsed_sec or 0))
     return f"""
 ;(function(){{
   try {{
     var ATTR = "{WATCHER_ATTR}";
     var msg = {msg_json};
     var kind = {kind_json};
+    var timeoutSec = {timeout_json};
+    var elapsedStart = {elapsed_json};
+    var startTime = Date.now() - (elapsedStart * 1000);
     // Remove existing watcher overlays
     var olds = document.querySelectorAll('['+ATTR+']');
     for (var i=0;i<olds.length;i++) {{ if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]); }}
 
     var isCaptcha = (kind === 'captcha' || msg.toLowerCase().indexOf('captcha') >=0);
-    var bg = isCaptcha ? 'rgba(180, 20, 20, 0.92)' : 'rgba(20, 80, 180, 0.92)';
+    var bg = isCaptcha ? 'rgba(180, 20, 20, 0.96)' : 'rgba(20, 80, 180, 0.96)';
     var borderColor = isCaptcha ? '#ff4444' : '#44aaff';
     var icon = isCaptcha ? '🛡️' : '⏳';
 
@@ -490,21 +498,21 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
       'left:2%',
       'top:50%',
       'transform:translateY(-50%)',
-      'width:36%',
-      'min-width:320px',
-      'max-width:520px',
-      'min-height:140px',
+      'width:38%',
+      'min-width:360px',
+      'max-width:560px',
+      'min-height:160px',
       'background:'+bg,
       'border:3px solid '+borderColor,
-      'border-radius:12px',
-      'box-shadow:0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1) inset',
+      'border-radius:14px',
+      'box-shadow:0 10px 36px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.15) inset',
       'z-index:2147483646',
       'display:flex',
       'flex-direction:column',
       'align-items:center',
       'justify-content:center',
-      'padding:20px 24px',
-      'font-family:system-ui, -apple-system, sans-serif',
+      'padding:22px 26px',
+      'font-family:system-ui, -apple-system, Segoe UI, sans-serif',
       'color:#fff',
       'pointer-events:none',
       'animation: arenaWatcherPulse 1.5s ease-in-out infinite'
@@ -516,12 +524,16 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
       st.id = 'arena-watcher-style';
       st.textContent = `
         @keyframes arenaWatcherPulse {{
-          0%, 100% {{ transform: translateY(-50%) scale(1); box-shadow: 0 8px 32px rgba(0,0,0,0.6); }}
-          50% {{ transform: translateY(-50%) scale(1.02); box-shadow: 0 12px 40px rgba(0,0,0,0.7); }}
+          0%, 100% {{ transform: translateY(-50%) scale(1); box-shadow: 0 10px 36px rgba(0,0,0,0.7); }}
+          50% {{ transform: translateY(-50%) scale(1.03); box-shadow: 0 14px 44px rgba(0,0,0,0.8); }}
         }}
         @keyframes arenaWatcherSpin {{
           0% {{ transform: rotate(0deg); }}
           100% {{ transform: rotate(360deg); }}
+        }}
+        @keyframes arenaWatcherGlow {{
+          0%, 100% {{ opacity: 0.8; }}
+          50% {{ opacity: 1; }}
         }}
       `;
       document.head.appendChild(st);
@@ -529,45 +541,78 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
 
     var iconEl = document.createElement('div');
     iconEl.textContent = icon;
-    iconEl.style.cssText = 'font-size:48px; margin-bottom:12px; line-height:1;';
+    iconEl.style.cssText = 'font-size:52px; margin-bottom:12px; line-height:1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));';
 
     var titleEl = document.createElement('div');
-    titleEl.textContent = msg;
-    titleEl.style.cssText = 'font-size:18px; font-weight:700; text-align:center; line-height:1.3; letter-spacing:0.3px; text-transform:uppercase;';
+    titleEl.textContent = msg.toUpperCase();
+    titleEl.style.cssText = 'font-size:19px; font-weight:800; text-align:center; line-height:1.3; letter-spacing:0.4px; text-shadow:0 1px 2px rgba(0,0,0,0.5);';
 
     var subEl = document.createElement('div');
     subEl.textContent = isCaptcha ? 'Please solve captcha manually — watcher is waiting' : 'Generation in progress — watcher is waiting';
-    subEl.style.cssText = 'font-size:12px; opacity:0.9; margin-top:10px; text-align:center; font-weight:400;';
+    subEl.style.cssText = 'font-size:13px; opacity:0.95; margin-top:10px; text-align:center; font-weight:500;';
+
+    // Spinner container with sleep circle
+    var spinnerWrap = document.createElement('div');
+    spinnerWrap.style.cssText = 'display:flex; align-items:center; gap:12px; margin-top:16px;';
 
     var spinner = document.createElement('div');
-    spinner.style.cssText = 'width:28px; height:28px; border:3px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; margin-top:14px; animation: arenaWatcherSpin 1s linear infinite;';
+    spinner.style.cssText = 'width:32px; height:32px; border:3px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation: arenaWatcherSpin 0.9s linear infinite; box-shadow:0 0 8px rgba(255,255,255,0.3);';
+
+    var spinnerText = document.createElement('div');
+    spinnerText.textContent = 'Waiting...';
+    spinnerText.style.cssText = 'font-size:12px; font-weight:600; opacity:0.9; animation: arenaWatcherGlow 1.5s ease-in-out infinite;';
+
+    spinnerWrap.appendChild(spinner);
+    spinnerWrap.appendChild(spinnerText);
 
     var timeEl = document.createElement('div');
     timeEl.id = 'arena-watcher-time';
-    timeEl.textContent = new Date().toLocaleTimeString();
-    timeEl.style.cssText = 'font-size:10px; opacity:0.7; margin-top:8px; font-family:monospace;';
+    timeEl.style.cssText = 'font-size:11px; opacity:0.85; margin-top:10px; font-family:monospace; background:rgba(0,0,0,0.25); padding:4px 10px; border-radius:6px;';
+
+    var timeoutEl = document.createElement('div');
+    timeoutEl.id = 'arena-watcher-timeout';
+    timeoutEl.style.cssText = 'font-size:10px; opacity:0.75; margin-top:6px; font-family:monospace;';
+
+    function updateTime() {{
+      var elapsed = Math.floor((Date.now() - startTime)/1000);
+      var remaining = Math.max(0, timeoutSec - elapsed);
+      var te = document.getElementById('arena-watcher-time');
+      var to = document.getElementById('arena-watcher-timeout');
+      if (te) {{
+        te.textContent = '⏱ ' + elapsed + 's elapsed — ' + new Date().toLocaleTimeString();
+      }}
+      if (to) {{
+        to.textContent = 'Timeout: ' + timeoutSec + 's (user setting from win) — ' + remaining + 's left';
+      }}
+    }}
 
     overlay.appendChild(iconEl);
     overlay.appendChild(titleEl);
     overlay.appendChild(subEl);
-    overlay.appendChild(spinner);
+    overlay.appendChild(spinnerWrap);
     overlay.appendChild(timeEl);
+    overlay.appendChild(timeoutEl);
 
     (document.body || document.documentElement).appendChild(overlay);
 
+    updateTime();
     // Update time every second
     var interval = setInterval(function(){{
       var te = document.getElementById('arena-watcher-time');
-      if (te) te.textContent = new Date().toLocaleTimeString() + ' — watching';
-      else clearInterval(interval);
+      if (!te) {{ clearInterval(interval); return; }}
+      updateTime();
     }}, 1000);
 
-    return JSON.stringify({{shown: true, kind: kind, message: msg}});
+    // Store interval id for cleanup
+    try {{ overlay.setAttribute('data-interval', interval); }} catch(e) {{}}
+
+    return JSON.stringify({{shown: true, kind: kind, message: msg, timeout: timeoutSec}});
   }} catch(e) {{
     return JSON.stringify({{shown: false, error: String(e && e.message || e)}});
   }}
 }})()
 """
+
 
 def build_watcher_clear_js() -> str:
     """Clear watcher overlay."""
