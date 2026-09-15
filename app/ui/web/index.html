@@ -256,20 +256,51 @@
     <div class="panel" id="winActionBlocks" data-window="action_blocks">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">view_module</span> Action Blocks — Stacking Jobs <span class="spacer"></span><span id="actionBlocksCount" style="font-size:10px; color:var(--text-muted)">0 blocks</span></h3>
       <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
-        <button id="addActionBlockBtn" class="btn-small" title="Add block"><span class="material-icons" style="font-size:14px;">add</span> Add</button>
+        <button id="addActionBlockBtn" class="btn-small" title="Add block — click on btn/text areas"><span class="material-icons" style="font-size:14px;">add</span> Add</button>
         <button id="resetActionBlocksBtn" class="btn-small" title="Reset to default stack">Reset</button>
         <button id="saveActionBlocksBtn" class="btn-small btn-primary" title="Save stack">Save</button>
         <button id="exportActionBlocksBtn" class="btn-small" title="Export JSON">Export</button>
         <button id="importActionBlocksBtn" class="btn-small" title="Import JSON">Import</button>
+        <button id="saveCustomBlockBtn" class="btn-small" title="Save selected CUSTOM_FIND as custom preset">💾 Save Custom</button>
       </div>
       <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">
-        Drag <span class="material-icons" style="font-size:12px; vertical-align:middle;">drag_indicator</span> to reorder, toggle enable, double-click to highlight selector. Visual rect confirmation on each click. Stored in preset JSON.
+        Drag <span class="material-icons" style="font-size:12px; vertical-align:middle;">drag_indicator</span> to reorder, toggle enable, double-click to highlight selector. Visual rect confirmation on each click (RED find, ORANGE click, GREEN collect). Stored in preset JSON. All params storable, rect duration configurable.
       </div>
-      <div id="actionBlocksStack" style="flex:1; overflow:auto; max-height:320px; border:1px solid var(--border); border-radius:4px; padding:4px; background:var(--bg-card);"></div>
+      <div id="actionBlocksStack" style="flex:1; overflow:auto; max-height:280px; border:1px solid var(--border); border-radius:4px; padding:4px; background:var(--bg-card);"></div>
+      
+      <!-- Block Config — Tune panel (Old App stack-dnd-form) -->
+      <div style="margin-top:10px; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:var(--bg-input); border-bottom:1px solid var(--border);">
+          <div id="blockConfigHead" style="font-size:11px; font-weight:600;">Select a block to configure</div>
+          <button id="closeBlockConfigBtn" class="btn-small" title="Close config"><span class="material-icons" style="font-size:14px;">close</span></button>
+        </div>
+        <div id="blockConfigForm" style="max-height:300px; overflow:auto; padding:4px; background:var(--bg-card); font-size:11px;">
+          <div style="padding:12px; color:var(--text-muted); font-size:11px; line-height:1.4;">
+            <p><b>Action Blocks</b> — stacking jobs restored from Old App.</p>
+            <p>Each block is separate job: click on btn, click on text areas, visual confirmations seeing images/waiting.</p>
+            <p>• <span style="color:#ff2d2d">RED</span> = found<br>• <span style="color:#ff9500">ORANGE</span> = click target<br>• <span style="color:#00c853">GREEN</span> = new output<br>• <span style="color:#00AAFF">BLUE</span> = prompt<br>• <span style="color:#FFAA00">YELLOW</span> = submit</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Custom Find & Click presets (Old App presets-ui-blocks) -->
       <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
-        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:14px;">play_circle</span> Current Job Stack — live execution</div>
-        <div id="jobActionStack" style="min-height:80px; max-height:260px; overflow:auto; border:1px dashed var(--border); border-radius:4px; padding:4px; background:var(--bg-input);">
-          <span style="font-size:11px; color:var(--text-muted);">No job running — start a job to see live blocks with rect confirmations</span>
+        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:14px;">bookmarks</span> Custom Find & Click Presets — reusable blocks</div>
+        <div id="customBlockChips" style="min-height:30px; border:1px dashed var(--border); border-radius:4px; padding:4px; background:var(--bg-input); display:flex; flex-wrap:wrap; gap:4px;"></div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Save CUSTOM_FIND blocks as presets for reuse across runs. Click chip to add to stack.</div>
+      </div>
+
+      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:14px;">play_circle</span> Current Job Stack — live execution with rects</div>
+        <div id="jobActionStack" style="min-height:80px; max-height:220px; overflow:auto; border:1px dashed var(--border); border-radius:4px; padding:4px; background:var(--bg-input);">
+          <span style="font-size:11px; color:var(--text-muted);">No job running — start a job to see live blocks with rect confirmations as it makes clicks</span>
+        </div>
+      </div>
+
+      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:14px;">history</span> All Separate Jobs — rectangles confirmations</div>
+        <div id="allJobsStack" style="min-height:80px; max-height:300px; overflow:auto; border:1px solid var(--border); border-radius:4px; padding:4px; background:var(--bg-card);">
+          <span style="font-size:11px; color:var(--text-muted);">No jobs yet — run batch to see all jobs with rect confirmations</span>
         </div>
       </div>
     </div>

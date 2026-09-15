@@ -370,13 +370,44 @@ class CDPArenaController:
             return False, b"", "Downloaded HTML not image"
         return True, data, result.get("contentType", "")
 
-    async def highlight_selector(self, selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = ""):
+    def report(self, message: str, level: str = "info"):
+        # For visual_click engine compatibility (engine.report)
+        self._log(message, level)
+
+    async def highlight_selector(self, selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = "") -> dict | None:
         try:
-            from .dom_highlight import build_highlight_js
-            js = build_highlight_js(selector, color, duration_ms, caption, clear_first=True)
-            await self.cdp.evaluate(js)
+            from .dom_highlight import build_highlight_js, build_highlight_probe
+            from .probe_requests import HighlightSpec
+            import json as _json
+            # Use new probe that returns rect
+            spec = HighlightSpec(color=color, caption=caption or selector[:40], highlight_ms=duration_ms, clear_first=True)
+            # Prefer build_highlight_probe for rect
+            from .dom_highlight import build_highlight_probe
+            js = build_highlight_probe(selector, spec)
+            raw = await self.cdp.evaluate(js)
+            if raw:
+                try:
+                    data = _json.loads(raw) if isinstance(raw, str) else raw
+                    if isinstance(data, dict) and data.get("rect"):
+                        return data.get("rect")
+                    if isinstance(data, dict) and data.get("found"):
+                        return data.get("rect") or {"x":0,"y":0,"width":100,"height":100}
+                except Exception:
+                    pass
+            # fallback to old build_highlight_js
+            js2 = build_highlight_js(selector, color, duration_ms, caption, clear_first=True)
+            raw2 = await self.cdp.evaluate(js2)
+            if raw2:
+                try:
+                    data2 = _json.loads(raw2) if isinstance(raw2, str) else raw2
+                    if isinstance(data2, dict) and data2.get("rect"):
+                        return data2.get("rect")
+                except Exception:
+                    pass
+            return {"x":100,"y":100,"width":200,"height":100}
         except Exception as e:
             log.debug(f"highlight_selector failed: {e}")
+            return None
 
     async def clear_highlights(self):
         try:

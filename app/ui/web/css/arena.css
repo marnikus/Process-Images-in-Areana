@@ -331,3 +331,68 @@
   from { opacity: 0; transform: translateX(-10px); }
   to { opacity: 1; transform: translateX(0); }
 }
+
+/* ── Action Blocks Config Panel (restored from Old App stack.css) ── */
+.config-panel #blockConfigForm {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  gap: 6px;
+  padding: 2px 2px 0;
+}
+.config-panel .form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  align-items: center;
+  column-gap: 8px;
+  padding: 6px 10px;
+  margin: 0;
+  border-radius: 6px;
+}
+.config-panel .form-row.zebra-0 { background: rgba(255, 255, 255, .02); }
+.config-panel .form-row.zebra-1 { background: rgba(255, 255, 255, .05); }
+.config-panel label {
+  min-width: 0; font-size: 11px;
+  color: var(--text-secondary); font-weight: 500;
+  line-height: 1.35; overflow-wrap: anywhere;
+}
+.config-panel input, .config-panel textarea, .config-panel select {
+  width: 100%; min-width: 0;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 4px; padding: 6px 10px;
+  color: var(--text-primary); font-size: 11px;
+  font-family: var(--font-mono, monospace);
+}
+.config-panel input:focus, .config-panel textarea:focus, .config-panel select:focus {
+  border-color: var(--accent); outline: none;
+}
+.config-panel textarea { min-height: 60px; resize: vertical; }
+.config-panel textarea:disabled, .config-panel input:disabled { opacity: .45; cursor: not-allowed; }
+.config-panel .form-row--head { align-items: center; }
+.config-panel .form-row--stack { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.config-panel .form-row-check input[type="checkbox"] { justify-self: start; width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
+.form-hint {
+  font-size: 10px; color: var(--text-muted);
+  line-height: 1.5; padding: 6px 10px; margin: 0 0 6px;
+  background: var(--bg-input); border-left: 2px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+}
+
+/* Toggle switch */
+.toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; cursor: pointer; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-slider { position: absolute; cursor: pointer; inset: 0; background: var(--bg-input); border: 1px solid var(--border); border-radius: 999px; transition: background .2s, border-color .2s; }
+.toggle-slider:before { content: ""; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: var(--text-muted); border-radius: 50%; transition: transform .2s, background .2s; }
+.toggle-switch input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(16px); background: white; }
+
+/* Preset chips */
+.preset-chip { user-select: none; transition: all .15s; }
+.preset-chip:hover { border-color: var(--accent) !important; background: var(--bg-card-hover) !important; }
+.preset-row-empty { font-style: italic; }
+
+/* All jobs stack */
+#allJobsStack { scrollbar-width: thin; }
+#allJobsStack::-webkit-scrollbar { width: 6px; }
+#actionBlocksStack::-webkit-scrollbar, #jobActionStack::-webkit-scrollbar, #blockConfigForm::-webkit-scrollbar { width: 6px; }
+

@@ -39,8 +39,20 @@ from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
 from app.browser.tab_matcher import best_matches
-from app.browser.dom_highlight import build_highlight_js, build_clear_js
-from app.core.action_blocks import default_stack, stack_to_dicts, load_stack_from_dicts, parse_stack_json, validate_stack, create_default_block
+from app.browser.dom_highlight import build_highlight_js, build_clear_js, build_highlight_probe, build_find_probe, build_click_probe
+from app.browser.probe_requests import FindProbeSpec, ClickProbeSpec, HighlightSpec, COLOR_FIND, COLOR_CLICK, COLOR_COLLECT
+from app.browser.visual_click import ClickRequest, find_and_click
+from app.core.action_blocks import (
+    default_stack,
+    stack_to_dicts,
+    load_stack_from_dicts,
+    parse_stack_json,
+    validate_stack,
+    create_default_block,
+    BUILTIN_BLOCKS,
+    get_builtin_blocks_json,
+    BLOCK_DEFINITIONS,
+)
 
 log = logging.getLogger("arena")
 
@@ -260,19 +272,93 @@ class Bridge(QObject):
         try:
             stack = self._get_action_blocks()
             before = len(stack)
-            stack = [b for b in stack if b.id != block_id and b.block_id != block_id]
+            stack = [b for b in stack if b.id != block_id]
             if len(stack) == before:
-                # Try by block_id type
-                stack = [b for b in self._get_action_blocks() if b.id != block_id]
+                stack = [b for b in self._get_action_blocks() if b.block_id != block_id or b.required]
                 if len(stack) == before:
                     return json.dumps({"ok": False, "error": "not found"})
-            # Ensure required blocks still present
             ok, err = validate_stack(stack)
             if not ok:
                 return json.dumps({"ok": False, "error": err})
             if self._save_action_blocks(stack):
+                self._log(f"Deleted block {block_id}", "info")
                 return json.dumps({"ok": True})
             return json.dumps({"ok": False, "error": "save failed"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_builtin_blocks(self):
+        try:
+            payload = get_builtin_blocks_json()
+            return payload
+        except Exception as e:
+            return json.dumps([], ensure_ascii=False)
+
+    @Slot(result=str)
+    def get_custom_blocks(self):
+        try:
+            raw = self.config.get_state("custom_blocks", [])
+            if isinstance(raw, list):
+                return json.dumps(raw, ensure_ascii=False)
+            return json.dumps([], ensure_ascii=False)
+        except Exception:
+            return json.dumps([], ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def save_custom_block(self, block_json: str):
+        try:
+            data = json.loads(block_json or "{}")
+            if not isinstance(data, dict) or "block" not in data:
+                return json.dumps({"ok": False, "error": "invalid custom block format, need {name, block}"})
+            name = data.get("name") or data.get("block", {}).get("custom_name") or data.get("block", {}).get("name") or "Custom"
+            entry = {
+                "name": name,
+                "block": data.get("block"),
+                "updated_at": datetime.utcnow().isoformat() + "Z",
+            }
+            raw = self.config.get_state("custom_blocks", [])
+            if not isinstance(raw, list):
+                raw = []
+            raw = [c for c in raw if c.get("name") != name]
+            raw.append(entry)
+            self.config.set_state(custom_blocks=raw)
+            self._log(f"Custom block saved: {name}", "success")
+            return json.dumps({"ok": True, "name": name})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def delete_custom_block(self, name: str):
+        try:
+            raw = self.config.get_state("custom_blocks", [])
+            if not isinstance(raw, list):
+                raw = []
+            before = len(raw)
+            raw = [c for c in raw if c.get("name") != name]
+            if len(raw) == before:
+                return json.dumps({"ok": False, "error": "not found"})
+            self.config.set_state(custom_blocks=raw)
+            self._log(f"Custom block deleted: {name}", "info")
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def export_custom_block(self, name: str):
+        try:
+            raw = self.config.get_state("custom_blocks", [])
+            if not isinstance(raw, list):
+                return json.dumps({"ok": False, "error": "no custom blocks"})
+            for c in raw:
+                if c.get("name") == name:
+                    payload = json.dumps(c, ensure_ascii=False, indent=2)
+                    path = Path("config") / f"custom_block_{name}.json"
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(payload, encoding="utf-8")
+                    self._log(f"Custom block exported to {path}", "success")
+                    return json.dumps({"ok": True, "path": str(path)})
+            return json.dumps({"ok": False, "error": "not found"})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
@@ -1079,14 +1165,13 @@ class Bridge(QObject):
                             return b
                     return None
 
-                # Iterate through action blocks stack
+                # Iterate through action blocks stack — restored visual runner + generic CUSTOM_FIND
                 for block in action_stack:
                     if not block.enabled:
                         self._emit_job_action_status(job_id, block, "skipped", f"Skipped (disabled)")
                         continue
 
                     btype = block.block_id
-                    # Pre-delay
                     if block.pre_delay_ms and block.pre_delay_ms > 0:
                         await asyncio.sleep(block.pre_delay_ms / 1000.0)
 
@@ -1094,7 +1179,114 @@ class Bridge(QObject):
                     self._log(f"[{correlation_id}] ▶ Block {block.display_name} ({btype}) running", "info")
 
                     try:
-                        if btype == "OBSERVE_BASELINE":
+                        # ── Generic CUSTOM_FIND — click on btn/text areas with visual confirmations ──
+                        if btype == "CUSTOM_FIND":
+                            # Build ClickRequest from block fields (Old App pattern)
+                            req = ClickRequest(
+                                selector=block.selector or "button",
+                                label_selector=block.label_selector or "",
+                                match_text=block.match_text or "",
+                                match_mode=block.match_mode or "contains",
+                                click_enabled=block.click_enabled,
+                                click_selector=block.click_selector or "",
+                                highlight_enabled=block.highlight_enabled,
+                                confirm_pause_ms=block.confirm_pause_ms or 700,
+                                highlight_ms=block.highlight_ms or block.highlight_duration_ms or 2000,
+                                label=block.display_name or block.name,
+                            )
+                            # Use visual runner
+                            result = await find_and_click(self.cdp, req, engine=self)
+                            if result == "ok":
+                                # Try to get last rect from stash highlight — we already emitted via engine.report
+                                # For UI, also highlight selector for confirmation
+                                try:
+                                    rect = await ctrl.highlight_selector(block.selector, color=block.color, duration_ms=block.highlight_ms, caption=block.display_name)
+                                    rect_data = rect if isinstance(rect, dict) else None
+                                    if isinstance(rect, dict) and rect.get("rect"):
+                                        rect_data = rect.get("rect")
+                                    self._emit_job_action_status(job_id, block, "success", f"FIND+CLICK ok {block.selector}", rect=rect_data)
+                                except Exception:
+                                    self._emit_job_action_status(job_id, block, "success", f"FIND+CLICK ok {block.selector}")
+                            else:
+                                # Try fallback if defined
+                                if block.fallback_selector:
+                                    self._log(f"[{correlation_id}] ↩ Trying fallback {block.fallback_selector} for {block.display_name}", "warn")
+                                    fallback_req = ClickRequest(
+                                        selector=block.fallback_selector,
+                                        label_selector="",
+                                        match_text=block.fallback_text or "",
+                                        match_mode="contains",
+                                        click_enabled=True,
+                                        click_selector="",
+                                        highlight_enabled=block.highlight_enabled,
+                                        confirm_pause_ms=block.confirm_pause_ms,
+                                        highlight_ms=block.highlight_ms,
+                                        label=f"{block.display_name} fallback",
+                                    )
+                                    result2 = await find_and_click(self.cdp, fallback_req, engine=self)
+                                    if result2 == "ok":
+                                        self._emit_job_action_status(job_id, block, "success", f"Fallback ok {block.fallback_selector}")
+                                    else:
+                                        raise RuntimeError(f"Find & Click failed for {block.selector} and fallback {block.fallback_selector}")
+                                else:
+                                    raise RuntimeError(f"Find & Click failed for {block.selector}")
+
+                        elif btype == "HIGHLIGHT":
+                            # Pure visual confirmation — no click, no stash touch
+                            try:
+                                spec = HighlightSpec(
+                                    label_selector=block.label_selector or None,
+                                    match_text=block.match_text or None,
+                                    match_mode=block.match_mode or "contains",
+                                    color=block.color or "#00c853",
+                                    caption=block.display_name or block.selector[:30],
+                                    highlight_ms=block.highlight_ms or block.highlight_duration_ms or 2000,
+                                    clear_first=True,
+                                )
+                                # Build JS probe directly for highlight-only
+                                from app.browser.dom_highlight import build_highlight_probe
+                                js = build_highlight_probe(block.selector or "div", spec)
+                                raw = await self.cdp.evaluate(js)
+                                import json as _js
+                                res = _js.loads(raw) if raw else {}
+                                rect = res.get("rect")
+                                msg = f"Highlighted {block.selector} at {rect}" if rect else f"Highlight attempted {block.selector}"
+                                level = "success" if res.get("found") else "warn"
+                                self._log(f"[{correlation_id}] {msg}", level)
+                                self._emit_job_action_status(job_id, block, "success" if res.get("found") else "failed", msg, rect=rect)
+                                if not res.get("found"):
+                                    raise RuntimeError(f"Highlight not found: {block.selector}")
+                            except Exception as e:
+                                raise RuntimeError(f"Highlight failed: {e}")
+
+                        elif btype == "PAUSE":
+                            dur = getattr(block, 'extra', {}).get('duration_ms') or getattr(block, 'timeout_ms', 1000) or 1000
+                            # extra may hold duration_ms
+                            if isinstance(block.extra, dict) and "duration_ms" in block.extra:
+                                dur = block.extra["duration_ms"]
+                            self._log(f"[{correlation_id}] ⏸ Pausing {dur}ms", "info")
+                            await asyncio.sleep(dur / 1000.0)
+                            self._emit_job_action_status(job_id, block, "success", f"Paused {dur}ms")
+
+                        elif btype == "TYPE_PROMPT":
+                            # Type with speed — Arena version of TYPE_MESSAGE
+                            typing_speed = 10
+                            if isinstance(block.extra, dict):
+                                typing_speed = block.extra.get("typing_speed_ms", 10)
+                            prompt_to_type = final_prompt
+                            self._log(f"[{correlation_id}] ⌨ Typing prompt {len(prompt_to_type)} chars speed {typing_speed}ms", "info")
+                            # Highlight first
+                            if block.highlight_enabled:
+                                try:
+                                    await ctrl.highlight_selector(block.selector or 'textarea[name="message"]', color=block.color, duration_ms=block.highlight_ms, caption=block.display_name)
+                                except Exception:
+                                    pass
+                            ok, reason = await ctrl.insert_prompt(prompt_to_type)
+                            if not ok:
+                                raise RuntimeError(f"Type prompt failed: {reason}")
+                            self._emit_job_action_status(job_id, block, "success", reason)
+
+                        elif btype == "OBSERVE_BASELINE":
                             baseline = await ctrl.capture_baseline()
                             self._log(f"[{correlation_id}] Baseline: {baseline.get('output_count')} existing outputs", "info")
                             self._emit_job_action_status(job_id, block, "success", f"Baseline {baseline.get('output_count')} outputs")
@@ -1117,37 +1309,74 @@ class Bridge(QObject):
                             else:
                                 self._emit_job_action_status(job_id, block, "success", "No security dialog")
 
-                        elif btype == "HIGHLIGHT_ATTACH":
+                        elif btype in ("HIGHLIGHT_ATTACH", "HIGHLIGHT_PROMPT", "HIGHLIGHT_SUBMIT"):
                             try:
-                                rect = await ctrl.highlight_selector(block.selector or 'input[type="file"]', color=block.color, duration_ms=block.highlight_duration_ms, caption=block.display_name)
-                                self._emit_job_action_status(job_id, block, "success", f"Highlighted {block.selector}", rect=rect if isinstance(rect, dict) else None)
+                                sel = block.selector or ('input[type="file"]' if "ATTACH" in btype else 'textarea[name="message"]' if "PROMPT" in btype else 'button[aria-label="Send message"]')
+                                rect = await ctrl.highlight_selector(sel, color=block.color, duration_ms=block.highlight_ms or block.highlight_duration_ms, caption=block.display_name)
+                                rd = rect if isinstance(rect, dict) else None
+                                if isinstance(rect, dict) and rect.get("rect"):
+                                    rd = rect.get("rect")
+                                self._emit_job_action_status(job_id, block, "success", f"Highlighted {sel}", rect=rd)
                             except Exception as e:
                                 self._emit_job_action_status(job_id, block, "success", f"Highlight skipped: {e}")
 
                         elif btype == "ATTACH_IMAGE":
                             self._log(f"[{correlation_id}] Attaching {img.absolute_path}", "info")
+                            # If block has click_selector (human-like open dialog), use visual click first
+                            if block.click_selector and block.click_enabled:
+                                try:
+                                    req = ClickRequest(
+                                        selector=block.click_selector,
+                                        label_selector="",
+                                        match_text="",
+                                        click_enabled=True,
+                                        click_selector="",
+                                        highlight_enabled=block.highlight_enabled,
+                                        confirm_pause_ms=block.confirm_pause_ms,
+                                        highlight_ms=block.highlight_ms,
+                                        label=f"{block.display_name} open dialog",
+                                    )
+                                    await find_and_click(self.cdp, req, engine=self)
+                                    await asyncio.sleep(0.5)
+                                except Exception as e:
+                                    self._log(f"[{correlation_id}] Open dialog click skipped: {e}", "warn")
                             ok, reason = await ctrl.attach_image(img.absolute_path)
                             if not ok:
                                 raise RuntimeError(f"Attach failed: {reason}")
                             self._log(f"[{correlation_id}] Attachment verified: {reason}", "success")
-                            # Try to get rect for visual confirmation
                             try:
-                                rect = await ctrl.highlight_selector(block.selector or 'input[type="file"]', color=block.color, duration_ms=block.highlight_duration_ms, caption=f"Attached {img.filename}")
+                                rect = await ctrl.highlight_selector(block.selector or 'input[type="file"]', color=block.color, duration_ms=block.highlight_ms or block.highlight_duration_ms, caption=f"Attached {img.filename}")
+                                rd = rect if isinstance(rect, dict) else None
                                 if isinstance(rect, dict) and rect.get("rect"):
-                                    rect = rect.get("rect")
-                                self._emit_job_action_status(job_id, block, "success", f"{reason}", rect=rect if isinstance(rect, dict) else None)
+                                    rd = rect.get("rect")
+                                self._emit_job_action_status(job_id, block, "success", f"{reason}", rect=rd)
                             except Exception:
                                 self._emit_job_action_status(job_id, block, "success", f"{reason}")
 
-                        elif btype == "HIGHLIGHT_PROMPT":
+                        elif btype == "VERIFY_ATTACHMENT":
+                            # Check preview exists
+                            sel = block.selector or "div.flex.flex-wrap.gap-2 img"
                             try:
-                                rect = await ctrl.highlight_selector(block.selector or 'textarea[name="message"]', color=block.color, duration_ms=block.highlight_duration_ms, caption=block.display_name)
-                                self._emit_job_action_status(job_id, block, "success", f"Highlighted {block.selector}", rect=rect if isinstance(rect, dict) else None)
+                                from app.browser.dom_highlight import build_find_probe
+                                from app.browser.probe_requests import FindProbeSpec
+                                js = build_find_probe(sel, FindProbeSpec(highlight=block.highlight_enabled, highlight_ms=block.highlight_ms or 1500, color=block.color))
+                                raw = await self.cdp.evaluate(js)
+                                import json as _j
+                                res = _j.loads(raw) if raw else {}
+                                if res.get("found"):
+                                    self._emit_job_action_status(job_id, block, "success", f"Attachment preview found {sel}", rect=res.get("rect"))
+                                else:
+                                    raise RuntimeError(f"Attachment preview not found: {sel}")
                             except Exception as e:
-                                self._emit_job_action_status(job_id, block, "success", f"Highlight skipped: {e}")
+                                raise RuntimeError(f"Verify attachment failed: {e}")
 
                         elif btype == "INSERT_PROMPT":
                             self._log(f"[{correlation_id}] Inserting prompt with token [{correlation_id}]", "info")
+                            if block.highlight_enabled:
+                                try:
+                                    await ctrl.highlight_selector(block.selector or 'textarea[name="message"]', color=block.color, duration_ms=block.highlight_ms or 1000, caption=block.display_name)
+                                except Exception:
+                                    pass
                             ok, reason = await ctrl.insert_prompt(final_prompt)
                             if not ok:
                                 raise RuntimeError(f"Prompt insert failed: {reason}")
@@ -1163,20 +1392,51 @@ class Bridge(QObject):
                                     raise RuntimeError(f"Prompt verification failed: {vreason}")
                             self._emit_job_action_status(job_id, block, "success", f"Verified {vreason}")
 
-                        elif btype == "HIGHLIGHT_SUBMIT":
-                            try:
-                                rect = await ctrl.highlight_selector(block.selector or 'button[aria-label="Send message"]', color=block.color, duration_ms=block.highlight_duration_ms, caption=block.display_name)
-                                self._emit_job_action_status(job_id, block, "success", f"Highlighted {block.selector}", rect=rect if isinstance(rect, dict) else None)
-                            except Exception as e:
-                                self._emit_job_action_status(job_id, block, "success", f"Highlight skipped: {e}")
-
                         elif btype == "SUBMIT":
-                            self._log(f"[{correlation_id}] Submitting once", "info")
-                            ok, reason = await ctrl.submit()
-                            if not ok:
-                                raise RuntimeError(f"Submit failed: {reason}")
-                            self._log(f"[{correlation_id}] Submitted", "success")
-                            self._emit_job_action_status(job_id, block, "success", f"{reason}")
+                            self._log(f"[{correlation_id}] Submitting once via {block.selector}", "info")
+                            # Use visual runner for submit with fallback
+                            req = ClickRequest(
+                                selector=block.selector or 'button[aria-label="Send message"]',
+                                label_selector=block.label_selector or "",
+                                match_text=block.match_text or "",
+                                click_enabled=block.click_enabled,
+                                click_selector=block.click_selector or "",
+                                highlight_enabled=block.highlight_enabled,
+                                confirm_pause_ms=block.confirm_pause_ms or 700,
+                                highlight_ms=block.highlight_ms or block.highlight_duration_ms or 2000,
+                                label=block.display_name,
+                            )
+                            result = await find_and_click(self.cdp, req, engine=self)
+                            if result != "ok":
+                                # Try fallback
+                                if block.fallback_selector:
+                                    self._log(f"[{correlation_id}] ↩ Submit fallback {block.fallback_selector}", "warn")
+                                    fb_req = ClickRequest(
+                                        selector=block.fallback_selector,
+                                        label_selector="",
+                                        match_text=block.fallback_text or "",
+                                        click_enabled=True,
+                                        highlight_enabled=block.highlight_enabled,
+                                        confirm_pause_ms=block.confirm_pause_ms,
+                                        highlight_ms=block.highlight_ms,
+                                        label="Submit fallback",
+                                    )
+                                    result2 = await find_and_click(self.cdp, fb_req, engine=self)
+                                    if result2 != "ok":
+                                        # Last resort: try ctrl.submit()
+                                        ok, reason = await ctrl.submit()
+                                        if not ok:
+                                            raise RuntimeError(f"Submit failed: {reason} and fallback failed")
+                                        self._emit_job_action_status(job_id, block, "success", f"Submit via controller {reason}")
+                                    else:
+                                        self._emit_job_action_status(job_id, block, "success", f"Submit via fallback {block.fallback_selector}")
+                                else:
+                                    ok, reason = await ctrl.submit()
+                                    if not ok:
+                                        raise RuntimeError(f"Submit failed: {reason}")
+                                    self._emit_job_action_status(job_id, block, "success", f"{reason}")
+                            else:
+                                self._emit_job_action_status(job_id, block, "success", f"Clicked {block.selector}")
 
                         elif btype == "WAIT_OUTPUT":
                             self._log(f"[{correlation_id}] Waiting for generation (timeout {gen_timeout}ms)", "info")
@@ -1188,7 +1448,15 @@ class Bridge(QObject):
                             if not new_src:
                                 raise RuntimeError("New output src not found after generation")
                             self._log(f"[{correlation_id}] New output detected: {new_src[:80]}...", "success")
-                            self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}...")
+                            # GREEN rect for new output
+                            try:
+                                rect = await ctrl.highlight_selector(block.selector or 'div.no-scrollbar img', color=block.color or "#00c853", duration_ms=block.highlight_ms or 3000, caption="New output")
+                                rd = rect if isinstance(rect, dict) else None
+                                if isinstance(rect, dict) and rect.get("rect"):
+                                    rd = rect.get("rect")
+                                self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}...", rect=rd)
+                            except Exception:
+                                self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}...")
 
                         elif btype == "DOWNLOAD":
                             if not new_src:
@@ -1216,7 +1484,6 @@ class Bridge(QObject):
                                     raise ValueError("Zero dimension image")
                                 self._emit_job_action_status(job_id, block, "success", f"Valid {fmt} {im.width}x{im.height}")
                             except Exception as e:
-                                # Fallback ext from URL
                                 if ".png" in (new_src or ""):
                                     ext = ".png"
                                 elif ".jpg" in (new_src or "") or ".jpeg" in (new_src or ""):
@@ -1225,7 +1492,6 @@ class Bridge(QObject):
                                     ext = ".webp"
                                 else:
                                     ext = ".png"
-                                # If PIL failed but we have bytes, still consider valid for now, but log
                                 if len(file_bytes) < 100:
                                     raise RuntimeError(f"Validation failed: {e}")
                                 self._emit_job_action_status(job_id, block, "success", f"Validation fallback ext {ext}, bytes {len(file_bytes)}")
@@ -1262,7 +1528,6 @@ class Bridge(QObject):
                             self._emit_job_action_status(job_id, block, "success", f"Advanced to completed")
 
                         else:
-                            # Unknown block type — skip with warning
                             self._log(f"[{correlation_id}] Unknown block type {btype}, skipping", "warn")
                             self._emit_job_action_status(job_id, block, "skipped", f"Unknown type {btype}")
 
@@ -1271,12 +1536,10 @@ class Bridge(QObject):
                         job_error = str(e)
                         self._log(f"[{correlation_id}] ❌ Block {block.display_name} failed: {e}", "error")
                         self._emit_job_action_status(job_id, block, "failed", f"{e}")
-                        # If required block fails, break job
                         if getattr(block, 'required', False):
                             self._log(f"[{correlation_id}] Required block {btype} failed, aborting job", "error")
                             break
                         else:
-                            # For non-required, continue but log
                             self._log(f"[{correlation_id}] Non-required block {btype} failed, continuing", "warn")
                             continue
 
