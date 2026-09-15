@@ -289,13 +289,40 @@ class CDPClient(QObject):
             self.error.emit(str(e))
             return []
 
-    async def connect(self, ws_url: str) -> bool:
-        # Prevent concurrent connects — use asyncio.Lock and reuse if same tab
+    def _get_connect_lock(self):
+        """Return an asyncio.Lock bound to current running loop, recreating if loop changed."""
         try:
-            if self._connect_lock is None:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        # Create if missing
+        if self._connect_lock is None:
+            try:
+                self._connect_lock = asyncio.Lock()
+            except Exception:
+                self._connect_lock = None
+            return self._connect_lock
+        # Detect loop mismatch — if lock bound to different loop, recreate
+        try:
+            # In Python 3.10+, Lock._loop is None until first acquire, then set
+            lock_loop = getattr(self._connect_lock, '_loop', None)
+            if lock_loop is not None and loop is not None and lock_loop is not loop:
+                log.info(f"CDP lock bound to different loop {lock_loop} vs {loop}, recreating")
                 self._connect_lock = asyncio.Lock()
         except Exception:
-            pass
+            # If detection fails, try to get loop via private method (Python 3.11+)
+            try:
+                lock_loop = self._connect_lock._get_loop() if hasattr(self._connect_lock, '_get_loop') else None
+                if lock_loop is not None and loop is not None and lock_loop is not loop:
+                    self._connect_lock = asyncio.Lock()
+            except Exception:
+                pass
+        return self._connect_lock
+
+    async def connect(self, ws_url: str) -> bool:
+        # Prevent concurrent connects — use asyncio.Lock per-loop and reuse if same tab
+        # Ensure lock exists and is bound to current loop
+        lock = self._get_connect_lock()
         try:
             if self.is_connected and self._current_ws_url and ws_url and self._current_tab_id:
                 m = re.search(r'/devtools/page/([^/]+)$', ws_url)
@@ -304,9 +331,23 @@ class CDPClient(QObject):
                     return True
         except Exception:
             pass
-        if self._connect_lock:
-            async with self._connect_lock:
-                return await self._connect_inner(ws_url)
+        if lock:
+            try:
+                async with lock:
+                    return await self._connect_inner(ws_url)
+            except RuntimeError as e:
+                # Handle "is bound to a different event loop" — recreate and retry once
+                if "different event loop" in str(e) or "bound to a different" in str(e):
+                    log.warning(f"CDP lock loop mismatch, recreating: {e}")
+                    try:
+                        self._connect_lock = asyncio.Lock()
+                        async with self._connect_lock:
+                            return await self._connect_inner(ws_url)
+                    except RuntimeError as e2:
+                        log.warning(f"CDP lock still mismatched after recreate: {e2}, falling back to direct connect")
+                        return await self._connect_inner(ws_url)
+                else:
+                    raise
         else:
             return await self._connect_inner(ws_url)
 

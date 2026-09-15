@@ -2,6 +2,8 @@
 'use strict';
 
 const UrlList = {
+  _lastConnectUrl: '',
+  _lastConnectTs: 0,
   init() {
     const addBtn = document.getElementById('urlAddBtn');
     const input = document.getElementById('urlInput');
@@ -155,6 +157,13 @@ const UrlList = {
     let url = urlObj ? urlObj.url : '';
     if (!url) { LogConsole.log('⚠ URL not found', 'warn'); return; }
     url = this._extractUrl(url);
+    const now = Date.now();
+    if (url === this._lastConnectUrl && (now - this._lastConnectTs) < 1500) {
+      console.debug('UrlList.connectUrl debounced duplicate', url.slice(0,60));
+      return;
+    }
+    this._lastConnectUrl = url;
+    this._lastConnectTs = now;
     LogConsole.log(`🔍 Connect: finding tab for ${url}`, 'info');
     if (App.bridge && App.bridge.find_tab_by_url) {
       App.bridge.find_tab_by_url(url);

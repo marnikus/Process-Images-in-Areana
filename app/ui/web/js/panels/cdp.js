@@ -7,6 +7,10 @@ const CDPPanel = {
   selectedWs: '',
   lastMatchQuery: '',
   _diagnoseBtn: null,
+  _lastAutoConnectWs: '',
+  _lastAutoConnectTs: 0,
+  _lastConnectWs: '',
+  _lastConnectTs: 0,
 
   init() {
     const refreshBtn = document.getElementById('refreshTabsBtn');
@@ -76,17 +80,11 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
   },
 
   bindBridgeSignals() {
+    // NOTE: tabs_received, connection_status, tab_match_result are centrally handled in arena-app.js
+    // to avoid double (x2) logs. CDPPanel only binds url_presets_updated here.
+    // All other CDP signals are routed via App.bridge -> CDPPanel methods in arena-app.js setupBridgeListeners.
     if (!App.bridge) return;
     try {
-      if (App.bridge.tabs_received) {
-        App.bridge.tabs_received.connect((payload) => this.onTabsReceived(payload));
-      }
-      if (App.bridge.connection_status) {
-        App.bridge.connection_status.connect((status) => this.onConnectionStatus(status));
-      }
-      if (App.bridge.tab_match_result) {
-        App.bridge.tab_match_result.connect((query, payload) => this.onTabMatchResult(query, payload));
-      }
       if (App.bridge.url_presets_updated) {
         App.bridge.url_presets_updated.connect((payload) => this.renderBookmarks(payload));
       }
@@ -232,6 +230,13 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
       LogConsole.log('⚠ No tab selected — click Refresh tabs first, then pick a tab', 'warn');
       return;
     }
+    const now = Date.now();
+    if (ws === this._lastConnectWs && (now - this._lastConnectTs) < 1500) {
+      console.debug('connectSelected debounced duplicate', ws.slice(0,60));
+      return;
+    }
+    this._lastConnectWs = ws;
+    this._lastConnectTs = now;
     LogConsole.log('🔗 Connecting to ' + ws.slice(0, 60) + '…', 'info');
     if (App.bridge && App.bridge.connect_tab) {
       App.bridge.connect_tab(ws);
@@ -294,7 +299,7 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
     try {
       const matches = JSON.parse(payload);
       if (!matches || matches.length === 0) {
-        LogConsole.log(`❌ No Chrome tab matches “${query}”. Click Diagnose, check Chrome was started with --remote-debugging-port=9222 --user-data-dir="C:\\arena-images-chrome" and that arena.ai page is open in THAT Chrome window (not your normal Chrome).`, 'error');
+        LogConsole.log(`❌ No Chrome tab matches “${query}”. Click Diagnose, check Chrome was started with --remote-debugging-port=9222 --user-data-dir="C:\arena-images-chrome" and that arena.ai page is open in THAT Chrome window (not your normal Chrome).`, 'error');
         // also trigger diagnose automatically
         if (this.tabs.length === 0) {
           LogConsole.log('🩺 Auto-running Diagnose…', 'info');
@@ -309,6 +314,15 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
         sel.value = best.ws_url;
         this.selectedWs = best.ws_url;
       }
+      // Debounce auto-connect to avoid x2 connect race
+      const now = Date.now();
+      if (best.ws_url === this._lastAutoConnectWs && (now - this._lastAutoConnectTs) < 1500) {
+        console.debug('onTabMatchResult auto-connect debounced', best.ws_url.slice(0,60));
+        this.updateUrlRowsConnection();
+        return;
+      }
+      this._lastAutoConnectWs = best.ws_url;
+      this._lastAutoConnectTs = now;
       if (App.bridge && App.bridge.connect_tab) {
         LogConsole.log(`🔗 Auto-connecting to best match: ${best.title}`, 'info');
         App.bridge.connect_tab(best.ws_url);

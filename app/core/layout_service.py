@@ -143,6 +143,23 @@ def parse_grid_payload(raw: str):
 def canonical_grid_payload(raw: str):
     tree, err = parse_grid_payload(raw)
     if err:
+        # If error is window set mismatch / leaf count / id mismatch, try to migrate
+        if err in ("window set mismatch", "leaf count mismatch") or err.startswith("leaf id mismatch"):
+            try:
+                data = json.loads(raw)
+                raw_tree = data.get("tree") if isinstance(data, dict) and "tree" in data else data
+                if isinstance(raw_tree, dict):
+                    migrated = migrate_grid_tree(raw_tree)
+                    # Re-validate migrated
+                    m_tree, m_err = parse_grid_payload(json.dumps({"v": GRID_VERSION, "tree": migrated}))
+                    if not m_err:
+                        return json.dumps({"v": GRID_VERSION, "tree": m_tree}, ensure_ascii=False, separators=(",",":")), None
+                    # If still error, fall back to default
+                    log.warning(f"Migration still failed after window mismatch: {m_err}, returning default")
+                    return default_payload(), None
+            except Exception as e:
+                log.warning(f"Failed to migrate grid after mismatch {err}: {e}, returning default")
+                return default_payload(), None
         return None, err
     return json.dumps({"v": GRID_VERSION, "tree": tree}, ensure_ascii=False, separators=(",",":")), None
 

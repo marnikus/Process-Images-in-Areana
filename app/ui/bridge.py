@@ -78,10 +78,18 @@ class Bridge(QObject):
         self.undo_service = UndoService(self.config.undo)
         self.cdp = cdp_client
         # persistent bg loop for CDP (keeps websocket alive)
+        import threading as _th
         self._bg_loop = None
         self._bg_thread = None
-        self._bg_lock = None
-        self._bg_ready = None
+        self._bg_lock = _th.Lock()
+        self._bg_ready = _th.Event()
+        # debouncing for CDP tab find/connect to avoid x2 logs and race
+        self._last_find_query = ""
+        self._last_find_ts = 0.0
+        self._last_connect_ws = ""
+        self._last_connect_ts = 0.0
+        self._find_in_progress = False
+        self._connect_in_progress = False
         # ensure undo history loaded
         try:
             self.config.undo.load()
@@ -1704,39 +1712,52 @@ class Bridge(QObject):
         try:
             import asyncio
             import threading
+            # Ensure lock/event exist (robust against old None values from previous version)
+            if not isinstance(getattr(self, '_bg_lock', None), type(threading.Lock())):
+                # _bg_lock may be None or wrong type after unpickle/migration — recreate
+                self._bg_lock = threading.Lock()
+            if not isinstance(getattr(self, '_bg_ready', None), type(threading.Event())):
+                self._bg_ready = threading.Event()
             # If loop exists and running, reuse
             bg_loop = getattr(self, '_bg_loop', None)
             if bg_loop and bg_loop.is_running():
                 return bg_loop
-            # Need to create new loop thread
-            if not hasattr(self, '_bg_lock'):
-                self._bg_lock = threading.Lock()
-                self._bg_ready = threading.Event()
-                self._bg_loop = None
-                self._bg_thread = None
             with self._bg_lock:
                 bg_loop = getattr(self, '_bg_loop', None)
                 if bg_loop and bg_loop.is_running():
                     return bg_loop
-                self._bg_ready.clear()
+                try:
+                    self._bg_ready.clear()
+                except Exception:
+                    self._bg_ready = threading.Event()
                 def _run_loop():
                     try:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         self._bg_loop = loop
-                        self._bg_ready.set()
+                        try:
+                            self._bg_ready.set()
+                        except Exception:
+                            pass
                         loop.run_forever()
                     except Exception as e:
                         log.warning(f"bg loop crashed: {e}")
-                        self._bg_ready.set()
+                        try:
+                            self._bg_ready.set()
+                        except Exception:
+                            pass
                 t = threading.Thread(target=_run_loop, daemon=True, name="arena-bg-loop")
                 t.start()
                 self._bg_thread = t
             # Wait for loop to be ready
-            self._bg_ready.wait(timeout=5)
+            try:
+                self._bg_ready.wait(timeout=5)
+            except Exception:
+                pass
             return getattr(self, '_bg_loop', None)
         except Exception as e:
-            log.warning(f"_ensure_bg_loop failed: {e}")
+            import traceback
+            log.warning(f"_ensure_bg_loop failed: {e} {traceback.format_exc()[-500:]}")
             return None
 
     def _schedule_coro(self, coro):
@@ -1848,11 +1869,37 @@ class Bridge(QObject):
         if not self.cdp:
             self._log("CDP client not available", "error")
             return
+        # Debounce: if same ws_url requested within 1.5s, skip duplicate
+        try:
+            import time
+            now = time.time()
+            if ws_url == self._last_connect_ws and (now - self._last_connect_ts) < 1.5:
+                log.debug(f"connect_tab debounced duplicate {ws_url[:60]}")
+                return
+            if self._connect_in_progress and ws_url == self._last_connect_ws:
+                log.debug(f"connect_tab already in progress for {ws_url[:60]}, skipping")
+                return
+            self._last_connect_ws = ws_url
+            self._last_connect_ts = now
+        except Exception:
+            pass
         self._log(f"🔗 Connecting to {ws_url[:120]}… (port {self.cdp._port}, host {self.cdp._host})", "info")
         self._schedule_coro(self._do_connect_tab(ws_url))
 
     async def _do_connect_tab(self, ws_url: str):
+        self._connect_in_progress = True
         try:
+            # If already connected to same tab, reuse — avoid disconnect/reconnect race
+            try:
+                if self.cdp and self.cdp.is_connected and self.cdp._current_tab_id:
+                    import re
+                    m = re.search(r'/devtools/page/([^/]+)$', ws_url)
+                    if m and m.group(1) == self.cdp._current_tab_id:
+                        self._log(f"✅ Already connected to {ws_url[:80]} (reuse)", "success")
+                        self.connection_status.emit("connected")
+                        return
+            except Exception:
+                pass
             ok = await self.cdp.connect(ws_url)
             if ok:
                 self._log(f"✅ Connected to {ws_url[:80]} (tab {self.cdp._current_tab_id[:20]}…)", "success")
@@ -1868,46 +1915,67 @@ class Bridge(QObject):
             tb = traceback.format_exc()[-1000:]
             self._log(f"❌ Connect exception for {ws_url[:80]}: {e} — {tb}", "error")
             self.connection_status.emit("error")
+        finally:
+            self._connect_in_progress = False
 
     @Slot(str)
     def find_tab_by_url(self, query: str):
-        """Non-blocking: schedule async matching in thread."""
+        """Non-blocking: schedule async matching in thread with debounce."""
         if not self.cdp:
             self._log("CDP not available", "error")
             return
+        # Debounce: if same query within 1.0s, skip
+        try:
+            import time
+            now = time.time()
+            q = (query or "").strip()
+            if q and q == self._last_find_query and (now - self._last_find_ts) < 1.0:
+                log.debug(f"find_tab_by_url debounced duplicate {q[:60]}")
+                return
+            if self._find_in_progress:
+                log.debug(f"find_tab_by_url already in progress, skipping {q[:60]}")
+                return
+            self._last_find_query = q
+            self._last_find_ts = now
+        except Exception:
+            pass
         self._schedule_coro(self._do_find_tab(query))
 
     async def _do_find_tab(self, query: str):
-        query = (query or "").strip()
-        if not query:
-            self._log("⚠ URL field empty", "warn")
-            self.tab_match_result.emit(query, "[]")
-            return
+        self._find_in_progress = True
         try:
-            tabs = await self.cdp.fetch_tabs()
-            if not tabs:
-                try:
-                    import asyncio
-                    loop = asyncio.get_event_loop()
-                    diag = await loop.run_in_executor(None, lambda: self.cdp.diagnose_sync())
-                    self._log(diag.get("summary","⚠ No Chrome tabs found"), "warn")
-                    self._log(f"💡 Fix: 1) Close ALL Chrome windows. 2) Run: \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port={self.cdp._port} --user-data-dir=\"C:\\arena-images-chrome\" 3) Open https://arena.ai in that NEW Chrome window. 4) Click Diagnose. 5) Open http://{self.cdp._host}:{self.cdp._port}/json/list — you should see JSON.", "warn")
-                except Exception:
-                    self._log(f"⚠ No Chrome tabs found — start Chrome with --remote-debugging-port={self.cdp._port} --user-data-dir=\"C:\\arena-images-chrome\"", "warn")
+            query = (query or "").strip()
+            if not query:
+                self._log("⚠ URL field empty", "warn")
                 self.tab_match_result.emit(query, "[]")
                 return
-            tab_dicts = [{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs]
-            matches = best_matches(query, tab_dicts)
-            if not matches:
-                self._log(f"❌ No tab matches “{query}”. Available: " + "; ".join(f"{t.title} — {t.url}" for t in tabs[:5]), "error")
+            try:
+                tabs = await self.cdp.fetch_tabs()
+                if not tabs:
+                    try:
+                        import asyncio
+                        loop = asyncio.get_event_loop()
+                        diag = await loop.run_in_executor(None, lambda: self.cdp.diagnose_sync())
+                        self._log(diag.get("summary","⚠ No Chrome tabs found"), "warn")
+                        self._log(f"💡 Fix: 1) Close ALL Chrome windows. 2) Run: \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port={self.cdp._port} --user-data-dir=\"C:\\arena-images-chrome\" 3) Open https://arena.ai in that NEW Chrome window. 4) Click Diagnose. 5) Open http://{self.cdp._host}:{self.cdp._port}/json/list — you should see JSON.", "warn")
+                    except Exception:
+                        self._log(f"⚠ No Chrome tabs found — start Chrome with --remote-debugging-port={self.cdp._port} --user-data-dir=\"C:\\arena-images-chrome\"", "warn")
+                    self.tab_match_result.emit(query, "[]")
+                    return
+                tab_dicts = [{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs]
+                matches = best_matches(query, tab_dicts)
+                if not matches:
+                    self._log(f"❌ No tab matches “{query}”. Available: " + "; ".join(f"{t.title} — {t.url}" for t in tabs[:5]), "error")
+                    self.tab_match_result.emit(query, "[]")
+                    return
+                for m in matches[:3]:
+                    self._log(f"  · match ({m['kind']}): {m['title']} — {m['url']}", "success")
+                self.tab_match_result.emit(query, json.dumps(matches, ensure_ascii=False))
+            except Exception as e:
+                self._log(f"❌ Tab matching failed: {e}", "error")
                 self.tab_match_result.emit(query, "[]")
-                return
-            for m in matches[:3]:
-                self._log(f"  · match ({m['kind']}): {m['title']} — {m['url']}", "success")
-            self.tab_match_result.emit(query, json.dumps(matches, ensure_ascii=False))
-        except Exception as e:
-            self._log(f"❌ Tab matching failed: {e}", "error")
-            self.tab_match_result.emit(query, "[]")
+        finally:
+            self._find_in_progress = False
 
     # URL bookmarks (from old app, now using arena_presets)
     @Slot(result=str)

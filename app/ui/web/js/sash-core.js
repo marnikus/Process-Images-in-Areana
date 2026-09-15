@@ -20,6 +20,8 @@
     { id: 'log',      title: 'Activity Log' },
     { id: 'settings', title: 'Settings' },
     { id: 'browser',  title: 'Browser Preview' },
+    { id: 'action_blocks', title: 'Action Blocks — Stacking Jobs' },
+    { id: 'arena_presets', title: 'Arena Presets' },
   ];
   const V1_WINDOW_IDS = WINDOWS.map(w=>w.id);
   const V2_WINDOW_IDS = V1_WINDOW_IDS;
@@ -52,10 +54,11 @@
       ], [60, 40]),
       split('row', [
         leaf('queue'),
-        split('col', [leaf('browser'), leaf('progress')], [70, 30]),
-      ], [62, 38]),
+        split('col', [leaf('action_blocks'), leaf('browser')], [50, 50]),
+        split('col', [leaf('arena_presets'), leaf('progress')], [60, 40]),
+      ], [50, 30, 20]),
       leaf('log'),
-    ], [38, 45, 17]);
+    ], [38, 40, 22]);
   }
 
   function layoutA() {
@@ -63,26 +66,27 @@
       leaf('url_list'), leaf('folder'), leaf('queue'),
       leaf('prompt'), leaf('run'), leaf('progress'),
       leaf('log'), leaf('settings'), leaf('browser'),
-    ], [12, 8, 20, 15, 10, 10, 10, 8, 7]);
+      leaf('action_blocks'), leaf('arena_presets'),
+    ], [11, 7, 18, 13, 9, 9, 9, 7, 6, 6, 5]);
   }
 
   function layoutB() {
     return split('row', [
-      split('col', [leaf('url_list'), leaf('folder'), leaf('queue')], [30, 20, 50]),
+      split('col', [leaf('url_list'), leaf('folder'), leaf('queue'), leaf('action_blocks')], [25, 15, 35, 25]),
       split('col', [leaf('prompt'), leaf('run'), leaf('progress'), leaf('log')], [35, 15, 20, 30]),
-      split('col', [leaf('browser'), leaf('settings')], [70, 30]),
+      split('col', [leaf('browser'), leaf('settings'), leaf('arena_presets')], [50, 25, 25]),
     ], [35, 35, 30]);
   }
 
   function layoutC() {
     return split('col', [
       split('row', [
-        split('col', [leaf('url_list'), leaf('prompt')], [50, 50]),
+        split('col', [leaf('url_list'), leaf('prompt'), leaf('action_blocks')], [35, 35, 30]),
         leaf('browser'),
       ], [45, 55]),
       split('row', [
         leaf('queue'),
-        split('col', [leaf('folder'), leaf('run'), leaf('settings'), leaf('progress')], [25, 20, 30, 25]),
+        split('col', [leaf('folder'), leaf('run'), leaf('settings'), leaf('progress'), leaf('arena_presets')], [20, 15, 25, 20, 20]),
       ], [60, 40]),
       leaf('log'),
     ], [35, 48, 17]);
@@ -478,7 +482,21 @@
       return { ok: false, error: 'unsupported layout version ' + version };
     if (version === VERSION) {
       const err = validate(tree, expectedIds);
-      return err ? { ok: false, error: err } : { ok: true, tree: clone(tree) };
+      if (!err) return { ok: true, tree: clone(tree) };
+      // If leaf mismatch, try to migrate (handles old 9-window layouts -> 11)
+      if (err.includes('leaf') || err.includes('mismatch')) {
+        try {
+          const migrated = migrate(tree);
+          const err2 = validate(migrated, expectedIds);
+          if (!err2) return { ok: true, tree: migrated, migrated: true };
+          console.warn('Migrate after mismatch still failed', err2, 'returning default');
+          return { ok: true, tree: defaultTree(), migrated: true };
+        } catch (e) {
+          console.warn('Migrate failed', e, 'returning default');
+          return { ok: true, tree: defaultTree(), migrated: true };
+        }
+      }
+      return { ok: false, error: err };
     }
     const structural = validate(tree, leafIds(tree));
     if (structural) return { ok: false, error: structural };
