@@ -42,6 +42,7 @@ const SashGrid = {
     url_list: 'link', folder: 'folder', queue: 'photo_library',
     prompt: 'edit_note', run: 'play_circle', progress: 'insights',
     log: 'terminal', settings: 'settings', browser: 'preview',
+    action_blocks: 'view_module', arena_presets: 'bookmarks',
   },
 
   init() {

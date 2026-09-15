@@ -127,7 +127,7 @@ def _base_out_js() -> str:
 
 
 _PROBE_JS = """
-(function(){
+;(function(){
 %(out)s
 %(helpers)s
   try {
@@ -332,7 +332,7 @@ def build_highlight_probe(selector: str, spec: Optional[HighlightSpec] = None) -
 
 def build_clear_probe() -> str:
     return """
-(function(){
+;(function(){
   try {
     var old = document.querySelectorAll('[%(attr)s]');
     for (var k = 0; k < old.length; k++) {
@@ -435,7 +435,7 @@ def build_highlight_js(selector: str, color: str = "#FF0000", duration_ms: int =
         highlight_ms=duration_ms,
         clear_first=clear_first,
     )
-    return build_highlight_probe(selector, spec)
+    return ";" + build_highlight_probe(selector, spec).lstrip()
 
 
 def build_clear_js() -> str:
@@ -447,7 +447,7 @@ def build_highlight_rect_js(x: float, y: float, w: float, h: float, color: str =
     color_json = json.dumps(color)
     caption_json = json.dumps(caption or f"{int(w)}x{int(h)}")
     return f"""
-(function(){{
+;(function(){{
 {_HELPERS_JS}
   try {{
     var r = {{left:{x}, top:{y}, width:{w}, height:{h}}};

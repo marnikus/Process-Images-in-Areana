@@ -39,7 +39,7 @@ JS_FIND_TEXTAREA = """
     if (el && el.offsetParent !== null) return sel;
   }
   return null;
-})()
+})
 """
 
 JS_INSERT_PROMPT = """
@@ -99,7 +99,7 @@ JS_FIND_SEND_BUTTON = """
     } catch(e) {}
   }
   return null;
-})()
+})
 """
 
 JS_CLICK_SEND = """
@@ -122,7 +122,7 @@ JS_CLICK_SEND = """
     btn.click();
     return {ok:true};
   } catch(e) { return {ok:false, error:String(e)}; }
-})()
+})
 """
 
 JS_BASELINE = """
@@ -161,7 +161,7 @@ JS_BASELINE = """
   } catch(e) {
     return {output_count:0, output_srcs:[], error:String(e), timestamp:Date.now()};
   }
-})()
+})
 """
 
 JS_CHECK_NEW_OUTPUT = """
@@ -259,7 +259,7 @@ class CDPArenaController:
         return False
 
     async def capture_baseline(self) -> Dict[str, Any]:
-        js = f"({JS_BASELINE})()"
+        js = f";({JS_BASELINE})()"
         result = await self.cdp.evaluate(js)
         if not result:
             return {"output_count": 0, "output_srcs": [], "timestamp": int(time.time()*1000)}
@@ -288,7 +288,7 @@ class CDPArenaController:
             return verified2, vreason2
 
     async def verify_attachment(self, expected_filename: str) -> Tuple[bool, str]:
-        js = f"({JS_VERIFY_ATTACHMENT})({json.dumps(expected_filename)})"
+        js = f";({JS_VERIFY_ATTACHMENT})({json.dumps(expected_filename)})"
         result = await self.cdp.evaluate(js)
         if not result:
             return False, "No result from verify"
@@ -305,7 +305,7 @@ class CDPArenaController:
         except Exception:
             pass
         # Build JS that calls the function with arg
-        js = f"({JS_INSERT_PROMPT})({json.dumps(prompt_text)})"
+        js = f";({JS_INSERT_PROMPT})({json.dumps(prompt_text)})"
         result = await self.cdp.evaluate(js)
         if not result:
             return False, "No result"
@@ -314,7 +314,7 @@ class CDPArenaController:
         return False, result.get("error", "Unknown")
 
     async def verify_prompt(self, expected: str) -> Tuple[bool, str]:
-        js = f"({JS_VERIFY_PROMPT})({json.dumps(expected)})"
+        js = f";({JS_VERIFY_PROMPT})({json.dumps(expected)})"
         result = await self.cdp.evaluate(js)
         if not result:
             return False, "No result"
@@ -331,7 +331,7 @@ class CDPArenaController:
             await self.highlight_selector('button[aria-label="Send message"]', color="#FFAA00", duration_ms=1000, caption="Send")
         except Exception:
             pass
-        js = f"({JS_CLICK_SEND})()"
+        js = f";({JS_CLICK_SEND})()"
         result = await self.cdp.evaluate(js)
         if not result:
             return False, "No result"
@@ -346,7 +346,7 @@ class CDPArenaController:
         poll = 2
         while (time.time() - start) * 1000 < timeout_ms:
             # Check security dialog? Could be detected via JS
-            js_check = f"({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)})"
+            js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)})"
             result = await self.cdp.evaluate(js_check)
             if result and result.get("ready"):
                 return "completed", {"new_src": result.get("src"), "check": result, "baseline": baseline}
@@ -357,7 +357,7 @@ class CDPArenaController:
         return "failed", {"error": f"Timeout after {timeout_ms}ms", "last_baseline": final_baseline}
 
     async def download_image(self, src: str) -> Tuple[bool, bytes, str]:
-        js = f"({JS_DOWNLOAD_IMAGE})({json.dumps(src)})"
+        js = f";({JS_DOWNLOAD_IMAGE})({json.dumps(src)})"
         # evaluate returns value, but we need to await promise — our evaluate already awaits
         result = await self.cdp.evaluate(js)
         if not result:
@@ -420,7 +420,7 @@ class CDPArenaController:
     async def is_page_ready(self) -> Tuple[bool, List[str]]:
         """Check readiness via JS."""
         js = """
-        (() => {
+        ;(() => {
           const reasons = [];
           const checks = [
             {sel: 'textarea[name="message"]', name: 'prompt_textarea'},
@@ -448,7 +448,7 @@ class CDPArenaController:
 
     async def is_security_dialog_visible(self) -> bool:
         js = """
-        (() => {
+        ;(() => {
           const dialogs = document.querySelectorAll('div[role="dialog"][data-state="open"]');
           for (const d of dialogs) {
             if (d.innerText && d.innerText.includes('Security Verification')) return true;

@@ -12,6 +12,8 @@ const SashGridWindowStore = {
       log: 'winLog',
       settings: 'winSettings',
       browser: 'winBrowser',
+      action_blocks: 'winActionBlocks',
+      arena_presets: 'winArenaPresets',
     };
     for (const w of SashCore.WINDOWS) {
       const el = document.getElementById(winElIds[w.id]);
