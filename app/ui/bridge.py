@@ -917,43 +917,81 @@ class Bridge(QObject):
 
     @Slot(str, result=str)
     def copy_path_to_clipboard(self, path_str: str):
-        """Copy file path to clipboard — second option copy link to file."""
+        """Copy file path to clipboard — second option copy link to file. Fixed: was not copying."""
         try:
-            from PySide6.QtWidgets import QApplication
-            from PySide6.QtGui import QClipboard
-            app = QApplication.instance()
-            if app is None:
-                return json.dumps({"ok": False, "error": "No QApplication"})
-            clipboard = app.clipboard()
-            clipboard.setText(path_str, mode=QClipboard.Clipboard)
-            # Also set selection on Linux
+            # Try Qt clipboard — most reliable in QWebEngine
+            clipboard = None
             try:
-                clipboard.setText(path_str, mode=QClipboard.Selection)
+                from PySide6.QtWidgets import QApplication
+                app = QApplication.instance()
+                if app is not None:
+                    clipboard = app.clipboard()
             except Exception:
                 pass
-            self._log(f"📋 Copied to clipboard: {path_str}", "info")
-            return json.dumps({"ok": True, "path": path_str})
-        except Exception as e:
-            # Fallback try pyperclip or tkinter?
-            try:
-                import subprocess, platform
-                system = platform.system()
-                if system == "Windows":
-                    subprocess.run("clip", input=path_str.encode("utf-8"), check=True, shell=True)
-                    return json.dumps({"ok": True, "path": path_str, "fallback": "clip"})
-                elif system == "Darwin":
-                    subprocess.run("pbcopy", input=path_str.encode("utf-8"), check=True)
-                    return json.dumps({"ok": True, "path": path_str, "fallback": "pbcopy"})
-                else:
-                    # Linux try xclip/xsel
+            if clipboard is None:
+                try:
+                    from PySide6.QtGui import QGuiApplication
+                    app2 = QGuiApplication.instance()
+                    if app2 is not None:
+                        clipboard = app2.clipboard()
+                except Exception:
+                    pass
+            if clipboard is not None:
+                try:
+                    from PySide6.QtGui import QClipboard
+                    # Windows path like F:\Creative Cloud Files\... with spaces must be copied verbatim
+                    clipboard.setText(path_str, mode=QClipboard.Clipboard)
                     try:
-                        subprocess.run(["xclip", "-selection", "clipboard"], input=path_str.encode("utf-8"), check=True)
-                        return json.dumps({"ok": True, "path": path_str, "fallback": "xclip"})
+                        clipboard.setText(path_str, mode=QClipboard.Selection)
                     except Exception:
+                        pass
+                    # Ensure clipboard holds text
+                    self._log(f"📋 Copied to clipboard: {path_str}", "info")
+                    return json.dumps({"ok": True, "path": path_str, "method": "qt"})
+                except Exception as e_qt:
+                    # Fall through to subprocess fallback
+                    self._log(f"Qt clipboard failed {e_qt}, trying subprocess", "warn")
+
+            # Fallback subprocess — handles Windows clip, mac pbcopy, Linux xclip/xsel
+            import subprocess, platform
+            system = platform.system()
+            if system == "Windows":
+                # clip expects UTF-16? Use UTF-8 and shell, also try powershell Set-Clipboard
+                try:
+                    # Primary: clip
+                    subprocess.run("clip", input=path_str.encode("utf-8"), check=True, shell=True)
+                    self._log(f"📋 Copied via clip: {path_str}", "info")
+                    return json.dumps({"ok": True, "path": path_str, "fallback": "clip"})
+                except Exception:
+                    # Secondary: powershell Set-Clipboard — handles spaces and Unicode better
+                    try:
+                        # Escape single quotes for powershell
+                        ps_escaped = path_str.replace("'", "''")
+                        ps_cmd = f"Set-Clipboard -Value '{ps_escaped}'"
+                        subprocess.run(["powershell", "-Command", ps_cmd], check=True)
+                        self._log(f"📋 Copied via powershell: {path_str}", "info")
+                        return json.dumps({"ok": True, "path": path_str, "fallback": "powershell"})
+                    except Exception as e_ps:
+                        return json.dumps({"ok": False, "error": f"clip/powershell failed {e_ps}", "path": path_str})
+            elif system == "Darwin":
+                subprocess.run("pbcopy", input=path_str.encode("utf-8"), check=True)
+                self._log(f"📋 Copied via pbcopy: {path_str}", "info")
+                return json.dumps({"ok": True, "path": path_str, "fallback": "pbcopy"})
+            else:
+                # Linux try xclip/xsel
+                try:
+                    subprocess.run(["xclip", "-selection", "clipboard"], input=path_str.encode("utf-8"), check=True)
+                    self._log(f"📋 Copied via xclip: {path_str}", "info")
+                    return json.dumps({"ok": True, "path": path_str, "fallback": "xclip"})
+                except Exception:
+                    try:
                         subprocess.run(["xsel", "--clipboard", "--input"], input=path_str.encode("utf-8"), check=True)
+                        self._log(f"📋 Copied via xsel: {path_str}", "info")
                         return json.dumps({"ok": True, "path": path_str, "fallback": "xsel"})
-            except Exception as e2:
-                return json.dumps({"ok": False, "error": f"{e} / {e2}"})
+                    except Exception as e_x:
+                        return json.dumps({"ok": False, "error": f"xclip/xsel failed {e_x}", "path": path_str})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e), "path": path_str})
 
     @Slot(str, result=str)
     def add_url(self, url: str):

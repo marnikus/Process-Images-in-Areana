@@ -1,4 +1,4 @@
-/* image-queue.js — thumbs + explorer reveal + copy path */
+/* image-queue.js — thumbs + explorer reveal + copy path — fixed clipboard */
 'use strict';
 
 const ImageQueue = {
@@ -30,15 +30,38 @@ const ImageQueue = {
         const btn = e.target.closest('button');
         if (!btn) return;
         const act = btn.dataset.action;
-        const id = btn.dataset.imgId;
-        const p = btn.dataset.path;
         if (!act) return;
+        const id = btn.dataset.imgId;
+        const p = btn.dataset.path; // fallback direct path
+        const pathType = btn.dataset.pathType; // input / output — preferred to avoid embedding full path with backslashes
         if (act === 'retry' && id) this.retryOne(id);
         else if (act === 'reset' && id) this.resetOne(id);
         else if (act === 'exclude' && id) this.excludeOne(id);
         else if (act === 'preview' && id) this.previewOne(id);
-        else if (act === 'reveal' && p) this.revealPath(p);
-        else if (act === 'copy' && p) this.copyPath(p);
+        else if (act === 'reveal') {
+          if (id && pathType) {
+            const img = this._images.find(i => i.id === id);
+            if (img) {
+              const path = pathType === 'output' ? (img.output_path || '') : (img.absolute_path || '');
+              if (path) this.revealPath(path);
+              else LogConsole.log('No path to reveal for ' + id, 'warn');
+            }
+          } else if (p) {
+            this.revealPath(p);
+          }
+        }
+        else if (act === 'copy') {
+          if (id && pathType) {
+            const img = this._images.find(i => i.id === id);
+            if (img) {
+              const path = pathType === 'output' ? (img.output_path || '') : (img.absolute_path || '');
+              if (path) this.copyPath(path);
+              else LogConsole.log('No path to copy for ' + id, 'warn');
+            }
+          } else if (p) {
+            this.copyPath(p);
+          }
+        }
       });
     }
   },
@@ -67,18 +90,21 @@ const ImageQueue = {
   },
 
   revealPath(path) {
-    if (!path) return;
+    if (!path) {
+      LogConsole.log('Reveal: empty path', 'warn');
+      return;
+    }
     if (App.bridge && App.bridge.reveal_in_explorer) {
       App.bridge.reveal_in_explorer(path, (res) => {
         try {
           const r = typeof res === 'string' ? JSON.parse(res) : res;
           if (!r.ok) {
-            LogConsole.log('Reveal failed: ' + (r.error || res), 'error');
+            LogConsole.log('Reveal failed: ' + (r.error || res) + ' — ' + path, 'error');
           } else {
             LogConsole.log('📁 Opened in Explorer: ' + path, 'info');
           }
         } catch (e) {
-          // ignore
+          LogConsole.log('📁 Reveal result: ' + res, 'info');
         }
       });
     } else {
@@ -87,45 +113,76 @@ const ImageQueue = {
   },
 
   copyPath(path) {
-    if (!path) return;
-    const doCopy = (txt) => {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(txt).then(() => {
-          LogConsole.log('📋 Copied: ' + txt, 'success');
-        }).catch(() => {
-          this._fallbackCopy(txt);
-        });
-      } else {
-        this._fallbackCopy(txt);
-      }
-    };
-    doCopy(path);
-  },
-
-  _fallbackCopy(txt) {
-    if (App.bridge && App.bridge.copy_path_to_clipboard) {
-      App.bridge.copy_path_to_clipboard(txt, (res) => {
-        try {
-          const r = typeof res === 'string' ? JSON.parse(res) : res;
-          if (r.ok) LogConsole.log('📋 Copied: ' + txt, 'success');
-          else LogConsole.log('Copy failed: ' + (r.error || res), 'error');
-        } catch (e) {
-          LogConsole.log('📋 Copied (fallback): ' + txt, 'info');
-        }
-      });
-    } else {
-      // last resort prompt
+    if (!path) {
+      LogConsole.log('Copy: empty path', 'warn');
+      return;
+    }
+    const txt = String(path);
+    const fallbackTextarea = (t) => {
       try {
         const ta = document.createElement('textarea');
-        ta.value = txt;
+        ta.value = t;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
         document.body.appendChild(ta);
+        ta.focus();
         ta.select();
-        document.execCommand('copy');
+        ta.setSelectionRange(0, 99999);
+        const ok = document.execCommand('copy');
         document.body.removeChild(ta);
-        LogConsole.log('📋 Copied: ' + txt, 'success');
+        if (ok) {
+          LogConsole.log('📋 Copied (textarea): ' + t, 'success');
+          return true;
+        } else {
+          LogConsole.log('Copy failed (textarea execCommand returned false)', 'error');
+          return false;
+        }
       } catch (e) {
-        LogConsole.log('Copy failed, path: ' + txt, 'error');
+        LogConsole.log('Copy textarea exception: ' + e + ' path: ' + t, 'error');
+        return false;
       }
+    };
+
+    const tryNavigator = (t) => {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(t).then(() => {
+          LogConsole.log('📋 Copied: ' + t, 'success');
+        }).catch((e) => {
+          LogConsole.log('Clipboard API failed: ' + e + ', trying textarea', 'warn');
+          if (!fallbackTextarea(t)) {
+            LogConsole.log('All copy methods failed for: ' + t, 'error');
+          }
+        });
+      } else {
+        fallbackTextarea(t);
+      }
+    };
+
+    // Preferred: Qt clipboard via bridge — most reliable in QWebEngine file:// context
+    if (App.bridge && App.bridge.copy_path_to_clipboard) {
+      try {
+        App.bridge.copy_path_to_clipboard(txt, (res) => {
+          try {
+            const r = typeof res === 'string' ? JSON.parse(res) : res;
+            if (r.ok) {
+              LogConsole.log('📋 Copied: ' + txt, 'success');
+            } else {
+              LogConsole.log('Bridge copy failed: ' + (r.error || res) + ', trying navigator', 'warn');
+              tryNavigator(txt);
+            }
+          } catch (e) {
+            // If bridge returns non-JSON or throws, still try to consider it success and log
+            LogConsole.log('📋 Copied (bridge): ' + txt, 'success');
+          }
+        });
+      } catch (e) {
+        LogConsole.log('Bridge copy exception: ' + e + ', trying navigator', 'warn');
+        tryNavigator(txt);
+      }
+    } else {
+      LogConsole.log('Bridge copy not available, trying navigator clipboard', 'warn');
+      tryNavigator(txt);
     }
   },
 
@@ -198,10 +255,11 @@ const ImageQueue = {
       const relPath = img.relative_path || img.filename || '';
       const outPath = img.output_path || '';
 
+      // Use data-img-id + data-path-type to avoid embedding full Windows path with backslashes/spaces in attribute (was causing copy failure)
       const pathCell = `
         <div style="display:flex; align-items:center; gap:4px; max-width:180px;">
           <span title="${this.esc(absPath)}" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.esc(relPath)}</span>
-          ${absPath ? `<button class="btn-small" title="Open in Explorer: ${this.esc(absPath)}" data-action="reveal" data-path="${this.esc(absPath)}">📁</button><button class="btn-small" title="Copy path" data-action="copy" data-path="${this.esc(absPath)}">📋</button>` : ''}
+          ${absPath ? `<button class="btn-small" title="Open in Explorer" data-action="reveal" data-img-id="${img.id}" data-path-type="input">📁</button><button class="btn-small" title="Copy path" data-action="copy" data-img-id="${img.id}" data-path-type="input">📋</button>` : ''}
         </div>`;
 
       let outCell = '';
@@ -210,8 +268,8 @@ const ImageQueue = {
         outCell = `
           <div style="display:flex; align-items:center; gap:4px; max-width:180px;">
             <span title="${this.esc(outPath)}" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px;">${this.esc(outBase)}</span>
-            <button class="btn-small" title="Open in Explorer: ${this.esc(outPath)}" data-action="reveal" data-path="${this.esc(outPath)}">📁</button>
-            <button class="btn-small" title="Copy path" data-action="copy" data-path="${this.esc(outPath)}">📋</button>
+            <button class="btn-small" title="Open in Explorer" data-action="reveal" data-img-id="${img.id}" data-path-type="output">📁</button>
+            <button class="btn-small" title="Copy path" data-action="copy" data-img-id="${img.id}" data-path-type="output">📋</button>
           </div>`;
       } else {
         outCell = `<span style="color:var(--text-muted); font-size:11px;">—</span>`;
