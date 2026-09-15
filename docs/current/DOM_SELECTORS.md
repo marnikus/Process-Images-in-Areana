@@ -476,3 +476,59 @@ All selectors will be centralized in `app/browser/site_adapter.py` as constants 
 - Generated below: `div.flex.w-full.flex-row.justify-start` + `img.h-[50vh].w-[50vh].aspect-square.object-cover.transition-opacity.opacity-100` + `width>=400` + src `messages-prod` + `r2.cloudflarestorage.com` + `top > jobTop` + `isAssistantBubble justify-start`.
 - Layout: check `ol.flex-col-reverse` existence, else normal.
 
+## E4. Output / Generated Image — Strict JOB-ID Verification Before Download (Fix 2026-09-16 v4)
+
+**User report:** \"after reset page next image processed have wrong image saved (from previous prompt). before downloading do fully verification prompt above and key matching with image processing key and key of prompt used on web page, if not match do not download, process as error\"
+
+**Root cause:** After page reset (reload), previous prompt's JOB-ID image still in DOM (or cached) could be matched as new output for current correlation_id because old `output_probes` filtered only by `oldSrcs` and visual position, not by associated JOB-ID equality. `WAIT_OUTPUT` block downloaded first new src without checking if its nearest JOB-ID equals current `correlation_id`. Bridge `DOWNLOAD` also lacked verification.
+
+**Fix v4 — strict JOB-ID binding before any download:**
+
+1. **JS `findAssociatedJobForImage` per candidate:**
+   - For each candidate img, compute DOM order via `compareDocumentPosition` and visual tops:
+     - `domPrev` = last JOB-ID element before img in DOM (FOLLOWING), `domNext` = first after.
+     - `visualPrev` = closest JOB-ID with `top < img.top -5` (max top <), `visualNext` = closest with `top > img.top+5` (min top >).
+   - `associated = layoutReverse ? domNext||visualPrev||domPrev : domPrev||visualPrev||domNext` — layout-aware (flex-col-reverse vs normal).
+   - Returns `associatedJobId`, `domPrevJobId`, `domNextJobId`, `visualPrevJobId`, `visualPrevTop`, `associatedTop`.
+   - Stored in candidate info for diagnostics.
+
+2. **Filter pool to matching JOB-ID:**
+   - If `correlationId` provided and `associatedJobId` != `correlationId`, candidate goes to `mismatchDetails` `{src, associated, expected, top, domPrev, domNext, visualPrev}` and is NOT added to valid pools.
+   - `debugFiltered` reason `job_id_mismatch`.
+   - Fallback scan also respects same filter.
+   - Final strict check: `matchingPool = pool.filter(c => !c.associatedJobId || c.associatedJobId === correlationId)`. If empty but pool had mismatched images → return `ready:false reason:job_id_mismatch_no_matching_image` with `expectedJobId`, `mismatchDetails`, `poolDetails` (src, associated, expected, top), `orderCheck: JOB-ID mismatch expected X but found Y — not downloading`.
+
+3. **Diagnostics fields added:**
+   - `associatedJobId`, `expectedJobId`, `domPrevJobId`, `visualPrevJobId`, `mismatchDetails`, `poolDetails`, `allNewDetails` with associated info.
+   - `orderCheck` now includes `associated X == expected Y (CORRECT KEY MATCH)` or mismatch list.
+   - Logs visible in `arena_log` for debugging reset case.
+
+4. **Python layers enforce:**
+   - `output_state.py`: flattens new fields, `is_job_id_match(corr, assoc)` = strict equality, `is_mismatch_error(reason)` = `job_id_mismatch_no_matching_image`.
+   - `output_wait.py`: `should_fallback` returns False when reason is mismatch or `mismatchDetails` present — prevents fallback accepting wrong image. `handle_mismatch` logs awaiting correct image. 3s re-check also verifies `associated==expected`. Timeout with mismatch returns mismatch error not fallback.
+   - `cdp_arena.py`: `wait_for_new_output` returns check dict with `associatedJobId`, `expectedJobId`, `mismatchDetails` preserved.
+   - `bridge.py` `WAIT_OUTPUT` block: before 3s wait, extracts `assoc = data.associatedJobId`, `expected = data.expectedJobId || correlation_id`, if `assoc != expected` → log `❌ JOB-ID mismatch before download`, set `last_wait_error`, if still generating continue waiting, else reload first cycle, second cycle raise `RuntimeError JOB-ID mismatch — not downloading incorrect image`. Also verifies `jobFound` false → prompt not found after reset → error. Only if passes logs `✅ Full verification passed before download: associated X == expected Y jobFound=...`.
+   - `bridge.py` `DOWNLOAD` block: pre-check via `get_generation_state(correlation_id)` to get current `associatedJobId` and `jobFound`; if mismatch → raise RuntimeError immediately, job fails without `atomic_write`. If passes, proceeds with 3s wait + download attempts + reload retry logic.
+
+5. **Acceptance:**
+   - After page reset, next image processing must NOT save incorrect image from previous prompt.
+   - Before download, full verification that prompt above image has key matching image processing key (correlation_id/JOB-ID) and key of prompt used on web page; if mismatch do not download, process as error (failed status).
+   - Logs show `✅ Full verification passed` when correct, `❌ JOB-ID mismatch` when wrong, no file saved on mismatch.
+
+**Stable selectors final (v4):**
+- Prompt anchor: same as v3, but now each img bound to nearest JOB-ID via DOM+visual.
+- Generated below: same, plus `associatedJobId == correlationId` mandatory.
+- Verification: `get_generation_state(correlationId)` returns `associatedJobId`, `expectedJobId`, `jobFound`, `mismatchDetails`.
+- Failure mode: `job_id_mismatch_no_matching_image` → await correct image if generating, else reload once, else fail job as error without saving.
+
+**Verification logs after fix:**
+- When correct: `Order check: Verified below prompt: jobTop X < img top Y isAssistant True associated JOB-123 == expected JOB-123 (CORRECT KEY MATCH)` + `✅ Full verification passed before download: associated JOB-123 == expected JOB-123 jobFound=true`.
+- When mismatch after reset: `Order check: JOB-ID mismatch: expected JOB-456 but found images belong to JOB-123 — not downloading, will error` + `❌ JOB-ID mismatch before download: image associated JOB-123 != expected JOB-456 — NOT downloading incorrect image` + `Mismatch details: [{src, associated, expected, top}]` + job fails without saving.
+
+**Quality:**
+- `output_probes.py` v4 full src not truncated, strict filter.
+- `output_state.py` adds helpers `is_job_id_match`, `is_mismatch_error`.
+- `output_wait.py` prevents fallback on mismatch, re-check verifies equality.
+- `bridge.py` verifies before both WAIT and DOWNLOAD, fails without atomic_write.
+- `pytest 45 passed`, `verify_quality --changed --allow-legacy` PASSED.
+
