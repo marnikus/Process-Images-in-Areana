@@ -877,6 +877,85 @@ class Bridge(QObject):
             return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
 
     @Slot(str, result=str)
+    def reveal_in_explorer(self, path_str: str):
+        """Open file in Explorer/Finder — btn to open this file in explorer (not link)."""
+        try:
+            import platform, subprocess, os
+            p = Path(path_str)
+            if not p.exists():
+                # try parent exists for output not yet created
+                if p.parent.exists():
+                    p = p.parent
+                else:
+                    return json.dumps({"ok": False, "error": f"Path does not exist: {path_str}"})
+            system = platform.system()
+            try:
+                if system == "Windows":
+                    # Use explorer /select for file, or open folder
+                    if p.is_file():
+                        # explorer /select,"path" — need to handle spaces
+                        subprocess.Popen(f'explorer /select,"{p}"')
+                    else:
+                        os.startfile(str(p))  # type: ignore
+                elif system == "Darwin":
+                    if p.is_file():
+                        subprocess.Popen(["open", "-R", str(p)])
+                    else:
+                        subprocess.Popen(["open", str(p)])
+                else:
+                    # Linux: xdg-open parent or file
+                    if p.is_file():
+                        subprocess.Popen(["xdg-open", str(p.parent)])
+                    else:
+                        subprocess.Popen(["xdg-open", str(p)])
+                self._log(f"📁 Revealed in Explorer: {path_str}", "info")
+                return json.dumps({"ok": True, "path": str(p)})
+            except Exception as e:
+                return json.dumps({"ok": False, "error": str(e)})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def copy_path_to_clipboard(self, path_str: str):
+        """Copy file path to clipboard — second option copy link to file."""
+        try:
+            from PySide6.QtWidgets import QApplication
+            from PySide6.QtGui import QClipboard
+            app = QApplication.instance()
+            if app is None:
+                return json.dumps({"ok": False, "error": "No QApplication"})
+            clipboard = app.clipboard()
+            clipboard.setText(path_str, mode=QClipboard.Clipboard)
+            # Also set selection on Linux
+            try:
+                clipboard.setText(path_str, mode=QClipboard.Selection)
+            except Exception:
+                pass
+            self._log(f"📋 Copied to clipboard: {path_str}", "info")
+            return json.dumps({"ok": True, "path": path_str})
+        except Exception as e:
+            # Fallback try pyperclip or tkinter?
+            try:
+                import subprocess, platform
+                system = platform.system()
+                if system == "Windows":
+                    subprocess.run("clip", input=path_str.encode("utf-8"), check=True, shell=True)
+                    return json.dumps({"ok": True, "path": path_str, "fallback": "clip"})
+                elif system == "Darwin":
+                    subprocess.run("pbcopy", input=path_str.encode("utf-8"), check=True)
+                    return json.dumps({"ok": True, "path": path_str, "fallback": "pbcopy"})
+                else:
+                    # Linux try xclip/xsel
+                    try:
+                        subprocess.run(["xclip", "-selection", "clipboard"], input=path_str.encode("utf-8"), check=True)
+                        return json.dumps({"ok": True, "path": path_str, "fallback": "xclip"})
+                    except Exception:
+                        subprocess.run(["xsel", "--clipboard", "--input"], input=path_str.encode("utf-8"), check=True)
+                        return json.dumps({"ok": True, "path": path_str, "fallback": "xsel"})
+            except Exception as e2:
+                return json.dumps({"ok": False, "error": f"{e} / {e2}"})
+
+    @Slot(str, result=str)
     def add_url(self, url: str):
         url = url.strip()
         if not url:
