@@ -11,6 +11,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 try:
     from PySide6.QtCore import QObject, Signal, Slot
