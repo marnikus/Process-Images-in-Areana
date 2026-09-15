@@ -2,11 +2,33 @@
 
 from urllib.parse import unquote, urlparse
 from typing import Iterable
+import re
 
-_SITE_ROOTS = ("virt-chat.com",)
+_SITE_ROOTS = ("virt-chat.com", "arena.ai")
+
+def _extract_url(query: str) -> str:
+    """Extract clean URL from markdown like [https://...](https://...) or [https://...] or with brackets."""
+    q = (query or "").strip()
+    if not q:
+        return q
+    # If markdown link [text](url) — extract url inside ()
+    md_match = re.search(r'\((https?://[^\s\)]+)\)', q)
+    if md_match:
+        return md_match.group(1).strip()
+    # If [https://...] — strip leading [ and trailing ]
+    # Also handle "https://...]" or "[https://..."
+    q = q.strip()
+    # Remove surrounding [] and ()
+    q = q.lstrip('[').lstrip('(').rstrip(']').rstrip(')')
+    # Remove any remaining brackets inside? Take first http URL found
+    http_match = re.search(r'(https?://[^\s\]\)]+)', q)
+    if http_match:
+        return http_match.group(1).strip()
+    return q.strip()
 
 def _normalize_url(url: str) -> str:
-    url = (url or "").strip().lower()
+    url = _extract_url(url or "")
+    url = url.strip().lower()
     if not url:
         return ""
     for p in ("https://", "http://"):
@@ -69,7 +91,8 @@ def _score_keyword(q_norm, url_norm, tab_title):
     return 0, ""
 
 def score_tab(query: str, tab_url: str, tab_title: str = ""):
-    query = (query or "").strip()
+    query = _extract_url(query or "")
+    query = query.strip()
     if not query or not tab_url:
         return 0, ""
     q_norm = _normalize_url(query)

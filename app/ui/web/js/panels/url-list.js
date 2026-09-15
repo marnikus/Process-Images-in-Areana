@@ -136,10 +136,25 @@ const UrlList = {
     }
   },
 
+  _extractUrl(q) {
+    if (!q) return '';
+    q = q.trim();
+    let m = q.match(/\(https?:\/\/[^\s\)]+\)/);
+    if (m) {
+      let inside = m[0].slice(1,-1).trim();
+      if (inside.startsWith('http')) return inside;
+    }
+    q = q.replace(/^\[+/, '').replace(/\]+$/, '').replace(/^\(+/, '').replace(/\)+$/, '').trim();
+    let http = q.match(/(https?:\/\/[^\s\]\)]+)/);
+    if (http) return http[1].trim();
+    return q;
+  },
+
   connectUrl(id) {
     const urlObj = (App.state && App.state.urls) ? App.state.urls.find(u => u.id === id) : null;
-    const url = urlObj ? urlObj.url : '';
+    let url = urlObj ? urlObj.url : '';
     if (!url) { LogConsole.log('⚠ URL not found', 'warn'); return; }
+    url = this._extractUrl(url);
     LogConsole.log(`🔍 Connect: finding tab for ${url}`, 'info');
     if (App.bridge && App.bridge.find_tab_by_url) {
       App.bridge.find_tab_by_url(url);

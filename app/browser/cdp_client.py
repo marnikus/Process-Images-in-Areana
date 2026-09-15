@@ -91,16 +91,16 @@ def _parse_tabs(items: List[dict]) -> List[TabInfo]:
     return tabs
 
 def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222, timeout: float = 3.0) -> Tuple[List[TabInfo], str, List[str]]:
-    """Try to fetch tabs synchronously, trying candidate hosts.
+    """Try to fetch tabs synchronously, trying candidate hosts and merging results.
     Returns (tabs, error, tried_urls)
     """
     tried = []
     last_err = ""
+    all_tabs = {}
     hosts_to_try = [host] + [h for h in CANDIDATE_HOSTS if h != host]
     for h in hosts_to_try:
         url = f"http://{h}:{port}/json/list"
         tried.append(url)
-        # quick port check
         if not _is_port_open(h, port, timeout=1.0):
             last_err = f"Port {port} not open on {h} (connection refused) — is Chrome running with --remote-debugging-port={port}?"
             continue
@@ -109,8 +109,16 @@ def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222, timeout: float = 
             last_err = err
             continue
         tabs = _parse_tabs(data)
-        # Even if tabs empty, we got a valid response — return it (Chrome running but no pages)
-        return tabs, "", tried
+        for t in tabs:
+            # deduplicate by id and ws_url
+            key = t.id or t.ws_url
+            if key not in all_tabs:
+                all_tabs[key] = t
+            # also if same id but different ws_url (host variant), keep one with 127.0.0.1 preferred
+            # we keep first seen, but ensure ws_url is normalized to 127.0.0.1 if possible for connection
+        # don't return early — continue to merge from other hosts
+    if all_tabs:
+        return list(all_tabs.values()), "", tried
     return [], last_err or "No Chrome tabs found — Chrome not responding on any host", tried
 
 def diagnose_sync(host: str = "127.0.0.1", port: int = 9222) -> dict:
@@ -192,8 +200,9 @@ class CDPClient(QObject):
 
     # ---- async API (used when QEventLoop running) ----
     async def fetch_tabs(self):
-        """Fetch tabs via HTTP /json/list — tries aiohttp first, fallback to sync in thread."""
-        # Try aiohttp first
+        """Fetch tabs via HTTP /json/list — tries aiohttp first, merging all hosts, fallback to sync."""
+        merged = {}
+        # Try aiohttp first — merge from all hosts
         try:
             import aiohttp
             hosts_to_try = [self._host] + [h for h in CANDIDATE_HOSTS if h != self._host]
@@ -201,29 +210,30 @@ class CDPClient(QObject):
                 try:
                     url = f"http://{h}:{self._port}/json/list"
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as r:
+                        async with session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as r:
                             if r.status != 200:
                                 continue
                             items = await r.json()
                             tabs = _parse_tabs(items)
-                            # If we got response, return even if empty (means Chrome running)
-                            # But if empty, try next host? No, return empty with success
-                            # To distinguish, check if we got any tabs or if host is primary
-                            if tabs or h == self._host:
-                                return tabs
+                            for t in tabs:
+                                key = t.id or t.ws_url
+                                if key not in merged:
+                                    merged[key] = t
                 except Exception as e:
                     log.debug(f"fetch_tabs aiohttp {h} failed: {e}")
                     continue
+            if merged:
+                return list(merged.values())
         except ImportError:
             log.debug("aiohttp not available, using sync fallback")
         except Exception as e:
             log.debug(f"aiohttp path failed: {e}")
 
-        # Fallback to sync in threadpool
+        # Fallback to sync in threadpool (already merges)
         try:
             loop = asyncio.get_event_loop()
             tabs, err, tried = await loop.run_in_executor(None, lambda: fetch_tabs_sync(self._host, self._port))
-            if err:
+            if err and not tabs:
                 self.error.emit(err)
             return tabs
         except Exception as e:
@@ -233,24 +243,43 @@ class CDPClient(QObject):
 
     async def connect(self, ws_url: str) -> bool:
         await self.disconnect()
-        try:
-            import websockets
-            self._ws = await websockets.connect(ws_url, max_size=50*1024*1024, open_timeout=10, close_timeout=5)
-            self._connected = True
-            self._current_ws_url = ws_url
-            self._receive_task = asyncio.create_task(self._receive_loop())
-            for dom in ("Page", "DOM", "Runtime", "Network"):
-                try:
-                    await self.send(f"{dom}.enable")
-                except Exception:
-                    pass
-            log.info(f"CDP connected: {ws_url[:80]}")
-            self.connected.emit()
-            return True
-        except Exception as e:
-            log.error(f"CDP connect failed: {e}")
-            self.error.emit(f"Connect failed {ws_url[:60]}: {e}")
-            return False
+        # Try original ws_url plus variants with 127.0.0.1 <-> localhost swapped
+        candidates = [ws_url]
+        if "127.0.0.1" in ws_url:
+            candidates.append(ws_url.replace("127.0.0.1", "localhost"))
+        if "localhost" in ws_url:
+            candidates.append(ws_url.replace("localhost", "127.0.0.1"))
+        # also try without host replacement but same path
+        for cand in candidates:
+            try:
+                import websockets
+                self._ws = await websockets.connect(cand, max_size=50*1024*1024, open_timeout=10, close_timeout=5)
+                self._connected = True
+                self._current_ws_url = cand
+                self._receive_task = asyncio.create_task(self._receive_loop())
+                for dom in ("Page", "DOM", "Runtime", "Network"):
+                    try:
+                        await self.send(f"{dom}.enable")
+                    except Exception:
+                        pass
+                log.info(f"CDP connected: {cand[:80]}")
+                self.connected.emit()
+                return True
+            except Exception as e:
+                log.warning(f"CDP connect try {cand[:60]} failed: {e}")
+                # cleanup before next try
+                if self._ws:
+                    try:
+                        await self._ws.close()
+                    except Exception:
+                        pass
+                    self._ws = None
+                continue
+        # all failed
+        err = f"Connect failed for {ws_url[:80]} tried {candidates}"
+        log.error(err)
+        self.error.emit(err)
+        return False
 
     async def disconnect(self):
         self._connected = False

@@ -220,13 +220,30 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
     this.updateUrlRowsConnection();
   },
 
+  _extractUrl(q) {
+    if (!q) return '';
+    q = q.trim();
+    // markdown [text](url) -> extract url inside ()
+    let m = q.match(/\(https?:\/\/[^\s\)]+\)/);
+    if (m) {
+      let inside = m[0].slice(1,-1).trim();
+      if (inside.startsWith('http')) return inside;
+    }
+    // [https://...] or with brackets
+    q = q.replace(/^\[+/, '').replace(/\]+$/, '').replace(/^\(+/, '').replace(/\)+$/, '').trim();
+    let http = q.match(/(https?:\/\/[^\s\]\)]+)/);
+    if (http) return http[1].trim();
+    return q;
+  },
+
   autoConnectBookmark() {
     const input = document.getElementById('urlBookmarkInput');
-    const query = (input ? input.value.trim() : '').trim();
+    let query = (input ? input.value.trim() : '').trim();
     if (!query) {
       LogConsole.log('⚠ Bookmark field empty', 'warn');
       return;
     }
+    query = this._extractUrl(query);
     LogConsole.log(`🔍 Auto-connect: finding tab for “${query}” …`, 'info');
     this.lastMatchQuery = query;
     if (App.bridge && App.bridge.find_tab_by_url) {
