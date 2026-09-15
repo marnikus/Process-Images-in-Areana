@@ -617,28 +617,139 @@ class Bridge(QObject):
     @Slot(str, str, result=str)
     def save_window_preset(self, name: str, grid_json: str):
         try:
-            tree_payload, err = canonical_grid_payload(grid_json or self.get_grid_layout() or default_payload())
-            if err:
-                return json.dumps({"ok": False, "error": err})
+            # grid_json may be:
+            # - a grid payload {"v":4,"tree":{...}}
+            # - a full portable preset document {"format":"chat-v-bot.window-preset", "grid":{"tree":{...}}, "window_states":{...}, ...}
+            # - empty (use current grid)
+            # Handle all cases robustly
+            tree = None
+            tree_payload = None
+            window_states = None
+            incoming_doc = None
+
+            if grid_json:
+                try:
+                    parsed = json.loads(grid_json)
+                    if isinstance(parsed, dict):
+                        # Case: full portable preset
+                        if "grid" in parsed and isinstance(parsed["grid"], dict):
+                            g = parsed["grid"]
+                            # grid may contain tree directly or payload
+                            if "tree" in g and isinstance(g["tree"], dict):
+                                tree = g["tree"]
+                                # Try to get version from grid.version or v
+                                ver = g.get("version") or parsed.get("v") or 4
+                                # Build payload for validation
+                                candidate_payload = json.dumps({"v": ver, "tree": tree}, ensure_ascii=False, separators=(",",":"))
+                                tp, err = canonical_grid_payload(candidate_payload)
+                                if not err:
+                                    tree_payload = tp
+                                    # Keep window_states from incoming if present
+                                    if "window_states" in parsed:
+                                        window_states = parsed["window_states"]
+                                    incoming_doc = parsed
+                            elif "payload" in g and isinstance(g["payload"], str):
+                                tp, err = canonical_grid_payload(g["payload"])
+                                if not err:
+                                    tree_payload = tp
+                                    data = json.loads(tp)
+                                    tree = data.get("tree")
+                                    if "window_states" in parsed:
+                                        window_states = parsed["window_states"]
+                                    incoming_doc = parsed
+                            elif "v" in parsed and "tree" in parsed:
+                                # It's already a grid payload
+                                tp, err = canonical_grid_payload(grid_json)
+                                if not err:
+                                    tree_payload = tp
+                                    data = json.loads(tp)
+                                    tree = data.get("tree")
+                        elif "v" in parsed and "tree" in parsed:
+                            tp, err = canonical_grid_payload(grid_json)
+                            if not err:
+                                tree_payload = tp
+                                data = json.loads(tp)
+                                tree = data.get("tree")
+                except Exception:
+                    # Fall through to try as grid payload directly
+                    pass
+
+            # Fallback: try as grid payload directly
+            if not tree_payload:
+                tree_payload, err = canonical_grid_payload(grid_json or self.get_grid_layout() or default_payload())
+                if err:
+                    # If grid_json was full preset but validation failed, try to extract tree via SashGrid portable logic
+                    # Last resort: try to parse as portable and extract tree
+                    try:
+                        if grid_json:
+                            p = json.loads(grid_json)
+                            if isinstance(p, dict) and "grid" in p and isinstance(p["grid"], dict) and "tree" in p["grid"]:
+                                t = p["grid"]["tree"]
+                                ver = p["grid"].get("version") or 4
+                                cand = json.dumps({"v": ver, "tree": t}, ensure_ascii=False, separators=(",",":"))
+                                tp2, err2 = canonical_grid_payload(cand)
+                                if not err2:
+                                    tree_payload = tp2
+                                    err = None
+                                    tree = t
+                                    if "window_states" in p:
+                                        window_states = p["window_states"]
+                                    incoming_doc = p
+                    except Exception:
+                        pass
+                if err and not tree_payload:
+                    return json.dumps({"ok": False, "error": err})
+
+            if not tree_payload:
+                return json.dumps({"ok": False, "error": "invalid grid payload"})
+
             data = json.loads(tree_payload)
-            tree = data.get("tree")
-            window_count = len(leaf_ids(tree))
-            doc = {
-                "name": name,
-                "grid": {
+            tree = data.get("tree") if not tree else tree
+            window_count = len(leaf_ids(tree)) if tree else 0
+
+            # Preserve window_states from incoming doc if present, else from config
+            if not window_states:
+                window_states = self.config.get_state("window_states", {"closed": [], "minimized": []})
+                # Also try to get from incoming_doc if it has window_states
+                if incoming_doc and isinstance(incoming_doc.get("window_states"), dict):
+                    window_states = incoming_doc["window_states"]
+
+            # Build final doc — if incoming was full portable preset, keep its extra fields (windows, screen) for preview
+            if incoming_doc and isinstance(incoming_doc, dict) and incoming_doc.get("format") == "chat-v-bot.window-preset":
+                # Update incoming doc with canonical payload and fresh timestamps
+                doc = incoming_doc.copy()
+                doc["name"] = name
+                doc["grid"] = {
                     "payload": tree_payload,
                     "window_count": window_count,
                     "tree": tree,
-                },
-                "window_states": self.config.get_state("window_states", {"closed": [], "minimized": []}),
-                "updated_at": datetime.utcnow().isoformat() + "Z",
-                "app_version": "arena-1.0",
-            }
+                    "type": doc.get("grid", {}).get("type", "sash-tree"),
+                    "version": data.get("v", 4),
+                    "sizes_unit": "percent",
+                }
+                doc["window_states"] = window_states
+                doc["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                doc["app_version"] = doc.get("app_version", "arena-1.0")
+            else:
+                doc = {
+                    "name": name,
+                    "grid": {
+                        "payload": tree_payload,
+                        "window_count": window_count,
+                        "tree": tree,
+                    },
+                    "window_states": window_states,
+                    "updated_at": datetime.utcnow().isoformat() + "Z",
+                    "app_version": "arena-1.0",
+                }
+
             self.config.window_presets.save_preset(name, doc)
             self.list_window_presets()
-            self._log(f"Window preset saved: {name}", "success")
+            self._log(f"Window preset saved: {name} ({window_count} windows)", "success")
             return json.dumps({"ok": True, "name": name})
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return json.dumps({"ok": False, "error": str(e)})
 
     @Slot(str, result=str)

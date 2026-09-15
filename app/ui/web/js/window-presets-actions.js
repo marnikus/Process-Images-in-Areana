@@ -24,13 +24,41 @@ const WindowPresetsActions = {
       this._saveLocalDocument(clean);
       this._message('Window preset “' + clean.name + '” saved locally.', 'success'); return;
     }
-    const done = (ok) => {
-      if (!ok) { this._message('Preset “' + clean.name + '” could not be written.', 'error'); return; }
+    const done = (raw) => {
+      let ok = false;
+      let err = '';
+      try {
+        if (typeof raw === 'boolean') ok = raw;
+        else if (typeof raw === 'string') {
+          const parsed = JSON.parse(raw);
+          ok = !!parsed.ok;
+          err = parsed.error || '';
+        } else if (raw && typeof raw === 'object') {
+          ok = !!raw.ok;
+          err = raw.error || '';
+        } else {
+          ok = !!raw;
+        }
+      } catch(e) {
+        // If raw is truthy string that is not JSON, treat as success for backward compat
+        ok = !!raw;
+      }
+      if (!ok) { this._message('Preset “' + clean.name + '” could not be written.' + (err ? ' ' + err : ''), 'error'); return; }
       this.selectedName = clean.name; this.refresh();
       this._message((imported ? 'Imported' : 'Saved') + ' window preset “' + clean.name + '”.', 'success');
     };
-    try { const result = bridge.save_window_preset(clean.name, JSON.stringify(clean), done); if (typeof result === 'boolean') done(result); }
-    catch (error) { done(false); }
+    try {
+      const result = bridge.save_window_preset(clean.name, JSON.stringify(clean), done);
+      // QWebChannel may return boolean synchronously or via callback — handle both
+      if (typeof result === 'boolean') done(result);
+      else if (typeof result === 'string') {
+        // If result is JSON string returned synchronously, also handle
+        try {
+          const p = JSON.parse(result);
+          if (p && typeof p.ok === 'boolean') done(result);
+        } catch(e) {}
+      }
+    } catch (error) { done(false); }
   },
 
   _saveLocalDocument(document) {
