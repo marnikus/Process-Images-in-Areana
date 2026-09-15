@@ -194,9 +194,12 @@ function setupBridgeListeners() {
   }
   if (b.highlight_rect) {
     b.highlight_rect.connect((json) => {
+      // Disabled per user request: visual rect should draw only on webpage via CDP, not in App
+      // Previously called HighlightOverlay.show(rect) which drew in app overlay — now no-op
       try {
         const rect = JSON.parse(json);
-        if (typeof HighlightOverlay !== 'undefined') HighlightOverlay.show(rect);
+        // Optionally log for debugging but do not draw in app
+        // if (typeof LogConsole !== 'undefined') LogConsole.log(`🔍 Highlight (webpage only): ${rect.label||''} at ${rect.x},${rect.y}`, 'info');
       } catch (e) {}
     });
   }
