@@ -13,6 +13,7 @@ const SashGridWindowStore = {
       settings: 'winSettings',
       browser: 'winBrowser',
       action_blocks: 'winActionBlocks',
+      block_config: 'winBlockConfig',
       arena_presets: 'winArenaPresets',
     };
     for (const w of SashCore.WINDOWS) {

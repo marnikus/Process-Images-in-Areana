@@ -21,6 +21,7 @@
     { id: 'settings', title: 'Settings' },
     { id: 'browser',  title: 'Browser Preview' },
     { id: 'action_blocks', title: 'Action Blocks — Stacking Jobs' },
+    { id: 'block_config', title: 'Block Config — Security Check' },
     { id: 'arena_presets', title: 'Arena Presets' },
   ];
   const V1_WINDOW_IDS = WINDOWS.map(w=>w.id);
@@ -54,9 +55,9 @@
       ], [60, 40]),
       split('row', [
         leaf('queue'),
-        split('col', [leaf('action_blocks'), leaf('browser')], [50, 50]),
-        split('col', [leaf('arena_presets'), leaf('progress')], [60, 40]),
-      ], [50, 30, 20]),
+        split('col', [leaf('action_blocks'), leaf('block_config')], [55, 45]),
+        split('col', [leaf('browser'), leaf('arena_presets'), leaf('progress')], [40, 35, 25]),
+      ], [45, 35, 20]),
       leaf('log'),
     ], [38, 40, 22]);
   }
@@ -66,15 +67,15 @@
       leaf('url_list'), leaf('folder'), leaf('queue'),
       leaf('prompt'), leaf('run'), leaf('progress'),
       leaf('log'), leaf('settings'), leaf('browser'),
-      leaf('action_blocks'), leaf('arena_presets'),
-    ], [11, 7, 18, 13, 9, 9, 9, 7, 6, 6, 5]);
+      leaf('action_blocks'), leaf('block_config'), leaf('arena_presets'),
+    ], [10, 6, 16, 12, 8, 8, 8, 6, 6, 6, 7, 7]);
   }
 
   function layoutB() {
     return split('row', [
       split('col', [leaf('url_list'), leaf('folder'), leaf('queue'), leaf('action_blocks')], [25, 15, 35, 25]),
-      split('col', [leaf('prompt'), leaf('run'), leaf('progress'), leaf('log')], [35, 15, 20, 30]),
-      split('col', [leaf('browser'), leaf('settings'), leaf('arena_presets')], [50, 25, 25]),
+      split('col', [leaf('prompt'), leaf('block_config'), leaf('progress'), leaf('log')], [30, 25, 20, 25]),
+      split('col', [leaf('browser'), leaf('settings'), leaf('arena_presets'), leaf('run')], [40, 20, 20, 20]),
     ], [35, 35, 30]);
   }
 
@@ -82,7 +83,7 @@
     return split('col', [
       split('row', [
         split('col', [leaf('url_list'), leaf('prompt'), leaf('action_blocks')], [35, 35, 30]),
-        leaf('browser'),
+        split('col', [leaf('block_config'), leaf('browser')], [45, 55]),
       ], [45, 55]),
       split('row', [
         leaf('queue'),

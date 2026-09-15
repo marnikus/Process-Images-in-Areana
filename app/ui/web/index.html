@@ -268,19 +268,9 @@
       </div>
       <div id="actionBlocksStack" style="flex:1; overflow:auto; max-height:280px; border:1px solid var(--border); border-radius:4px; padding:4px; background:var(--bg-card);"></div>
       
-      <!-- Block Config — Tune panel (Old App stack-dnd-form) -->
-      <div style="margin-top:10px; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:var(--bg-input); border-bottom:1px solid var(--border);">
-          <div id="blockConfigHead" style="font-size:11px; font-weight:600;">Select a block to configure</div>
-          <button id="closeBlockConfigBtn" class="btn-small" title="Close config"><span class="material-icons" style="font-size:14px;">close</span></button>
-        </div>
-        <div id="blockConfigForm" style="max-height:300px; overflow:auto; padding:4px; background:var(--bg-card); font-size:11px;">
-          <div style="padding:12px; color:var(--text-muted); font-size:11px; line-height:1.4;">
-            <p><b>Action Blocks</b> — stacking jobs restored from Old App.</p>
-            <p>Each block is separate job: click on btn, click on text areas, visual confirmations seeing images/waiting.</p>
-            <p>• <span style="color:#ff2d2d">RED</span> = found<br>• <span style="color:#ff9500">ORANGE</span> = click target<br>• <span style="color:#00c853">GREEN</span> = new output<br>• <span style="color:#00AAFF">BLUE</span> = prompt<br>• <span style="color:#FFAA00">YELLOW</span> = submit</p>
-          </div>
-        </div>
+      <!-- Config moved to separate winBlockConfig window — keep minimal hint here -->
+      <div style="margin-top:10px; font-size:11px; color:var(--text-muted); padding:6px; border:1px dashed var(--border); border-radius:4px;">
+        Select a block to edit in <b>Block Config</b> window → drag <span class="material-icons" style="font-size:12px; vertical-align:middle;">drag_indicator</span> to reorder. Double-click row to highlight selector.
       </div>
 
       <!-- Custom Find & Click presets (Old App presets-ui-blocks) -->
@@ -301,6 +291,25 @@
         <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:14px;">history</span> All Separate Jobs — rectangles confirmations</div>
         <div id="allJobsStack" style="min-height:80px; max-height:300px; overflow:auto; border:1px solid var(--border); border-radius:4px; padding:4px; background:var(--bg-card);">
           <span style="font-size:11px; color:var(--text-muted);">No jobs yet — run batch to see all jobs with rect confirmations</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- BLOCK CONFIG — separate win, redesigned as shown in screenshot (security Check Security Dialog) -->
+    <div class="panel" id="winBlockConfig" data-window="block_config">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tune</span> Block Config <span class="spacer"></span><button id="closeBlockConfigBtn" class="btn-small" title="Close config"><span class="material-icons" style="font-size:14px;">close</span></button></h3>
+      <div id="blockConfigHead" class="block-config-head" style="padding:8px 12px; background:var(--bg-input); border-bottom:1px solid var(--border); border-radius:6px 6px 0 0; display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; font-weight:600;">Select a block to configure — all params storable in preset JSON, rect duration configurable</div>
+      <div id="blockConfigForm" class="block-config-form config-panel" style="flex:1; overflow:auto; padding:12px; background:var(--bg-card); border:1px solid var(--border); border-top:0; border-radius:0 0 8px 8px; max-height:520px;">
+        <div style="padding:12px; color:var(--text-muted); font-size:11px; line-height:1.5;">
+          <p><b>Action Blocks</b> — stacking jobs system restored from Old App.</p>
+          <p>Each block is a separate job: click on btn, click on text areas, visual confirmations seeing images/waiting.</p>
+          <p>• <span style="color:#ff2d2d">RED</span> outline = found element<br>
+             • <span style="color:#ff9500">ORANGE</span> = click target<br>
+             • <span style="color:#00c853">GREEN</span> = new output / match<br>
+             • <span style="color:#00AAFF">BLUE</span> = prompt<br>
+             • <span style="color:#FFAA00">YELLOW</span> = submit</p>
+          <p>Double-click block row to highlight its selector on page for N seconds (saved in preset JSON).</p>
+          <p>Drag with <span class="material-icons" style="font-size:12px; vertical-align:middle;">drag_indicator</span> to reorder. Toggle enable. Custom Find & Click blocks can be saved as presets.</p>
         </div>
       </div>
     </div>
