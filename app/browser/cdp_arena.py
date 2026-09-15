@@ -444,19 +444,11 @@ JS_CHECK_NEW_OUTPUT = """
         const cls = el.className || '';
         const rect = el.getBoundingClientRect();
         const isSmall = rect.width <= 140 || cls.includes('w-32') || cls.includes('h-16') || cls.includes('w-16');
-        const isLarge = cls.includes('50vh') || cls.includes('object-cover') || rect.width >= 200 || (el.naturalWidth||0) >= 200;
-        // Reference images are small w-32 inside user bubble, not large 50vh
-        // Only filter small images, never large generated images
-        if (isSmall && !isLarge) {
+        const is50vh = cls.includes('50vh') || cls.includes('h-[50vh]') || cls.includes('w-[50vh]');
+        // Reference images are small w-32 thumbnails inside user bubble, never 50vh generated images
+        // Fix: object-cover alone should NOT make small ref be considered large (ref has object-cover + w-32)
+        if (isSmall && !is50vh) {
           if (jobContainer && jobContainer.contains(el)) return true;
-          for (const j of allJobs) {
-            if (j.container && j.container.contains(el)) {
-              return true;
-            }
-          }
-        }
-        // Also check if inside any job container and small
-        if (isSmall && !isLarge) {
           for (const j of allJobs) {
             if (j.container && j.container.contains(el)) {
               return true;
@@ -541,7 +533,9 @@ JS_CHECK_NEW_OUTPUT = """
           const width = el.naturalWidth || rect.width || 0;
           const height = el.naturalHeight || rect.height || 0;
           const className = el.className || '';
-          const isLarge = width >= 200 || rect.width >= 200 || className.includes('50vh') || className.includes('object-cover') || (el.classList && el.classList.contains('aspect-square') && rect.width >= 200);
+          // Stricter large check: 50vh is definitive for generated, or width >=400
+          // Previously 200 + object-cover was too permissive and made w-32 ref (228px) be considered large
+          const isLarge = className.includes('50vh') || width >= 400 || rect.width >= 400 || (el.naturalWidth||0) >= 400;
           if (!isLarge) { debugFiltered.push({reason:'not_large', src:el.src.slice(-40), w:width, rectW:rect.width, cls:className.slice(0,40), sel}); continue; }
 
           const info = {
@@ -653,9 +647,10 @@ JS_CHECK_NEW_OUTPUT = """
           const isLargeFallback = width >= 100 || rect.width >= 100 || cls.includes('50vh') || cls.includes('object-cover') || cls.includes('aspect-square') || (el.src.includes('r2.cloudflarestorage.com') || el.src.includes('messages-prod'));
           if (!isLargeFallback) continue;
           if (isReferenceImage(el)) {
-            // For fallback, allow even if inside job container if large and not small
+            // For fallback, if small and not 50vh inside job container, skip (reference thumbnail)
             const isSmall = rect.width <= 140 || cls.includes('w-32') || cls.includes('h-16') || cls.includes('w-16');
-            if (isSmall) continue;
+            const is50vh = cls.includes('50vh') || cls.includes('h-[50vh]') || cls.includes('w-[50vh]');
+            if (isSmall && !is50vh) continue;
           }
           const info = {
             el: el,
@@ -692,7 +687,29 @@ JS_CHECK_NEW_OUTPUT = """
       } catch(e) {}
     }
 
+    // Deduplicate allNew by src to avoid 20 duplicates from many selectors
+    try {
+      let seenSrc = new Set();
+      let dedupedAllNew = [];
+      for (const n of allNew) {
+        if (!seenSrc.has(n.src)) {
+          seenSrc.add(n.src);
+          dedupedAllNew.push(n);
+        }
+      }
+      allNew = dedupedAllNew;
+      // Also dedup validAbove/below/invalid
+      let seenV = new Set();
+      validAbove = validAbove.filter(v=>{ if(seenV.has(v.src)) return false; seenV.add(v.src); return true; });
+      let seenB = new Set();
+      belowCandidates = belowCandidates.filter(v=>{ if(seenB.has(v.src)) return false; seenB.add(v.src); return true; });
+      let seenI = new Set();
+      invalidAbove = invalidAbove.filter(v=>{ if(seenI.has(v.src)) return false; seenI.add(v.src); return true; });
+    } catch(e) {}
+
     // If we have validAbove (exact above current prompt in DOM order), pick closest above (nearest before current in DOM)
+    // Fix: also consider belowCandidates when jobFound true — arena.ai may place gen below user (top 461 > jobTop 53)
+    // Previously belowCandidates only used when !jobFound, causing validAbove 0 and allNew 20 -> no_exact_above
     let pool = [];
     if (validAbove.length > 0) {
       // Sort by DOM order: closest before current = last in DOM order before current
@@ -706,8 +723,18 @@ JS_CHECK_NEW_OUTPUT = """
         return b.top - a.top;
       });
       pool = validAbove;
-    } else if (belowCandidates.length > 0 && !jobFound) {
-      belowCandidates.sort((a,b) => b.top - a.top);
+    } else if (belowCandidates.length > 0) {
+      // Consider below as well (image after job in DOM, visually below if normal flex-col, or above if flex-col-reverse)
+      // This fixes case where jobTop 53 and image top 461 (below) was ignored
+      belowCandidates.sort((a,b) => {
+        try {
+          if (a.el === b.el) return 0;
+          const pos = a.el.compareDocumentPosition(b.el);
+          if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1; // a before b, closer to job if after
+          if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+        } catch(e) {}
+        return a.top - b.top;
+      });
       pool = belowCandidates;
     } else {
       pool = [];
@@ -1040,7 +1067,7 @@ class CDPArenaController:
     def _handle_ready_result(self, result, baseline):
         # ideal-size: 4 lines reason=ready case
         if result.get("ready"):
-            self._log(f"✅ New output ready: {result.get('src','')[:80]} {result.get('width')}x{result.get('height')}", "success")
+            self._log(f"✅ New output ready: {result.get('src','')[:80]} {result.get('width')}x{result.get('height')} — waiting 3s before download for stability", "success")
             return "completed", {"new_src": result.get("src"), "check": result, "baseline": baseline, "rect": result.get("rect")}
         return None
 
@@ -1078,7 +1105,24 @@ class CDPArenaController:
                 continue
             ready = self._handle_ready_result(result, baseline)
             if ready:
-                return ready
+                # User requested: wait 3 sec before download, not immediate, for stability (opacity transition, complete)
+                self._log(f"⏳ Waiting 3s before finalizing download for {ready[1].get('new_src','')[:60]}... (user requested delay)", "info")
+                await asyncio.sleep(3)
+                # Re-validate that image still exists and complete after 3s
+                try:
+                    recheck = await self.cdp.evaluate(self._build_check_js(old_srcs, old_outputs, correlation_id))
+                    if recheck and recheck.get("ready") and recheck.get("src") == ready[1].get("new_src"):
+                        self._log(f"✅ Re-check after 3s still ready: {recheck.get('src','')[:80]}", "success")
+                        return ready
+                    elif recheck and recheck.get("ready"):
+                        self._log(f"✅ Re-check after 3s found ready (different src) {recheck.get('src','')[:80]} — using new", "success")
+                        return "completed", {"new_src": recheck.get("src"), "check": recheck, "baseline": baseline, "rect": recheck.get("rect")}
+                    else:
+                        self._log(f"⚠ Re-check after 3s not ready reason={recheck.get('reason') if recheck else 'no result'} — returning original ready anyway", "warn")
+                        return ready
+                except Exception as e:
+                    self._log(f"⚠ Re-check after 3s failed {e} — returning original", "warn")
+                    return ready
             if seen and not result.get("spinning"):
                 if await self._handle_spinner_gone(result):
                     continue

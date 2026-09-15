@@ -1961,7 +1961,10 @@ class Bridge(QObject):
                                         pass
                                     tmp_src = data.get("new_src")
                                     if tmp_src:
-                                        # Try to download immediately to verify it's actually downloadable
+                                        # User requested: wait 3s before download, not immediate, for stability
+                                        self._log(f"[{correlation_id}] ⏳ New src detected {tmp_src[:80]}... waiting 3s before verification download (user requested)", "info")
+                                        await asyncio.sleep(3)
+                                        # Try to download after 3s to verify it's actually downloadable
                                         # If not downloadable but generation still in progress, return to waiting state
                                         try:
                                             s_test, f_test, c_test = await ctrl.download_image(tmp_src)
@@ -2233,8 +2236,10 @@ class Bridge(QObject):
                                 if not new_src:
                                     raise RuntimeError("No new_src from previous wait block")
 
-                                self._log(f"[{correlation_id}] Downloading highest-quality image: {new_src[:120]} (will return to waiting if generation in progress)", "info")
-                                self._emit_job_action_status(job_id, block, "running", f"Downloading {new_src[:60]}... — if fail and generating, return to waiting")
+                                self._log(f"[{correlation_id}] ⏳ Waiting 3s before download as requested (not immediate) for stability: {new_src[:80]}...", "info")
+                                await asyncio.sleep(3)
+                                self._log(f"[{correlation_id}] Downloading highest-quality image after 3s delay: {new_src[:120]} (will return to waiting if generation in progress)", "info")
+                                self._emit_job_action_status(job_id, block, "running", f"Downloading after 3s delay {new_src[:60]}... — if fail and generating, return to waiting")
 
                                 max_dl_cycles = 2  # original + after reload
                                 dl_success = False

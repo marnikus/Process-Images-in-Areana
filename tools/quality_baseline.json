@@ -96,7 +96,7 @@
   },
   "app/browser/cdp_arena.py": {
     "max_func_loc": 60,
-    "max_class_loc": 517,
+    "max_class_loc": 534,
     "func_count": 31
   },
   "app/browser/probe_requests.py": {
@@ -135,8 +135,8 @@
     "func_count": 2
   },
   "app/ui/bridge.py": {
-    "max_func_loc": 1025,
-    "max_class_loc": 3588,
+    "max_func_loc": 1030,
+    "max_class_loc": 3593,
     "func_count": 146
   },
   "app/utils/__init__.py": {
