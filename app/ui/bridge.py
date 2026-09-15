@@ -1467,98 +1467,307 @@ class Bridge(QObject):
 
                         elif btype in ("WAIT_OUTPUT", "AWAIT_PROCESSING_IMAGE"):
                             # Waiting block when system detects awaiting elements e.g. processing image, awaiting API result
+                            # NEW LOGIC per user: after 2 min try reload page first but not failed yet as unsuccess (bad cache chance)
+                            # than only after second attempt after reload it again wait 2 min than only it says it failed
                             is_await = btype == "AWAIT_PROCESSING_IMAGE"
                             label = "Waiting for image to finish generating" if is_await else "Waiting for generation"
-                            self._log(f"[{correlation_id}] {label} (timeout {block.timeout_ms or gen_timeout}ms) — detects processing spinner, shows waiting state", "info")
-                            self._emit_job_action_status(job_id, block, "waiting" if is_await else "running", f"{label} — watching for processing → new output, timeout {block.timeout_ms or gen_timeout}ms")
-                            # If AWAIT_PROCESSING_IMAGE, first wait for processing indicator to appear/disappear, then for new output
+                            wait_timeout = block.timeout_ms or gen_timeout
+                            self._log(f"[{correlation_id}] {label} (timeout {wait_timeout}ms) — detects processing spinner, shows waiting state, reload after timeout", "info")
+                            self._emit_job_action_status(job_id, block, "waiting" if is_await else "running", f"{label} — watching for processing → new output, timeout {wait_timeout}ms, reload after 1st timeout")
+
                             if is_await:
-                                # Try to detect processing indicator via selector
                                 try:
                                     proc_sel = block.selector or "div:has-text(\"Processing\"), div:has-text(\"Generating\"), [data-state=\"loading\"], .spinner, [aria-busy=\"true\"]"
-                                    # Poll for processing visible up to 5s, then wait for it to disappear
                                     await ctrl.highlight_selector(proc_sel, color="#FFAA00", duration_ms=block.highlight_ms or 2000, caption="Awaiting — processing detected")
                                     self._log(f"[{correlation_id}] Awaiting processing indicator {proc_sel} — will wait until gone", "info")
                                 except Exception:
                                     pass
-                            status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=block.timeout_ms or gen_timeout)
-                            if status == "failed":
-                                # For waiting block, treat as waiting still, not fatal unless required
-                                if is_await and not block.required:
-                                    self._log(f"[{correlation_id}] {label} timeout but continuing — {data.get('error')}", "warn")
-                                    self._emit_job_action_status(job_id, block, "success", f"Wait timeout, continuing: {data.get('error')}")
+
+                            max_wait_cycles = 2  # original + after reload
+                            wait_success = False
+                            last_wait_error = ""
+                            for wait_cycle in range(max_wait_cycles):
+                                if wait_cycle > 0:
+                                    self._log(f"[{correlation_id}] 🔄 Wait cycle {wait_cycle+1}/{max_wait_cycles} after reload — waiting again {wait_timeout}ms", "warn")
+                                    self._emit_job_action_status(job_id, block, "waiting", f"{label} retry {wait_cycle+1}/{max_wait_cycles} after reload, timeout {wait_timeout}ms")
+
+                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout)
+
+                                if status == "completed":
+                                    tmp_src = data.get("new_src")
+                                    if tmp_src:
+                                        # Try to download immediately to verify it's actually downloadable
+                                        # If not downloadable but generation still in progress, return to waiting state
+                                        try:
+                                            s_test, f_test, c_test = await ctrl.download_image(tmp_src)
+                                            if s_test and f_test and len(f_test) > 100:
+                                                new_src = tmp_src
+                                                file_bytes = f_test
+                                                ctype = c_test
+                                                self._log(f"[{correlation_id}] ✅ New output detected and verified downloadable: {tmp_src[:80]}... {len(f_test)} bytes", "success")
+                                                wait_success = True
+                                            else:
+                                                # Download test failed — check if generation still in progress
+                                                is_gen, gen_details = await ctrl.is_generating()
+                                                if is_gen:
+                                                    self._log(f"[{correlation_id}] ⏳ Download test failed but generation still in progress {gen_details} — returning to waiting state", "warn")
+                                                    self._emit_job_action_status(job_id, block, "waiting", f"Download not ready but generating {gen_details}, continue waiting")
+                                                    # Continue waiting loop, not counting as failure
+                                                    # If this is first cycle, continue to next iteration of wait_for_new_output within same cycle? We already have outer cycle.
+                                                    # To avoid tight loop, wait a bit and continue to next wait attempt (but keep same cycle count? We'll just continue waiting)
+                                                    await asyncio.sleep(2)
+                                                    # Try wait again within same cycle (extend)
+                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout)
+                                                    if status2 == "completed" and data2.get("new_src"):
+                                                        new_src = data2.get("new_src")
+                                                        # Try download again
+                                                        s2, f2, c2 = await ctrl.download_image(new_src)
+                                                        if s2 and f2 and len(f2) > 100:
+                                                            file_bytes = f2
+                                                            ctype = c2
+                                                            wait_success = True
+                                                        else:
+                                                            self._log(f"[{correlation_id}] Still not downloadable after extra wait, will try reload if first cycle", "warn")
+                                                            # Fall through to reload logic
+                                                            last_wait_error = f"Download test failed after extra wait: {c2}"
+                                                            if wait_cycle == 0:
+                                                                # reload and continue outer loop
+                                                                ok_r, r_msg = await ctrl.reload_page()
+                                                                self._log(f"[{correlation_id}] Reload after download test failure: {ok_r} {r_msg}", "warn")
+                                                                await asyncio.sleep(3)
+                                                                baseline = await ctrl.capture_baseline()
+                                                                continue
+                                                            else:
+                                                                last_wait_error = f"Download test failed after reload: {c2}"
+                                                                continue
+                                                    else:
+                                                        last_wait_error = f"Wait failed after extra wait: {data2.get('error')}"
+                                                        if wait_cycle == 0:
+                                                            ok_r, r_msg = await ctrl.reload_page()
+                                                            await asyncio.sleep(3)
+                                                            baseline = await ctrl.capture_baseline()
+                                                            continue
+                                                        continue
+                                                else:
+                                                    # Not generating anymore, but download failed — try reload if first cycle
+                                                    self._log(f"[{correlation_id}] Download test failed and not generating, will reload if first cycle", "warn")
+                                                    last_wait_error = f"Download test failed: {c_test}"
+                                                    if wait_cycle == 0:
+                                                        ok_r, r_msg = await ctrl.reload_page()
+                                                        await asyncio.sleep(3)
+                                                        baseline = await ctrl.capture_baseline()
+                                                        continue
+                                                    continue
+                                        except Exception as e:
+                                            self._log(f"[{correlation_id}] Download verification exception {e}, treating as not ready", "warn")
+                                            is_gen, _ = await ctrl.is_generating()
+                                            if is_gen:
+                                                self._emit_job_action_status(job_id, block, "waiting", f"Exception but generating, continue waiting: {e}")
+                                                await asyncio.sleep(2)
+                                                continue
+                                            last_wait_error = str(e)
+                                            if wait_cycle == 0:
+                                                ok_r, r_msg = await ctrl.reload_page()
+                                                await asyncio.sleep(3)
+                                                baseline = await ctrl.capture_baseline()
+                                                continue
+                                            continue
+                                    else:
+                                        if btype == "WAIT_OUTPUT":
+                                            last_wait_error = "New output src not found after generation"
+                                            if wait_cycle == 0:
+                                                ok_r, r_msg = await ctrl.reload_page()
+                                                await asyncio.sleep(3)
+                                                baseline = await ctrl.capture_baseline()
+                                                continue
+                                            continue
+                                        else:
+                                            # AWAIT block can succeed without new_src
+                                            wait_success = True
+                                            self._log(f"[{correlation_id}] {label} done without new src (await block)", "info")
+                                            break
                                 else:
-                                    raise RuntimeError(f"Generation timeout or failed: {data.get('error')}")
-                            else:
-                                new_src = data.get("new_src")
-                                if not new_src and btype == "WAIT_OUTPUT":
-                                    raise RuntimeError("New output src not found after generation")
-                                if new_src:
-                                    self._log(f"[{correlation_id}] New output detected: {new_src[:80]}...", "success")
+                                    # status failed = timeout
+                                    last_wait_error = data.get("error", "timeout")
+                                    is_gen, gen_details = await ctrl.is_generating()
+                                    self._log(f"[{correlation_id}] ⏳ Wait timeout after {wait_timeout}ms cycle {wait_cycle+1}/{max_wait_cycles} — is_generating={is_gen} {gen_details}, error={last_wait_error}", "warn")
+                                    if is_gen:
+                                        self._log(f"[{correlation_id}] Generation still in progress after timeout, not failing yet — will reload if first cycle", "warn")
+                                        self._emit_job_action_status(job_id, block, "waiting", f"Timeout but still generating {gen_details}, reload retry {wait_cycle+1}")
+
+                                    if wait_cycle == 0:
+                                        # First timeout: reload page, not fail yet (bad cache chance per user)
+                                        ok_r, r_msg = await ctrl.reload_page()
+                                        self._log(f"[{correlation_id}] 🔄 Reloaded page after 2 min timeout (cycle {wait_cycle+1}): {ok_r} {r_msg} — retrying wait", "warn")
+                                        await asyncio.sleep(3)
+                                        # Recapture baseline after reload (old srcs still kept for comparison, but also get new baseline for logging)
+                                        try:
+                                            baseline_after = await ctrl.capture_baseline()
+                                            self._log(f"[{correlation_id}] Baseline after reload: {baseline_after.get('output_count')} outputs", "info")
+                                            # Keep original old_srcs for detection? We'll keep baseline as original but also merge
+                                            # Use original baseline's old_srcs still, but if reload cleared, we may need to use new baseline
+                                            # We'll keep original baseline's srcs as old, but if new baseline has more, that's okay
+                                        except Exception:
+                                            pass
+                                        continue
+                                    else:
+                                        # Second attempt after reload also timed out
+                                        self._log(f"[{correlation_id}] Second wait timeout after reload — will fail now", "error")
+                                        continue
+
+                            if wait_success:
+                                break
+
+                            if not wait_success and wait_cycle == max_wait_cycles - 1:
+                                if is_await and not block.required:
+                                    self._log(f"[{correlation_id}] {label} timeout after {max_wait_cycles} cycles but non-required, continuing", "warn")
+                                    self._emit_job_action_status(job_id, block, "success", f"Wait timeout after reload, continuing: {last_wait_error}")
+                                    wait_success = True
+                                    break
+                                else:
+                                    raise RuntimeError(f"Generation timeout after {max_wait_cycles} cycles (each {wait_timeout}ms) incl reload retry: {last_wait_error}")
+
+                            # end for wait_cycle
+
+                            if wait_success:
                                 # GREEN rect for new output / waiting done
                                 try:
                                     rect = await ctrl.highlight_selector(block.selector or 'div.no-scrollbar img', color=block.color or "#00c853", duration_ms=block.highlight_ms or 3000, caption="New output" if not is_await else "Processing finished — new output")
                                     rd = rect if isinstance(rect, dict) else None
                                     if isinstance(rect, dict) and rect.get("rect"):
                                         rd = rect.get("rect")
-                                    self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}..." if new_src else f"{label} done", rect=rd)
+                                    self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}... downloaded {len(file_bytes) if file_bytes else 0} bytes" if new_src else f"{label} done", rect=rd)
                                 except Exception:
                                     self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}..." if new_src else f"{label} done")
+                            # else already raised
 
                         elif btype == "DOWNLOAD":
-                            if not new_src:
-                                raise RuntimeError("No new_src from previous block")
-                            self._log(f"[{correlation_id}] Downloading highest-quality image: {new_src[:120]}", "info")
-                            # Retry download up to 5 times — now includes Python direct fallback for R2 presigned URLs (CORS bypass)
-                            # Previously fetch+canvas failed for https://messages-prod.*.r2.cloudflarestorage.com due to CORS taint
-                            # Now ctrl.download_image tries: JS fetch → canvas → Python urllib direct (bypasses CORS) → canvas retry
-                            success = False
-                            fb = b""
-                            ct = ""
-                            last_err = ""
-                            max_attempts = 5
-                            for attempt in range(max_attempts):
-                                try:
-                                    s, f, c = await ctrl.download_image(new_src)
-                                    if s and f and len(f) > 100:
-                                        success = True
-                                        fb = f
-                                        ct = c
-                                        self._log(f"[{correlation_id}] ✅ Download attempt {attempt+1} succeeded: {len(f)} bytes {c}", "success")
+                            # DOWNLOAD should not fail until generation indicates finished and no jobs running
+                            # If generation in progress, return to waiting state
+                            # After 2 min, try reload page first but not failed yet, because chance bad cache
+                            # Only after second attempt after reload it again wait 2 min than only it says failed
+                            if file_bytes and len(file_bytes) > 100:
+                                # Already downloaded during WAIT_OUTPUT verification — skip
+                                self._log(f"[{correlation_id}] Download already done during wait verification: {len(file_bytes)} bytes, skipping DOWNLOAD block", "info")
+                                self._emit_job_action_status(job_id, block, "success", f"Already downloaded {len(file_bytes)} bytes during wait")
+                            else:
+                                if not new_src:
+                                    raise RuntimeError("No new_src from previous wait block")
+
+                                self._log(f"[{correlation_id}] Downloading highest-quality image: {new_src[:120]} (will return to waiting if generation in progress)", "info")
+                                self._emit_job_action_status(job_id, block, "running", f"Downloading {new_src[:60]}... — if fail and generating, return to waiting")
+
+                                max_dl_cycles = 2  # original + after reload
+                                dl_success = False
+                                last_dl_err = ""
+                                for dl_cycle in range(max_dl_cycles):
+                                    if dl_cycle > 0:
+                                        self._log(f"[{correlation_id}] 🔄 Download cycle {dl_cycle+1}/{max_dl_cycles} after reload", "warn")
+                                        self._emit_job_action_status(job_id, block, "running", f"Download retry {dl_cycle+1}/{max_dl_cycles} after reload")
+
+                                    # Try download up to 5 attempts per cycle
+                                    max_attempts = 5
+                                    for attempt in range(max_attempts):
+                                        try:
+                                            s, f, c = await ctrl.download_image(new_src)
+                                            if s and f and len(f) > 100:
+                                                file_bytes = f
+                                                ctype = c
+                                                dl_success = True
+                                                self._log(f"[{correlation_id}] ✅ Download attempt {attempt+1} succeeded: {len(f)} bytes {c}", "success")
+                                                break
+                                            else:
+                                                last_dl_err = c
+                                                self._log(f"[{correlation_id}] Download attempt {attempt+1} failed: {c[:300]}", "warn")
+                                                # Check if generation still in progress — if yes, return to waiting state
+                                                is_gen, gen_details = await ctrl.is_generating()
+                                                if is_gen:
+                                                    self._log(f"[{correlation_id}] ⏳ Download failed but generation still in progress {gen_details} — returning to waiting state, will wait again", "warn")
+                                                    self._emit_job_action_status(job_id, block, "waiting", f"Download not ready but generating {gen_details}, returning to waiting")
+                                                    # Wait again for new output
+                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout)
+                                                    if status_w == "completed" and data_w.get("new_src"):
+                                                        new_src = data_w.get("new_src")
+                                                        self._log(f"[{correlation_id}] New output after waiting again: {new_src[:80]}", "info")
+                                                        # Continue inner attempt loop with new src
+                                                        continue
+                                                    else:
+                                                        self._log(f"[{correlation_id}] Still no new output after waiting, continue download attempts", "warn")
+                                                # else continue attempts
+                                        except Exception as e:
+                                            last_dl_err = str(e)
+                                            self._log(f"[{correlation_id}] Download attempt {attempt+1} exception: {e}", "warn")
+                                            is_gen, gen_details = await ctrl.is_generating()
+                                            if is_gen:
+                                                self._log(f"[{correlation_id}] Exception but generating {gen_details} — returning to waiting", "warn")
+                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout)
+                                                if status_w == "completed" and data_w.get("new_src"):
+                                                    new_src = data_w.get("new_src")
+                                                    continue
+                                        await asyncio.sleep(1 + attempt)
+
+                                    if dl_success:
                                         break
+
+                                    # After max_attempts in this cycle, check generation state
+                                    is_gen, gen_details = await ctrl.is_generating()
+                                    self._log(f"[{correlation_id}] Download cycle {dl_cycle+1} failed after {max_attempts} attempts — is_generating={is_gen} {gen_details}", "warn")
+
+                                    if is_gen:
+                                        self._log(f"[{correlation_id}] Generation still in progress, not failing download yet — will wait again", "warn")
+                                        self._emit_job_action_status(job_id, block, "waiting", f"Download failed but still generating {gen_details}, waiting again")
+                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout)
+                                        if status_w == "completed" and data_w.get("new_src"):
+                                            new_src = data_w.get("new_src")
+                                            self._log(f"[{correlation_id}] New src after waiting: {new_src[:80]} — retrying download", "info")
+                                            if dl_cycle == 0:
+                                                # Before retrying, try reload as per user: after 2 min try reload first but not fail yet
+                                                ok_r, r_msg = await ctrl.reload_page()
+                                                await asyncio.sleep(3)
+                                                baseline = await ctrl.capture_baseline()
+                                                continue
+                                            continue
+                                        else:
+                                            if dl_cycle == 0:
+                                                ok_r, r_msg = await ctrl.reload_page()
+                                                self._log(f"[{correlation_id}] Reload after download failure while generating: {ok_r} {r_msg}", "warn")
+                                                await asyncio.sleep(3)
+                                                baseline = await ctrl.capture_baseline()
+                                                continue
+                                            continue
                                     else:
-                                        last_err = c
-                                        self._log(f"[{correlation_id}] Download attempt {attempt+1} failed: {c[:300]}", "warn")
-                                except Exception as e:
-                                    last_err = str(e)
-                                    self._log(f"[{correlation_id}] Download attempt {attempt+1} exception: {e}", "warn")
-                                # Exponential backoff: 1s, 2s, 3s, 5s
-                                await asyncio.sleep(1 + attempt)
-                            if not success:
-                                # Do NOT return error immediately if waiting block detected image — try to re-detect new output
-                                # User reported image was done but download failed, should not abort job as error if waiting up to 2 min
-                                # Try one more time to capture baseline and re-find latest src (in case presigned URL expired, try new src)
-                                try:
-                                    self._log(f"[{correlation_id}] Download failed after {max_attempts}, trying to re-capture latest output src", "warn")
-                                    latest_baseline = await ctrl.capture_baseline()
-                                    latest_srcs = latest_baseline.get("output_srcs", [])
-                                    if latest_srcs and latest_srcs[-1] != new_src:
-                                        self._log(f"[{correlation_id}] Found newer src after failure, trying download {latest_srcs[-1][:120]}", "info")
-                                        s, f, c = await ctrl.download_image(latest_srcs[-1])
-                                        if s and f and len(f) > 100:
-                                            success = True
-                                            fb = f
-                                            ct = c
-                                            new_src = latest_srcs[-1]
-                                except Exception as e:
-                                    self._log(f"[{correlation_id}] Re-capture attempt failed: {e}", "warn")
-                            if not success:
-                                raise RuntimeError(f"Download failed after {max_attempts} attempts (incl Python direct fallback): {last_err} src={new_src[:120]}. Tip: If R2 URL, Python direct should bypass CORS — check network/firewall, or URL expired (presigned 3600s).")
-                            if len(fb) == 0:
-                                raise RuntimeError("Downloaded empty file")
-                            file_bytes = fb
-                            ctype = ct
-                            self._emit_job_action_status(job_id, block, "success", f"Downloaded {len(fb)} bytes {ct} method={ct} (Python direct fallback for R2)")
+                                        # Not generating — page finished all tasks and no jobs running
+                                        # Per user: only fail if page finished all tasks and no jobs runs
+                                        # But before final fail, try reload once (bad cache chance)
+                                        if dl_cycle == 0:
+                                            self._log(f"[{correlation_id}] Download failed and not generating (page finished tasks) — trying reload once before final fail (bad cache)", "warn")
+                                            self._emit_job_action_status(job_id, block, "waiting", f"Not generating but download failed, reload retry {dl_cycle+1}")
+                                            ok_r, r_msg = await ctrl.reload_page()
+                                            await asyncio.sleep(3)
+                                            try:
+                                                latest_baseline = await ctrl.capture_baseline()
+                                                latest_srcs = latest_baseline.get("output_srcs", [])
+                                                if latest_srcs:
+                                                    # Use latest src if different
+                                                    if latest_srcs[-1] != new_src:
+                                                        new_src = latest_srcs[-1]
+                                                        self._log(f"[{correlation_id}] Using latest src after reload: {new_src[:120]}", "info")
+                                                    else:
+                                                        # Try same src again after reload
+                                                        self._log(f"[{correlation_id}] Retrying same src after reload", "info")
+                                                baseline = latest_baseline
+                                            except Exception as e:
+                                                self._log(f"[{correlation_id}] Baseline after reload failed: {e}", "warn")
+                                            continue
+                                        else:
+                                            # Second cycle after reload also failed and not generating — now fail
+                                            self._log(f"[{correlation_id}] Second download attempt after reload also failed and not generating — failing", "error")
+                                            continue
+
+                                if dl_success:
+                                    self._emit_job_action_status(job_id, block, "success", f"Downloaded {len(file_bytes)} bytes {ctype} (Python direct fallback for R2, with reload retry)")
+                                else:
+                                    raise RuntimeError(f"Download failed after {max_dl_cycles} cycles (each {max_attempts} attempts + reload + waiting check) — last error: {last_dl_err} src={new_src[:120]}. Only fails if page finished all tasks and no jobs running, with reload retry for bad cache.")
 
                         elif btype == "VALIDATE":
                             if not file_bytes:

@@ -775,3 +775,97 @@ class CDPArenaController:
         """
         result = await self.cdp.evaluate(js)
         return bool(result)
+
+    async def is_generating(self) -> Tuple[bool, Dict[str, Any]]:
+        """Check if generation is still in progress — spinner visible means job running.
+        Returns (is_generating, details). Used to decide if download should return to waiting state."""
+        js = """
+        ;(() => {
+          let spinning = false;
+          let spinCount = 0;
+          let details = [];
+          try {
+            const spinners = document.querySelectorAll('div.animate-spin');
+            for (const s of spinners) {
+              if (s.offsetParent !== null) {
+                spinning = true;
+                spinCount++;
+                let parent = s.closest('div.flex.min-w-0.flex-1.items-center.gap-2');
+                let label = '';
+                if (parent) {
+                  const trunc = parent.querySelector('span.truncate');
+                  if (trunc) label = trunc.textContent.trim();
+                }
+                details.push({label: label || 'unknown'});
+              }
+            }
+          } catch(e) {}
+          // Also check for Processing/Generating text visible
+          let processingText = false;
+          try {
+            const all = document.body.innerText || '';
+            if (all.includes('Processing') || all.includes('Generating')) {
+              // Check if near spinner region
+              const procEls = document.querySelectorAll('div, span');
+              for (const el of procEls) {
+                const txt = (el.textContent || '').trim();
+                if ((txt === 'Processing' || txt === 'Generating' || txt.includes('Processing') || txt.includes('Generating')) && el.offsetParent !== null) {
+                  // Small element, likely indicator
+                  if (txt.length < 30) { processingText = true; break; }
+                }
+              }
+            }
+          } catch(e) {}
+          return {spinning: spinning, spinCount: spinCount, processingText: processingText, details: details, isGenerating: spinning || processingText};
+        })()
+        """
+        try:
+            result = await self.cdp.evaluate(js)
+            if not result:
+                return False, {}
+            is_gen = bool(result.get("isGenerating") or result.get("spinning"))
+            return is_gen, result
+        except Exception as e:
+            log.debug(f"is_generating check failed: {e}")
+            return False, {"error": str(e)}
+
+    async def get_generation_state(self) -> Dict[str, Any]:
+        """Detailed generation state: spinning, ready, output count."""
+        old_srcs = []  # we want current state regardless
+        js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)})"
+        try:
+            result = await self.cdp.evaluate(js_check)
+            return result or {}
+        except Exception as e:
+            return {"error": str(e), "spinning": False}
+
+    async def reload_page(self) -> Tuple[bool, str]:
+        """Reload page via CDP Page.reload — used after 2 min wait timeout as retry, not failure.
+        User requested: after 2 min try to reload page first but not failed yet as unsuccess, because chance bad cache."""
+        try:
+            self._log("🔄 Reloading page after wait timeout (cache may be bad) — will retry waiting", "warn")
+            # Try CDP Page.reload
+            try:
+                await self.cdp.send("Page.reload", {}, timeout=15)
+            except Exception as e:
+                # Fallback to location.reload via JS
+                self._log(f"Page.reload via CDP failed {e}, trying location.reload()", "warn")
+                try:
+                    await self.cdp.evaluate("window.location.reload(); true")
+                except Exception as e2:
+                    return False, f"Both reload methods failed: {e} / {e2}"
+            # Wait for page to load
+            await asyncio.sleep(4)
+            # Wait up to 10s for ready
+            for i in range(10):
+                ready, reasons = await self.is_page_ready()
+                if ready:
+                    self._log(f"✅ Page reloaded and ready after {i+1}s", "success")
+                    return True, "Reloaded and ready"
+                await asyncio.sleep(1)
+            # Even if not fully ready, return true — let waiting logic handle
+            self._log("⚠ Page reloaded but not fully ready yet, continuing anyway", "warn")
+            return True, "Reloaded but not fully ready"
+        except Exception as e:
+            self._log(f"Reload page failed: {e}", "error")
+            return False, str(e)
