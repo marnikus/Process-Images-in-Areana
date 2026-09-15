@@ -196,13 +196,21 @@ JS_BASELINE = """
           if (el.src.startsWith('blob:')) continue;
           // Skip tiny icons
           if (el.naturalWidth && el.naturalWidth < 50 && el.naturalHeight < 50) continue;
+          const rect = el.getBoundingClientRect();
+          const cls = el.className || '';
+          const opacity = (()=>{ try { return window.getComputedStyle(el).opacity; } catch(e){ return '1'; } })();
           outputs.push({
             src: el.src,
             complete: el.complete,
             naturalWidth: el.naturalWidth,
             naturalHeight: el.naturalHeight,
             visible: el.offsetParent !== null,
-            selector: sel
+            selector: sel,
+            className: cls.slice(0,120),
+            opacity: opacity,
+            top: rect.top,
+            width: rect.width,
+            isLarge: cls.includes('50vh') || cls.includes('object-cover') || rect.width >= 200
           });
         }
       } catch(e) {}
@@ -231,7 +239,7 @@ JS_BASELINE = """
 """
 
 JS_CHECK_NEW_OUTPUT = """
-((oldSrcs, correlationId) => {
+((oldSrcs, correlationId, oldOutputs) => {
   try {
     let spinning = false;
     let spinCount = 0;
@@ -416,7 +424,12 @@ JS_CHECK_NEW_OUTPUT = """
       'main img[src*=".r2.cloudflarestorage.com/"]',
       'div.no-scrollbar img[src^="https://"]',
       'img.aspect-square.w-full',
-      'img[src*=".r2.cloudflarestorage.com/"]'
+      'img[src*=".r2.cloudflarestorage.com/"]',
+      'img[src*="messages-prod"]',
+      'img.h-\[50vh\]',
+      'img.w-\[50vh\]',
+      'ol img[src^="https://"]',
+      'main img'
     ];
 
     let allNew = [];
@@ -485,7 +498,28 @@ JS_CHECK_NEW_OUTPUT = """
         for (const el of els) {
           if (!el.src) { debugFiltered.push({reason:'no_src', sel}); continue; }
           if (el.src.startsWith('blob:')) { debugFiltered.push({reason:'blob', src:el.src.slice(-40), sel}); continue; }
-          if (oldSrcs.includes(el.src)) { debugFiltered.push({reason:'in_oldSrcs', src:el.src.slice(-40), sel, oldLen:oldSrcs.length}); continue; }
+          // Check if in oldSrcs — but allow if old was not ready (opacity-0, not complete, tiny)
+          if (oldSrcs.includes(el.src)) {
+            try {
+              const old = (oldOutputs||[]).find(o=>o.src===el.src);
+              if (old) {
+                const wasNotReady = !old.complete || old.naturalWidth===0 || old.opacity==='0' || (old.className&&old.className.includes('opacity-0')) || !old.visible;
+                if (!wasNotReady) {
+                  debugFiltered.push({reason:'in_oldSrcs_ready', src:el.src.slice(-40), sel, oldLen:oldSrcs.length, oldComplete:old.complete, oldOpacity:old.opacity});
+                  continue;
+                } else {
+                  // Old was not ready, now it might be ready — allow as new
+                  debugFiltered.push({reason:'in_oldSrcs_but_was_not_ready_now_allowed', src:el.src.slice(-40), sel, oldComplete:old.complete, oldOpacity:old.opacity});
+                }
+              } else {
+                debugFiltered.push({reason:'in_oldSrcs_no_old_entry', src:el.src.slice(-40), sel});
+                continue;
+              }
+            } catch(e) {
+              debugFiltered.push({reason:'in_oldSrcs', src:el.src.slice(-40), sel, oldLen:oldSrcs.length});
+              continue;
+            }
+          }
           if (el.naturalWidth && el.naturalWidth < 50 && el.naturalHeight < 50) { debugFiltered.push({reason:'tiny_natural', src:el.src.slice(-40), w:el.naturalWidth, h:el.naturalHeight, sel}); continue; }
           if (isReferenceImage(el)) { debugFiltered.push({reason:'isReference', src:el.src.slice(-40), cls:(el.className||'').slice(0,40), sel}); continue; }
 
@@ -578,6 +612,71 @@ JS_CHECK_NEW_OUTPUT = """
         }
       } catch(e) {}
       if (validAbove.length > 0) break;
+    }
+
+    // Fallback: if allNew still empty, scan ALL img tags for any large image not in oldSrcs (last resort) — but allow old that was not ready
+    if (allNew.length === 0) {
+      try {
+        const allImgs = document.querySelectorAll('img');
+        for (const el of allImgs) {
+          if (!el.src) continue;
+          if (el.src.startsWith('blob:')) continue;
+          if (oldSrcs.includes(el.src)) {
+            try {
+              const old = (oldOutputs||[]).find(o=>o.src===el.src);
+              if (old) {
+                const wasNotReady = !old.complete || old.naturalWidth===0 || old.opacity==='0' || (old.className&&old.className.includes('opacity-0')) || !old.visible;
+                if (!wasNotReady) continue;
+              } else {
+                continue;
+              }
+            } catch(e) { continue; }
+          }
+          const rect = el.getBoundingClientRect();
+          const width = el.naturalWidth || rect.width || 0;
+          const height = el.naturalHeight || rect.height || 0;
+          const cls = el.className || '';
+          // Very permissive large check for fallback
+          const isLargeFallback = width >= 100 || rect.width >= 100 || cls.includes('50vh') || cls.includes('object-cover') || cls.includes('aspect-square') || (el.src.includes('r2.cloudflarestorage.com') || el.src.includes('messages-prod'));
+          if (!isLargeFallback) continue;
+          if (isReferenceImage(el)) {
+            // For fallback, allow even if inside job container if large and not small
+            const isSmall = rect.width <= 140 || cls.includes('w-32') || cls.includes('h-16') || cls.includes('w-16');
+            if (isSmall) continue;
+          }
+          const info = {
+            el: el,
+            src: el.src,
+            rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height},
+            width: width,
+            height: height,
+            visible: el.offsetParent !== null,
+            complete: el.complete,
+            naturalWidth: el.naturalWidth,
+            selector: 'fallback_all_img',
+            isLarge: true,
+            top: rect.top,
+            left: rect.left
+          };
+          allNew.push(info);
+          // Also try to classify as validAbove using DOM order if possible
+          if (jobFound && jobEl) {
+            const beforeCurrent = isBeforeInDOM(el, jobEl);
+            const afterPrev = prevJobEl ? isBeforeInDOM(prevJobEl, el) : true;
+            if (beforeCurrent && afterPrev) {
+              let hasIntervening = false;
+              for (const j of allJobs) {
+                if (j.jobId === correlationId) continue;
+                if (isBeforeInDOM(el, j.el) && isBeforeInDOM(j.el, jobEl)) { hasIntervening = true; break; }
+              }
+              if (!hasIntervening) validAbove.push(info);
+              else invalidAbove.push(info);
+            }
+          } else {
+            validAbove.push(info);
+          }
+        }
+      } catch(e) {}
     }
 
     // If we have validAbove (exact above current prompt in DOM order), pick closest above (nearest before current in DOM)
@@ -903,8 +1002,10 @@ class CDPArenaController:
             if cancel_check and cancel_check():
                 self._log("❌ Cancelled during wait_for_new_output", "warn")
                 return "failed", {"error": "Cancelled by user", "cancelled": True}
-            # Pass correlation_id to JS so it can find user message and pick image after it (fix for matching image above prompt)
-            js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)}, {json.dumps(correlation_id) if correlation_id else 'null'})"
+            # Pass correlation_id and oldOutputs to JS so it can find user message and pick image after it (fix for matching image above prompt)
+            # Also pass oldOutputs to allow images that were in baseline but not ready (opacity-0) to be considered new when ready
+            old_outputs = baseline.get("outputs", []) or []
+            js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)}, {json.dumps(correlation_id) if correlation_id else 'null'}, {json.dumps(old_outputs)})"
             result = await self.cdp.evaluate(js_check)
             if not result:
                 await asyncio.sleep(poll)

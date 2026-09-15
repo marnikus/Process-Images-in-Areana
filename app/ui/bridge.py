@@ -1485,6 +1485,7 @@ class Bridge(QObject):
                 # Variables shared across blocks
                 baseline = None
                 original_old_srcs = []  # preserve original baseline srcs across reloads — fix for image matching after reload
+                original_old_outputs = []  # preserve original outputs with opacity/complete info
                 new_src = None
                 file_bytes = None
                 ctype = None
@@ -1645,9 +1646,11 @@ class Bridge(QObject):
                             baseline = await ctrl.capture_baseline()
                             try:
                                 original_old_srcs = list(baseline.get("output_srcs", []) or [])
+                                original_old_outputs = list(baseline.get("outputs", []) or [])
                             except Exception:
                                 original_old_srcs = []
-                            self._log(f"[{correlation_id}] Baseline: {baseline.get('output_count')} existing outputs, original_old_srcs={len(original_old_srcs)}", "info")
+                                original_old_outputs = []
+                            self._log(f"[{correlation_id}] Baseline: {baseline.get('output_count')} existing outputs, original_old_srcs={len(original_old_srcs)} original_old_outputs={len(original_old_outputs)}", "info")
                             self._emit_job_action_status(job_id, block, "success", f"Baseline {baseline.get('output_count')} outputs")
 
                         elif btype == "CHECK_SECURITY":
