@@ -105,27 +105,34 @@ form.flex.w-full.flex-col
 
 ## D. Send / Submit Button
 
-**Purpose:** Start generation (must be clicked once).
+**Purpose:** Start generation (must be clicked once). User log 2026-09-16 shows primary `button[aria-label="Send message"]` matched 0 nodes when disabled (opacity-50 pointer-events-none), fallback `button:has(svg)` matched 32 nodes too generic → failed.
 
 | Field | Value |
 |---|---|
-| **Primary** | `button[aria-label="Send message"]` |
-| **Fallback 1** | `button[type="submit"][aria-label="Send message"]` |
-| **Fallback 2** | `form button:has(svg)` near textarea, last button in form footer |
+| **Primary** | `button[aria-label="Send message"]:not([disabled])` — must exclude disabled |
+| **Fallback 1** | `form button[aria-label="Send message"]:not([disabled])` |
+| **Fallback 2** | `form:has(textarea[name="message"]) button[aria-label="Send message"]:not([disabled])` |
+| **Fallback 3** | `div.flex.items-center.gap-2 button[aria-label="Send message"]:not([disabled])` |
+| **Fallback 4** | `button[type="button"][aria-label="Send message"]:not([disabled])` |
+| **Fallback 5** | `form div.flex.items-center.gap-2 button:last-child:not([disabled])` |
+| **Fallback 6** | `form button:has(svg):not([disabled])` — more specific than generic `button:has(svg)` which matched 32 nodes |
+| **Fallback 7** | `button.inline-flex.h-8.w-8[aria-label="Send message"]` |
+| **Fallback 8 (controller)** | `button[type="submit"][aria-label="Send message"]`, `form button[type="submit"]` — last resort via `CDPArenaController.submit()` |
 | **Accessible query** | role=button, name="Send message" |
-| **Scope** | Inside same `form` as textarea, in `div.flex.justify-between` |
+| **Scope** | Inside same `form` as textarea, in `div.flex.items-center.gap-2` (not just `flex.justify-between` — new UI uses gap-2) |
 | **mustBeVisible** | true |
-| **mustBeEnabled** | true (disabled during generation) |
+| **mustBeEnabled** | true (disabled has `disabled=""` + `opacity-50 pointer-events-none` class) — need to wait for disabled→enabled transition after prompt insertion, React enables button |
 | **expectedCount** | 1 |
-| **Verification** | After click, processing state starts: spinner `div.animate-spin` appears OR textarea clears OR new user message appears in output region |
-| **Evidence** | Partial — aria-label present in HTML but full button truncated; spec confirms |
-| **Action Blocks** | `HIGHLIGHT_SUBMIT`, `SUBMIT` |
+| **Verification** | After click, processing state starts: spinner `div.animate-spin` appears near `Response A/B` label OR textarea clears OR new user message appears in output region. Controller now waits 0.8s + polls up to 5s for enabled. |
+| **Evidence** | Directly Chat HTML line 310k shows `<button disabled="" aria-label="Send message" class="... opacity-50 pointer-events-none">` — when empty prompt. After prompt, disabled removed. User log: primary matched 0 nodes, fallback 32 nodes → fix adds :not([disabled]) and more specific fallbacks, comma-separated list handling in Bridge. |
+| **Action Blocks** | `HIGHLIGHT_SUBMIT`, `SUBMIT` — fallback_selector now comma-separated list, tried in order. |
+| **Fix 2026-09-16** | Primary `:not([disabled])`, fallback list split by comma in Bridge, extra 0.8s delay + wait for enabled, multiple click dispatch methods (mousedown/mouseup/click) for React. |
 
 ---
 
 ## E. Output / Generated Image — Detection
 
-**Purpose:** Detect genuinely new output image, not old one.
+**Purpose:** Detect genuinely new output image, not old one. User report 2026-09-16: image was created but download failed "Fetch failed {ok: False, 'error': 'TypeEr" — indicates fetch CORS issue, need canvas fallback.
 
 | Field | Value |
 |---|---|
@@ -135,12 +142,18 @@ form.flex.w-full.flex-col
 | **Fallback 2** | `div.no-scrollbar img[loading="lazy"].aspect-square` |
 | **Fallback 3** | `img.aspect-square.cursor-pointer` |
 | **Fallback 4** | `img.transition-opacity.duration-500.opacity-100.aspect-square` |
-| **Scope** | Main scroll area above composer |
+| **Fallback 5** | `div.flex img[src*=".r2.cloudflarestorage.com/"]` |
+| **Fallback 6** | `main img[src*=".r2.cloudflarestorage.com/"]` |
+| **Fallback 7** | `div.no-scrollbar img[src^="https://"]` |
+| **Fallback 8** | `img.aspect-square.w-full` |
+| **Fallback 9** | `img[src*=".r2.cloudflarestorage.com/"]` generic |
+| **Scope** | Main scroll area above composer, but also `main` — new UI may have Response A/B columns each with images |
 | **mustBeVisible** | true |
 | **expectedCount** | 0..n (grows) |
-| **Verification** | Baseline capture all matching nodes and src before submission → after submission wait for new node not in baseline → confirm appears after current prompt in DOM order → wait for `complete && naturalWidth>0` → prefer highest resolution (largest naturalWidth or src without thumbnail params) |
-| **Evidence** | Spec; host pattern observed in JS bundles; not present in empty chat HTML |
+| **Verification** | Baseline capture all matching nodes and src before submission (skip blob: and <50px icons) → after submission wait for spinner to appear (generating) → wait for spinner to disappear + new node not in baseline → confirm `complete && naturalWidth>0` → prefer highest resolution (largest naturalWidth) → download via fetch with credentials include + mode cors, fallback to canvas toDataURL if CORS tainted, retry 3x |
+| **Evidence** | Spec; host pattern observed in JS bundles; not present in empty chat HTML; user report 2026-09-16 image created but download failed TypeError → fixed with canvas fallback |
 | **Action Blocks** | `OBSERVE_BASELINE`, `WAIT_OUTPUT`, `DOWNLOAD` |
+| **Fix 2026-09-16** | Baseline skips blob and tiny icons, includes spinner state; JS_CHECK_NEW_OUTPUT checks spinner (Response A/B) and returns spinning flag; wait_for_new_output logs spinner start and waits for disappearance; JS_DOWNLOAD_IMAGE tries fetch then canvas toDataURL fallback, retries 3x in Bridge. |
 
 **Baseline capture probe:**
 
@@ -171,20 +184,36 @@ form.flex.w-full.flex-col
 
 ---
 
-## F. Model / Processing Indicator
+## F. Model / Processing Indicator — Response A/B Spinner
 
-**Purpose:** Identify model and active processing state.
+**Purpose:** Identify model and active processing state. User report 2026-09-16: app should understand when to wait — see icon of processing.
+
+**User provided HTML of waiting state:**
+```html
+<div class="flex min-w-0 flex-1 items-center gap-2">
+  <div class="h-5 w-5 flex-shrink-0 animate-spin">
+    <canvas width="28" height="28" style="vertical-align: top; width: 20px; height: 20px;"></canvas>
+  </div>
+  <span class="xs:max-w-full flex min-w-0 max-w-[250px] items-center gap-1 font-mono text-xs font-medium">
+    <span class="truncate">Response A</span>
+  </span>
+</div>
+```
 
 | Field | Value |
 |---|---|
-| **Primary** | `span.truncate` with text "Max" (or other model names) |
-| **Spinner Primary** | `div.animate-spin` containing `canvas` |
-| **Spinner Fallback** | `div.h-5.w-5.flex-shrink-0.animate-spin` |
-| **Scope** | `div.flex.min-w-0.flex-1.items-center.gap-2` containing label + spinner |
+| **Primary** | `div.animate-spin` |
+| **Fallback 1** | `div.h-5.w-5.flex-shrink-0.animate-spin` |
+| **Fallback 2** | `div.animate-spin > canvas` |
+| **Fallback 3** | `div.flex.min-w-0.flex-1.items-center.gap-2 div.animate-spin` |
+| **Fallback 4** | `div.flex.min-w-0.flex-1.items-center.gap-2:has(div.animate-spin)` |
+| **Fallback 5** | `canvas[width="28"][height="28"]` inside `animate-spin` |
+| **Scope** | `div.flex.min-w-0.flex-1.items-center.gap-2` containing label + spinner — label `span.truncate` with text "Response A" or "Response B" or model name "Max" |
 | **mustBeVisible** | true |
-| **expectedCount** | 1 label, 0-1 spinner (0=idle, 1=generating) |
-| **Verification** | spinner visible ⇒ processing; not visible ⇒ idle |
-| **Evidence** | Saved HTML shows model selector button with Max text |
+| **expectedCount** | 0..2 (0=idle, 1-2=generating — Response A and Response B each have own spinner for side-by-side arena) |
+| **Verification** | spinner visible ⇒ processing; not visible ⇒ idle. In `wait_for_new_output`, check spinner: if spinning true, log "Generation started — spinner visible Response A/B" and continue polling. When spinner disappears + new output image appears, consider completed. |
+| **Evidence** | Saved HTML shows model selector button with Max text + user HTML 2026-09-16 shows Response A/B spinner with canvas 28x28 |
+| **Fix 2026-09-16** | `JS_CHECK_NEW_OUTPUT` now returns `spinning`, `spinCount`, `spinDetails` (label), and `wait_for_new_output` logs spinner start, polls while spinning, waits for spinner gone + new image. |
 
 ---
 

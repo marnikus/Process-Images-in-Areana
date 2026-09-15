@@ -85,19 +85,38 @@ JS_VERIFY_PROMPT = """
 JS_FIND_SEND_BUTTON = """
 (() => {
   const sels = [
+    'button[aria-label="Send message"]:not([disabled])',
+    'form button[aria-label="Send message"]:not([disabled])',
+    'form:has(textarea[name="message"]) button[aria-label="Send message"]:not([disabled])',
+    'div.flex.items-center.gap-2 button[aria-label="Send message"]:not([disabled])',
+    'button[type="button"][aria-label="Send message"]:not([disabled])',
     'button[aria-label="Send message"]',
     'button[type="submit"][aria-label="Send message"]',
-    'form button:has(svg):last-child',
-    'form button[type="submit"]'
+    'form div.flex.items-center.gap-2 button:last-child:not([disabled])',
+    'form button:has(svg):not([disabled])',
+    'form button[type="submit"]',
+    'button.inline-flex.h-8.w-8[aria-label="Send message"]'
   ];
   for (const sel of sels) {
     try {
       const els = document.querySelectorAll(sel);
       for (const el of els) {
-        if (el.offsetParent !== null && !el.disabled) return sel;
+        // Check visible and not disabled, and not opacity-50 pointer-events-none
+        const style = window.getComputedStyle(el);
+        const isDisabled = el.disabled || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('disabled');
+        const hasPointerNone = style.pointerEvents === 'none';
+        const isVisible = el.offsetParent !== null || (el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0);
+        if (isVisible && !isDisabled && !hasPointerNone) return sel;
       }
     } catch(e) {}
   }
+  // Fallback: return first enabled button if any
+  try {
+    const all = document.querySelectorAll('button[aria-label="Send message"]');
+    for (const el of all) {
+      if (el.offsetParent !== null) return 'button[aria-label="Send message"]';
+    }
+  } catch(e) {}
   return null;
 })
 """
@@ -106,21 +125,45 @@ JS_CLICK_SEND = """
 (() => {
   try {
     const sels = [
+      'button[aria-label="Send message"]:not([disabled])',
+      'form button[aria-label="Send message"]:not([disabled])',
+      'form:has(textarea[name="message"]) button[aria-label="Send message"]:not([disabled])',
+      'div.flex.items-center.gap-2 button[aria-label="Send message"]:not([disabled])',
+      'button[type="button"][aria-label="Send message"]:not([disabled])',
       'button[aria-label="Send message"]',
       'button[type="submit"][aria-label="Send message"]',
-      'form button[type="submit"]'
+      'form div.flex.items-center.gap-2 button:last-child',
+      'form button[type="submit"]',
+      'button.inline-flex.h-8.w-8[aria-label="Send message"]'
     ];
     let btn = null;
+    let usedSel = null;
     for (const sel of sels) {
-      const els = document.querySelectorAll(sel);
-      for (const el of els) {
-        if (el.offsetParent !== null && !el.disabled) { btn = el; break; }
-      }
-      if (btn) break;
+      try {
+        const els = document.querySelectorAll(sel);
+        for (const el of els) {
+          const style = window.getComputedStyle(el);
+          const isDisabled = el.disabled || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('disabled');
+          const hasPointerNone = style.pointerEvents === 'none';
+          const isVisible = el.offsetParent !== null || (el.getBoundingClientRect().width > 0);
+          if (isVisible && !isDisabled) { btn = el; usedSel = sel; break; }
+          // Even if disabled check fails, keep last visible as fallback
+          if (isVisible && !btn) { btn = el; usedSel = sel; }
+        }
+      } catch(e) {}
+      if (btn && !btn.disabled) break;
     }
-    if (!btn) return {ok:false, error:'send button not found or disabled'};
-    btn.click();
-    return {ok:true};
+    if (!btn) return {ok:false, error:'send button not found or disabled', tried: sels};
+    // Try multiple click methods for React
+    try { btn.focus(); } catch(e) {}
+    try {
+      btn.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true}));
+      btn.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, cancelable:true}));
+      btn.click();
+    } catch(e) {
+      try { btn.click(); } catch(e2) { return {ok:false, error:String(e2), sel: usedSel}; }
+    }
+    return {ok:true, sel: usedSel};
   } catch(e) { return {ok:false, error:String(e)}; }
 })
 """
@@ -135,31 +178,54 @@ JS_BASELINE = """
       'div.no-scrollbar img[loading="lazy"].aspect-square',
       'img.aspect-square.cursor-pointer',
       'img.cursor-pointer',
-      'div.flex.flex-wrap img[src^="blob:"]'
+      'div.flex.flex-wrap img[src^="blob:"]',
+      'div.flex img[src*=".r2.cloudflarestorage.com/"]',
+      'div.flex img.aspect-square',
+      'main img[src*=".r2.cloudflarestorage.com/"]',
+      'main img.aspect-square',
+      'div.no-scrollbar img[src^="https://"]',
+      'img.aspect-square.w-full',
+      'img[src*=".r2.cloudflarestorage.com/"]'
     ];
     for (const sel of selectors) {
-      const els = document.querySelectorAll(sel);
-      for (const el of els) {
-        if (!el.src) continue;
-        outputs.push({
-          src: el.src,
-          complete: el.complete,
-          naturalWidth: el.naturalWidth,
-          naturalHeight: el.naturalHeight,
-          visible: el.offsetParent !== null
-        });
-      }
+      try {
+        const els = document.querySelectorAll(sel);
+        for (const el of els) {
+          if (!el.src) continue;
+          // Skip blob preview (attachment) - only want generated
+          if (el.src.startsWith('blob:')) continue;
+          // Skip tiny icons
+          if (el.naturalWidth && el.naturalWidth < 50 && el.naturalHeight < 50) continue;
+          outputs.push({
+            src: el.src,
+            complete: el.complete,
+            naturalWidth: el.naturalWidth,
+            naturalHeight: el.naturalHeight,
+            visible: el.offsetParent !== null,
+            selector: sel
+          });
+        }
+      } catch(e) {}
       if (outputs.length > 0) break;
     }
+    // Also check spinner state for baseline
+    let spinning = false;
+    try {
+      const spinners = document.querySelectorAll('div.animate-spin');
+      for (const s of spinners) {
+        if (s.offsetParent !== null) { spinning = true; break; }
+      }
+    } catch(e) {}
     return {
       output_count: outputs.length,
       output_srcs: outputs.map(o => o.src),
       outputs: outputs,
+      spinning: spinning,
       timestamp: Date.now(),
       url: window.location.href
     };
   } catch(e) {
-    return {output_count:0, output_srcs:[], error:String(e), timestamp:Date.now()};
+    return {output_count:0, output_srcs:[], error:String(e), timestamp:Date.now(), spinning:false};
   }
 })
 """
@@ -167,26 +233,84 @@ JS_BASELINE = """
 JS_CHECK_NEW_OUTPUT = """
 ((oldSrcs) => {
   try {
+    // Check spinner - indicates generating (user provided HTML: div.flex.min-w-0.flex-1.items-center.gap-2 > div.animate-spin > canvas + Response A label)
+    let spinning = false;
+    let spinCount = 0;
+    let spinDetails = [];
+    try {
+      const spinners = document.querySelectorAll('div.animate-spin');
+      for (const s of spinners) {
+        if (s.offsetParent !== null) {
+          spinning = true;
+          spinCount++;
+          // Try to get parent label like Response A/B
+          let parent = s.closest('div.flex.min-w-0.flex-1.items-center.gap-2');
+          let label = '';
+          if (parent) {
+            const trunc = parent.querySelector('span.truncate');
+            if (trunc) label = trunc.textContent.trim();
+          }
+          spinDetails.push({label: label || 'unknown', visible: true});
+        }
+      }
+    } catch(e) {}
+
     const selectors = [
       'div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',
       'div.no-scrollbar img[src*="messages-prod."]',
       'div.no-scrollbar img[loading="lazy"].aspect-square',
       'img.aspect-square.cursor-pointer',
-      'img.cursor-pointer'
+      'img.cursor-pointer',
+      'div.flex img[src*=".r2.cloudflarestorage.com/"]',
+      'main img[src*=".r2.cloudflarestorage.com/"]',
+      'div.no-scrollbar img[src^="https://"]',
+      'img.aspect-square.w-full',
+      'img[src*=".r2.cloudflarestorage.com/"]'
     ];
+    let newCandidates = [];
     for (const sel of selectors) {
-      const els = document.querySelectorAll(sel);
-      for (const el of els) {
-        if (!el.src) continue;
-        if (oldSrcs.includes(el.src)) continue;
-        if (!el.complete) return {ready:false, reason:'not_complete', src: el.src};
-        if (el.naturalWidth === 0) return {ready:false, reason:'zero_width', src: el.src};
-        if (el.offsetParent === null) continue;
-        return {ready:true, src: el.src, width: el.naturalWidth, height: el.naturalHeight};
-      }
+      try {
+        const els = document.querySelectorAll(sel);
+        for (const el of els) {
+          if (!el.src) continue;
+          if (el.src.startsWith('blob:')) continue;
+          if (oldSrcs.includes(el.src)) continue;
+          if (el.naturalWidth && el.naturalWidth < 50) continue;
+          // If not complete, still collect but mark not ready
+          if (!el.complete) {
+            newCandidates.push({el: el, src: el.src, reason: 'not_complete', complete: false, width: el.naturalWidth});
+            continue;
+          }
+          if (el.naturalWidth === 0) {
+            newCandidates.push({el: el, src: el.src, reason: 'zero_width', complete: el.complete, width: 0});
+            continue;
+          }
+          if (el.offsetParent === null) {
+            // May still be valid if parent hidden during animation, keep as candidate
+            newCandidates.push({el: el, src: el.src, reason: 'hidden', visible: false, width: el.naturalWidth});
+            continue;
+          }
+          // Found valid new output
+          const rect = el.getBoundingClientRect();
+          // If spinning, we may still want to wait for spinner to disappear, but if image is fully loaded and spinning false, ready
+          if (spinning) {
+            return {ready:false, reason:'generating_spinner_visible', src: el.src, spinning: true, spinCount: spinCount, spinDetails: spinDetails, width: el.naturalWidth, height: el.naturalHeight, rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height}};
+          }
+          return {ready:true, src: el.src, width: el.naturalWidth, height: el.naturalHeight, spinning: false, rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height}, selector: sel};
+        }
+      } catch(e) {}
     }
-    return {ready:false, reason:'no_new'};
-  } catch(e) { return {ready:false, reason:String(e)}; }
+    // If we have candidates but not ready due to loading
+    if (newCandidates.length > 0) {
+      const first = newCandidates[0];
+      return {ready:false, reason: first.reason || 'loading', src: first.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: newCandidates.length};
+    }
+    // No new image, but check spinner
+    if (spinning) {
+      return {ready:false, reason:'generating_no_new_yet', spinning: true, spinCount: spinCount, spinDetails: spinDetails};
+    }
+    return {ready:false, reason:'no_new', spinning: false, spinCount: 0};
+  } catch(e) { return {ready:false, reason:String(e), spinning: false}; }
 })
 """
 
@@ -224,15 +348,87 @@ JS_VERIFY_ATTACHMENT = """
 
 JS_DOWNLOAD_IMAGE = """
 async (src) => {
-  try {
-    const res = await fetch(src);
-    if (!res.ok) return {ok:false, status:res.status, statusText:res.statusText};
-    const buf = await res.arrayBuffer();
-    const contentType = res.headers.get('content-type') || '';
-    return {ok:true, bytes: Array.from(new Uint8Array(buf)), contentType: contentType};
-  } catch(e) {
-    return {ok:false, error:e.toString()};
-  }
+  // Try multiple strategies: fetch, then canvas toDataURL fallback
+  const tryFetch = async (url) => {
+    try {
+      const res = await fetch(url, {credentials: 'include', mode: 'cors'});
+      if (!res.ok) return {ok:false, status:res.status, statusText:res.statusText, method:'fetch'};
+      const buf = await res.arrayBuffer();
+      const contentType = res.headers.get('content-type') || '';
+      // Check if HTML
+      const firstBytes = new Uint8Array(buf.slice(0,100));
+      const text = new TextDecoder().decode(firstBytes).toLowerCase();
+      if (text.includes('<html') || text.includes('<!doctype')) {
+        return {ok:false, error:'HTML not image', method:'fetch', contentType: contentType};
+      }
+      return {ok:true, bytes: Array.from(new Uint8Array(buf)), contentType: contentType, method:'fetch'};
+    } catch(e) {
+      return {ok:false, error:e.toString(), method:'fetch'};
+    }
+  };
+
+  const tryCanvas = async (url) => {
+    try {
+      // Find img element with this src
+      let imgEl = null;
+      const allImgs = document.querySelectorAll('img');
+      for (const im of allImgs) {
+        if (im.src === url || im.src.includes(url) || url.includes(im.src)) { imgEl = im; break; }
+      }
+      if (!imgEl) {
+        // Try selector for output
+        imgEl = document.querySelector(`img[src="${url}"]`) || document.querySelector(`img[src*="${url.slice(-30)}"]`);
+      }
+      if (!imgEl) return {ok:false, error:'img element not found for canvas', method:'canvas'};
+      // Ensure loaded
+      if (!imgEl.complete || imgEl.naturalWidth === 0) {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject('timeout waiting for img load'), 5000);
+          imgEl.onload = () => { clearTimeout(timeout); resolve(); };
+          imgEl.onerror = () => { clearTimeout(timeout); reject('img load error'); };
+          if (imgEl.complete) { clearTimeout(timeout); resolve(); }
+        });
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = imgEl.naturalWidth || imgEl.width;
+      canvas.height = imgEl.naturalHeight || imgEl.height;
+      if (canvas.width === 0 || canvas.height === 0) return {ok:false, error:'zero dimension for canvas', method:'canvas'};
+      const ctx = canvas.getContext('2d');
+      try {
+        ctx.drawImage(imgEl, 0, 0);
+      } catch(e) {
+        return {ok:false, error:'canvas drawImage failed (CORS tainted?): ' + e.toString(), method:'canvas'};
+      }
+      // Try to get data
+      let dataUrl;
+      try {
+        dataUrl = canvas.toDataURL('image/png');
+      } catch(e) {
+        return {ok:false, error:'toDataURL failed (CORS): ' + e.toString(), method:'canvas'};
+      }
+      // Convert dataUrl to bytes
+      const base64 = dataUrl.split(',')[1];
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+      return {ok:true, bytes: Array.from(bytes), contentType: 'image/png', method:'canvas', width: canvas.width, height: canvas.height};
+    } catch(e) {
+      return {ok:false, error:e.toString(), method:'canvas'};
+    }
+  };
+
+  // Strategy 1: fetch
+  let result = await tryFetch(src);
+  if (result.ok) return result;
+
+  // Strategy 2: try fetch with no-cors? (will be opaque, can't read, skip)
+
+  // Strategy 3: canvas
+  let canvasResult = await tryCanvas(src);
+  if (canvasResult.ok) return canvasResult;
+
+  // Return combined error
+  return {ok:false, error: `Fetch failed ${JSON.stringify(result)}; Canvas failed ${JSON.stringify(canvasResult)}`, src: src};
 }
 """
 
@@ -340,21 +536,47 @@ class CDPArenaController:
         return False, result.get("error", "Failed")
 
     async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000) -> Tuple[str, Dict[str, Any]]:
-        """Poll for new output, return status."""
+        """Poll for new output, return status. Understands spinner (Response A/B) as generating indicator."""
         old_srcs = baseline.get("output_srcs", []) or []
         start = time.time()
         poll = 2
+        seen_spinning = False
+        last_log_time = 0
         while (time.time() - start) * 1000 < timeout_ms:
-            # Check security dialog? Could be detected via JS
             js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)})"
             result = await self.cdp.evaluate(js_check)
-            if result and result.get("ready"):
-                return "completed", {"new_src": result.get("src"), "check": result, "baseline": baseline}
-            # Wait
+            if not result:
+                await asyncio.sleep(poll)
+                continue
+
+            # If spinner visible, we are generating
+            if result.get("spinning"):
+                if not seen_spinning:
+                    self._log(f"⏳ Generation started — spinner visible {result.get('spinDetails')} (Response A/B processing)", "info")
+                    seen_spinning = True
+                # Log every 10s while generating
+                now = time.time()
+                if now - last_log_time > 10:
+                    self._log(f"⏳ Still generating... spinner {result.get('spinCount')} visible, reason={result.get('reason')} src={result.get('src','')[:60]}", "info")
+                    last_log_time = now
+                await asyncio.sleep(poll)
+                continue
+
+            if result.get("ready"):
+                self._log(f"✅ New output ready: {result.get('src','')[:80]} {result.get('width')}x{result.get('height')}", "success")
+                return "completed", {"new_src": result.get("src"), "check": result, "baseline": baseline, "rect": result.get("rect")}
+
+            # If we saw spinning before and now no spinning but still no new image, maybe just finished but image not yet in DOM — wait a bit more
+            if seen_spinning and result.get("reason") == "no_new":
+                # Wait a bit more for image to appear after spinner gone
+                self._log("Spinner disappeared but no new image yet — waiting for image to appear...", "info")
+                await asyncio.sleep(poll)
+                continue
+
             await asyncio.sleep(poll)
-        # Timeout
+
         final_baseline = await self.capture_baseline()
-        return "failed", {"error": f"Timeout after {timeout_ms}ms", "last_baseline": final_baseline}
+        return "failed", {"error": f"Timeout after {timeout_ms}ms, last spinning seen={seen_spinning}", "last_baseline": final_baseline, "last_check": result if 'result' in locals() else None}
 
     async def download_image(self, src: str) -> Tuple[bool, bytes, str]:
         js = f";({JS_DOWNLOAD_IMAGE})({json.dumps(src)})"

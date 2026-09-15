@@ -1208,11 +1208,15 @@ class Bridge(QObject):
                                 except Exception:
                                     self._emit_job_action_status(job_id, block, "success", f"FIND+CLICK ok {block.selector}")
                             else:
-                                # Try fallback if defined
+                                # Try fallback list (comma-separated) if defined
+                                fallback_list = []
                                 if block.fallback_selector:
-                                    self._log(f"[{correlation_id}] ↩ Trying fallback {block.fallback_selector} for {block.display_name}", "warn")
+                                    fallback_list = [s.strip() for s in block.fallback_selector.split(',') if s.strip()]
+                                success_fb = None
+                                for fb_sel in fallback_list:
+                                    self._log(f"[{correlation_id}] ↩ Trying fallback {fb_sel} for {block.display_name}", "warn")
                                     fallback_req = ClickRequest(
-                                        selector=block.fallback_selector,
+                                        selector=fb_sel,
                                         label_selector="",
                                         match_text=block.fallback_text or "",
                                         match_mode="contains",
@@ -1221,15 +1225,19 @@ class Bridge(QObject):
                                         highlight_enabled=block.highlight_enabled,
                                         confirm_pause_ms=block.confirm_pause_ms,
                                         highlight_ms=block.highlight_ms,
-                                        label=f"{block.display_name} fallback",
+                                        label=f"{block.display_name} fallback {fb_sel[:30]}",
                                     )
                                     result2 = await find_and_click(self.cdp, fallback_req, engine=self)
                                     if result2 == "ok":
-                                        self._emit_job_action_status(job_id, block, "success", f"Fallback ok {block.fallback_selector}")
-                                    else:
-                                        raise RuntimeError(f"Find & Click failed for {block.selector} and fallback {block.fallback_selector}")
+                                        success_fb = fb_sel
+                                        break
+                                if success_fb:
+                                    self._emit_job_action_status(job_id, block, "success", f"Fallback ok {success_fb}")
                                 else:
-                                    raise RuntimeError(f"Find & Click failed for {block.selector}")
+                                    if fallback_list:
+                                        raise RuntimeError(f"Find & Click failed for {block.selector} and fallbacks {fallback_list}")
+                                    else:
+                                        raise RuntimeError(f"Find & Click failed for {block.selector}")
 
                         elif btype == "HIGHLIGHT":
                             # Pure visual confirmation — no click, no stash touch
@@ -1394,9 +1402,16 @@ class Bridge(QObject):
 
                         elif btype == "SUBMIT":
                             self._log(f"[{correlation_id}] Submitting once via {block.selector}", "info")
-                            # Use visual runner for submit with fallback
+                            # Wait a bit for React to enable button after prompt insertion (user log shows 0 nodes when disabled)
+                            # Extra wait for button to become enabled: poll up to 5s
+                            try:
+                                # Small extra delay to let UI enable button
+                                await asyncio.sleep(0.8)
+                            except Exception:
+                                pass
+                            # Use visual runner for submit with fallback list (comma-separated)
                             req = ClickRequest(
-                                selector=block.selector or 'button[aria-label="Send message"]',
+                                selector=block.selector or 'button[aria-label="Send message"]:not([disabled])',
                                 label_selector=block.label_selector or "",
                                 match_text=block.match_text or "",
                                 click_enabled=block.click_enabled,
@@ -1408,33 +1423,37 @@ class Bridge(QObject):
                             )
                             result = await find_and_click(self.cdp, req, engine=self)
                             if result != "ok":
-                                # Try fallback
+                                # Try fallback list split by comma
+                                fallback_list = []
                                 if block.fallback_selector:
-                                    self._log(f"[{correlation_id}] ↩ Submit fallback {block.fallback_selector}", "warn")
+                                    # Split by comma, keep non-empty
+                                    fallback_list = [s.strip() for s in block.fallback_selector.split(',') if s.strip()]
+                                success_fallback = None
+                                for fb_sel in fallback_list:
+                                    self._log(f"[{correlation_id}] ↩ Submit fallback trying {fb_sel}", "warn")
                                     fb_req = ClickRequest(
-                                        selector=block.fallback_selector,
+                                        selector=fb_sel,
                                         label_selector="",
                                         match_text=block.fallback_text or "",
                                         click_enabled=True,
                                         highlight_enabled=block.highlight_enabled,
                                         confirm_pause_ms=block.confirm_pause_ms,
                                         highlight_ms=block.highlight_ms,
-                                        label="Submit fallback",
+                                        label=f"Submit fallback {fb_sel[:40]}",
                                     )
                                     result2 = await find_and_click(self.cdp, fb_req, engine=self)
-                                    if result2 != "ok":
-                                        # Last resort: try ctrl.submit()
-                                        ok, reason = await ctrl.submit()
-                                        if not ok:
-                                            raise RuntimeError(f"Submit failed: {reason} and fallback failed")
-                                        self._emit_job_action_status(job_id, block, "success", f"Submit via controller {reason}")
-                                    else:
-                                        self._emit_job_action_status(job_id, block, "success", f"Submit via fallback {block.fallback_selector}")
+                                    if result2 == "ok":
+                                        success_fallback = fb_sel
+                                        break
+                                if success_fallback:
+                                    self._emit_job_action_status(job_id, block, "success", f"Submit via fallback {success_fallback}")
                                 else:
+                                    # Last resort: try ctrl.submit() which has improved selectors + wait for enabled
+                                    self._log(f"[{correlation_id}] ↩ Submit via controller fallback (improved selectors)", "warn")
                                     ok, reason = await ctrl.submit()
                                     if not ok:
-                                        raise RuntimeError(f"Submit failed: {reason}")
-                                    self._emit_job_action_status(job_id, block, "success", f"{reason}")
+                                        raise RuntimeError(f"Submit failed: {reason} and all fallbacks failed (tried {fallback_list})")
+                                    self._emit_job_action_status(job_id, block, "success", f"Submit via controller {reason}")
                             else:
                                 self._emit_job_action_status(job_id, block, "success", f"Clicked {block.selector}")
 
@@ -1461,15 +1480,34 @@ class Bridge(QObject):
                         elif btype == "DOWNLOAD":
                             if not new_src:
                                 raise RuntimeError("No new_src from previous block")
-                            self._log(f"[{correlation_id}] Downloading highest-quality image", "info")
-                            success, fb, ct = await ctrl.download_image(new_src)
+                            self._log(f"[{correlation_id}] Downloading highest-quality image: {new_src[:120]}", "info")
+                            # Retry download up to 3 times with different strategies (fetch + canvas fallback already in ctrl.download_image)
+                            success = False
+                            fb = b""
+                            ct = ""
+                            last_err = ""
+                            for attempt in range(3):
+                                try:
+                                    s, f, c = await ctrl.download_image(new_src)
+                                    if s and f and len(f) > 100:
+                                        success = True
+                                        fb = f
+                                        ct = c
+                                        break
+                                    else:
+                                        last_err = c
+                                        self._log(f"[{correlation_id}] Download attempt {attempt+1} failed: {c[:200]}", "warn")
+                                except Exception as e:
+                                    last_err = str(e)
+                                    self._log(f"[{correlation_id}] Download attempt {attempt+1} exception: {e}", "warn")
+                                await asyncio.sleep(1)
                             if not success:
-                                raise RuntimeError(f"Download failed: {ct}")
+                                raise RuntimeError(f"Download failed after 3 attempts: {last_err} src={new_src[:120]}")
                             if len(fb) == 0:
                                 raise RuntimeError("Downloaded empty file")
                             file_bytes = fb
                             ctype = ct
-                            self._emit_job_action_status(job_id, block, "success", f"Downloaded {len(fb)} bytes {ct}")
+                            self._emit_job_action_status(job_id, block, "success", f"Downloaded {len(fb)} bytes {ct} method={ct}")
 
                         elif btype == "VALIDATE":
                             if not file_bytes:

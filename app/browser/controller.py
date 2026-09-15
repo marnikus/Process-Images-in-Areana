@@ -255,7 +255,7 @@ class BrowserController:
             self._log(f"Highlight failed: {e}")
 
     async def capture_baseline(self) -> Dict[str, Any]:
-        """Capture pre-submission baseline: output elements, message order, timestamp."""
+        """Capture pre-submission baseline: output elements, message order, timestamp, spinner state."""
         if not self.page:
             return {}
         try:
@@ -266,28 +266,40 @@ class BrowserController:
                     'div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',
                     'div.no-scrollbar img[src*="messages-prod."]',
                     'div.no-scrollbar img[loading="lazy"].aspect-square',
-                    'img.aspect-square.cursor-pointer'
+                    'img.aspect-square.cursor-pointer',
+                    'div.flex img[src*=".r2.cloudflarestorage.com/"]',
+                    'main img[src*=".r2.cloudflarestorage.com/"]',
+                    'img[src*=".r2.cloudflarestorage.com/"]'
                 ];
                 for (const sel of selectors) {
                     const els = document.querySelectorAll(sel);
                     for (const el of els) {
+                        if (!el.src) continue;
+                        if (el.src.startsWith('blob:')) continue;
+                        if (el.naturalWidth && el.naturalWidth < 50) continue;
                         outputs.push({
                             src: el.src,
                             outerHTML: el.outerHTML.substring(0, 500),
                             complete: el.complete,
                             naturalWidth: el.naturalWidth,
-                            naturalHeight: el.naturalHeight
+                            naturalHeight: el.naturalHeight,
+                            visible: el.offsetParent !== null
                         });
                     }
                     if (outputs.length > 0) break;
                 }
-                // Message count heuristic
+                let spinning = false;
+                try {
+                  const spinners = document.querySelectorAll('div.animate-spin');
+                  for (const s of spinners) { if (s.offsetParent !== null) { spinning = true; break; } }
+                } catch(e) {}
                 const messages = document.querySelectorAll('[data-message-id], div.flex.flex-col.gap-3');
                 return {
                     output_count: outputs.length,
                     output_srcs: outputs.map(o => o.src),
                     outputs: outputs,
                     message_count: messages.length,
+                    spinning: spinning,
                     timestamp: Date.now(),
                     url: window.location.href
                 };
@@ -297,7 +309,7 @@ class BrowserController:
             return baseline
         except Exception as e:
             self._log(f"Baseline capture failed: {e}")
-            return {"output_count": 0, "output_srcs": [], "timestamp": int(time.time()*1000)}
+            return {"output_count": 0, "output_srcs": [], "timestamp": int(time.time()*1000), "spinning": False}
 
     async def attach_image(self, image_path: str, timeout: int = 15000) -> bool:
         """Attach source image through file input."""
@@ -413,85 +425,126 @@ class BrowserController:
             return False, f"Verify error: {e}"
 
     async def submit(self, timeout: int = 10000) -> tuple[bool, str]:
-        """Find send button and submit once."""
+        """Find send button and submit once — waits for enabled after prompt."""
         if not self.page:
             return False, "No page"
-        sel = get_selector("send_button")
-        loc = await self.find_element(sel, timeout=timeout)
-        if not loc:
-            return False, "Send button not found"
-        try:
-            # Check enabled
-            if not await loc.is_enabled():
-                return False, "Send button disabled"
-            await self.highlight_element(loc, duration_seconds=1)
-            # Click once
-            await loc.click()
-            self._log("Clicked send button once")
-            await self.page.wait_for_timeout(1000)
-            return True, "Clicked"
-        except Exception as e:
-            return False, f"Submit failed: {e}"
+        # Wait for button to become enabled (after prompt insertion, React may take time)
+        start = time.time()
+        last_err = ""
+        while (time.time() - start) * 1000 < timeout:
+            sel = get_selector("send_button")
+            loc = await self.find_element(sel, timeout=2000)
+            if loc:
+                try:
+                    # Check if enabled and visible
+                    is_enabled = await loc.is_enabled()
+                    is_visible = await loc.is_visible()
+                    if is_enabled and is_visible:
+                        await self.highlight_element(loc, duration_seconds=1)
+                        await loc.click()
+                        self._log("Clicked send button once")
+                        await self.page.wait_for_timeout(1000)
+                        return True, "Clicked"
+                    else:
+                        last_err = f"Button found but enabled={is_enabled} visible={is_visible}"
+                except Exception as e:
+                    last_err = str(e)
+            else:
+                last_err = "Send button not found"
+            # Wait a bit and retry
+            await self.page.wait_for_timeout(500)
+        return False, f"Send button not found or disabled after {timeout}ms: {last_err}"
 
     async def wait_for_generation(self, baseline: Dict[str, Any], timeout: int = 180000) -> tuple[str, Dict[str, Any]]:
         """
         Wait for generation to finish while handling loading, timeouts, errors, required user actions.
+        Understands spinner (Response A/B) as generating indicator — user provided HTML:
+        <div class="flex min-w-0 flex-1 items-center gap-2"><div class="h-5 w-5 flex-shrink-0 animate-spin"><canvas></canvas></div><span>Response A</span></div>
         Returns (status, data) where status is completed, needs_review, failed, paused_user_action
         """
         if not self.page:
             return "failed", {"error": "No page"}
         start = time.time()
-        poll_interval = 2  # seconds
+        poll_interval = 2
+        seen_spinning = False
 
         while (time.time() - start) * 1000 < timeout:
-            # Check security dialog
             if await self.is_security_dialog_visible():
                 return "paused_user_action", {"reason": "Security verification detected"}
-
-            # Check sign-in
             if await self.is_sign_in_page():
                 return "paused_user_action", {"reason": "Authentication required"}
 
-            # Check for new output
-            current_baseline = await self.capture_baseline()
-            old_srcs = set(baseline.get("output_srcs", []))
-            new_srcs = [src for src in current_baseline.get("output_srcs", []) if src not in old_srcs]
-
-            # Also check count increase
-            if current_baseline.get("output_count", 0) > baseline.get("output_count", 0):
-                # Potential new output
-                # Verify loading complete for new images
-                js_check = """
-                (oldSrcs) => {
-                    const selectors = [
-                        'div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',
-                        'div.no-scrollbar img[src*="messages-prod."]',
-                        'div.no-scrollbar img[loading="lazy"].aspect-square'
-                    ];
-                    for (const sel of selectors) {
-                        const els = document.querySelectorAll(sel);
-                        for (const el of els) {
-                            if (oldSrcs.includes(el.src)) continue;
-                            if (!el.complete) return {ready: false, reason: 'not_complete'};
-                            if (el.naturalWidth === 0) return {ready: false, reason: 'zero_width'};
-                            return {ready: true, src: el.src, width: el.naturalWidth, height: el.naturalHeight};
-                        }
+            # Check spinner + new output in one JS call
+            js_check = """
+            (oldSrcs) => {
+              try {
+                let spinning = false;
+                let spinCount = 0;
+                let spinDetails = [];
+                try {
+                  const spinners = document.querySelectorAll('div.animate-spin');
+                  for (const s of spinners) {
+                    if (s.offsetParent !== null) {
+                      spinning = true; spinCount++;
+                      let parent = s.closest('div.flex.min-w-0.flex-1.items-center.gap-2');
+                      let label = '';
+                      if (parent) { const trunc = parent.querySelector('span.truncate'); if (trunc) label = trunc.textContent.trim(); }
+                      spinDetails.push({label: label || 'unknown'});
                     }
-                    return {ready: false, reason: 'no_new'};
+                  }
+                } catch(e) {}
+                const selectors = [
+                  'div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',
+                  'div.no-scrollbar img[src*="messages-prod."]',
+                  'div.no-scrollbar img[loading="lazy"].aspect-square',
+                  'img.aspect-square.cursor-pointer',
+                  'div.flex img[src*=".r2.cloudflarestorage.com/"]',
+                  'main img[src*=".r2.cloudflarestorage.com/"]',
+                  'img[src*=".r2.cloudflarestorage.com/"]'
+                ];
+                let newCandidates = [];
+                for (const sel of selectors) {
+                  try {
+                    const els = document.querySelectorAll(sel);
+                    for (const el of els) {
+                      if (!el.src) continue;
+                      if (el.src.startsWith('blob:')) continue;
+                      if (oldSrcs.includes(el.src)) continue;
+                      if (el.naturalWidth && el.naturalWidth < 50) continue;
+                      if (!el.complete) { newCandidates.push({src: el.src, reason: 'not_complete'}); continue; }
+                      if (el.naturalWidth === 0) { newCandidates.push({src: el.src, reason: 'zero_width'}); continue; }
+                      if (spinning) {
+                        return {ready:false, reason:'generating_spinner_visible', src: el.src, spinning: true, spinCount: spinCount, spinDetails: spinDetails};
+                      }
+                      const rect = el.getBoundingClientRect();
+                      return {ready:true, src: el.src, width: el.naturalWidth, height: el.naturalHeight, spinning: false, rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height}, selector: sel};
+                    }
+                  } catch(e) {}
                 }
-                """
-                try:
-                    check_result = await self.page.evaluate(js_check, list(old_srcs))
-                    if check_result.get("ready"):
-                        return "completed", {"new_src": check_result.get("src"), "baseline": current_baseline, "check": check_result}
-                except Exception as e:
-                    self._log(f"Check new output error: {e}")
+                if (newCandidates.length > 0) {
+                  return {ready:false, reason: newCandidates[0].reason || 'loading', src: newCandidates[0].src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: newCandidates.length};
+                }
+                if (spinning) {
+                  return {ready:false, reason:'generating_no_new_yet', spinning: true, spinCount: spinCount, spinDetails: spinDetails};
+                }
+                return {ready:false, reason:'no_new', spinning: false};
+              } catch(e) { return {ready:false, reason:String(e), spinning:false}; }
+            }
+            """
+            try:
+                old_srcs = baseline.get("output_srcs", [])
+                check_result = await self.page.evaluate(js_check, old_srcs)
+                if check_result.get("spinning") and not seen_spinning:
+                    self._log(f"⏳ Generation started — spinner visible {check_result.get('spinDetails')} (Response A/B processing)")
+                    seen_spinning = True
+                if check_result.get("ready"):
+                    return "completed", {"new_src": check_result.get("src"), "baseline": await self.capture_baseline(), "check": check_result}
+            except Exception as e:
+                self._log(f"Check new output error: {e}")
 
-            # Check if spinner disappeared and we have new output count but not yet verified?
-            # Wait
             await self.page.wait_for_timeout(poll_interval * 1000)
 
-        return "failed", {"error": f"Generation timeout after {timeout}ms", "last_baseline": await self.capture_baseline()}
+        return "failed", {"error": f"Generation timeout after {timeout}ms, spinning seen={seen_spinning}", "last_baseline": await self.capture_baseline()}
 
     async def detect_new_output(self, baseline: Dict[str, Any]) -> tuple[bool, Dict[str, Any]]:
         """Detect a new output image compared to baseline."""
@@ -510,23 +563,60 @@ class BrowserController:
     async def download_image(self, image_src: str, timeout: int = 30000) -> tuple[bool, bytes, str]:
         """
         Download highest-quality available output through permitted mechanism.
+        Tries fetch + canvas fallback (handles CORS, blob, r2).
         Returns (success, bytes, error)
         """
         if not self.page:
             return False, b"", "No page"
         try:
-            # Use page's fetch to preserve auth
             js = """
             async (src) => {
+              const tryFetch = async (url) => {
                 try {
-                    const res = await fetch(src);
-                    if (!res.ok) return {ok: false, status: res.status, statusText: res.statusText};
-                    const buf = await res.arrayBuffer();
-                    const contentType = res.headers.get('content-type') || '';
-                    return {ok: true, bytes: Array.from(new Uint8Array(buf)), contentType: contentType};
-                } catch (e) {
-                    return {ok: false, error: e.toString()};
-                }
+                  const res = await fetch(url, {credentials: 'include', mode: 'cors'});
+                  if (!res.ok) return {ok:false, status:res.status, statusText:res.statusText, method:'fetch'};
+                  const buf = await res.arrayBuffer();
+                  const contentType = res.headers.get('content-type') || '';
+                  const first = new TextDecoder().decode(new Uint8Array(buf.slice(0,100))).toLowerCase();
+                  if (first.includes('<html') || first.includes('<!doctype')) return {ok:false, error:'HTML not image', method:'fetch'};
+                  return {ok:true, bytes: Array.from(new Uint8Array(buf)), contentType: contentType, method:'fetch'};
+                } catch(e) { return {ok:false, error:e.toString(), method:'fetch'}; }
+              };
+              const tryCanvas = async (url) => {
+                try {
+                  let imgEl = null;
+                  const all = document.querySelectorAll('img');
+                  for (const im of all) { if (im.src === url || im.src.includes(url) || url.includes(im.src)) { imgEl = im; break; } }
+                  if (!imgEl) imgEl = document.querySelector(`img[src="${url}"]`) || document.querySelector(`img[src*="${url.slice(-30)}"]`);
+                  if (!imgEl) return {ok:false, error:'img element not found for canvas', method:'canvas'};
+                  if (!imgEl.complete || imgEl.naturalWidth === 0) {
+                    await new Promise((res, rej) => {
+                      const to = setTimeout(() => rej('timeout'), 5000);
+                      imgEl.onload = () => { clearTimeout(to); res(); };
+                      imgEl.onerror = () => { clearTimeout(to); rej('load error'); };
+                      if (imgEl.complete) { clearTimeout(to); res(); }
+                    });
+                  }
+                  const canvas = document.createElement('canvas');
+                  canvas.width = imgEl.naturalWidth || imgEl.width;
+                  canvas.height = imgEl.naturalHeight || imgEl.height;
+                  if (canvas.width === 0 || canvas.height === 0) return {ok:false, error:'zero dim', method:'canvas'};
+                  const ctx = canvas.getContext('2d');
+                  try { ctx.drawImage(imgEl, 0, 0); } catch(e) { return {ok:false, error:'drawImage CORS tainted: '+e.toString(), method:'canvas'}; }
+                  let dataUrl;
+                  try { dataUrl = canvas.toDataURL('image/png'); } catch(e) { return {ok:false, error:'toDataURL CORS: '+e.toString(), method:'canvas'}; }
+                  const base64 = dataUrl.split(',')[1];
+                  const binary = atob(base64);
+                  const bytes = new Uint8Array(binary.length);
+                  for (let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+                  return {ok:true, bytes: Array.from(bytes), contentType: 'image/png', method:'canvas', width: canvas.width, height: canvas.height};
+                } catch(e) { return {ok:false, error:e.toString(), method:'canvas'}; }
+              };
+              let r = await tryFetch(src);
+              if (r.ok) return r;
+              let c = await tryCanvas(src);
+              if (c.ok) return c;
+              return {ok:false, error: `Fetch ${JSON.stringify(r)}; Canvas ${JSON.stringify(c)}`, src: src};
             }
             """
             result = await self.page.evaluate(js, image_src)
@@ -534,7 +624,6 @@ class BrowserController:
                 return False, b"", f"Fetch failed: {result}"
             byte_list = result.get("bytes", [])
             data = bytes(byte_list)
-            # Basic validation: not HTML
             if data[:100].lower().find(b"<html") != -1 or data[:100].lower().find(b"<!doctype") != -1:
                 return False, b"", "Downloaded data appears to be HTML, not image"
             return True, data, result.get("contentType", "")
