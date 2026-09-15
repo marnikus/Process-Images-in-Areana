@@ -211,7 +211,7 @@ class CDPClient(QObject):
         self._current_ws_url = ""
         self._current_tab_id = ""
         self._connect_lock = None
-        self._connecting = False""
+        self._connecting = False
 
     @property
     def base_url(self) -> str:
