@@ -423,6 +423,8 @@ JS_CHECK_NEW_OUTPUT = """
     let validAbove = [];
     let invalidAbove = [];
     let belowCandidates = [];
+    let debugAllImgs = [];
+    let debugFiltered = [];
 
     function isReferenceImage(el) {
       try {
@@ -456,15 +458,36 @@ JS_CHECK_NEW_OUTPUT = """
       } catch(e) { return false; }
     }
 
+    // Debug: collect all imgs matching any selector regardless of filters
+    try {
+      const allImgsInDOM = document.querySelectorAll('img');
+      for (const im of allImgsInDOM) {
+        if (!im.src) continue;
+        const r = im.getBoundingClientRect();
+        debugAllImgs.push({
+          src: im.src.slice(-80),
+          fullSrc: im.src.slice(0,120),
+          cls: (im.className||'').slice(0,80),
+          w: im.naturalWidth||r.width,
+          h: im.naturalHeight||r.height,
+          visible: im.offsetParent!==null,
+          complete: im.complete,
+          inOld: oldSrcs.includes(im.src),
+          top: Math.round(r.top),
+          isBlob: im.src.startsWith('blob:')
+        });
+      }
+    } catch(e) {}
+
     for (const sel of selectors) {
       try {
         const els = document.querySelectorAll(sel);
         for (const el of els) {
-          if (!el.src) continue;
-          if (el.src.startsWith('blob:')) continue;
-          if (oldSrcs.includes(el.src)) continue;
-          if (el.naturalWidth && el.naturalWidth < 50 && el.naturalHeight < 50) continue;
-          if (isReferenceImage(el)) continue;
+          if (!el.src) { debugFiltered.push({reason:'no_src', sel}); continue; }
+          if (el.src.startsWith('blob:')) { debugFiltered.push({reason:'blob', src:el.src.slice(-40), sel}); continue; }
+          if (oldSrcs.includes(el.src)) { debugFiltered.push({reason:'in_oldSrcs', src:el.src.slice(-40), sel, oldLen:oldSrcs.length}); continue; }
+          if (el.naturalWidth && el.naturalWidth < 50 && el.naturalHeight < 50) { debugFiltered.push({reason:'tiny_natural', src:el.src.slice(-40), w:el.naturalWidth, h:el.naturalHeight, sel}); continue; }
+          if (isReferenceImage(el)) { debugFiltered.push({reason:'isReference', src:el.src.slice(-40), cls:(el.className||'').slice(0,40), sel}); continue; }
 
           const rect = el.getBoundingClientRect();
           const visible = el.offsetParent !== null;
@@ -472,7 +495,7 @@ JS_CHECK_NEW_OUTPUT = """
           const height = el.naturalHeight || rect.height || 0;
           const className = el.className || '';
           const isLarge = width >= 200 || rect.width >= 200 || className.includes('50vh') || className.includes('object-cover') || (el.classList && el.classList.contains('aspect-square') && rect.width >= 200);
-          if (!isLarge) continue;
+          if (!isLarge) { debugFiltered.push({reason:'not_large', src:el.src.slice(-40), w:width, rectW:rect.width, cls:className.slice(0,40), sel}); continue; }
 
           const info = {
             el: el,
@@ -631,13 +654,13 @@ JS_CHECK_NEW_OUTPUT = """
           allNewDetails.push({src: n.src.slice(-60), top: n.top, isLarge: n.isLarge, width: n.width, selector: n.selector});
         }
       } catch(e) {}
-      return {ready:false, reason:'no_exact_above_found_wait_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), allNew: allNew.length, allNewDetails: allNewDetails, validAbove: 0, invalidAbove: invalidAbove.length, invalidAboveDetails: invalidAbove.slice(0,5).map(i=>({src:i.src.slice(-60), top:i.top})), belowCount: belowCandidates.length, belowDetails: belowCandidates.slice(0,5).map(b=>({src:b.src.slice(-60), top:b.top})), jobId: correlationId, orderCheck: `DOM no exact above: jobTop ${jobTop} prevTop ${prevJobTop} nextTop ${nextJobTop} allNew ${allNew.length} valid 0 invalid ${invalidAbove.length}`};
+      return {ready:false, reason:'no_exact_above_found_wait_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), allNew: allNew.length, allNewDetails: allNewDetails, validAbove: 0, invalidAbove: invalidAbove.length, invalidAboveDetails: invalidAbove.slice(0,5).map(i=>({src:i.src.slice(-60), top:i.top})), belowCount: belowCandidates.length, belowDetails: belowCandidates.slice(0,5).map(b=>({src:b.src.slice(-60), top:b.top})), jobId: correlationId, orderCheck: `DOM no exact above: jobTop ${jobTop} prevTop ${prevJobTop} nextTop ${nextJobTop} allNew ${allNew.length} valid 0 invalid ${invalidAbove.length}`, debugAllImgs: debugAllImgs.slice(0,15), debugFiltered: debugFiltered.slice(0,15), oldSrcsSample: oldSrcs.slice(0,3).map(s=>s.slice(-60))};
     }
 
     if (spinning) {
       return {ready:false, reason:'generating_no_new_yet', spinning: true, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, jobIndex: jobIndex, allJobs: allJobs.length};
     }
-    return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), validAbove: validAbove.length, invalidAbove: invalidAbove.length, allNew: allNew.length, jobId: correlationId, orderCheck: `DOM no new images at all, oldSrcs ${oldSrcs.length}`};
+    return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), validAbove: validAbove.length, invalidAbove: invalidAbove.length, allNew: allNew.length, jobId: correlationId, orderCheck: `DOM no new images at all, oldSrcs ${oldSrcs.length}`, debugAllImgs: debugAllImgs.slice(0,20), debugFiltered: debugFiltered.slice(0,20), oldSrcsSample: oldSrcs.slice(0,3).map(s=>s.slice(-60))};
   } catch(e) { return {ready:false, reason:String(e), spinning: false}; }
 })
 """
@@ -909,19 +932,31 @@ class CDPArenaController:
             if seen_spinning and not result.get("spinning"):
                 reason = result.get("reason") or ""
                 if reason in ("no_new", "no_exact_above_found_wait_next", "image_above_belongs_to_previous_prompt_await_next", "not_complete", "zero_width", "hidden", "loading", "generating_no_new_yet"):
-                    self._log(f"Spinner disappeared but no new image yet — reason={reason} waiting... orderCheck={result.get('orderCheck','')[:200]} allNew={result.get('allNew')} validAbove={result.get('validAbove')} jobFound={result.get('jobFound')}", "info")
+                    dbg_all = result.get("debugAllImgs")
+                    dbg_filt = result.get("debugFiltered")
+                    old_sample = result.get("oldSrcsSample")
+                    self._log(f"Spinner disappeared but no new image yet — reason={reason} waiting... orderCheck={result.get('orderCheck','')[:200]} allNew={result.get('allNew')} validAbove={result.get('validAbove')} jobFound={result.get('jobFound')} jobTop={result.get('jobTop')} prevTop={result.get('prevJobTop')}", "info")
+                    if dbg_all:
+                        self._log(f"🔍 debugAllImgs ({len(dbg_all)}): {dbg_all}", "info")
+                    if dbg_filt:
+                        self._log(f"🔍 debugFiltered ({len(dbg_filt)}): {dbg_filt}", "info")
+                    if old_sample:
+                        self._log(f"🔍 oldSrcsSample: {old_sample}", "info")
                     await asyncio.sleep(poll)
                     continue
                 # Also if ready false but allNew exists, keep waiting a bit
                 if result.get("allNew") and result.get("allNew") > 0 and not result.get("ready"):
-                    self._log(f"Spinner gone but allNew={result.get('allNew')} not ready reason={reason} — waiting for exact above image to appear... {result.get('orderCheck','')[:200]}", "info")
+                    self._log(f"Spinner gone but allNew={result.get('allNew')} not ready reason={reason} — waiting for exact above image to appear... {result.get('orderCheck','')[:200]} allNewDetails={result.get('allNewDetails')}", "info")
                     await asyncio.sleep(poll)
                     continue
 
             # Log orderCheck periodically even when not spinning, to help debug exact above
             now = time.time()
             if now - last_log_time > 10:
+                dbg_all = result.get("debugAllImgs")
                 self._log(f"⏳ Waiting... reason={result.get('reason')} spinning={result.get('spinning')} allNew={result.get('allNew')} validAbove={result.get('validAbove')} invalidAbove={result.get('invalidAbove')} jobFound={result.get('jobFound')} orderCheck={result.get('orderCheck','')[:250]}", "info")
+                if dbg_all:
+                    self._log(f"🔍 Periodic debugAllImgs: {dbg_all[:5]}", "info")
                 last_log_time = now
 
             await asyncio.sleep(poll)
