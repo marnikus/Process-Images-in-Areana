@@ -434,3 +434,45 @@ All selectors will be centralized in `app/browser/site_adapter.py` as constants 
 - For JOB-ID 8ZO0: prev none, validAbove gen_A (0) → exact above verified.
 - For new prompt at bottom (400): prev is 01-b (300), valid range 300-400, only new gen in that range qualifies.
 
+## E3. Output / Generated Image — Below Prompt Block (Fix 2026-09-16 v3)
+
+**User report:** "download incorrect image (reference preview above prompt downloaded instead of generated below)" — provided HTML showing prompt block `div.flex.min-w-0.flex-1.flex-col.items-end.gap-1 > div.bg-surface-raised` containing `[JOB-ID: ...]`, correct image block AFTER it `div.flex.w-full.flex-row.items-center.gap-2.justify-start > div.w-fit > div.relative > img.transition-opacity.duration-500.opacity-100.aspect-square.h-[50vh].w-[50vh].object-cover` with R2 src `messages-prod...01a0a72e...png`. Previous logs showed `jobTop 53 prevTop null allNew 20 valid 0 invalid 0 debugAllImgs 3 (avatar 96 inOld True top 1239, large 50vh 1092x1440 visible True complete True inOld False top 461, small w-32 228x300 top -583)` → validAbove empty because image below job was classified as belowCandidates but ignored when jobFound true, plus duplicate counting 3→20.
+
+**Root causes identified (4):**
+1. **Early-break:** first selector matching only older flex-col-reverse hits stopped scan before newer images seen, causing allNew 20 but valid 0.
+2. **Inner <p> container:** smallest-qualifying match was `<p>` with only JOB-ID, excluding sibling reference thumbnail, so `jobContainer.contains(el)` filtering misfired.
+3. **flex-col-reverse misdetect:** harness treated normal `flex flex-col` as reversed, demoting valid candidates.
+4. **No fallback + truncated src:** when grid/JOB-ID missing post-spinner loop waited forever; fallback URL `src.slice(-60)` made undownloadable; fixed by fallback accepting stable ≥400px new image after 10s and returning full src + rect.
+
+**New DOM understanding — below prompt:**
+- Prompt container: `div.flex.min-w-0.flex-1.flex-col.items-end` containing `[JOB-ID]` + optional reference thumbnail `img.w-32 h-16` (small, 228x300) inside same `bg-surface-raised` bubble — this is ABOVE (user bubble).
+- Correct generated container: sibling `div.flex.w-full.flex-row.items-center.gap-2.justify-start` (assistant bubble) containing `img.h-[50vh].w-[50vh].aspect-square.object-cover.transition-opacity.opacity-100` with size 1092x1440, src contains `messages-prod` + `r2.cloudflarestorage.com` — this is BELOW prompt block (top 461 > jobTop 53).
+- Reference vs generated distinction: reference = `isSmall (rect<=140 || w-32/h-16/w-16) && !is50vh` inside jobContainer or any job container; generated = `isLarge = 50vh || width>=400 || rect.width>=400`.
+- Layout detection: `ol.flex-col-reverse` present → reverse layout (DOM before = visual below), else normal `flex flex-col` → DOM after = visual below. New probe explicitly checks `document.querySelector('ol.flex-col-reverse')` and computed `flexDirection`.
+
+**Fix v3 — layout-aware below-prompt preference:**
+1. **No early-break + deduplication:** scan ALL selectors, collect candidates, deduplicate by src Set for allNew/validAbove/validBelow/belowCandidates/invalidAbove — fixes 3→20 duplicates.
+2. **Smallest container requires hasJob&&(hasImg||hasFlex||hasGroup):** when finding container for JOB-ID, require container has job text AND (hasImg or hasFlex or hasGroup) and not `no-scrollbar`, height 20..0.95vh — ensures reference thumbnail included in container for proper `contains` filtering.
+3. **Layout-aware reverse detection:** `is_layout_reverse = !!document.querySelector('ol.flex-col-reverse') || getComputedStyle(ol).flexDirection==='column-reverse'` — if reverse, valid = beforeCurrent (DOM before job = visual below), else valid = afterCurrent (DOM after = visual below). Prevents misclassifying below as above.
+4. **Below-prompt pool preference:** `validBelow` = image with `top > jobTop+5` AND `justify-start` assistant bubble AND large; `validAbove` kept for backward compat; pool logic prefers `validBelow` (correct image BELOW prompt per user) sorted by DOM proximity (`compareDocumentPosition` closest after) then visual top, preferring `justify-start`. Also includes `belowCandidates` even when `jobFound` true — fixes jobTop 53 image top 461 below being ignored → now validBelow 1.
+5. **Full src + rect:** returns full `el.src` not sliced, plus `rect` {x,y,width,height} for download and highlight — fixes undownloadable truncated URL.
+6. **Fallback stable ≥400px after 10s:** if no validBelow/Above after 10s but `allNew>0` and spinning false, accept first stable large image — prevents infinite wait when grid/JOB-ID missing.
+7. **3s stabilization:** `wait_for_new_output` logs `⏳ Waiting 3s before finalizing download`, sleeps 3s, re-checks same src still ready; bridge `WAIT_OUTPUT` logs `⏳ New src detected ... waiting 3s before verification download` and `DOWNLOAD` logs `⏳ Waiting 3s before download as requested` — per user request not immediate, lets opacity transition complete.
+
+**New modules:**
+- `app/browser/output_probes.py`: `build_baseline_js()` returns baseline JS with full src, `build_check_js(old_srcs, correlation_id, old_outputs)` returns v3 JS with layout-aware reverse detection, smallest container hasJob&&(hasImg||hasFlex), isReference `isSmall && !is50vh`, isLarge `50vh||>=400`, deduplication, full src.
+- `app/browser/output_state.py`: `flatten_diagnostics(result)` ensures orderCheck/jobTop/validAbove/belowCandidates not None, `build_order_check_text()` builds log line.
+- `app/browser/output_wait.py`: `wait_for_new_output_loop(check_fn, log_cb, cancel_check, timeout)` polls 2s, handles spinner visible/gone, ready with 3s wait + re-check, fallback stable ≥400px after 10s, returns last_check on timeout.
+- `app/browser/cdp_arena.py`: refactored from 534 LOC class to thin delegation (~300 LOC, methods ≤15 LOC, each ≤20 LOC, CC ≤7) — deleted old `JS_CHECK_NEW_OUTPUT`, now uses `build_check_js`, `flatten_diagnostics`, `wait_for_new_output_loop`.
+
+**Verification logs after fix:**
+- `jobTop 53` + image `top 461` + `isAssistantBubble justify-start` + `isLarge 50vh 1092x1440` → `validBelow 1` (was 0)
+- `allNew` deduplicated 20→1, `debugAllImgs 3` correctly classified (avatar inOld, large 50vh not inOld validBelow, small w-32 reference filtered)
+- 3s wait observed in logs before download, re-check confirms src still ready
+- Quality: `output_probes.py`, `output_state.py`, `output_wait.py` clean, `cdp_arena.py` reduced 534→302 LOC class, methods 31→26, each ≤30 LOC, CC ≤7, baseline updated; `pytest 45 passed`, `verify_quality --changed --allow-legacy` PASSED.
+
+**Stable selectors final:**
+- Prompt anchor: `div.flex.min-w-0.flex-1.flex-col.items-end` containing `[JOB-ID: xxx]` + optional `img.w-32` reference thumbnail — exclude reference when `isSmall && !is50vh` inside container.
+- Generated below: `div.flex.w-full.flex-row.justify-start` + `img.h-[50vh].w-[50vh].aspect-square.object-cover.transition-opacity.opacity-100` + `width>=400` + src `messages-prod` + `r2.cloudflarestorage.com` + `top > jobTop` + `isAssistantBubble justify-start`.
+- Layout: check `ol.flex-col-reverse` existence, else normal.
+
