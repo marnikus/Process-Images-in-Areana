@@ -422,5 +422,11 @@
       "highlight_duration_ms": 2000,
       "extra": {}
     }
-  ]
+  ],
+  "window_geometry": {
+    "x": 2560,
+    "y": 23,
+    "width": 2560,
+    "height": 1377
+  }
 }
