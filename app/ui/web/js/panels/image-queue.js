@@ -1,4 +1,4 @@
-/* image-queue.js — fixed thumbnails */
+/* image-queue.js — thumbs + explorer reveal + copy path */
 'use strict';
 
 const ImageQueue = {
@@ -29,13 +29,16 @@ const ImageQueue = {
         }
         const btn = e.target.closest('button');
         if (!btn) return;
-        const id = btn.dataset.imgId;
         const act = btn.dataset.action;
-        if (!id || !act) return;
-        if (act === 'retry') this.retryOne(id);
-        if (act === 'reset') this.resetOne(id);
-        if (act === 'exclude') this.excludeOne(id);
-        if (act === 'preview') this.previewOne(id);
+        const id = btn.dataset.imgId;
+        const p = btn.dataset.path;
+        if (!act) return;
+        if (act === 'retry' && id) this.retryOne(id);
+        else if (act === 'reset' && id) this.resetOne(id);
+        else if (act === 'exclude' && id) this.excludeOne(id);
+        else if (act === 'preview' && id) this.previewOne(id);
+        else if (act === 'reveal' && p) this.revealPath(p);
+        else if (act === 'copy' && p) this.copyPath(p);
       });
     }
   },
@@ -54,6 +57,76 @@ const ImageQueue = {
     if (/^[A-Za-z]:\//.test(p)) p = '/' + p;
     if (p.charAt(0) !== '/') p = '/' + p;
     return 'file://' + encodeURI(p).replace(/#/g, '%23').replace(/\?/g, '%3F');
+  },
+
+  _basename(p) {
+    if (!p) return '';
+    const s = String(p);
+    const parts = s.split(/[\/\\]/);
+    return parts[parts.length - 1] || s;
+  },
+
+  revealPath(path) {
+    if (!path) return;
+    if (App.bridge && App.bridge.reveal_in_explorer) {
+      App.bridge.reveal_in_explorer(path, (res) => {
+        try {
+          const r = typeof res === 'string' ? JSON.parse(res) : res;
+          if (!r.ok) {
+            LogConsole.log('Reveal failed: ' + (r.error || res), 'error');
+          } else {
+            LogConsole.log('📁 Opened in Explorer: ' + path, 'info');
+          }
+        } catch (e) {
+          // ignore
+        }
+      });
+    } else {
+      LogConsole.log('Reveal not available (bridge missing)', 'warn');
+    }
+  },
+
+  copyPath(path) {
+    if (!path) return;
+    const doCopy = (txt) => {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(() => {
+          LogConsole.log('📋 Copied: ' + txt, 'success');
+        }).catch(() => {
+          this._fallbackCopy(txt);
+        });
+      } else {
+        this._fallbackCopy(txt);
+      }
+    };
+    doCopy(path);
+  },
+
+  _fallbackCopy(txt) {
+    if (App.bridge && App.bridge.copy_path_to_clipboard) {
+      App.bridge.copy_path_to_clipboard(txt, (res) => {
+        try {
+          const r = typeof res === 'string' ? JSON.parse(res) : res;
+          if (r.ok) LogConsole.log('📋 Copied: ' + txt, 'success');
+          else LogConsole.log('Copy failed: ' + (r.error || res), 'error');
+        } catch (e) {
+          LogConsole.log('📋 Copied (fallback): ' + txt, 'info');
+        }
+      });
+    } else {
+      // last resort prompt
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        LogConsole.log('📋 Copied: ' + txt, 'success');
+      } catch (e) {
+        LogConsole.log('Copy failed, path: ' + txt, 'error');
+      }
+    }
   },
 
   _requestThumb(imgId, imgEl) {
@@ -118,21 +191,45 @@ const ImageQueue = {
       const tr = document.createElement('tr');
       const thumbSrc = img.absolute_path ? this._fileUrl(img.absolute_path) : '';
       const thumbHtml = thumbSrc
-        ? `<img class="queue-thumb" data-img-id="${img.id}" src="${thumbSrc}" alt="${this.esc(img.filename||'')}" loading="lazy" onerror="this.onerror=null; this.dataset.fileFailed='1'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex'; if(typeof ImageQueue!=='undefined') ImageQueue._requestThumb(this.dataset.imgId, this);"><div class="queue-thumb queue-thumb-fallback" style="display:none; align-items:center; justify-content:center; font-size:10px;">${this.esc((img.extension||'').replace('.','').toUpperCase())}</div>`
-        : `<div class="queue-thumb queue-thumb-fallback" style="display:flex; align-items:center; justify-content:center; font-size:10px;">${this.esc((img.extension||'').replace('.','').toUpperCase())}</div>`;
+        ? `<img class="queue-thumb" data-img-id="${img.id}" src="${thumbSrc}" alt="${this.esc(img.filename||'')}" loading="lazy" onerror="this.onerror=null; this.dataset.fileFailed='1'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex'; if(typeof ImageQueue!=='undefined') ImageQueue._requestThumb(this.dataset.imgId, this);"><div class="queue-thumb queue-thumb-fallback" style="display:none; align-items:center; justify-content:center; font-size:10px;">${this.esc((img.extension||'').replace('.','').toUpperCase() || 'IMG')}</div>`
+        : `<div class="queue-thumb queue-thumb-fallback" style="display:flex; align-items:center; justify-content:center; font-size:10px;">${this.esc((img.extension||'').replace('.','').toUpperCase() || 'IMG')}</div>`;
+
+      const absPath = img.absolute_path || '';
+      const relPath = img.relative_path || img.filename || '';
+      const outPath = img.output_path || '';
+
+      const pathCell = `
+        <div style="display:flex; align-items:center; gap:4px; max-width:180px;">
+          <span title="${this.esc(absPath)}" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.esc(relPath)}</span>
+          ${absPath ? `<button class="btn-small" title="Open in Explorer: ${this.esc(absPath)}" data-action="reveal" data-path="${this.esc(absPath)}">📁</button><button class="btn-small" title="Copy path" data-action="copy" data-path="${this.esc(absPath)}">📋</button>` : ''}
+        </div>`;
+
+      let outCell = '';
+      if (outPath) {
+        const outBase = this._basename(outPath);
+        outCell = `
+          <div style="display:flex; align-items:center; gap:4px; max-width:180px;">
+            <span title="${this.esc(outPath)}" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px;">${this.esc(outBase)}</span>
+            <button class="btn-small" title="Open in Explorer: ${this.esc(outPath)}" data-action="reveal" data-path="${this.esc(outPath)}">📁</button>
+            <button class="btn-small" title="Copy path" data-action="copy" data-path="${this.esc(outPath)}">📋</button>
+          </div>`;
+      } else {
+        outCell = `<span style="color:var(--text-muted); font-size:11px;">—</span>`;
+      }
+
       tr.innerHTML = `
         <td><input type="checkbox" ${img.selected ? 'checked' : ''} data-img-id="${img.id}"></td>
         <td>${thumbHtml}</td>
-        <td title="${this.esc(img.relative_path)}" style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.esc(img.relative_path)}</td>
+        <td>${pathCell}</td>
         <td><span class="status-badge s-${img.status}">${this.esc(img.status)}</span></td>
         <td style="font-size:10px;">${this.esc(img.assigned_url || '')}</td>
         <td style="font-size:10px;">${img.attempts || 0}</td>
-        <td style="font-size:10px; max-width:120px; overflow:hidden; text-overflow:ellipsis;">${this.esc(img.output_path || '')}</td>
+        <td>${outCell}</td>
         <td style="font-size:10px; color:var(--red); max-width:120px; overflow:hidden; text-overflow:ellipsis;" title="${this.esc(img.error || '')}">${this.esc((img.error||'').slice(0,60))}</td>
         <td>
-          <button class="btn-small" data-action="preview" data-img-id="${img.id}">👁</button>
-          <button class="btn-small" data-action="retry" data-img-id="${img.id}">↻</button>
-          <button class="btn-small" data-action="reset" data-img-id="${img.id}">Reset</button>
+          <button class="btn-small" title="Preview" data-action="preview" data-img-id="${img.id}">👁</button>
+          <button class="btn-small" title="Retry" data-action="retry" data-img-id="${img.id}">↻</button>
+          <button class="btn-small" title="Reset" data-action="reset" data-img-id="${img.id}">Reset</button>
         </td>
       `;
       tbody.appendChild(tr);
