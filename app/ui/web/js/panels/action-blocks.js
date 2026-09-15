@@ -161,28 +161,43 @@ const ActionBlocksPanel = {
     if (App.bridge && App.bridge.get_action_blocks) {
       try {
         const res = App.bridge.get_action_blocks();
-        if (typeof res === 'string') {
-          const data = JSON.parse(res);
-          if (Array.isArray(data)) {
-            this.blocks = data;
-            this.render();
-            return;
+        if (typeof res === 'string' && res.trim()) {
+          try {
+            const data = JSON.parse(res);
+            if (Array.isArray(data) && data.length > 0) {
+              this.blocks = data;
+              this.render();
+              return;
+            } else if (Array.isArray(data) && data.length === 0) {
+              console.warn('get_action_blocks returned empty, will use default');
+            }
+          } catch (e) {
+            console.warn('parse action blocks failed', e, res.slice(0,100));
           }
         }
         // callback style
-        if (typeof App.bridge.get_action_blocks === 'function' && App.bridge.get_action_blocks.length >= 1) {
-          App.bridge.get_action_blocks((r) => {
-            try {
-              const d = JSON.parse(r);
-              if (Array.isArray(d)) {
-                this.blocks = d;
+        if (typeof App.bridge.get_action_blocks === 'function') {
+          try {
+            App.bridge.get_action_blocks((r) => {
+              try {
+                const d = typeof r === 'string' ? JSON.parse(r) : r;
+                if (Array.isArray(d) && d.length > 0) {
+                  this.blocks = d;
+                } else {
+                  console.warn('callback get_action_blocks empty, using default');
+                  this.blocks = this.getDefaultBlocks();
+                }
+                this.render();
+              } catch (e) {
+                console.warn('parse action blocks failed', e);
+                this.blocks = this.getDefaultBlocks();
                 this.render();
               }
-            } catch (e) {
-              console.warn('parse action blocks failed', e);
-            }
-          });
-          return;
+            });
+            return;
+          } catch (e) {
+            console.warn('callback style failed', e);
+          }
         }
       } catch (e) {
         console.warn('load action blocks failed', e);
@@ -249,9 +264,14 @@ const ActionBlocksPanel = {
     try {
       const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
       if (Array.isArray(data)) {
-        this.blocks = data;
+        if (data.length === 0) {
+          console.warn('onBlocksUpdated received empty array, using default fallback to avoid empty win');
+          this.blocks = this.getDefaultBlocks();
+        } else {
+          this.blocks = data;
+        }
         this.render();
-        if (typeof LogConsole !== 'undefined') LogConsole.log(`📦 Action blocks updated: ${data.length} blocks`, 'info');
+        if (typeof LogConsole !== 'undefined') LogConsole.log(`📦 Action blocks updated: ${this.blocks.length} blocks`, 'info');
       }
     } catch (e) {
       console.warn('onBlocksUpdated parse failed', e);
@@ -315,11 +335,25 @@ const ActionBlocksPanel = {
 
   render() {
     const container = document.getElementById('actionBlocksStack');
-    if (!container) return;
+    const countEl = document.getElementById('actionBlocksCount');
+    if (countEl) countEl.textContent = `${this.blocks.length} blocks`;
+    if (!container) {
+      console.warn('actionBlocksStack container missing');
+      return;
+    }
     container.innerHTML = '';
+    if (!this.blocks || this.blocks.length === 0) {
+      console.warn('ActionBlocks blocks empty, using default fallback');
+      this.blocks = this.getDefaultBlocks();
+      if (countEl) countEl.textContent = `${this.blocks.length} blocks (default)`;
+    }
     this.blocks.forEach((block, idx) => {
-      const el = this.createBlockElement(block, idx);
-      container.appendChild(el);
+      try {
+        const el = this.createBlockElement(block, idx);
+        container.appendChild(el);
+      } catch (e) {
+        console.error('Failed to create block element', block, e);
+      }
     });
     this.renderAddMenu();
     this.renderCustomChips();
@@ -331,6 +365,13 @@ const ActionBlocksPanel = {
     if (this.currentJobId) {
       this.renderJobStack(this.currentJobId);
       this.renderAllJobs();
+    }
+    if (!this.currentJobId) {
+      this.renderAllJobs();
+      const jobStack = document.getElementById('jobActionStack');
+      if (jobStack && !jobStack.hasChildNodes()) {
+        jobStack.innerHTML = '<span style="font-size:11px; color:var(--text-muted);">No job running — start a job to see live blocks with rect confirmations as it makes clicks. Blocks are separate jobs: click on btn, text areas, see images/waiting.</span>';
+      }
     }
   },
 

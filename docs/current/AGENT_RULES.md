@@ -270,7 +270,7 @@ Media follows same ownership: bytes saved beside source that was processed, neve
 
 Mandatory for every change to production Python. Numbers, scopes, tools and exceptions frozen here. Origin: Old App `docs/current/AGENT_RULES.md` §16 and `CODE_QUALITY_GATES_DESIGN`.
 
-Executable form: `tests/test_rule16_new_code.py` (run it; do not re-derive). Baseline snapshot: `reports/CODE_QUALITY_METRICS_2026-09-10.md` if exists.
+Executable form: `tools/verify_quality.py` (run it; do not re-derive). Legacy baseline: `tools/quality_baseline.json`. Full verification workflow: `docs/current/CODE_VERIFICATION.md` — **must be run before every push** (`bash tools/pre_push_check.sh` or `python tools/verify_quality.py --changed --allow-legacy` + `pytest` + coverage). Pre-push git hook `.git/hooks/pre-push` enforces it automatically.
 
 ### 16.0 When this applies
 
