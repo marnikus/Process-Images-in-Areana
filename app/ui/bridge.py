@@ -1148,7 +1148,9 @@ class Bridge(QObject):
         self._stop_after = False
         self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
         self._emit_arena_state()
-        self._schedule_coro(self._do_run_batch())
+        fut = self._schedule_coro(self._do_run_batch())
+        if fut:
+            self._batch_future = fut
         return json.dumps({"ok": True})
 
     @Slot(result=str)
@@ -1179,8 +1181,28 @@ class Bridge(QObject):
     def cancel_current(self):
         self._cancel_requested = True
         self._run_state = "idle"
-        self._log("✖ Cancel requested — stopping", "error")
+        self._pause_requested = False
+        self._stop_after = False
+        self._log("✖ Cancel requested — stopping immediately", "error")
         self._emit_arena_state()
+        # Try to cancel running batch future immediately
+        try:
+            if self._batch_future:
+                self._batch_future.cancel()
+                self._log("✖ Batch future cancelled", "warn")
+        except Exception as e:
+            self._log(f"Cancel future failed: {e}", "warn")
+        try:
+            # Also emit job_finished cancelled for current jobs
+            from app.core.enums import ImageStatus
+            for img in self._get_selected_images():
+                if img.status == ImageStatus.PROCESSING.value:
+                    img.status = ImageStatus.FAILED.value
+                    img.error = "Cancelled by user"
+            self.state.recalculate_progress()
+            self._save_arena()
+        except Exception:
+            pass
         return json.dumps({"ok": True})
 
     # ---- watcher win — passive recheck every x ms for generating icon or captcha ----
@@ -1438,6 +1460,10 @@ class Bridge(QObject):
                     if self._cancel_requested:
                         break
 
+                if self._cancel_requested:
+                    self._log("Batch cancelled after pause", "warn")
+                    break
+
                 url_row = urls[url_idx % len(urls)] if urls else None
                 url_idx += 1
                 img.assigned_url_id = url_row.id if url_row else None
@@ -1477,6 +1503,12 @@ class Bridge(QObject):
 
                 # Iterate through action blocks stack — restored visual runner + generic CUSTOM_FIND
                 for block in action_stack:
+                    # Immediate cancel check — should stop any current run immediately
+                    if self._cancel_requested:
+                        self._log(f"[{correlation_id}] ❌ Cancelled before block {block.display_name}", "warn")
+                        job_failed = True
+                        job_error = "Cancelled by user"
+                        break
                     if not block.enabled:
                         self._emit_job_action_status(job_id, block, "skipped", f"Skipped (disabled)")
                         continue
@@ -1484,6 +1516,11 @@ class Bridge(QObject):
                     btype = block.block_id
                     if block.pre_delay_ms and block.pre_delay_ms > 0:
                         await asyncio.sleep(block.pre_delay_ms / 1000.0)
+                        if self._cancel_requested:
+                            self._log(f"[{correlation_id}] ❌ Cancelled during pre-delay {block.display_name}", "warn")
+                            job_failed = True
+                            job_error = "Cancelled by user"
+                            break
 
                     self._emit_job_action_status(job_id, block, "running", f"Running {block.display_name}")
                     self._log(f"[{correlation_id}] ▶ Block {block.display_name} ({btype}) running", "info")
@@ -1793,11 +1830,27 @@ class Bridge(QObject):
                             wait_success = False
                             last_wait_error = ""
                             for wait_cycle in range(max_wait_cycles):
+                                if self._cancel_requested:
+                                    self._log(f"[{correlation_id}] ❌ Cancelled during wait cycle {wait_cycle+1}", "warn")
+                                    job_failed = True
+                                    job_error = "Cancelled by user"
+                                    break
                                 if wait_cycle > 0:
                                     self._log(f"[{correlation_id}] 🔄 Wait cycle {wait_cycle+1}/{max_wait_cycles} after reload — waiting again {wait_timeout}ms", "warn")
                                     self._emit_job_action_status(job_id, block, "waiting", f"{label} retry {wait_cycle+1}/{max_wait_cycles} after reload, timeout {wait_timeout}ms")
 
-                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id)
+                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
+                                if self._cancel_requested:
+                                    self._log(f"[{correlation_id}] ❌ Cancelled after wait_for_new_output", "warn")
+                                    job_failed = True
+                                    job_error = "Cancelled by user"
+                                    break
+                                # Check if cancelled via wait_for_new_output result
+                                if data.get("cancelled") or (data.get("error") and "Cancelled" in str(data.get("error"))):
+                                    self._log(f"[{correlation_id}] ❌ Cancelled (wait returned cancelled)", "warn")
+                                    job_failed = True
+                                    job_error = "Cancelled by user"
+                                    break
 
                                 if status == "completed":
                                     # Log order verification details from new JS logic — enhanced with allNewDetails for debugging exact above
@@ -1845,7 +1898,7 @@ class Bridge(QObject):
                                                     # To avoid tight loop, wait a bit and continue to next wait attempt (but keep same cycle count? We'll just continue waiting)
                                                     await asyncio.sleep(2)
                                                     # Try wait again within same cycle (extend)
-                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id)
+                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
                                                     if status2 == "completed" and data2.get("new_src"):
                                                         new_src = data2.get("new_src")
                                                         # Try download again
@@ -2103,6 +2156,11 @@ class Bridge(QObject):
                                 dl_success = False
                                 last_dl_err = ""
                                 for dl_cycle in range(max_dl_cycles):
+                                    if self._cancel_requested:
+                                        self._log(f"[{correlation_id}] ❌ Cancelled during download cycle {dl_cycle+1}", "warn")
+                                        job_failed = True
+                                        job_error = "Cancelled by user"
+                                        break
                                     if dl_cycle > 0:
                                         self._log(f"[{correlation_id}] 🔄 Download cycle {dl_cycle+1}/{max_dl_cycles} after reload", "warn")
                                         self._emit_job_action_status(job_id, block, "running", f"Download retry {dl_cycle+1}/{max_dl_cycles} after reload")
@@ -2110,6 +2168,11 @@ class Bridge(QObject):
                                     # Try download up to 5 attempts per cycle
                                     max_attempts = 5
                                     for attempt in range(max_attempts):
+                                        if self._cancel_requested:
+                                            self._log(f"[{correlation_id}] ❌ Cancelled during download attempt {attempt+1}", "warn")
+                                            job_failed = True
+                                            job_error = "Cancelled by user"
+                                            break
                                         try:
                                             s, f, c = await ctrl.download_image(new_src)
                                             if s and f and len(f) > 100:
@@ -2127,7 +2190,7 @@ class Bridge(QObject):
                                                     self._log(f"[{correlation_id}] ⏳ Download failed but generation still in progress {gen_details} — returning to waiting state, will wait again", "warn")
                                                     self._emit_job_action_status(job_id, block, "waiting", f"Download not ready but generating {gen_details}, returning to waiting")
                                                     # Wait again for new output
-                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout, correlation_id=correlation_id)
+                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
                                                     if status_w == "completed" and data_w.get("new_src"):
                                                         new_src = data_w.get("new_src")
                                                         self._log(f"[{correlation_id}] New output after waiting again: {new_src[:80]}", "info")
@@ -2142,7 +2205,7 @@ class Bridge(QObject):
                                             is_gen, gen_details = await ctrl.is_generating()
                                             if is_gen:
                                                 self._log(f"[{correlation_id}] Exception but generating {gen_details} — returning to waiting", "warn")
-                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id)
+                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
                                                 if status_w == "completed" and data_w.get("new_src"):
                                                     new_src = data_w.get("new_src")
                                                     continue
@@ -2158,7 +2221,7 @@ class Bridge(QObject):
                                     if is_gen:
                                         self._log(f"[{correlation_id}] Generation still in progress, not failing download yet — will wait again", "warn")
                                         self._emit_job_action_status(job_id, block, "waiting", f"Download failed but still generating {gen_details}, waiting again")
-                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id)
+                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
                                         if status_w == "completed" and data_w.get("new_src"):
                                             new_src = data_w.get("new_src")
                                             self._log(f"[{correlation_id}] New src after waiting: {new_src[:80]} — retrying download", "info")
@@ -2321,11 +2384,23 @@ class Bridge(QObject):
                             self._log(f"[{correlation_id}] Non-required block {btype} failed, continuing", "warn")
                             continue
 
-                # End of blocks loop
+                # End of blocks loop — immediate cancel should stop batch
+                if self._cancel_requested:
+                    self._log(f"[{correlation_id}] ❌ Cancelled — aborting batch", "warn")
+                    img.status = ImageStatus.FAILED.value
+                    img.error = "Cancelled by user"
+                    self.state.recalculate_progress()
+                    self._save_arena()
+                    break
+
                 if job_failed:
                     img.status = ImageStatus.FAILED.value
                     img.error = job_error
                     self._log(f"[{correlation_id}] ❌ Failed {img.relative_path}: {job_error}", "error")
+                    if "Cancelled" in job_error:
+                        self.state.recalculate_progress()
+                        self._save_arena()
+                        break
                     try:
                         self.job_finished.emit(job_id, json.dumps({"status": "failed", "message": job_error, "output_path": img.output_path or ""}, ensure_ascii=False))
                     except Exception:
@@ -2341,14 +2416,22 @@ class Bridge(QObject):
 
                 self.state.recalculate_progress()
                 self._save_arena()
+                if self._cancel_requested:
+                    break
                 await asyncio.sleep(1)
 
-            self._log("🏁 Batch complete", "success")
+            if self._cancel_requested:
+                self._log("🏁 Batch cancelled by user", "warn")
+            else:
+                self._log("🏁 Batch complete", "success")
             self._run_state = "idle"
             self._emit_arena_state()
 
         except Exception as e:
-            self._log(f"Batch runner crashed: {e}", "error")
+            if "Cancelled" in str(e) or self._cancel_requested:
+                self._log(f"🏁 Batch cancelled: {e}", "warn")
+            else:
+                self._log(f"Batch runner crashed: {e}", "error")
             import traceback
             traceback.print_exc()
             self._run_state = "idle"
@@ -2811,17 +2894,38 @@ class Bridge(QObject):
             loop = self._ensure_bg_loop()
             if loop and loop.is_running():
                 future = asyncio.run_coroutine_threadsafe(coro, loop)
+                # Store batch future for immediate cancel
+                try:
+                    # Heuristic: if coro is _do_run_batch, keep reference
+                    if hasattr(coro, 'cr_code') and coro.cr_code.co_name == '_do_run_batch':
+                        self._batch_future = future
+                except Exception:
+                    pass
                 def _cb(fut):
                     try:
                         fut.result()
                     except Exception as e:
+                        # Ignore CancelledError after cancel
+                        try:
+                            import concurrent.futures
+                            if isinstance(e, concurrent.futures.CancelledError):
+                                return
+                        except Exception:
+                            pass
                         log.warning(f"coro thread failed: {e}")
                         try:
                             self._log(f"Async task failed: {e}", "error")
                         except Exception:
                             pass
+                    finally:
+                        # Clear batch future when done
+                        try:
+                            if self._batch_future is fut:
+                                self._batch_future = None
+                        except Exception:
+                            pass
                 future.add_done_callback(_cb)
-                return
+                return future
             # Fallback: short-lived thread if bg loop not available
             import threading
             def _run():
@@ -2833,7 +2937,9 @@ class Bridge(QObject):
                         self._log(f"Async task failed: {e}", "error")
                     except Exception:
                         pass
-            threading.Thread(target=_run, daemon=True).start()
+            t = threading.Thread(target=_run, daemon=True)
+            t.start()
+            return None
         except Exception as e:
             log.warning(f"_schedule_coro failed: {e}")
             try:

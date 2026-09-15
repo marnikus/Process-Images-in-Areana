@@ -864,16 +864,22 @@ class CDPArenaController:
             return True, "Clicked"
         return False, result.get("error", "Failed")
 
-    async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000, correlation_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+    async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000, correlation_id: Optional[str] = None, cancel_check=None) -> Tuple[str, Dict[str, Any]]:
         """Poll for new output, return status. Understands spinner (Response A/B) as generating indicator.
         correlation_id: JOB-ID token to anchor detection — ensures we pick image AFTER user message containing this ID,
-        not the reference image above prompt inside same user bubble."""
+        not the reference image above prompt inside same user bubble.
+        cancel_check: optional callable returning True if cancelled — for immediate cancel.
+        """
         old_srcs = baseline.get("output_srcs", []) or []
         start = time.time()
         poll = 2
         seen_spinning = False
         last_log_time = 0
         while (time.time() - start) * 1000 < timeout_ms:
+            # Immediate cancel check
+            if cancel_check and cancel_check():
+                self._log("❌ Cancelled during wait_for_new_output", "warn")
+                return "failed", {"error": "Cancelled by user", "cancelled": True}
             # Pass correlation_id to JS so it can find user message and pick image after it (fix for matching image above prompt)
             js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)}, {json.dumps(correlation_id) if correlation_id else 'null'})"
             result = await self.cdp.evaluate(js_check)
