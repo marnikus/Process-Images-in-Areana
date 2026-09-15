@@ -1675,17 +1675,17 @@ class Bridge(QObject):
                                         self._log(f"[{correlation_id}] Second wait timeout after reload — will fail now", "error")
                                         continue
 
-                            if wait_success:
-                                break
-
-                            if not wait_success and wait_cycle == max_wait_cycles - 1:
-                                if is_await and not block.required:
-                                    self._log(f"[{correlation_id}] {label} timeout after {max_wait_cycles} cycles but non-required, continuing", "warn")
-                                    self._emit_job_action_status(job_id, block, "success", f"Wait timeout after reload, continuing: {last_wait_error}")
-                                    wait_success = True
+                                if wait_success:
                                     break
-                                else:
-                                    raise RuntimeError(f"Generation timeout after {max_wait_cycles} cycles (each {wait_timeout}ms) incl reload retry: {last_wait_error}")
+
+                                if not wait_success and wait_cycle == max_wait_cycles - 1:
+                                    if is_await and not block.required:
+                                        self._log(f"[{correlation_id}] {label} timeout after {max_wait_cycles} cycles but non-required, continuing", "warn")
+                                        self._emit_job_action_status(job_id, block, "success", f"Wait timeout after reload, continuing: {last_wait_error}")
+                                        wait_success = True
+                                        break
+                                    else:
+                                        raise RuntimeError(f"Generation timeout after {max_wait_cycles} cycles (each {wait_timeout}ms) incl reload retry: {last_wait_error}")
 
                             # end for wait_cycle
 
