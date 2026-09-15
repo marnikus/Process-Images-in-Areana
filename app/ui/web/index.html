@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arena Image Processor</title>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<link rel="stylesheet" href="css/variables.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/window-presets.css">
+<link rel="stylesheet" href="css/sash-layout.css">
+<link rel="stylesheet" href="css/stack-drag.css">
+<link rel="stylesheet" href="css/arena.css">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <header class="app-header">
+    <div class="header-left">
+      <span class="app-title">🖼️ Arena Image Processor</span>
+      <span id="runStatus" style="font-size:11px; color:var(--text-muted); margin-left:12px;">idle</span>
+    </div>
+    <div class="header-right">
+      <button id="windowsMenuBtn" class="btn-icon" title="Windows — open, close, minimize"><span class="material-icons">widgets</span></button>
+      <button id="layoutMenuBtn" class="btn-icon" title="Grid view — layouts and window presets"><span class="material-icons">grid_view</span></button>
+      <button id="themeToggleBtn" class="btn-icon" title="Toggle dark/light theme"><span class="material-icons">brightness_6</span></button>
+      <span id="connectionStatus" class="status-dot connected" title="Connected"></span>
+    </div>
+  </header>
+
+  <main class="sash-grid" id="sashGrid">
+
+    <!-- URL LIST -->
+    <div class="panel" id="winUrlList" data-window="url_list">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input id="urlInput" type="text" placeholder="https://example.com/page" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
+        <button id="urlAddBtn" class="btn-primary" style="padding:6px 12px;">Add</button>
+      </div>
+      <div style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px;">
+        <table class="url-table">
+          <thead><tr><th>En</th><th>URL</th><th>Status</th><th>Error</th><th>Actions</th></tr></thead>
+          <tbody id="urlTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FOLDER PICKER -->
+    <div class="panel" id="winFolder" data-window="folder">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">folder</span> Folder Picker</h3>
+      <div id="folderPathDisplay" class="folder-path">No folder selected</div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input id="folderPathInput" type="text" placeholder="/path/to/images" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
+        <button id="folderPickBtn" class="btn-small">Browse</button>
+        <button id="folderScanBtn" class="btn-primary">Scan</button>
+      </div>
+      <div id="folderStats" class="folder-stats"></div>
+      <div style="font-size:11px; color:var(--text-muted);">Recursive scan, ignores *_AI files. Supports: png, jpg, jpeg, webp (configurable).</div>
+    </div>
+
+    <!-- IMAGE QUEUE -->
+    <div class="panel" id="winQueue" data-window="queue">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">photo_library</span> Image Queue <span class="spacer"></span><span id="queueCount" style="font-size:10px; color:var(--text-muted)">0 images</span></h3>
+      <div class="queue-toolbar">
+        <select id="queueFilter" style="background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; color:var(--text-primary); font-size:11px;">
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="selected">Selected</option>
+          <option value="processing">Processing</option>
+          <option value="completed">Completed</option>
+          <option value="failed">Failed</option>
+          <option value="skipped">Skipped</option>
+        </select>
+        <button id="queueSelectAllBtn" class="btn-small">Select All</button>
+        <button id="queueDeselectAllBtn" class="btn-small">Deselect All</button>
+        <button id="queueRetryFailedBtn" class="btn-small">Retry Failed</button>
+        <button id="queueResetBtn" class="btn-small">Reset All</button>
+      </div>
+      <div class="queue-table-wrap">
+        <table class="queue-table">
+          <thead><tr><th>Sel</th><th>Thumb</th><th>Path</th><th>Status</th><th>URL</th><th>Attempts</th><th>Output</th><th>Error</th><th>Actions</th></tr></thead>
+          <tbody id="queueTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PROMPT EDITOR -->
+    <div class="panel" id="winPrompt" data-window="prompt">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">edit_note</span> Prompt Editor <span class="spacer"></span><button id="promptSaveBtn" class="btn-small btn-primary">Save</button></h3>
+      <textarea id="promptTextarea" class="prompt-textarea" placeholder="Enter your prompt for image generation... e.g. 'Enhance this image, keep style'"></textarea>
+      <div id="promptPreview" class="prompt-preview">Preview will appear here with [JOB-ID: ...] token highlighted</div>
+      <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Token format: [JOB-ID: &lt;unique&gt;] will be appended automatically. Saved as preset JSON.</div>
+    </div>
+
+    <!-- RUN CONTROLS -->
+    <div class="panel" id="winRun" data-window="run">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">play_circle</span> Run Controls</h3>
+      <div class="run-grid">
+        <button id="runStartBtn" class="run-btn primary"><span class="material-icons" style="font-size:16px;">play_arrow</span> Start</button>
+        <button id="runPauseBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">pause</span> Pause</button>
+        <button id="runResumeBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">play_arrow</span> Resume</button>
+        <button id="runStopAfterBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">stop</span> Stop after current</button>
+        <button id="runCancelBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">cancel</span> Cancel current</button>
+        <button id="runRetryBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">replay</span> Retry failed</button>
+      </div>
+      <div style="margin-top:12px; font-size:11px; color:var(--text-muted);">
+        <div>• Respects site terms, no CAPTCHA bypass</div>
+        <div>• Observe-baseline → act → verify → persist → advance</div>
+        <div>• Atomic save *_AI.ext beside source</div>
+      </div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="panel" id="winProgress" data-window="progress">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">insights</span> Progress</h3>
+      <div class="progress-bar"><div id="progressBarFill" class="progress-fill" style="width:0%"></div></div>
+      <div class="progress-stats">
+        <div class="progress-stat"><b id="progTotal">0</b> Total</div>
+        <div class="progress-stat"><b id="progPending">0</b> Pending</div>
+        <div class="progress-stat"><b id="progSelected">0</b> Selected</div>
+        <div class="progress-stat"><b id="progProcessing">0</b> Processing</div>
+        <div class="progress-stat"><b id="progCompleted">0</b> Completed</div>
+        <div class="progress-stat"><b id="progFailed">0</b> Failed</div>
+      </div>
+      <div style="margin-top:8px; font-size:11px; color:var(--text-muted);">Skipped: <span id="progSkipped">0</span></div>
+    </div>
+
+    <!-- ACTIVITY LOG -->
+    <div class="panel log-panel" id="winLog" data-window="log">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">terminal</span> Activity Log <span class="spacer"></span><button id="clearLogBtn" class="btn-small">Clear</button></h3>
+      <div id="logConsole" class="log-console"></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="panel" id="winSettings" data-window="settings">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">settings</span> Settings <span class="spacer"></span><button id="settingsSaveBtn" class="btn-small btn-primary">Save</button></h3>
+      <div class="settings-group">
+        <label>Timeout (seconds)</label>
+        <input id="setTimeout" type="number" min="10" max="600">
+      </div>
+      <div class="settings-group">
+        <label>Max Retries</label>
+        <input id="setRetries" type="number" min="0" max="10">
+      </div>
+      <div class="settings-group">
+        <label>Naming Suffix</label>
+        <input id="setNaming" type="text" placeholder="_AI">
+      </div>
+      <div class="settings-group">
+        <label>File Types (comma separated)</label>
+        <input id="setFileTypes" type="text" placeholder=".png,.jpg,.jpeg,.webp">
+      </div>
+      <div class="settings-row">
+        <div class="settings-group">
+          <label>Overwrite</label>
+          <select id="setOverwrite"><option value="false">False</option><option value="true">True</option></select>
+        </div>
+        <div class="settings-group">
+          <label>Highlight Duration (s)</label>
+          <input id="setHighlightDur" type="number" min="1" max="10">
+        </div>
+      </div>
+      <div class="settings-group">
+        <label>Max Concurrent (future)</label>
+        <input id="setMaxConcurrent" type="number" min="1" max="5" disabled>
+      </div>
+      <div class="preset-bar">
+        <input id="presetNameInput" type="text" placeholder="preset name">
+        <button id="settingsExportBtn" class="btn-small">Export Preset JSON</button>
+        <button id="settingsImportBtn" class="btn-small">Import Preset</button>
+      </div>
+    </div>
+
+    <!-- BROWSER PREVIEW -->
+    <div class="panel" id="winBrowser" data-window="browser">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">preview</span> Browser Preview <span class="spacer"></span><button id="browserClearBtn" class="btn-small">Clear</button></h3>
+      <div id="browserFrame" class="browser-frame"><span>No preview — select image 👁 or run job to see rect highlight</span></div>
+      <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Rect highlight shows above clicked element for N seconds (configurable). All UI params storable in preset JSON.</div>
+    </div>
+
+  </main>
+</div>
+
+<!-- GRID VIEW MENU -->
+<div id="layoutMenu" class="layout-menu grid-menu hidden">
+  <div class="layout-menu-title">Grid view — layouts and window presets</div>
+  <section class="grid-menu-section grid-layout-section">
+    <div class="grid-menu-section-title"><span class="material-icons">grid_view</span> Grid layouts</div>
+    <div class="grid-layout-buttons">
+      <button data-layout="default">Default<span class="lm-sub">Classic arena arrangement</span></button>
+      <button data-layout="a">A — Stacked rows<span class="lm-sub">All windows stacked vertically</span></button>
+      <button data-layout="b">B — Split columns<span class="lm-sub">3 columns: queue, controls, preview</span></button>
+      <button data-layout="c">C — Side preview<span class="lm-sub">Browser preview on right, queue left</span></button>
+    </div>
+    <button id="resetLayoutBtn" class="lm-reset" title="Restore default and show all windows">↺ Reset to default</button>
+  </section>
+  <div class="layout-menu-sep"></div>
+  <section id="windowPresetPanel" class="grid-menu-section window-preset-panel">
+    <div class="grid-menu-section-title"><span class="material-icons">bookmarks</span> Window presets</div>
+    <div class="window-preset-actions">
+      <button id="saveWindowPresetBtn" class="btn-small btn-primary" title="Save current arrangement"><span class="material-icons">save</span> Save current</button>
+      <button id="importWindowPresetBtn" class="btn-small" title="Import .json preset"><span class="material-icons">file_upload</span> Import</button>
+      <button id="exportWindowPresetBtn" class="btn-small" title="Export selected preset" disabled><span class="material-icons">file_download</span> Export</button>
+    </div>
+    <input id="windowPresetFileInput" type="file" accept=".json,application/json" class="hidden">
+    <div id="windowPresetStatus" class="window-preset-status" aria-live="polite"></div>
+    <div id="windowPresetQuickChips" class="window-preset-quick-chips"></div>
+    <div id="windowPresetList" class="window-preset-list">
+      <div class="window-preset-list-empty">No saved presets yet.</div>
+    </div>
+  </section>
+</div>
+
+<!-- WINDOWS MENU -->
+<div id="windowsMenu" class="layout-menu windows-menu hidden">
+  <div class="layout-menu-title">Windows — ● open · ─ minimized · ○ closed</div>
+  <div id="windowsMenuList"></div>
+  <div class="layout-menu-sep"></div>
+  <div class="layout-menu-row">
+    <button id="windowsShowAllBtn" class="lm-mini"><span class="material-icons">visibility</span> Show all</button>
+    <button id="windowsHideAllBtn" class="lm-mini"><span class="material-icons">visibility_off</span> Hide all</button>
+  </div>
+</div>
+
+<!-- WINDOW PRESET PREVIEW -->
+<div id="windowPresetPreviewModal" class="modal hidden">
+  <div class="modal-content window-preset-preview-modal">
+    <h3 id="windowPresetPreviewTitle">Window preset preview</h3>
+    <div id="windowPresetPreviewMeta" class="window-preset-preview-meta"></div>
+    <div id="windowPresetPreviewCanvas" class="window-preset-preview-canvas"></div>
+    <div class="modal-actions">
+      <button id="windowPresetPreviewApply" class="btn-primary">Restore layout</button>
+      <button id="windowPresetPreviewCancel" class="btn-small">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- NAME MODAL -->
+<div id="nameModal" class="modal hidden">
+  <div class="modal-content name-modal">
+    <h3 id="nameModalTitle">Preset name</h3>
+    <input id="nameModalInput" type="text" maxlength="80" placeholder="Enter name…">
+    <div class="modal-actions">
+      <button id="nameModalOk" class="btn-primary">Save</button>
+      <button id="nameModalCancel" class="btn-small">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL -->
+<div id="confirmModal" class="modal hidden">
+  <div class="modal-content name-modal">
+    <h3 id="confirmModalTitle">Confirm</h3>
+    <div id="confirmModalText" class="confirm-text"></div>
+    <div class="modal-actions">
+      <button id="confirmModalYes" class="btn-danger btn-danger-solid">Delete</button>
+      <button id="confirmModalNo" class="btn-small">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/core/bridge-ready.js"></script>
+<script src="js/core/ui-helpers.js"></script>
+<script src="js/sash-core.js"></script>
+<script src="js/sash-grid-tree.js"></script>
+<script src="js/sash-grid-windows.js"></script>
+<script src="js/sash-grid-presets.js"></script>
+<script src="js/sash-grid-drag-core.js"></script>
+<script src="js/sash-grid-drag-spec.js"></script>
+<script src="js/sash-grid-drag-resize.js"></script>
+<script src="js/sash-grid-drag.js"></script>
+<script src="js/sash-grid.js"></script>
+<script src="js/window-presets-core.js"></script>
+<script src="js/window-presets-actions.js"></script>
+<script src="js/window-presets-preview.js"></script>
+<script src="js/window-presets.js"></script>
+<script src="js/log-console.js"></script>
+<script src="js/panels/url-list.js"></script>
+<script src="js/panels/folder-picker.js"></script>
+<script src="js/panels/image-queue.js"></script>
+<script src="js/panels/prompt-editor.js"></script>
+<script src="js/panels/run-controls.js"></script>
+<script src="js/panels/progress.js"></script>
+<script src="js/panels/settings.js"></script>
+<script src="js/panels/browser-preview.js"></script>
+<script src="js/panels/highlight.js"></script>
+<script src="js/arena-app.js"></script>
+</body>
+</html>
