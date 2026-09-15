@@ -56,9 +56,48 @@ CASES = tuple(
 )
 
 
+CASES += (
+    (
+        "automation/steps.py",
+        'self.ledger.move(inputs["id"], "submit_intent")',
+        "pass",
+        "tests/workspace/test_execution.py::test_lifecycle_dispatches_actual_retained_dom_click_only_after_durable_intent",
+    ),
+    (
+        "automation/engine.py",
+        "if self.recovery_required:",
+        "if False:",
+        "tests/workspace/test_execution.py::test_restored_ready_attempt_requires_explicit_recovery",
+    ),
+    (
+        "automation/visual.py",
+        "roots.length !== 1",
+        "roots.length === 0",
+        "tests/workspace/test_visual.py::test_ambiguous_hidden_disabled_missing_never_click",
+    ),
+)
+
+
+CASES += (
+    (
+        "automation/output_files.py",
+        "os.link(temporary, path)",
+        "os.replace(temporary, path)",
+        "tests/workspace/test_output.py::test_publisher_never_replaces_existing_destination",
+    ),
+    (
+        "automation/output_files.py",
+        "actual != digest",
+        "False",
+        "tests/workspace/test_output.py::test_verification_detects_changed_bytes_extension_and_links",
+    ),
+)
+
+
 def exercise(folder, suite):
     environment = dict(os.environ, PYTHONPATH=str(folder / "src"), PYTEST_ADDOPTS="")
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    environment["NODE_PATH"] = str(ROOT / "node_modules")
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-q", suite],
         cwd=folder,
@@ -85,8 +124,13 @@ def main():
             "test_operations.py",
             "test_browser.py",
             "test_libraries.py",
+            "test_execution.py",
+            "test_output.py",
+            "test_visual.py",
         ):
             shutil.copy(ROOT / "tests/workspace" / name, folder / "tests/workspace" / name)
+        (folder / "tools").mkdir()
+        shutil.copy(ROOT / "tools/visual_fixture.cjs", folder / "tools/visual_fixture.cjs")
         (folder / "pytest.ini").write_text(
             "[pytest]\naddopts = --strict-markers\n", encoding="utf-8"
         )

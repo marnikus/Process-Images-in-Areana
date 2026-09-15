@@ -47,13 +47,13 @@ const PanelRegistry = [
     "history",
     "winHistory",
     "Job history",
-    '<p class="muted">No jobs submitted. Future job evidence is immutable and excluded from workspace undo.</p>',
+    '<p id="executionStatus" class="muted">No execution records. Live processing is disabled.</p><div id="executionRows"></div>',
   ],
   [
     "userdb",
     "winUserDb",
     "Saved outputs",
-    '<p class="muted">No generated outputs. This panel will show validated files, not a database.</p>',
+    '<p class="muted">Recorded local saves, not a live generation claim. Files may change after verification.</p><div id="outputRows"></div>',
   ],
   [
     "collector",

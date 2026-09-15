@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import globals from "globals";
 export default [
+  {files: ["tools/visual_fixture.cjs"], languageOptions: {sourceType: "commonjs", globals: globals.node}, rules: js.configs.recommended.rules},
   {
     files: [
       "src/image_queue/ui/js/{boot,panels,workspace,workspace-view,connect,wire,libraries,stack-editor,queue-view,chrome-view,features,block-fields}.js",

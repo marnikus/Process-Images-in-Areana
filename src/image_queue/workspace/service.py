@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any, Protocol
 
 from image_queue.domain.validation import ContractError
+from image_queue.workspace.execution import empty_execution, has_unresolved, preserve_evidence
 from image_queue.workspace.extensions import upgrade_state
 from image_queue.workspace.history import edit_state, travel, validate_state
 
@@ -17,7 +18,7 @@ class WorkspaceService:
         validate_state(state)
         self._state = upgrade_state(state)
         self._writer = writer
-        self.busy = False
+        self.busy = has_unresolved(self._state["jobs"].get("execution", empty_execution()))
 
     def snapshot(self) -> dict[str, Any]:
         return deepcopy(self._state)
@@ -46,6 +47,17 @@ class WorkspaceService:
         self._writer.save(candidate)
         self._state = candidate
         return self.snapshot()
+
+    def record_execution(self, execution: dict[str, Any]) -> None:
+        previous = self._state["jobs"].get("execution", empty_execution())
+        preserve_evidence(previous, execution)
+        candidate = self.snapshot()
+        candidate["jobs"]["execution"] = deepcopy(execution)
+        candidate["revision"] += 1
+        validate_state(candidate)
+        self._writer.save(candidate)
+        self._state = candidate
+        self.busy = self.busy or has_unresolved(execution)
 
     def _candidate(self, command: dict[str, Any]) -> dict[str, Any]:
         kind = command.get("kind")

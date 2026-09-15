@@ -1,5 +1,71 @@
 # Implementation status
 
+## Current: offline Steps 1–12 implementation and push handoff
+
+**2026-09-15:** The owner authorized the final steps and push. Offline correlated
+original-byte validation, durable no-clobber save/recovery, truthful history/output
+panels, source-repeat protection and release auditing are implemented. The earlier
+Steps 7–9 work is included in this delivery. Full live/native acceptance is **not**
+complete: no production adapter, live downloader, operator execution controls,
+authorized site pilot or Windows installer/graphics acceptance is claimed.
+
+See [Steps 10–12 / release checklist](STEPS-10-12.md). Legacy sources were retained,
+not deleted while extraction evidence is incomplete. CI is still inactive.
+
+Latest complete local gate: **348 Python tests**, **16 workspace DOM tests**, selected
+retained suites, Ruff, strict mypy (**54 files**), JS lint/format and all quality gates
+pass. **15 targeted safety mutations killed**, not a full mutation score.
+
+| Package | Statements | Branches |
+|---|---:|---:|
+| Domain | 100% | 100% |
+| Workspace | 99.85% | 99.68% |
+| Persistence | 99.21% | 96.43% |
+| Browser | 100% | 98.89% |
+| Scanning | 99.32% | 94.23% |
+| Automation | 99.53% | 98.25% |
+
+Combined headless coverage: **98.66%**. The wheel's **98 members** match the source/
+metadata allowlist. Fresh installation outside the checkout passes CLI, packaged
+assets, JSON storage and real local image publication/verification. Python and npm
+audits report no known vulnerabilities in audited dependencies; this is not a native
+GUI, live-site or embedded-Chromium security guarantee. Runtime version remains 0.1.0.
+
+---
+
+The following checkpoints are historical and superseded by the current status above.
+
+## Current: Steps 7–9 offline portions implemented; live gates blocked
+
+**2026-09-15:** Owner chose offline-first work. Actual retained visual probes,
+fixture-only sequential preparation and durable intent/evidence/recovery are now
+implemented. No production adapter or desktop upload/Send command is enabled.
+See [Steps 7–9 contracts and limitations](STEPS-7-9.md). Steps 10–12 remain pending.
+
+`python tools/check.py`: **PASS**, **318 Python tests**, **15 workspace DOM tests**,
+all selected retained suites, strict mypy (**52 files**), Ruff, JS lint/format,
+size/complexity gates and **13 targeted mutations killed** (not a full mutation score).
+Combined headless coverage: **98.59%**. Independent statements/branches:
+
+| Package | Statements | Branches |
+|---|---:|---:|
+| Domain | 100% | 100% |
+| Workspace | 99.85% | 99.67% |
+| Persistence | 99.21% | 96.43% |
+| Browser | 100% | 98.89% |
+| Scanning | 99.32% | 94.23% |
+| Automation | 99.38% | 97.78% |
+
+Current wheel built and installed in a fresh environment; outside-checkout CLI,
+offline-engine import and packaged visual/provenance assets pass. No native GUI
+or live site action is claimed. Dependencies are unchanged from the prior audit.
+Native WebEngine/Windows Chrome checks, reviewed live page evidence and CI activation
+remain outstanding. Output observation is not image download/save/completion.
+
+---
+
+The following are historical checkpoints, superseded by the current status above.
+
 ## Steps 4–6 — code implemented; manual exit gates still open
 
 **Date:** 2026-09-15. Owner authorized the next three roadmap steps and push.

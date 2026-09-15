@@ -63,6 +63,7 @@ def main():
             "block-fields",
         )
     ]
+    scripts.append("tools/visual_fixture.cjs")
     run([node, "node_modules/eslint/bin/eslint.js", *scripts])
     run([node, "node_modules/prettier/bin/prettier.cjs", "--check", *scripts])
     run(

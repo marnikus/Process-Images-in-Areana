@@ -366,3 +366,20 @@ test("prototype-like layout names survive save and full portable backup", async 
   await f.run("Features.command({kind:'library_export'})");
   assert.ok(JSON.parse(f.run('Workspace.result')).libraries.windows.__proto__.tree);
 });
+
+test("offline evidence renders truthful saved/review counts without interpreting HTML", async (t) => {
+  const f = await fixture(t), doc = f.dom.window.document;
+  f.run(`QueueView.render({workspace: {selection: {}}, jobs: {execution: {
+    paused: true, stop_after: false, attempts: {
+      a: {inputs: {source: {name: '<img src=x onerror=alert(1)>'}}, events: [
+        {phase: 'submitted'}, {phase: 'saved', evidence: {path: '<b>output.png</b>', sha256: 'abc'}}]},
+      b: {inputs: {source: {name: 'review.png'}}, events: [{phase: 'needs_review'}]}
+    }}}})`);
+  assert.match(doc.getElementById('queueSummary').textContent, /1 recorded submissions/);
+  assert.match(doc.getElementById('executionStatus').textContent, /Live processing disabled.*paused: true/);
+  assert.match(doc.getElementById('executionRows').textContent, /needs_review/);
+  assert.equal(doc.querySelectorAll('#executionRows img, #outputRows b').length, 0);
+  assert.match(doc.getElementById('outputRows').textContent, /<b>output.png<\/b>/);
+  f.run('QueueView.render(Workspace.state)');
+  assert.equal(doc.getElementById('outputRows').textContent, '');
+});

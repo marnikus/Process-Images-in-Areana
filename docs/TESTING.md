@@ -10,9 +10,9 @@ The same runner is referenced by the inactive CI template (`tools/ci/quality.yml
 
 1. Ruff lint/import checks and formatting on new `src/`, `tests/`, `tools/`.
 2. Strict mypy on the new production package.
-3. ESLint/Prettier for new UI JavaScript, fifteen DOM integration tests using the real Python backend, and the root pytest suite with actual statement/branch coverage; old pytest/conftest is deliberately not collected by the new suite.
-4. Rule 16 AST size, parameters, methods, nesting; Radon CC; cognitive complexity; independent domain statement (90%) and branch (85%) floors; pure-domain import guard. Workspace, persistence, browser and scanning have independent coverage floors too. Fresh coverage report required. Tests inject violations to test these gates too.
-5. Ten targeted safety mutation experiments in temporary source copies. A passing isolated baseline is required; only test failures count as killed mutations. Surviving mutations, collection failures or changed experiment targets fail the gate. This is **not** a full-project mutation score.
+3. ESLint/Prettier for new UI JavaScript and the controlled visual fixture peer, sixteen DOM integration tests using the real Python backend, and the root pytest suite with actual statement/branch coverage; old pytest/conftest is deliberately not collected by the new suite.
+4. Rule 16 AST size, parameters, methods, nesting; Radon CC; cognitive complexity; independent domain statement (90%) and branch (85%) floors; pure-domain import guard. Workspace, persistence, browser, scanning and automation have independent coverage floors too. Fresh coverage report required. Tests inject violations to test these gates too.
+5. Fifteen targeted safety mutation experiments in temporary source copies. A passing isolated baseline is required; only test failures count as killed mutations. Surviving mutations, collection failures or changed experiment targets fail the gate. This is **not** a full-project mutation score.
 6. Twelve selected old JS regression scripts (actual shipped modules with small DOM/bridge doubles), plus 20 selected old visual-probe tests that execute generated JavaScript through Node.
 
 Generated coverage lives in ignored `coverage/`. Tools/tests are not production-size gated; production Python is. No broad new-code metric exceptions exist. Retained old runtime has not been relabeled as new-code-compliant. The selected old URL-toolbar tests document its current behavior, not authorization policy for the new exact URL matcher.
@@ -71,3 +71,22 @@ supported-OS release review remain separate.
 The four added mutation cases test fingerprint-bound selection, reviewed-import digest
 binding, CDP target identity, and JSON boolean/number distinction. Each selected suite
 must pass an isolated baseline before a mutant can count as killed.
+
+## Offline Steps 7–9 evidence
+
+The root suite includes 33 execution tests and 10 actual retained-probe tests, including
+a real child-process crash after durable Send intent and synthetic Send, a disk-intent
+check before the actual controlled DOM click, explicit restart recovery, cancellation,
+manual blockers and ownership changes. New mutations remove Send intent, recovery
+and unique-target barriers. Probe provenance is independently checked against original
+AST fragments, without importing the old application. See [scope and limits](STEPS-7-9.md).
+These tests do not establish live upload, native rendering or saved output.
+
+## Output and release checks
+
+23 output tests exercise actual file decoding, format-derived extensions, collision/link
+protection, write faults, immutable save evidence, actual child-process death after
+publication, explicit recovery and a two-source lifecycle through save/restart/undo.
+Seven wheel-audit tests reject missing/changed/unexpected/duplicate files. The new
+DOM test checks saved/review state counts and text escaping. See [release handoff](STEPS-10-12.md)
+for measured wheel/dependency audits and the still-pending Windows/live checklist.

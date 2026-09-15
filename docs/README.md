@@ -11,9 +11,12 @@
 
 ## Rebuild design and scheduling
 
-- [~Four-hour work packages](rebuild/09-FOUR-HOUR-STEPS.md): twelve steps, Steps 1–6 implemented; native/Windows acceptance pending.
+- [~Four-hour work packages](rebuild/09-FOUR-HOUR-STEPS.md): twelve steps, Steps 1–6 and offline portions of 7–12 implemented; live/native/Windows acceptance pending.
 - [Research and proposal index](rebuild/README.md): product/evidence, removal/retention, architecture and acceptance design.
 
 Design documents describe the target, not a claim all features exist. The status document owns current implementation facts. Old docs remain with the legacy source until retained contracts are extracted and obsolete documentation is deliberately removed in the cleanup phase.
 
 - [Presets, Chrome and scanner usage/provenance](STEPS-4-6.md).
+
+- [Offline visual/lifecycle checkpoint](STEPS-7-9.md).
+- [Safe output, truthful UI and release checklist](STEPS-10-12.md).

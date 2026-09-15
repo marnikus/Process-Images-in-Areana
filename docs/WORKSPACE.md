@@ -120,3 +120,16 @@ test across an actual QThread; the facade stays on the UI thread. `python tools/
 real Qt/WebEngine system libraries and tests the actual Qt channel, native recovery
 choices, close checkpoint, restart and local-page navigation gate. DOM doubles are not
 reported as proof of native Qt success. Native rendering is still unverified here; the CI template is inactive because workflow-write permission is missing. Measured outcomes live in IMPLEMENTATION-STATUS.md.
+
+## Offline execution ledger (Steps 7–9)
+
+Optional `jobs.execution` stores immutable attempt inputs and append-only intent/evidence
+through the same atomic writer, outside global undo. Restored unresolved work keeps
+the workspace busy. Fixture-only execution is a Python library, not an enabled desktop
+command; normal desktop users cannot upload or Send through it. Explicit recovery
+never replays effects. Observed output alone is not saved/completed. The offline Step 10 extension requires
+durable save intent, validated no-clobber publication and matching saved evidence to release ownership. See [offline lifecycle and recovery](STEPS-7-9.md).
+
+The history and outputs panels render durable offline evidence without exposing live
+execution controls. Explicit local save recovery never republishes or resubmits.
+See [output contracts and Windows checklist](STEPS-10-12.md).

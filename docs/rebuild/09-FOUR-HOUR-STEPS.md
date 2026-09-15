@@ -1,8 +1,8 @@
 # Implementation steps — approximately four hours each
 
-Owner has authorized Steps 1–6 and pushing the session branch. Estimates are planning timeboxes, not claims of elapsed work or fixed deadlines. Each is about 3–5 engineering hours including tests/review; external evidence, OS setup and site changes can extend them. Do not rush safety gates to fit a timebox. Overall initial budget: **12 × ~4 hours = ~48 hours**, excluding waiting for evidence and unforeseen compatibility work.
+Owner authorized Steps 1–6 with push, then offline/testable Steps 7–9, followed by the remaining offline Steps 10–12 and push. Live actions remain disabled pending evidence. Estimates are planning timeboxes, not claims of elapsed work or fixed deadlines. Each is about 3–5 engineering hours including tests/review; external evidence, OS setup and site changes can extend them. Do not rush safety gates to fit a timebox. Overall initial budget: **12 × ~4 hours = ~48 hours**, excluding waiting for evidence and unforeseen compatibility work.
 
-**Progress:** Steps 1–6 code implemented; local headless/DOM, real Qt channel and loopback CDP transport gates pass. Native WebEngine rendering/manual Windows Chrome remain unverified and CI is inactive pending workflow permission. See [status and measured checks](../IMPLEMENTATION-STATUS.md). Steps 7–12 are not yet implemented.
+**Progress:** Steps 1–6 code implemented; local headless/DOM, real Qt channel and loopback CDP transport gates pass. Native WebEngine rendering/manual Windows Chrome remain unverified and CI is inactive pending workflow permission. See [status and measured checks](../IMPLEMENTATION-STATUS.md). Offline portions of Steps 7–9 are implemented and tested; live acceptance remains blocked by reviewed evidence. Offline output/save, read-only UI and release-audit portions of Steps 10–12 are now implemented. Live download/pilot, full execution UI, native Windows release and destructive cleanup acceptance remain pending; see [release handoff](../STEPS-10-12.md). See [offline scope](../STEPS-7-9.md).
 
 ## Protected scope
 

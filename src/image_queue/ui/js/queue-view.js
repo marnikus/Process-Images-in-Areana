@@ -37,9 +37,40 @@ const QueueView = {
       );
     });
     document.getElementById("queueSummary").textContent =
-      `${Object.keys(this.sources).length} sources · ${selected} selected · 0 submitted`;
+      `${Object.keys(this.sources).length} sources · ${selected} selected · ${this.execution(state)} recorded submissions`;
     document.getElementById("scanChanges").textContent =
       `${changed} changed, missing or invalid records. Rescan after restart before processing. No completion is inferred from a file name.`;
+  },
+  execution(state) {
+    const ledger = state.jobs.execution;
+    const attempts = Object.values(ledger?.attempts || {});
+    const history = document.getElementById("executionRows");
+    const outputs = document.getElementById("outputRows");
+    history.replaceChildren();
+    outputs.replaceChildren();
+    let submitted = 0;
+    for (const attempt of attempts) {
+      const last = attempt.events.at(-1);
+      submitted += attempt.events.some((e) => e.phase === "submitted") ? 1 : 0;
+      history.appendChild(
+        window.UIHelpers.el(
+          "p",
+          "",
+          `${attempt.inputs.source.name} · ${last.phase}`,
+        ),
+      );
+      if (last.phase === "saved")
+        outputs.appendChild(
+          window.UIHelpers.el(
+            "p",
+            "",
+            `${last.evidence.path} · SHA-256 ${last.evidence.sha256}`,
+          ),
+        );
+    }
+    document.getElementById("executionStatus").textContent =
+      `Live processing disabled · ${attempts.length} offline records · paused: ${!!ledger?.paused} · stop after: ${!!ledger?.stop_after}. Evidence is outside undo; uncertain work requires explicit recovery.`;
+    return submitted;
   },
   row(list, item, decision) {
     const { id, source, checked, valid } = item;

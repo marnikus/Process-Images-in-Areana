@@ -2,13 +2,18 @@
 
 A local desktop image-processing rebuild retaining the previous **dark drag/drop workspace, layouts, global undo/redo, presets/variables, Chrome/CDP connection, and visual click rectangles**. No database is planned.
 
-**Current implementation: Steps 1–6 (manual exit gates pending).** The retained dark
+**Current implementation: Steps 1–6 plus offline portions of Steps 7–12.**
+Manual/native and live-site exit gates remain pending. The retained dark
 workspace supports global JSON undo, seven preset families, templates/variables,
 stack drag/typed block editing, explicit checks of user-opened debug Chrome, and
 folder scanning with thumbnails and fingerprint-bound selection. Upload, submission
 and image generation remain disabled. Real Qt/WebChannel and automated transport/DOM
 tests pass; native WebEngine rendering and live Windows Chrome are still unverified.
-See [current results](docs/IMPLEMENTATION-STATUS.md) and [Steps 4–6 usage](docs/STEPS-4-6.md).
+The retained visual runner and fixture-only intent/evidence lifecycle now have crash/no-replay tests;
+correlated fixture outputs can be validated and saved without clobbering files. These APIs
+are not connected to desktop execution commands. See [current results](docs/IMPLEMENTATION-STATUS.md),
+[Steps 4–6 usage](docs/STEPS-4-6.md) and [offline Steps 7–9](docs/STEPS-7-9.md) and
+[safe outputs / release handoff](docs/STEPS-10-12.md).
 
 ```sh
 python -m pip install --upgrade pip

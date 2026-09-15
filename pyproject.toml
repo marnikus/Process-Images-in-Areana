@@ -48,4 +48,4 @@ show_missing = true
 fail_under = 90
 
 [tool.setuptools.package-data]
-image_queue = ["ui/*.html", "ui/*.json", "ui/css/*.css", "ui/js/*.js", "ui/js/core/*.js"]
+image_queue = ["ui/*.html", "ui/*.json", "ui/visual/*.json", "ui/css/*.css", "ui/js/*.js", "ui/js/core/*.js"]

@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from image_queue.domain.validation import ContractError, require_fields, require_integer, same_json
+from image_queue.workspace.execution import validate_execution
 from image_queue.workspace.observations import validate_sources
 from image_queue.workspace.schema import validate_workspace
 
@@ -33,6 +34,8 @@ def validate_state(state: Any) -> None:
         raise ContractError("jobs: expected object")
     if "sources" in data["jobs"]:
         validate_sources(data["jobs"]["sources"])
+    if "execution" in data["jobs"]:
+        validate_execution(data["jobs"]["execution"])
     entries = data["history"]
     if not isinstance(entries, list) or len(entries) > MAX_HISTORY:
         raise ContractError("history: invalid or oversized timeline")

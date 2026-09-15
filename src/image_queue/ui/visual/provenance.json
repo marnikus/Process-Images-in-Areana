@@ -1,0 +1,11 @@
+{
+  "source": "Process Images in Areana/Old App/backend/dom_highlight.py",
+  "sha256": "a39881d4359837ff80c8e047ff93b8eeeab0d64119c566faf8a65ee02c5b191f",
+  "fragments": {
+    "_HELPERS_JS": "e865e85931ecc496e20c2590f1a45567c992c311e2dfeec2c33cec184f1932ab",
+    "_PROBE_JS": "3a3bf9d6c9c63ff6c0968d36ea04d4c13b1017bd14b6e290d0271134a779b78f",
+    "_FIND_BODY": "87f62b2aba36fbe7e534c450841488c95cc13eedc9df125102bfac0b6922d2ab",
+    "_CLICK_BODY": "1025bb600e0a50f1e7365e366786bf506d2832c0cf66cc69cc01517ee1fe37d7",
+    "out": "e7d6df535d3acacdb327b4caa2dda3cf59a385dabe6186444088fdaa76c7e914"
+  }
+}
