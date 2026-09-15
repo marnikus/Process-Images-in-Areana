@@ -1085,12 +1085,28 @@ class Bridge(QObject):
         }
         self.highlight_rect.emit(json.dumps(rect))
 
-    # ---- CDP Chrome connection ----
+    # ---- CDP Chrome connection (robust with sync fallback + diagnostics) ----
     def _schedule_coro(self, coro):
         try:
             import asyncio
-            asyncio.ensure_future(coro)
-        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(coro)
+                    return
+                loop.create_task(coro)
+                return
+            except RuntimeError:
+                pass
+            def _run():
+                try:
+                    asyncio.run(coro)
+                except Exception as e:
+                    log.warning(f"coro thread failed: {e}")
+            import threading
+            threading.Thread(target=_run, daemon=True).start()
+        except Exception as e:
+            log.warning(f"_schedule_coro failed: {e}")
             try:
                 coro.close()
             except Exception:
@@ -1100,14 +1116,49 @@ class Bridge(QObject):
     def get_tabs(self):
         if not self.cdp:
             return json.dumps([], ensure_ascii=False)
+        try:
+            tabs = self.cdp.fetch_tabs_sync()
+            if tabs:
+                payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs], ensure_ascii=False)
+                self.tabs_received.emit(payload)
+                return payload
+        except Exception as e:
+            log.debug(f"get_tabs sync failed: {e}")
         self._schedule_coro(self._do_fetch_tabs())
         return "pending"
+
+    @Slot(result=str)
+    def diagnose_chrome(self):
+        if not self.cdp:
+            return json.dumps({"error": "CDP not available"}, ensure_ascii=False)
+        try:
+            diag = self.cdp.diagnose_sync()
+            self._log(diag.get("summary",""), "info" if "✅" in diag.get("summary","") else "warn")
+            for chk in diag.get("checks", []):
+                host = chk.get("host")
+                if chk.get("port_open"):
+                    self._log(f"  · {host}:{self.cdp._port} open — list: {chk.get('list_count')} tabs", "info")
+                else:
+                    self._log(f"  · {host}:{self.cdp._port} closed — {chk.get('list_error') or chk.get('version_error') or 'no response'}", "warn")
+                for t in chk.get("tabs", [])[:5]:
+                    self._log(f"    - {t.get('title','')[:60]} — {t.get('url','')}", "success")
+            return json.dumps(diag, ensure_ascii=False)
+        except Exception as e:
+            err = f"Diagnose failed: {e}"
+            self._log(err, "error")
+            return json.dumps({"error": err}, ensure_ascii=False)
 
     async def _do_fetch_tabs(self):
         try:
             tabs = await self.cdp.fetch_tabs()
             payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs], ensure_ascii=False)
             self.tabs_received.emit(payload)
+            if not tabs:
+                try:
+                    diag = self.cdp.diagnose_sync()
+                    self._log(diag.get("summary",""), "warn")
+                except Exception:
+                    pass
         except Exception as e:
             self._log(f"❌ Tab fetch failed: {e}", "error")
 
@@ -1125,7 +1176,7 @@ class Bridge(QObject):
                 self._log(f"🔗 Connected to {ws_url[:60]}", "success")
                 self.connection_status.emit("connected")
             else:
-                self._log(f"❌ Connect failed", "error")
+                self._log(f"❌ Connect failed — check Chrome still open", "error")
                 self.connection_status.emit("error")
         except Exception as e:
             self._log(f"❌ Connect failed: {e}", "error")
@@ -1136,6 +1187,22 @@ class Bridge(QObject):
         if not self.cdp:
             self._log("CDP not available", "error")
             return
+        try:
+            tabs = self.cdp.fetch_tabs_sync()
+            if tabs:
+                tab_dicts = [{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs]
+                matches = best_matches(query, tab_dicts)
+                if matches:
+                    for m in matches[:3]:
+                        self._log(f"  · match ({m['kind']}): {m['title']} — {m['url']}", "success")
+                    self.tab_match_result.emit(query, json.dumps(matches, ensure_ascii=False))
+                    return
+                if not matches:
+                    self._log(f"❌ No tab matches “{query}”. Available: " + "; ".join(f"{t.title[:50]} — {t.url}" for t in tabs[:5]), "error")
+                    self.tab_match_result.emit(query, "[]")
+                    return
+        except Exception as e:
+            log.debug(f"find_tab_by_url sync failed: {e}")
         self._schedule_coro(self._do_find_tab(query))
 
     async def _do_find_tab(self, query: str):
@@ -1147,7 +1214,12 @@ class Bridge(QObject):
         try:
             tabs = await self.cdp.fetch_tabs()
             if not tabs:
-                self._log("⚠ No Chrome tabs found — start Chrome with --remote-debugging-port=9222 --user-data-dir=\"C:\\\\arena-images-chrome\"", "warn")
+                try:
+                    diag = self.cdp.diagnose_sync()
+                    self._log(diag.get("summary","⚠ No Chrome tabs found"), "warn")
+                    self._log("💡 Fix: 1) Close ALL Chrome windows. 2) Run: \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port=9222 --user-data-dir=\"C:\\arena-images-chrome\" 3) Open https://arena.ai in that NEW Chrome window. 4) Click Diagnose. 5) Open http://127.0.0.1:9222/json/list — you should see JSON.", "warn")
+                except Exception:
+                    self._log("⚠ No Chrome tabs found — start Chrome with --remote-debugging-port=9222 --user-data-dir=\"C:\\arena-images-chrome\"", "warn")
                 self.tab_match_result.emit(query, "[]")
                 return
             tab_dicts = [{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs]

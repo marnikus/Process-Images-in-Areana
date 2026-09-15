@@ -1,4 +1,4 @@
-/* cdp.js — Chrome remote debugging: fetch tabs, match URL to open tab, show connection status per row, pick desired tab */
+/* cdp.js — Chrome remote debugging: fetch tabs, match URL to open tab, show connection status per row, pick desired tab — robust with diagnostics */
 'use strict';
 
 const CDPPanel = {
@@ -6,6 +6,7 @@ const CDPPanel = {
   connected: false,
   selectedWs: '',
   lastMatchQuery: '',
+  _diagnoseBtn: null,
 
   init() {
     const refreshBtn = document.getElementById('refreshTabsBtn');
@@ -14,6 +15,47 @@ const CDPPanel = {
     const bookmarkInput = document.getElementById('urlBookmarkInput');
     const bookmarkConnectBtn = document.getElementById('urlBookmarkConnectBtn');
     const addBookmarkBtn = document.getElementById('addUrlBookmarkBtn');
+
+    // Add Diagnose button if not exists
+    if (connectBtn && !document.getElementById('diagnoseChromeBtn')) {
+      const diagBtn = document.createElement('button');
+      diagBtn.id = 'diagnoseChromeBtn';
+      diagBtn.className = 'btn-small';
+      diagBtn.title = 'Diagnose Chrome connection — checks 127.0.0.1:9222, localhost, host.docker.internal';
+      diagBtn.innerHTML = '<span class="material-icons" style="font-size:16px;">bug_report</span> Diagnose';
+      connectBtn.parentNode.insertBefore(diagBtn, connectBtn.nextSibling);
+      this._diagnoseBtn = diagBtn;
+      diagBtn.addEventListener('click', () => this.diagnose());
+    } else {
+      this._diagnoseBtn = document.getElementById('diagnoseChromeBtn');
+      if (this._diagnoseBtn) this._diagnoseBtn.addEventListener('click', () => this.diagnose());
+    }
+
+    const helpBtn = document.getElementById('chromeHelpBtn');
+    if (helpBtn) {
+      helpBtn.addEventListener('click', () => {
+        const msg = `How to start Chrome for Arena:
+
+1) Close ALL Chrome windows (check Task Manager, end all chrome.exe)
+2) Run: start-arena-chrome.bat (in repo root) OR manually:
+   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\\arena-images-chrome"
+3) A NEW Chrome window opens with dedicated profile C:\\arena-images-chrome
+4) In THAT window, open https://arena.ai and log in
+5) In Arena app, click "Diagnose" — you should see ✅ Found X tabs
+6) Click "Refresh tabs" — dropdown should list your arena.ai tab
+7) Select tab and click "Connect" or use Auto-Connect
+
+If http://127.0.0.1:9222/json/list shows "site can't be reached":
+- Port blocked by antivirus/firewall — allow Chrome
+- Try different port 9223: chrome.exe --remote-debugging-port=9223 ...
+  and change port in Arena settings (future)
+- Make sure you used --user-data-dir with NEW folder
+
+Test manually: open http://127.0.0.1:9222 in any browser — should show list of tabs as JSON.`;
+        LogConsole.log(msg, 'info');
+        alert(msg);
+      });
+    }
 
     if (refreshBtn) refreshBtn.addEventListener('click', () => this.fetchTabs());
     if (connectBtn) connectBtn.addEventListener('click', () => this.connectSelected());
@@ -24,26 +66,16 @@ const CDPPanel = {
       bookmarkInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') this.autoConnectBookmark();
       });
-      bookmarkInput.addEventListener('input', () => {
-        const v = bookmarkInput.value.trim();
-        if (v.length > 3) {
-          // live preview of matches? optional
-        }
-      });
     }
     if (bookmarkConnectBtn) bookmarkConnectBtn.addEventListener('click', () => this.autoConnectBookmark());
     if (addBookmarkBtn) addBookmarkBtn.addEventListener('click', () => this.addBookmark());
 
-    // hook bridge signals if already available (bridge-ready will also wire)
     this.bindBridgeSignals();
-
-    // initial fetch after short delay
     setTimeout(() => this.fetchTabs(), 800);
     setTimeout(() => this.loadBookmarks(), 900);
   },
 
   bindBridgeSignals() {
-    // Will be called from arena-app after bridge ready as well
     if (!App.bridge) return;
     try {
       if (App.bridge.tabs_received) {
@@ -64,10 +96,17 @@ const CDPPanel = {
   },
 
   fetchTabs() {
-    LogConsole.log('🔍 Fetching Chrome tabs from http://127.0.0.1:9222/json/list …', 'info');
+    LogConsole.log('🔍 Fetching Chrome tabs from http://127.0.0.1:9222/json/list … (also tries localhost, host.docker.internal)', 'info');
     if (App.bridge && App.bridge.get_tabs) {
       try {
-        App.bridge.get_tabs();
+        App.bridge.get_tabs((res) => {
+          if (res && res !== 'pending') {
+            try {
+              const tabs = JSON.parse(res);
+              if (Array.isArray(tabs)) this.onTabsReceived(res);
+            } catch {}
+          }
+        });
       } catch (e) {
         LogConsole.log('get_tabs failed: ' + e, 'error');
       }
@@ -76,16 +115,45 @@ const CDPPanel = {
     }
   },
 
+  diagnose() {
+    LogConsole.log('🩺 Diagnosing Chrome remote debugging… checking 127.0.0.1:9222, localhost, host.docker.internal', 'info');
+    if (App.bridge && App.bridge.diagnose_chrome) {
+      App.bridge.diagnose_chrome((res) => {
+        try {
+          const diag = JSON.parse(res);
+          LogConsole.log(diag.summary || 'Diagnose done', diag.summary && diag.summary.includes('✅') ? 'success' : 'warn');
+          if (diag.tabs && diag.tabs.length) {
+            this.onTabsReceived(JSON.stringify(diag.tabs));
+          }
+          // show detailed in console as well
+          console.log('Chrome diagnose', diag);
+          // If no tabs, show help
+          if (!diag.tabs || diag.tabs.length === 0) {
+            LogConsole.log('💡 FIX for Windows: 1) Close ALL Chrome windows (check Task Manager). 2) Run in CMD: \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port=9222 --user-data-dir=\"C:\\arena-images-chrome\" 3) In that NEW Chrome, open https://arena.ai and log in. 4) Click Refresh tabs. 5) If still fails, open http://127.0.0.1:9222/json/list in browser — you should see JSON. If you see \"site can’t be reached\", port is blocked or Chrome didn’t start with flag. 6) Try disabling antivirus, or use port 9223 and change settings.', 'warn');
+          }
+        } catch (e) {
+          LogConsole.log('Diagnose parse failed: ' + e + ' raw: ' + (res||'').slice(0,200), 'error');
+        }
+      });
+    } else {
+      LogConsole.log('diagnose_chrome not available', 'error');
+    }
+  },
+
   onTabsReceived(payload) {
     try {
+      if (payload === 'pending') return;
       const tabs = JSON.parse(payload);
       this.tabs = tabs || [];
       this.renderTabSelect(this.tabs);
-      LogConsole.log(`📑 Received ${this.tabs.length} Chrome tabs`, 'success');
-      // update URL rows connection status
+      if (this.tabs.length === 0) {
+        LogConsole.log('⚠ Received 0 tabs — Chrome running but no pages? Open a page in the dedicated Chrome (C:\\arena-images-chrome) and click Diagnose.', 'warn');
+      } else {
+        LogConsole.log(`📑 Received ${this.tabs.length} Chrome tabs`, 'success');
+      }
       this.updateUrlRowsConnection();
     } catch (e) {
-      LogConsole.log('Failed to parse tabs: ' + e, 'error');
+      LogConsole.log('Failed to parse tabs: ' + e + ' payload: ' + (payload||'').slice(0,200), 'error');
     }
   },
 
@@ -103,9 +171,7 @@ const CDPPanel = {
       opt.title = `${t.title}\n${t.url}`;
       sel.appendChild(opt);
     });
-    // try restore previous
     if (prev) sel.value = prev;
-    // if bookmark input has value, highlight matching
     const bmInput = document.getElementById('urlBookmarkInput');
     if (bmInput && bmInput.value.trim()) {
       this.highlightMatchingTabs(bmInput.value.trim());
@@ -115,12 +181,8 @@ const CDPPanel = {
   highlightMatchingTabs(query) {
     if (!query) return;
     const q = query.toLowerCase();
-    const sel = document.getElementById('tabSelect');
-    if (!sel) return;
-    // simple scoring: if url contains query, select first
     for (const t of this.tabs) {
       if ((t.url && t.url.toLowerCase().includes(q)) || (t.title && t.title.toLowerCase().includes(q))) {
-        // don't auto-select, just log
         LogConsole.log(`💡 Potential match for “${query}”: ${t.title} — ${t.url}`, 'info');
         break;
       }
@@ -131,7 +193,7 @@ const CDPPanel = {
     const sel = document.getElementById('tabSelect');
     const ws = sel ? sel.value : this.selectedWs;
     if (!ws) {
-      LogConsole.log('⚠ No tab selected', 'warn');
+      LogConsole.log('⚠ No tab selected — click Refresh tabs first, then pick a tab', 'warn');
       return;
     }
     LogConsole.log('🔗 Connecting to ' + ws.slice(0, 60) + '…', 'info');
@@ -148,14 +210,13 @@ const CDPPanel = {
     }
     if (status === 'connected') {
       this.connected = true;
-      LogConsole.log('✅ Chrome connected', 'success');
+      LogConsole.log('✅ Chrome connected — you can now run jobs', 'success');
     } else if (status === 'disconnected') {
       this.connected = false;
       LogConsole.log('🔌 Chrome disconnected', 'warn');
     } else if (status === 'error') {
-      LogConsole.log('❌ Chrome connection error', 'error');
+      LogConsole.log('❌ Chrome connection error — click Diagnose for details', 'error');
     }
-    // update url rows
     this.updateUrlRowsConnection();
   },
 
@@ -171,7 +232,6 @@ const CDPPanel = {
     if (App.bridge && App.bridge.find_tab_by_url) {
       App.bridge.find_tab_by_url(query);
     }
-    // also remember as last
     if (App.bridge && App.bridge.set_last_url_preset) {
       App.bridge.set_last_url_preset(query);
     }
@@ -181,23 +241,25 @@ const CDPPanel = {
     try {
       const matches = JSON.parse(payload);
       if (!matches || matches.length === 0) {
-        LogConsole.log(`❌ No Chrome tab matches “${query}”. Start Chrome with --remote-debugging-port=9222 --user-data-dir="C:\\arena-images-chrome" and open the page.`, 'error');
+        LogConsole.log(`❌ No Chrome tab matches “${query}”. Click Diagnose, check Chrome was started with --remote-debugging-port=9222 --user-data-dir="C:\\arena-images-chrome" and that arena.ai page is open in THAT Chrome window (not your normal Chrome).`, 'error');
+        // also trigger diagnose automatically
+        if (this.tabs.length === 0) {
+          LogConsole.log('🩺 Auto-running Diagnose…', 'info');
+          setTimeout(() => this.diagnose(), 500);
+        }
         return;
       }
       const best = matches[0];
       LogConsole.log(`🎯 Best match (${best.kind}, score ${best.score}): ${best.title} — ${best.url}`, 'success');
-      // auto-select in dropdown
       const sel = document.getElementById('tabSelect');
       if (sel) {
         sel.value = best.ws_url;
         this.selectedWs = best.ws_url;
       }
-      // auto-connect
       if (App.bridge && App.bridge.connect_tab) {
         LogConsole.log(`🔗 Auto-connecting to best match: ${best.title}`, 'info');
         App.bridge.connect_tab(best.ws_url);
       }
-      // also update URL list rows if any URL equals query, mark connected
       this.updateUrlRowsConnection();
     } catch (e) {
       LogConsole.log('Tab match parse failed: ' + e, 'error');
@@ -215,7 +277,6 @@ const CDPPanel = {
           } catch (e) {}
         });
       } catch (e) {
-        // fallback sync
         try {
           const res = App.bridge.get_url_presets();
           if (typeof res === 'string') this.renderBookmarks(res);
@@ -275,13 +336,9 @@ const CDPPanel = {
   },
 
   updateUrlRowsConnection() {
-    // for each URL in App.state.urls, check if any Chrome tab url matches host/path
     if (!App.state || !App.state.urls) return;
     const tbody = document.getElementById('urlTableBody');
     if (!tbody) return;
-    // we need to re-render? Instead add data attribute via existing render
-    // If tabs list present, we can annotate each row after render
-    // Simple: for each url row, find best tab match score
     const rows = tbody.querySelectorAll('tr');
     App.state.urls.forEach((u, idx) => {
       const tr = rows[idx];
@@ -290,17 +347,20 @@ const CDPPanel = {
       if (!connCell) return;
       const match = this.findBestTabForUrl(u.url);
       if (match) {
-        connCell.innerHTML = `<span style="color:var(--success); font-size:11px;" title="${this.esc(match.title)} — ${match.url}">● ${this.esc(match.kind)} (${match.score})</span>`;
+        connCell.innerHTML = `<span style="color:var(--success, #4ade80); font-size:11px;" title="${this.esc(match.title)} — ${match.url}">● ${this.esc(match.kind)} (${match.score})</span>`;
         connCell.title = `${match.title} — ${match.url}`;
       } else {
-        connCell.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">○ no tab</span>`;
+        if (this.tabs.length === 0) {
+          connCell.innerHTML = `<span style="color:var(--text-muted); font-size:11px;" title="No Chrome tabs — click Diagnose">○ no chrome</span>`;
+        } else {
+          connCell.innerHTML = `<span style="color:var(--text-muted); font-size:11px;">○ no tab</span>`;
+        }
       }
     });
   },
 
   findBestTabForUrl(url) {
     if (!this.tabs || this.tabs.length === 0) return null;
-    // reuse simple scoring similar to python
     const q = url.toLowerCase();
     let best = null;
     let bestScore = -1;
