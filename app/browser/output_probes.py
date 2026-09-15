@@ -1,11 +1,16 @@
 """Output probes — JS builders for baseline and new-output check.
 
-Owns: JS payloads for output detection v3 (smallest container,
-normalized keys, DOM-between validity, scroll assist). Python wrappers
-stay tiny; JS length is exempt per RULE 16.1.5. No Qt imports.
+Owns: JS payloads for output detection v4 (turn-container reference
+exclusion, no direction flip, below-pairing, fallback details). Python
+wrappers stay tiny; JS length is exempt per RULE 16.1.5. No Qt imports.
+
+v4 (2026-09-16): v3's document-wide flex-col-reverse flip always fired
+(the message list itself is ol.flex-col-reverse) and the above-pool
+downloaded the reference preview. v4 pairs DOM-after-prompt and excludes
+references structurally. See docs/archive/2026-09-16-wrong-image-downloaded/.
 """
 
-# ideal-size: 320 lines reason=single JS payload for output check v3;
+# ideal-size: 360 lines reason=single JS payload for output check v4;
 # splitting the in-page probe literal would break CDP evaluate contract.
 
 from __future__ import annotations
@@ -67,7 +72,7 @@ JS_BASELINE_V3 = r"""
 })
 """
 
-JS_CHECK_NEW_OUTPUT_V3 = r"""
+JS_CHECK_NEW_OUTPUT_V4 = r"""
 ((oldKeys, correlationId) => {
   try {
     function normKey(src) {
@@ -122,6 +127,34 @@ JS_CHECK_NEW_OUTPUT_V3 = r"""
       const c = cls || '';
       return c.includes('w-32') || c.includes('h-16')
         || c.includes('w-16');
+    }
+    function smallBox(r) {
+      try {
+        return r.height < window.innerHeight * 0.9
+          && r.width < window.innerWidth * 0.95;
+      } catch(e) { return false; }
+    }
+    function sharesTurnWithJob(img, jobs) {
+      // Reference previews live in the same turn container as their
+      // prompt (div.flex.flex-col.gap-4 holding BOTH the w-32 img AND
+      // the JOB-ID bubble). Generated output lives in its own
+      // assistant turn, so no small ancestor is ever shared with the
+      // prompt. Direction-independent (v4, 2026-09-16).
+      let cur = null;
+      try { cur = img.parentElement; } catch(e) { return false; }
+      for (let i = 0; i < 8 && cur; i++) {
+        const tag = cur.tagName || '';
+        if (tag === 'BODY' || tag === 'HTML') break;
+        try {
+          if (smallBox(cur.getBoundingClientRect())) {
+            for (const j of jobs) {
+              if (j.el && cur.contains(j.el)) return true;
+            }
+          }
+        } catch(e) {}
+        cur = cur.parentElement;
+      }
+      return false;
     }
 
     let spinning = false;
@@ -296,6 +329,11 @@ JS_CHECK_NEW_OUTPUT_V3 = r"""
           debugFilt.push({reason: 'data', src: el.src.slice(-40)});
           continue;
         }
+        if (el.src.indexOf('r2.cloudflarestorage.com') < 0
+            && el.src.indexOf('messages-prod.') < 0) {
+          debugFilt.push({reason: 'non_r2', src: el.src.slice(-40)});
+          continue;
+        }
         if (oldSet.has(normKey(el.src))) {
           debugFilt.push({reason: 'in_old', src: el.src.slice(-40)});
           continue;
@@ -309,10 +347,13 @@ JS_CHECK_NEW_OUTPUT_V3 = r"""
         const cls = el.className || '';
         const large = isLarge(rect, el.naturalWidth, cls);
         const inside = insideAnyJob(el);
-        if (inside && isSmallThumb(rect, cls)) {
+        let inGrid = false;
+        try { inGrid = !!el.closest('div.no-scrollbar'); } catch(e) {}
+        const isRef = sharesTurnWithJob(el, allJobs)
+          || isSmallThumb(rect, cls);
+        if (isRef) {
           debugFilt.push({reason: 'reference',
             src: el.src.slice(-40), cls: cls.slice(0, 40)});
-          continue;
         }
         const info = {
           el: el, src: el.src, key: normKey(el.src),
@@ -324,10 +365,11 @@ JS_CHECK_NEW_OUTPUT_V3 = r"""
           complete: el.complete,
           naturalWidth: el.naturalWidth,
           selector: sel, isLarge: large,
-          insideJob: inside,
+          insideJob: inside, isRef: isRef, inGrid: inGrid,
           top: rect.top, left: rect.left
         };
         allNew.push(info);
+        if (info.isRef) continue;
         if (jobFound && jobEl) {
           const beforeCurr = isBefore(el, jobEl);
           const afterCurr = isBefore(jobEl, el);
@@ -351,42 +393,35 @@ JS_CHECK_NEW_OUTPUT_V3 = r"""
       }
     }
 
-    let isReverse = false;
-    try {
-      isReverse = !!document.querySelector(
-        'ol.flex-col-reverse, div.flex-col-reverse');
-    } catch(e) {}
+    // v4: NO direction flip. The message list itself is
+    // ol.flex-col-reverse, so a document-wide "is reversed?" check is
+    // always true — v3's above-pool then downloaded the reference
+    // preview (2026-09-16). DOM order pairs each prompt with its
+    // output (output is DOM-after its prompt); references are excluded
+    // structurally, never by direction.
     let pool = [];
     let poolKind = 'none';
     if (!jobFound) {
-      if (validAbove.length > 0) {
-        validAbove.sort((a, b) => {
+      const cands = validAbove.filter(n => !n.isRef);
+      if (cands.length > 0) {
+        cands.sort((a, b) => {
           if (Math.abs(a.top - b.top) > 5) return b.top - a.top;
-          return (b.width || 0) - (a.width || 0);
+          const aw = (a.rect && a.rect.width) || 0;
+          const bw = (b.rect && b.rect.width) || 0;
+          return bw - aw;
         });
-        pool = validAbove;
+        pool = cands;
         poolKind = 'nofilter';
-      }
-    } else if (isReverse) {
-      for (const b of validBelow) belowCands.push(b);
-      validBelow = [];
-      if (validAbove.length > 0) {
-        validAbove.sort((a, b) => {
-          try {
-            const pos = a.el.compareDocumentPosition(b.el);
-            if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return 1;
-            if (pos & Node.DOCUMENT_POSITION_PRECEDING) return -1;
-          } catch(e) {}
-          return b.top - a.top;
-        });
-        pool = validAbove;
-        poolKind = 'above';
       }
     } else {
       for (const a of validAbove) invalidAbove.push(a);
       validAbove = [];
-      if (validBelow.length > 0) {
-        validBelow.sort((a, b) => {
+      const below = validBelow.filter(n => !n.isRef);
+      if (below.length > 0) {
+        below.sort((a, b) => {
+          const ag = a.inGrid ? 1 : 0;
+          const bg = b.inGrid ? 1 : 0;
+          if (bg !== ag) return bg - ag;
           try {
             const pos = a.el.compareDocumentPosition(b.el);
             if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
@@ -394,12 +429,21 @@ JS_CHECK_NEW_OUTPUT_V3 = r"""
           } catch(e) {}
           return a.top - b.top;
         });
-        pool = validBelow;
+        pool = below;
         poolKind = 'below';
       }
     }
     const largePool = pool.filter(c => c.isLarge);
     if (largePool.length > 0) pool = largePool;
+
+    function orderText() {
+      if (poolKind === 'below') {
+        return 'below verified: curr ' + correlationId
+          + ' < img < next ' + (nextId || 'none') + ' (DOM order)';
+      }
+      return poolKind + ' verified: prev ' + (prevId || 'none')
+        + ' < img < curr ' + correlationId + ' (DOM order)';
+    }
 
     for (const cand of pool) {
       const el = cand.el;
@@ -456,9 +500,7 @@ JS_CHECK_NEW_OUTPUT_V3 = r"""
         belowCount: belowCands.length,
         isLarge: cand.isLarge, top: cand.top,
         poolKind: poolKind,
-        orderCheck: poolKind + ' verified: prev '
-          + (prevId || 'none') + ' < img < curr '
-          + correlationId + ' (DOM order)'};
+        orderCheck: orderText()};
     }
 
     if (pool.length > 0) {
@@ -491,6 +533,7 @@ JS_CHECK_NEW_OUTPUT_V3 = r"""
           + ' before prev ' + prevId};
     }
     if (allNew.length > 0) {
+      const fbPool = jobFound ? belowCands : allNew;
       return {ready: false, reason: 'no_exact_above_found_wait_next',
         spinning: spinning, spinCount: spinCount,
         spinDetails: spinDetails, jobFound: jobFound,
@@ -501,7 +544,14 @@ JS_CHECK_NEW_OUTPUT_V3 = r"""
         allNewDetails: allNew.slice(0, 10).map(n => ({
           src: n.src, top: n.top,
           isLarge: n.isLarge, width: n.width,
-          selector: n.selector, rect: n.rect})),
+          selector: n.selector, rect: n.rect,
+          isReference: !!n.isRef, inGrid: !!n.inGrid})),
+        fallbackDetails: fbPool.filter(n => !n.isRef)
+          .slice(0, 10).map(n => ({
+            src: n.src, top: n.top,
+            isLarge: n.isLarge, width: n.width,
+            selector: n.selector, rect: n.rect,
+            isReference: false, inGrid: !!n.inGrid})),
         validAbove: 0, validBelow: validBelow.length,
         invalidAbove: invalidAbove.length,
         belowCount: belowCands.length,
@@ -563,7 +613,7 @@ def build_check_js(old_keys: list, correlation_id: str | None) -> str:
     """Return new-output check expression with normalized keys."""
     keys_json = json.dumps(list(old_keys or []))
     corr_json = json.dumps(correlation_id) if correlation_id else "null"
-    return f";({JS_CHECK_NEW_OUTPUT_V3})({keys_json}, {corr_json})"
+    return f";({JS_CHECK_NEW_OUTPUT_V4})({keys_json}, {corr_json})"
 
 
 def build_scroll_bottom_js() -> str:

@@ -78,6 +78,36 @@ def test_select_best_fallback_empty_vs_broken():
     assert select_best_fallback(None) is None
 
 
+def test_select_best_fallback_drops_reference():
+    details = [
+        {"src": "ref", "width": 2000, "top": 100, "isLarge": True,
+         "isReference": True, "rect": {"width": 128}},
+        {"src": "gen", "width": 1024, "top": 900, "isLarge": True,
+         "rect": {"width": 400}},
+    ]
+    best = select_best_fallback(details)
+    assert best["src"] == "gen"
+
+
+def test_select_best_fallback_all_reference_returns_none():
+    details = [
+        {"src": "ref", "width": 2000, "top": 100, "isLarge": True,
+         "isReference": True},
+    ]
+    assert select_best_fallback(details) is None
+
+
+def test_select_best_fallback_ranks_rendered_over_natural():
+    details = [
+        {"src": "natural-big", "width": 3000, "top": 100, "isLarge": True,
+         "rect": {"width": 150}},
+        {"src": "rendered-big", "width": 800, "top": 900, "isLarge": True,
+         "rect": {"width": 500}},
+    ]
+    best = select_best_fallback(details)
+    assert best["src"] == "rendered-big"
+
+
 def test_should_accept_fallback_needs_stable():
     assert should_accept_fallback(True, 5, 20.0) is False
     assert should_accept_fallback(False, 2, 20.0) is False

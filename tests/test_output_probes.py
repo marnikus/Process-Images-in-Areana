@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from app.browser.output_probes import (
-    JS_CHECK_NEW_OUTPUT_V3,
+    JS_CHECK_NEW_OUTPUT_V4,
     build_baseline_js,
     build_check_js,
     build_scroll_bottom_js,
@@ -18,19 +18,22 @@ from app.browser.output_probes import (
 
 def test_builders_return_evaluate_expressions():
     assert build_baseline_js().startswith(";(")
-    assert "JOB-ID" in JS_CHECK_NEW_OUTPUT_V3
-    assert "validAbove" in JS_CHECK_NEW_OUTPUT_V3
+    assert "JOB-ID" in JS_CHECK_NEW_OUTPUT_V4
+    assert "validAbove" in JS_CHECK_NEW_OUTPUT_V4
+    assert "fallbackDetails" in JS_CHECK_NEW_OUTPUT_V4
+    assert "div.flex-col-reverse" not in JS_CHECK_NEW_OUTPUT_V4
+    assert "ol.flex-col-reverse, div" not in JS_CHECK_NEW_OUTPUT_V4
     expr = build_check_js(["k1"], "ABC123")
     assert "ABC123" in expr
     assert "k1" in expr
-    assert build_scroll_bottom_js().startswith(";(")
+    assert build_scroll_bottom_js().startswith(";")
 
 
 def test_js_syntax_valid_via_node():
     if not shutil.which("node"):
         pytest.skip("node not available")
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
-        f.write("const probe = " + JS_CHECK_NEW_OUTPUT_V3 + ";")
+        f.write("const probe = " + JS_CHECK_NEW_OUTPUT_V4 + ";")
         path = f.name
     try:
         proc = subprocess.run(
@@ -47,7 +50,7 @@ def test_probe_against_dom_stub():
     harness = Path(__file__).parent / "js_harness_check.js"
     assert harness.exists()
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
-        f.write(JS_CHECK_NEW_OUTPUT_V3)
+        f.write(JS_CHECK_NEW_OUTPUT_V4)
         probe_path = f.name
     try:
         proc = subprocess.run(

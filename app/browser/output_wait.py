@@ -77,8 +77,11 @@ def _note_spinning(log_fn: Any, result: dict, seen: bool, last: float):
 
 
 def _best_candidate(result: dict) -> dict | None:
-    """Best fallback candidate dict from allNewDetails."""
-    details = result.get("allNewDetails")
+    """Best fallback: below-pool first, never a reference."""
+    details = result.get("fallbackDetails")
+    if not details:
+        raw = result.get("allNewDetails") or []
+        details = [d for d in raw if not d.get("isReference")]
     if not details:
         return None
     return select_best_fallback(details)
