@@ -100,21 +100,23 @@ def is_reference_candidate(cand: dict[str, Any]) -> bool:
 
 
 def select_best_fallback(details: list[dict]) -> dict | None:
-    """Pick largest bottom-most large candidate from allNew."""
+    """Pick largest bottom-most large candidate, never a reference."""
     if not details:
         return None
-    large = [d for d in details if d.get("isLarge")]
-    pool = large if large else details
+    pool = [d for d in details if not d.get("isReference")]
     if not pool:
         return None
+    large = [d for d in pool if d.get("isLarge")]
+    pool = large if large else pool
     return max(pool, key=_fallback_rank)
 
 
 def _fallback_rank(cand: dict[str, Any]) -> tuple:
-    """Rank for fallback: larger width wins, then lower top."""
-    width = cand.get("width", 0) or 0
+    """Rank: larger rendered width wins, then natural, then lower top."""
+    rect_w = _rect_width(cand)
+    width = _num_value(cand, "width")
     top = cand.get("top", 0) or 0
-    return (width, top)
+    return (rect_w, width, top)
 
 
 def should_accept_fallback(spinning: bool, stable: int, elapsed: float) -> bool:
@@ -168,4 +170,5 @@ def flatten_diagnostics(check: dict[str, Any]) -> dict[str, Any]:
     keys = ("orderCheck", "jobFound", "jobTop", "prevJobTop", "nextJobTop")
     keys += ("validAbove", "validBelow", "invalidAbove", "allNew", "allJobs")
     keys += ("poolKind", "reason", "jobId", "allNewDetails", "belowDetails")
+    keys += ("fallbackDetails",)
     return {k: check.get(k) for k in keys if k in check}

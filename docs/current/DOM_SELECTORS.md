@@ -441,3 +441,26 @@ All selectors will be centralized in `app/browser/site_adapter.py` as constants 
 **Bridge:** `data` now flattens `check` diagnostics (`orderCheck`, `jobTop`, `prevJobTop`, `validAbove`, ...); `wait_for_new_output` signature unchanged, `cdp_arena.py` 735 LOC.
 **Details:** `docs/archive/2026-09-16 WAIT_OUTPUT unsolving ongoing bug 5x job-id/README.md` (harness + plan + verification).
 
+### E4 — 2026-09-16 v4: never download the reference (below-pairing, no flip)
+
+**Why:** v3 waited correctly but downloaded the small reference preview above
+the prompt. Root cause: `ol.flex-col-reverse` is the message list itself, so
+v3's document-wide reverse check always fired and the above-pool picked the
+reference (large `naturalWidth`, prompt-bubble container excluded the sibling
+ref from the reference filter).
+**Fix:** deleted the direction flip; exact pool = non-reference candidates
+DOM-after the prompt and DOM-before the next prompt (`poolKind='below'`,
+`no-scrollbar` tiebreak); reference = shares a small ancestor with any
+JOB-ID element OR renders <=140px OR `w-32`/`h-16`/`w-16` (marked
+`isReference`, kept in `allNewDetails` for diagnostics, never pooled);
+candidates must be r2/`messages-prod` (`non_r2` filtered); fallback uses
+`fallbackDetails` (below-pool when job found, else all-new-minus-refs) ranked
+by rendered width. Reason strings unchanged (bridge matches them).
+**Layout (verified in `arena webpages/state/` save):** user turn
+`div...justify-end > div.group > div.flex.flex-col.gap-4` holds ref row
+(`justify-end ml-auto`, `img.w-32`) + prompt bubble (`bg-surface-raised`,
+`[JOB-ID]`); assistant turn holds `div.no-scrollbar > ... >
+div...justify-start > div.w-fit > div.relative >
+img.h-[50vh].w-[50vh]` — the download target.
+**Details:** `docs/archive/2026-09-16-wrong-image-downloaded/README.md`.
+

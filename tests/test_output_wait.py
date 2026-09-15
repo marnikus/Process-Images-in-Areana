@@ -47,7 +47,7 @@ async def test_spinning_then_ready():
         {"ready": True, "src": "https://x/done.png", "spinning": False},
     ])
     log_fn, logs = _logs()
-    req = WaitRequest(baseline={"output_srcs": []}, timeout_ms=8000, poll_sec=1)
+    req = WaitRequest(baseline={}, timeout_ms=8000, poll_sec=1)
     status, data = await wait_for_new(cdp, log_fn, req)
     assert status == "completed"
     assert "done.png" in data["new_src"]
@@ -123,3 +123,38 @@ def test_decide_done_rejects_unstable():
     done, _ = _decide_done(log_fn, result, state)
     assert done is False
     assert state.stable_count == 1
+
+
+def test_decide_done_never_picks_reference():
+    import time as time_mod
+    from app.browser.output_wait import _WaitState, _decide_done
+    log_fn, _ = _logs()
+    state = _WaitState(start=time_mod.time() - 11, keys=frozenset())
+    state.stable_src = "https://x/ref.png"
+    state.stable_count = 2
+    result = {
+        "ready": False, "spinning": False, "reason": "no_exact_above_found_wait_next",
+        "allNewDetails": [{"src": "https://x/ref.png", "width": 1200, "top": 100,
+                           "isLarge": True, "isReference": True}],
+    }
+    done, _ = _decide_done(log_fn, result, state)
+    assert done is False
+
+
+def test_decide_done_prefers_fallback_details():
+    import time as time_mod
+    from app.browser.output_wait import _WaitState, _decide_done
+    log_fn, _ = _logs()
+    state = _WaitState(start=time_mod.time() - 11, keys=frozenset())
+    state.stable_src = "https://x/gen.png"
+    state.stable_count = 2
+    result = {
+        "ready": False, "spinning": False, "reason": "no_exact_above_found_wait_next",
+        "allNewDetails": [{"src": "https://x/ref.png", "width": 2000, "top": 100,
+                           "isLarge": True, "isReference": True}],
+        "fallbackDetails": [{"src": "https://x/gen.png", "width": 1024, "top": 900,
+                             "isLarge": True, "rect": {"width": 400}}],
+    }
+    done, payload = _decide_done(log_fn, result, state)
+    assert done is True
+    assert payload[1]["new_src"].endswith("gen.png")
