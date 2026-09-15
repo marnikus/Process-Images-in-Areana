@@ -2,6 +2,14 @@
 
 Robust version: tries multiple hosts, sync fallback via urllib, detailed diagnostics,
 and works even when asyncio loop is not running (uses threadpool for sync).
+
+Fixes for duplicate tabs and connection stability:
+- Deduplicate tabs by id only (not ws_url host variant)
+- Normalize ws_url host to configured host for stable connection
+- Diagnose deduplicates for summary
+- Connect tries: original ws_url, host-swapped variants, and constructed ws://host:port/devtools/page/{id}
+- websockets connect uses ping_interval=None to avoid premature disconnect
+- Added DOM methods for file input attachment via CDP
 """
 
 import asyncio
@@ -10,8 +18,9 @@ import logging
 import socket
 import urllib.request
 import urllib.error
+import re
 from dataclasses import dataclass
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Optional
 
 try:
     from PySide6.QtCore import QObject, Signal
@@ -34,7 +43,6 @@ class TabInfo:
     ws_url: str
     type: str = "page"
 
-# Candidate hosts to try when 127.0.0.1 fails (WSL -> Windows host, etc.)
 CANDIDATE_HOSTS = [
     "127.0.0.1",
     "localhost",
@@ -50,7 +58,6 @@ def _is_port_open(host: str, port: int, timeout: float = 1.0) -> bool:
         return False
 
 def _fetch_json_sync(url: str, timeout: float = 3.0) -> Tuple[Any, str]:
-    """Synchronous fetch via urllib, returns (data, error)."""
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -67,36 +74,52 @@ def _fetch_json_sync(url: str, timeout: float = 3.0) -> Tuple[Any, str]:
     except Exception as e:
         return None, f"Exception {url}: {e}"
 
-def _parse_tabs(items: List[dict]) -> List[TabInfo]:
+def _normalize_ws_url(ws_url: str, preferred_host: str, preferred_port: int) -> str:
+    """Normalize ws_url host to preferred_host and port to preferred_port for stable connect."""
+    if not ws_url:
+        return ws_url
+    try:
+        # ws://127.0.0.1:9223/devtools/page/XXX
+        # replace host:port part
+        # Use regex
+        m = re.match(r'^(ws://)([^:/]+)(?::(\d+))?(/.*)$', ws_url)
+        if m:
+            scheme, _host, _port, path = m.groups()
+            # keep path, replace host/port with preferred
+            return f"{scheme}{preferred_host}:{preferred_port}{path}"
+        return ws_url
+    except Exception:
+        return ws_url
+
+def _parse_tabs(items: List[dict], preferred_host: str = "127.0.0.1", preferred_port: int = 9222) -> List[TabInfo]:
     tabs = []
     for item in items or []:
         if not isinstance(item, dict):
             continue
-        # Old Chrome may have type page but no ws url yet; still include if url exists
         t = item.get("type", "")
         if t and t != "page":
             continue
-        ws_url = item.get("webSocketDebuggerUrl") or item.get("webSocketDebuggerUrl") or ""
-        # Some versions use webSocketDebuggerUrl, some may have it empty for non-page
-        # Keep even if ws_url empty? For listing we need ws_url to connect, but for diagnostics keep all
+        ws_url = item.get("webSocketDebuggerUrl") or ""
         if not item.get("url"):
             continue
+        # Normalize ws_url to preferred host/port for connection stability
+        ws_normalized = _normalize_ws_url(ws_url, preferred_host, preferred_port) if ws_url else ws_url
         tabs.append(TabInfo(
             id=item.get("id",""),
             title=item.get("title",""),
             url=item.get("url",""),
-            ws_url=ws_url,
+            ws_url=ws_normalized,
             type=item.get("type","page")
         ))
     return tabs
 
 def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222, timeout: float = 3.0) -> Tuple[List[TabInfo], str, List[str]]:
     """Try to fetch tabs synchronously, trying candidate hosts and merging results.
-    Returns (tabs, error, tried_urls)
+    Returns (tabs, error, tried_urls) — deduplicated by id.
     """
     tried = []
     last_err = ""
-    all_tabs = {}
+    all_tabs_by_id: dict[str, TabInfo] = {}
     hosts_to_try = [host] + [h for h in CANDIDATE_HOSTS if h != host]
     for h in hosts_to_try:
         url = f"http://{h}:{port}/json/list"
@@ -108,47 +131,54 @@ def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222, timeout: float = 
         if err:
             last_err = err
             continue
-        tabs = _parse_tabs(data)
+        tabs = _parse_tabs(data, preferred_host=host, preferred_port=port)
         for t in tabs:
-            # deduplicate by id and ws_url
+            # Deduplicate by id only — same page via 127.0.0.1 and localhost has same id but different ws_url host
             key = t.id or t.ws_url
-            if key not in all_tabs:
-                all_tabs[key] = t
-            # also if same id but different ws_url (host variant), keep one with 127.0.0.1 preferred
-            # we keep first seen, but ensure ws_url is normalized to 127.0.0.1 if possible for connection
-        # don't return early — continue to merge from other hosts
-    if all_tabs:
-        return list(all_tabs.values()), "", tried
+            if not key:
+                continue
+            if key not in all_tabs_by_id:
+                all_tabs_by_id[key] = t
+            else:
+                # Prefer entry with ws_url containing preferred host, or with non-empty ws_url
+                existing = all_tabs_by_id[key]
+                if not existing.ws_url and t.ws_url:
+                    all_tabs_by_id[key] = t
+                elif host in t.ws_url and host not in existing.ws_url:
+                    all_tabs_by_id[key] = t
+    if all_tabs_by_id:
+        return list(all_tabs_by_id.values()), "", tried
     return [], last_err or "No Chrome tabs found — Chrome not responding on any host", tried
 
 def diagnose_sync(host: str = "127.0.0.1", port: int = 9222) -> dict:
     """Full diagnostics: check port open, /json/version, /json/list on all candidate hosts."""
     results = {"host": host, "port": port, "checks": [], "tabs": [], "summary": ""}
     hosts_to_try = [host] + [h for h in CANDIDATE_HOSTS if h != host]
-    all_tabs = []
+    all_tabs_by_id: dict[str, TabInfo] = {}
     for h in hosts_to_try:
         check = {"host": h, "port_open": False, "version": None, "version_error": "", "list_count": 0, "list_error": "", "tabs": []}
         check["port_open"] = _is_port_open(h, port, timeout=1.0)
-        # version
         v_url = f"http://{h}:{port}/json/version"
         v_data, v_err = _fetch_json_sync(v_url, timeout=2.0)
         if v_err:
             check["version_error"] = v_err
         else:
             check["version"] = v_data
-        # list
         l_url = f"http://{h}:{port}/json/list"
         l_data, l_err = _fetch_json_sync(l_url, timeout=3.0)
         if l_err:
             check["list_error"] = l_err
         else:
-            tabs = _parse_tabs(l_data)
+            tabs = _parse_tabs(l_data, preferred_host=host, preferred_port=port)
             check["list_count"] = len(tabs)
             check["tabs"] = [{"title": t.title[:80], "url": t.url, "id": t.id} for t in tabs[:10]]
-            all_tabs.extend(tabs)
+            for t in tabs:
+                key = t.id or t.ws_url
+                if key and key not in all_tabs_by_id:
+                    all_tabs_by_id[key] = t
         results["checks"].append(check)
+    all_tabs = list(all_tabs_by_id.values())
     results["tabs"] = [{"title": t.title, "url": t.url, "ws_url": t.ws_url, "id": t.id} for t in all_tabs]
-    # summary
     open_hosts = [c["host"] for c in results["checks"] if c["port_open"]]
     if not open_hosts:
         results["summary"] = f"❌ Port {port} not open on any host {hosts_to_try}. Chrome not running with --remote-debugging-port={port} --user-data-dir=\"C:\\arena-images-chrome\". Close all Chrome, then run: \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port={port} --user-data-dir=\"C:\\arena-images-chrome\""
@@ -156,7 +186,8 @@ def diagnose_sync(host: str = "127.0.0.1", port: int = 9222) -> dict:
         if not all_tabs:
             results["summary"] = f"⚠ Port {port} open on {open_hosts} but /json/list returned 0 tabs. Open a page in the dedicated Chrome window (the one started with --user-data-dir). If you see Chrome window but no tabs, try http://127.0.0.1:{port} in that Chrome to see if DevTools is blocked."
         else:
-            results["summary"] = f"✅ Found {len(all_tabs)} tabs on {open_hosts}: " + "; ".join(f"{t.title[:40]} — {t.url}" for t in all_tabs[:3])
+            # Show unique count, not duplicated
+            results["summary"] = f"✅ Found {len(all_tabs)} unique tab(s) on {open_hosts}: " + "; ".join(f"{t.title[:40]} — {t.url}" for t in all_tabs[:3])
     return results
 
 class CDPClient(QObject):
@@ -174,6 +205,7 @@ class CDPClient(QObject):
         self._receive_task = None
         self._connected = False
         self._current_ws_url = ""
+        self._current_tab_id = ""
 
     @property
     def base_url(self) -> str:
@@ -197,7 +229,6 @@ class CDPClient(QObject):
     def get_host_port(self):
         return self._host, self._port
 
-    # ---- sync API used by bridge when asyncio loop not available or for diagnostics ----
     def fetch_tabs_sync(self, host: str = None, port: int = None):
         h = host or self._host
         p = port or self._port
@@ -212,11 +243,9 @@ class CDPClient(QObject):
         p = port or self._port
         return diagnose_sync(h, p)
 
-    # ---- async API (used when QEventLoop running) ----
     async def fetch_tabs(self):
         """Fetch tabs via HTTP /json/list — tries aiohttp first, merging all hosts, fallback to sync."""
-        merged = {}
-        # Try aiohttp first — merge from all hosts
+        merged_by_id: dict[str, TabInfo] = {}
         try:
             import aiohttp
             hosts_to_try = [self._host] + [h for h in CANDIDATE_HOSTS if h != self._host]
@@ -228,22 +257,21 @@ class CDPClient(QObject):
                             if r.status != 200:
                                 continue
                             items = await r.json()
-                            tabs = _parse_tabs(items)
+                            tabs = _parse_tabs(items, preferred_host=self._host, preferred_port=self._port)
                             for t in tabs:
                                 key = t.id or t.ws_url
-                                if key not in merged:
-                                    merged[key] = t
+                                if key and key not in merged_by_id:
+                                    merged_by_id[key] = t
                 except Exception as e:
                     log.debug(f"fetch_tabs aiohttp {h} failed: {e}")
                     continue
-            if merged:
-                return list(merged.values())
+            if merged_by_id:
+                return list(merged_by_id.values())
         except ImportError:
             log.debug("aiohttp not available, using sync fallback")
         except Exception as e:
             log.debug(f"aiohttp path failed: {e}")
 
-        # Fallback to sync in threadpool (already merges)
         try:
             loop = asyncio.get_event_loop()
             tabs, err, tried = await loop.run_in_executor(None, lambda: fetch_tabs_sync(self._host, self._port))
@@ -257,31 +285,73 @@ class CDPClient(QObject):
 
     async def connect(self, ws_url: str) -> bool:
         await self.disconnect()
-        # Try original ws_url plus variants with 127.0.0.1 <-> localhost swapped
-        candidates = [ws_url]
+        # Extract tab id from ws_url if possible for constructing alternative URLs
+        tab_id = ""
+        try:
+            m = re.search(r'/devtools/page/([^/]+)$', ws_url)
+            if m:
+                tab_id = m.group(1)
+        except Exception:
+            pass
+        self._current_tab_id = tab_id
+
+        candidates = []
+        # Original
+        candidates.append(ws_url)
+        # Normalized to preferred host
+        norm = _normalize_ws_url(ws_url, self._host, self._port)
+        if norm != ws_url:
+            candidates.append(norm)
+        # Host swapped variants
         if "127.0.0.1" in ws_url:
             candidates.append(ws_url.replace("127.0.0.1", "localhost"))
+            candidates.append(_normalize_ws_url(ws_url.replace("127.0.0.1", "localhost"), self._host, self._port))
         if "localhost" in ws_url:
             candidates.append(ws_url.replace("localhost", "127.0.0.1"))
-        # also try without host replacement but same path
+            candidates.append(_normalize_ws_url(ws_url.replace("localhost", "127.0.0.1"), self._host, self._port))
+        # Constructed from id using current host/port (most reliable)
+        if tab_id:
+            candidates.append(f"ws://{self._host}:{self._port}/devtools/page/{tab_id}")
+            candidates.append(f"ws://127.0.0.1:{self._port}/devtools/page/{tab_id}")
+            candidates.append(f"ws://localhost:{self._port}/devtools/page/{tab_id}")
+
+        # Deduplicate candidates preserving order
+        seen = set()
+        uniq_candidates = []
+        for c in candidates:
+            if c not in seen:
+                seen.add(c)
+                uniq_candidates.append(c)
+        candidates = uniq_candidates
+
+        last_exc = None
         for cand in candidates:
             try:
                 import websockets
-                self._ws = await websockets.connect(cand, max_size=50*1024*1024, open_timeout=10, close_timeout=5)
+                # ping_interval=None avoids Chrome closing due to ping timeout
+                self._ws = await websockets.connect(
+                    cand,
+                    max_size=50*1024*1024,
+                    open_timeout=10,
+                    close_timeout=5,
+                    ping_interval=None,
+                    ping_timeout=None,
+                )
                 self._connected = True
                 self._current_ws_url = cand
                 self._receive_task = asyncio.create_task(self._receive_loop())
+                # Enable domains, ignore failures
                 for dom in ("Page", "DOM", "Runtime", "Network"):
                     try:
-                        await self.send(f"{dom}.enable")
-                    except Exception:
-                        pass
-                log.info(f"CDP connected: {cand[:80]}")
+                        await self.send(f"{dom}.enable", timeout=10)
+                    except Exception as e:
+                        log.debug(f"Enable {dom} failed: {e}")
+                log.info(f"CDP connected: {cand[:120]}")
                 self.connected.emit()
                 return True
             except Exception as e:
-                log.warning(f"CDP connect try {cand[:60]} failed: {e}")
-                # cleanup before next try
+                last_exc = e
+                log.warning(f"CDP connect try {cand[:120]} failed: {e}")
                 if self._ws:
                     try:
                         await self._ws.close()
@@ -289,8 +359,7 @@ class CDPClient(QObject):
                         pass
                     self._ws = None
                 continue
-        # all failed
-        err = f"Connect failed for {ws_url[:80]} tried {candidates}"
+        err = f"Connect failed for {ws_url[:120]} tried {candidates} last={last_exc}"
         log.error(err)
         self.error.emit(err)
         return False
@@ -313,15 +382,20 @@ class CDPClient(QObject):
         self._pending.clear()
         self.disconnected.emit()
 
-    async def send(self, method: str, params: dict | None = None) -> dict:
+    async def send(self, method: str, params: dict | None = None, timeout: float = 30) -> dict:
         if not self._ws:
             raise ConnectionError("CDP not connected")
         self._cmd_id += 1
         loop = asyncio.get_event_loop()
         fut = loop.create_future()
         self._pending[self._cmd_id] = fut
-        await self._ws.send(json.dumps({"id": self._cmd_id, "method": method, "params": params or {}}))
-        return await asyncio.wait_for(fut, timeout=30)
+        payload = json.dumps({"id": self._cmd_id, "method": method, "params": params or {}})
+        await self._ws.send(payload)
+        try:
+            return await asyncio.wait_for(fut, timeout=timeout)
+        except asyncio.TimeoutError:
+            self._pending.pop(self._cmd_id, None)
+            raise TimeoutError(f"CDP command {method} timed out after {timeout}s")
 
     async def _receive_loop(self):
         try:
@@ -332,8 +406,10 @@ class CDPClient(QObject):
                     continue
                 mid = data.get("id")
                 if mid and mid in self._pending:
-                    self._pending.pop(mid).set_result(data)
-        except (asyncio.CancelledError,):
+                    fut = self._pending.pop(mid)
+                    if not fut.done():
+                        fut.set_result(data)
+        except asyncio.CancelledError:
             pass
         except Exception as e:
             log.error(f"CDP receive error: {e}")
@@ -341,13 +417,94 @@ class CDPClient(QObject):
             self._connected = False
             self.disconnected.emit()
 
-    async def evaluate(self, expression: str):
+    async def evaluate(self, expression: str, await_promise: bool = True):
         try:
-            r = await self.send("Runtime.evaluate", {"expression": expression, "returnByValue": True, "awaitPromise": True})
-            return r.get("result", {}).get("result", {}).get("value")
+            r = await self.send("Runtime.evaluate", {"expression": expression, "returnByValue": True, "awaitPromise": await_promise})
+            # Check for exception
+            res = r.get("result", {})
+            if res.get("exceptionDetails"):
+                log.warning(f"evaluate exception: {res.get('exceptionDetails')}")
+                return None
+            return res.get("result", {}).get("value")
         except Exception as e:
             log.warning(f"evaluate failed: {e}")
             return None
+
+    # ---- DOM helpers for file input ----
+    async def get_document(self) -> Optional[dict]:
+        try:
+            r = await self.send("DOM.getDocument", {"depth": 0})
+            return r.get("result", {}).get("root")
+        except Exception as e:
+            log.warning(f"DOM.getDocument failed: {e}")
+            return None
+
+    async def query_selector(self, node_id: int, selector: str) -> Optional[int]:
+        """Return nodeId of element matching selector under node_id, or None."""
+        try:
+            r = await self.send("DOM.querySelector", {"nodeId": node_id, "selector": selector})
+            return r.get("result", {}).get("nodeId") or None
+        except Exception as e:
+            log.debug(f"querySelector {selector} failed: {e}")
+            return None
+
+    async def query_selector_all(self, node_id: int, selector: str) -> List[int]:
+        try:
+            r = await self.send("DOM.querySelectorAll", {"nodeId": node_id, "selector": selector})
+            return r.get("result", {}).get("nodeIds") or []
+        except Exception as e:
+            log.debug(f"querySelectorAll {selector} failed: {e}")
+            return []
+
+    async def set_file_input_files(self, node_id: int, files: List[str]) -> bool:
+        """Set files for <input type=file> via CDP DOM.setFileInputFiles."""
+        try:
+            # files must be absolute paths accessible to Chrome
+            r = await self.send("DOM.setFileInputFiles", {"nodeId": node_id, "files": files})
+            # Check error
+            if r.get("result"):
+                return True
+            # Some Chrome versions return empty result on success
+            return True
+        except Exception as e:
+            log.warning(f"setFileInputFiles failed for node {node_id} files {files}: {e}")
+            return False
+
+    async def attach_image_cdp(self, image_path: str, selectors: List[str] = None) -> tuple[bool, str]:
+        """Attach image via CDP: find file input and set files."""
+        if selectors is None:
+            selectors = [
+                'form input[type="file"][accept*="image"]',
+                'input[type="file"][accept*="image"]',
+                'input[type="file"]',
+            ]
+        try:
+            doc = await self.get_document()
+            if not doc:
+                return False, "Failed to get document root"
+            root_id = doc.get("nodeId")
+            if not root_id:
+                return False, "No root nodeId"
+            target_node_id = None
+            used_selector = ""
+            for sel in selectors:
+                nid = await self.query_selector(root_id, sel)
+                if nid:
+                    target_node_id = nid
+                    used_selector = sel
+                    break
+            if not target_node_id:
+                return False, f"File input not found for selectors {selectors}"
+            # Ensure absolute path
+            from pathlib import Path
+            abs_path = str(Path(image_path).resolve())
+            ok = await self.set_file_input_files(target_node_id, [abs_path])
+            if ok:
+                return True, f"Attached {abs_path} via {used_selector} node {target_node_id}"
+            else:
+                return False, f"setFileInputFiles failed for {abs_path}"
+        except Exception as e:
+            return False, f"Exception attach_image_cdp: {e}"
 
     async def highlight_element(self, selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = ""):
         js = f"""

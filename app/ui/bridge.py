@@ -65,6 +65,9 @@ class Bridge(QObject):
         self.state_path = Path(state_path)
         self.state = load_state(self.state_path)
         self._run_state = "idle"
+        self._cancel_requested = False
+        self._pause_requested = False
+        self._stop_after = False
         self._exported_paths = {}
         self.undo_service = UndoService(self.config.undo)
         self.cdp = cdp_client
@@ -706,46 +709,271 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
+    # ---- run controls — real implementation via CDP ----
+    def _get_selected_images(self):
+        return [img for img in self.state.images if img.selected and img.status in ("pending","failed","selected","needs_review","processing")]
+
+    def _get_enabled_urls(self):
+        return [u for u in self.state.urls if u.enabled]
+
     @Slot(result=str)
     def start_run(self):
+        prompt = self.state.prompt.get("user_prompt","").strip()
+        if not prompt:
+            self._log("⚠ Prompt is empty — set prompt before running", "warn")
+            return json.dumps({"ok": False, "error": "empty prompt"})
+        selected = self._get_selected_images()
+        if not selected:
+            self._log("⚠ No selected images — select images in queue", "warn")
+            return json.dumps({"ok": False, "error": "no selected images"})
+        urls = self._get_enabled_urls()
+        if not urls:
+            self._log("⚠ No enabled URLs", "warn")
+            return json.dumps({"ok": False, "error": "no enabled urls"})
+        if not self.cdp or not self.cdp.is_connected:
+            self._log("❌ Chrome not connected — click Diagnose, Refresh, Connect first. CDP must be connected to automate.", "error")
+            return json.dumps({"ok": False, "error": "cdp not connected"})
+        if self._run_state == "running":
+            self._log("⚠ Already running", "warn")
+            return json.dumps({"ok": False, "error": "already running"})
         self._run_state = "running"
-        self._log("Run started (stub — browser automation to be integrated)", "info")
-        self._emit_highlight_demo()
+        self._cancel_requested = False
+        self._pause_requested = False
+        self._stop_after = False
+        self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
         self._emit_arena_state()
+        self._schedule_coro(self._do_run_batch())
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def pause_run(self):
+        self._pause_requested = True
         self._run_state = "paused"
-        self._log("Paused", "warn")
+        self._log("⏸ Paused — will pause after current step", "warn")
         self._emit_arena_state()
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def resume_run(self):
+        self._pause_requested = False
         self._run_state = "running"
-        self._log("Resumed", "info")
+        self._log("▶ Resumed", "info")
         self._emit_arena_state()
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def stop_after_current(self):
+        self._stop_after = True
         self._run_state = "stopping"
-        self._log("Will stop after current", "warn")
+        self._log("⏹ Will stop after current image", "warn")
         self._emit_arena_state()
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def cancel_current(self):
+        self._cancel_requested = True
         self._run_state = "idle"
-        self._log("Current cancelled", "warn")
+        self._log("✖ Cancel requested — stopping", "error")
         self._emit_arena_state()
         return json.dumps({"ok": True})
 
     @Slot(str, result=str)
     def highlight_image(self, img_id: str):
         self._emit_highlight_demo()
+        if self.cdp and self.cdp.is_connected:
+            self._schedule_coro(self._do_highlight_demo_cdp(img_id))
         return json.dumps({"ok": True})
+
+    async def _do_highlight_demo_cdp(self, img_id: str):
+        try:
+            duration = self.config.get_state("highlight_duration", 3)
+            duration_ms = int(duration * 1000) if duration else 2000
+            from app.browser.cdp_arena import CDPArenaController
+            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+            await ctrl.highlight_selector('textarea[name="message"]', color="#FF0000", duration_ms=duration_ms, caption=f"Image {img_id[:8]}" if img_id else "Clicked element")
+            self.highlight_rect.emit(json.dumps({"x":200,"y":200,"width":320,"height":180,"duration":duration,"label":f"Image {img_id}" if img_id else "Clicked element"}))
+        except Exception as e:
+            self._log(f"Highlight failed: {e}", "warn")
+
+    async def _do_run_batch(self):
+        try:
+            from app.browser.cdp_arena import CDPArenaController
+            from app.utils.correlation import generate_correlation_id, build_final_prompt
+            from app.core.naming import get_output_path, atomic_write_bytes
+            from app.core.enums import ImageStatus
+            import asyncio
+
+            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+            ready, reasons = await ctrl.is_page_ready()
+            if not ready:
+                self._log(f"⚠ Page not ready: {', '.join(reasons)} — trying anyway", "warn")
+
+            prompt_template = self.state.prompt.get("user_prompt","")
+            selected_images = self._get_selected_images()
+            urls = self._get_enabled_urls()
+            suffix = self.state.settings.output.get("suffix", "_AI")
+            overwrite = self.state.settings.output.get("overwrite", False)
+            preserve_format = self.state.settings.output.get("preserve_format", True)
+            unique_tpl = self.state.settings.output.get("unique_suffix_template", "{base}_AI_{n}{ext}")
+            gen_timeout = self.state.settings.timeouts.get("generation", 180) * 1000
+            highlight_duration = self.config.get_state("highlight_duration", 3)
+
+            url_idx = 0
+            for img in selected_images:
+                if self._cancel_requested:
+                    self._log("Batch cancelled", "warn")
+                    break
+                if getattr(self, '_stop_after', False):
+                    self._log("Stopping after current as requested", "warn")
+                    break
+                while getattr(self, '_pause_requested', False):
+                    self._log("Paused, waiting for resume...", "warn")
+                    await asyncio.sleep(1)
+                    if self._cancel_requested:
+                        break
+
+                url_row = urls[url_idx % len(urls)] if urls else None
+                url_idx += 1
+                img.assigned_url_id = url_row.id if url_row else None
+                img.attempt_count += 1
+                img.status = ImageStatus.PROCESSING.value
+                self.state.recalculate_progress()
+                self._save_arena()
+
+                correlation_id = generate_correlation_id()
+                final_prompt = build_final_prompt(correlation_id, prompt_template)
+                self._log(f"[{correlation_id}] Starting {img.relative_path} with URL {url_row.url if url_row else 'N/A'}", "info")
+
+                try:
+                    baseline = await ctrl.capture_baseline()
+                    self._log(f"[{correlation_id}] Baseline: {baseline.get('output_count')} existing outputs", "info")
+
+                    if await ctrl.is_security_dialog_visible():
+                        self._log(f"[{correlation_id}] ⚠ Security verification detected — please solve manually in Chrome, then resume", "error")
+                        self._run_state = "paused"
+                        self._pause_requested = True
+                        self._emit_arena_state()
+                        while await ctrl.is_security_dialog_visible():
+                            if self._cancel_requested:
+                                raise RuntimeError("Cancelled during CAPTCHA")
+                            await asyncio.sleep(2)
+                        self._log(f"[{correlation_id}] Security dialog gone, continuing", "success")
+                        self._pause_requested = False
+                        self._run_state = "running"
+
+                    self._log(f"[{correlation_id}] Attaching {img.absolute_path}", "info")
+                    try:
+                        await ctrl.highlight_selector('input[type="file"]', color="#00FF00", duration_ms=int(highlight_duration*1000), caption="Attach image")
+                    except Exception:
+                        pass
+                    ok, reason = await ctrl.attach_image(img.absolute_path)
+                    if not ok:
+                        raise RuntimeError(f"Attach failed: {reason}")
+                    self._log(f"[{correlation_id}] Attachment verified: {reason}", "success")
+
+                    self._log(f"[{correlation_id}] Inserting prompt with token [{correlation_id}]", "info")
+                    try:
+                        await ctrl.highlight_selector('textarea[name="message"]', color="#00AAFF", duration_ms=int(highlight_duration*1000), caption="Prompt")
+                    except Exception:
+                        pass
+                    ok, reason = await ctrl.insert_prompt(final_prompt)
+                    if not ok:
+                        raise RuntimeError(f"Prompt insert failed: {reason}")
+                    verified, vreason = await ctrl.verify_prompt(final_prompt)
+                    if not verified:
+                        self._log(f"[{correlation_id}] Prompt mismatch {vreason}, retrying", "warn")
+                        ok, reason = await ctrl.insert_prompt(final_prompt)
+                        verified, vreason = await ctrl.verify_prompt(final_prompt)
+                        if not verified:
+                            raise RuntimeError(f"Prompt verification failed: {vreason}")
+
+                    self._log(f"[{correlation_id}] Submitting once", "info")
+                    try:
+                        await ctrl.highlight_selector('button[aria-label="Send message"]', color="#FFAA00", duration_ms=int(highlight_duration*1000), caption="Send")
+                    except Exception:
+                        pass
+                    ok, reason = await ctrl.submit()
+                    if not ok:
+                        raise RuntimeError(f"Submit failed: {reason}")
+                    self._log(f"[{correlation_id}] Submitted", "success")
+
+                    self._log(f"[{correlation_id}] Waiting for generation (timeout {gen_timeout}ms)", "info")
+                    status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout)
+                    if status == "failed":
+                        raise RuntimeError(f"Generation timeout or failed: {data.get('error')}")
+                    new_src = data.get("new_src")
+                    if not new_src:
+                        raise RuntimeError("New output src not found after generation")
+
+                    self._log(f"[{correlation_id}] New output detected: {new_src[:80]}...", "success")
+
+                    self._log(f"[{correlation_id}] Downloading highest-quality image", "info")
+                    success, file_bytes, ctype = await ctrl.download_image(new_src)
+                    if not success:
+                        raise RuntimeError(f"Download failed: {ctype}")
+                    if len(file_bytes) == 0:
+                        raise RuntimeError("Downloaded empty file")
+
+                    ext = None
+                    try:
+                        from PIL import Image
+                        import io
+                        im = Image.open(io.BytesIO(file_bytes))
+                        fmt = im.format or "PNG"
+                        ext = f".{fmt.lower()}" if fmt else ".png"
+                        if im.width == 0 or im.height == 0:
+                            raise ValueError("Zero dimension image")
+                    except Exception:
+                        if ".png" in new_src:
+                            ext = ".png"
+                        elif ".jpg" in new_src or ".jpeg" in new_src:
+                            ext = ".jpg"
+                        elif ".webp" in new_src:
+                            ext = ".webp"
+                        else:
+                            ext = ".png"
+
+                    from pathlib import Path
+                    source_path = Path(img.absolute_path)
+                    output_path = get_output_path(
+                        source_path,
+                        suffix=suffix,
+                        preserve_format=preserve_format,
+                        overwrite=overwrite,
+                        downloaded_ext=ext,
+                        unique_template=unique_tpl
+                    )
+                    atomic_write_bytes(source_path.parent, output_path, file_bytes)
+                    img.output_path = str(output_path)
+                    img.status = ImageStatus.COMPLETED.value
+                    img.error = None
+                    self._log(f"[{correlation_id}] ✅ Saved to {output_path} ({len(file_bytes)} bytes)", "success")
+                    try:
+                        self.highlight_rect.emit(json.dumps({"x": 100, "y": 100, "width": 200, "height": 200, "duration": highlight_duration, "label": f"Saved {output_path.name}"}))
+                    except Exception:
+                        pass
+
+                except Exception as e:
+                    img.status = ImageStatus.FAILED.value
+                    img.error = str(e)
+                    self._log(f"[{correlation_id}] ❌ Failed {img.relative_path}: {e}", "error")
+
+                finally:
+                    self.state.recalculate_progress()
+                    self._save_arena()
+                    await asyncio.sleep(1)
+
+            self._log("🏁 Batch complete", "success")
+            self._run_state = "idle"
+            self._emit_arena_state()
+
+        except Exception as e:
+            self._log(f"Batch runner crashed: {e}", "error")
+            import traceback
+            traceback.print_exc()
+            self._run_state = "idle"
+            self._emit_arena_state()
+
 
     # ---- undo system ----
     def _emit_undo_state(self):
@@ -1582,6 +1810,98 @@ class Bridge(QObject):
             return json.dumps(payload, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def cdp_attach_image_test(self, image_id: str):
+        if not self.cdp or not self.cdp.is_connected:
+            return json.dumps({"ok": False, "error": "CDP not connected"})
+        # Find image
+        img = None
+        for im in self.state.images:
+            if im.id == image_id or (not image_id and im.selected):
+                img = im
+                break
+        if not img:
+            # fallback first selected
+            sel = [i for i in self.state.images if i.selected]
+            if sel:
+                img = sel[0]
+        if not img:
+            return json.dumps({"ok": False, "error": "No image found, select one in queue"})
+        self._log(f"🧪 Testing attach for {img.absolute_path}", "info")
+        self._schedule_coro(self._do_cdp_attach_test(img.absolute_path))
+        return json.dumps({"ok": True, "path": img.absolute_path})
+
+    async def _do_cdp_attach_test(self, image_path: str):
+        try:
+            from app.browser.cdp_arena import CDPArenaController
+            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+            ok, reason = await ctrl.attach_image(image_path)
+            if ok:
+                self._log(f"✅ Attach test success: {reason}", "success")
+            else:
+                self._log(f"❌ Attach test failed: {reason}", "error")
+        except Exception as e:
+            self._log(f"Attach test exception: {e}", "error")
+
+    @Slot(str, result=str)
+    def cdp_insert_prompt_test(self, prompt_text: str):
+        if not self.cdp or not self.cdp.is_connected:
+            return json.dumps({"ok": False, "error": "CDP not connected"})
+        txt = prompt_text or self.state.prompt.get("user_prompt","") or "Test prompt [JOB-ID: test123]"
+        self._log(f"🧪 Testing prompt insert: {txt[:80]}...", "info")
+        self._schedule_coro(self._do_cdp_prompt_test(txt))
+        return json.dumps({"ok": True})
+
+    async def _do_cdp_prompt_test(self, prompt_text: str):
+        try:
+            from app.browser.cdp_arena import CDPArenaController
+            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+            ok, reason = await ctrl.insert_prompt(prompt_text)
+            if ok:
+                self._log(f"✅ Prompt insert success: {reason}", "success")
+                verified, vreason = await ctrl.verify_prompt(prompt_text)
+                self._log(f"Verify prompt: {verified} {vreason}", "info" if verified else "warn")
+            else:
+                self._log(f"❌ Prompt insert failed: {reason}", "error")
+        except Exception as e:
+            self._log(f"Prompt test exception: {e}", "error")
+
+    @Slot(result=str)
+    def cdp_test_full_flow(self):
+        if not self.cdp or not self.cdp.is_connected:
+            return json.dumps({"ok": False, "error": "CDP not connected"})
+        sel = [i for i in self.state.images if i.selected]
+        if not sel:
+            return json.dumps({"ok": False, "error": "No selected image"})
+        prompt = self.state.prompt.get("user_prompt","")
+        if not prompt:
+            return json.dumps({"ok": False, "error": "Empty prompt"})
+        self._log(f"🧪 Testing full flow: attach + prompt + submit (without waiting)", "info")
+        self._schedule_coro(self._do_cdp_full_flow_test(sel[0].absolute_path, prompt))
+        return json.dumps({"ok": True})
+
+    async def _do_cdp_full_flow_test(self, image_path: str, prompt_template: str):
+        try:
+            from app.browser.cdp_arena import CDPArenaController
+            from app.utils.correlation import generate_correlation_id, build_final_prompt
+            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+            baseline = await ctrl.capture_baseline()
+            self._log(f"Baseline {baseline.get('output_count')} outputs", "info")
+            ok, reason = await ctrl.attach_image(image_path)
+            self._log(f"Attach: {ok} {reason}", "success" if ok else "error")
+            if not ok:
+                return
+            cid = generate_correlation_id()
+            final = build_final_prompt(cid, prompt_template)
+            ok, reason = await ctrl.insert_prompt(final)
+            self._log(f"Insert prompt [{cid}]: {ok} {reason}", "success" if ok else "error")
+            if not ok:
+                return
+            ok, reason = await ctrl.submit()
+            self._log(f"Submit: {ok} {reason}", "success" if ok else "error")
+        except Exception as e:
+            self._log(f"Full flow test exception: {e}", "error")
 
     @Slot(str, result=str)
     def refresh_users(self):

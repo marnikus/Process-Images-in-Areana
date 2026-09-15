@@ -129,6 +129,15 @@
         <button id="runCancelBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">cancel</span> Cancel current</button>
         <button id="runRetryBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">replay</span> Retry failed</button>
       </div>
+      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">🧪 CDP Quick Tests (requires Chrome connected)</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button id="cdpAttachTestBtn" class="btn-small" title="Attach first selected image via CDP DOM.setFileInputFiles"><span class="material-icons" style="font-size:14px;">attach_file</span> Test Attach</button>
+          <button id="cdpPromptTestBtn" class="btn-small" title="Insert prompt via CDP evaluate"><span class="material-icons" style="font-size:14px;">edit</span> Test Prompt</button>
+          <button id="cdpFullFlowTestBtn" class="btn-small" title="Attach + Prompt + Submit (no wait)"><span class="material-icons" style="font-size:14px;">science</span> Test Full Flow</button>
+        </div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Uses DOM.setFileInputFiles for image, Runtime.evaluate for prompt. Highlight rect shows for N seconds (from Settings).</div>
+      </div>
       <div style="margin-top:12px; font-size:11px; color:var(--text-muted);">
         <div>• Respects site terms, no CAPTCHA bypass</div>
         <div>• Observe-baseline → act → verify → persist → advance</div>

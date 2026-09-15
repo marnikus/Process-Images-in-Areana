@@ -161,12 +161,25 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
     try {
       if (payload === 'pending') return;
       const tabs = JSON.parse(payload);
-      this.tabs = tabs || [];
+      // Deduplicate by id in JS as well (backend should already dedup)
+      const byId = {};
+      (tabs||[]).forEach(t=>{
+        const key = t.id || t.ws_url;
+        if (!key) return;
+        if (!byId[key]) byId[key] = t;
+        else {
+          // Prefer ws_url with 127.0.0.1
+          if (t.ws_url && t.ws_url.includes('127.0.0.1') && !(byId[key].ws_url||'').includes('127.0.0.1')) {
+            byId[key] = t;
+          }
+        }
+      });
+      this.tabs = Object.values(byId);
       this.renderTabSelect(this.tabs);
       if (this.tabs.length === 0) {
         LogConsole.log('⚠ Received 0 tabs — Chrome running but no pages? Open a page in the dedicated Chrome (C:\\arena-images-chrome) and click Diagnose.', 'warn');
       } else {
-        LogConsole.log(`📑 Received ${this.tabs.length} Chrome tabs`, 'success');
+        LogConsole.log(`📑 Received ${this.tabs.length} unique Chrome tab(s)`, 'success');
       }
       this.updateUrlRowsConnection();
     } catch (e) {
