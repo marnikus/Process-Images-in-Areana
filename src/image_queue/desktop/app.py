@@ -66,6 +66,7 @@ def launch(directory: Path | None = None) -> int:
 
 def _run(app: QApplication, service: WorkspaceService) -> int:
     bridge = WorkspaceBridge(service)
+    operations = bridge.worker.operations
     thread = start_worker(bridge)
     window = WorkspaceWindow(bridge, service.snapshot()["workspace"]["geometry"])
     window.show()
@@ -74,3 +75,4 @@ def _run(app: QApplication, service: WorkspaceService) -> int:
     finally:
         thread.quit()
         thread.wait()
+        operations.close()

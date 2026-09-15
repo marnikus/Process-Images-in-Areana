@@ -3,7 +3,8 @@
 from copy import deepcopy
 from typing import Any
 
-from image_queue.domain.validation import ContractError, require_fields, require_integer
+from image_queue.domain.validation import ContractError, require_fields, require_integer, same_json
+from image_queue.workspace.observations import validate_sources
 from image_queue.workspace.schema import validate_workspace
 
 MAX_HISTORY = 100
@@ -30,6 +31,8 @@ def validate_state(state: Any) -> None:
     validate_workspace(data["workspace"])
     if not isinstance(data["jobs"], dict):
         raise ContractError("jobs: expected object")
+    if "sources" in data["jobs"]:
+        validate_sources(data["jobs"]["sources"])
     entries = data["history"]
     if not isinstance(entries, list) or len(entries) > MAX_HISTORY:
         raise ContractError("history: invalid or oversized timeline")
@@ -37,7 +40,7 @@ def validate_state(state: Any) -> None:
     _validate_chain(entries)
     if entries:
         expected = entries[cursor]["after"] if cursor >= 0 else entries[0]["before"]
-        if expected != data["workspace"]:
+        if not same_json(expected, data["workspace"]):
             raise ContractError("history: cursor and editable workspace disagree")
 
 
@@ -50,7 +53,7 @@ def _validate_chain(entries: list[Any]) -> None:
             raise ContractError("history: invalid label")
         validate_workspace(data["before"])
         validate_workspace(data["after"])
-        if previous is not None and previous != data["before"]:
+        if previous is not None and not same_json(previous, data["before"]):
             raise ContractError("history: discontinuous timeline")
         previous = data["after"]
 
@@ -59,7 +62,7 @@ def edit_state(state: dict[str, Any], workspace: dict[str, Any], label: str) -> 
     validate_state(state)
     validate_workspace(workspace)
     result = deepcopy(state)
-    if workspace == state["workspace"]:
+    if same_json(workspace, state["workspace"]):
         return result
     entry = {"label": label, "before": deepcopy(state["workspace"]), "after": deepcopy(workspace)}
     history = [*result["history"][: result["cursor"] + 1], entry][-MAX_HISTORY:]

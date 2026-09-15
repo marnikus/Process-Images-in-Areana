@@ -1,8 +1,8 @@
 # Implementation steps — approximately four hours each
 
-Owner has authorized Steps 1–3 and pushing the session branch. Estimates are planning timeboxes, not claims of elapsed work or fixed deadlines. Each is about 3–5 engineering hours including tests/review; external evidence, OS setup and site changes can extend them. Do not rush safety gates to fit a timebox. Overall initial budget: **12 × ~4 hours = ~48 hours**, excluding waiting for evidence and unforeseen compatibility work.
+Owner has authorized Steps 1–6 and pushing the session branch. Estimates are planning timeboxes, not claims of elapsed work or fixed deadlines. Each is about 3–5 engineering hours including tests/review; external evidence, OS setup and site changes can extend them. Do not rush safety gates to fit a timebox. Overall initial budget: **12 × ~4 hours = ~48 hours**, excluding waiting for evidence and unforeseen compatibility work.
 
-**Progress:** Steps 1–3 implemented; local headless/DOM and real Qt channel gates pass. Native WebEngine rendering remains unverified and CI is inactive pending workflow permission. See [status and measured checks](../IMPLEMENTATION-STATUS.md). Steps 4–12 are not yet implemented.
+**Progress:** Steps 1–6 code implemented; local headless/DOM, real Qt channel and loopback CDP transport gates pass. Native WebEngine rendering/manual Windows Chrome remain unverified and CI is inactive pending workflow permission. See [status and measured checks](../IMPLEMENTATION-STATUS.md). Steps 7–12 are not yet implemented.
 
 ## Protected scope
 

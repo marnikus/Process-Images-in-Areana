@@ -6,7 +6,7 @@
 <title>Image Queue · Workspace</title>
 <link rel="stylesheet" href="css/variables.css"><link rel="stylesheet" href="css/layout.css">
 <link rel="stylesheet" href="css/sash-layout.css"><link rel="stylesheet" href="css/window-presets.css">
-<link rel="stylesheet" href="css/workspace.css">
+<link rel="stylesheet" href="css/workspace.css"><link rel="stylesheet" href="css/stack-drag.css">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script><script src="js/boot.js"></script>
 </head>
 <body>
@@ -21,13 +21,17 @@
 <footer><span id="saveStatus" role="status">Loading…</span><span id="revisionLabel"></span><span>JSON only · user-owned Chrome · no submission in this build</span></footer>
 </div>
 <div id="windowsMenu" class="windows-menu hidden"><div class="menu-heading">Workspace windows</div><div><button id="windowsShowAllBtn">Show all</button><button id="windowsHideAllBtn">Close all</button></div><div id="windowsMenuList"></div></div>
-<div id="layoutMenu" class="layout-menu hidden"><div class="menu-heading">Layout library</div><div class="layout-options"><button data-layout="default">Default</button><button data-layout="a">A · Rows</button><button data-layout="b">B · Split</button><button data-layout="c">C · Column</button><button id="resetLayoutBtn">Reset / show all</button></div><label for="layoutName">Save current arrangement</label><div class="input-row"><input id="layoutName" maxlength="80" placeholder="e.g. Editing desk"><button id="saveLayoutBtn">Save</button></div><div id="namedLayouts"></div><p class="muted">Applying a layout is one undo step. Portable preset import/export follows in Step 4.</p></div>
-<div id="busyShield" hidden aria-live="polite">Saving changes…</div>
+<div id="layoutMenu" class="layout-menu hidden"><div class="menu-heading">Layout library</div><div class="layout-options"><button data-layout="default">Default</button><button data-layout="a">A · Rows</button><button data-layout="b">B · Split</button><button data-layout="c">C · Column</button><button id="resetLayoutBtn">Reset / show all</button></div><label for="layoutName">Save current arrangement</label><div class="input-row"><input id="layoutName" maxlength="80" placeholder="e.g. Editing desk"><button id="saveLayoutBtn">Save</button></div><div id="namedLayouts"></div><p class="muted">Applying a layout is one undo step. Portable backup import/export is in Prompt templates.</p></div>
+<div id="busyShield" hidden aria-live="polite">Working locally…</div>
 <script src="js/core/ui-helpers.js"></script><script src="js/sash-core.js"></script>
 <script src="js/panels.js"></script><script src="js/sash-grid-tree.js"></script>
 <script src="js/sash-grid-windows.js"></script><script src="js/sash-grid-presets.js"></script>
 <script src="js/sash-grid-drag-core.js"></script><script src="js/sash-grid-drag-spec.js"></script>
 <script src="js/sash-grid-drag-resize.js"></script><script src="js/sash-grid-drag.js"></script>
 <script src="js/sash-grid.js"></script><script src="js/workspace-view.js"></script>
+<script src="js/presets-ui-templates.js"></script>
+<script src="js/stack-drag-core.js"></script><script src="js/stack-drag-visual.js"></script><script src="js/stack-drag-scroll.js"></script><script src="js/stack-drag.js"></script>
+<script src="js/stack-dnd-form.js"></script><script src="js/block-fields.js"></script>
+<script src="js/libraries.js"></script><script src="js/stack-editor.js"></script><script src="js/queue-view.js"></script><script src="js/chrome-view.js"></script><script src="js/features.js"></script>
 <script src="js/wire.js"></script><script src="js/workspace.js"></script><script src="js/connect.js"></script>
 </body></html>

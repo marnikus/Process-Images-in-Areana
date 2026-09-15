@@ -3,7 +3,7 @@ import globals from "globals";
 export default [
   {
     files: [
-      "src/image_queue/ui/js/{boot,panels,workspace,workspace-view,connect,wire}.js",
+      "src/image_queue/ui/js/{boot,panels,workspace,workspace-view,connect,wire,libraries,stack-editor,queue-view,chrome-view,features,block-fields}.js",
     ],
     languageOptions: {
       ecmaVersion: 2022,
@@ -19,6 +19,8 @@ export default [
         WorkspaceWire: "readonly",
         QWebChannel: "readonly",
         qt: "readonly",
+        StackDnDConfigRows: "readonly", BlockFields: "readonly",
+        Features: "readonly", Libraries: "readonly", StackEditor: "readonly", QueueView: "readonly", ChromeView: "readonly", StackDrag: "readonly", PresetsUITemplates: "readonly",
       },
     },
     rules: {
@@ -31,7 +33,7 @@ export default [
         "error",
         {
           varsIgnorePattern:
-            "^(Workspace|WorkspaceView|PanelRegistry|WorkspaceWire)$",
+            "^(Workspace|WorkspaceView|PanelRegistry|WorkspaceWire|Features|Libraries|StackEditor|QueueView|ChromeView|BlockFields)$",
         },
       ],
     },

@@ -5,19 +5,19 @@ const PanelRegistry = [
     "stats",
     "winStats",
     "Progress",
-    '<p class="big-number">0 <span>images</span></p><p class="muted">The image queue arrives in Step 6.</p>',
+    '<p id="queueSummary">No scan yet</p><p class="muted">Selection is not permission to submit. Processing remains disabled.</p>',
   ],
   [
     "filters",
     "winFilters",
     "Source folder",
-    '<label for="folder">Root folder</label><input id="folder" placeholder="Local folder path"><button id="chooseFolderBtn">Choose folder…</button><p class="muted">Path is saved; scanning is not available yet.</p>',
+    '<label for="folder">Root folder</label><input id="folder" placeholder="Local folder path"><button id="chooseFolderBtn">Choose folder…</button><label class="check"><input id="scanRecursive" type="checkbox"> Include subfolders</label><label for="scanMax">Max source bytes</label><input id="scanMax" type="number" min="1" max="67108864"><label for="outputFolder">Exclude output folder (optional)</label><input id="outputFolder"><button id="scanBtn">Scan / reconcile</button><p class="muted">PNG, JPEG, WebP, BMP, TIFF · no links or generated _AI files. New/changed files require selection.</p>',
   ],
   [
     "stack",
     "winStack",
     "Workflow",
-    '<div class="workflow-step"><b>01</b> Observe baseline</div><div class="workflow-step"><b>02</b> Attach & verify image</div><div class="workflow-step"><b>03</b> Verify prompt · submit once</div><div class="workflow-step"><b>04</b> Correlate · validate · save</div><p class="muted">Execution and editable block libraries arrive in later steps. These safety gates cannot be skipped.</p>',
+    '<div class="workflow-step"><b>01</b> Observe baseline</div><div class="workflow-step"><b>02</b> Attach & verify image</div><div class="workflow-step"><b>03</b> Verify prompt · submit once</div><div class="workflow-step"><b>04</b> Correlate · validate · save</div><p class="muted">Stored blocks are editable plans, never executable in this build. Mandatory verification gates cannot be bypassed by a preset.</p><div id="workflowBlocks"></div><button id="addBlockBtn">Add inert block</button><div id="blockConfigFields"></div><label for="blockJson">Selected block · all parameters (JSON)</label><textarea id="blockJson"></textarea><button id="saveBlockBtn">Save block parameters</button>',
   ],
   [
     "config",
@@ -29,13 +29,13 @@ const PanelRegistry = [
     "composer",
     "winComposer",
     "Prompt",
-    '<label for="prompt">Your exact prompt</label><textarea id="prompt" placeholder="Describe how you want to transform each image…" spellcheck="false"></textarea><p class="muted">Literal text · job marker will be added by the future workflow.</p>',
+    '<label for="prompt">Your exact prompt</label><textarea id="prompt" placeholder="Describe how you want to transform each image…" spellcheck="false"></textarea><label for="promptMode">Prompt mode</label><select id="promptMode"><option value="literal">Literal (unchanged)</option><option value="template">Render saved variables</option></select><button id="promptPreviewBtn">Preview final text</button><pre id="promptPreview"></pre>',
   ],
   [
     "people",
     "winPeople",
     "Image queue",
-    '<div class="empty-state"><span>▧</span><h2>Your images will appear here</h2><p>The workspace is ready. Folder scanning and queue controls are the next processing milestones.</p></div>',
+    '<div class="input-row"><button id="selectAllBtn">Select valid</button><button id="skipAllBtn">Skip valid</button><button id="reviewAllBtn">Require review</button></div><div id="imageRows">Choose a folder and scan. Nothing runs automatically.</div>',
   ],
   [
     "log",
@@ -59,19 +59,19 @@ const PanelRegistry = [
     "collector",
     "winCollector",
     "File changes",
-    '<p class="muted">Filesystem reconciliation arrives with scanning. No background collector runs.</p>',
+    '<p id="scanChanges">Scan explicitly to reconcile changed and missing files. No background collector runs.</p>',
   ],
   [
     "labels",
     "winLabels",
     "Variables",
-    '<p class="muted">The existing variable/template system will be extracted in Step 4. Saved legacy files remain untouched.</p>',
+    '<label for="variablesJson">Saved variables (JSON object of text values)</label><textarea id="variablesJson" spellcheck="false"></textarea><p class="muted">Use {name}. One-pass substitution only; unknown variables remain visible. Literal mode never substitutes.</p>',
   ],
   [
     "dbconn",
     "winDbconn",
     "Chrome URLs",
-    '<label for="urls">Exact page URLs · one per line</label><textarea id="urls" placeholder="https://arena.ai/c/your-conversation" spellcheck="false"></textarea><div class="input-row"><button disabled>Connect existing Chrome</button><span class="muted">Step 5</span></div><p class="muted">Chrome must already be open with remote debugging. URL rows save here; no connection is claimed.</p>',
+    '<label for="urls">Exact page URLs · one per line</label><textarea id="urls" placeholder="https://arena.ai/c/your-conversation" spellcheck="false"></textarea><div class="input-row"><button id="discoverBtn">Discover existing Chrome</button><button id="chromeStatusBtn">Refresh status</button><button id="disconnectBtn">Disconnect</button></div><div id="chromeRows"></div><p class="muted">Only exact, user-opened tabs. Checks are observations, never site readiness. No automatic reconnect or browser launch.</p>',
   ],
   [
     "botchat",
@@ -83,7 +83,7 @@ const PanelRegistry = [
     "botprompt",
     "winBotPrompt",
     "Prompt templates",
-    '<p class="muted">Full template and variable libraries arrive in Step 4. Layout presets already work in the Layouts menu.</p>',
+    '<label for="libraryFamily">Library family</label><select id="libraryFamily"><option value="templates">Templates</option><option value="prompts">Prompts</option><option value="variables">Variables</option><option value="stacks">Stacks</option><option value="blocks">Blocks</option><option value="connections">Connections</option><option value="windows">Windows</option><option value="archives">Legacy backups (inert)</option></select><div id="templateChips"></div><label for="presetName">Preset name</label><input id="presetName" maxlength="80"><label for="presetJson">All preset fields (JSON)</label><textarea id="presetJson" spellcheck="false"></textarea><div class="input-row"><button id="capturePresetBtn">Capture current</button><button id="createPresetBtn">Create</button><button id="updatePresetBtn">Update</button><button id="applyPresetBtn">Apply reviewed entry</button></div><label for="libraryFile">Import JSON file (preview first)</label><input id="libraryFile" type="file" accept=".json,application/json"><label for="importJson">Import / exported backup JSON</label><textarea id="importJson"></textarea><button id="previewImportBtn">Preview import</button><button id="confirmImportBtn" disabled>Import reviewed data</button><button id="exportLibraryBtn">Export full backup</button><pre id="libraryPreview"></pre>',
   ],
 ];
 for (const [key, id, title, content] of PanelRegistry) {

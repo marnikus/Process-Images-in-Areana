@@ -1,4 +1,4 @@
-"""Run the same fail-closed local/CI checks; no browser, Qt or account required."""
+"""Full local gates: real QtCore and loopback CDP peer, no Chrome/account required."""
 
 import os
 import shutil
@@ -48,7 +48,20 @@ def main():
     run([python, "-m", "mypy"])
     scripts = [
         f"src/image_queue/ui/js/{name}.js"
-        for name in ("boot", "panels", "workspace", "workspace-view", "connect", "wire")
+        for name in (
+            "boot",
+            "panels",
+            "workspace",
+            "workspace-view",
+            "connect",
+            "wire",
+            "libraries",
+            "stack-editor",
+            "queue-view",
+            "chrome-view",
+            "features",
+            "block-fields",
+        )
     ]
     run([node, "node_modules/eslint/bin/eslint.js", *scripts])
     run([node, "node_modules/prettier/bin/prettier.cjs", "--check", *scripts])

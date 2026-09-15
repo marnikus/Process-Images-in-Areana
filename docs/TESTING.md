@@ -10,9 +10,9 @@ The same runner is referenced by the inactive CI template (`tools/ci/quality.yml
 
 1. Ruff lint/import checks and formatting on new `src/`, `tests/`, `tools/`.
 2. Strict mypy on the new production package.
-3. ESLint/Prettier for new UI JavaScript, seven DOM integration tests using the real Python backend, and the root pytest suite with actual statement/branch coverage; old pytest/conftest is deliberately not collected by the new suite.
-4. Rule 16 AST size, parameters, methods, nesting; Radon CC; cognitive complexity; independent domain statement (90%) and branch (85%) floors; pure-domain import guard. Workspace and persistence have independent coverage floors too. Fresh coverage report required. Tests inject violations to test these gates too.
-5. Six targeted safety mutation experiments in temporary source copies. A passing isolated baseline is required; only test failures count as killed mutations. Surviving mutations, collection failures or changed experiment targets fail the gate. This is **not** a full-project mutation score.
+3. ESLint/Prettier for new UI JavaScript, fifteen DOM integration tests using the real Python backend, and the root pytest suite with actual statement/branch coverage; old pytest/conftest is deliberately not collected by the new suite.
+4. Rule 16 AST size, parameters, methods, nesting; Radon CC; cognitive complexity; independent domain statement (90%) and branch (85%) floors; pure-domain import guard. Workspace, persistence, browser and scanning have independent coverage floors too. Fresh coverage report required. Tests inject violations to test these gates too.
+5. Ten targeted safety mutation experiments in temporary source copies. A passing isolated baseline is required; only test failures count as killed mutations. Surviving mutations, collection failures or changed experiment targets fail the gate. This is **not** a full-project mutation score.
 6. Twelve selected old JS regression scripts (actual shipped modules with small DOM/bridge doubles), plus 20 selected old visual-probe tests that execute generated JavaScript through Node.
 
 Generated coverage lives in ignored `coverage/`. Tools/tests are not production-size gated; production Python is. No broad new-code metric exceptions exist. Retained old runtime has not been relabeled as new-code-compliant. The selected old URL-toolbar tests document its current behavior, not authorization policy for the new exact URL matcher.
@@ -52,3 +52,22 @@ restart and close smoke. It has **not run successfully** here because system gra
 libraries are missing. The inactive CI template includes that smoke and combined/native
 coverage floors, but these are unmeasured until an authorized native run completes.
 See [current measured results](IMPLEMENTATION-STATUS.md).
+
+## Steps 4–6 test boundary
+
+The gate now includes all-family library CRUD/compatibility/invalid-import/undo,
+real retained stack-pointer and typed-field DOM interactions, loopback HTTP/WebSocket
+CDP framing/liveness/duplicate-choice/navigation/disconnect/lease tests, and synthetic
+filesystem image scanning/fingerprint/thumbnail/selection/reconciliation tests.
+Only the protocol peer is simulated; the actual aiohttp/websockets transport executes.
+No account, live Chrome, browser launch or external website is needed by the gate.
+
+Optional dependency audit (network access): install `pip-audit`, then run
+`python -m pip_audit --local`; run `npm audit` for UI tooling. These supplement, rather
+than replace, behavior tests and native/Windows acceptance. Keep reports out of Git.
+Patched Python pins were verified with the full gate; native Qt/Chromium security and
+supported-OS release review remain separate.
+
+The four added mutation cases test fingerprint-bound selection, reviewed-import digest
+binding, CDP target identity, and JSON boolean/number distinction. Each selected suite
+must pass an isolated baseline before a mutant can count as killed.

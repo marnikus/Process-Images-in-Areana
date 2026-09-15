@@ -26,11 +26,41 @@ MUTATIONS = (
 )
 
 
-def exercise(folder):
+CASES = tuple(
+    ("domain/" + name, old, new, "tests/test_urls.py") for name, old, new in MUTATIONS
+) + (
+    (
+        "workspace/queue.py",
+        'choice.get("sha256") == source["sha256"] and bool(source["sha256"])',
+        'bool(source["sha256"])',
+        "tests/workspace/test_scanning.py::test_missing_changed_reconciliation_and_fingerprint_bound_selection",
+    ),
+    (
+        "operations.py",
+        'if command.get("sha256") != preview["sha256"]:',
+        "if False:",
+        "tests/workspace/test_operations.py",
+    ),
+    (
+        "browser/session.py",
+        'if info.get("targetId") != target_id or info.get("url") != exact_url:',
+        "if False:",
+        "tests/workspace/test_browser.py::test_failed_roundtrip_never_connected_or_replayed",
+    ),
+    (
+        "domain/validation.py",
+        "return type(left) is type(right) and left == right",
+        "return left == right",
+        "tests/workspace/test_libraries.py::test_boolean_to_number_is_a_real_edit_and_history_must_agree",
+    ),
+)
+
+
+def exercise(folder, suite):
     environment = dict(os.environ, PYTHONPATH=str(folder / "src"), PYTEST_ADDOPTS="")
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     return subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "test_urls.py"],
+        [sys.executable, "-m", "pytest", "-q", suite],
         cwd=folder,
         env=environment,
         text=True,
@@ -47,21 +77,31 @@ def main():
             folder / "src/image_queue",
             ignore=shutil.ignore_patterns("__pycache__"),
         )
-        shutil.copy(ROOT / "tests/test_urls.py", folder / "test_urls.py")
+        (folder / "tests/workspace").mkdir(parents=True)
+        shutil.copy(ROOT / "tests/test_urls.py", folder / "tests/test_urls.py")
+        for name in (
+            "conftest.py",
+            "test_scanning.py",
+            "test_operations.py",
+            "test_browser.py",
+            "test_libraries.py",
+        ):
+            shutil.copy(ROOT / "tests/workspace" / name, folder / "tests/workspace" / name)
         (folder / "pytest.ini").write_text(
             "[pytest]\naddopts = --strict-markers\n", encoding="utf-8"
         )
-        baseline = exercise(folder)
-        if baseline.returncode != 0:
-            raise SystemExit("Invalid mutation baseline:\n" + baseline.stdout + baseline.stderr)
-        for name, old, new in MUTATIONS:
-            path = folder / "src/image_queue/domain" / name
+        for suite in dict.fromkeys(case[3] for case in CASES):
+            baseline = exercise(folder, suite)
+            if baseline.returncode != 0:
+                raise SystemExit("Invalid mutation baseline:\n" + baseline.stdout + baseline.stderr)
+        for name, old, new, suite in CASES:
+            path = folder / "src/image_queue" / name
             original = path.read_text(encoding="utf-8")
             if original.count(old) != 1:
                 raise SystemExit(f"Mutation target changed; review experiment: {name}: {old}")
             path.write_text(original.replace(old, new), encoding="utf-8")
             shutil.rmtree(path.parent / "__pycache__", ignore_errors=True)
-            result = exercise(folder)
+            result = exercise(folder, suite)
             path.write_text(original, encoding="utf-8")
             shutil.rmtree(path.parent / "__pycache__", ignore_errors=True)
             if result.returncode != 1 or "ERROR" in result.stdout or "failed" not in result.stdout:
@@ -69,7 +109,7 @@ def main():
                     f"Survived/invalid mutation {name}: {old}\n{result.stdout}{result.stderr}"
                 )
             print(f"Killed safety mutation: {name}: {old}")
-    print(f"PASS: {len(MUTATIONS)} targeted mutations killed (not a full mutation score)")
+    print(f"PASS: {len(CASES)} targeted mutations killed (not a full mutation score)")
 
 
 if __name__ == "__main__":

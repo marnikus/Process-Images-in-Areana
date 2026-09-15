@@ -1,6 +1,77 @@
 # Implementation status
 
-## Steps 2–3 — implemented; native rendering verification pending
+## Steps 4–6 — code implemented; manual exit gates still open
+
+**Date:** 2026-09-15. Owner authorized the next three roadmap steps and push.
+
+- **4:** Seven named preset families, full JSON-field round-trips, explicit CRUD,
+  preview/hash-bound import and portable backup export; lossless supported legacy
+  mappings. Actual retained chips, stack drag and typed form row builders wired to
+  global undo. Literal/default and explicit single-pass template modes with visible
+  unknowns; no imported script/action execution.
+- **5:** Adapted retained aiohttp/websockets CDP framing, discovery/service and lease.
+  Exact user-opened target choices, independent discovery/liveness/readiness, bounded
+  identity/page round-trip, runtime invalidation, no navigation/browser launch/replay.
+- **6:** Explicit recursive scan, supported image decoding, metadata-free thumbnails,
+  SHA-256 and stable-read checks, link/generated/output exclusions, fingerprint-bound
+  row/bulk selection, changed/missing reconciliation and durable restart state.
+
+### Latest measured verification
+
+`python tools/check.py`: **PASS** — **275 Python tests**, **15 extracted DOM tests**,
+all selected retained JS/visual suites, Ruff, strict mypy (42 production Python files),
+ESLint/Prettier, size/complexity/import/coverage gates and ten targeted mutation checks.
+Mutations remain a targeted smoke, not a full-project mutation score.
+
+| Independent package | Statements | Branches |
+|---|---:|---:|
+| Domain | 100% | 100% |
+| Workspace | 99.82% | 99.60% |
+| Persistence | 99.21% | 96.43% |
+| Browser | 100% | 98.89% |
+| Scanning | 99.32% | 94.23% |
+
+Combined headless coverage rounds to **98%**. Native app/window/dialogs remain excluded
+from this measurement; the real Qt bridge/channel test is included. Actual HTTP and
+WebSocket traffic is tested against a scripted loopback CDP peer, **not live Chrome**.
+Filesystem tests use synthetic images, real hashes/decodes/locks/writes and injected
+failure paths. DOM tests execute the retained pointer drag and typed form builders
+against the real Python service/store, including safe imported text and CRLF retention.
+
+Current wheel was built and installed into a separate clean environment; offline CLI,
+packaged UI assets, library backup round-trip, disconnected CDP initialization and a
+real synthetic image scan pass outside the checkout. This is not a native GUI run.
+
+Dependency audit prompted patched pins for aiohttp, Pillow, filelock and pytest,
+plus an updated build-tool floor. The audited local Python environment reports **no
+known vulnerabilities**; the unpublished local package is not auditable through PyPI.
+The npm tooling audit also reports zero known vulnerabilities. Neither audit is a
+security guarantee or an audit of Qt's embedded Chromium/system libraries.
+
+### Outstanding gates / deliberate boundaries
+
+- **Native WebEngine rendering/dialogs and manual Windows debug-Chrome checks have
+  not passed here.** The sandbox still lacks graphics dependencies. Steps 2–6 are
+  not declared fully accepted on a supported desktop OS.
+- CI remains **inactive** at `tools/ci/quality.yml` because the GitHub integration
+  lacks workflow-write permission. No GitHub Actions run is claimed.
+- Browser readiness remains `adapter_not_verified`. Step 7's concrete adapter is
+  still blocked by missing reviewed image-page evidence. No user-account/site access,
+  upload, Send or image generation was performed.
+- Stored scan records/selections are historical after restart; rescan and reverify
+  bytes before any future job preparation. Selection is not permission to submit.
+- Legacy libraries/parameters are preserved; unsupported SQLite data is never opened.
+  Old window bounds and provider-specific connection fields are retained for review,
+  not silently applied to an incompatible screen/Chrome schema.
+
+Operation, limits and extraction provenance: [Steps 4–6](STEPS-4-6.md).
+Next planned implementation: Step 7, with native/Windows and evidence gates outstanding.
+
+---
+
+The following are historical checkpoints, superseded by the current status above.
+
+## Historical Steps 2–3 checkpoint — native rendering pending
 
 The retained dark sash workspace is extracted with drag/drop, resizing, dock/window
 controls, named layouts and image-panel content. The Qt/WebChannel facade stays on

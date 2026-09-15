@@ -21,8 +21,9 @@ const Workspace = {
     GridInitializers.forEach((fn) => fn());
     WorkspaceView.apply(state);
     this.wire();
+    Features.wire();
     document.getElementById("connectionNotice").textContent =
-      "Workspace editing is active. Chrome connection and image processing are not implemented yet.";
+      "Workspace editing is active. Chrome checks and folder scans run only on request. Image processing is not implemented yet.";
     WorkspaceView.status("Saved locally · changes are undoable");
   },
   schedule(label) {
@@ -38,11 +39,17 @@ const Workspace = {
     if (this.blocked) return false;
     if (!this.dirty) return true;
     this.dirty = false;
-    return this.send({
-      kind: "edit",
-      workspace: WorkspaceView.capture(this.state),
-      label: this.label,
-    });
+    try {
+      return this.send({
+        kind: "edit",
+        workspace: WorkspaceView.capture(this.state),
+        label: this.label,
+      });
+    } catch {
+      this.dirty = true;
+      WorkspaceView.status("Invalid settings JSON; fix before saving", true);
+      return false;
+    }
   },
   async send(command) {
     if (this.pending) await this.pending;
@@ -50,7 +57,11 @@ const Workspace = {
     document.getElementById("busyShield").hidden = false;
     document.activeElement?.blur();
     const request = { ...command, revision: this.state.revision };
-    this.pending = WorkspaceWire.invoke(this.bridge, request);
+    this.pending = WorkspaceWire.invoke(
+      this.bridge,
+      request,
+      request.kind === "scan" ? 120000 : 15000,
+    );
     let response;
     try {
       response = await this.pending;
@@ -68,6 +79,7 @@ const Workspace = {
           "Persistence fault. Editing locked; close and reopen to inspect durable state.";
       return false;
     }
+    this.result = response.result;
     this.state = response.state;
     WorkspaceView.apply(this.state);
     WorkspaceView.status("Saved locally · verified JSON checkpoint");
@@ -84,7 +96,7 @@ const Workspace = {
       return;
     }
     const data = structuredClone(this.state.workspace);
-    data.layouts[name] = structuredClone(data.layout);
+    data.layouts = { ...data.layouts, [name]: structuredClone(data.layout) };
     await this.send({ kind: "edit", workspace: data, label: "Save layout" });
   },
   async applyLayout(name) {
@@ -116,6 +128,11 @@ const Workspace = {
   wire() {
     for (const id of [
       "prompt",
+      "variablesJson",
+      "promptMode",
+      "scanRecursive",
+      "scanMax",
+      "outputFolder",
       "folder",
       "urls",
       "chromeHost",

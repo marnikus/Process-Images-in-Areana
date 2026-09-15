@@ -1,6 +1,6 @@
 # 08 — Reuse existing debug-Chrome connection and rectangle/click systems
 
-> Target-design record. Current progress and executed tests are maintained in [implementation status](../IMPLEMENTATION-STATUS.md); the roadmap now authorizes and implements Step 1.
+> Target-design record. Current progress and executed tests are maintained in [implementation status](../IMPLEMENTATION-STATUS.md); the roadmap now authorizes Steps 1–6; current implementation and outstanding manual gates are listed there.
 
 **Owner requirement:** reuse and adjust the previous working connection and visual-click systems, not replacements. Keep all prior requirements for global undo, dark drag/drop workspace, saved layouts, full presets and variable saving. This is a documentation-only revision; no code restored/deleted, Chrome launched, live connection attempted or old tests rerun in this phase.
 

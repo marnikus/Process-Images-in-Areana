@@ -29,6 +29,7 @@ const WorkspaceView = {
       connection.highlight.highlight_enabled;
     this.history(state);
     this.layouts(data.layouts);
+    Features.apply(state);
   },
   history(state) {
     const undo = state.history[state.cursor],
@@ -66,7 +67,9 @@ const WorkspaceView = {
     const data = structuredClone(state.workspace),
       connection = JSON.parse(data.connection);
     data.layout = { tree: SashGrid.getTree(), ...SashGrid.getWindowStates() };
-    data.prompt = document.getElementById("prompt").value;
+    const promptValue = document.getElementById("prompt").value;
+    if (promptValue !== data.prompt.replace(/\r\n?/g, "\n"))
+      data.prompt = promptValue;
     data.folder = document.getElementById("folder").value;
     const text = document.getElementById("urls").value;
     const lines = text === "" ? [] : text.split("\n");
@@ -88,6 +91,7 @@ const WorkspaceView = {
       confirm_pause_ms: Number(document.getElementById("confirmMs").value),
     };
     data.connection = JSON.stringify(connection);
+    Features.capture(data);
     return data;
   },
   status(message, error = false) {

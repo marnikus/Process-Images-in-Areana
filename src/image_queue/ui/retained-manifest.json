@@ -68,5 +68,40 @@
     "file": "css/window-presets.css",
     "source": "Process Images in Areana/Old App/ui/css/window-presets.css",
     "sha256": "60c234c2d982f8169952f620293c4130eed3450ff10f9c155ddd48fa50b45a8f"
+  },
+  {
+    "file": "js/presets-ui-templates.js",
+    "source": "Process Images in Areana/Old App/ui/js/presets-ui-templates.js",
+    "sha256": "cdb13051b37d2c0790306ee0037b1ad2dd46b23301e978c3746dde60da14f641"
+  },
+  {
+    "file": "js/stack-drag-core.js",
+    "source": "Process Images in Areana/Old App/ui/js/stack-drag-core.js",
+    "sha256": "a5857adf47fc23a0db97d69a40f3a0a40865a5652693a1093b38ae65a5b50e26"
+  },
+  {
+    "file": "js/stack-drag-visual.js",
+    "source": "Process Images in Areana/Old App/ui/js/stack-drag-visual.js",
+    "sha256": "96dc23b7cd3bd0cadbb36b0da2be06fbfa0d3beb82e3e66d93cee3a86fe87e7c"
+  },
+  {
+    "file": "js/stack-drag-scroll.js",
+    "source": "Process Images in Areana/Old App/ui/js/stack-drag-scroll.js",
+    "sha256": "6b3b81a2a9a2161dacac2ca5cf903bcc32607d9a00485980f6f4afc5de598afe"
+  },
+  {
+    "file": "js/stack-drag.js",
+    "source": "Process Images in Areana/Old App/ui/js/stack-drag.js",
+    "sha256": "b4afc5ec1f2363a521ab4980d49c68b4e92bea069518e05b1b875341dc4e6459"
+  },
+  {
+    "file": "css/stack-drag.css",
+    "source": "Process Images in Areana/Old App/ui/css/stack-drag.css",
+    "sha256": "9c864a2fc577396682cf860e8255dc10d213132e9adf32edfed4f3e11ab67ad1"
+  },
+  {
+    "file": "js/stack-dnd-form.js",
+    "source": "Process Images in Areana/Old App/ui/js/stack-dnd-form.js",
+    "sha256": "7364b56d324d0affb78d615b369fdb72ea8c740772cb270dd48eec6c818dea05"
   }
 ]

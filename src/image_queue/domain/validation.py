@@ -37,3 +37,26 @@ def require_fields(value: object, names: set[str], field: str) -> Mapping[str, o
     if not isinstance(value, dict) or set(value) != names:
         raise ContractError(f"{field}: missing or unsupported fields")
     return value
+
+
+def same_json(left: object, right: object) -> bool:
+    """JSON equality distinguishes booleans from numbers, unlike Python dict equality."""
+    if isinstance(left, dict):
+        return isinstance(right, dict) and _same_mapping(left, right)
+    if isinstance(left, list):
+        return isinstance(right, list) and _same_sequence(left, right)
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+    return left == right
+
+
+def _same_mapping(left: dict[str, object], right: dict[str, object]) -> bool:
+    return left.keys() == right.keys() and all(
+        same_json(value, right[key]) for key, value in left.items()
+    )
+
+
+def _same_sequence(left: list[object], right: list[object]) -> bool:
+    return len(left) == len(right) and all(
+        same_json(a, b) for a, b in zip(left, right, strict=True)
+    )

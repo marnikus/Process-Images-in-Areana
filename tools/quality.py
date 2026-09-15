@@ -153,7 +153,7 @@ if __name__ == "__main__":
     else:
         coverage = json.loads(report.read_text(encoding="utf-8"))
         errors.extend(coverage_failures(coverage))
-        for package in ("workspace", "persistence"):
+        for package in ("workspace", "persistence", "browser", "scanning"):
             projected = {
                 "files": {
                     name.replace("\\", "/").replace(f"/{package}/", "/domain/"): data

@@ -6,6 +6,7 @@ from typing import Any
 from image_queue.domain.presets import dumps_preset, loads_preset
 from image_queue.domain.settings import ConnectionPreset
 from image_queue.domain.validation import ContractError, require_fields, require_text
+from image_queue.workspace.extensions import defaults, validate_extensions
 from image_queue.workspace.layout import validate_layout
 
 FIELDS = {"layout", "prompt", "folder", "connection", "layouts", "geometry"}
@@ -33,12 +34,17 @@ def default_workspace(tree: dict[str, Any]) -> dict[str, Any]:
         "layouts": {},
         "geometry": [80, 80, 1440, 960],
     }
+    workspace.update(defaults())
     validate_workspace(workspace)
     return workspace
 
 
 def validate_workspace(value: Any) -> None:
-    data = require_fields(value, FIELDS, "workspace")
+    expected = (
+        FIELDS | set(defaults()) if isinstance(value, dict) and set(value) != FIELDS else FIELDS
+    )
+    data = require_fields(value, expected, "workspace")
+    validate_extensions({**defaults(), **data})
     validate_layout(data["layout"])
     for name in ("prompt", "folder"):
         text = require_text(data[name], name)

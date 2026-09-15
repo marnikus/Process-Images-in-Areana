@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any, Protocol
 
 from image_queue.domain.validation import ContractError
+from image_queue.workspace.extensions import upgrade_state
 from image_queue.workspace.history import edit_state, travel, validate_state
 
 
@@ -14,7 +15,7 @@ class StateWriter(Protocol):
 class WorkspaceService:
     def __init__(self, state: dict[str, Any], writer: StateWriter) -> None:
         validate_state(state)
-        self._state = deepcopy(state)
+        self._state = upgrade_state(state)
         self._writer = writer
         self.busy = False
 
@@ -33,6 +34,17 @@ class WorkspaceService:
         if candidate != self._state:
             self._writer.save(candidate)
             self._state = candidate
+        return self.snapshot()
+
+    def record_sources(self, sources: dict[str, Any], revision: int) -> dict[str, Any]:
+        if self.busy or revision != self._state["revision"]:
+            raise ContractError("Workspace changed or active job owns the queue")
+        candidate = self.snapshot()
+        candidate["jobs"]["sources"] = deepcopy(sources)
+        candidate["revision"] += 1
+        validate_state(candidate)
+        self._writer.save(candidate)
+        self._state = candidate
         return self.snapshot()
 
     def _candidate(self, command: dict[str, Any]) -> dict[str, Any]:

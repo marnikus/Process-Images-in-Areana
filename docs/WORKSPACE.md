@@ -17,7 +17,7 @@ is required. Linux additionally needs Qt's system GL/EGL, NSS, DBus, XKB and aud
 libraries (see the inactive desktop CI template at `tools/ci/quality.yml`). No sandbox-disabling flags are added by the app.
 An optional `--data-dir <directory>` selects an isolated workspace, useful for testing.
 Otherwise `platformdirs` chooses the platform's per-user `ImageQueue` data directory.
-The app never launches or connects Chrome in Steps 2–3.
+The app never launches Chrome. Explicit discovery/check commands are available in Step 5; no connection occurs on startup.
 
 ## Retained interactions
 
@@ -26,17 +26,17 @@ The app never launches or connects Chrome in Steps 2–3.
 - Choose original built-in layouts A/B/C/Default in Layouts.
 - Save, apply and delete named **layout** presets. Apply is one global undo command.
 - Edit prompt, exact URL lines, source-folder path, local debug endpoint and rectangle
-  timing. Folder picker stores only the chosen path; scanning is still Step 6.
+  timing. Folder picker stores the chosen path; **Scan / reconcile** explicitly scans it.
 - Undo/Redo spans all these editable surfaces chronologically. Ctrl/Cmd+Z, Shift+Z,
   and Ctrl+Y operate globally outside an editor. Focused text fields retain native
   text editing; toolbar Undo/Redo first commits that editing session.
 - Text commits on blur/change; a drag/resize commits once on release. Repeated save
   hooks within the same gesture coalesce. Native close awaits a final checkpoint.
 
-The generation button, browser connection, queue actions, full workflow/block/template
-and variable libraries are explicitly unavailable until their later steps. Existing
-legacy data and those source modules remain intact. A layout-only library is **not**
-a replacement for the full preset system planned in Step 4.
+The generation button remains disabled. Preset/template/variable libraries, inert
+workflow/block editing, Chrome checks and image scanning are now available; see
+[Steps 4–6 operation and limitations](STEPS-4-6.md). Old files remain intact and are
+never imported automatically. All editable fields share the same workspace/history.
 
 ## Explicit panel mapping
 
