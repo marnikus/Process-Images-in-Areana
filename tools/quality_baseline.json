@@ -55,8 +55,8 @@
     "func_count": 10
   },
   "app/core/action_blocks.py": {
-    "max_func_loc": 56,
-    "max_class_loc": 116,
+    "max_func_loc": 51,
+    "max_class_loc": 109,
     "func_count": 12
   },
   "app/browser/__init__.py": {
@@ -82,7 +82,7 @@
   "app/browser/cdp_client.py": {
     "max_func_loc": 106,
     "max_class_loc": 472,
-    "func_count": 32
+    "func_count": 34
   },
   "app/browser/tab_matcher.py": {
     "max_func_loc": 19,
@@ -95,9 +95,9 @@
     "func_count": 17
   },
   "app/browser/cdp_arena.py": {
-    "max_func_loc": 42,
-    "max_class_loc": 254,
-    "func_count": 17
+    "max_func_loc": 60,
+    "max_class_loc": 517,
+    "func_count": 31
   },
   "app/browser/probe_requests.py": {
     "max_func_loc": 0,
@@ -135,9 +135,9 @@
     "func_count": 2
   },
   "app/ui/bridge.py": {
-    "max_func_loc": 530,
-    "max_class_loc": 2658,
-    "func_count": 128
+    "max_func_loc": 1025,
+    "max_class_loc": 3588,
+    "func_count": 146
   },
   "app/utils/__init__.py": {
     "max_func_loc": 0,
@@ -173,5 +173,10 @@
     "max_func_loc": 14,
     "max_class_loc": 135,
     "func_count": 25
+  },
+  "app/services/watcher.py": {
+    "max_func_loc": 124,
+    "max_class_loc": 269,
+    "func_count": 15
   }
 }

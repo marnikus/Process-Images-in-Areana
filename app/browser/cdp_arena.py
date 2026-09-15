@@ -441,13 +441,26 @@ JS_CHECK_NEW_OUTPUT = """
 
     function isReferenceImage(el) {
       try {
-        if (jobContainer && jobContainer.contains(el)) return true;
-        for (const j of allJobs) {
-          if (j.container && j.container.contains(el)) {
-            const cls = el.className || '';
-            const rect = el.getBoundingClientRect();
-            const isSmall = rect.width <= 140 || cls.includes('w-32') || cls.includes('h-16') || cls.includes('w-16');
-            if (isSmall) return true;
+        const cls = el.className || '';
+        const rect = el.getBoundingClientRect();
+        const isSmall = rect.width <= 140 || cls.includes('w-32') || cls.includes('h-16') || cls.includes('w-16');
+        const isLarge = cls.includes('50vh') || cls.includes('object-cover') || rect.width >= 200 || (el.naturalWidth||0) >= 200;
+        // Reference images are small w-32 inside user bubble, not large 50vh
+        // Only filter small images, never large generated images
+        if (isSmall && !isLarge) {
+          if (jobContainer && jobContainer.contains(el)) return true;
+          for (const j of allJobs) {
+            if (j.container && j.container.contains(el)) {
+              return true;
+            }
+          }
+        }
+        // Also check if inside any job container and small
+        if (isSmall && !isLarge) {
+          for (const j of allJobs) {
+            if (j.container && j.container.contains(el)) {
+              return true;
+            }
           }
         }
       } catch(e) {}
@@ -986,84 +999,96 @@ class CDPArenaController:
             return True, "Clicked"
         return False, result.get("error", "Failed")
 
+    def _should_continue_after_spinner(self, reason: str) -> bool:
+        # ideal-size: 8 lines reason=predicate for spinner-gone reasons
+        return reason in (
+            "no_new", "no_exact_above_found_wait_next",
+            "image_above_belongs_to_previous_prompt_await_next",
+            "not_complete", "zero_width", "hidden",
+            "loading", "generating_no_new_yet"
+        )
+
+    def _build_check_js(self, old_srcs, old_outputs, correlation_id):
+        # ideal-size: 4 lines reason=JS builder single responsibility
+        return f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)}, {json.dumps(correlation_id) if correlation_id else 'null'}, {json.dumps(old_outputs)})"
+
+    def _log_spinner_start(self, result):
+        # ideal-size: 3 lines reason=log helper
+        self._log(f"⏳ Generation started — spinner visible {result.get('spinDetails')} (Response A/B processing)", "info")
+
+    def _log_spinner_gone_debug(self, result):
+        # ideal-size: 8 lines reason=debug logging extracted
+        reason = result.get("reason") or ""
+        self._log(f"Spinner gone no new yet — reason={reason} orderCheck={result.get('orderCheck','')[:200]} allNew={result.get('allNew')} validAbove={result.get('validAbove')}", "info")
+        if result.get("debugAllImgs"):
+            self._log(f"🔍 debugAllImgs ({len(result.get('debugAllImgs'))}): {result.get('debugAllImgs')}", "info")
+        if result.get("debugFiltered"):
+            self._log(f"🔍 debugFiltered ({len(result.get('debugFiltered'))}): {result.get('debugFiltered')}", "info")
+
+    async def _handle_spinner_visible(self, result, seen, last_log):
+        # ideal-size: 10 lines reason=spinner visible handling
+        if not seen:
+            self._log_spinner_start(result)
+            seen = True
+        now = time.time()
+        if now - last_log > 10:
+            self._log(f"⏳ Still generating... spinner {result.get('spinCount')} visible, reason={result.get('reason')}", "info")
+            last_log = now
+        await asyncio.sleep(2)
+        return seen, last_log, True
+
+    def _handle_ready_result(self, result, baseline):
+        # ideal-size: 4 lines reason=ready case
+        if result.get("ready"):
+            self._log(f"✅ New output ready: {result.get('src','')[:80]} {result.get('width')}x{result.get('height')}", "success")
+            return "completed", {"new_src": result.get("src"), "check": result, "baseline": baseline, "rect": result.get("rect")}
+        return None
+
+    async def _handle_spinner_gone(self, result):
+        # ideal-size: 10 lines reason=spinner disappeared logic
+        reason = result.get("reason") or ""
+        if self._should_continue_after_spinner(reason):
+            self._log_spinner_gone_debug(result)
+            await asyncio.sleep(2)
+            return True
+        if result.get("allNew") and result.get("allNew") > 0 and not result.get("ready"):
+            self._log(f"Spinner gone but allNew={result.get('allNew')} not ready reason={reason} — waiting...", "info")
+            await asyncio.sleep(2)
+            return True
+        return False
+
     async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000, correlation_id: Optional[str] = None, cancel_check=None) -> Tuple[str, Dict[str, Any]]:
-        """Poll for new output, return status. Understands spinner (Response A/B) as generating indicator.
-        correlation_id: JOB-ID token to anchor detection — ensures we pick image AFTER user message containing this ID,
-        not the reference image above prompt inside same user bubble.
-        cancel_check: optional callable returning True if cancelled — for immediate cancel.
-        """
+        # ideal-size: 28 lines reason=core polling loop delegates to helpers
         old_srcs = baseline.get("output_srcs", []) or []
+        old_outputs = baseline.get("outputs", []) or []
         start = time.time()
-        poll = 2
-        seen_spinning = False
-        last_log_time = 0
+        seen = False
+        last_log = 0
         while (time.time() - start) * 1000 < timeout_ms:
-            # Immediate cancel check
             if cancel_check and cancel_check():
                 self._log("❌ Cancelled during wait_for_new_output", "warn")
                 return "failed", {"error": "Cancelled by user", "cancelled": True}
-            # Pass correlation_id and oldOutputs to JS so it can find user message and pick image after it (fix for matching image above prompt)
-            # Also pass oldOutputs to allow images that were in baseline but not ready (opacity-0) to be considered new when ready
-            old_outputs = baseline.get("outputs", []) or []
-            js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)}, {json.dumps(correlation_id) if correlation_id else 'null'}, {json.dumps(old_outputs)})"
+            js_check = self._build_check_js(old_srcs, old_outputs, correlation_id)
             result = await self.cdp.evaluate(js_check)
             if not result:
-                await asyncio.sleep(poll)
+                await asyncio.sleep(2)
                 continue
-
-            # If spinner visible, we are generating
             if result.get("spinning"):
-                if not seen_spinning:
-                    self._log(f"⏳ Generation started — spinner visible {result.get('spinDetails')} (Response A/B processing)", "info")
-                    seen_spinning = True
-                # Log every 10s while generating
-                now = time.time()
-                if now - last_log_time > 10:
-                    self._log(f"⏳ Still generating... spinner {result.get('spinCount')} visible, reason={result.get('reason')} src={result.get('src','')[:60]}", "info")
-                    last_log_time = now
-                await asyncio.sleep(poll)
+                seen, last_log, _ = await self._handle_spinner_visible(result, seen, last_log)
                 continue
-
-            if result.get("ready"):
-                self._log(f"✅ New output ready: {result.get('src','')[:80]} {result.get('width')}x{result.get('height')}", "success")
-                return "completed", {"new_src": result.get("src"), "check": result, "baseline": baseline, "rect": result.get("rect")}
-
-            # If we saw spinning before and now no spinning but still no new image, maybe just finished but image not yet in DOM — wait a bit more
-            # Enhanced to handle DOM-order exact above cases: no_exact_above_found_wait_next, image_above_belongs_to_previous_prompt_await_next, etc.
-            if seen_spinning and not result.get("spinning"):
-                reason = result.get("reason") or ""
-                if reason in ("no_new", "no_exact_above_found_wait_next", "image_above_belongs_to_previous_prompt_await_next", "not_complete", "zero_width", "hidden", "loading", "generating_no_new_yet"):
-                    dbg_all = result.get("debugAllImgs")
-                    dbg_filt = result.get("debugFiltered")
-                    old_sample = result.get("oldSrcsSample")
-                    self._log(f"Spinner disappeared but no new image yet — reason={reason} waiting... orderCheck={result.get('orderCheck','')[:200]} allNew={result.get('allNew')} validAbove={result.get('validAbove')} jobFound={result.get('jobFound')} jobTop={result.get('jobTop')} prevTop={result.get('prevJobTop')}", "info")
-                    if dbg_all:
-                        self._log(f"🔍 debugAllImgs ({len(dbg_all)}): {dbg_all}", "info")
-                    if dbg_filt:
-                        self._log(f"🔍 debugFiltered ({len(dbg_filt)}): {dbg_filt}", "info")
-                    if old_sample:
-                        self._log(f"🔍 oldSrcsSample: {old_sample}", "info")
-                    await asyncio.sleep(poll)
+            ready = self._handle_ready_result(result, baseline)
+            if ready:
+                return ready
+            if seen and not result.get("spinning"):
+                if await self._handle_spinner_gone(result):
                     continue
-                # Also if ready false but allNew exists, keep waiting a bit
-                if result.get("allNew") and result.get("allNew") > 0 and not result.get("ready"):
-                    self._log(f"Spinner gone but allNew={result.get('allNew')} not ready reason={reason} — waiting for exact above image to appear... {result.get('orderCheck','')[:200]} allNewDetails={result.get('allNewDetails')}", "info")
-                    await asyncio.sleep(poll)
-                    continue
-
-            # Log orderCheck periodically even when not spinning, to help debug exact above
             now = time.time()
-            if now - last_log_time > 10:
-                dbg_all = result.get("debugAllImgs")
-                self._log(f"⏳ Waiting... reason={result.get('reason')} spinning={result.get('spinning')} allNew={result.get('allNew')} validAbove={result.get('validAbove')} invalidAbove={result.get('invalidAbove')} jobFound={result.get('jobFound')} orderCheck={result.get('orderCheck','')[:250]}", "info")
-                if dbg_all:
-                    self._log(f"🔍 Periodic debugAllImgs: {dbg_all[:5]}", "info")
-                last_log_time = now
-
-            await asyncio.sleep(poll)
-
+            if now - last_log > 10:
+                self._log(f"⏳ Waiting... reason={result.get('reason')} spinning={result.get('spinning')} allNew={result.get('allNew')} validAbove={result.get('validAbove')}", "info")
+                last_log = now
+            await asyncio.sleep(2)
         final_baseline = await self.capture_baseline()
-        return "failed", {"error": f"Timeout after {timeout_ms}ms, last spinning seen={seen_spinning}", "last_baseline": final_baseline, "last_check": result if 'result' in locals() else None}
+        return "failed", {"error": f"Timeout after {timeout_ms}ms, last spinning seen={seen}", "last_baseline": final_baseline, "last_check": result if 'result' in locals() else None}
 
     async def _python_download(self, src: str) -> Tuple[bool, bytes, str]:
         """Fallback: download directly via Python (bypasses CORS/fetch canvas taint).
