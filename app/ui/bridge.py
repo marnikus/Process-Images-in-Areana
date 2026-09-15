@@ -1961,7 +1961,49 @@ class Bridge(QObject):
                                         pass
                                     tmp_src = data.get("new_src")
                                     if tmp_src:
-                                        # User requested: wait 3s before download, not immediate, for stability
+                                        # Strict JOB-ID verification before any download (user request after page reset bug)
+                                        assoc = data.get("associatedJobId") or data.get("check", {}).get("associatedJobId")
+                                        expected = data.get("expectedJobId") or data.get("jobId") or correlation_id
+                                        visual_prev = data.get("visualPrevJobId") or data.get("check", {}).get("visualPrevJobId")
+                                        dom_prev = data.get("domPrevJobId") or data.get("check", {}).get("domPrevJobId")
+                                        if expected and assoc and assoc != expected:
+                                            self._log(f"[{correlation_id}] ❌ JOB-ID mismatch before download: image associated {assoc} != expected {expected} (visualPrev {visual_prev} domPrev {dom_prev}) — NOT downloading incorrect image, will treat as error and continue waiting for correct", "error")
+                                            self._log(f"[{correlation_id}] Mismatch details: {data.get('mismatchDetails') or data.get('check', {}).get('mismatchDetails')}", "warn")
+                                            last_wait_error = f"JOB-ID mismatch: expected {expected} but image belongs to {assoc}"
+                                            is_gen, gen_details = await ctrl.is_generating()
+                                            if is_gen:
+                                                self._log(f"[{correlation_id}] Still generating {gen_details} after mismatch — continue waiting for correct {expected}", "warn")
+                                                await asyncio.sleep(2)
+                                                continue
+                                            else:
+                                                if wait_cycle == 0:
+                                                    ok_r, r_msg = await ctrl.reload_page()
+                                                    self._log(f"[{correlation_id}] Reload after JOB-ID mismatch: {ok_r} {r_msg}", "warn")
+                                                    await asyncio.sleep(3)
+                                                    try:
+                                                        _new_baseline_tmp = await ctrl.capture_baseline()
+                                                        _orig_srcs = original_old_srcs if 'original_old_srcs' in locals() and original_old_srcs else _new_baseline_tmp.get("output_srcs", [])
+                                                        baseline = {
+                                                            "output_count": _new_baseline_tmp.get("output_count", 0),
+                                                            "output_srcs": _orig_srcs,
+                                                            "timestamp": _new_baseline_tmp.get("timestamp", 0),
+                                                        }
+                                                    except Exception as _e:
+                                                        self._log(f"[{correlation_id}] Baseline after reload failed: {_e}", "warn")
+                                                    continue
+                                                else:
+                                                    self._log(f"[{correlation_id}] ❌ JOB-ID mismatch persists after reload — failing as error, not downloading wrong image", "error")
+                                                    raise RuntimeError(f"JOB-ID mismatch: expected {expected} but found {assoc} — not downloading incorrect image (after page reset bug)")
+                                        job_found = data.get("jobFound") if "jobFound" in data else data.get("check", {}).get("jobFound")
+                                        if correlation_id and job_found is False:
+                                            self._log(f"[{correlation_id}] ⚠️ Prompt with JOB-ID {correlation_id} not found on page before download — possible page reset cleared prompt, will not download old image, error", "error")
+                                            last_wait_error = f"Prompt {correlation_id} not found on page (page reset?)"
+                                            if wait_cycle == 0:
+                                                ok_r, r_msg = await ctrl.reload_page()
+                                                await asyncio.sleep(3)
+                                                continue
+                                            raise RuntimeError(f"Prompt {correlation_id} not found on page after reset — not downloading")
+                                        self._log(f"[{correlation_id}] ✅ Full verification passed before download: associated {assoc} == expected {expected} jobFound={job_found} prompt above verified, will download after 3s", "success")
                                         self._log(f"[{correlation_id}] ⏳ New src detected {tmp_src[:80]}... waiting 3s before verification download (user requested)", "info")
                                         await asyncio.sleep(3)
                                         # Try to download after 3s to verify it's actually downloadable
@@ -2235,6 +2277,26 @@ class Bridge(QObject):
                             else:
                                 if not new_src:
                                     raise RuntimeError("No new_src from previous wait block")
+
+                                # Strict verification before DOWNLOAD (page reset bug)
+                                try:
+                                    gen_state = await ctrl.get_generation_state(correlation_id)
+                                    chk = gen_state or {}
+                                    assoc_dl = chk.get("associatedJobId") or chk.get("check", {}).get("associatedJobId") or chk.get("expectedJobId")
+                                    expected_dl = correlation_id
+                                    job_found_dl = chk.get("jobFound")
+                                    # If mismatch detected in generation state, do not download
+                                    if assoc_dl and expected_dl and assoc_dl != expected_dl:
+                                        self._log(f"[{correlation_id}] ❌ JOB-ID mismatch in DOWNLOAD block: associated {assoc_dl} != expected {expected_dl} — NOT downloading, error", "error")
+                                        raise RuntimeError(f"JOB-ID mismatch in DOWNLOAD: expected {expected_dl} but associated {assoc_dl} — not downloading incorrect image after reset")
+                                    if job_found_dl is False:
+                                        self._log(f"[{correlation_id}] ⚠️ Prompt {expected_dl} not found on page in DOWNLOAD check — possible reset, not downloading old image", "error")
+                                        raise RuntimeError(f"Prompt {expected_dl} not found before download — page reset?")
+                                    self._log(f"[{correlation_id}] ✅ DOWNLOAD pre-check passed: associated {assoc_dl} expected {expected_dl} jobFound={job_found_dl}", "success")
+                                except RuntimeError:
+                                    raise
+                                except Exception as e:
+                                    self._log(f"[{correlation_id}] DOWNLOAD pre-check exception {e} — continuing with caution (will verify during download attempts)", "warn")
 
                                 self._log(f"[{correlation_id}] ⏳ Waiting 3s before download as requested (not immediate) for stability: {new_src[:80]}...", "info")
                                 await asyncio.sleep(3)
