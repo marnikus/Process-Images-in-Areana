@@ -578,19 +578,108 @@ class CDPArenaController:
         final_baseline = await self.capture_baseline()
         return "failed", {"error": f"Timeout after {timeout_ms}ms, last spinning seen={seen_spinning}", "last_baseline": final_baseline, "last_check": result if 'result' in locals() else None}
 
+    async def _python_download(self, src: str) -> Tuple[bool, bytes, str]:
+        """Fallback: download directly via Python (bypasses CORS/fetch canvas taint).
+        R2 presigned URLs are accessible anonymously — fetch from page context fails due to CORS,
+        but Python urllib succeeds. Runs blocking IO in executor to avoid blocking event loop."""
+        def sync_fetch(url: str):
+            import urllib.request
+            import ssl
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            req = urllib.request.Request(url, headers=headers)
+            ctx = ssl.create_default_context()
+            try:
+                with urllib.request.urlopen(req, timeout=45, context=ctx) as resp:
+                    data = resp.read()
+                    raw_ctype = resp.headers.get("Content-Type", "") or ""
+                    return data, raw_ctype, getattr(resp, 'status', 200)
+            except Exception:
+                with urllib.request.urlopen(req, timeout=45) as resp2:
+                    data = resp2.read()
+                    ctype = resp2.headers.get("Content-Type", "") if hasattr(resp2.headers, 'get') else ""
+                    return data, ctype, 200
+
+        loop = asyncio.get_event_loop()
+        try:
+            data, ctype, status = await loop.run_in_executor(None, lambda: sync_fetch(src))
+            if not data or len(data) < 100:
+                return False, b"", f"Python download too small {len(data)} status {status} ctype {ctype}"
+            low = data[:200].lower()
+            if b"<html" in low or b"<!doctype" in low:
+                txt = data[:500].decode(errors="ignore")
+                if "NoSuchKey" in txt or "AccessDenied" in txt or "ExpiredToken" in txt:
+                    return False, b"", f"Python download got error page: {txt[:200]}"
+                return False, b"", f"Python download returned HTML not image (len {len(data)})"
+            self._log(f"Python direct download succeeded: {len(data)} bytes {ctype} from {src[:80]}...", "success")
+            return True, data, ctype
+        except Exception as e:
+            self._log(f"Python download failed for {src[:80]}: {e}", "warn")
+            return False, b"", f"Python download failed: {e}"
+
     async def download_image(self, src: str) -> Tuple[bool, bytes, str]:
+        # Strategy 1: JS fetch + canvas (fast, works for blob: and same-origin)
         js = f";({JS_DOWNLOAD_IMAGE})({json.dumps(src)})"
-        # evaluate returns value, but we need to await promise — our evaluate already awaits
-        result = await self.cdp.evaluate(js)
-        if not result:
-            return False, b"", "No result"
-        if not result.get("ok"):
-            return False, b"", f"Fetch failed {result}"
-        byte_list = result.get("bytes", [])
-        data = bytes(byte_list)
-        if data[:100].lower().find(b"<html") != -1:
-            return False, b"", "Downloaded HTML not image"
-        return True, data, result.get("contentType", "")
+        try:
+            result = await self.cdp.evaluate(js)
+            if result and result.get("ok"):
+                byte_list = result.get("bytes", [])
+                data = bytes(byte_list)
+                if b"<html" not in data[:100].lower() and len(data) > 100:
+                    return True, data, result.get("contentType", "") or ""
+                else:
+                    self._log(f"JS download returned HTML or small ({len(data)}), trying Python fallback", "warn")
+            else:
+                err = result.get("error") if result else "No result"
+                err_str = err[:200] if isinstance(err, str) else str(err)[:200]
+                self._log(f"JS download failed: {err_str} — trying Python direct", "warn")
+        except Exception as e:
+            self._log(f"JS download exception: {e} — trying Python direct", "warn")
+
+        # Strategy 2: Python direct download (bypasses CORS, canvas taint) — essential for R2 presigned URLs
+        ok, data, ctype = await self._python_download(src)
+        if ok:
+            return True, data, ctype
+
+        # Strategy 3: canvas retry with crossOrigin anonymous (last resort)
+        try:
+            js_retry = (
+                "(async (src) => {"
+                " try {"
+                " const img = new Image();"
+                " img.crossOrigin = 'anonymous';"
+                " img.src = src;"
+                " await new Promise((res, rej) => {"
+                " img.onload = res;"
+                " img.onerror = () => rej('load error');"
+                " setTimeout(() => rej('timeout'), 10000);"
+                " });"
+                " const c = document.createElement('canvas');"
+                " c.width = img.naturalWidth; c.height = img.naturalHeight;"
+                " const ctx = c.getContext('2d');"
+                " ctx.drawImage(img, 0, 0);"
+                " const dataUrl = c.toDataURL('image/png');"
+                " const base64 = dataUrl.split(',')[1];"
+                " const bin = atob(base64);"
+                " const bytes = new Uint8Array(bin.length);"
+                " for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);"
+                " return {ok:true, bytes: Array.from(bytes), contentType:'image/png', method:'canvas_retry'};"
+                " } catch(e) { return {ok:false, error:String(e), method:'canvas_retry'}; }"
+                "})(" + json.dumps(src) + ")"
+            )
+            result2 = await self.cdp.evaluate(f";{js_retry}")
+            if result2 and result2.get("ok"):
+                byte_list = result2.get("bytes", [])
+                data = bytes(byte_list)
+                if len(data) > 100:
+                    return True, data, result2.get("contentType", "")
+        except Exception as e:
+            self._log(f"Canvas retry failed: {e}", "warn")
+
+        return False, b"", f"All download methods failed: JS fetch/canvas failed (CORS tainted), Python direct failed, canvas retry failed for src={src[:120]}"
 
     def report(self, message: str, level: str = "info"):
         # For visual_click engine compatibility (engine.report)
