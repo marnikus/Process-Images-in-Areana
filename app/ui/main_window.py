@@ -58,6 +58,17 @@ class MainWindow(QMainWindow):
         self.view = QWebEngineView(self)
         self.setCentralWidget(self.view)
 
+        # Enable local file access for thumbnails — file:// from file:// origin
+        try:
+            from PySide6.QtWebEngineCore import QWebEngineSettings
+            settings = self.view.page().settings()
+            settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
+            settings.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+            settings.setAttribute(QWebEngineSettings.LocalStorageEnabled, True)
+            settings.setAttribute(QWebEngineSettings.AllowRunningInsecureContent, True)
+        except Exception as e:
+            print(f"WebEngine settings tweak failed: {e}")
+
         # Bridge
         self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, cdp_client=self.cdp_client, parent=self)
 

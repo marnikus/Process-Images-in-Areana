@@ -811,6 +811,72 @@ class Bridge(QObject):
         return json.dumps(js_state, ensure_ascii=False)
 
     @Slot(str, result=str)
+    def get_image_thumbnail(self, img_id: str):
+        """Return base64 data URL thumbnail for image queue — fixes black rect when file:// blocked."""
+        try:
+            import base64, io
+            # Find image by id
+            target = None
+            for im in self.state.images:
+                if im.id == img_id:
+                    target = im
+                    break
+            if not target:
+                return json.dumps({"ok": False, "error": "not found"})
+            p = Path(target.absolute_path)
+            if not p.exists():
+                return json.dumps({"ok": False, "error": "file not exists"})
+            # Generate thumbnail 96x96 via PIL if available, else full file base64
+            try:
+                from PIL import Image
+                with Image.open(p) as im_pil:
+                    im_pil.thumbnail((96, 96))
+                    fmt = im_pil.format or "PNG"
+                    if fmt.upper() == "JPEG":
+                        fmt = "JPEG"
+                    elif fmt.upper() not in ("PNG", "JPEG", "WEBP", "GIF"):
+                        fmt = "PNG"
+                    buf = io.BytesIO()
+                    # Preserve transparency for PNG
+                    if fmt == "PNG":
+                        im_pil.save(buf, format="PNG")
+                        mime = "image/png"
+                    elif fmt == "JPEG":
+                        # Convert RGBA to RGB for JPEG
+                        if im_pil.mode in ("RGBA", "LA"):
+                            bg = Image.new("RGB", im_pil.size, (255,255,255))
+                            bg.paste(im_pil, mask=im_pil.split()[-1] if im_pil.mode=="RGBA" else None)
+                            im_pil = bg
+                        im_pil.save(buf, format="JPEG", quality=85)
+                        mime = "image/jpeg"
+                    else:
+                        im_pil.save(buf, format=fmt)
+                        mime = f"image/{fmt.lower()}"
+                    data = buf.getvalue()
+                    b64 = base64.b64encode(data).decode("ascii")
+                    data_url = f"data:{mime};base64,{b64}"
+                    return json.dumps({"ok": True, "id": img_id, "data_url": data_url, "mime": mime}, ensure_ascii=False)
+            except Exception as e_pil:
+                # Fallback: read file and base64 encode (may be large)
+                try:
+                    data = p.read_bytes()
+                    # Guess mime from extension
+                    ext = p.suffix.lower()
+                    mime_map = {".png":"image/png",".jpg":"image/jpeg",".jpeg":"image/jpeg",".webp":"image/webp",".gif":"image/gif",".bmp":"image/bmp"}
+                    mime = mime_map.get(ext, "image/png")
+                    # Limit size to 500KB for thumb — if larger, still return but warn
+                    if len(data) > 500*1024:
+                        # Try to truncate? return file:// fallback
+                        return json.dumps({"ok": False, "error": f"too large {len(data)} and PIL failed {e_pil}", "fallback_url": f"file://{p}"}, ensure_ascii=False)
+                    b64 = base64.b64encode(data).decode("ascii")
+                    data_url = f"data:{mime};base64,{b64}"
+                    return json.dumps({"ok": True, "id": img_id, "data_url": data_url, "mime": mime, "fallback": True}, ensure_ascii=False)
+                except Exception as e2:
+                    return json.dumps({"ok": False, "error": f"{e_pil} / {e2}"}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
+
+    @Slot(str, result=str)
     def add_url(self, url: str):
         url = url.strip()
         if not url:

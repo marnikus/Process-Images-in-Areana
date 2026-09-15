@@ -98,11 +98,26 @@
 }
 .queue-table tr:hover { background: var(--bg-card-hover); }
 .queue-thumb {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   object-fit: cover;
   border-radius: 4px;
   background: var(--bg-input);
+  display: block;
+  border: 1px solid var(--border);
+}
+.queue-thumb-fallback {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.queue-table td:nth-child(2) {
+  width: 56px;
+  padding: 4px;
 }
 .status-badge {
   display: inline-block;
