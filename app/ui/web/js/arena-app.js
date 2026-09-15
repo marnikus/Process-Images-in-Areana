@@ -155,8 +155,11 @@ function setupBridgeListeners() {
   const b = App.bridge;
   if (!b) return;
 
-  // log_message
-  if (b.log_message) {
+  // Dedup: only listen to arena_log, ignore log_message to prevent double logs
+  // (Python _log previously emitted both signals; now emits only arena_log)
+  // If bridge only has log_message, use it; otherwise prefer arena_log
+  const hasArenaLog = !!b.arena_log;
+  if (!hasArenaLog && b.log_message) {
     b.log_message.connect((msg, level) => {
       if (typeof LogConsole !== 'undefined') LogConsole.log(msg, level);
     });
