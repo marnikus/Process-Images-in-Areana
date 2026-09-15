@@ -210,6 +210,8 @@ class CDPClient(QObject):
         self._connected = False
         self._current_ws_url = ""
         self._current_tab_id = ""
+        self._connect_lock = None
+        self._connecting = False""
 
     @property
     def base_url(self) -> str:
@@ -288,102 +290,132 @@ class CDPClient(QObject):
             return []
 
     async def connect(self, ws_url: str) -> bool:
-        await self.disconnect()
-        # Extract tab id from ws_url if possible for constructing alternative URLs
-        tab_id = ""
+        # Prevent concurrent connects — use asyncio.Lock and reuse if same tab
         try:
-            m = re.search(r'/devtools/page/([^/]+)$', ws_url)
-            if m:
-                tab_id = m.group(1)
+            if self._connect_lock is None:
+                self._connect_lock = asyncio.Lock()
         except Exception:
             pass
-        self._current_tab_id = tab_id
-
-        candidates = []
-        # Original
-        candidates.append(ws_url)
-        # Normalized to preferred host
-        norm = _normalize_ws_url(ws_url, self._host, self._port)
-        if norm != ws_url:
-            candidates.append(norm)
-        # Host swapped variants
-        if "127.0.0.1" in ws_url:
-            candidates.append(ws_url.replace("127.0.0.1", "localhost"))
-            candidates.append(_normalize_ws_url(ws_url.replace("127.0.0.1", "localhost"), self._host, self._port))
-        if "localhost" in ws_url:
-            candidates.append(ws_url.replace("localhost", "127.0.0.1"))
-            candidates.append(_normalize_ws_url(ws_url.replace("localhost", "127.0.0.1"), self._host, self._port))
-        # Constructed from id using current host/port (most reliable)
-        if tab_id:
-            candidates.append(f"ws://{self._host}:{self._port}/devtools/page/{tab_id}")
-            candidates.append(f"ws://127.0.0.1:{self._port}/devtools/page/{tab_id}")
-            candidates.append(f"ws://localhost:{self._port}/devtools/page/{tab_id}")
-
-        # Deduplicate candidates preserving order
-        seen = set()
-        uniq_candidates = []
-        for c in candidates:
-            if c not in seen:
-                seen.add(c)
-                uniq_candidates.append(c)
-        candidates = uniq_candidates
-
-        last_exc = None
-        # Check websockets availability upfront with clear error
         try:
-            import websockets
-        except ImportError as e:
-            err = f"❌ Missing dependency 'websockets' — required for Chrome CDP connection. Install with: pip install websockets aiohttp\nOriginal error: {e}\nCurrent Python: {__import__('sys').executable}"
-            log.error(err)
-            self.error.emit(err)
-            return False
+            if self.is_connected and self._current_ws_url and ws_url and self._current_tab_id:
+                m = re.search(r'/devtools/page/([^/]+)$', ws_url)
+                if m and m.group(1) == self._current_tab_id:
+                    log.info(f"CDP already connected to {ws_url[:80]}, reusing")
+                    return True
+        except Exception:
+            pass
+        if self._connect_lock:
+            async with self._connect_lock:
+                return await self._connect_inner(ws_url)
+        else:
+            return await self._connect_inner(ws_url)
 
-        for cand in candidates:
+    async def _connect_inner(self, ws_url: str) -> bool:
+        if self._connecting:
+            log.info("CDP connect already in progress, waiting")
+            for _ in range(10):
+                await asyncio.sleep(0.2)
+                if self.is_connected:
+                    return True
+        # If already connected to same tab after waiting, reuse
+        try:
+            if self.is_connected and self._current_tab_id:
+                m = re.search(r'/devtools/page/([^/]+)$', ws_url)
+                if m and m.group(1) == self._current_tab_id:
+                    log.info(f"CDP already connected to {ws_url[:80]} inside inner, reusing")
+                    return True
+        except Exception:
+            pass
+        self._connecting = True
+        try:
+            await self.disconnect()
+            tab_id = ""
             try:
-                # ping_interval=None avoids Chrome closing due to ping timeout
-                self._ws = await websockets.connect(
-                    cand,
-                    max_size=50*1024*1024,
-                    open_timeout=10,
-                    close_timeout=5,
-                    ping_interval=None,
-                    ping_timeout=None,
-                )
-                self._connected = True
-                self._current_ws_url = cand
-                self._receive_task = asyncio.create_task(self._receive_loop())
-                # Enable domains, ignore failures
-                for dom in ("Page", "DOM", "Runtime", "Network"):
-                    try:
-                        await self.send(f"{dom}.enable", timeout=10)
-                    except Exception as e:
-                        log.debug(f"Enable {dom} failed: {e}")
-                log.info(f"CDP connected: {cand[:120]}")
-                self.connected.emit()
-                return True
+                m = re.search(r'/devtools/page/([^/]+)$', ws_url)
+                if m:
+                    tab_id = m.group(1)
+            except Exception:
+                pass
+            self._current_tab_id = tab_id
+
+            candidates = []
+            candidates.append(ws_url)
+            norm = _normalize_ws_url(ws_url, self._host, self._port)
+            if norm != ws_url:
+                candidates.append(norm)
+            if "127.0.0.1" in ws_url:
+                candidates.append(ws_url.replace("127.0.0.1", "localhost"))
+                candidates.append(_normalize_ws_url(ws_url.replace("127.0.0.1", "localhost"), self._host, self._port))
+            if "localhost" in ws_url:
+                candidates.append(ws_url.replace("localhost", "127.0.0.1"))
+                candidates.append(_normalize_ws_url(ws_url.replace("localhost", "127.0.0.1"), self._host, self._port))
+            if tab_id:
+                candidates.append(f"ws://{self._host}:{self._port}/devtools/page/{tab_id}")
+                candidates.append(f"ws://127.0.0.1:{self._port}/devtools/page/{tab_id}")
+                candidates.append(f"ws://localhost:{self._port}/devtools/page/{tab_id}")
+
+            seen = set()
+            uniq_candidates = []
+            for c in candidates:
+                if c not in seen:
+                    seen.add(c)
+                    uniq_candidates.append(c)
+            candidates = uniq_candidates
+
+            last_exc = None
+            try:
+                import websockets
             except ImportError as e:
-                last_exc = e
-                err = f"Missing websockets: {e} — pip install websockets aiohttp"
+                err = f"❌ Missing dependency 'websockets' — required for Chrome CDP connection. Install with: pip install websockets aiohttp\nOriginal error: {e}\nCurrent Python: {__import__('sys').executable}"
                 log.error(err)
                 self.error.emit(err)
                 return False
-            except Exception as e:
-                last_exc = e
-                log.warning(f"CDP connect try {cand[:120]} failed: {e}")
-                if self._ws:
-                    try:
-                        await self._ws.close()
-                    except Exception:
-                        pass
-                    self._ws = None
-                continue
-        err = f"Connect failed for {ws_url[:120]} tried {candidates} last={last_exc}"
-        # Add helpful hint if last_exc is ModuleNotFoundError
-        if last_exc and isinstance(last_exc, ModuleNotFoundError):
-            err += "\n💡 Fix: pip install websockets aiohttp — then restart app"
-        log.error(err)
-        self.error.emit(err)
-        return False
+
+            for cand in candidates:
+                try:
+                    self._ws = await websockets.connect(
+                        cand,
+                        max_size=50*1024*1024,
+                        open_timeout=10,
+                        close_timeout=5,
+                        ping_interval=None,
+                        ping_timeout=None,
+                    )
+                    self._connected = True
+                    self._current_ws_url = cand
+                    self._receive_task = asyncio.create_task(self._receive_loop())
+                    for dom in ("Page", "DOM", "Runtime", "Network"):
+                        try:
+                            await self.send(f"{dom}.enable", timeout=10)
+                        except Exception as e:
+                            log.debug(f"Enable {dom} failed: {e}")
+                    log.info(f"CDP connected: {cand[:120]}")
+                    self.connected.emit()
+                    return True
+                except ImportError as e:
+                    last_exc = e
+                    err = f"Missing websockets: {e} — pip install websockets aiohttp"
+                    log.error(err)
+                    self.error.emit(err)
+                    return False
+                except Exception as e:
+                    last_exc = e
+                    log.warning(f"CDP connect try {cand[:120]} failed: {e}")
+                    if self._ws:
+                        try:
+                            await self._ws.close()
+                        except Exception:
+                            pass
+                        self._ws = None
+                    continue
+            err = f"Connect failed for {ws_url[:120]} tried {candidates} last={last_exc}"
+            if last_exc and isinstance(last_exc, ModuleNotFoundError):
+                err += "\n💡 Fix: pip install websockets aiohttp — then restart app"
+            log.error(err)
+            self.error.emit(err)
+            return False
+        finally:
+            self._connecting = False
 
     async def disconnect(self):
         self._connected = False
@@ -420,6 +452,7 @@ class CDPClient(QObject):
 
     async def _receive_loop(self):
         try:
+            log.info(f"CDP receive loop started for {self._current_ws_url[:80]}")
             async for raw in self._ws:
                 try:
                     data = json.loads(raw)
@@ -430,13 +463,26 @@ class CDPClient(QObject):
                     fut = self._pending.pop(mid)
                     if not fut.done():
                         fut.set_result(data)
+            log.warning(f"CDP receive loop ended normally for {self._current_ws_url[:80]} — websocket closed by Chrome")
         except asyncio.CancelledError:
+            log.info(f"CDP receive loop cancelled for {self._current_ws_url[:80]}")
             pass
         except Exception as e:
-            log.error(f"CDP receive error: {e}")
+            import traceback
+            tb = traceback.format_exc()[-800:]
+            log.error(f"CDP receive error for {self._current_ws_url[:80]}: {e} — {tb}")
+            self.error.emit(f"CDP receive error: {e}")
         finally:
+            was_connected = self._connected
             self._connected = False
-            self.disconnected.emit()
+            if was_connected:
+                log.warning(f"CDP disconnected (was connected) for {self._current_ws_url[:80]}")
+            else:
+                log.info(f"CDP disconnected (was not connected) for {self._current_ws_url[:80]}")
+            try:
+                self.disconnected.emit()
+            except Exception:
+                pass
 
     async def evaluate(self, expression: str, await_promise: bool = True):
         try:
