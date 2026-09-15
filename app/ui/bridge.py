@@ -71,6 +71,11 @@ class Bridge(QObject):
         self._exported_paths = {}
         self.undo_service = UndoService(self.config.undo)
         self.cdp = cdp_client
+        # persistent bg loop for CDP (keeps websocket alive)
+        self._bg_loop = None
+        self._bg_thread = None
+        self._bg_lock = None
+        self._bg_ready = None
         # ensure undo history loaded
         try:
             self.config.undo.load()
@@ -81,9 +86,19 @@ class Bridge(QObject):
             try:
                 self.cdp.connected.connect(lambda: self.connection_status.emit("connected"))
                 self.cdp.disconnected.connect(lambda: self.connection_status.emit("disconnected"))
-                self.cdp.error.connect(lambda e: self.connection_status.emit("error"))
+                self.cdp.error.connect(lambda e: self._on_cdp_error(e))
             except Exception:
                 pass
+
+    def _on_cdp_error(self, err_msg: str):
+        try:
+            self._log(f"CDP error: {err_msg[:500]}", "error")
+        except Exception:
+            pass
+        try:
+            self.connection_status.emit("error")
+        except Exception:
+            pass
 
     def _save_arena(self):
         try:
@@ -174,8 +189,18 @@ class Bridge(QObject):
             log.warning(f"emit arena state failed: {e}")
 
     def _log(self, msg: str, level: str = "info"):
-        self.log_message.emit(msg, level)
-        self.arena_log.emit(msg, level)
+        # Emit only arena_log to avoid duplicate logs (previously emitted both log_message and arena_log
+        # which JS connected both to LogConsole.log causing double lines)
+        try:
+            self.arena_log.emit(msg, level)
+        except Exception:
+            pass
+        try:
+            # Also try log_message but JS now dedupes? Keep only arena_log for single log
+            # self.log_message.emit(msg, level)
+            pass
+        except Exception:
+            pass
 
     @Slot(result=str)
     def get_app_state(self):
@@ -1339,19 +1364,77 @@ class Bridge(QObject):
         self.highlight_rect.emit(json.dumps(rect))
 
     # ---- CDP Chrome connection (robust, non-blocking to avoid UI freeze) ----
+    # Persistent background asyncio loop to keep CDP websocket receive_task alive.
+    # Previous short-lived asyncio.run() closed loop immediately after connect(),
+    # cancelling receive_task and causing instant disconnect.
+    def _ensure_bg_loop(self):
+        """Ensure a background event loop thread exists and is running."""
+        try:
+            import asyncio
+            import threading
+            # If loop exists and running, reuse
+            bg_loop = getattr(self, '_bg_loop', None)
+            if bg_loop and bg_loop.is_running():
+                return bg_loop
+            # Need to create new loop thread
+            if not hasattr(self, '_bg_lock'):
+                self._bg_lock = threading.Lock()
+                self._bg_ready = threading.Event()
+                self._bg_loop = None
+                self._bg_thread = None
+            with self._bg_lock:
+                bg_loop = getattr(self, '_bg_loop', None)
+                if bg_loop and bg_loop.is_running():
+                    return bg_loop
+                self._bg_ready.clear()
+                def _run_loop():
+                    try:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        self._bg_loop = loop
+                        self._bg_ready.set()
+                        loop.run_forever()
+                    except Exception as e:
+                        log.warning(f"bg loop crashed: {e}")
+                        self._bg_ready.set()
+                t = threading.Thread(target=_run_loop, daemon=True, name="arena-bg-loop")
+                t.start()
+                self._bg_thread = t
+            # Wait for loop to be ready
+            self._bg_ready.wait(timeout=5)
+            return getattr(self, '_bg_loop', None)
+        except Exception as e:
+            log.warning(f"_ensure_bg_loop failed: {e}")
+            return None
+
     def _schedule_coro(self, coro):
-        """Always run coro in a dedicated thread via asyncio.run to avoid blocking UI thread.
-        Previous version tried to use existing event loop which could freeze UI when sync
-        fetch_tabs_sync did blocking socket/DNS calls in main thread.
+        """Schedule coro on persistent background loop via run_coroutine_threadsafe.
+        This keeps CDP websocket receive loop alive after connect, unlike short-lived asyncio.run.
+        Non-blocking for UI thread.
         """
         try:
             import asyncio
+            loop = self._ensure_bg_loop()
+            if loop and loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(coro, loop)
+                def _cb(fut):
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        log.warning(f"coro thread failed: {e}")
+                        try:
+                            self._log(f"Async task failed: {e}", "error")
+                        except Exception:
+                            pass
+                future.add_done_callback(_cb)
+                return
+            # Fallback: short-lived thread if bg loop not available
             import threading
             def _run():
                 try:
                     asyncio.run(coro)
                 except Exception as e:
-                    log.warning(f"coro thread failed: {e}")
+                    log.warning(f"coro thread fallback failed: {e}")
                     try:
                         self._log(f"Async task failed: {e}", "error")
                     except Exception:
@@ -1419,7 +1502,9 @@ class Bridge(QObject):
             self.tabs_received.emit(payload)
             if not tabs:
                 try:
-                    diag = self.cdp.diagnose_sync()
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    diag = await loop.run_in_executor(None, lambda: self.cdp.diagnose_sync())
                     self._log(diag.get("summary",""), "warn")
                 except Exception:
                     pass
@@ -1431,19 +1516,25 @@ class Bridge(QObject):
         if not self.cdp:
             self._log("CDP client not available", "error")
             return
+        self._log(f"🔗 Connecting to {ws_url[:120]}… (port {self.cdp._port}, host {self.cdp._host})", "info")
         self._schedule_coro(self._do_connect_tab(ws_url))
 
     async def _do_connect_tab(self, ws_url: str):
         try:
             ok = await self.cdp.connect(ws_url)
             if ok:
-                self._log(f"🔗 Connected to {ws_url[:60]}", "success")
+                self._log(f"✅ Connected to {ws_url[:80]} (tab {self.cdp._current_tab_id[:20]}…)", "success")
                 self.connection_status.emit("connected")
+                # Log current host/port for verification
+                self._log(f"CDP session active on ws://{self.cdp._host}:{self.cdp._port}/devtools/page/{self.cdp._current_tab_id[:30]}", "info")
             else:
-                self._log(f"❌ Connect failed — check Chrome still open", "error")
+                self._log(f"❌ Connect failed for {ws_url[:120]} — check Chrome still open on port {self.cdp._port}, try Diagnose", "error")
+                self._log(f"💡 Tip: Ensure Chrome was started with --remote-debugging-port={self.cdp._port} --user-data-dir=... and that http://{self.cdp._host}:{self.cdp._port}/json/list shows JSON in browser", "warn")
                 self.connection_status.emit("error")
         except Exception as e:
-            self._log(f"❌ Connect failed: {e}", "error")
+            import traceback
+            tb = traceback.format_exc()[-1000:]
+            self._log(f"❌ Connect exception for {ws_url[:80]}: {e} — {tb}", "error")
             self.connection_status.emit("error")
 
     @Slot(str)
@@ -1464,11 +1555,13 @@ class Bridge(QObject):
             tabs = await self.cdp.fetch_tabs()
             if not tabs:
                 try:
-                    diag = self.cdp.diagnose_sync()
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    diag = await loop.run_in_executor(None, lambda: self.cdp.diagnose_sync())
                     self._log(diag.get("summary","⚠ No Chrome tabs found"), "warn")
-                    self._log("💡 Fix: 1) Close ALL Chrome windows. 2) Run: \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port=9222 --user-data-dir=\"C:\\arena-images-chrome\" 3) Open https://arena.ai in that NEW Chrome window. 4) Click Diagnose. 5) Open http://127.0.0.1:9222/json/list — you should see JSON.", "warn")
+                    self._log(f"💡 Fix: 1) Close ALL Chrome windows. 2) Run: \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port={self.cdp._port} --user-data-dir=\"C:\\arena-images-chrome\" 3) Open https://arena.ai in that NEW Chrome window. 4) Click Diagnose. 5) Open http://{self.cdp._host}:{self.cdp._port}/json/list — you should see JSON.", "warn")
                 except Exception:
-                    self._log("⚠ No Chrome tabs found — start Chrome with --remote-debugging-port=9222 --user-data-dir=\"C:\\arena-images-chrome\"", "warn")
+                    self._log(f"⚠ No Chrome tabs found — start Chrome with --remote-debugging-port={self.cdp._port} --user-data-dir=\"C:\\arena-images-chrome\"", "warn")
                 self.tab_match_result.emit(query, "[]")
                 return
             tab_dicts = [{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs]
