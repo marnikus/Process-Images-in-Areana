@@ -130,7 +130,52 @@ form.flex.w-full.flex-col
 
 ---
 
-## E. Output / Generated Image — Detection
+## E. Output / Generated Image — Detection (Updated 2026-09-16 Fix: image above prompt)
+
+**Bug reported:** "the image generates above the prompt .now app matching incorrect and match image generated above the prompt" — app was matching reference image (user's attached image) that appears above prompt text inside user bubble, instead of generated image after user message.
+
+**Root cause analysis (research before implementation):**
+- After submission, chat contains TWO new R2 images:
+  1. User's reference image: uploaded to R2 (host `messages-prod.*.r2.cloudflarestorage.com`), displayed inside user message bubble ABOVE prompt text (thumbnail or large, inside same container as JOB-ID token).
+  2. Assistant's generated image: also R2, displayed in assistant message bubble BELOW user message (after user container in DOM order, typically `aspect-square h-[50vh] w-[50vh] object-cover`).
+- Old detection `JS_CHECK_NEW_OUTPUT(oldSrcs)` collected ANY new R2 src not in baseline, returned first found in DOM order. If user reference image appears first (above prompt text, inside user bubble), it was picked as "new output" → downloaded original instead of generated.
+- Additionally, baseline might miss old images if selector drift, causing old image above prompt to be considered new.
+
+**Fix — anchor after JOB-ID + exclude inside user container + prefer large:**
+- `wait_for_new_output` now accepts `correlation_id` (JOB-ID token) and passes to JS.
+- JS finds element containing correlationId (searches div/span/p/pre with text including `[JOB-ID: xxx]` or `JOB-ID: xxx` or just xxx near JOB-ID).
+- Finds its container (closest message bubble) via heuristics: up to 8 ancestors, height 30..0.9*viewport, contains img or flex/group, not whole page (no-scrollbar).
+- Excludes any candidate img that is INSIDE jobContainer (`jobContainer.contains(el)`) → skips user reference image above prompt text.
+- Uses `compareDocumentPosition` to classify candidates as AFTER jobContainer (FOLLOWING) vs BEFORE. Prefers AFTER.
+- Prefers large images: `isLarge = width>=200 || rect.width>=200 || class includes 50vh || object-cover || aspect-square`. Generated images are 50vh, user thumbnails are h-16 w-16 (<100px).
+- Sorting:
+  - If job anchored and after candidates exist: sort by closest after jobTop (smallest positive delta) then largest width.
+  - Else: bottom-most (higher top) first as newest in chat, then larger width.
+- Logs `jobFound`, `jobTop`, `afterCount`, `beforeCount`, `isLarge` for diagnostics.
+
+**Stable selectors re-verified:**
+- Generated image: `div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]` + `h-[50vh] w-[50vh] aspect-square object-cover cursor-pointer` — large, visible, complete, naturalWidth>0.
+- User reference image (to exclude): inside `div.flex.flex-wrap.gap-2` or `div.group.relative.overflow-hidden.rounded-lg.h-16.w-16` or same container as JOB-ID text, often smaller.
+- User message container: contains JOB-ID text + optional img + prompt text, height < 80% viewport, width < 95% viewport.
+- Assistant container: sibling after user container, contains large R2 img, no JOB-ID.
+
+**Risks & fallbacks:**
+- If JOB-ID not found (render delay or virtualization): fallback to old logic but still prefers large + bottom-most (newest). Logs jobFound=false.
+- If compareDocumentPosition fails (shadow DOM): fallback to top comparison `elTop > jobTop+5`.
+- If multiple large images after job (Response A/B side-by-side): picks closest after job, then largest width — user may need to handle both, but first is valid.
+- If user reference image also large (e.g., 50vh): still excluded because inside jobContainer, not by size alone.
+- If baseline incomplete: still works because after-job filter excludes old images above prompt (before job).
+
+**Verification:**
+- After insertion, prompt contains `[JOB-ID: xxx]` — visible in user bubble.
+- Baseline captured before submit: `output_count` + `output_srcs`.
+- After submit, spinner `div.animate-spin` appears near `Response A/B` label → generating.
+- New output detection now returns `jobFound:true`, `afterCount>=1`, `isLarge:true`, `rect` with x,y,width,height.
+- Download uses Python direct fallback for R2 presigned URLs (CORS bypass) + canvas fallback.
+
+**Original section continues:**
+
+## E. Output / Generated Image — Detection (Original)
 
 **Purpose:** Detect genuinely new output image, not old one. User report 2026-09-16: image was created but download failed "Fetch failed {ok: False, 'error': 'TypeEr" — indicates fetch CORS issue, need canvas fallback.
 
