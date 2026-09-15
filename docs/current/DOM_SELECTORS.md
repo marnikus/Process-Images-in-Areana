@@ -434,3 +434,10 @@ All selectors will be centralized in `app/browser/site_adapter.py` as constants 
 - For JOB-ID 8ZO0: prev none, validAbove gen_A (0) → exact above verified.
 - For new prompt at bottom (400): prev is 01-b (300), valid range 300-400, only new gen in that range qualifies.
 
+### E3 — 2026-09-16 v3 refactor (layout-aware + canonical pool + fallback)
+
+**Why:** `WAIT_OUTPUT` stalled forever after spinner disappeared (grid missing → no baseline srcs, truncated matchSimple, early-break, inner text container).
+**Fix:** probe JS moved to `app/browser/output_probes.py`; wait loop to `output_wait.py`; selectors via `collect_candidates()` with normalized keys (`hasJob/hasImg/hasFlex/smallRef/rect`, `n.src` full, `n.rect` kept); layout-aware order (flex-col-reverse/inverted scroll/raw); smallest container needs `hasJob&&(hasImg||hasFlex)`; early-break removed (seenSrc dedupes); fallback accepts stable ≥200px new image after 10s so spinner-gone never infinite-waits.
+**Bridge:** `data` now flattens `check` diagnostics (`orderCheck`, `jobTop`, `prevJobTop`, `validAbove`, ...); `wait_for_new_output` signature unchanged, `cdp_arena.py` 735 LOC.
+**Details:** `docs/archive/2026-09-16 WAIT_OUTPUT unsolving ongoing bug 5x job-id/README.md` (harness + plan + verification).
+
