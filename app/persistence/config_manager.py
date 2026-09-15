@@ -10,6 +10,7 @@ from typing import Any
 DEFAULT_SESSION = {
     "grid_layout": None,
     "window_states": {"closed": [], "minimized": []},
+    "window_geometry": None,
     "theme": "dark",
     "last_folder": "",
     "highlight_duration": 3,
