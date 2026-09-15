@@ -253,7 +253,7 @@ JS_CHECK_NEW_OUTPUT = """
       }
     } catch(e) {}
 
-    // --- Collect all JOB-ID prompts with their visual top positions ---
+    // --- Collect all JOB-ID prompts with their DOM order and visual top ---
     let allJobs = [];
     try {
       const jobRegex = /\[JOB-ID:\s*([^\]\s]+)\]/g;
@@ -265,20 +265,16 @@ JS_CHECK_NEW_OUTPUT = """
         const txt = el.textContent;
         if (txt.length > 2000) continue;
         let match;
-        // Reset regex
         jobRegex.lastIndex = 0;
         while ((match = jobRegex.exec(txt)) !== null) {
           const jobId = match[1];
           if (!jobId || jobId.length < 3) continue;
-          // Find container for this JOB-ID
           let container = el;
-          // Walk up to find reasonable container with height >30 and width <95vw
           let cur = el;
           for (let i=0; i<10 && cur; i++) {
             if (cur.getBoundingClientRect) {
               const r = cur.getBoundingClientRect();
               if (r.height > 20 && r.height < window.innerHeight * 0.95 && r.width < window.innerWidth * 0.98) {
-                // Prefer containers that have img or flex
                 if (cur.querySelector('img') || cur.classList.contains('flex') || cur.classList.contains('group') || cur.textContent.includes(jobId)) {
                   if (!cur.classList.contains('no-scrollbar')) {
                     container = cur;
@@ -290,7 +286,6 @@ JS_CHECK_NEW_OUTPUT = """
             cur = cur.parentElement;
           }
           if (!container) container = el.closest('div.group, div.flex.flex-col, div[data-message-id], div.min-w-0.flex-1, div.flex.w-full') || el.closest('div') || el;
-          // Avoid duplicate containers for same jobId
           let key = jobId + '|' + (container ? (container.getBoundingClientRect().top + '|' + container.getBoundingClientRect().left) : el.getBoundingClientRect().top);
           if (seenContainers.has(key)) continue;
           seenContainers.add(key);
@@ -309,7 +304,6 @@ JS_CHECK_NEW_OUTPUT = """
           } catch(e) {}
         }
       }
-      // Also check text nodes for JOB-ID not caught
       if (allJobs.length === 0 && correlationId) {
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
         let node;
@@ -336,12 +330,7 @@ JS_CHECK_NEW_OUTPUT = """
           }
         }
       }
-      // Sort by visual top ascending (top to bottom)
-      allJobs.sort((a,b) => {
-        if (Math.abs(a.top - b.top) > 5) return a.top - b.top;
-        return a.left - b.left;
-      });
-      // Deduplicate by jobId keeping first occurrence (closest to top? Actually keep all but unique)
+      // Deduplicate by jobId
       let deduped = [];
       let seenIds = new Set();
       for (const j of allJobs) {
@@ -351,6 +340,19 @@ JS_CHECK_NEW_OUTPUT = """
         }
       }
       allJobs = deduped;
+      // Sort by DOM order (document order) — primary for exact above logic
+      // Use compareDocumentPosition to sort
+      allJobs.sort((a,b)=>{
+        try {
+          if (a.el === b.el) return 0;
+          const pos = a.el.compareDocumentPosition(b.el);
+          if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1; // a before b
+          if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;  // a after b
+        } catch(e) {}
+        // Fallback to visual top
+        if (Math.abs(a.top - b.top) > 5) return a.top - b.top;
+        return a.left - b.left;
+      });
     } catch(e) {}
 
     let jobEl = null;
@@ -362,6 +364,8 @@ JS_CHECK_NEW_OUTPUT = """
     let nextJobTop = null;
     let prevJobId = null;
     let nextJobId = null;
+    let prevJobEl = null;
+    let nextJobEl = null;
 
     if (correlationId) {
       try {
@@ -376,15 +380,16 @@ JS_CHECK_NEW_OUTPUT = """
             if (i > 0) {
               prevJobTop = allJobs[i-1].top;
               prevJobId = allJobs[i-1].jobId;
+              prevJobEl = allJobs[i-1].el;
             }
             if (i < allJobs.length - 1) {
               nextJobTop = allJobs[i+1].top;
               nextJobId = allJobs[i+1].jobId;
+              nextJobEl = allJobs[i+1].el;
             }
             break;
           }
         }
-        // Fallback: search again without dedup if not found
         if (!jobFound) {
           const allEls = document.querySelectorAll('div, span, p, pre');
           for (const el of allEls) {
@@ -420,14 +425,10 @@ JS_CHECK_NEW_OUTPUT = """
     let belowCandidates = [];
 
     function isReferenceImage(el) {
-      // Reference image inside user bubble is small w-32, not 50vh, and inside jobContainer
       try {
         if (jobContainer && jobContainer.contains(el)) return true;
-        // Check if inside any job container
         for (const j of allJobs) {
           if (j.container && j.container.contains(el)) {
-            // If this container is for a different jobId, it's still a reference image for that job, not a generated image
-            // But we need to distinguish: reference images are small (w-32) vs generated large (50vh)
             const cls = el.className || '';
             const rect = el.getBoundingClientRect();
             const isSmall = rect.width <= 140 || cls.includes('w-32') || cls.includes('h-16') || cls.includes('w-16');
@@ -436,6 +437,23 @@ JS_CHECK_NEW_OUTPUT = """
         }
       } catch(e) {}
       return false;
+    }
+
+    function isBeforeInDOM(a, b) {
+      try {
+        if (!a || !b) return false;
+        if (a === b) return false;
+        const pos = a.compareDocumentPosition(b);
+        return !!(pos & Node.DOCUMENT_POSITION_FOLLOWING);
+      } catch(e) { return false; }
+    }
+    function isAfterInDOM(a, b) {
+      try {
+        if (!a || !b) return false;
+        if (a === b) return false;
+        const pos = a.compareDocumentPosition(b);
+        return !!(pos & Node.DOCUMENT_POSITION_PRECEDING);
+      } catch(e) { return false; }
     }
 
     for (const sel of selectors) {
@@ -454,8 +472,6 @@ JS_CHECK_NEW_OUTPUT = """
           const height = el.naturalHeight || rect.height || 0;
           const className = el.className || '';
           const isLarge = width >= 200 || rect.width >= 200 || className.includes('50vh') || className.includes('object-cover') || (el.classList && el.classList.contains('aspect-square') && rect.width >= 200);
-
-          // Skip small reference images
           if (!isLarge) continue;
 
           const info = {
@@ -474,45 +490,66 @@ JS_CHECK_NEW_OUTPUT = """
           };
           allNew.push(info);
 
-          if (jobFound && jobTop !== null) {
-            // Exact above logic: image must be above prompt (top < jobTop)
-            // And must be between previous job and current job (if previous exists)
-            // So: prevJobTop < imageTop < jobTop
-            // If no previous job, just imageTop < jobTop
-            const above = rect.top < jobTop - 5;
-            const below = rect.top > jobTop + 5;
+          if (jobFound && jobEl) {
+            // DOM-order exact above logic (primary):
+            // Image must be before current job in DOM (file above)
+            // And after previous job in DOM (if exists) — so between prev and current
+            // This matches <ol flex-col-reverse> where gen directly above user in file belongs to that user
+            const beforeCurrent = isBeforeInDOM(el, jobEl);
+            const afterPrev = prevJobEl ? isBeforeInDOM(prevJobEl, el) : true;
+            const beforePrev = prevJobEl ? isBeforeInDOM(el, prevJobEl) : false;
 
-            if (above) {
-              let between = true;
-              if (prevJobTop !== null) {
-                // Image must be below previous job (top > prevJobTop) to be exact above current, not after next prompt
-                if (rect.top <= prevJobTop + 5) {
-                  between = false;
+            // Also check visual top as secondary, but DOM order is primary
+            const aboveVisual = rect.top < jobTop - 5;
+            const belowVisual = rect.top > jobTop + 5;
+
+            // For flex-col-reverse, DOM before = visual after (larger top), so we cannot rely only on visual
+            // Valid if DOM between prev and current, regardless of visual top
+            if (beforeCurrent && afterPrev) {
+              // Ensure no intervening job between image and current in DOM order
+              let hasInterveningJob = false;
+              for (const j of allJobs) {
+                if (j.jobId === correlationId) continue;
+                if (isBeforeInDOM(el, j.el) && isBeforeInDOM(j.el, jobEl)) {
+                  hasInterveningJob = true;
+                  break;
                 }
               }
-              // Also ensure no other job between image and current
-              if (between) {
-                let hasInterveningJob = false;
-                for (const j of allJobs) {
-                  if (j.jobId === correlationId) continue;
-                  if (j.top > rect.top + 5 && j.top < jobTop - 5) {
-                    hasInterveningJob = true;
-                    break;
-                  }
-                }
-                if (!hasInterveningJob) {
-                  validAbove.push(info);
-                } else {
-                  invalidAbove.push(info);
-                }
+              if (!hasInterveningJob) {
+                validAbove.push(info);
               } else {
                 invalidAbove.push(info);
               }
-            } else if (below) {
+            } else if (beforeCurrent && beforePrev) {
+              // Image before previous job — belongs to previous prompt
+              invalidAbove.push(info);
+            } else if (!beforeCurrent) {
+              // Image after current in DOM (below in file, above visually due to flex-col-reverse)
+              // Could be below candidate — but for flex-col-reverse, image after current in DOM is actually older, not relevant
               belowCandidates.push(info);
+            } else {
+              // Fallback: use visual check
+              if (aboveVisual) {
+                let between = true;
+                if (prevJobTop !== null) {
+                  if (rect.top <= prevJobTop + 5) between = false;
+                }
+                if (between) {
+                  let hasIntervening = false;
+                  for (const j of allJobs) {
+                    if (j.jobId === correlationId) continue;
+                    if (j.top > rect.top + 5 && j.top < jobTop - 5) { hasIntervening = true; break; }
+                  }
+                  if (!hasIntervening) validAbove.push(info);
+                  else invalidAbove.push(info);
+                } else {
+                  invalidAbove.push(info);
+                }
+              } else if (belowVisual) {
+                belowCandidates.push(info);
+              }
             }
           } else {
-            // No job found — collect all as fallback but prefer bottom-most
             validAbove.push(info);
           }
         }
@@ -520,32 +557,41 @@ JS_CHECK_NEW_OUTPUT = """
       if (validAbove.length > 0) break;
     }
 
-    // If we have validAbove (exact above current prompt), pick closest above (largest top < jobTop)
+    // If we have validAbove (exact above current prompt in DOM order), pick closest above (nearest before current in DOM)
     let pool = [];
     if (validAbove.length > 0) {
-      validAbove.sort((a,b) => b.top - a.top); // descending, closest above first (largest top)
+      // Sort by DOM order: closest before current = last in DOM order before current
+      validAbove.sort((a,b)=>{
+        try {
+          if (a.el === b.el) return 0;
+          const pos = a.el.compareDocumentPosition(b.el);
+          if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return 1; // a before b, so b closer to job
+          if (pos & Node.DOCUMENT_POSITION_PRECEDING) return -1;
+        } catch(e) {}
+        return b.top - a.top;
+      });
       pool = validAbove;
     } else if (belowCandidates.length > 0 && !jobFound) {
-      // Fallback when no job found: bottom-most
       belowCandidates.sort((a,b) => b.top - a.top);
       pool = belowCandidates;
     } else {
-      // No valid above — we should wait for next image, not take invalid
       pool = [];
     }
 
-    // Large filter already done, but ensure
     let largePool = pool.filter(c => c.isLarge);
     if (largePool.length > 0) pool = largePool;
 
-    // Sort pool by closest above (largest top)
     if (jobFound && pool.length > 0) {
-      pool.sort((a,b) => {
-        // Closest above = largest top that is still < jobTop
+      pool.sort((a,b)=>{
+        try {
+          const pos = a.el.compareDocumentPosition(b.el);
+          if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return 1;
+          if (pos & Node.DOCUMENT_POSITION_PRECEDING) return -1;
+        } catch(e) {}
         return b.top - a.top;
       });
     } else {
-      pool.sort((a,b) => {
+      pool.sort((a,b)=>{
         if (a.visible !== b.visible) return a.visible ? -1 : 1;
         return b.top - a.top;
       });
@@ -554,18 +600,16 @@ JS_CHECK_NEW_OUTPUT = """
     for (const cand of pool) {
       const el = cand.el;
       if (!el.complete) {
-        return {ready:false, reason:'not_complete', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, belowCount: belowCandidates.length, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, isLarge: cand.isLarge, top: cand.top, jobId: correlationId, orderCheck: `exact above: prev ${prevJobId||'none'}(${prevJobTop}) < img ${cand.top} < curr ${correlationId}(${jobTop})`};
+        return {ready:false, reason:'not_complete', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, belowCount: belowCandidates.length, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, isLarge: cand.isLarge, top: cand.top, jobId: correlationId, orderCheck: `DOM exact above: prev ${prevJobId||'none'} < img < curr ${correlationId} (DOM order), top ${cand.top}`};
       }
       if (el.naturalWidth === 0) {
         return {ready:false, reason:'zero_width', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, isLarge: cand.isLarge};
       }
-      if (!cand.visible) {
-        continue;
-      }
+      if (!cand.visible) continue;
       if (spinning) {
-        return {ready:false, reason:'generating_spinner_visible', src: cand.src, spinning: true, spinCount: spinCount, spinDetails: spinDetails, width: cand.width, height: cand.height, rect: cand.rect, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, isLarge: cand.isLarge, top: cand.top, orderCheck: `exact above but spinning, await next above if still generating`};
+        return {ready:false, reason:'generating_spinner_visible', src: cand.src, spinning: true, spinCount: spinCount, spinDetails: spinDetails, width: cand.width, height: cand.height, rect: cand.rect, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, isLarge: cand.isLarge, top: cand.top, orderCheck: `DOM exact above but spinning, await next above if still generating`};
       }
-      return {ready:true, src: cand.src, width: cand.width, height: cand.height, spinning: false, rect: cand.rect, selector: cand.selector, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, belowCount: belowCandidates.length, isLarge: cand.isLarge, top: cand.top, orderCheck: `exact above verified: prev ${prevJobId||'none'} < img < curr ${correlationId}`};
+      return {ready:true, src: cand.src, width: cand.width, height: cand.height, spinning: false, rect: cand.rect, selector: cand.selector, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, belowCount: belowCandidates.length, isLarge: cand.isLarge, top: cand.top, orderCheck: `DOM exact above verified: prev ${prevJobId||'none'} < img < curr ${correlationId} (DOM order)`};
     }
 
     if (pool.length > 0) {
@@ -574,28 +618,26 @@ JS_CHECK_NEW_OUTPUT = """
       return {ready:false, reason: reason, src: first.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, validAbove: validAbove.length, invalidAbove: invalidAbove.length, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop};
     }
 
-    // No valid above found — check if there are invalid above (belongs to previous prompt)
     if (invalidAbove.length > 0) {
       let invalidDetails = [];
       try { for (const inv of invalidAbove.slice(0,5)) invalidDetails.push({src: inv.src.slice(-60), top: inv.top}); } catch(e) {}
-      return {ready:false, reason:'image_above_belongs_to_previous_prompt_await_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, invalidAbove: invalidAbove.length, invalidAboveDetails: invalidDetails, validAbove: 0, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), allNew: allNew.length, jobId: correlationId, orderCheck: `no exact above, found ${invalidAbove.length} images above previous prompt (prev ${prevJobId} ${prevJobTop}), awaiting next above current ${correlationId} ${jobTop}`};
+      return {ready:false, reason:'image_above_belongs_to_previous_prompt_await_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, invalidAbove: invalidAbove.length, invalidAboveDetails: invalidDetails, validAbove: 0, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), allNew: allNew.length, jobId: correlationId, orderCheck: `DOM no exact above, found ${invalidAbove.length} images before prev ${prevJobId} ${prevJobTop}, awaiting next above current ${correlationId} ${jobTop}`};
     }
 
     if (allNew.length > 0) {
-      // Detailed logging for debugging exact above
       let allNewDetails = [];
       try {
         for (const n of allNew.slice(0,10)) {
           allNewDetails.push({src: n.src.slice(-60), top: n.top, isLarge: n.isLarge, width: n.width, selector: n.selector});
         }
       } catch(e) {}
-      return {ready:false, reason:'no_exact_above_found_wait_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), allNew: allNew.length, allNewDetails: allNewDetails, validAbove: 0, invalidAbove: invalidAbove.length, invalidAboveDetails: invalidAbove.slice(0,5).map(i=>({src:i.src.slice(-60), top:i.top})), belowCount: belowCandidates.length, belowDetails: belowCandidates.slice(0,5).map(b=>({src:b.src.slice(-60), top:b.top})), jobId: correlationId, orderCheck: `no exact above: jobTop ${jobTop} prevTop ${prevJobTop} nextTop ${nextJobTop} allNew ${allNew.length} valid 0 invalid ${invalidAbove.length}`};
+      return {ready:false, reason:'no_exact_above_found_wait_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), allNew: allNew.length, allNewDetails: allNewDetails, validAbove: 0, invalidAbove: invalidAbove.length, invalidAboveDetails: invalidAbove.slice(0,5).map(i=>({src:i.src.slice(-60), top:i.top})), belowCount: belowCandidates.length, belowDetails: belowCandidates.slice(0,5).map(b=>({src:b.src.slice(-60), top:b.top})), jobId: correlationId, orderCheck: `DOM no exact above: jobTop ${jobTop} prevTop ${prevJobTop} nextTop ${nextJobTop} allNew ${allNew.length} valid 0 invalid ${invalidAbove.length}`};
     }
 
     if (spinning) {
       return {ready:false, reason:'generating_no_new_yet', spinning: true, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, jobIndex: jobIndex, allJobs: allJobs.length};
     }
-    return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), validAbove: validAbove.length, invalidAbove: invalidAbove.length, allNew: allNew.length, jobId: correlationId, orderCheck: `no new images at all, oldSrcs ${oldSrcs.length}`};
+    return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), validAbove: validAbove.length, invalidAbove: invalidAbove.length, allNew: allNew.length, jobId: correlationId, orderCheck: `DOM no new images at all, oldSrcs ${oldSrcs.length}`};
   } catch(e) { return {ready:false, reason:String(e), spinning: false}; }
 })
 """
@@ -857,11 +899,24 @@ class CDPArenaController:
                 return "completed", {"new_src": result.get("src"), "check": result, "baseline": baseline, "rect": result.get("rect")}
 
             # If we saw spinning before and now no spinning but still no new image, maybe just finished but image not yet in DOM — wait a bit more
-            if seen_spinning and result.get("reason") == "no_new":
-                # Wait a bit more for image to appear after spinner gone
-                self._log("Spinner disappeared but no new image yet — waiting for image to appear...", "info")
-                await asyncio.sleep(poll)
-                continue
+            # Enhanced to handle DOM-order exact above cases: no_exact_above_found_wait_next, image_above_belongs_to_previous_prompt_await_next, etc.
+            if seen_spinning and not result.get("spinning"):
+                reason = result.get("reason") or ""
+                if reason in ("no_new", "no_exact_above_found_wait_next", "image_above_belongs_to_previous_prompt_await_next", "not_complete", "zero_width", "hidden", "loading", "generating_no_new_yet"):
+                    self._log(f"Spinner disappeared but no new image yet — reason={reason} waiting... orderCheck={result.get('orderCheck','')[:200]} allNew={result.get('allNew')} validAbove={result.get('validAbove')} jobFound={result.get('jobFound')}", "info")
+                    await asyncio.sleep(poll)
+                    continue
+                # Also if ready false but allNew exists, keep waiting a bit
+                if result.get("allNew") and result.get("allNew") > 0 and not result.get("ready"):
+                    self._log(f"Spinner gone but allNew={result.get('allNew')} not ready reason={reason} — waiting for exact above image to appear... {result.get('orderCheck','')[:200]}", "info")
+                    await asyncio.sleep(poll)
+                    continue
+
+            # Log orderCheck periodically even when not spinning, to help debug exact above
+            now = time.time()
+            if now - last_log_time > 10:
+                self._log(f"⏳ Waiting... reason={result.get('reason')} spinning={result.get('spinning')} allNew={result.get('allNew')} validAbove={result.get('validAbove')} invalidAbove={result.get('invalidAbove')} jobFound={result.get('jobFound')} orderCheck={result.get('orderCheck','')[:250]}", "info")
+                last_log_time = now
 
             await asyncio.sleep(poll)
 
