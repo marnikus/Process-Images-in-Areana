@@ -252,47 +252,61 @@
       <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Rect highlight shows above clicked element for N seconds (configurable). All UI params storable in preset JSON.</div>
     </div>
 
-    <!-- ACTION BLOCKS — Stacking Jobs with visual confirmations (restored from Old App) -->
-    <div class="panel" id="winActionBlocks" data-window="action_blocks">
+    <!-- ACTION BLOCKS — Stacking Jobs — redesigned to match target screenshot -->
+    <div class="panel action-blocks-panel" id="winActionBlocks" data-window="action_blocks">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">view_module</span> Action Blocks — Stacking Jobs <span class="spacer"></span><span id="actionBlocksCount" style="font-size:10px; color:var(--text-muted)">0 blocks</span></h3>
-      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
-        <button id="addActionBlockBtn" class="btn-small" title="Add block — click on btn/text areas"><span class="material-icons" style="font-size:14px;">add</span> Add</button>
-        <button id="resetActionBlocksBtn" class="btn-small" title="Reset to default stack">Reset</button>
-        <button id="saveActionBlocksBtn" class="btn-small btn-primary" title="Save stack">Save</button>
-        <button id="exportActionBlocksBtn" class="btn-small" title="Export JSON">Export</button>
-        <button id="importActionBlocksBtn" class="btn-small" title="Import JSON">Import</button>
-        <button id="saveCustomBlockBtn" class="btn-small" title="Save selected CUSTOM_FIND as custom preset">💾 Save Custom</button>
-      </div>
-      <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">
-        Drag <span class="material-icons" style="font-size:12px; vertical-align:middle;">drag_indicator</span> to reorder, toggle enable, double-click to highlight selector. Visual rect confirmation on each click (RED find, ORANGE click, GREEN collect). Stored in preset JSON. All params storable, rect duration configurable.
-      </div>
-      <div id="actionBlocksStack" style="flex:1; overflow:auto; max-height:280px; border:1px solid var(--border); border-radius:4px; padding:4px; background:var(--bg-card);"></div>
-      
-      <!-- Config moved to separate winBlockConfig window — keep minimal hint here -->
-      <div style="margin-top:10px; font-size:11px; color:var(--text-muted); padding:6px; border:1px dashed var(--border); border-radius:4px;">
-        Select a block to edit in <b>Block Config</b> window → drag <span class="material-icons" style="font-size:12px; vertical-align:middle;">drag_indicator</span> to reorder. Double-click row to highlight selector.
+
+      <!-- Toolbar — matches target: Add Action green outline, Reset, Save, Export, Import, Save Custom preset -->
+      <div class="ab-toolbar">
+        <button id="addActionBlockBtn" class="ab-btn ab-btn-primary" title="Add block — click on btn/text areas"><span class="material-icons">add_circle</span> Add Action</button>
+        <button id="resetActionBlocksBtn" class="ab-btn" title="Reset to default stack"><span class="material-icons">restart_alt</span> Reset</button>
+        <button id="saveActionBlocksBtn" class="ab-btn" title="Save stack"><span class="material-icons">save</span> Save</button>
+        <span class="ab-toolbar-spacer"></span>
+        <button id="exportActionBlocksBtn" class="ab-btn" title="Export JSON"><span class="material-icons">ios_share</span> Export</button>
+        <button id="importActionBlocksBtn" class="ab-btn" title="Import JSON"><span class="material-icons">upload</span> Import</button>
+        <button id="saveCustomBlockBtn" class="ab-btn" title="Save selected CUSTOM_FIND as custom preset"><span class="material-icons">bookmark_add</span> Save Custom preset</button>
       </div>
 
-      <!-- Custom Find & Click presets (Old App presets-ui-blocks) -->
-      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
-        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:14px;">bookmarks</span> Custom Find & Click Presets — reusable blocks</div>
-        <div id="customBlockChips" style="min-height:30px; border:1px dashed var(--border); border-radius:4px; padding:4px; background:var(--bg-input); display:flex; flex-wrap:wrap; gap:4px;"></div>
+      <!-- Info box — target text -->
+      <div class="ab-info-box">
+        <b>Reorder Blocks:</b> Drag the handle (alt + arrows as alternative). <span class="ab-visual-colors"><b>Visual confirmation colors:</b> <span style="color:#ff4d4d">RED find</span>, <span style="color:#ff9500">ORANGE click</span>, and <span style="color:#4ade80">GREEN collect</span>. All parameters stored in preset JSON.</span>
+      </div>
+
+      <!-- Main stack — full height resizable, no fixed max-height -->
+      <div id="actionBlocksStack" class="ab-stack"></div>
+
+      <!-- Footer stats + Run button — target design -->
+      <div class="ab-footer">
+        <div class="ab-footer-stats">
+          <span id="abTotalSteps">Total: 0 steps</span> • <span id="abSelectedSteps">Selected: 0 steps</span> • <span id="abStatus">Status: Awaiting run command</span>
+          <span id="abPauseBadge" class="ab-pause-badge hidden"><span class="material-icons">pause_circle</span> ON PAUSE — Captcha / Security detected</span>
+        </div>
+        <button id="abRunBtn" class="ab-run-btn"><span class="material-icons">play_circle</span> Run Automation</button>
+      </div>
+
+      <!-- Collapsible advanced sections -->
+      <details class="ab-details" open>
+        <summary><span class="material-icons">tune</span> Block Config &amp; Tips <span class="ab-details-hint">Select a block to edit in Block Config window → alt+↑↓ to reorder, double-click to highlight selector</span></summary>
+        <div style="font-size:11px; color:var(--text-muted); padding:6px; border:1px dashed var(--border); border-radius:6px; margin-top:6px;">
+          Drag <span class="material-icons" style="font-size:12px; vertical-align:middle;">reorder</span> to reorder, toggle enable, double-click to highlight selector. Visual rect confirmation on each click (RED find, ORANGE click, GREEN collect). Stored in preset JSON.
+        </div>
+      </details>
+
+      <details class="ab-details">
+        <summary><span class="material-icons">bookmarks</span> Custom Find & Click Presets — reusable blocks</summary>
+        <div id="customBlockChips" class="ab-chips"></div>
         <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Save CUSTOM_FIND blocks as presets for reuse across runs. Click chip to add to stack.</div>
-      </div>
+      </details>
 
-      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
-        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:14px;">play_circle</span> Current Job Stack — live execution with rects</div>
-        <div id="jobActionStack" style="min-height:80px; max-height:220px; overflow:auto; border:1px dashed var(--border); border-radius:4px; padding:4px; background:var(--bg-input);">
-          <span style="font-size:11px; color:var(--text-muted);">No job running — start a job to see live blocks with rect confirmations as it makes clicks</span>
-        </div>
-      </div>
+      <details class="ab-details">
+        <summary><span class="material-icons">play_circle</span> Current Job Stack — live execution with rects</summary>
+        <div id="jobActionStack" class="ab-job-stack"><span style="font-size:11px; color:var(--text-muted);">No job running — start a job to see live blocks with rect confirmations as it makes clicks</span></div>
+      </details>
 
-      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
-        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;"><span class="material-icons" style="font-size:14px;">history</span> All Separate Jobs — rectangles confirmations</div>
-        <div id="allJobsStack" style="min-height:80px; max-height:300px; overflow:auto; border:1px solid var(--border); border-radius:4px; padding:4px; background:var(--bg-card);">
-          <span style="font-size:11px; color:var(--text-muted);">No jobs yet — run batch to see all jobs with rect confirmations</span>
-        </div>
-      </div>
+      <details class="ab-details">
+        <summary><span class="material-icons">history</span> All Separate Jobs — rectangles confirmations</summary>
+        <div id="allJobsStack" class="ab-all-jobs"><span style="font-size:11px; color:var(--text-muted);">No jobs yet — run batch to see all jobs with rect confirmations</span></div>
+      </details>
     </div>
 
     <!-- BLOCK CONFIG — separate win, redesigned as shown in screenshot (security Check Security Dialog) -->

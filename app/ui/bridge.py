@@ -1457,25 +1457,45 @@ class Bridge(QObject):
                             else:
                                 self._emit_job_action_status(job_id, block, "success", f"Clicked {block.selector}")
 
-                        elif btype == "WAIT_OUTPUT":
-                            self._log(f"[{correlation_id}] Waiting for generation (timeout {gen_timeout}ms)", "info")
-                            self._emit_job_action_status(job_id, block, "running", f"Waiting generation timeout {gen_timeout}ms")
-                            status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout)
+                        elif btype in ("WAIT_OUTPUT", "AWAIT_PROCESSING_IMAGE"):
+                            # Waiting block when system detects awaiting elements e.g. processing image, awaiting API result
+                            is_await = btype == "AWAIT_PROCESSING_IMAGE"
+                            label = "Waiting for image to finish generating" if is_await else "Waiting for generation"
+                            self._log(f"[{correlation_id}] {label} (timeout {block.timeout_ms or gen_timeout}ms) — detects processing spinner, shows waiting state", "info")
+                            self._emit_job_action_status(job_id, block, "waiting" if is_await else "running", f"{label} — watching for processing → new output, timeout {block.timeout_ms or gen_timeout}ms")
+                            # If AWAIT_PROCESSING_IMAGE, first wait for processing indicator to appear/disappear, then for new output
+                            if is_await:
+                                # Try to detect processing indicator via selector
+                                try:
+                                    proc_sel = block.selector or "div:has-text(\"Processing\"), div:has-text(\"Generating\"), [data-state=\"loading\"], .spinner, [aria-busy=\"true\"]"
+                                    # Poll for processing visible up to 5s, then wait for it to disappear
+                                    await ctrl.highlight_selector(proc_sel, color="#FFAA00", duration_ms=block.highlight_ms or 2000, caption="Awaiting — processing detected")
+                                    self._log(f"[{correlation_id}] Awaiting processing indicator {proc_sel} — will wait until gone", "info")
+                                except Exception:
+                                    pass
+                            status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=block.timeout_ms or gen_timeout)
                             if status == "failed":
-                                raise RuntimeError(f"Generation timeout or failed: {data.get('error')}")
-                            new_src = data.get("new_src")
-                            if not new_src:
-                                raise RuntimeError("New output src not found after generation")
-                            self._log(f"[{correlation_id}] New output detected: {new_src[:80]}...", "success")
-                            # GREEN rect for new output
-                            try:
-                                rect = await ctrl.highlight_selector(block.selector or 'div.no-scrollbar img', color=block.color or "#00c853", duration_ms=block.highlight_ms or 3000, caption="New output")
-                                rd = rect if isinstance(rect, dict) else None
-                                if isinstance(rect, dict) and rect.get("rect"):
-                                    rd = rect.get("rect")
-                                self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}...", rect=rd)
-                            except Exception:
-                                self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}...")
+                                # For waiting block, treat as waiting still, not fatal unless required
+                                if is_await and not block.required:
+                                    self._log(f"[{correlation_id}] {label} timeout but continuing — {data.get('error')}", "warn")
+                                    self._emit_job_action_status(job_id, block, "success", f"Wait timeout, continuing: {data.get('error')}")
+                                else:
+                                    raise RuntimeError(f"Generation timeout or failed: {data.get('error')}")
+                            else:
+                                new_src = data.get("new_src")
+                                if not new_src and btype == "WAIT_OUTPUT":
+                                    raise RuntimeError("New output src not found after generation")
+                                if new_src:
+                                    self._log(f"[{correlation_id}] New output detected: {new_src[:80]}...", "success")
+                                # GREEN rect for new output / waiting done
+                                try:
+                                    rect = await ctrl.highlight_selector(block.selector or 'div.no-scrollbar img', color=block.color or "#00c853", duration_ms=block.highlight_ms or 3000, caption="New output" if not is_await else "Processing finished — new output")
+                                    rd = rect if isinstance(rect, dict) else None
+                                    if isinstance(rect, dict) and rect.get("rect"):
+                                        rd = rect.get("rect")
+                                    self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}..." if new_src else f"{label} done", rect=rd)
+                                except Exception:
+                                    self._emit_job_action_status(job_id, block, "success", f"New output {new_src[:60]}..." if new_src else f"{label} done")
 
                         elif btype == "DOWNLOAD":
                             if not new_src:

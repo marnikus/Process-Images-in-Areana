@@ -20,9 +20,9 @@ Arena adaptation:
 
 Blocks:
 - CUSTOM_FIND: generic find & click (click on btn, text areas)
-- OBSERVE_BASELINE, CHECK_SECURITY, HIGHLIGHT_ATTACH, ATTACH_IMAGE, VERIFY_ATTACHMENT
-- HIGHLIGHT_PROMPT, TYPE_PROMPT, INSERT_PROMPT, VERIFY_PROMPT
-- HIGHLIGHT_SUBMIT, SUBMIT, WAIT_OUTPUT, DOWNLOAD, VALIDATE, SAVE, ADVANCE
+- OBSERVE_BASELINE, CHECK_SECURITY (captcha), HIGHLIGHT_ATTACH, ATTACH_IMAGE, VERIFY_ATTACHMENT
+- HIGHLIGHT_PROMPT, INSERT_PROMPT, VERIFY_PROMPT
+- HIGHLIGHT_SUBMIT, SUBMIT, WAIT_OUTPUT, AWAIT_PROCESSING_IMAGE (waiting), DOWNLOAD, VALIDATE, SAVE, ADVANCE
 - PAUSE, HIGHLIGHT (pure visual)
 """
 
@@ -31,12 +31,11 @@ from typing import List, Dict, Any
 import json
 import uuid
 
-# Retired keys from old presets that must be stripped on migration (Old App RETIRED_KEYS pattern)
 RETIRED_KEYS = [
     "use_panel_filters",
     "skip_if_backlog",
     "backlog_threshold",
-    "file_pattern",  # old attach pattern
+    "file_pattern",
     "rotation_mode",
     "simulate_dialog_old",
 ]
@@ -85,7 +84,7 @@ BLOCK_DEFINITIONS = {
         "icon": "visibility",
         "default_enabled": True,
         "default_selector": "div.no-scrollbar img[src*=\".r2.cloudflarestorage.com/\"]",
-        "default_color": "#888888",
+        "default_color": "#5AA9FF",
         "default_timeout_ms": 10000,
         "default_pre_delay_ms": 200,
         "default_highlight_ms": 1200,
@@ -101,11 +100,11 @@ BLOCK_DEFINITIONS = {
         },
     },
     "CHECK_SECURITY": {
-        "name": "Check Security Dialog",
-        "description": "Detect CAPTCHA / security verification, pause for manual solve (never bypass)",
-        "icon": "security",
+        "name": "Check Security Verification Dialog",
+        "description": "Detect CAPTCHA / security verification, pause for manual solve (never bypass). Visualize pause state in webpage corner — unmistakable.",
+        "icon": "captcha",
         "default_enabled": True,
-        "default_selector": "div[role=\"dialog\"][data-state=\"open\"], iframe[title*=\"reCAPTCHA\"], div:has-text(\"Security Verification\")",
+        "default_selector": "div[role=\"dialog\"][data-state=\"open\"], iframe[title*=\"reCAPTCHA\"], div:has-text(\"Security Verification\"), div:has-text(\"captcha\"), [data-testid=\"security-dialog\"]",
         "default_match_text": "Security Verification",
         "default_color": "#FF6B6B",
         "default_timeout_ms": 5000,
@@ -114,11 +113,11 @@ BLOCK_DEFINITIONS = {
         "default_confirm_pause_ms": 0,
         "default_highlight_enabled": True,
         "required": False,
-        "category": "observe",
+        "category": "security",
         "labels": {
-            "selector": "Security dialog selector (CSS)",
+            "selector": "Security dialog selector (CSS) — detects captcha, shows ON PAUSE badge",
             "match_text": "Text that indicates security dialog",
-            "highlight_enabled": "Visual confirmation",
+            "highlight_enabled": "Visual confirmation + pause corner overlay",
             "highlight_ms": "Highlight duration (ms)",
         },
     },
@@ -128,7 +127,7 @@ BLOCK_DEFINITIONS = {
         "icon": "highlight",
         "default_enabled": True,
         "default_selector": "input[type=\"file\"]",
-        "default_color": "#00FF00",
+        "default_color": "#4ADE80",
         "default_timeout_ms": 5000,
         "default_pre_delay_ms": 100,
         "default_highlight_ms": 2000,
@@ -208,28 +207,6 @@ BLOCK_DEFINITIONS = {
             "highlight_ms": "Duration (ms)",
         },
     },
-    "TYPE_PROMPT": {
-        "name": "Type Prompt",
-        "description": "Type prompt into textarea with typing speed (Arena version of Type Message)",
-        "icon": "keyboard",
-        "default_enabled": False,
-        "default_selector": "textarea[name=\"message\"]",
-        "default_color": "#00AAFF",
-        "default_timeout_ms": 10000,
-        "default_pre_delay_ms": 200,
-        "default_highlight_ms": 1500,
-        "default_confirm_pause_ms": 300,
-        "default_highlight_enabled": True,
-        "required": False,
-        "category": "action",
-        "extra_defaults": {"typing_speed_ms": 10, "use_composer": False},
-        "labels": {
-            "selector": "Textarea selector",
-            "typing_speed_ms": "Typing speed (ms/char)",
-            "use_composer": "Use composer text (if enabled)",
-            "highlight_enabled": "Highlight before typing",
-        },
-    },
     "INSERT_PROMPT": {
         "name": "Insert Prompt",
         "description": "Insert final prompt with [JOB-ID] token, verify read-back",
@@ -286,7 +263,7 @@ BLOCK_DEFINITIONS = {
     },
     "SUBMIT": {
         "name": "Submit Once",
-        "description": "Click Send button once, confirm processing state, fallback to icon button. Waits for enabled after prompt.",
+        "description": "Click Send button once, confirm processing state, fallback to icon button.",
         "icon": "send",
         "default_enabled": True,
         "default_selector": "button[aria-label=\"Send message\"]:not([disabled])",
@@ -305,19 +282,19 @@ BLOCK_DEFINITIONS = {
         "required": True,
         "category": "action",
         "labels": {
-            "selector": "Send button selector (CSS) — primary should be :not([disabled]) to avoid disabled opacity-50 pointer-events-none",
-            "fallback_selector": "Fallback button selector (CSS) — comma-separated list tried in order",
-            "fallback_text": "Fallback icon text (empty = first match)",
+            "selector": "Send button selector (CSS) — primary should be :not([disabled])",
+            "fallback_selector": "Fallback button selector",
+            "fallback_text": "Fallback icon text",
             "highlight_enabled": "Visual confirmation outlines",
             "confirm_pause_ms": "Pause after found (ms)",
             "highlight_ms": "Outline visible (ms)",
-            "pre_delay_ms": "Pre-delay (ms) — extra delay to let React enable button after prompt",
+            "pre_delay_ms": "Pre-delay (ms)",
             "timeout_ms": "Timeout waiting for enabled button (ms)",
         },
     },
     "WAIT_OUTPUT": {
         "name": "Wait New Output",
-        "description": "Wait for genuinely new output image (baseline comparison), understands spinner Response A/B as generating indicator. GREEN rect on new output.",
+        "description": "Wait for genuinely new output image (baseline comparison), understands spinner as generating indicator. GREEN rect on new output.",
         "icon": "hourglass_top",
         "default_enabled": True,
         "default_selector": "div.no-scrollbar img[src*=\".r2.cloudflarestorage.com/\"], div[data-testid=\"output\"] img, div.no-scrollbar img, img.aspect-square.cursor-pointer, main img[src*=\".r2.cloudflarestorage.com/\"]",
@@ -329,11 +306,35 @@ BLOCK_DEFINITIONS = {
         "required": True,
         "category": "wait",
         "labels": {
-            "selector": "Output image selector — should include r2.cloudflarestorage.com + aspect-square fallbacks",
-            "timeout_ms": "Max wait (ms) — includes spinner visible time (Response A/B)",
+            "selector": "Output image selector",
+            "timeout_ms": "Max wait (ms)",
             "highlight_enabled": "🟢 Highlight new output",
             "highlight_ms": "Highlight duration (ms)",
             "pre_delay_ms": "Pre-delay (ms)",
+        },
+    },
+    "AWAIT_PROCESSING_IMAGE": {
+        "name": "Wait for Image to Finish Generating",
+        "description": "Waiting block when system detects awaiting elements e.g. processing image, awaiting API result. Shows waiting state clearly, not error.",
+        "icon": "await_result",
+        "default_enabled": True,
+        "default_selector": "div:has-text(\"Processing\"), div:has-text(\"Generating\"), [data-state=\"loading\"], .spinner, [aria-busy=\"true\"]",
+        "default_match_text": "Processing",
+        "default_color": "#FFAA00",
+        "default_timeout_ms": 180000,
+        "default_pre_delay_ms": 300,
+        "default_highlight_ms": 2000,
+        "default_confirm_pause_ms": 0,
+        "default_highlight_enabled": True,
+        "required": False,
+        "category": "process",
+        "allow_duplicate": True,
+        "labels": {
+            "selector": "Processing indicator selector — detects awaiting elements",
+            "match_text": "Text that indicates processing",
+            "highlight_enabled": "Visual confirmation — shows waiting state",
+            "timeout_ms": "Max wait for processing to finish (ms)",
+            "highlight_ms": "Highlight duration (ms)",
         },
     },
     "DOWNLOAD": {
@@ -363,7 +364,7 @@ BLOCK_DEFINITIONS = {
     },
     "SAVE": {
         "name": "Save *_AI.ext Atomically",
-        "description": "Save beside source with _AI suffix, unique if exists, atomic write (temp+replace)",
+        "description": "Save beside source with _AI suffix, unique if exists, atomic write",
         "icon": "save",
         "default_enabled": True,
         "default_selector": "",
@@ -390,7 +391,7 @@ BLOCK_DEFINITIONS = {
     },
     "PAUSE": {
         "name": "Custom Pause",
-        "description": "Pause N ms — for waiting, manual observation",
+        "description": "Pause N ms — for waiting, manual observation, ON PAUSE state",
         "icon": "pause",
         "default_enabled": True,
         "default_selector": "",
@@ -402,13 +403,13 @@ BLOCK_DEFINITIONS = {
         "allow_duplicate": True,
         "extra_defaults": {"duration_ms": 1000},
         "labels": {
-            "duration_ms": "Duration (ms)",
+            "duration_ms": "Duration (ms) — shows ON PAUSE in corner",
             "enabled": "Enabled",
         },
     },
     "HIGHLIGHT": {
         "name": "Highlight Only",
-        "description": "Pure visual confirmation — highlight element without clicking, no stash, no scroll",
+        "description": "Pure visual confirmation — highlight element without clicking",
         "icon": "center_focus_strong",
         "default_enabled": True,
         "default_selector": "div",
@@ -433,9 +434,10 @@ BLOCK_DEFINITIONS = {
 }
 
 DEFAULT_STACK_ORDER = [
+    "HIGHLIGHT_ATTACH",
     "OBSERVE_BASELINE",
     "CHECK_SECURITY",
-    "HIGHLIGHT_ATTACH",
+    "AWAIT_PROCESSING_IMAGE",
     "ATTACH_IMAGE",
     "VERIFY_ATTACHMENT",
     "HIGHLIGHT_PROMPT",
@@ -450,7 +452,6 @@ DEFAULT_STACK_ORDER = [
     "ADVANCE",
 ]
 
-# BUILTIN_BLOCKS for JS catalog — mirrors Old App BUILTIN_BLOCKS structure
 BUILTIN_BLOCKS = []
 for _bid, _def in BLOCK_DEFINITIONS.items():
     BUILTIN_BLOCKS.append(
@@ -510,27 +511,22 @@ class ActionBlock:
     pre_delay_ms: int = 200
     highlight_ms: int = 2000
     confirm_pause_ms: int = 700
-    highlight_duration_ms: int = 2000  # legacy alias for highlight_ms, kept for compat
+    highlight_duration_ms: int = 2000
     extra: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
-        # Keep legacy highlight_duration_ms in sync with highlight_ms for old UI
         d["highlight_duration_ms"] = self.highlight_ms
         return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ActionBlock":
-        # Migration: strip retired keys
         for rk in RETIRED_KEYS:
             data.pop(rk, None)
-        # Migration: highlight_duration_ms -> highlight_ms
         if "highlight_duration_ms" in data and "highlight_ms" not in data:
             data["highlight_ms"] = data.get("highlight_duration_ms", 2000)
-        # Backfill missing from definitions if block_id known
         bid = data.get("block_id", "")
         defn = BLOCK_DEFINITIONS.get(bid, {})
-        # Fill defaults for new fields if absent
         data.setdefault("label_selector", defn.get("default_label_selector", ""))
         data.setdefault("match_text", defn.get("default_match_text", ""))
         data.setdefault("match_mode", defn.get("default_match_mode", "contains"))
@@ -546,7 +542,6 @@ class ActionBlock:
         data.setdefault("confirm_pause_ms", defn.get("default_confirm_pause_ms", 700))
         data.setdefault("highlight_duration_ms", data.get("highlight_ms", 2000))
         data.setdefault("extra", {})
-        # Ensure id
         if not data.get("id"):
             data["id"] = f"{bid.lower()}_{uuid.uuid4().hex[:8]}"
         return cls(
@@ -582,7 +577,6 @@ class ActionBlock:
         return self.custom_name.strip() if self.custom_name.strip() else self.name
 
     def config_schema(self) -> Dict[str, Any]:
-        """Schema for UI config panel — mirrors Old App config_schema."""
         defn = BLOCK_DEFINITIONS.get(self.block_id, {})
         labels = defn.get("labels", {})
         schema = {
@@ -604,7 +598,7 @@ class ActionBlock:
         return schema
 
 
-def create_default_block(block_type: str, custom_id: str = None) -> ActionBlock:
+def create_default_block(block_type: str, custom_id: str = None) -> "ActionBlock":
     defn = BLOCK_DEFINITIONS.get(block_type, {})
     extra = dict(defn.get("extra_defaults", {}))
     return ActionBlock(
@@ -645,7 +639,6 @@ def load_stack_from_dicts(dicts: List[Dict[str, Any]]) -> List[ActionBlock]:
         try:
             if not isinstance(d, dict):
                 continue
-            # Strip retired
             for rk in RETIRED_KEYS:
                 d.pop(rk, None)
             if "block_id" in d:
@@ -658,7 +651,6 @@ def load_stack_from_dicts(dicts: List[Dict[str, Any]]) -> List[ActionBlock]:
                     blocks.append(ActionBlock.from_dict(d))
         except Exception:
             continue
-    # Ensure required blocks exist
     existing_types = {b.block_id for b in blocks}
     for req_type, defn in BLOCK_DEFINITIONS.items():
         if defn.get("required") and req_type not in existing_types:
