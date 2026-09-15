@@ -109,3 +109,70 @@ We have not observed a real preview in saved HTML, but selector logic from spec 
 7. Does textarea retain value after submit or clear?
 
 For MVP, we will implement with fallback strategies and structured logging of selector failures, allowing easy adapter updates.
+
+## Fix 2026-09-16: Image Generates Above Prompt — Matching Incorrect
+
+**User report:** "fix. the image generates above the prompt .now app matching incorrect and match image generated above the prompt."
+
+**Investigation:**
+- Saved HTML empty chat has no output, but user screenshot shows generated image block `<div class="flex w-full flex-row..."><img class="aspect-square h-[50vh] w-[50vh] ... object-cover" src="https://messages-prod...r2.cloudflarestorage.com/...">`
+- After submit, DOM contains:
+  - User message bubble: contains reference image (uploaded, now R2 URL) ABOVE prompt text, plus `[JOB-ID: xxx]` token.
+  - Assistant message bubble: contains generated image BELOW user bubble, large 50vh, after user container in document order.
+- Old `JS_CHECK_NEW_OUTPUT` only checked `oldSrcs` exclusion, returned first new R2 img regardless of position → matched reference image above prompt (inside user bubble) instead of generated.
+
+**Stable selectors re-verified (2026-09-16):**
+- Generated: `div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]` + class `h-[50vh] w-[50vh] aspect-square object-cover` + `naturalWidth>=200` + `visible`.
+- Reference (to exclude): `div.flex.flex-wrap.gap-2 img`, `div.group.relative.overflow-hidden.rounded-lg.h-16.w-16 img`, or any img inside container that also contains JOB-ID text.
+- Job container: element containing `[JOB-ID: xxx]` → closest ancestor with height 30..0.9*vh, width <0.95*vw, contains img or flex/group, not `no-scrollbar`.
+- Document order: `jobContainer.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING` → after.
+
+**Fix implemented:**
+- `CDPArenaController.wait_for_new_output(baseline, timeout_ms, correlation_id)` now accepts correlation_id.
+- JS `JS_CHECK_NEW_OUTPUT(oldSrcs, correlationId)`:
+  - Finds jobEl by searching div/span/p/pre with text including correlationId near JOB-ID.
+  - Finds jobContainer via ancestor heuristics.
+  - Excludes imgs inside jobContainer.
+  - Classifies after vs before via compareDocumentPosition, prefers after.
+  - Prefers large (isLarge) to skip small thumbnails above prompt.
+  - Sorts by closest after jobTop then largest width, else bottom-most then largest.
+  - Returns jobFound, jobTop, afterCount, beforeCount, isLarge for logging.
+- Bridge passes correlation_id to all wait_for_new_output calls.
+- Baseline still skips blob and <50px icons, but now after-job filter provides second safety net.
+
+**Risks & fallbacks:**
+- If JOB-ID not yet rendered (virtualization delay): jobFound=false → fallback to large+bottom-most heuristic, still better than before.
+- If reference image also large 50vh: still excluded by container containment, not size.
+- If Response A/B side-by-side (two large images after): picks closest after job, logs afterCount=2.
+- If compareDocumentPosition fails: fallback to top comparison.
+
+**Evidence:**
+- Spec + user HTML spinner `div.flex.min-w-0.flex-1.items-center.gap-2 > div.animate-spin > canvas + Response A`.
+- User report image above prompt.
+- Existing selector map `docs/selector_map.md` already lists output primary `div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]` and fallback `img.aspect-square.w-full`.
+
+
+## Fix 2026-09-16 (2): Wait New Output finishes but Saved to None — indentation bug breaks block loop
+
+**User screenshot:** `image-1.png` shows paused job 10/15 waiting at Wait New Output, log shows:
+- `[20260915-214916-Z8JG] New output detected https://messages-prod...r2.cloudflarestorage.com/... (795x1979), JS fetch TypeError Failed to fetch + canvas SecurityError, Python direct 1729034 bytes success`
+- Then `Wait cycle 2/2 after reload`
+- Second `New output detected 1729034 bytes Python direct`
+- Then `Job completed 01-c.jpeg Saved to None`, UI shows waiting pending, not success.
+
+**Root cause in app/ui/bridge.py:**
+- `for wait_cycle in range(max_wait_cycles):` at 28 spaces (line ~1549)
+- `for block in action_stack:` at 16 spaces
+- `if wait_success: break` and `if not wait_success and wait_cycle == max_wait_cycles-1:` at 28 spaces (lines 1678-1681) were OUTSIDE wait_cycle loop, so they broke `for block` loop after wait_cycle loop finished both cycles.
+- Log matches: Cycle1 success does NOT break inner loop, continues to Cycle2 reload, second success, then outer `if wait_success: break` aborts block loop, skipping DOWNLOAD (already downloaded check), VALIDATE, SAVE atomic _AI suffix and img.output_path set → `Saved to None`, UI paused waiting.
+
+**Fix:**
+- Move `if wait_success: break` to 32 spaces inside wait_cycle loop (and second check also 32), so first success breaks inner loop immediately, preserves file_bytes/new_src, proceeds to DOWNLOAD skip, VALIDATE, SAVE.
+- Also verified DOWNLOAD: `for dl_cycle` at 32, `for attempt` at 36, `if dl_success: break` after attempt loop at 36 inside dl_cycle (was 40 incorrectly inside attempt), final `if dl_success:` at 32 outside loop — now correct.
+- Added `if file_bytes and len(file_bytes)>100: skip DOWNLOAD` already exists, so after fix flow: WAIT_OUTPUT success → DOWNLOAD skip log → VALIDATE → SAVE → output_path real, job_finished with real path not None, UI success not paused waiting.
+- No extra reload cycle after verified downloadable.
+
+**Verification:**
+- `py_compile` ok, `pytest 40 passed`
+- Expected log after fix: single `New output detected ... Python direct 1729034 bytes` then `Download already done during wait verification` then `Saved to ..._AI.jpeg` with real path, no `Wait cycle 2/2 after reload`.
+

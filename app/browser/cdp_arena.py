@@ -231,9 +231,8 @@ JS_BASELINE = """
 """
 
 JS_CHECK_NEW_OUTPUT = """
-((oldSrcs) => {
+((oldSrcs, correlationId) => {
   try {
-    // Check spinner - indicates generating (user provided HTML: div.flex.min-w-0.flex-1.items-center.gap-2 > div.animate-spin > canvas + Response A label)
     let spinning = false;
     let spinCount = 0;
     let spinDetails = [];
@@ -243,7 +242,6 @@ JS_CHECK_NEW_OUTPUT = """
         if (s.offsetParent !== null) {
           spinning = true;
           spinCount++;
-          // Try to get parent label like Response A/B
           let parent = s.closest('div.flex.min-w-0.flex-1.items-center.gap-2');
           let label = '';
           if (parent) {
@@ -254,6 +252,78 @@ JS_CHECK_NEW_OUTPUT = """
         }
       }
     } catch(e) {}
+
+    let jobEl = null;
+    let jobContainer = null;
+    let jobTop = null;
+    let jobFound = false;
+    if (correlationId) {
+      try {
+        const token1 = String(correlationId);
+        const token2 = `[JOB-ID: ${token1}]`;
+        const token3 = `JOB-ID: ${token1}`;
+        const token4 = `JOB-ID:${token1}`;
+        const allEls = document.querySelectorAll('div, span, p, pre');
+        let bestLen = Infinity;
+        for (const el of allEls) {
+          if (!el.textContent) continue;
+          if (el.tagName === 'TEXTAREA' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+          const txt = el.textContent;
+          if (txt.includes(token1) && (txt.includes('JOB-ID') || txt.length < 500)) {
+            const hasJob = txt.includes(token2) || txt.includes(token3) || txt.includes(token4) || (txt.includes(token1) && txt.includes('JOB-ID'));
+            if (hasJob || (txt.includes(token1) && txt.length < 200)) {
+              if (txt.length < bestLen) {
+                bestLen = txt.length;
+                jobEl = el;
+              }
+            }
+          }
+        }
+        if (!jobEl) {
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          let node;
+          while (node = walker.nextNode()) {
+            const val = node.nodeValue || '';
+            if (val.includes(token1)) {
+              let parent = node.parentElement;
+              if (parent && parent.tagName !== 'TEXTAREA' && parent.tagName !== 'SCRIPT') {
+                jobEl = parent;
+                break;
+              }
+            }
+          }
+        }
+        if (jobEl) {
+          jobFound = true;
+          let cur = jobEl;
+          let container = null;
+          for (let i=0; i<8 && cur; i++) {
+            if (cur.getBoundingClientRect) {
+              const r = cur.getBoundingClientRect();
+              if (r.height > 30 && r.height < window.innerHeight * 0.9 && r.width < window.innerWidth * 0.95) {
+                if (cur.textContent && cur.textContent.includes(token1)) {
+                  if (cur.querySelector('img') || cur.classList.contains('flex') || cur.classList.contains('group')) {
+                    container = cur;
+                    if (cur.classList.contains('no-scrollbar')) break;
+                  }
+                  if (!container) container = cur;
+                }
+              }
+            }
+            if (cur.classList && cur.classList.contains('no-scrollbar')) break;
+            cur = cur.parentElement;
+          }
+          if (!container) {
+            container = jobEl.closest('div.group, div.flex.flex-col, div[data-message-id], div.min-w-0.flex-1, div.flex.w-full') || jobEl.closest('div') || jobEl;
+          }
+          jobContainer = container;
+          try {
+            const rect = jobContainer.getBoundingClientRect();
+            jobTop = rect.top;
+          } catch(e) {}
+        }
+      } catch(e) {}
+    }
 
     const selectors = [
       'div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',
@@ -267,7 +337,40 @@ JS_CHECK_NEW_OUTPUT = """
       'img.aspect-square.w-full',
       'img[src*=".r2.cloudflarestorage.com/"]'
     ];
-    let newCandidates = [];
+
+    let afterJobCandidates = [];
+    let beforeJobCandidates = [];
+    let allNew = [];
+
+    function pushCandidate(el, sel, isAfter) {
+      if (!el.src) return;
+      if (el.src.startsWith('blob:')) return;
+      if (oldSrcs.includes(el.src)) return;
+      if (el.naturalWidth && el.naturalWidth < 50 && el.naturalHeight < 50) return;
+      const rect = el.getBoundingClientRect();
+      const visible = el.offsetParent !== null;
+      const width = el.naturalWidth || rect.width || 0;
+      const height = el.naturalHeight || rect.height || 0;
+      const className = el.className || '';
+      const isLarge = width >= 200 || rect.width >= 200 || className.includes('50vh') || className.includes('object-cover') || (el.classList && el.classList.contains('aspect-square'));
+      const info = {
+        el: el,
+        src: el.src,
+        rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height},
+        width: width,
+        height: height,
+        visible: visible,
+        complete: el.complete,
+        naturalWidth: el.naturalWidth,
+        selector: sel,
+        isLarge: isLarge,
+        top: rect.top
+      };
+      allNew.push(info);
+      if (isAfter) afterJobCandidates.push(info);
+      else beforeJobCandidates.push(info);
+    }
+
     for (const sel of selectors) {
       try {
         const els = document.querySelectorAll(sel);
@@ -275,44 +378,88 @@ JS_CHECK_NEW_OUTPUT = """
           if (!el.src) continue;
           if (el.src.startsWith('blob:')) continue;
           if (oldSrcs.includes(el.src)) continue;
-          if (el.naturalWidth && el.naturalWidth < 50) continue;
-          // If not complete, still collect but mark not ready
-          if (!el.complete) {
-            newCandidates.push({el: el, src: el.src, reason: 'not_complete', complete: false, width: el.naturalWidth});
+          if (jobContainer && jobContainer.contains(el)) {
             continue;
           }
-          if (el.naturalWidth === 0) {
-            newCandidates.push({el: el, src: el.src, reason: 'zero_width', complete: el.complete, width: 0});
-            continue;
+          let isAfter = false;
+          if (jobContainer) {
+            try {
+              const pos = jobContainer.compareDocumentPosition(el);
+              isAfter = (pos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+              if (pos & Node.DOCUMENT_POSITION_CONTAINED_BY) {
+                continue;
+              }
+            } catch(e) {
+              try {
+                const elTop = el.getBoundingClientRect().top;
+                if (jobTop !== null) isAfter = elTop > jobTop + 5;
+              } catch(e2) {}
+            }
+          } else {
+            isAfter = false;
           }
-          if (el.offsetParent === null) {
-            // May still be valid if parent hidden during animation, keep as candidate
-            newCandidates.push({el: el, src: el.src, reason: 'hidden', visible: false, width: el.naturalWidth});
-            continue;
-          }
-          // Found valid new output
-          const rect = el.getBoundingClientRect();
-          // If spinning, we may still want to wait for spinner to disappear, but if image is fully loaded and spinning false, ready
-          if (spinning) {
-            return {ready:false, reason:'generating_spinner_visible', src: el.src, spinning: true, spinCount: spinCount, spinDetails: spinDetails, width: el.naturalWidth, height: el.naturalHeight, rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height}};
-          }
-          return {ready:true, src: el.src, width: el.naturalWidth, height: el.naturalHeight, spinning: false, rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height}, selector: sel};
+          pushCandidate(el, sel, isAfter);
         }
       } catch(e) {}
+      if (afterJobCandidates.length > 0) break;
     }
-    // If we have candidates but not ready due to loading
-    if (newCandidates.length > 0) {
-      const first = newCandidates[0];
-      return {ready:false, reason: first.reason || 'loading', src: first.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: newCandidates.length};
+
+    let pool = afterJobCandidates.length > 0 ? afterJobCandidates : beforeJobCandidates;
+    if (pool.length === 0) pool = allNew;
+
+    let largePool = pool.filter(c => c.isLarge);
+    if (largePool.length > 0) {
+      let afterLarge = afterJobCandidates.filter(c => c.isLarge);
+      if (afterLarge.length > 0) pool = afterLarge;
+      else pool = largePool;
     }
-    // No new image, but check spinner
+
+    if (jobFound && jobTop !== null && afterJobCandidates.length > 0) {
+      pool.sort((a,b) => {
+        const da = a.top - jobTop;
+        const db = b.top - jobTop;
+        if (da >= 0 && db >= 0 && Math.abs(da - db) > 5) return da - db;
+        return b.width - a.width;
+      });
+    } else {
+      pool.sort((a,b) => {
+        if (a.visible !== b.visible) return a.visible ? -1 : 1;
+        if (Math.abs(b.top - a.top) > 50) return b.top - a.top;
+        return b.width - a.width;
+      });
+    }
+
+    for (const cand of pool) {
+      const el = cand.el;
+      if (!el.complete) {
+        return {ready:false, reason:'not_complete', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length, isLarge: cand.isLarge};
+      }
+      if (el.naturalWidth === 0) {
+        return {ready:false, reason:'zero_width', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, isLarge: cand.isLarge};
+      }
+      if (!cand.visible) {
+        continue;
+      }
+      if (spinning) {
+        return {ready:false, reason:'generating_spinner_visible', src: cand.src, spinning: true, spinCount: spinCount, spinDetails: spinDetails, width: cand.width, height: cand.height, rect: cand.rect, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length, isLarge: cand.isLarge};
+      }
+      return {ready:true, src: cand.src, width: cand.width, height: cand.height, spinning: false, rect: cand.rect, selector: cand.selector, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length, isLarge: cand.isLarge};
+    }
+
+    if (pool.length > 0) {
+      const first = pool[0];
+      const reason = !first.visible ? 'hidden' : (!first.complete ? 'not_complete' : 'loading');
+      return {ready:false, reason: reason, src: first.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length};
+    }
+
     if (spinning) {
-      return {ready:false, reason:'generating_no_new_yet', spinning: true, spinCount: spinCount, spinDetails: spinDetails};
+      return {ready:false, reason:'generating_no_new_yet', spinning: true, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length};
     }
-    return {ready:false, reason:'no_new', spinning: false, spinCount: 0};
+    return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, afterCount: afterJobCandidates.length, beforeCount: beforeJobCandidates.length};
   } catch(e) { return {ready:false, reason:String(e), spinning: false}; }
 })
 """
+
 
 JS_VERIFY_ATTACHMENT = """
 ((expectedFilename) => {
@@ -535,15 +682,18 @@ class CDPArenaController:
             return True, "Clicked"
         return False, result.get("error", "Failed")
 
-    async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000) -> Tuple[str, Dict[str, Any]]:
-        """Poll for new output, return status. Understands spinner (Response A/B) as generating indicator."""
+    async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000, correlation_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+        """Poll for new output, return status. Understands spinner (Response A/B) as generating indicator.
+        correlation_id: JOB-ID token to anchor detection — ensures we pick image AFTER user message containing this ID,
+        not the reference image above prompt inside same user bubble."""
         old_srcs = baseline.get("output_srcs", []) or []
         start = time.time()
         poll = 2
         seen_spinning = False
         last_log_time = 0
         while (time.time() - start) * 1000 < timeout_ms:
-            js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)})"
+            # Pass correlation_id to JS so it can find user message and pick image after it (fix for matching image above prompt)
+            js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)}, {json.dumps(correlation_id) if correlation_id else 'null'})"
             result = await self.cdp.evaluate(js_check)
             if not result:
                 await asyncio.sleep(poll)
@@ -829,10 +979,10 @@ class CDPArenaController:
             log.debug(f"is_generating check failed: {e}")
             return False, {"error": str(e)}
 
-    async def get_generation_state(self) -> Dict[str, Any]:
+    async def get_generation_state(self, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         """Detailed generation state: spinning, ready, output count."""
         old_srcs = []  # we want current state regardless
-        js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)})"
+        js_check = f";({JS_CHECK_NEW_OUTPUT})({json.dumps(old_srcs)}, {json.dumps(correlation_id) if correlation_id else 'null'})"
         try:
             result = await self.cdp.evaluate(js_check)
             return result or {}

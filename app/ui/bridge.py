@@ -1551,7 +1551,7 @@ class Bridge(QObject):
                                     self._log(f"[{correlation_id}] 🔄 Wait cycle {wait_cycle+1}/{max_wait_cycles} after reload — waiting again {wait_timeout}ms", "warn")
                                     self._emit_job_action_status(job_id, block, "waiting", f"{label} retry {wait_cycle+1}/{max_wait_cycles} after reload, timeout {wait_timeout}ms")
 
-                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout)
+                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id)
 
                                 if status == "completed":
                                     tmp_src = data.get("new_src")
@@ -1577,7 +1577,7 @@ class Bridge(QObject):
                                                     # To avoid tight loop, wait a bit and continue to next wait attempt (but keep same cycle count? We'll just continue waiting)
                                                     await asyncio.sleep(2)
                                                     # Try wait again within same cycle (extend)
-                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout)
+                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id)
                                                     if status2 == "completed" and data2.get("new_src"):
                                                         new_src = data2.get("new_src")
                                                         # Try download again
@@ -1675,17 +1675,17 @@ class Bridge(QObject):
                                         self._log(f"[{correlation_id}] Second wait timeout after reload — will fail now", "error")
                                         continue
 
-                            if wait_success:
-                                break
-
-                            if not wait_success and wait_cycle == max_wait_cycles - 1:
-                                if is_await and not block.required:
-                                    self._log(f"[{correlation_id}] {label} timeout after {max_wait_cycles} cycles but non-required, continuing", "warn")
-                                    self._emit_job_action_status(job_id, block, "success", f"Wait timeout after reload, continuing: {last_wait_error}")
-                                    wait_success = True
+                                if wait_success:
                                     break
-                                else:
-                                    raise RuntimeError(f"Generation timeout after {max_wait_cycles} cycles (each {wait_timeout}ms) incl reload retry: {last_wait_error}")
+
+                                if not wait_success and wait_cycle == max_wait_cycles - 1:
+                                    if is_await and not block.required:
+                                        self._log(f"[{correlation_id}] {label} timeout after {max_wait_cycles} cycles but non-required, continuing", "warn")
+                                        self._emit_job_action_status(job_id, block, "success", f"Wait timeout after reload, continuing: {last_wait_error}")
+                                        wait_success = True
+                                        break
+                                    else:
+                                        raise RuntimeError(f"Generation timeout after {max_wait_cycles} cycles (each {wait_timeout}ms) incl reload retry: {last_wait_error}")
 
                             # end for wait_cycle
 
@@ -1745,7 +1745,7 @@ class Bridge(QObject):
                                                     self._log(f"[{correlation_id}] ⏳ Download failed but generation still in progress {gen_details} — returning to waiting state, will wait again", "warn")
                                                     self._emit_job_action_status(job_id, block, "waiting", f"Download not ready but generating {gen_details}, returning to waiting")
                                                     # Wait again for new output
-                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout)
+                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout, correlation_id=correlation_id)
                                                     if status_w == "completed" and data_w.get("new_src"):
                                                         new_src = data_w.get("new_src")
                                                         self._log(f"[{correlation_id}] New output after waiting again: {new_src[:80]}", "info")
@@ -1760,7 +1760,7 @@ class Bridge(QObject):
                                             is_gen, gen_details = await ctrl.is_generating()
                                             if is_gen:
                                                 self._log(f"[{correlation_id}] Exception but generating {gen_details} — returning to waiting", "warn")
-                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout)
+                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id)
                                                 if status_w == "completed" and data_w.get("new_src"):
                                                     new_src = data_w.get("new_src")
                                                     continue
@@ -1776,7 +1776,7 @@ class Bridge(QObject):
                                     if is_gen:
                                         self._log(f"[{correlation_id}] Generation still in progress, not failing download yet — will wait again", "warn")
                                         self._emit_job_action_status(job_id, block, "waiting", f"Download failed but still generating {gen_details}, waiting again")
-                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout)
+                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id)
                                         if status_w == "completed" and data_w.get("new_src"):
                                             new_src = data_w.get("new_src")
                                             self._log(f"[{correlation_id}] New src after waiting: {new_src[:80]} — retrying download", "info")
