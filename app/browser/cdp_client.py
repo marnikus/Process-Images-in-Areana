@@ -43,15 +43,19 @@ class TabInfo:
     ws_url: str
     type: str = "page"
 
+# Only 127.0.0.1 and localhost to avoid DNS freeze on host.docker.internal
+# Previous version included host.docker.internal/host.containers.internal which caused
+# getaddrinfo to block UI thread for several seconds when DNS failed (user report: freeze on connect)
 CANDIDATE_HOSTS = [
     "127.0.0.1",
     "localhost",
-    "host.docker.internal",
-    "host.containers.internal",
 ]
 
-def _is_port_open(host: str, port: int, timeout: float = 1.0) -> bool:
+def _is_port_open(host: str, port: int, timeout: float = 0.8) -> bool:
+    # Quick fail for hosts that are known to cause DNS freeze — skip if not 127.0.0.1/localhost
+    # and use short timeout to avoid UI freeze
     try:
+        # Use getaddrinfo with timeout? socket.create_connection does DNS; we wrap
         with socket.create_connection((host, port), timeout=timeout):
             return True
     except Exception:

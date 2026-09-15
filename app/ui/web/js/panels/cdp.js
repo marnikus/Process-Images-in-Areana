@@ -97,7 +97,7 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
 
   fetchTabs() {
     const cfg = this.currentConfig || {host:'127.0.0.1', port:9222};
-    LogConsole.log(`🔍 Fetching Chrome tabs from http://${cfg.host}:${cfg.port}/json/list … (also tries localhost, host.docker.internal)`, 'info');
+    LogConsole.log(`🔍 Fetching Chrome tabs from http://${cfg.host}:${cfg.port}/json/list … (tries localhost as fallback, async non-blocking)`, 'info');
     if (App.bridge && App.bridge.get_tabs) {
       try {
         App.bridge.get_tabs((res) => {
@@ -133,25 +133,31 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
 
   diagnose() {
     const cfg = this.currentConfig || {host:'127.0.0.1', port:9222};
-    LogConsole.log(`🩺 Diagnosing Chrome remote debugging on ${cfg.host}:${cfg.port}… checking 127.0.0.1, localhost, host.docker.internal`, 'info');
+    LogConsole.log(`🩺 Diagnosing Chrome remote debugging on ${cfg.host}:${cfg.port}… checking ${cfg.host}, localhost (async, non-blocking)`, 'info');
     if (App.bridge && App.bridge.diagnose_chrome) {
-      App.bridge.diagnose_chrome((res) => {
-        try {
-          const diag = JSON.parse(res);
-          LogConsole.log(diag.summary || 'Diagnose done', diag.summary && diag.summary.includes('✅') ? 'success' : 'warn');
-          if (diag.tabs && diag.tabs.length) {
-            this.onTabsReceived(JSON.stringify(diag.tabs));
+      try {
+        App.bridge.diagnose_chrome((res) => {
+          if (!res || res === 'pending') {
+            LogConsole.log('⏳ Diagnose running in background thread… results will appear in log (non-blocking UI)', 'info');
+            return;
           }
-          // show detailed in console as well
-          console.log('Chrome diagnose', diag);
-          // If no tabs, show help
-          if (!diag.tabs || diag.tabs.length === 0) {
-            LogConsole.log('💡 FIX for Windows: 1) Close ALL Chrome windows (check Task Manager). 2) Run in CMD: \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port=9222 --user-data-dir=\"C:\\arena-images-chrome\" 3) In that NEW Chrome, open https://arena.ai and log in. 4) Click Refresh tabs. 5) If still fails, open http://127.0.0.1:9222/json/list in browser — you should see JSON. If you see \"site can’t be reached\", port is blocked or Chrome didn’t start with flag. 6) Try disabling antivirus, or use port 9223 and change settings.', 'warn');
+          try {
+            const diag = JSON.parse(res);
+            LogConsole.log(diag.summary || 'Diagnose done', diag.summary && diag.summary.includes('✅') ? 'success' : 'warn');
+            if (diag.tabs && diag.tabs.length) {
+              this.onTabsReceived(JSON.stringify(diag.tabs));
+            }
+            console.log('Chrome diagnose', diag);
+            if (!diag.tabs || diag.tabs.length === 0) {
+              LogConsole.log('💡 FIX for Windows: 1) Close ALL Chrome windows (check Task Manager). 2) Run in CMD: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\\arena-images-chrome" 3) In that NEW Chrome, open https://arena.ai and log in. 4) Click Refresh tabs. 5) If still fails, open http://127.0.0.1:9222/json/list in browser — you should see JSON. If you see "site can’t be reached", port is blocked or Chrome didn’t start with flag. 6) Try disabling antivirus, or use port 9223 and change settings.', 'warn');
+            }
+          } catch (e) {
+            LogConsole.log('Diagnose parse failed: ' + e + ' raw: ' + (res||'').slice(0,200), 'error');
           }
-        } catch (e) {
-          LogConsole.log('Diagnose parse failed: ' + e + ' raw: ' + (res||'').slice(0,200), 'error');
-        }
-      });
+        });
+      } catch (e) {
+        LogConsole.log('diagnose_chrome call failed: ' + e, 'error');
+      }
     } else {
       LogConsole.log('diagnose_chrome not available', 'error');
     }
