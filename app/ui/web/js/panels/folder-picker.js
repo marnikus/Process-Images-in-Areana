@@ -5,9 +5,11 @@ const FolderPicker = {
   init() {
     const btn = document.getElementById('folderPickBtn');
     const scanBtn = document.getElementById('folderScanBtn');
+    const scanNewBtn = document.getElementById('folderScanNewBtn');
     const pathInput = document.getElementById('folderPathInput');
     if (btn) btn.addEventListener('click', () => this.pickFolder());
     if (scanBtn) scanBtn.addEventListener('click', () => this.scan());
+    if (scanNewBtn) scanNewBtn.addEventListener('click', () => this.scanNewBatch());
     if (pathInput) pathInput.addEventListener('keydown', (e) => { if (e.key==='Enter') this.setPath(pathInput.value); });
   },
 
@@ -68,6 +70,44 @@ const FolderPicker = {
           else LogConsole.log('Scan failed: ' + r.error, 'error');
         } catch (e) {}
       });
+    }
+  },
+
+  scanNewBatch() {
+    if (!confirm('Start NEW batch? This will clear current list and scan folder anew.')) return;
+    if (App.bridge && App.bridge.scan_folder_new_batch) {
+      LogConsole.log('🗑 Clearing old list + scanning new batch...', 'warn');
+      App.bridge.scan_folder_new_batch((res) => {
+        try {
+          const r = JSON.parse(res);
+          if (r.ok) LogConsole.log(`✅ New batch: cleared ${r.cleared||0} old, ${r.count} new images found`, 'success');
+          else LogConsole.log('New batch scan failed: ' + (r.error||res), 'error');
+        } catch (e) { LogConsole.log('New batch scan done','info'); }
+      });
+      return;
+    }
+    const doScan = () => {
+      if (App.bridge && App.bridge.scan_folder) {
+        LogConsole.log('Scanning folder as new batch...', 'info');
+        App.bridge.scan_folder((res) => {
+          try {
+            const r = JSON.parse(res);
+            if (r.ok) LogConsole.log(`Scan complete: ${r.count} images found`, 'success');
+            else LogConsole.log('Scan failed: ' + r.error, 'error');
+          } catch (e) {}
+        });
+      }
+    };
+    if (App.bridge && App.bridge.clear_queue) {
+      App.bridge.clear_queue((res) => {
+        try {
+          const r = JSON.parse(res);
+          LogConsole.log(`🗑 Cleared ${r.count} images — starting new batch scan`, 'warn');
+        } catch(e){}
+        setTimeout(doScan, 200);
+      });
+    } else {
+      doScan();
     }
   }
 };

@@ -16,6 +16,7 @@ const ImageQueue = {
     document.getElementById('queueDeselectAllBtn')?.addEventListener('click', () => this.bulkSelect(false));
     document.getElementById('queueRetryFailedBtn')?.addEventListener('click', () => this.retryFailed());
     document.getElementById('queueResetBtn')?.addEventListener('click', () => this.resetAll());
+    document.getElementById('queueClearListBtn')?.addEventListener('click', () => this.clearList());
 
     const tbody = document.getElementById('queueTableBody');
     if (tbody) {
@@ -104,6 +105,28 @@ const ImageQueue = {
   resetAll() {
     if (!confirm('Reset all progress?')) return;
     if (App.bridge && App.bridge.reset_all) App.bridge.reset_all(()=>LogConsole.log('All reset','warn'));
+  },
+
+  clearList() {
+    if (!confirm('Clear entire list? This will remove ALL images from queue (start new batch). This cannot be undone except via Undo button.')) return;
+    if (App.bridge && App.bridge.clear_queue) {
+      App.bridge.clear_queue((res)=>{
+        try {
+          const r = JSON.parse(res);
+          if (r.ok) LogConsole.log(`🗑 Cleared list: ${r.count} images removed — ready for new batch`, 'warn');
+          else LogConsole.log('Clear list failed: '+(r.error||res),'error');
+        } catch(e){
+          LogConsole.log('Clear list done','warn');
+        }
+      });
+    } else if (App.bridge && App.bridge.clear_images) {
+      App.bridge.clear_images((res)=>{
+        try {
+          const r = JSON.parse(res);
+          if (r.ok) LogConsole.log(`🗑 Cleared list: ${r.count} images removed — ready for new batch`, 'warn');
+        } catch(e){}
+      });
+    }
   },
 
   retryOne(id){ if (App.bridge && App.bridge.retry_image) App.bridge.retry_image(id, ()=>{}); },

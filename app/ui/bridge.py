@@ -822,6 +822,42 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
+    @Slot(result=str)
+    def scan_folder_new_batch(self):
+        """Clear queue then scan — atomic new batch start."""
+        try:
+            # push undo before clear
+            try:
+                self._push_queue_undo()
+            except Exception:
+                pass
+            cleared = len(self.state.images)
+            self.state.images = []
+            self.state.jobs = []
+            # now scan
+            root = self.state.folder.get("root_path", "")
+            if not root:
+                self.state.recalculate_progress()
+                self._save_arena()
+                return json.dumps({"ok": False, "error": "No folder set", "cleared": cleared})
+            root_path = Path(root)
+            if not root_path.exists():
+                self.state.recalculate_progress()
+                self._save_arena()
+                return json.dumps({"ok": False, "error": "Folder does not exist", "cleared": cleared})
+            supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
+            ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
+            scanned = scan_folder(root_path, supported, ignore_ai)
+            for s in scanned:
+                img = ImageItem.from_scan_dict(s, selected=False)
+                self.state.images.append(img)
+            self.state.recalculate_progress()
+            self._save_arena()
+            self._log(f"🗑 New batch: cleared {cleared} old, scanned {len(scanned)} new images", "warn")
+            return json.dumps({"ok": True, "count": len(scanned), "added": len(scanned), "cleared": cleared})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
     def _push_queue_undo(self):
         try:
             js_images = self._arena_to_js()["images"]
@@ -868,6 +904,30 @@ class Bridge(QObject):
         self._save_arena()
         self._push_queue_undo()
         return json.dumps({"ok": True, "count": count})
+
+    @Slot(result=str)
+    def clear_queue(self):
+        """Clear entire image queue — start new batch. User requested: should able to start new batch not adding only."""
+        try:
+            count = len(self.state.images)
+            # push undo before clearing so user can undo
+            try:
+                self._push_queue_undo()
+            except Exception:
+                pass
+            self.state.images = []
+            self.state.jobs = []
+            self.state.recalculate_progress()
+            self._save_arena()
+            self._log(f"🗑 Cleared image queue: {count} images removed — ready for new batch", "warn")
+            return json.dumps({"ok": True, "count": count})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def clear_images(self):
+        # alias for clear_queue for compatibility
+        return self.clear_queue()
 
     @Slot(result=str)
     def reset_all(self):
