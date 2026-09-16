@@ -1,0 +1,54 @@
+"""Slot-registration guard — every JS-called bridge method must keep @Slot.
+
+Regression: an edit once inserted helpers between @Slot and start_run,
+silently killing the Run button (QWebChannel drops unknown calls with
+no log). AST-based, no Qt needed.
+"""
+
+from pathlib import Path
+
+import pytest
+
+BRIDGE = Path(__file__).parent.parent / "app" / "ui" / "bridge.py"
+
+# Methods the web UI calls that must stay slots (extend with new slots).
+REQUIRED_SLOTS = (
+    "start_run", "pause_run", "resume_run", "stop_after_current",
+    "cancel_current", "reset_page_cooldown", "set_page_cooldown",
+    "auto_connect_scan", "popup_url_tabs", "get_tabs", "connect_tab",
+    "add_url", "remove_url",
+)
+
+# Private helpers that must never capture a @Slot by accident.
+NEVER_SLOTS = (
+    "_settle_stuck_primary", "_finish_primary_tab", "_reset_stuck_page",
+    "_do_run_batch", "_do_auto_connect_scan", "_do_popup_url_tabs",
+)
+
+
+def _slot_names(path: Path) -> set:
+    import ast
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for dec in node.decorator_list:
+            func = dec.func if isinstance(dec, ast.Call) else dec
+            if isinstance(func, ast.Name) and func.id == "Slot":
+                names.add(node.name)
+    return names
+
+
+@pytest.mark.unit
+def test_required_slots_registered():
+    names = _slot_names(BRIDGE)
+    missing = [s for s in REQUIRED_SLOTS if s not in names]
+    assert not missing, f"lost @Slot decorator: {missing}"
+
+
+@pytest.mark.unit
+def test_helpers_never_slots():
+    names = _slot_names(BRIDGE)
+    stolen = [s for s in NEVER_SLOTS if s in names]
+    assert not stolen, f"helper captured @Slot: {stolen}"

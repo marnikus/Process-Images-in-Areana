@@ -1631,7 +1631,6 @@ class Bridge(QObject):
     def _get_enabled_urls(self):
         return [u for u in self.state.urls if u.enabled]
 
-    @Slot(result=str)
     def _settle_stuck_primary(self, primary_tab_id) -> None:
         """Best-effort steady for a busy-like primary page; cooling untouched."""
         try:
@@ -1660,6 +1659,7 @@ class Bridge(QObject):
             self._log(f"Post-job reset/cooldown skipped: {e} — settling stuck page", "warn")
             self._settle_stuck_primary(primary_tab_id)
 
+    @Slot(result=str)
     def start_run(self):
         prompt = self.state.prompt.get("user_prompt","").strip()
         if not prompt:
