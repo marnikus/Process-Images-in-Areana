@@ -124,19 +124,54 @@ def _get_page_url(bridge, tab_id) -> str:
     return ""
 
 
-def _find_url_row_for_tab(bridge, tab_id, urls):
+def _get_mapped_url(bridge, tab_id, urls):
+    try:
+        tab_map = getattr(bridge, '_tab_to_url', None)
+        if tab_map and tab_id in tab_map:
+            wanted = tab_map[tab_id]
+            for u in urls:
+                if u.id == wanted:
+                    return u
+    except Exception:
+        pass
+    return None
+
+
+def _get_by_page_url(bridge, tab_id, urls):
     try:
         page_url = _get_page_url(bridge, tab_id)
-        if page_url:
-            for u in urls:
-                if page_url in u.url or u.url in page_url:
-                    return u
+        if not page_url:
+            return None
         for u in urls:
-            if u.enabled:
+            if page_url in u.url or u.url in page_url:
                 return u
     except Exception:
         pass
     return None
+
+
+def _get_ready_url(urls):
+    try:
+        for u in urls:
+            if u.enabled and not getattr(u, 'cooldown_until', None):
+                return u
+    except Exception:
+        pass
+    for u in urls:
+        if u.enabled:
+            return u
+    return None
+
+
+def _find_url_row_for_tab(bridge, tab_id, urls):
+    # per-tab: only page it was sent gets cooldown, not all
+    res = _get_mapped_url(bridge, tab_id, urls)
+    if res:
+        return res
+    res = _get_by_page_url(bridge, tab_id, urls)
+    if res:
+        return res
+    return _get_ready_url(urls)
 
 
 async def _wait_pause(bridge):

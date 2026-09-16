@@ -314,21 +314,47 @@ class WatcherService:
             pass
         return None
 
+    def _get_mapped_penalty_url(self, bridge, tab_id, urls):
+        try:
+            tab_map = getattr(bridge, '_tab_to_url', None)
+            if tab_map and tab_id in tab_map:
+                wanted = tab_map[tab_id]
+                for u in urls:
+                    if u.id == wanted:
+                        return u
+        except Exception:
+            pass
+        return None
+
+    def _get_page_url_for_penalty(self, bridge, tab_id):
+        try:
+            pool = getattr(bridge, "_page_pool", None)
+            if pool and tab_id:
+                pg = pool.get_page(tab_id)
+                return getattr(pg, "url", "") if pg else ""
+        except Exception:
+            pass
+        return ""
+
+    def _find_by_page_url(self, page_url, urls):
+        if not page_url:
+            return None
+        for u in urls:
+            if page_url in u.url or u.url in page_url:
+                return u
+        return None
+
     def _find_url_for_penalty(self, bridge, tab_id):
+        # per-tab: only page that triggered captcha gets penalty
         try:
             urls = getattr(bridge.state, "urls", []) if hasattr(bridge, "state") else []
-            pool = getattr(bridge, "_page_pool", None)
-            page_url = ""
-            if pool and tab_id:
-                try:
-                    pg = pool.get_page(tab_id)
-                    page_url = getattr(pg, "url", "") if pg else ""
-                except Exception:
-                    pass
-            if page_url:
-                for u in urls:
-                    if page_url in u.url or u.url in page_url:
-                        return u
+            res = self._get_mapped_penalty_url(bridge, tab_id, urls)
+            if res:
+                return res
+            page_url = self._get_page_url_for_penalty(bridge, tab_id)
+            res = self._find_by_page_url(page_url, urls)
+            if res:
+                return res
             for u in urls:
                 if u.enabled:
                     return u

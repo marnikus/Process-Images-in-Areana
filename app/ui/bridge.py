@@ -117,6 +117,10 @@ class Bridge(QObject):
             self._thumb_executor = None
         # scan folder debouncing to avoid freeze
         self._scan_in_progress = False
+        # per-tab cooldown mapping: tab_id -> url_id (each webpage link is diff account, cooldown per tab only)
+        self._tab_to_url = {}
+        self._pending_url_id_for_connect = None
+        self._pending_url_query_for_connect = None
         # ensure undo history loaded
         try:
             self.config.undo.load()
@@ -3401,46 +3405,61 @@ class Bridge(QObject):
                         self._save_arena()
                         self._emit_arena_state()
 
-                        # Wait for cooldown before next job (5 min countdown) — status calmdown/cooldown
-                        if cd_sec > 0:
-                            self._log(f"[{correlation_id}] ⏳ Starting {cd_sec}s cooldown countdown — tab shows cooldown until ready", "info")
-                            # countdown loop with 1s tick, respects cancel
-                            for remaining in range(cd_sec, 0, -1):
-                                if self._cancel_requested:
-                                    self._log(f"[{correlation_id}] Cooldown cancelled by user", "warn")
-                                    break
-                                if getattr(self, '_pause_requested', False):
-                                    self._log(f"[{correlation_id}] Cooldown paused, waiting resume", "warn")
-                                    while getattr(self, '_pause_requested', False):
-                                        await asyncio.sleep(1)
-                                        if self._cancel_requested:
-                                            break
-                                # update every 10s or last 10s for log spam reduction
-                                if remaining % 10 == 0 or remaining <= 10:
+                        # Wait for cooldown before next job (5 min countdown) — status cooldown
+                        # FIX: cooldown is per-tab individually (diff account). Only wait if single page pool.
+                        # If 2+ pages in pool, do NOT block queue — other tabs that did nothing should stay ready.
+                        try:
+                            pool_total = 0
+                            pool_free = 0
+                            if self._page_pool:
+                                try:
+                                    pool_total, pool_free = self._page_pool.get_counts()
+                                except Exception:
+                                    pool_total = len(getattr(self._page_pool, '_pages', {}))
+                            # Only block when single tab (or no pool) — per spec: tab shows ready only after cooldown, but other tabs independent
+                            should_wait = True
+                            if pool_total >= 2:
+                                should_wait = False
+                                self._log(f"[{correlation_id}] ⏳ Cooldown {cd_sec}s set on tab {tab_id_for_cd[:12] if 'tab_id_for_cd' in locals() and tab_id_for_cd else 'unknown'} only — {pool_total} tabs total, {pool_free} free, NOT blocking queue, other accounts stay ready (per-tab)", "info")
+                            if should_wait and cd_sec > 0:
+                                self._log(f"[{correlation_id}] ⏳ Starting {cd_sec}s cooldown countdown — single tab, tab shows cooldown until ready", "info")
+                                for remaining in range(cd_sec, 0, -1):
+                                    if self._cancel_requested:
+                                        self._log(f"[{correlation_id}] Cooldown cancelled by user", "warn")
+                                        break
+                                    if getattr(self, '_pause_requested', False):
+                                        self._log(f"[{correlation_id}] Cooldown paused, waiting resume", "warn")
+                                        while getattr(self, '_pause_requested', False):
+                                            await asyncio.sleep(1)
+                                            if self._cancel_requested:
+                                                break
+                                    if remaining % 10 == 0 or remaining <= 10:
+                                        try:
+                                            self._log(f"[{correlation_id}] ⏳ Cooldown {remaining}s remaining — status cooldown", "info")
+                                        except Exception:
+                                            pass
                                     try:
-                                        self._log(f"[{correlation_id}] ⏳ Cooldown {remaining}s remaining — status cooldown", "info")
+                                        self._emit_arena_state()
+                                        if self._page_pool:
+                                            self._emit_pool_status()
                                     except Exception:
                                         pass
-                                # emit state every second for UI countdown
+                                    await asyncio.sleep(1)
                                 try:
+                                    if url_row:
+                                        url_row.cooldown_until = None
+                                        url_row.last_status = "ready"
+                                        url_row.last_checked = cd_now_iso()
+                                    self._save_arena()
                                     self._emit_arena_state()
-                                    if self._page_pool:
-                                        self._emit_pool_status()
+                                    self._log(f"[{correlation_id}] ✅ Cooldown finished — tab ready for next job", "success")
                                 except Exception:
                                     pass
-                                await asyncio.sleep(1)
-
-                            # cooldown expired — set status back to ready
-                            try:
-                                if url_row:
-                                    url_row.cooldown_until = None
-                                    url_row.last_status = "ready"
-                                    url_row.last_checked = cd_now_iso()
-                                self._save_arena()
-                                self._emit_arena_state()
-                                self._log(f"[{correlation_id}] ✅ Cooldown finished — tab ready for next job", "success")
-                            except Exception:
+                            else:
+                                # multi-tab: do not wait, cooldown will be checked via PagePool is_free and auto-expire in _arena_to_js
                                 pass
+                        except Exception as e:
+                            self._log(f"Cooldown wait logic failed {e}", "error")
                     except Exception as e:
                         self._log(f"Cooldown handling failed {e}", "error")
 
@@ -4107,6 +4126,24 @@ class Bridge(QObject):
                 self._log(f"✅ Connected to {ws_url[:80]} (tab {self.cdp._current_tab_id[:20]}…)", "success")
                 self.connection_status.emit("connected")
                 self._log(f"CDP session active on ws://{self.cdp._host}:{self.cdp._port}/devtools/page/{self.cdp._current_tab_id[:30]}", "info")
+                # Store per-tab -> url_id mapping if pending (ensures cooldown only on that page, not all)
+                try:
+                    import re as _re2
+                    m_id2 = _re2.search(r'/devtools/page/([^/]+)$', ws_url)
+                    tab_id_map = m_id2.group(1) if m_id2 else getattr(self.cdp, '_current_tab_id', '') or ws_url
+                    pending_uid = getattr(self, '_pending_url_id_for_connect', None)
+                    if pending_uid and tab_id_map:
+                        self._tab_to_url[tab_id_map] = pending_uid
+                        self._log(f"📌 Mapped tab {tab_id_map[:12]} -> url_id {pending_uid[:8]} (per-tab cooldown, diff account, only this page cooldown)", "success")
+                        # clear pending after mapping
+                        self._pending_url_id_for_connect = None
+                        self._pending_url_query_for_connect = None
+                except Exception as e:
+                    try:
+                        self._log(f"Tab->URL mapping failed {e}", "warn")
+                    except Exception:
+                        pass
+
                 # Also add to PagePool as steady page with dedicated client
                 # Fix: previously pool reused self.cdp for all tabs, causing second tab to overwrite first and both jobs using same websocket -> Submit failed
                 # Now create dedicated CDPClient per tab for pool, so 2+ tabs truly independent
@@ -4168,27 +4205,52 @@ class Bridge(QObject):
         finally:
             self._connect_in_progress = False
 
+    @Slot(str, result=str)
+    def set_pending_url_for_connect(self, url_id: str):
+        try:
+            self._pending_url_id_for_connect = url_id
+            self._log(f"📌 Pending url_id {url_id[:8]} set for next connect (per-tab cooldown mapping)", "info")
+            return '{"ok": true}'
+        except Exception as e:
+            return '{"ok": false, "error": "%s"}' % str(e)
+
     @Slot(str)
-    def find_tab_by_url(self, query: str):
-        """Non-blocking: schedule async matching in thread with debounce."""
-        if not self.cdp:
-            self._log("CDP not available", "error")
-            return
-        # Debounce: if same query within 1.0s, skip
+    def _store_pending_mapping(self, query: str):
+        try:
+            q = (query or "").strip()
+            for u in self.state.urls:
+                if u.url == q or q in u.url or u.url in q:
+                    self._pending_url_id_for_connect = u.id
+                    self._pending_url_query_for_connect = q
+                    self._log(f"📌 Pending mapping url {u.id[:8]} -> {q[:60]}", "info")
+                    break
+        except Exception:
+            pass
+
+    def _is_find_debounced(self, query: str) -> bool:
         try:
             import time
             now = time.time()
             q = (query or "").strip()
             if q and q == self._last_find_query and (now - self._last_find_ts) < 1.0:
-                log.debug(f"find_tab_by_url debounced duplicate {q[:60]}")
-                return
+                return True
             if self._find_in_progress:
-                log.debug(f"find_tab_by_url already in progress, skipping {q[:60]}")
-                return
+                return True
             self._last_find_query = q
             self._last_find_ts = now
         except Exception:
             pass
+        return False
+
+    def find_tab_by_url(self, query: str):
+        """Non-blocking: schedule matching, store pending url_id for per-tab."""
+        if not self.cdp:
+            self._log("CDP not available", "error")
+            return
+        self._store_pending_mapping(query)
+        if self._is_find_debounced(query):
+            log.debug(f"find debounced {query[:60]}")
+            return
         self._schedule_coro(self._do_find_tab(query))
 
     async def _do_find_tab(self, query: str):

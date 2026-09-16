@@ -358,7 +358,11 @@ const UrlList = {
     }
     this._lastConnectUrl = url;
     this._lastConnectTs = now;
-    LogConsole.log(`🔍 Connect: finding tab for ${url}`, 'info');
+    LogConsole.log(`🔍 Connect: finding tab for ${url} (url_id ${id.slice(0,8)} per-tab mapping)`, 'info');
+    // Set pending mapping so cooldown applies only to this page (diff account, not all)
+    if (App.bridge && App.bridge.set_pending_url_for_connect) {
+      try { App.bridge.set_pending_url_for_connect(id, ()=>{}); } catch {}
+    }
     if (App.bridge && App.bridge.find_tab_by_url) {
       App.bridge.find_tab_by_url(url);
     }
