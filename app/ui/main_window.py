@@ -133,6 +133,10 @@ class MainWindow(QMainWindow):
                 self.bridge._persist_cooldowns()
             except Exception:
                 pass
+            try:
+                self.bridge.shutdown_autoconnect()
+            except Exception:
+                pass
             self.view.page().runJavaScript("typeof SashGrid !== 'undefined' && SashGrid.flushPersistence && SashGrid.flushPersistence()")
         except Exception:
             pass

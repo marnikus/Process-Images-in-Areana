@@ -38,6 +38,7 @@ function initApp() {
   if (typeof ProgressPanel !== 'undefined') ProgressPanel.init();
   if (typeof WatcherPanel !== 'undefined') WatcherPanel.init();
   if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.init();
+  if (typeof AutoConnectPanel !== 'undefined') AutoConnectPanel.init();
   if (typeof SettingsPanel !== 'undefined') SettingsPanel.init();
   if (typeof BrowserPreview !== 'undefined') BrowserPreview.init();
   if (typeof HighlightOverlay !== 'undefined') HighlightOverlay.init();
@@ -133,6 +134,7 @@ function initWithBridge() {
         if (typeof PromptEditor !== 'undefined' && PromptEditor.restore) PromptEditor.restore(data);
         if (typeof ProgressPanel !== 'undefined' && ProgressPanel.restore) ProgressPanel.restore(data);
         if (typeof SettingsPanel !== 'undefined' && SettingsPanel.restore) SettingsPanel.restore(data);
+        if (typeof AutoConnectPanel !== 'undefined' && !AutoConnectPanel._loaded) AutoConnectPanel.load();
       } catch (e) {
         console.error('Failed to parse arena_state', e);
       }
@@ -306,6 +308,12 @@ function setupBridgeListeners() {
   if (b.page_pool_updated) {
     b.page_pool_updated.connect((payload) => {
       if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.onUpdate(payload);
+    });
+  }
+  // Auto-connect — discovery + link report for every scan (spec 01-04)
+  if (b.autoconnect_status) {
+    b.autoconnect_status.connect((payload) => {
+      if (typeof AutoConnectPanel !== 'undefined') AutoConnectPanel.onStatus(payload);
     });
   }
   // Thumbnails — non-blocking to avoid freeze

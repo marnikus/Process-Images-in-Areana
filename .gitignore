@@ -47,3 +47,8 @@ Process Images in Areana/Old App/reports/
 # Keep docs
 !docs/
 config/session.json
+
+# Generated coverage artifacts (regenerate with tools/pre_push_check.sh)
+coverage.json
+.coverage
+.coverage.*

@@ -98,14 +98,24 @@ def _filter_real_tabs(tabs: List[TabInfo]) -> List[TabInfo]:
     filtered = _pure_filter_real(pure)
     return [TabInfo(id=t.id, title=t.title, url=t.url, ws_url=t.ws_url, type=t.type) for t in filtered]
 
-def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222, timeout: float = 3.0) -> Tuple[List[TabInfo], str, List[str]]:
-    """Try to fetch tabs synchronously, trying candidate hosts and merging results.
-    Returns (tabs, error, tried_urls) — deduplicated by id.
+def candidate_hosts(host: str, strict_host: bool = True) -> List[str]:
+    """Hosts to scan: only the configured one when strict (spec 02), else fallbacks too."""
+    if strict_host:
+        return [host]
+    return [host] + [h for h in CANDIDATE_HOSTS if h != host]
+
+
+def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222, timeout: float = 3.0, strict_host: bool = True) -> Tuple[List[TabInfo], str, List[str]]:
+    """Try to fetch tabs synchronously, merging results (deduplicated by id).
+
+    strict_host=True scans ONLY the configured host:port (auto-connect spec 02);
+    strict_host=False keeps the old localhost fallback for manual diagnostics.
+    Returns (tabs, error, tried_urls).
     """
     tried = []
     last_err = ""
     all_tabs_by_id: dict[str, TabInfo] = {}
-    hosts_to_try = [host] + [h for h in CANDIDATE_HOSTS if h != host]
+    hosts_to_try = candidate_hosts(host, strict_host)
     for h in hosts_to_try:
         url = f"http://{h}:{port}/json/list"
         tried.append(url)
@@ -135,10 +145,14 @@ def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222, timeout: float = 
         return list(all_tabs_by_id.values()), "", tried
     return [], last_err or "No Chrome tabs found — Chrome not responding on any host", tried
 
-def diagnose_sync(host: str = "127.0.0.1", port: int = 9222) -> dict:
-    """Full diagnostics: check port open, /json/version, /json/list on all candidate hosts."""
+def diagnose_sync(host: str = "127.0.0.1", port: int = 9222, strict_host: bool = False) -> dict:
+    """Full diagnostics: check port open, /json/version, /json/list.
+
+    Diagnostics default to strict_host=False so the user still sees the localhost
+    hint when Chrome answers on the other loopback name; page scans stay strict.
+    """
     results = {"host": host, "port": port, "checks": [], "tabs": [], "summary": ""}
-    hosts_to_try = [host] + [h for h in CANDIDATE_HOSTS if h != host]
+    hosts_to_try = candidate_hosts(host, strict_host)
     all_tabs_by_id: dict[str, TabInfo] = {}
     for h in hosts_to_try:
         check = {"host": h, "port_open": False, "version": None, "version_error": "", "list_count": 0, "list_error": "", "tabs": []}
@@ -180,10 +194,12 @@ class CDPClient(QObject):
     disconnected = Signal()
     error = Signal(str)
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 9222, parent=None):
+    def __init__(self, host: str = "127.0.0.1", port: int = 9222, parent=None, strict_host: bool = True):
         super().__init__(parent)
         self._host = host
         self._port = port
+        # strict: only ever scan the configured host:port (auto-connect spec 02)
+        self._strict_host = bool(strict_host)
         self._ws = None
         self._cmd_id = 0
         self._pending = {}
@@ -219,32 +235,40 @@ class CDPClient(QObject):
     def fetch_tabs_sync(self, host: str = None, port: int = None):
         h = host or self._host
         p = port or self._port
-        tabs, err, tried = fetch_tabs_sync(h, p)
+        tabs, err, tried = fetch_tabs_sync(h, p, strict_host=self._strict_host)
         if err:
             log.warning(f"fetch_tabs_sync failed: {err} tried={tried}")
             self.error.emit(err)
         return tabs
 
-    def diagnose_sync(self, host: str = None, port: int = None) -> dict:
+    def diagnose_sync(self, host: str = None, port: int = None, strict_host: bool = False) -> dict:
         h = host or self._host
         p = port or self._port
-        return diagnose_sync(h, p)
+        return diagnose_sync(h, p, strict_host=strict_host)
 
-    async def fetch_tabs(self):
-        """Fetch tabs via HTTP /json/list — tries aiohttp first, merging all hosts, fallback to sync."""
+    async def fetch_tabs(self, host: str = None, port: int = None, strict_host: bool = None):
+        """Fetch tabs via HTTP /json/list on the configured host:port.
+
+        host/port override the client settings so auto-connect always scans the
+        endpoint from Settings (spec 02) even while a session is open elsewhere.
+        strict_host=None uses the client default (True); aiohttp first, sync fallback.
+        """
+        scan_host = str(host or self._host)
+        scan_port = int(port or self._port)
+        strict = self._strict_host if strict_host is None else bool(strict_host)
         merged_by_id: dict[str, TabInfo] = {}
         try:
             import aiohttp
-            hosts_to_try = [self._host] + [h for h in CANDIDATE_HOSTS if h != self._host]
+            hosts_to_try = candidate_hosts(scan_host, strict)
             for h in hosts_to_try:
                 try:
-                    url = f"http://{h}:{self._port}/json/list"
+                    url = f"http://{h}:{scan_port}/json/list"
                     async with aiohttp.ClientSession() as session:
                         async with session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as r:
                             if r.status != 200:
                                 continue
                             items = await r.json()
-                            tabs = _parse_tabs(items, preferred_host=self._host, preferred_port=self._port)
+                            tabs = _parse_tabs(items, preferred_host=scan_host, preferred_port=scan_port)
                             for t in tabs:
                                 key = t.id or t.ws_url
                                 if key and key not in merged_by_id:
@@ -261,7 +285,8 @@ class CDPClient(QObject):
 
         try:
             loop = asyncio.get_event_loop()
-            tabs, err, tried = await loop.run_in_executor(None, lambda: fetch_tabs_sync(self._host, self._port))
+            tabs, err, tried = await loop.run_in_executor(
+                None, lambda: fetch_tabs_sync(scan_host, scan_port, strict_host=strict))
             if err and not tabs:
                 self.error.emit(err)
             return tabs

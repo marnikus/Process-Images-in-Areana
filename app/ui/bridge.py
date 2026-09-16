@@ -42,6 +42,7 @@ from app.browser.tab_matcher import best_matches
 from app.browser.dom_highlight import build_highlight_js, build_clear_js, build_highlight_probe, build_find_probe, build_click_probe
 from app.browser.probe_requests import FindProbeSpec, ClickProbeSpec, HighlightSpec, COLOR_FIND, COLOR_CLICK, COLOR_COLLECT
 from app.browser.visual_click import ClickRequest, find_and_click
+from app.ui.bridge_autoconnect import AutoConnectMixin
 from app.core.action_blocks import (
     default_stack,
     stack_to_dicts,
@@ -56,7 +57,7 @@ from app.core.action_blocks import (
 
 log = logging.getLogger("arena")
 
-class Bridge(QObject):
+class Bridge(QObject, AutoConnectMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -79,6 +80,7 @@ class Bridge(QObject):
     watcher_status = Signal(str)  # JSON status
     watcher_log = Signal(str, str)  # msg, level
     page_pool_updated = Signal(str)  # JSON snapshot steady/busy
+    autoconnect_status = Signal(str)  # JSON auto-connect scan report + settings
     thumbnail_ready = Signal(str, str)  # img_id, payload_json — non-blocking thumb
 
     def __init__(self, config_manager: ConfigManager, state_path: Path, cdp_client=None, parent=None):
@@ -198,6 +200,12 @@ class Bridge(QObject):
             except Exception:
                 pass
             self._page_pool = None
+
+        # Auto-connect — parse open pages on the configured CDP port and link every
+        # page whose URL matches the stored pattern (spec 01-04, no manual Add)
+        self._autoconnect = None
+        self._init_autoconnect()
+        self._start_autoconnect_boot()
 
     def _emit_pool_status(self):
         try:
@@ -1993,9 +2001,17 @@ class Bridge(QObject):
             from app.browser.cdp_client import CDPClient
             from app.browser.cdp_arena import CDPArenaController
             from app.browser.page_status import PageInfo
-            import re
-            m = re.search(r'/devtools/page/([^/]+)$', ws_url)
-            tab_id = m.group(1) if m else ws_url
+            from app.browser.autoconnect_match import page_id_from_ws
+            tab_id = page_id_from_ws(ws_url)
+            # Reuse a live dedicated client — auto-connect re-scans must never open
+            # a second websocket for a page that is already linked.
+            if self._page_pool:
+                existing_client, _existing_ctrl = self._page_pool.get_clients(tab_id)
+                if existing_client is not None and getattr(existing_client, "is_connected", False) \
+                        and self._page_pool.get_page(tab_id) is not None:
+                    self._restore_cooldown(tab_id)
+                    self._emit_pool_status()
+                    return
             host = self._page_pool._host if self._page_pool else "127.0.0.1"
             port = self._page_pool._port if self._page_pool else 9222
             client = CDPClient(host=host, port=port)
@@ -4155,6 +4171,7 @@ class Bridge(QObject):
                 "settings": js_state.get("settings", {}),
                 "images": js_state.get("images", []),
                 "cdp": cdp_cfg,
+                "autoconnect": self._autoconnect_preset_doc(),
                 "action_blocks": action_blocks,
                 "cooldown": {
                     "enabled": self.config.get_state("cooldown_enabled", True),
@@ -4214,6 +4231,8 @@ class Bridge(QObject):
                         self.cdp.set_host_port(host, int(port))
                     except Exception:
                         pass
+            if "autoconnect" in doc and isinstance(doc["autoconnect"], dict):
+                self._restore_autoconnect_preset(doc["autoconnect"])
             if "action_blocks" in doc and isinstance(doc["action_blocks"], list):
                 try:
                     self.config.set_state(action_blocks=doc["action_blocks"])
@@ -4399,6 +4418,11 @@ class Bridge(QObject):
                 except Exception:
                     pass
             self._log(f"CDP config saved: {host}:{port_i} dir={user_data_dir}", "success")
+            # rescan the new endpoint straight away — auto-connect follows settings
+            try:
+                self._apply_autoconnect_config()
+            except Exception as e:
+                self._log(f"Auto-connect re-apply failed: {e}", "warn")
             return json.dumps({"ok": True, "host": host, "port": port_i, "user_data_dir": user_data_dir})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})

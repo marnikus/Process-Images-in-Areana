@@ -54,6 +54,17 @@
     <div id="urlBookmarkChips" class="chip-wrap" style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;"></div>
   </div>
 
+  <!-- Auto-connect: every page matching the pattern links itself (spec 01-04) -->
+  <div id="autoConnectToolbar" class="url-toolbar" style="display:flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg-header); border-bottom:1px solid var(--border); flex-wrap:wrap;">
+    <span class="url-toolbar-label" style="display:flex; align-items:center; gap:4px; color:var(--text-secondary); font-size:12px; font-weight:600;"><span class="material-icons" style="font-size:14px; color:var(--accent);">hub</span> Auto-Connect</span>
+    <span id="autoConnectBadge" style="font-size:10px; padding:2px 8px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">idle</span>
+    <span style="font-size:11px; color:var(--text-muted);">pattern <code id="autoConnectPatternView" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">arena.ai</code> on <code id="autoConnectEndpointView" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">127.0.0.1:9222</code> every <b id="autoConnectIntervalView">5</b>s</span>
+    <span id="autoConnectCounts" style="font-size:11px; color:var(--text-muted);">scanned 0 · matched 0 · linked 0 · pool 0</span>
+    <span class="spacer" style="flex:1;"></span>
+    <button id="autoConnectScanBtn" class="btn-small" title="Scan the configured CDP port now and link every matching page"><span class="material-icons" style="font-size:14px;">radar</span> Scan Now</button>
+    <button id="autoConnectToggleBtn" class="btn-small" title="Turn automatic discovery on/off (stored in settings)"><span class="material-icons" style="font-size:14px;">power_settings_new</span> <span id="autoConnectToggleLabel">Off</span></button>
+  </div>
+
   <main class="sash-grid" id="sashGrid">
 
     <!-- URL LIST -->
@@ -301,7 +312,7 @@
             <input id="cdpHost" type="text" placeholder="127.0.0.1">
           </div>
           <div class="settings-group">
-            <label>CDP Port (you decide)</label>
+            <label>CDP Port (you decide — arena: 9223)</label>
             <input id="cdpPort" type="number" min="1" max="65535" placeholder="9222">
           </div>
         </div>
@@ -322,6 +333,40 @@
           <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Test URL: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — open in browser, should show JSON.</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">💡 Run different ports/dirs: e.g. 9222 for arena, 9223 for virt-chat. App will remember your choice in <code>config/session.json</code> and presets.</div>
         </div>
+      </div>
+
+      <!-- Auto-connect & URL parsing — pattern field is storable (spec 02) -->
+      <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:12px; background:var(--bg-card);">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+          <span class="material-icons" style="font-size:16px; color:var(--accent);">hub</span>
+          <b style="font-size:12px;">Auto-Connect &amp; URL Parsing</b>
+          <span class="spacer" style="flex:1;"></span>
+          <button id="autoConnectSaveBtn" class="btn-small btn-primary" title="Save pattern + interval and rescan">Save</button>
+          <button id="autoConnectScanNowBtn" class="btn-small" title="Scan now — links every matching page">Scan Now</button>
+        </div>
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:8px;">
+          <input id="autoConnectEnabled" type="checkbox" checked> Connect every matching page automatically (no manual Add)
+        </label>
+        <div class="settings-group">
+          <label>URL pattern — pages containing this text (comma separated, * wildcards ok)</label>
+          <input id="autoConnectPattern" type="text" spellcheck="false" placeholder="arena.ai">
+          <div style="font-size:10px; color:var(--text-muted);">Example: <code>arena.ai</code> links every open arena.ai page. Only pages on the CDP host:port above are scanned.</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-group">
+            <label>Re-scan interval (ms) — confirms links are still alive</label>
+            <input id="autoConnectInterval" type="number" min="1000" max="600000" step="500" placeholder="5000">
+          </div>
+          <div class="settings-group">
+            <label>Max pages (0 = every match)</label>
+            <input id="autoConnectMaxPages" type="number" min="0" max="100" placeholder="0">
+          </div>
+        </div>
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin:6px 0;">
+          <input id="autoConnectPrimary" type="checkbox" checked> Also point the primary CDP session at the first matched page
+        </label>
+        <div id="autoConnectStatus" style="font-size:11px; color:var(--text-muted); margin-top:6px;">Not scanned yet.</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Duplicate URLs are normal (same web in two tabs) — pages are tracked by unique page id, never by URL. Closed or non-matching pages are dropped on the next scan.</div>
       </div>
 
       <div class="settings-group">
@@ -605,6 +650,7 @@
 <script src="js/panels/action-blocks.js"></script>
 <script src="js/panels/watcher.js"></script>
 <script src="js/panels/page-pool.js"></script>
+<script src="js/panels/auto-connect.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app.js"></script>
 </body>

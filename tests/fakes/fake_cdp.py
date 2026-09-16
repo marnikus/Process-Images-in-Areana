@@ -62,7 +62,7 @@ class FakeCDPClient:
     def is_connected(self) -> bool:
         return self._transport.is_connected
 
-    async def fetch_tabs(self):
+    async def fetch_tabs(self, host: str = None, port: int = None, strict_host: bool = True):
         return []
 
     async def attach_image_cdp(self, image_path: str, selectors=None):

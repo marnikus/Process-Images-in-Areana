@@ -18,6 +18,12 @@ DEFAULT_SESSION = {
     "cdp_port": 9222,
     "cdp_user_data_dir": "C:\\arena-images-chrome",
     "cdp_extra_args": "",
+    # Auto-connect & URL parsing (spec 01-04) — every field storable
+    "autoconnect_enabled": True,
+    "autoconnect_url_pattern": "arena.ai",
+    "autoconnect_interval_ms": 5000,
+    "autoconnect_max_pages": 0,
+    "autoconnect_primary": True,
     "action_blocks": None,  # will be default stack if None
     "action_blocks_version": 1,
     "watcher_enabled": False,

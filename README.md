@@ -5,6 +5,7 @@ A desktop application that automates image-to-image generation on arena.ai (or s
 > **New App:** Built from scratch based on core of old ChatBot Automator, but simplified: no DB, no Windows-specific code, JSON persistence only, Playwright browser automation, PySide6 UI.
 
 ## Product Goal
+0. Discover and link matching webpages automatically — no manual URL connection
 1. Accept multiple exact webpage URLs as separate rows
 2. Check whether each URL is valid, reachable, authenticated, ready
 3. Let user choose local folder and recursively discover supported images
@@ -36,6 +37,22 @@ python -m app.main
 
 On first run, browser launches with profile `./browser_profile`. Log in to arena.ai manually in that browser window. The session is remembered.
 
+### Auto-connect (no manual URL connection)
+Start Chrome with a debug port (for arena: `9223`), open your arena.ai pages, then start the app:
+
+```bash
+./start-arena-chrome.sh 9223 ~/.arena-9223 https://arena.ai   # or start-arena-chrome.bat 9223
+python -m app.main
+```
+
+The app scans **only** `CDP Host:CDP Port` from Settings, links every page whose URL
+contains the stored **URL pattern** (default `arena.ai`, comma separated list and `*`
+wildcards allowed), re-scans every `interval` ms and on Chrome new-tab events, and
+drops pages that closed or stopped matching. Two tabs on the same URL are two pages —
+identity is the unique CDP page id, never the URL. Settings → *Auto-Connect & URL
+Parsing*; live status in the Auto-Connect toolbar and the Page Pool window.
+See `docs/archive/2026-09-16-auto-connect-url-parsing/design.md`.
+
 ## UI Areas
 - **URL List:** add, edit, remove, enable/disable, test single/all, status: unchecked, checking, ready, unavailable, auth required, CAPTCHA required, unsupported, error
 - **Folder Picker:** choose root, show path, scan button
@@ -45,7 +62,8 @@ On first run, browser launches with profile `./browser_profile`. Log in to arena
 - **Run Controls:** Start, Pause, Resume, Stop after current, Cancel current, Retry
 - **Progress Summary:** total, selected, pending, processing, completed, skipped, failed, needs_review
 - **Activity Log:** timestamped events
-- **Settings:** timeouts, retry limits, output naming, supported file types, overwrite, highlight rect (enable, duration, color, border width), browser profile
+- **Settings:** timeouts, retry limits, output naming, supported file types, overwrite, highlight rect (enable, duration, color, border width), browser profile, CDP host/port/user-data-dir, **Auto-Connect & URL Parsing** (enable, URL pattern, re-scan interval, max pages, primary session, Scan Now)
+- **Auto-Connect toolbar:** badge (watching / off / port unreachable), pattern + endpoint + interval, scanned/matched/linked counts, Scan Now, On/Off
 
 ## Workflow
 For each selected pending image (sequential, round-robin URLs):
@@ -104,9 +122,11 @@ pytest tests/ -v
 ```
 app/
   core/ — models, enums, scanner, naming, persistence, state_machine
-  browser/ — controller (Playwright), site_adapter (selectors), selector
-  services/ — verification, job_runner
-  ui/ — main_window (PySide6)
+  browser/ — cdp_client (transport), cdp_arena, site_adapter (selectors), page_pool,
+             autoconnect_match / _config / _linker / _service / _report, tab_events
+  services/ — verification, job_runner, multi_page_dispatcher, cooldown_service, watcher
+  ui/ — main_window (PySide6), bridge (+ bridge_autoconnect mixin), autoconnect_pages,
+        autoconnect_settings, web/js panels
   utils/ — correlation, hashing, logging
 ```
 
@@ -154,3 +174,6 @@ When arena.ai DOM changes:
 - [x] Errors visible, actionable, recorded
 - [x] Highlight rect with configurable duration
 - [x] Preset save/load JSON, all UI params storable
+- [x] Auto-connect: pages on the configured CDP port discovered, filtered by storable URL pattern, linked automatically on start / timer / new-tab events
+- [x] Duplicate URLs distinguished by unique page id, not URL
+- [x] CDP host + port user-configurable (arena: 9223)
