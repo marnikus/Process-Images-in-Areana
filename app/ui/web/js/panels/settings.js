@@ -2,7 +2,7 @@
 'use strict';
 
 const SettingsPanel = {
-  cdpConfig: {host: '127.0.0.1', port: 9222, user_data_dir: 'C:\\arena-images-chrome', extra_args: ''},
+  cdpConfig: {host: '127.0.0.1', port: 9222, user_data_dir: 'C:\\arena-images-chrome', extra_args: '', url_pattern: 'arena.ai'},
 
   init() {
     document.getElementById('settingsSaveBtn')?.addEventListener('click', ()=>this.save());
@@ -45,6 +45,7 @@ const SettingsPanel = {
           setVal('cdpPort', cfg.port || 9222);
           setVal('cdpUserDataDir', cfg.user_data_dir || 'C:\\arena-images-chrome');
           setVal('cdpExtraArgs', cfg.extra_args || '');
+          setVal('cdpUrlPattern', (cfg.url_pattern === undefined || cfg.url_pattern === null) ? 'arena.ai' : cfg.url_pattern);
           this.updateChromeCmdPreview();
           // also update toolbar
           if (typeof CDPPanel !== 'undefined' && CDPPanel.updateChromeToolbar) {
@@ -156,14 +157,15 @@ const SettingsPanel = {
     if (port < 1 || port > 65535) { LogConsole.log('⚠ Port must be 1-65535', 'warn'); return; }
     const user_data_dir = (getVal('cdpUserDataDir')||'C:\\arena-images-chrome').trim() || 'C:\\arena-images-chrome';
     const extra = (getVal('cdpExtraArgs')||'').trim();
-    const payload = {host, port, user_data_dir, extra_args: extra};
+    const url_pattern = (getVal('cdpUrlPattern')||'').trim();
+    const payload = {host, port, user_data_dir, extra_args: extra, url_pattern};
     if (App.bridge && App.bridge.set_cdp_config) {
       App.bridge.set_cdp_config(JSON.stringify(payload), (res)=>{
         try {
           const r = JSON.parse(res);
           if (r.ok) {
-            LogConsole.log(`CDP config saved: ${host}:${port} dir=${user_data_dir} — restart Chrome with new command, then Diagnose`, 'success');
-            this.cdpConfig = {host, port, user_data_dir, extra_args: extra};
+            LogConsole.log(`CDP config saved: ${host}:${port} dir=${user_data_dir} pattern='${url_pattern || '(all)'}' — restart Chrome with new command, then Diagnose`, 'success');
+            this.cdpConfig = {host, port, user_data_dir, extra_args: extra, url_pattern};
             this.updateChromeCmdPreview();
           } else {
             LogConsole.log('Save CDP failed: '+r.error, 'error');

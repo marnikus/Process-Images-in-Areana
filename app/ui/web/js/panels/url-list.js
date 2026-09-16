@@ -58,7 +58,7 @@ const UrlList = {
       tr.dataset.url = u.url;
       tr.innerHTML = `
         <td><input type="checkbox" ${u.enabled !== false ? 'checked' : ''} data-action="toggle" data-url-id="${u.id}"></td>
-        <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.esc(u.url)}">${this.esc(u.url)}</td>
+        <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.esc(u.url)}${u.tab_id ? ' — linked tab ' + this.esc(String(u.tab_id).slice(0,8)) : ''}">${this.esc(u.url)}</td>
         <td><span class="url-status url-status-${u.status || 'pending'}">${this.esc(u.status || 'pending')}</span></td>
         <td class="url-conn-status" style="font-size:11px;"><span style="color:var(--text-muted);">○ checking…</span></td>
         <td class="url-cool-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td>

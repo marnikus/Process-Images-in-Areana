@@ -106,6 +106,7 @@ class Bridge(QObject):
         self._last_connect_ts = 0.0
         self._find_in_progress = False
         self._connect_in_progress = False
+        self._auto_scan_running = False
         # thumbnail cache + thread pool to avoid UI freeze on mouse clicks
         # Previously get_image_thumbnail did PIL thumbnail sync in main thread for 80 images -> freeze
         self._thumb_cache = {}
@@ -576,6 +577,7 @@ class Bridge(QObject):
                 "status": u.get("last_status", "unchecked"),
                 "last_error": u.get("error", ""),
                 "last_checked": u.get("last_checked"),
+                "tab_id": u.get("tab_id", ""),
             })
         # images: map to expected fields
         images_js = []
@@ -3918,6 +3920,76 @@ class Bridge(QObject):
         except Exception as e:
             self._log(f"❌ Tab fetch failed: {e}", "error")
 
+    def _pooled_ids(self) -> set:
+        """Ids currently in the pool; empty when pool is unavailable."""
+        try:
+            return set(self._page_pool._pages.keys())
+        except Exception:
+            return set()
+
+    @Slot(result=str)
+    def auto_connect_scan(self):
+        """Non-blocking auto-connect scan: rows + pool follow open tabs."""
+        if not self.cdp or not self._page_pool:
+            return json.dumps({"ok": False, "error": "CDP or pool not ready"})
+        if self._auto_scan_running:
+            return "pending"
+        self._schedule_coro(self._do_auto_connect_scan())
+        return "pending"
+
+    def _apply_auto_plan(self, plan) -> bool:
+        """Claim/add URL rows from the plan; True when rows changed."""
+        by_id = {u.id: u for u in self.state.urls}
+        changed = False
+        for row_id, tab_id in plan.claim:
+            row = by_id.get(row_id)
+            if row is not None and not row.tab_id:
+                row.tab_id = tab_id
+                changed = True
+        for url, tab_id in plan.add:
+            self.state.urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
+            changed = True
+        if changed:
+            # system action, reproducible by re-scan: no undo spam
+            self._save_arena()
+            self._emit_arena_state()
+        return changed
+
+    def _report_auto_plan(self, plan, revived: int, stale: list):
+        """Pool emit + one-line summary when the scan changed anything."""
+        if plan.connect or revived or stale:
+            self._emit_pool_status()
+        if plan.add or plan.claim or plan.connect or revived or stale:
+            self._log(f"🤖 Auto-connect: +{len(plan.add)} rows, {len(plan.claim)} linked, "
+                      f"{len(plan.connect)} joined, {revived} revived, {len(stale)} stale", "info")
+
+    async def _join_new_tabs(self, sockets) -> None:
+        """Pool-join each connectable tab; skips empty sockets."""
+        for ws in sockets or []:
+            if ws:
+                await self._do_connect_page_pool(ws)
+
+    async def _do_auto_connect_scan(self):
+        """Fetch tabs, sync rows + pool + presence; skips when busy."""
+        if self._auto_scan_running:
+            return
+        self._auto_scan_running = True
+        try:
+            from app.services.auto_connect import plan_auto_connect, sync_pool_presence
+            tabs = await self.cdp.fetch_tabs()
+            pattern = self.config.get_state("url_pattern", "arena.ai")
+            rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id} for u in self.state.urls]
+            plan = plan_auto_connect(tabs, pattern, rows, self._pooled_ids())
+            self._apply_auto_plan(plan)
+            await self._join_new_tabs(plan.connect)
+            live = {(t.id or t.ws_url) for t in tabs or []} - {""}
+            revived, stale = sync_pool_presence(self._page_pool, live)
+            self._report_auto_plan(plan, revived, stale)
+        except Exception as e:
+            self._log(f"Auto-connect scan skipped: {e}", "warn")
+        finally:
+            self._auto_scan_running = False
+
     @Slot(str)
     def connect_tab(self, ws_url: str):
         if not self.cdp:
@@ -4366,11 +4438,13 @@ class Bridge(QObject):
             port = self.config.get_state("cdp_port", 9222)
             user_data_dir = self.config.get_state("cdp_user_data_dir", "C:\\arena-images-chrome")
             extra = self.config.get_state("cdp_extra_args", "")
+            url_pattern = self.config.get_state("url_pattern", "arena.ai")
             payload = {
                 "host": host,
                 "port": int(port),
                 "user_data_dir": user_data_dir,
                 "extra_args": extra,
+                "url_pattern": url_pattern,
                 "base_url": f"http://{host}:{port}",
                 "is_connected": bool(self.cdp and self.cdp.is_connected),
                 "current_host": self.cdp._host if self.cdp else host,
@@ -4388,6 +4462,8 @@ class Bridge(QObject):
             port = data.get("port") or data.get("cdp_port") or 9222
             user_data_dir = data.get("user_data_dir") or data.get("cdp_user_data_dir") or "C:\\arena-images-chrome"
             extra = data.get("extra_args") or data.get("cdp_extra_args") or ""
+            url_pattern = data.get("url_pattern", self.config.get_state("url_pattern", "arena.ai"))
+            url_pattern = url_pattern.strip() if isinstance(url_pattern, str) else "arena.ai"
             # validate
             try:
                 port_i = int(port)
@@ -4396,7 +4472,8 @@ class Bridge(QObject):
             except:
                 return json.dumps({"ok": False, "error": "invalid port"})
             # save to session
-            self.config.set_state(cdp_host=host, cdp_port=port_i, cdp_user_data_dir=user_data_dir, cdp_extra_args=extra)
+            self.config.set_state(cdp_host=host, cdp_port=port_i, cdp_user_data_dir=user_data_dir, cdp_extra_args=extra,
+                                  url_pattern=url_pattern)
             # update cdp client
             if self.cdp:
                 try:

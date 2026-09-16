@@ -18,6 +18,7 @@ DEFAULT_SESSION = {
     "cdp_port": 9222,
     "cdp_user_data_dir": "C:\\arena-images-chrome",
     "cdp_extra_args": "",
+    "url_pattern": "arena.ai",
     "action_blocks": None,  # will be default stack if None
     "action_blocks_version": 1,
     "watcher_enabled": False,

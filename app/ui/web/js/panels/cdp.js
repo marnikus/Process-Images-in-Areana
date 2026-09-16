@@ -1,4 +1,5 @@
 /* cdp.js — Chrome remote debugging: fetch tabs, match URL to open tab, show connection status per row, pick desired tab — robust with diagnostics */
+// ideal-size: ~535 lines reason=single CDP panel owns tab list + matching + connection triggers incl. auto-scan; splitting would scatter one tab lifecycle across files that always change together (RULE 18.2)
 'use strict';
 
 const CDPPanel = {
@@ -77,6 +78,14 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
     this.bindBridgeSignals();
     setTimeout(() => this.fetchTabs(), 800);
     setTimeout(() => this.loadBookmarks(), 900);
+    setTimeout(() => this.autoConnectScan(), 4000);
+    setInterval(() => this.autoConnectScan(), 15000);
+  },
+
+  autoConnectScan() {
+    if (App.bridge && App.bridge.auto_connect_scan) {
+      App.bridge.auto_connect_scan();
+    }
   },
 
   bindBridgeSignals() {
