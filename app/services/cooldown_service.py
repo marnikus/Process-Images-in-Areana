@@ -1,4 +1,4 @@
-# ideal-size: ~445 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+# ideal-size: ~485 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
 """Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
 
 Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
@@ -395,6 +395,46 @@ async def _best_effort_reset(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, 
         return False, str(e)
 
 
+def register_job_done(pool: Any, tab_id: str) -> int:
+    """Count one finished job for load balancing; -1 when unknown."""
+    try:
+        with pool._lock:
+            page = pool._pages.get(tab_id)
+            if page is None:
+                return -1
+            page.jobs_completed += 1
+            page.last_job_at = now_iso()
+            return page.jobs_completed
+    except AttributeError:
+        return -1
+
+
+def _stats_count(stats: dict, norm_key: str) -> int:
+    """Saved counter for a normalized URL key; 0 when absent."""
+    if not isinstance(stats, dict) or not norm_key:
+        return 0
+    val = stats.get(norm_key, {})
+    if not isinstance(val, dict):
+        return 0
+    count = val.get("jobs_completed", 0)
+    if isinstance(count, bool) or not isinstance(count, int):
+        return 0
+    return max(count, 0)
+
+
+def restore_page_stats(pool: Any, tab_id: str, norm_url: str, stats: dict) -> int:
+    """Re-apply one tab's saved counter; live never moves backwards."""
+    try:
+        with pool._lock:
+            page = pool._pages.get(tab_id)
+            if page is None:
+                return -1
+            page.jobs_completed = max(page.jobs_completed, _stats_count(stats, norm_url))
+            return page.jobs_completed
+    except AttributeError:
+        return -1
+
+
 async def _finish_cancelled(ctx: FinishCtx) -> bool:
     """Cancel path: hygiene reset, ready at once, no pause."""
     await _best_effort_reset(ctx, timeout_sec=15.0)
@@ -430,6 +470,7 @@ def _log_finish(ctx: FinishCtx, started: bool):
 
 async def _finish_normal(ctx: FinishCtx) -> bool:
     """Normal path: reset page, then start the per-tab pause."""
+    register_job_done(ctx.pool, ctx.tab_id)
     ok, reason = await _best_effort_reset(ctx, timeout_sec=30.0)
     if not ok:
         _log(ctx.bridge, f"⚠ New-chat reset failed ({reason}) — cooling anyway", "warn")

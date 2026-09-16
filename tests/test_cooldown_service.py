@@ -342,3 +342,47 @@ async def test_wait_for_batch_ready_cancel_returns_false(monkeypatch):
     svc.start_cooldown(pool, "a", 300, reason="job done")
     bridge = make_bridge(cancelled=True)
     assert await svc.wait_for_batch_ready(pool, ["a"], bridge) is False
+
+
+@pytest.mark.unit
+def test_register_job_done_increments():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    assert svc.register_job_done(pool, "a") == 1
+    assert svc.register_job_done(pool, "a") == 2
+    assert pool.get_page("a").jobs_completed == 2
+
+
+@pytest.mark.unit
+def test_register_job_done_unknown():
+    assert svc.register_job_done(PagePool(), "nope") == -1
+    assert svc.register_job_done(None, "a") == -1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_increments_job_counter(monkeypatch):
+    async def fake_reset(ctx):
+        return True, "mock ready"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    bridge = make_bridge()
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    assert pool.get_page("a").jobs_completed == 1
+
+
+@pytest.mark.unit
+def test_restore_page_stats_max_and_missing():
+    from app.persistence.cooldown_store import normalize_url
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    norm = normalize_url("https://arena.ai")
+    stats = {norm: {"jobs_completed": 7}}
+    assert svc.restore_page_stats(pool, "a", norm, stats) == 7
+    pool.get_page("a").jobs_completed = 9
+    assert svc.restore_page_stats(pool, "a", norm, stats) == 9  # max, idempotent
+    assert svc.restore_page_stats(pool, "nope", norm, stats) == -1
+    assert svc.restore_page_stats(pool, "a", norm, {}) == 9  # nothing saved: keep live

@@ -143,3 +143,31 @@ def test_restore_pending_only_and_never_shortens():
     svc.start_cooldown(pool, "p", 300, reason="job done")
     shorter = {"cooldown_until": time.time() + 10, "pending_penalty": 0}
     assert svc.restore_cooldown_entry(pool, "p", shorter) is False
+
+
+def test_stats_round_trip_never_pruned(tmp_path):
+    path = str(tmp_path / "cooldowns.json")
+    pool = PagePool()
+    pool.add_page(PageInfo(tab_id="a", title="A", url="https://arena.ai/x?m=1", is_connected=True))
+    pool.get_page("a").jobs_completed = 4
+    store.save_pool_snapshot(path, pool)
+    stats = store.load_stats(path)
+    assert stats[store.normalize_url("https://arena.ai/x?m=1")]["jobs_completed"] == 4
+
+
+def test_stats_merge_keeps_absent_and_entries_intact(tmp_path):
+    path = str(tmp_path / "cooldowns.json")
+    pool = PagePool()
+    pool.add_page(PageInfo(tab_id="a", title="A", url="https://arena.ai/new", is_connected=True))
+    pool.get_page("a").jobs_completed = 1
+    store.save_pool_snapshot(path, pool)
+    stats = store.load_stats(path)
+    assert set(stats) == {store.normalize_url("https://arena.ai/new")}
+    # entries section unaffected by stats-only pages
+    assert store.load_entries(path) == {}
+
+
+def test_normalize_url():
+    assert store.normalize_url("https://Arena.AI/X/") == "https://arena.ai/x"
+    assert store.normalize_url(None) == ""
+    assert store.normalize_url(42) == ""

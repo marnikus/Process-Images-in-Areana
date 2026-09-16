@@ -2,8 +2,9 @@
 
 Entries keyed by tab_id (stable while Chrome runs); URL fallback covers
 Chrome restarts too. Real time counts: cooldown_until is epoch-based and
-expiry is checked against time.time() on load/restore. Reuses the
-same-layer JSON helpers; works on pool snapshots (no browser imports).
+expiry is checked against time.time() on load/restore. Plus per-URL job
+counters (stats) for load balancing; counters are never pruned. Reuses
+the same-layer JSON helpers; works on pool snapshots (no browser imports).
 """
 
 from __future__ import annotations
@@ -39,13 +40,56 @@ def load_entries(path) -> dict:
             if isinstance(v, dict) and not _is_idle_expired(v, now)}
 
 
-def save_entries(path, entries: dict) -> None:
-    """Atomic capped write (oldest cooldown first out)."""
-    items = sorted(entries.items(),
-                   key=lambda kv: float(kv[1].get("cooldown_until", 0) or 0)
-                   if isinstance(kv[1], dict) else 0)
+def _entry_sort_key(kv) -> float:
+    """Sort entries by cooldown end; junk sorts first (evicted first)."""
+    _key, val = kv
+    if not isinstance(val, dict):
+        return 0
+    try:
+        return float(val.get("cooldown_until", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _write_doc(path, entries: dict, stats: dict) -> None:
+    """Single atomic writer; oldest cooldown first out, stats intact."""
+    items = sorted(entries.items(), key=_entry_sort_key)
     trimmed = dict(items[-_MAX_ENTRIES:])
-    _atomic_write(Path(path), {"version": _VERSION, "entries": trimmed})
+    _atomic_write(Path(path), {"version": _VERSION, "entries": trimmed, "stats": stats})
+
+
+def save_entries(path, entries: dict) -> None:
+    """Atomic capped entry write; stats section preserved untouched."""
+    _write_doc(path, entries, load_stats(path))
+
+
+def _saved_jobs(val: Any) -> int:
+    """Counter inside a stats value; 0 unless a valid dict entry."""
+    if not isinstance(val, dict):
+        return 0
+    count = val.get("jobs_completed", 0)
+    if isinstance(count, bool) or not isinstance(count, int):
+        return 0
+    return max(count, 0)
+
+
+def load_stats(path) -> dict:
+    """Job counters by normalized URL; malformed values dropped."""
+    raw = _load_json(Path(path), {})
+    stats = raw.get("stats", {}) if isinstance(raw, dict) else {}
+    if not isinstance(stats, dict):
+        return {}
+    clean: dict[str, dict] = {}
+    for url, val in stats.items():
+        key = normalize_url(url)
+        if not key or not isinstance(val, dict):
+            continue
+        count = val.get("jobs_completed", 0)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            continue
+        prev = _saved_jobs(clean.get(key))
+        clean[key] = {"jobs_completed": max(prev, count)}
+    return clean
 
 
 def _persistable(status: str, until: float, pending: int, moment: float) -> bool:
@@ -70,29 +114,42 @@ def _entry_from_page(page: dict) -> Optional[dict]:
             "saved_at": time.time()}
 
 
+def _merge_page_entry(entries: dict, page: dict) -> None:
+    """Fold one page's timer in; idle pages drop their entry."""
+    entry = _entry_from_page(page)
+    if entry is None:
+        entries.pop(page.get("tab_id", ""), None)
+    else:
+        entries[page.get("tab_id", "")] = entry
+
+
+def _merge_page_stats(stats: dict, page: dict) -> None:
+    """Fold one page's job counter in; stored count never decreases."""
+    key = normalize_url(page.get("url", ""))
+    done = page.get("jobs_completed", 0)
+    if not key or isinstance(done, bool) or not isinstance(done, int):
+        return
+    stats[key] = {"jobs_completed": max(_saved_jobs(stats.get(key)), done)}
+
+
 def save_pool_snapshot(path, pool) -> None:
-    """Merge live timers into the file; pool-absent live entries kept."""
+    """Merge live timers + job counters; pool-absent entries kept."""
     try:
         pages = pool.status_snapshot().get("pages", [])
     except Exception:
         return
     entries = load_entries(path)
+    stats = load_stats(path)
     for page in pages:
-        if not isinstance(page, dict):
+        if not isinstance(page, dict) or not page.get("tab_id", ""):
             continue
-        tid = page.get("tab_id", "")
-        if not tid:
-            continue
-        entry = _entry_from_page(page)
-        if entry is None:
-            entries.pop(tid, None)
-        else:
-            entries[tid] = entry
-    save_entries(path, entries)
+        _merge_page_entry(entries, page)
+        _merge_page_stats(stats, page)
+    _write_doc(path, entries, stats)
 
 
-def _norm_url(url: Any) -> str:
-    """Comparable URL form (case/trailing-slash tolerant, query kept)."""
+def normalize_url(url: Any) -> str:
+    """Canonical URL form (case/trailing-slash tolerant, query kept)."""
     if not isinstance(url, str):
         return ""
     return url.strip().lower().rstrip("/")
@@ -109,7 +166,7 @@ def consume_entry_for(entries: dict, tab_id: str, page_url: str, known_tab_ids=f
     entry owned by another registered tab (same-URL tabs stay isolated)."""
     if tab_id and tab_id in entries:
         return tab_id, entries.pop(tab_id)
-    want = _norm_url(page_url)
+    want = normalize_url(page_url)
     if want:
         known = known_tab_ids or frozenset()
         for key, entry in list(entries.items()):
@@ -117,6 +174,6 @@ def consume_entry_for(entries: dict, tab_id: str, page_url: str, known_tab_ids=f
                 continue
             if _owned_by_other(entry, tab_id, known):
                 continue
-            if _norm_url(entry.get("url", "")) == want:
+            if normalize_url(entry.get("url", "")) == want:
                 return key, entries.pop(key)
     return None, None

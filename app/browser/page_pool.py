@@ -44,6 +44,14 @@ def _expire_all(pages) -> None:
             continue
 
 
+def _pick_lowest_count(pages) -> Optional[PageInfo]:
+    """Free page with fewest completed jobs; ties keep default order."""
+    free = [p for p in pages if p.is_free()]
+    if not free:
+        return None
+    return min(free, key=lambda p: p.jobs_completed)
+
+
 def _snapshot_entry(page) -> dict:
     """One page snapshot entry incl. live cooldown countdown."""
     entry = page.to_dict()
@@ -151,21 +159,20 @@ class PagePool:
         with self._lock:
             for p in self._pages.values():
                 p.try_expire()
-                if p.is_free():
-                    return p
-            return None
+            return _pick_lowest_count(self._pages.values())
 
     async def acquire_free_page(self, job_id: str) -> Optional[PageInfo]:
         with self._lock:
             for p in self._pages.values():
                 p.try_expire()
-                if p.is_free():
-                    p.status = PageStatus.BUSY
-                    p.current_job_id = job_id
-                    p.busy_since = now_iso()
-                    p.error = None
-                    return p
-            return None
+            page = _pick_lowest_count(self._pages.values())
+            if page is None:
+                return None
+            page.status = PageStatus.BUSY
+            page.current_job_id = job_id
+            page.busy_since = now_iso()
+            page.error = None
+            return page
 
     async def wait_for_free_page(self, timeout_sec: float, cancel_check=None, job_id: str = None, wait_opts: PageWaitOpts | None = None) -> Optional[PageInfo]:
         opts = wait_opts or PageWaitOpts()

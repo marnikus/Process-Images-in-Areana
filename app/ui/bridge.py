@@ -245,7 +245,7 @@ class Bridge(QObject):
             from app.browser.page_status import PageInfo
             from app.services.cooldown_service import ensure_pool_page
             ensure_pool_page(self._page_pool, PageInfo(tab_id=tab_id, ws_url=ws, title=title, url=url))
-            self._restore_cooldown(tab_id)
+            self._restore_page_state(tab_id)
             self._emit_pool_status()
         except Exception as e:
             self._log(f"Pool ensure skipped: {e}", "warn")
@@ -261,7 +261,7 @@ class Bridge(QObject):
         return "config/cooldowns.json"
 
     def _persist_cooldowns(self):
-        """Autosave wall-clock timers so restart never pauses them."""
+        """Autosave wall-clock timers + job counters across restarts."""
         try:
             if not self._page_pool:
                 return
@@ -270,8 +270,18 @@ class Bridge(QObject):
         except Exception:
             pass
 
-    def _restore_cooldown(self, tab_id: str):
-        """Re-apply persisted wall-clock pause after app restart."""
+    def _restore_job_counter(self, tab_id: str, page_url: str):
+        """Re-apply one tab's saved job counter (never moves backwards)."""
+        try:
+            from app.persistence.cooldown_store import load_stats, normalize_url
+            from app.services.cooldown_service import restore_page_stats
+            stats = load_stats(self._cooldowns_path())
+            restore_page_stats(self._page_pool, tab_id, normalize_url(page_url), stats)
+        except Exception:
+            pass
+
+    def _restore_page_state(self, tab_id: str):
+        """Re-apply persisted wall-clock pause + job counter after restart."""
         try:
             if not self._page_pool or not tab_id:
                 return
@@ -286,6 +296,7 @@ class Bridge(QObject):
             except Exception:
                 known_ids = set()
             _key, entry = consume_entry_for(entries, tab_id, page_url, known_ids)
+            self._restore_job_counter(tab_id, page_url)
             if not entry:
                 return
             if restore_cooldown_entry(self._page_pool, tab_id, entry):
@@ -2008,7 +2019,7 @@ class Bridge(QObject):
             info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
             self._page_pool.add_page(info)
             self._page_pool.register_client(tab_id, client, ctrl)
-            self._restore_cooldown(tab_id)
+            self._restore_page_state(tab_id)
             self._emit_pool_status()
             total, free = self._page_pool.get_counts()
             self._log(f"✅ Pool added {tab_id[:12]} steady — {info.title[:40]} — total {total} free {free}", "success")
@@ -3998,7 +4009,7 @@ class Bridge(QObject):
                                 self._emit_pool_status()
                                 total_f, _ = self._page_pool.get_counts() if self._page_pool else (0, 0)
                                 self._log(f"📦 Pool: added primary tab {tab_id[:12]} steady (dedicated failed, using primary) — total {total_f}", "warn")
-                            self._restore_cooldown(tab_id)
+                            self._restore_page_state(tab_id)
                 except Exception as e:
                     import traceback as _tb
                     self._log(f"Pool add primary failed: {e} {_tb.format_exc()[-500:]}", "warn")

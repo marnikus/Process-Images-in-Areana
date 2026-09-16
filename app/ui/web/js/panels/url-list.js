@@ -1,4 +1,5 @@
 /* url-list.js — URL List panel */
+// ideal-size: ~370 lines reason=single UrlList panel object owns row render + pool matching + cooldown/counter cells; splitting the literal would scatter one refresh pass across files that always change together (RULE 18.2)
 'use strict';
 
 const UrlList = {
@@ -61,6 +62,7 @@ const UrlList = {
         <td><span class="url-status url-status-${u.status || 'pending'}">${this.esc(u.status || 'pending')}</span></td>
         <td class="url-conn-status" style="font-size:11px;"><span style="color:var(--text-muted);">○ checking…</span></td>
         <td class="url-cool-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td>
+        <td class="url-jobs-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td>
         <td style="font-size:10px; color:var(--text-muted)">${this.esc(u.last_error || '')}</td>
         <td style="white-space:nowrap;">
           <button class="btn-small" data-action="cool-reset" data-url-id="${u.id}" title="Reset cooldown — tab ready now">♻️</button>
@@ -274,6 +276,7 @@ const UrlList = {
         if (claimed.has(ri)) page = pages[claimed.get(ri)];
         else page = this.matchUnclaimedPage(tr.dataset.url || '', pages, claimed);
         this._fillCoolCell(tr, page);
+        this._fillJobsCell(tr, page);
       });
       return;
     }
@@ -285,6 +288,17 @@ const UrlList = {
       const suffix = txt.includes('/') ? txt.slice(txt.indexOf('/')) : '';
       el.textContent = PagePoolPanel.fmt(left) + (suffix ? ' ' + suffix : '');
     });
+  },
+
+  _fillJobsCell(tr, page) {
+    const cell = tr.querySelector('.url-jobs-cell');
+    if (!cell) return;
+    if (!page) {
+      cell.innerHTML = '<span style="color:var(--text-muted);" title="Tab not in pool — use Connect, then add to pool">—</span>';
+      return;
+    }
+    const n = page.jobs_completed || 0;
+    cell.innerHTML = `<span title="Jobs completed on this tab — next job goes to the free tab with the lowest count">${n}</span>`;
   },
 
   _fillCoolCell(tr, page) {

@@ -43,6 +43,7 @@ class PageInfo:
     pending_penalty: int = 0
     last_job_at: Optional[str] = None
     cooldown_reason: str = ""
+    jobs_completed: int = 0
 
     def is_free(self) -> bool:
         return self.status == PageStatus.STEADY and self.is_connected
@@ -97,4 +98,5 @@ class PageInfo:
             "pending_penalty": self.pending_penalty,
             "last_job_at": self.last_job_at,
             "cooldown_reason": self.cooldown_reason,
+            "jobs_completed": self.jobs_completed,
         }

@@ -214,6 +214,7 @@ const PagePoolPanel = {
         <td title="${this.esc(p.title)}">${this.esc((p.title||'').slice(0,30))}</td>
         <td title="${this.esc(p.url)}" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.esc((p.url||'').slice(0,50))}</td>
         <td><span style="color:${color}; font-weight:600;">● ${this.esc(statusLabel)}</span></td>
+        <td title="Jobs completed — next job goes to the free tab with the lowest count">${p.jobs_completed||0}</td>
         <td>${this.esc(p.current_job_id||'—')}</td>
         <td style="white-space:nowrap;">${this.cooldownCell(p)}</td>
         <td style="white-space:nowrap;">
