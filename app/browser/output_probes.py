@@ -308,12 +308,13 @@ JS_CHECK_NEW_OUTPUT_V3 = """
       } catch(e) { return false; }
     }
 
-    function findAssociatedJobForImage(imgEl, rect) {
+    function findAssociatedJobForImage(imgEl, rect, expectedId) {
       try {
         let domPrev = null;
         let domNext = null;
         let visualPrev = null;
         let visualNext = null;
+        let aboveCandidates = [];
         for (const j of allJobs) {
           try {
             if (isBeforeInDOM(j.el, imgEl)) {
@@ -324,15 +325,71 @@ JS_CHECK_NEW_OUTPUT_V3 = """
           } catch(e) {}
           try {
             if (j.top < rect.top - 5) {
+              aboveCandidates.push(j);
               if (!visualPrev || j.top > visualPrev.top) visualPrev = j;
             } else if (j.top > rect.top + 5) {
               if (!visualNext || j.top < visualNext.top) visualNext = j;
             }
           } catch(e) {}
         }
+        // Parallel fix: if expectedId matches any nearby, prefer it directly
+        if (expectedId) {
+          const nearbyChecks = [domPrev, domNext, visualPrev, visualNext];
+          for (const c of nearbyChecks) {
+            if (c && c.jobId === expectedId) {
+              return {
+                associatedJobId: c.jobId,
+                associatedTop: c.top,
+                domPrevJobId: domPrev ? domPrev.jobId : null,
+                domNextJobId: domNext ? domNext.jobId : null,
+                visualPrevJobId: visualPrev ? visualPrev.jobId : null,
+                visualNextJobId: visualNext ? visualNext.jobId : null,
+                visualPrevTop: visualPrev ? visualPrev.top : null,
+                domPrevTop: domPrev ? domPrev.top : null,
+                matchedExpected: true
+              };
+            }
+          }
+          for (const c of aboveCandidates) {
+            if (c.jobId === expectedId) {
+              return {
+                associatedJobId: c.jobId,
+                associatedTop: c.top,
+                domPrevJobId: domPrev ? domPrev.jobId : null,
+                domNextJobId: domNext ? domNext.jobId : null,
+                visualPrevJobId: visualPrev ? visualPrev.jobId : null,
+                visualNextJobId: visualNext ? visualNext.jobId : null,
+                visualPrevTop: visualPrev ? visualPrev.top : null,
+                domPrevTop: domPrev ? domPrev.top : null,
+                matchedExpected: true
+              };
+            }
+          }
+        }
         let associated = null;
         if (layoutReverse) {
-          associated = domNext || visualPrev || domPrev;
+          // For reverse, domNext should be visually above; prefer it if it is above
+          if (domNext && domNext.top < rect.top - 5) {
+            associated = domNext;
+          } else if (visualPrev) {
+            // Choose closest above, but if domPrev is also above and domNext was None, prefer domPrev if visualPrev is far old?
+            // If domPrev is above and visualPrev is different, pick the one with smallest vertical gap
+            if (domPrev && domPrev.top < rect.top - 5) {
+              const gapVisual = rect.top - (visualPrev ? visualPrev.top : -Infinity);
+              const gapDom = rect.top - domPrev.top;
+              // Prefer the job that is closer above, but if gap difference < 200px and domPrev is closer to expected (no old), choose domPrev when visualPrev is old and domPrev not old?
+              // Simple: pick closest above
+              associated = (gapVisual < gapDom) ? visualPrev : domPrev;
+              // If visualPrev is old and domPrev is expected (handled above via expectedId), we already returned expected, so here just closest
+            } else {
+              associated = visualPrev;
+            }
+          } else {
+            associated = domPrev || domNext;
+          }
+          if (associated && associated.top > rect.top + 5) {
+            if (visualPrev) associated = visualPrev;
+          }
         } else {
           associated = domPrev || visualPrev || domNext;
         }
@@ -416,7 +473,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
           const isAssistantBubble = parentClass.includes('justify-start');
           const isUserBubble = parentClass.includes('items-end');
 
-          const assoc = findAssociatedJobForImage(el, rect);
+          const assoc = findAssociatedJobForImage(el, rect, correlationId);
 
           const info = {
             el: el,
@@ -444,11 +501,18 @@ JS_CHECK_NEW_OUTPUT_V3 = """
           allNew.push(info);
 
           // Strict JOB-ID verification: if correlationId provided, image must belong to it
-          if (correlationId && assoc.associatedJobId && assoc.associatedJobId !== correlationId) {
-            mismatchDetails.push({src: el.src.slice(0,80), associated: assoc.associatedJobId, expected: correlationId, top: Math.round(rect.top), domPrev: assoc.domPrevJobId, domNext: assoc.domNextJobId, visualPrev: assoc.visualPrevJobId});
-            debugFiltered.push({reason:'job_id_mismatch', src:el.src.slice(-80), associated: assoc.associatedJobId, expected: correlationId, sel});
-            // Do not add to valid pools if mismatch, but keep in allNew for diagnostics
-            continue;
+          // Fix parallel case: associated may be wrong due to reverse layout, but domPrev/domNext/visualPrev may be correct
+          // Check if any nearby job equals expected -> consider matching
+          if (correlationId) {
+            const nearby = [assoc.associatedJobId, assoc.domPrevJobId, assoc.domNextJobId, assoc.visualPrevJobId, assoc.visualNextJobId].filter(Boolean);
+            const hasExpectedNearby = nearby.includes(correlationId);
+            if (assoc.associatedJobId && assoc.associatedJobId !== correlationId && !hasExpectedNearby) {
+              mismatchDetails.push({src: el.src.slice(0,80), associated: assoc.associatedJobId, expected: correlationId, top: Math.round(rect.top), domPrev: assoc.domPrevJobId, domNext: assoc.domNextJobId, visualPrev: assoc.visualPrevJobId, visualNext: assoc.visualNextJobId});
+              debugFiltered.push({reason:'job_id_mismatch', src:el.src.slice(-80), associated: assoc.associatedJobId, expected: correlationId, domPrev: assoc.domPrevJobId, domNext: assoc.domNextJobId, visualPrev: assoc.visualPrevJobId, sel});
+              continue;
+            }
+            // If associated is null but no nearby equals expected and we have expected job, still allow if image is in valid position relative to expected job (will be checked in validBelow/Above)
+            // Do not filter here if hasExpectedNearby, let it pass to valid pools
           }
 
           if (jobFound && jobEl) {
@@ -530,10 +594,13 @@ JS_CHECK_NEW_OUTPUT_V3 = """
             const is50vh = cls.includes('50vh');
             if (isSmall && !is50vh) continue;
           }
-          const assoc = findAssociatedJobForImage(el, rect);
+          const assoc = findAssociatedJobForImage(el, rect, correlationId);
           if (correlationId && assoc.associatedJobId && assoc.associatedJobId !== correlationId) {
-            mismatchDetails.push({src: el.src.slice(0,80), associated: assoc.associatedJobId, expected: correlationId, top: Math.round(rect.top), reason:'fallback_mismatch'});
-            continue;
+            const nearby = [assoc.associatedJobId, assoc.domPrevJobId, assoc.domNextJobId, assoc.visualPrevJobId, assoc.visualNextJobId].filter(Boolean);
+            if (!nearby.includes(correlationId)) {
+              mismatchDetails.push({src: el.src.slice(0,80), associated: assoc.associatedJobId, expected: correlationId, top: Math.round(rect.top), reason:'fallback_mismatch', domPrev: assoc.domPrevJobId, visualPrev: assoc.visualPrevJobId});
+              continue;
+            }
           }
           let parentClass = '';
           try {
@@ -608,8 +675,14 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     if (largePool.length > 0) pool = largePool;
 
     // Final strict verification: if correlationId provided, pool must have matching associatedJobId
+    // Parallel fix: allow if any nearby job equals expected (domPrev/domNext/visualPrev/visualNext) — covers reverse layout where visualPrev may be old but domPrev is expected
     if (correlationId) {
-      const matchingPool = pool.filter(c => !c.associatedJobId || c.associatedJobId === correlationId);
+      const matchingPool = pool.filter(c => {
+        if (!c.associatedJobId) return true;
+        if (c.associatedJobId === correlationId) return true;
+        const nearby = [c.domPrevJobId, c.domNextJobId, c.visualPrevJobId].filter(Boolean);
+        return nearby.includes(correlationId);
+      });
       if (matchingPool.length === 0 && pool.length > 0) {
         return {
           ready: false,
