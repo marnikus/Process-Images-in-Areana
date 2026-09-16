@@ -1,4 +1,4 @@
-# ideal-size: ~380 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+# ideal-size: ~445 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
 """Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
 
 Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
@@ -114,6 +114,75 @@ def resolve_primary_tab(pool: Any, tab_id: str) -> str:
     if len(pages) == 1:
         return pages[0].get("tab_id", "") or tab_id
     return tab_id
+
+
+def _restore_pending(page, entry: dict) -> None:
+    """Restore stacked penalty/captcha highs (never lowers live values)."""
+    pending = int(entry.get("pending_penalty", 0) or 0)
+    if pending > 0:
+        page.pending_penalty = max(page.pending_penalty, pending)
+    captcha = int(entry.get("captcha_count", 0) or 0)
+    if captcha > 0:
+        page.captcha_count = max(page.captcha_count, captcha)
+
+
+def _now_or(now: float | None) -> float:
+    """Injectable clock for deterministic restore tests."""
+    return time.time() if now is None else now
+
+
+def _restore_cooldown_allowed(page, until: float, moment: float) -> bool:
+    """Live cooldown applies only when it extends (never shortens)."""
+    if until <= moment:
+        return False
+    return until > (page.cooldown_until or 0)
+
+
+def _apply_restored_cooldown(page, entry: dict, until: float) -> None:
+    """Set wall-clock pause fields (call with pool lock held)."""
+    page.status = PageStatus.COOLDOWN
+    page.cooldown_until = until
+    page.cooldown_total = int(entry.get("cooldown_total", 0) or 0)
+    page.cooldown_reason = entry.get("reason", "") or "restored"
+    page.current_job_id = None
+
+
+def _restore_worthwhile(until: float, pending: int, moment: float) -> bool:
+    """Persisted entry matters only with future time or stacked penalty."""
+    return until > moment or pending > 0
+
+
+def _steady_page(pool: Any, tab_id: str):
+    """Registered page when steady, else None (restore targets steady only)."""
+    try:
+        page = pool.get_page(tab_id)
+    except Exception:
+        return None
+    if page is None or page.status != PageStatus.STEADY:
+        return None
+    return page
+
+
+def restore_cooldown_entry(pool: Any, tab_id: str, entry: dict, now: float | None = None) -> bool:
+    """Re-apply persisted wall-clock pause; never shortens a live timer."""
+    if not entry or not tab_id:
+        return False
+    page = _steady_page(pool, tab_id)
+    if page is None:
+        return False
+    try:
+        moment = _now_or(now)
+        until = float(entry.get("cooldown_until", 0) or 0)
+        pending = int(entry.get("pending_penalty", 0) or 0)
+        if not _restore_worthwhile(until, pending, moment):
+            return False
+        with pool._lock:
+            if _restore_cooldown_allowed(page, until, moment):
+                _apply_restored_cooldown(page, entry, until)
+            _restore_pending(page, entry)
+        return True
+    except Exception:
+        return False
 
 
 def start_cooldown(pool, tab_id, base_seconds, reason="") -> bool:
