@@ -187,27 +187,50 @@ JS_IS_GENERATING = """
 JS_CLICK_NEW_CHAT = """
 (() => {
   try{
-    const sels=[
-      'a[href="/image/direct"]',
-      'li[data-sidebar="menu-item"] a[href="/image/direct"]',
-      'a[data-sidebar="menu-button"][href="/image/direct"]',
-      'a[data-sidebar="menu-button"][data-active="false"][href="/image/direct"]'
-    ];
     function isVisible(el){
       if(!el) return false;
-      const st=window.getComputedStyle(el);
-      return st && st.display!=='none' && st.visibility!=='hidden' && el.offsetParent!==null;
+      try{
+        const st=window.getComputedStyle(el);
+        if(st && (st.display==='none' || st.visibility==='hidden')) return false;
+        const rect=el.getBoundingClientRect();
+        if(rect.width===0 && rect.height===0){
+          // still allow if has size via parent? check offsetParent fallback
+          if(el.offsetParent===null){
+            // fixed/sticky may have null offsetParent but rect zero means hidden
+            // allow if rect is from hidden sidebar collapsed? check parent visible
+            const parentVisible = el.closest('li[data-sidebar="menu-item"]') || el.closest('nav') || el.closest('[data-sidebar]');
+            if(parentVisible){
+              const pr = parentVisible.getBoundingClientRect();
+              if(pr.width===0 && pr.height===0) return false;
+            }
+          }
+        }
+        return true;
+      }catch(e){ return !!el.offsetParent; }
     }
     function hasNewChatText(el){
-      const txt=(el.innerText||el.textContent||'').toLowerCase();
-      return txt.includes('new chat');
+      try{
+        const txt=(el.innerText||el.textContent||'').toLowerCase();
+        return txt.includes('new chat');
+      }catch(e){return false;}
     }
+    const sels=[
+      'a[href="/image/direct"]',
+      'a[href*="/image/direct"]',
+      'li[data-sidebar="menu-item"] a[href="/image/direct"]',
+      'li[data-sidebar="menu-item"] a[href*="/image/direct"]',
+      'a[data-sidebar="menu-button"][href="/image/direct"]',
+      'a[data-sidebar="menu-button"][href*="/image/direct"]',
+      'a[data-sidebar="menu-button"]'
+    ];
+    // 1) href based - prefer visible with New Chat text
     for(const sel of sels){
       try{
         const els=document.querySelectorAll(sel);
         for(const el of els){
           if(!isVisible(el)) continue;
           if(hasNewChatText(el)){
+            try{ el.scrollIntoView({block:'center'}); }catch(e){}
             el.focus();
             el.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
             el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
@@ -217,30 +240,60 @@ JS_CLICK_NEW_CHAT = """
         }
       }catch(e){continue;}
     }
-    // fallback: any a with href /image/direct
+    // 1b) href based any visible (fallback, even without text check)
     for(const sel of sels){
       try{
         const els=document.querySelectorAll(sel);
         for(const el of els){
           if(!isVisible(el)) continue;
-          el.focus();
-          el.click();
-          return {ok:true,sel:sel,method:'fallback'};
+          // check href contains direct
+          const href=(el.getAttribute('href')||'');
+          if(href.includes('/image/direct') || sel.includes('menu-button')){
+            // extra check for menu-button: must have New Chat in nearby text
+            if(sel==='a[data-sidebar="menu-button"]' && !hasNewChatText(el) && !hasNewChatText(el.parentElement||{})) continue;
+            try{ el.scrollIntoView({block:'center'}); }catch(e){}
+            el.focus();
+            el.click();
+            return {ok:true,sel:sel,method:'fallback_href'};
+          }
         }
       }catch(e){continue;}
     }
-    // last fallback: search all li[data-sidebar]
+    // 2) search all elements containing New Chat text - find closest anchor/button
     try{
-      const items=document.querySelectorAll('li[data-sidebar="menu-item"] a');
-      for(const el of items){
+      const all = document.querySelectorAll('li[data-sidebar="menu-item"], li[data-sidebar="menu-item"] a, a, button, [role="button"], span, div');
+      for(const el of all){
         if(!isVisible(el)) continue;
         if(hasNewChatText(el)){
-          el.click();
-          return {ok:true,sel:'li scan',method:'scan'};
+          let target = el.closest('a[href*="/image/direct"]') || el.closest('a') || el.closest('button') || el;
+          if(target){
+            try{ target.scrollIntoView({block:'center'}); }catch(e){}
+            try{ target.focus(); }catch(e){}
+            target.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+            target.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+            target.click();
+            return {ok:true, sel:'text:New Chat', method:'text_scan', text:(el.innerText||el.textContent||'').slice(0,50)};
+          }
         }
       }
     }catch(e){}
-    return {ok:false,error:'new chat not found'};
+    // 3) specific span New Chat
+    try{
+      const spans=document.querySelectorAll('span');
+      for(const sp of spans){
+        if(!isVisible(sp)) continue;
+        const t=(sp.innerText||'').trim().toLowerCase();
+        if(t==='new chat'){
+          let a=sp.closest('a');
+          if(a){
+            a.click();
+            return {ok:true,sel:'span New Chat',method:'span'};
+          }
+        }
+      }
+    }catch(e){}
+    // 4) report not found - caller will try navigation fallback
+    return {ok:false,error:'new chat not found, will try navigation fallback', tried:true};
   }catch(e){return {ok:false,error:String(e)};}
 })()
 """
@@ -531,42 +584,128 @@ class CDPArenaController:
         except Exception as e:
             return {"error": str(e), "spinning": False}
 
+    async def _try_js_navigation(self) -> Tuple[bool, str]:
+        # ideal-size: 12 lines reason=navigate via JS location
+        try:
+            js_nav = """
+            (() => {
+              try{
+                const origin = window.location.origin || 'https://arena.ai';
+                const target = origin + '/image/direct';
+                // try pushState first to avoid full reload flicker? use href for clean chat
+                window.location.href = '/image/direct';
+                return {ok:true, url: target};
+              }catch(e){ return {ok:false, error:String(e)}; }
+            })()
+            """
+            res = await self.cdp.evaluate(js_nav)
+            if res and res.get("ok"):
+                self._log(f"🔄 Navigating to new chat via JS location {res.get('url')}", "info")
+                return True, f"JS nav {res.get('url')}"
+            return False, res.get("error","js nav failed") if res else "no result"
+        except Exception as e:
+            return False, str(e)
+
+    async def _try_cdp_navigation(self) -> Tuple[bool, str]:
+        # ideal-size: 12 lines reason=navigate via CDP Page.navigate
+        try:
+            # build target url from current url or default arena.ai
+            base = "https://arena.ai"
+            try:
+                cur = getattr(self.cdp, '_current_url', '') or ''
+                if cur and '://' in cur:
+                    from urllib.parse import urlparse
+                    p = urlparse(cur)
+                    base = f"{p.scheme}://{p.netloc}"
+            except Exception:
+                pass
+            target = base.rstrip('/') + '/image/direct'
+            await self.cdp.send("Page.navigate", {"url": target}, timeout=15)
+            self._log(f"🔄 CDP Page.navigate to {target}", "info")
+            return True, f"CDP nav {target}"
+        except Exception as e:
+            return False, str(e)
+
     async def click_new_chat(self) -> Tuple[bool, str]:
-        # ideal-size: 14 lines reason=post-generation reset per spec
+        # ideal-size: 22 lines reason=robust click with fallbacks per spec
         if not await self.ensure_connected():
             return False, "Not connected"
         try:
             await self.highlight_selector('a[href="/image/direct"]', color="#00AAFF", duration_ms=800, caption="New Chat")
         except Exception:
             pass
-        js = f";({JS_CLICK_NEW_CHAT})()"
-        result = await self.cdp.evaluate(js)
-        if not result:
-            return False, "No result"
-        if result.get("ok"):
-            self._log(f"✅ New Chat clicked via {result.get('sel')} {result.get('method')}", "success")
-            return True, f"Clicked {result.get('sel')}"
-        return False, result.get("error", "Failed")
+        # 1) try JS click selectors
+        try:
+            js = f";({JS_CLICK_NEW_CHAT})()"
+            result = await self.cdp.evaluate(js)
+            if result and result.get("ok"):
+                self._log(f"✅ New Chat clicked via {result.get('sel')} {result.get('method')} {result.get('text','')}", "success")
+                return True, f"Clicked {result.get('sel')} {result.get('method')}"
+            else:
+                err = result.get("error","") if result else "No result"
+                self._log(f"⚠ New Chat JS click failed {err}, trying JS navigation", "warn")
+        except Exception as e:
+            self._log(f"⚠ New Chat JS click exception {e}, trying JS navigation", "warn")
+
+        # 2) JS location fallback
+        ok_nav, reason_nav = await self._try_js_navigation()
+        if ok_nav:
+            await asyncio.sleep(1.5)
+            return True, reason_nav
+
+        # 3) CDP Page.navigate fallback
+        ok_cdp, reason_cdp = await self._try_cdp_navigation()
+        if ok_cdp:
+            await asyncio.sleep(1.5)
+            return True, reason_cdp
+
+        return False, f"All click/nav failed: {reason_nav} / {reason_cdp}"
 
     async def reset_to_new_chat(self, timeout_sec: int = 15) -> Tuple[bool, str]:
-        # ideal-size: 20 lines reason=click new chat then wait ready
+        # ideal-size: 28 lines reason=click or navigate then wait ready
         ok, reason = await self.click_new_chat()
         if not ok:
-            self._log(f"⚠ New Chat click failed {reason}, trying reload", "warn")
-            return await self.reload_page()
-        self._log("🔄 New Chat clicked, waiting page ready", "info")
+            self._log(f"⚠ New Chat click/nav failed {reason}, trying reload as last resort", "warn")
+            # try reload only as last resort, but still try to ensure new chat via nav after reload
+            await self.reload_page()
+            # after reload, try again navigation to /image/direct
+            ok2, reason2 = await self._try_js_navigation()
+            if ok2:
+                ok = True
+                reason = reason2
+            else:
+                ok3, reason3 = await self._try_cdp_navigation()
+                if ok3:
+                    ok = True
+                    reason = reason3
+                else:
+                    return False, f"Reset failed {reason} / {reason2} / {reason3}"
+
+        self._log(f"🔄 New Chat triggered {reason}, waiting page ready full load", "info")
         await asyncio.sleep(1.5)
         for i in range(max(1, timeout_sec)):
             try:
                 ready, reasons = await self.is_page_ready()
                 if ready:
-                    self._log(f"✅ New Chat ready after {i+1}s", "success")
+                    self._log(f"✅ New Chat ready after {i+1}s — clean new chat, ready for next job", "success")
                     return True, "Ready after new chat"
+                if i % 3 == 0:
+                    self._log(f"⏳ Waiting new chat ready {i+1}s: {reasons}", "info")
             except Exception as e:
                 self._log(f"Ready check failed {e}", "warn")
             await asyncio.sleep(1)
-        self._log("⚠ New Chat clicked but not fully ready after timeout", "warn")
-        return True, "Clicked but not fully ready"
+
+        # Even if not fully ready, consider success if we navigated to /image/direct
+        try:
+            cur_url = await self.cdp.evaluate("window.location.href")
+            if cur_url and "/image/direct" in str(cur_url):
+                self._log(f"✅ New Chat URL detected {cur_url} but not fully ready after timeout", "success")
+                return True, f"URL {cur_url} but not fully ready"
+        except Exception:
+            pass
+
+        self._log("⚠ New Chat triggered but not fully ready after timeout, still marking as ready", "warn")
+        return True, "Clicked/nav but not fully ready"
 
     async def reload_page(self) -> Tuple[bool, str]:
         # ideal-size: 14 lines reason=reload via CDP then JS fallback

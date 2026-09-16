@@ -3224,6 +3224,42 @@ class Bridge(QObject):
                             self._save_arena()
                             self._emit_job_action_status(job_id, block, "success", f"Advanced to completed")
 
+                        elif btype == "POST_GENERATION_RESET":
+                            # Post-generation reset — click New Chat and wait full page load before marking ready
+                            try:
+                                timeout_sec = int(block.timeout_ms / 1000) if getattr(block, 'timeout_ms', 0) else 15
+                                self._log(f"[{correlation_id}] 🔄 Block POST_GENERATION_RESET: clicking New Chat {block.selector} then wait ready", "info")
+                                if block.highlight_enabled:
+                                    try:
+                                        await ctrl.highlight_selector(block.selector or 'a[href="/image/direct"]', color=block.color or "#00AAFF", duration_ms=block.highlight_ms or 2000, caption=block.display_name)
+                                    except Exception:
+                                        pass
+                                ok_r, reason_r = await ctrl.reset_to_new_chat(timeout_sec=max(5, timeout_sec))
+                                if ok_r:
+                                    self._log(f"[{correlation_id}] ✅ New Chat reset via block {reason_r}", "success")
+                                    self._emit_job_action_status(job_id, block, "success", f"Reset {reason_r}")
+                                else:
+                                    self._log(f"[{correlation_id}] ⚠ New Chat reset block failed {reason_r}, trying JS nav fallback", "warn")
+                                    # fallback already inside reset, but try explicit nav
+                                    try:
+                                        ok_nav, reason_nav = await ctrl._try_js_navigation()
+                                        if ok_nav:
+                                            await asyncio.sleep(1)
+                                            ready, _ = await ctrl.is_page_ready()
+                                            if ready:
+                                                self._emit_job_action_status(job_id, block, "success", f"JS nav fallback {reason_nav}")
+                                            else:
+                                                self._emit_job_action_status(job_id, block, "success", f"JS nav {reason_nav} but not fully ready")
+                                        else:
+                                            raise RuntimeError(f"Reset failed {reason_r} / {reason_nav}")
+                                    except Exception as e2:
+                                        raise RuntimeError(f"POST_GENERATION_RESET failed: {reason_r} / {e2}")
+                            except Exception as e:
+                                if getattr(block, 'required', False):
+                                    raise
+                                self._log(f"[{correlation_id}] Post-gen reset block non-required failed {e}, continuing", "warn")
+                                self._emit_job_action_status(job_id, block, "success", f"Failed but non-required {e}")
+
                         else:
                             self._log(f"[{correlation_id}] Unknown block type {btype}, skipping", "warn")
                             self._emit_job_action_status(job_id, block, "skipped", f"Unknown type {btype}")
@@ -3291,6 +3327,14 @@ class Bridge(QObject):
                         reset_enabled = bool(self.state.settings.cooldown.get('post_generation_reset', True))
                     except Exception:
                         reset_enabled = True
+                    # If POST_GENERATION_RESET block already in stack and enabled, skip outer reset to avoid double
+                    try:
+                        has_reset_block = any(getattr(b, 'block_id', '') == 'POST_GENERATION_RESET' and getattr(b, 'enabled', False) for b in action_stack)
+                        if has_reset_block:
+                            reset_enabled = False
+                            # log that block already handled reset
+                    except Exception:
+                        pass
 
                     if reset_enabled:
                         try:

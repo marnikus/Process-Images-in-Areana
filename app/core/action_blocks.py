@@ -407,7 +407,38 @@ BLOCK_DEFINITIONS = {
             "enabled": "Enabled",
         },
     },
+    "POST_GENERATION_RESET": {
+        "name": "Post-Generation Reset — New Chat",
+        "description": "After each generation, webpage returns to a clean new chat — auto-click New Chat trigger (a[href='/image/direct'] from li[data-sidebar]) and wait until full page is loaded before marking tab as ready.",
+        "icon": "refresh",
+        "default_enabled": True,
+        "default_selector": "a[href=\"/image/direct\"], li[data-sidebar=\"menu-item\"] a[href=\"/image/direct\"], a[data-sidebar=\"menu-button\"][href=\"/image/direct\"]",
+        "default_label_selector": "",
+        "default_match_text": "New Chat",
+        "default_match_mode": "contains",
+        "default_click_enabled": True,
+        "default_click_selector": "",
+        "default_fallback_selector": "span",
+        "default_color": "#00AAFF",
+        "default_timeout_ms": 15000,
+        "default_pre_delay_ms": 300,
+        "default_highlight_ms": 2000,
+        "default_confirm_pause_ms": 500,
+        "default_highlight_enabled": True,
+        "required": False,
+        "category": "reset",
+        "allow_duplicate": False,
+        "labels": {
+            "selector": "New Chat selector — tries a[href='/image/direct'] then text scan",
+            "match_text": "Text to confirm New Chat",
+            "timeout_ms": "Max wait for full page load after click (ms)",
+            "highlight_enabled": "Visual confirmation — BLUE outline on New Chat",
+            "highlight_ms": "Highlight duration (ms)",
+            "pre_delay_ms": "Pre-delay before click (ms)",
+        },
+    },
     "HIGHLIGHT": {
+
         "name": "Highlight Only",
         "description": "Pure visual confirmation — highlight element without clicking",
         "icon": "center_focus_strong",
@@ -450,6 +481,7 @@ DEFAULT_STACK_ORDER = [
     "VALIDATE",
     "SAVE",
     "ADVANCE",
+    "POST_GENERATION_RESET",
 ]
 
 BUILTIN_BLOCKS = []

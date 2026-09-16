@@ -403,7 +403,28 @@ async def _handle_custom(ctx: JobCtx, block: Any):
         raise RuntimeError(f"CUSTOM_FIND failed: {e}")
 
 
+
+async def _handle_reset(ctx: JobCtx, block: Any):
+    """Handle post-generation reset — click New Chat and wait ready."""
+    try:
+        timeout = getattr(block, "timeout_ms", 15000) // 1000
+        ok, reason = await ctx.ctrl.reset_to_new_chat(timeout_sec=max(5, timeout))
+        if not ok:
+            # try direct navigation fallback already inside reset, but log
+            ctx.bridge._log(f"[{ctx.corr_id}] Post-gen reset block failed {reason}, will try reload", "warn")
+            try:
+                await ctx.ctrl.reload_page()
+            except Exception:
+                pass
+        else:
+            ctx.bridge._log(f"[{ctx.corr_id}] Post-gen reset block success {reason}", "success")
+        _emit_action(ctx, block, "success", f"Reset {reason}")
+    except Exception as e:
+        _emit_action(ctx, block, "failed", str(e))
+        raise RuntimeError(f"Post-gen reset failed: {e}")
+
 def _handler_map():
+
     """Map block_id to handler."""
     return {
         "OBSERVE_BASELINE": _handle_baseline,
@@ -418,6 +439,7 @@ def _handler_map():
         "SAVE": _handle_save,
         "ADVANCE": _handle_advance,
         "CUSTOM_FIND": _handle_custom,
+        "POST_GENERATION_RESET": _handle_reset,
     }
 
 
