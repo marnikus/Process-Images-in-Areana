@@ -1,8 +1,10 @@
 from pathlib import Path
 import tempfile
 import os
+import pytest
 from app.core.scanner import scan_folder, detect_changes
 
+@pytest.mark.integration
 def test_scan_recursive_and_ignore_ai():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -25,6 +27,7 @@ def test_scan_recursive_and_ignore_ai():
         assert "sub/f.txt" not in rel_paths
         assert len(results) == 3
 
+@pytest.mark.integration
 def test_scan_preserve_structure():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -34,6 +37,7 @@ def test_scan_preserve_structure():
         results = scan_folder(root)
         assert results[0]["relative_path"] == "a/b/image.png"
 
+@pytest.mark.integration
 def test_detect_changes():
     prev = [
         {"relative_path": "a.png", "size": 100, "mtime": 1},

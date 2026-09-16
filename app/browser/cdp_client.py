@@ -33,6 +33,15 @@ except ImportError:
             def connect(self, *a, **kw): pass
         return _Sig()
 
+# Phase 2: pure protocol extracted to cdp_protocol.py — transport stays here
+from .cdp_protocol import (
+    TabInfo as _PureTabInfo,
+    is_devtools_url as _pure_is_devtools,
+    normalize_ws_url as _pure_normalize,
+    parse_tabs as _pure_parse_tabs,
+    filter_real_tabs as _pure_filter_real,
+)
+
 log = logging.getLogger("arena")
 
 @dataclass
@@ -43,19 +52,14 @@ class TabInfo:
     ws_url: str
     type: str = "page"
 
-# Only 127.0.0.1 and localhost to avoid DNS freeze on host.docker.internal
-# Previous version included host.docker.internal/host.containers.internal which caused
-# getaddrinfo to block UI thread for several seconds when DNS failed (user report: freeze on connect)
+# Only 127.0.0.1 and localhost to avoid DNS freeze
 CANDIDATE_HOSTS = [
     "127.0.0.1",
     "localhost",
 ]
 
 def _is_port_open(host: str, port: int, timeout: float = 0.8) -> bool:
-    # Quick fail for hosts that are known to cause DNS freeze — skip if not 127.0.0.1/localhost
-    # and use short timeout to avoid UI freeze
     try:
-        # Use getaddrinfo with timeout? socket.create_connection does DNS; we wrap
         with socket.create_connection((host, port), timeout=timeout):
             return True
     except Exception:
@@ -78,75 +82,21 @@ def _fetch_json_sync(url: str, timeout: float = 3.0) -> Tuple[Any, str]:
     except Exception as e:
         return None, f"Exception {url}: {e}"
 
+# Wrappers delegating to pure protocol (backward compat)
 def _normalize_ws_url(ws_url: str, preferred_host: str, preferred_port: int) -> str:
-    """Normalize ws_url host to preferred_host and port to preferred_port for stable connect."""
-    if not ws_url:
-        return ws_url
-    try:
-        # ws://127.0.0.1:9223/devtools/page/XXX
-        # replace host:port part
-        # Use regex
-        m = re.match(r'^(ws://)([^:/]+)(?::(\d+))?(/.*)$', ws_url)
-        if m:
-            scheme, _host, _port, path = m.groups()
-            # keep path, replace host/port with preferred
-            return f"{scheme}{preferred_host}:{preferred_port}{path}"
-        return ws_url
-    except Exception:
-        return ws_url
+    return _pure_normalize(ws_url, preferred_host, preferred_port)
 
 def _is_devtools_url(url: str, title: str = "") -> bool:
-    if not url:
-        return True
-    u = url.lower()
-    t = (title or "").lower()
-    if u.startswith("devtools://"):
-        return True
-    if u.startswith("chrome://"):
-        return True
-    if u.startswith("chrome-extension://"):
-        return True
-    if u.startswith("about:"):
-        return True
-    if u.startswith("edge://"):
-        return True
-    if "devtools/bundled" in u or "device_mode_emulation_frame" in u:
-        return True
-    if t.startswith("devtools"):
-        return True
-    return False
+    return _pure_is_devtools(url, title)
 
 def _parse_tabs(items: List[dict], preferred_host: str = "127.0.0.1", preferred_port: int = 9222, include_devtools: bool = True) -> List[TabInfo]:
-    tabs = []
-    for item in items or []:
-        if not isinstance(item, dict):
-            continue
-        t = item.get("type", "")
-        if t and t != "page":
-            continue
-        url = item.get("url") or ""
-        title = item.get("title") or ""
-        # Optionally filter devtools here — but keep for frontend transparency if include_devtools=True
-        # For auto-connect logic, frontend will ignore devtools; backend keeps them but marks
-        # If include_devtools=False, skip devtools entirely
-        if not include_devtools and _is_devtools_url(url, title):
-            continue
-        ws_url = item.get("webSocketDebuggerUrl") or ""
-        if not url:
-            continue
-        # Normalize ws_url to preferred host/port for connection stability
-        ws_normalized = _normalize_ws_url(ws_url, preferred_host, preferred_port) if ws_url else ws_url
-        tabs.append(TabInfo(
-            id=item.get("id",""),
-            title=item.get("title",""),
-            url=url,
-            ws_url=ws_normalized,
-            type=item.get("type","page")
-        ))
-    return tabs
+    pure_tabs = _pure_parse_tabs(items, preferred_host, preferred_port, include_devtools)
+    return [TabInfo(id=t.id, title=t.title, url=t.url, ws_url=t.ws_url, type=t.type) for t in pure_tabs]
 
 def _filter_real_tabs(tabs: List[TabInfo]) -> List[TabInfo]:
-    return [t for t in tabs if not _is_devtools_url(t.url, t.title)]
+    pure = [_PureTabInfo(id=t.id, title=t.title, url=t.url, ws_url=t.ws_url, type=t.type) for t in tabs]
+    filtered = _pure_filter_real(pure)
+    return [TabInfo(id=t.id, title=t.title, url=t.url, ws_url=t.ws_url, type=t.type) for t in filtered]
 
 def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222, timeout: float = 3.0) -> Tuple[List[TabInfo], str, List[str]]:
     """Try to fetch tabs synchronously, trying candidate hosts and merging results.

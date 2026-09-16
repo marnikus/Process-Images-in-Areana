@@ -1,15 +1,11 @@
-"""PagePool — multi-page steady/busy tracking.
-
-Fix for UI freeze: previously used asyncio.Lock created in main thread but used in
-background asyncio loop thread — loop mismatch causes deadlock / freeze.
-Now uses threading.RLock for all sync/async access, never blocks UI thread.
-"""
+"""PagePool — steady/busy tracking with RLock, event-driven wait (Phase 1+2)."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import threading
+from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
 from .cdp_arena import CDPArenaController
@@ -19,13 +15,31 @@ from .page_status import PageInfo, PageStatus, now_iso
 log = logging.getLogger("arena")
 
 
+@dataclass
+class PageWaitOpts:
+    poll_interval: float = 0.5
+    notify_event: Optional[asyncio.Event] = None
+
+
+async def _sleep_or_notify(opts: PageWaitOpts):
+    if opts.notify_event is None:
+        await asyncio.sleep(opts.poll_interval)
+        return
+    try:
+        await asyncio.wait_for(opts.notify_event.wait(), timeout=opts.poll_interval)
+        try:
+            opts.notify_event.clear()
+        except Exception:
+            pass
+    except asyncio.TimeoutError:
+        pass
+
+
 class PagePool:
     def __init__(self, logger=None):
         self._pages: Dict[str, PageInfo] = {}
         self._clients: Dict[str, CDPClient] = {}
         self._controllers: Dict[str, CDPArenaController] = {}
-        # Use threading lock — safe across Qt main thread and bg asyncio thread
-        # Avoids asyncio.Lock loop mismatch that froze mouse clicks
         self._lock = threading.RLock()
         self._logger = logger or (lambda m, l="info": log.info(m))
         self._host = "127.0.0.1"
@@ -70,53 +84,50 @@ class PagePool:
 
     def get_counts(self) -> Tuple[int, int]:
         with self._lock:
-            total = len(self._pages)
-            free = len([p for p in self._pages.values() if p.is_free()])
-            return total, free
+            return len(self._pages), len([p for p in self._pages.values() if p.is_free()])
 
     def mark_busy(self, tab_id: str, job_id: str) -> bool:
         with self._lock:
-            page = self._pages.get(tab_id)
-            if not page:
+            p = self._pages.get(tab_id)
+            if not p:
                 return False
-            page.status = PageStatus.BUSY
-            page.current_job_id = job_id
-            page.busy_since = now_iso()
-            page.error = None
+            p.status = PageStatus.BUSY
+            p.current_job_id = job_id
+            p.busy_since = now_iso()
+            p.error = None
             return True
 
     def mark_steady(self, tab_id: str) -> bool:
         with self._lock:
-            page = self._pages.get(tab_id)
-            if not page:
+            p = self._pages.get(tab_id)
+            if not p:
                 return False
-            page.status = PageStatus.STEADY
-            page.current_job_id = None
-            page.busy_since = None
-            page.last_steady_at = now_iso()
-            page.error = None
+            p.status = PageStatus.STEADY
+            p.current_job_id = None
+            p.busy_since = None
+            p.last_steady_at = now_iso()
+            p.error = None
             return True
 
     def mark_waiting(self, tab_id: str, kind: str) -> bool:
         with self._lock:
-            page = self._pages.get(tab_id)
-            if not page:
+            p = self._pages.get(tab_id)
+            if not p:
                 return False
-            page.status = PageStatus.WAITING_CAPTCHA if kind == "captcha" else PageStatus.WAITING_GENERATION
+            p.status = PageStatus.WAITING_CAPTCHA if kind == "captcha" else PageStatus.WAITING_GENERATION
             return True
 
     def mark_error(self, tab_id: str, err: str) -> bool:
         with self._lock:
-            page = self._pages.get(tab_id)
-            if not page:
+            p = self._pages.get(tab_id)
+            if not p:
                 return False
-            page.status = PageStatus.ERROR
-            page.error = err
-            page.current_job_id = None
+            p.status = PageStatus.ERROR
+            p.error = err
+            p.current_job_id = None
             return True
 
     async def get_free_page(self) -> Optional[PageInfo]:
-        # Non-blocking quick check — uses threading lock, not asyncio lock
         with self._lock:
             for p in self._pages.values():
                 if p.is_free():
@@ -124,7 +135,6 @@ class PagePool:
             return None
 
     async def acquire_free_page(self, job_id: str) -> Optional[PageInfo]:
-        # Atomic acquire — thread-safe, no asyncio.Lock loop mismatch
         with self._lock:
             for p in self._pages.values():
                 if p.is_free():
@@ -135,22 +145,18 @@ class PagePool:
                     return p
             return None
 
-    async def wait_for_free_page(self, timeout_sec: float, cancel_check=None, job_id: str = None) -> Optional[PageInfo]:
+    async def wait_for_free_page(self, timeout_sec: float, cancel_check=None, job_id: str = None, wait_opts: PageWaitOpts | None = None) -> Optional[PageInfo]:
+        opts = wait_opts or PageWaitOpts()
         start = asyncio.get_event_loop().time()
         while True:
             if cancel_check and cancel_check():
                 return None
-            if job_id:
-                acquired = await self.acquire_free_page(job_id)
-                if acquired:
-                    return acquired
-            else:
-                free = await self.get_free_page()
-                if free:
-                    return free
+            got = await self.acquire_free_page(job_id) if job_id else await self.get_free_page()
+            if got:
+                return got
             if asyncio.get_event_loop().time() - start > timeout_sec:
                 return None
-            await asyncio.sleep(0.5)
+            await _sleep_or_notify(opts)
 
     def status_snapshot(self) -> dict:
         with self._lock:

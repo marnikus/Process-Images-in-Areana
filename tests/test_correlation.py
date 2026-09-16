@@ -1,6 +1,8 @@
+import pytest
 from app.utils.correlation import generate_correlation_id, build_final_prompt, extract_job_id_from_prompt
 from datetime import datetime
 
+@pytest.mark.unit
 def test_correlation_format():
     cid = generate_correlation_id()
     # Format YYYYMMDD-HHMMSS-XXXX
@@ -12,11 +14,13 @@ def test_correlation_format():
     assert len(parts[1]) == 6
     assert len(parts[2]) == 4
 
+@pytest.mark.unit
 def test_correlation_uniqueness():
     ids = {generate_correlation_id() for _ in range(100)}
     # With random 4 chars, collisions possible but very unlikely for 100
     assert len(ids) >= 95  # allow some collision but should be mostly unique
 
+@pytest.mark.unit
 def test_build_final_prompt():
     cid = "20260915-142530-A7F3"
     user_prompt = "Transform this image"
@@ -24,15 +28,18 @@ def test_build_final_prompt():
     assert final.startswith(f"[JOB-ID: {cid}]")
     assert user_prompt in final
 
+@pytest.mark.unit
 def test_extract_job_id():
     prompt = "[JOB-ID: 20260915-142530-A7F3]\nTransform this image"
     extracted = extract_job_id_from_prompt(prompt)
     assert extracted == "20260915-142530-A7F3"
 
+@pytest.mark.unit
 def test_extract_job_id_missing():
     prompt = "No job id here"
     assert extract_job_id_from_prompt(prompt) is None
 
+@pytest.mark.unit
 def test_correlation_with_fixed_datetime():
     dt = datetime(2026, 9, 15, 14, 25, 30)
     cid = generate_correlation_id(dt)

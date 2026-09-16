@@ -1,10 +1,12 @@
 from pathlib import Path
 import tempfile
 import json
+import pytest
 from app.core.models import AppState, UrlRow, ImageItem
 from app.core.persistence import load_state, save_state, save_preset, load_preset, reconcile_with_filesystem
 from app.core.enums import ImageStatus
 
+@pytest.mark.integration
 def test_save_load_roundtrip():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "app_state.json"
@@ -19,6 +21,7 @@ def test_save_load_roundtrip():
         assert loaded.urls[0].url == "https://arena.ai/c/test"
         assert loaded.prompt["user_prompt"] == "Test prompt"
 
+@pytest.mark.integration
 def test_atomic_write_no_corruption():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "state.json"
@@ -31,6 +34,7 @@ def test_atomic_write_no_corruption():
         loaded = load_state(path)
         assert len(loaded.urls) == 2
 
+@pytest.mark.integration
 def test_preset_save_load():
     with tempfile.TemporaryDirectory() as tmp:
         state_path = Path(tmp) / "state.json"
@@ -48,6 +52,7 @@ def test_preset_save_load():
         assert "images" not in data  # preset should not contain images
         assert "jobs" not in data
 
+@pytest.mark.integration
 def test_reconcile_filesystem():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -87,6 +92,7 @@ def test_reconcile_filesystem():
         assert fake_after is not None
         assert fake_after.status == ImageStatus.SKIPPED.value
 
+@pytest.mark.integration
 def test_load_nonexistent_returns_empty():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "nonexistent.json"

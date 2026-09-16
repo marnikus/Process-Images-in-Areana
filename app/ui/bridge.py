@@ -880,50 +880,13 @@ class Bridge(QObject):
             if img_id in self._thumb_in_progress:
                 return json.dumps({"ok": False, "pending": True, "id": img_id, "fallback_url": f"file://{p}"}, ensure_ascii=False)
 
+            # Phase 2: delegate to thumbnail_service (pure, no Qt)
+            from .services.thumbnail_service import generate_thumbnail_data_url
+
             def _gen_thumb():
-                try:
-                    import base64, io
-                    from PIL import Image
-                    with Image.open(p) as im_pil:
-                        im_pil.thumbnail((96, 96))
-                        fmt = im_pil.format or "PNG"
-                        if fmt.upper() == "JPEG":
-                            fmt = "JPEG"
-                        elif fmt.upper() not in ("PNG", "JPEG", "WEBP", "GIF"):
-                            fmt = "PNG"
-                        buf = io.BytesIO()
-                        if fmt == "PNG":
-                            im_pil.save(buf, format="PNG")
-                            mime = "image/png"
-                        elif fmt == "JPEG":
-                            if im_pil.mode in ("RGBA", "LA"):
-                                bg = Image.new("RGB", im_pil.size, (255, 255, 255))
-                                bg.paste(im_pil, mask=im_pil.split()[-1] if im_pil.mode == "RGBA" else None)
-                                im_pil = bg
-                            im_pil.save(buf, format="JPEG", quality=80)
-                            mime = "image/jpeg"
-                        else:
-                            im_pil.save(buf, format=fmt)
-                            mime = f"image/{fmt.lower()}"
-                        data = buf.getvalue()
-                        b64 = base64.b64encode(data).decode("ascii")
-                        data_url = f"data:{mime};base64,{b64}"
-                        return {"ok": True, "id": img_id, "data_url": data_url, "mime": mime}
-                except Exception as e_pil:
-                    try:
-                        import base64
-                        data = p.read_bytes()
-                        if len(data) > 400 * 1024:
-                            return {"ok": False, "error": f"too large {len(data)} {e_pil}", "id": img_id, "fallback_url": f"file://{p}"}
-                        ext = p.suffix.lower()
-                        mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp"}
-                        mime = mime_map.get(ext, "image/png")
-                        b64 = base64.b64encode(data).decode("ascii")
-                        data_url = f"data:{mime};base64,{b64}"
-                        return {"ok": True, "id": img_id, "data_url": data_url, "mime": mime, "fallback": True}
-                    except Exception as e2:
-                        return {"ok": False, "error": f"{e_pil} / {e2}", "id": img_id}
-                return {"ok": False, "error": "unknown", "id": img_id}
+                res = generate_thumbnail_data_url(p, size=96, quality=80)
+                res["id"] = img_id
+                return res
 
             def _on_done(fut):
                 try:
@@ -1200,11 +1163,13 @@ class Bridge(QObject):
         if not root_path.exists():
             return json.dumps({"ok": False, "error": "Folder does not exist"})
 
+        from .services.scan_service import scan_folder_pure
+
         def _do_scan():
             try:
                 supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
                 ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
-                scanned = scan_folder(root_path, supported, ignore_ai)
+                scanned = scan_folder_pure(root_path, supported, ignore_ai)
                 existing = {img.relative_path: img for img in self.state.images}
                 added = 0
                 for s in scanned:
@@ -1261,11 +1226,13 @@ class Bridge(QObject):
             if not root_path.exists():
                 return json.dumps({"ok": False, "error": "Folder does not exist", "cleared": cleared})
 
+            from .services.scan_service import scan_folder_pure
+
             def _do_scan_new():
                 try:
                     supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
                     ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
-                    scanned = scan_folder(root_path, supported, ignore_ai)
+                    scanned = scan_folder_pure(root_path, supported, ignore_ai)
                     for s in scanned:
                         img = ImageItem.from_scan_dict(s, selected=False)
                         self.state.images.append(img)
