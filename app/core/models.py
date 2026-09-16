@@ -15,6 +15,13 @@ class UrlRow:
     last_status: str = UrlStatus.UNCHECKED.value
     last_checked: Optional[str] = None
     error: Optional[str] = None
+    # --- cooldown per tab (Job Cycle & Cooldown Logic) ---
+    cooldown_seconds: int = 300
+    cooldown_until: Optional[str] = None
+    captcha_penalty_seconds: int = 900
+    captcha_count: int = 0
+    last_completed_at: Optional[str] = None
+    total_cooldown_penalties: int = 0
 
     @staticmethod
     def create(url: str, enabled: bool = True) -> "UrlRow":
@@ -25,6 +32,12 @@ class UrlRow:
             last_status=UrlStatus.UNCHECKED.value,
             last_checked=None,
             error=None,
+            cooldown_seconds=300,
+            cooldown_until=None,
+            captcha_penalty_seconds=900,
+            captcha_count=0,
+            last_completed_at=None,
+            total_cooldown_penalties=0,
         )
 
 @dataclass
@@ -122,6 +135,7 @@ class AppSettings:
         "attachment": 15,
         "generation": 180,
         "download": 30,
+        "new_chat": 15,
     })
     retries: Dict[str, Any] = field(default_factory=lambda: {
         "max_attempts": 3,
@@ -143,6 +157,13 @@ class AppSettings:
         "user_data_dir": "./browser_profile",
         "headless": False,
         "slow_mo": 0,
+    })
+    cooldown: Dict[str, Any] = field(default_factory=lambda: {
+        "min_cooldown_seconds": 300,
+        "captcha_penalty_seconds": 900,
+        "post_generation_reset": True,
+        "reset_timeout_sec": 15,
+        "countdown_update_ms": 1000,
     })
     scheduling: str = "round-robin"
     concurrency: int = 1
@@ -217,8 +238,36 @@ class AppState:
         }
 
     @staticmethod
+    def _safe_url_row(u: dict) -> "UrlRow":
+        allowed = {
+            "id", "url", "enabled", "last_status", "last_checked", "error",
+            "cooldown_seconds", "cooldown_until", "captcha_penalty_seconds",
+            "captcha_count", "last_completed_at", "total_cooldown_penalties",
+        }
+        filtered = {k: v for k, v in u.items() if k in allowed}
+        # defaults for missing new fields handled by dataclass
+        try:
+            return UrlRow(**filtered)
+        except Exception:
+            # fallback minimal
+            return UrlRow(
+                id=filtered.get("id", f"url_{uuid.uuid4().hex[:8]}"),
+                url=filtered.get("url", ""),
+                enabled=filtered.get("enabled", True),
+                last_status=filtered.get("last_status", UrlStatus.UNCHECKED.value),
+                last_checked=filtered.get("last_checked"),
+                error=filtered.get("error"),
+                cooldown_seconds=int(filtered.get("cooldown_seconds", 300)),
+                cooldown_until=filtered.get("cooldown_until"),
+                captcha_penalty_seconds=int(filtered.get("captcha_penalty_seconds", 900)),
+                captcha_count=int(filtered.get("captcha_count", 0)),
+                last_completed_at=filtered.get("last_completed_at"),
+                total_cooldown_penalties=int(filtered.get("total_cooldown_penalties", 0)),
+            )
+
+    @staticmethod
     def from_dict(d: dict) -> "AppState":
-        urls = [UrlRow(**u) for u in d.get("urls", [])]
+        urls = [AppState._safe_url_row(u) for u in d.get("urls", [])]
         images = [ImageItem(**i) for i in d.get("images", [])]
         jobs = [JobRecord(**j) for j in d.get("jobs", [])]
         settings_dict = d.get("settings", {})
@@ -228,6 +277,7 @@ class AppState:
             output=settings_dict.get("output", AppSettings().output),
             highlight=settings_dict.get("highlight", AppSettings().highlight),
             browser=settings_dict.get("browser", AppSettings().browser),
+            cooldown=settings_dict.get("cooldown", AppSettings().cooldown),
             scheduling=settings_dict.get("scheduling", "round-robin"),
             concurrency=settings_dict.get("concurrency", 1),
             supported_types=settings_dict.get("supported_types", [".png", ".jpg", ".jpeg", ".webp"]),

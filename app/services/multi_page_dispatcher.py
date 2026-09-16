@@ -93,11 +93,50 @@ def _mark_busy_emit(pool, bridge, tab_id, job_id):
 
 def _mark_steady_emit(pool, bridge, tab_id):
     try:
+        # check if cooldown expired first
+        try:
+            if hasattr(pool, "check_cooldowns"):
+                pool.check_cooldowns()
+        except Exception:
+            pass
         pool.mark_steady(tab_id)
         bridge._emit_pool_status()
-        bridge._log(f"✅ Page {tab_id[:12]} STEADY ready", "success")
+        try:
+            p = pool.get_page(tab_id)
+            if p and p.is_in_cooldown():
+                rem = p.remaining_cooldown()
+                bridge._log(f"⏳ Page {tab_id[:12]} COOLDOWN {rem}s", "info")
+            else:
+                bridge._log(f"✅ Page {tab_id[:12]} STEADY ready", "success")
+        except Exception:
+            bridge._log(f"✅ Page {tab_id[:12]} STEADY ready", "success")
     except Exception:
         pass
+
+
+def _get_page_url(bridge, tab_id) -> str:
+    try:
+        if hasattr(bridge, "_page_pool") and bridge._page_pool:
+            page = bridge._page_pool.get_page(tab_id)
+            return getattr(page, "url", "") if page else ""
+    except Exception:
+        pass
+    return ""
+
+
+def _find_url_row_for_tab(bridge, tab_id, urls):
+    try:
+        page_url = _get_page_url(bridge, tab_id)
+        if page_url:
+            for u in urls:
+                if page_url in u.url or u.url in page_url:
+                    return u
+        for u in urls:
+            if u.enabled:
+                return u
+    except Exception:
+        pass
+    return None
 
 
 async def _wait_pause(bridge):
@@ -223,9 +262,48 @@ async def _get_free_or_acquire(pool, bridge, img):
     return free_page
 
 
+def _ensure_pool_cooldowns(pool):
+    try:
+        if hasattr(pool, "check_cooldowns"):
+            pool.check_cooldowns()
+    except Exception:
+        pass
+
+
+@dataclass
+class CycleRunCtx:
+    bridge: object
+    pool: object
+    tab_id: str
+    img: object
+    urls: list
+    ctrl: object
+    client: object
+    url_row_for_tab: object
+
+
+async def _run_job_with_cycle(ctx: CycleRunCtx):
+    url_row, corr_id, job_id, failed, err = await _run_image_job(
+        PageJobCtx(bridge=ctx.bridge, pool=ctx.pool, img=ctx.img, urls=ctx.urls, tab_id=ctx.tab_id, ctrl=ctx.ctrl, client=ctx.client)
+    )
+    _handle_result(ResultCtx(bridge=ctx.bridge, pool=ctx.pool, img=ctx.img, tab_id=ctx.tab_id, corr_id=corr_id, job_id=job_id, failed=failed, err=err))
+    try:
+        from .job_cycle_service import JobCycleCtx, handle_job_completed_cycle
+
+        cctx = JobCycleCtx(bridge=ctx.bridge, pool=ctx.pool, tab_id=ctx.tab_id, url_row=ctx.url_row_for_tab or url_row, controller=ctx.ctrl)
+        await handle_job_completed_cycle(cctx)
+    except Exception as e:
+        try:
+            ctx.bridge._log(f"Cycle handling failed {e}", "warn")
+        except Exception:
+            pass
+    return url_row
+
+
 async def run_one_image_on_page(bridge, pool, img, urls):
     if bridge._cancel_requested:
         return
+    _ensure_pool_cooldowns(pool)
     free_page = await _get_free_or_acquire(pool, bridge, img)
     if not free_page:
         _log_no_free(bridge, img)
@@ -237,9 +315,9 @@ async def run_one_image_on_page(bridge, pool, img, urls):
         _mark_steady_emit(pool, bridge, tab_id)
         return
     _log_assign(bridge, img, tab_id, free_page)
+    url_row_for_tab = _find_url_row_for_tab(bridge, tab_id, urls)
     try:
-        url_row, corr_id, job_id, failed, err = await _run_image_job(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=urls, tab_id=tab_id, ctrl=ctrl, client=client))
-        _handle_result(ResultCtx(bridge=bridge, pool=pool, img=img, tab_id=tab_id, corr_id=corr_id, job_id=job_id, failed=failed, err=err))
+        await _run_job_with_cycle(CycleRunCtx(bridge=bridge, pool=pool, tab_id=tab_id, img=img, urls=urls, ctrl=ctrl, client=client, url_row_for_tab=url_row_for_tab))
     except asyncio.CancelledError:
         raise
     except Exception as e:

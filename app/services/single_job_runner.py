@@ -60,29 +60,65 @@ async def capture_baseline(ctrl) -> Dict[str, Any]:
         return {"output_count": 0, "output_srcs": []}
 
 
-async def check_security(ctx: JobCtx) -> bool:
-    """Check security, wait for user."""
+async def _is_captcha_visible(ctrl) -> bool:
     try:
-        visible = await ctx.ctrl.is_security_dialog_visible()
+        return bool(await ctrl.is_security_dialog_visible())
     except Exception:
-        visible = False
-    if not visible:
         return False
+
+
+def _log_captcha(ctx: JobCtx):
     try:
         ctx.bridge._log(f"[{ctx.corr_id}] Page {ctx.tab_id[:6]} Captcha", "error")
     except Exception:
         pass
+
+
+async def _show_captcha_overlay(ctrl):
     try:
-        await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=300, elapsed_sec=0)
+        await ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=300, elapsed_sec=0)
     except Exception:
         pass
+
+
+async def _apply_captcha_penalty(ctx: JobCtx):
+    try:
+        from .job_cycle_service import JobCycleCtx, handle_captcha_detected_cycle
+
+        url_row = None
+        for u in ctx.urls:
+            if u.enabled:
+                url_row = u
+                break
+        pool = None
+        try:
+            pool = ctx.bridge._ensure_page_pool()
+        except Exception:
+            pass
+        cctx = JobCycleCtx(bridge=ctx.bridge, pool=pool, tab_id=ctx.tab_id, url_row=url_row)
+        await handle_captcha_detected_cycle(cctx)
+    except Exception:
+        pass
+
+
+async def _hide_captcha_overlay(ctrl):
+    try:
+        await ctrl.hide_watcher_overlay()
+    except Exception:
+        pass
+
+
+async def check_security(ctx: JobCtx) -> bool:
+    visible = await _is_captcha_visible(ctx.ctrl)
+    if not visible:
+        return False
+    _log_captcha(ctx)
+    await _show_captcha_overlay(ctx.ctrl)
     _mark_waiting(ctx, "captcha")
+    await _apply_captcha_penalty(ctx)
     await _wait_security_gone(ctx)
     _mark_busy(ctx)
-    try:
-        await ctx.ctrl.hide_watcher_overlay()
-    except Exception:
-        pass
+    await _hide_captcha_overlay(ctx.ctrl)
     return True
 
 

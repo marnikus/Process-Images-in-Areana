@@ -188,18 +188,23 @@ class WatcherService:
         self.state.last_captcha_detected = is_captcha
 
         if is_captcha:
-            # Captcha detected — draw rectangle and wait
+            # Captcha detected — draw rectangle and wait + apply cooldown penalty per tab
             if self.state.waiting_kind != "captcha":
                 self.state.waiting_since = time.time()
                 self.state.waiting_kind = "captcha"
                 self.state.captcha_waits += 1
                 self.state.status = "waiting_captcha"
-                self._logger(f"🛡️ Watcher: Captcha detected — drawing rectangle 'wait for user. Captcha' on left center (timeout {self.config.captcha_timeout_sec}s user setting from win), pausing jobs", "warn")
+                self._logger(f"🛡️ Watcher: Captcha detected — drawing rectangle 'wait for user. Captcha' on left center (timeout {self.config.captcha_timeout_sec}s user setting from win), pausing jobs + applying cooldown penalty per tab", "warn")
                 # Show overlay with timeout from win settings
                 try:
                     await cdp.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=self.config.captcha_timeout_sec, elapsed_sec=0)
                 except Exception as e:
                     self._logger(f"Watcher overlay show failed: {e}", "warn")
+                # Apply captcha penalty per tab (Job Cycle & Cooldown Logic)
+                try:
+                    await self._apply_captcha_penalty_for_current_tab()
+                except Exception as e:
+                    self._logger(f"Captcha penalty apply failed: {e}", "warn")
                 # Pause jobs if configured
                 if self.config.auto_pause_jobs:
                     jr = self._job_runner_getter() if self._job_runner_getter else None
@@ -290,6 +295,61 @@ class WatcherService:
 
         await self._notify()
         return self.get_state()
+
+    def _get_bridge(self):
+        try:
+            return self._job_runner_getter() if self._job_runner_getter else None
+        except Exception:
+            return None
+
+    def _get_current_tab_id(self):
+        try:
+            cdp = self._cdp_getter() if self._cdp_getter else None
+            if not cdp:
+                return None
+            client = getattr(cdp, "cdp", None)
+            if client and hasattr(client, "_current_tab_id"):
+                return client._current_tab_id
+        except Exception:
+            pass
+        return None
+
+    def _find_url_for_penalty(self, bridge, tab_id):
+        try:
+            urls = getattr(bridge.state, "urls", []) if hasattr(bridge, "state") else []
+            pool = getattr(bridge, "_page_pool", None)
+            page_url = ""
+            if pool and tab_id:
+                try:
+                    pg = pool.get_page(tab_id)
+                    page_url = getattr(pg, "url", "") if pg else ""
+                except Exception:
+                    pass
+            if page_url:
+                for u in urls:
+                    if page_url in u.url or u.url in page_url:
+                        return u
+            for u in urls:
+                if u.enabled:
+                    return u
+        except Exception:
+            pass
+        return None
+
+    async def _apply_captcha_penalty_for_current_tab(self):
+        try:
+            bridge = self._get_bridge()
+            if not bridge:
+                return
+            tab_id = self._get_current_tab_id()
+            url_row = self._find_url_for_penalty(bridge, tab_id)
+            from app.services.job_cycle_service import JobCycleCtx, handle_captcha_detected_cycle
+
+            ctx = JobCycleCtx(bridge=bridge, pool=getattr(bridge, "_page_pool", None), tab_id=tab_id or "", url_row=url_row)
+            await handle_captcha_detected_cycle(ctx)
+            self._logger(f"🛡️ Captcha penalty applied per tab {tab_id[:12] if tab_id else 'primary'} +15 min stack", "warn")
+        except Exception as e:
+            self._logger(f"Penalty helper failed {e}", "warn")
 
     async def force_clear(self):
         """Force clear overlay and reset waiting state."""

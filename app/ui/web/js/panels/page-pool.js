@@ -113,15 +113,22 @@ const PagePoolPanel = {
       const tr = document.createElement('tr');
       const status = p.status||'steady';
       const isBusy = status==='busy' || status==='waiting_generation' || status==='waiting_captcha';
-      const color = isBusy ? (status.includes('captcha') ? '#ff6b6b' : '#4dabf7') : '#4ade80';
+      const isCooldown = status==='cooldown' || p.in_cooldown;
+      let color = '#4ade80';
+      if (isBusy) color = status.includes('captcha') ? '#ff6b6b' : '#4dabf7';
+      else if (isCooldown) color = '#ff9500';
+      const cdRem = p.cooldown_remaining || 0;
+      const cdStr = cdRem ? `${cdRem}s` : (isCooldown ? 'cooldown' : '');
+      const cap = p.captcha_count ? ` ⚠x${p.captcha_count}` : '';
       tr.innerHTML = `
         <td title="${this.esc(p.tab_id)}">${this.esc((p.tab_id||'').slice(0,12))}</td>
         <td title="${this.esc(p.title)}">${this.esc((p.title||'').slice(0,30))}</td>
         <td title="${this.esc(p.url)}" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.esc((p.url||'').slice(0,50))}</td>
-        <td><span style="color:${color}; font-weight:600;">● ${this.esc(status)}</span></td>
+        <td><span style="color:${color}; font-weight:600;">● ${this.esc(status)}${cdStr ? ` ${cdStr}` : ''}${cap}</span></td>
         <td>${this.esc(p.current_job_id||'—')}</td>
         <td><button class="btn-small" data-disconnect="${this.esc(p.tab_id)}" title="Remove from pool">✕</button></td>
       `;
+      if (isCooldown) tr.style.background = 'rgba(255,149,0,0.08)';
       tbody.appendChild(tr);
     });
     tbody.querySelectorAll('button[data-disconnect]').forEach(btn=>{

@@ -466,9 +466,23 @@ class Bridge(QObject):
     def _arena_to_js(self):
         """Convert AppState to JS-friendly shape matching old bridge expectations."""
         d = self.state.to_dict()
-        # urls: map to {id, url, enabled, status, last_error}
+        # urls: map to {id, url, enabled, status, last_error, cooldown fields}
         urls_js = []
         for u in d.get("urls", []):
+            # cooldown remaining calc
+            cd_until = u.get("cooldown_until")
+            cd_remain = 0
+            cd_str = "ready"
+            in_cd = False
+            try:
+                from app.core.cooldown import cooldown_info
+
+                info = cooldown_info(cd_until)
+                cd_remain = info.get("remaining_sec", 0)
+                cd_str = info.get("remaining_str", "ready")
+                in_cd = info.get("in_cooldown", False)
+            except Exception:
+                pass
             urls_js.append({
                 "id": u.get("id"),
                 "url": u.get("url"),
@@ -476,6 +490,15 @@ class Bridge(QObject):
                 "status": u.get("last_status", "unchecked"),
                 "last_error": u.get("error", ""),
                 "last_checked": u.get("last_checked"),
+                "cooldown_seconds": u.get("cooldown_seconds", 300),
+                "cooldown_until": cd_until,
+                "cooldown_remaining": cd_remain,
+                "cooldown_remaining_str": cd_str,
+                "in_cooldown": in_cd,
+                "captcha_penalty_seconds": u.get("captcha_penalty_seconds", 900),
+                "captcha_count": u.get("captcha_count", 0),
+                "last_completed_at": u.get("last_completed_at"),
+                "total_cooldown_penalties": u.get("total_cooldown_penalties", 0),
             })
         # images: map to expected fields
         images_js = []
@@ -503,6 +526,7 @@ class Bridge(QObject):
         output = settings_dict.get("output", {})
         highlight = settings_dict.get("highlight", {})
         browser = settings_dict.get("browser", {})
+        cooldown_cfg = settings_dict.get("cooldown", {})
         settings_js = {
             "timeout_seconds": timeouts.get("page_load", 30),
             "generation_timeout": timeouts.get("generation", 180),
@@ -516,6 +540,10 @@ class Bridge(QObject):
             "output": output,
             "highlight": highlight,
             "timeouts": timeouts,
+            "cooldown": cooldown_cfg,
+            "min_cooldown_seconds": cooldown_cfg.get("min_cooldown_seconds", 300),
+            "captcha_penalty_seconds": cooldown_cfg.get("captcha_penalty_seconds", 900),
+            "post_generation_reset": cooldown_cfg.get("post_generation_reset", True),
         }
         # folder
         folder_js = d.get("folder", {})
@@ -1121,6 +1149,132 @@ class Bridge(QObject):
                     self._save_arena()
                     return json.dumps({"ok": False, "error": "Invalid URL"})
         return json.dumps({"ok": False, "error": "not found"})
+
+    # ---- Cooldown per tab — Job Cycle & Cooldown Logic ----
+    @Slot(str, int, result=str)
+    def set_url_cooldown(self, url_id: str, seconds: int):
+        try:
+            sec = max(0, min(86400, int(seconds)))
+        except Exception:
+            return json.dumps({"ok": False, "error": "invalid seconds"})
+        for u in self.state.urls:
+            if u.id == url_id:
+                u.cooldown_seconds = sec
+                self._save_arena()
+                self._log(f"Cooldown for {u.url[:60]} set to {sec}s", "info")
+                return json.dumps({"ok": True, "cooldown_seconds": sec})
+        return json.dumps({"ok": False, "error": "not found"})
+
+    @Slot(str, result=str)
+    def reset_url_cooldown(self, url_id: str):
+        for u in self.state.urls:
+            if u.id == url_id:
+                u.cooldown_until = None
+                u.captcha_count = 0
+                u.last_completed_at = None
+                self._save_arena()
+                # also reset pool if matching tab
+                try:
+                    if self._page_pool:
+                        # try find tab_id by url
+                        for pid, info in list(self._page_pool._pages.items()):
+                            if u.url in info.url or info.url in u.url:
+                                self._page_pool.reset_cooldown(pid)
+                        self._emit_pool_status()
+                except Exception:
+                    pass
+                self._log(f"Cooldown reset for {u.url[:60]}", "info")
+                return json.dumps({"ok": True})
+        return json.dumps({"ok": False, "error": "not found"})
+
+    @Slot(str, int, result=str)
+    def set_url_captcha_penalty(self, url_id: str, seconds: int):
+        try:
+            sec = max(0, min(86400, int(seconds)))
+        except Exception:
+            return json.dumps({"ok": False, "error": "invalid seconds"})
+        for u in self.state.urls:
+            if u.id == url_id:
+                u.captcha_penalty_seconds = sec
+                self._save_arena()
+                self._log(f"Captcha penalty for {u.url[:60]} set to {sec}s", "info")
+                return json.dumps({"ok": True, "penalty": sec})
+        return json.dumps({"ok": False, "error": "not found"})
+
+    @Slot(str, result=str)
+    def get_url_cooldown_status(self, url_id: str):
+        for u in self.state.urls:
+            if u.id == url_id:
+                try:
+                    from app.core.cooldown import cooldown_info
+                    info = cooldown_info(u.cooldown_until)
+                    return json.dumps({
+                        "ok": True,
+                        "id": u.id,
+                        "cooldown_seconds": u.cooldown_seconds,
+                        "cooldown_until": u.cooldown_until,
+                        "remaining_sec": info.get("remaining_sec", 0),
+                        "remaining_str": info.get("remaining_str", "ready"),
+                        "in_cooldown": info.get("in_cooldown", False),
+                        "captcha_penalty_seconds": u.captcha_penalty_seconds,
+                        "captcha_count": u.captcha_count,
+                    }, ensure_ascii=False)
+                except Exception as e:
+                    return json.dumps({"ok": False, "error": str(e)})
+        return json.dumps({"ok": False, "error": "not found"})
+
+    @Slot(str, result=str)
+    def set_global_cooldown(self, cfg_json: str):
+        try:
+            data = json.loads(cfg_json or "{}")
+            if "min_cooldown_seconds" in data:
+                sec = max(0, min(86400, int(data["min_cooldown_seconds"])))
+                self.state.settings.cooldown["min_cooldown_seconds"] = sec
+                # propagate to all urls if requested?
+                if data.get("apply_to_all"):
+                    for u in self.state.urls:
+                        u.cooldown_seconds = sec
+                self._log(f"Global min cooldown set to {sec}s", "info")
+            if "captcha_penalty_seconds" in data:
+                pen = max(0, min(86400, int(data["captcha_penalty_seconds"])))
+                self.state.settings.cooldown["captcha_penalty_seconds"] = pen
+                if data.get("apply_to_all"):
+                    for u in self.state.urls:
+                        u.captcha_penalty_seconds = pen
+                self._log(f"Global captcha penalty set to {pen}s", "info")
+            if "post_generation_reset" in data:
+                self.state.settings.cooldown["post_generation_reset"] = bool(data["post_generation_reset"])
+            self._save_arena()
+            return json.dumps({"ok": True, "cooldown": self.state.settings.cooldown}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_global_cooldown(self):
+        try:
+            cfg = self.state.settings.cooldown
+            return json.dumps({"ok": True, "cooldown": cfg}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def reset_all_cooldowns(self, _dummy: str = ""):
+        try:
+            for u in self.state.urls:
+                u.cooldown_until = None
+                u.captcha_count = 0
+            if self._page_pool:
+                try:
+                    for pid in list(self._page_pool._pages.keys()):
+                        self._page_pool.reset_cooldown(pid)
+                    self._emit_pool_status()
+                except Exception:
+                    pass
+            self._save_arena()
+            self._log("All cooldowns reset", "info")
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
 
     def _push_folder_undo(self):
         try:

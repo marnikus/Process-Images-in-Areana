@@ -184,6 +184,74 @@ JS_IS_GENERATING = """
 })()
 """
 
+JS_CLICK_NEW_CHAT = """
+(() => {
+  try{
+    const sels=[
+      'a[href="/image/direct"]',
+      'li[data-sidebar="menu-item"] a[href="/image/direct"]',
+      'a[data-sidebar="menu-button"][href="/image/direct"]',
+      'a[data-sidebar="menu-button"][data-active="false"][href="/image/direct"]'
+    ];
+    function isVisible(el){
+      if(!el) return false;
+      const st=window.getComputedStyle(el);
+      return st && st.display!=='none' && st.visibility!=='hidden' && el.offsetParent!==null;
+    }
+    function hasNewChatText(el){
+      const txt=(el.innerText||el.textContent||'').toLowerCase();
+      return txt.includes('new chat');
+    }
+    for(const sel of sels){
+      try{
+        const els=document.querySelectorAll(sel);
+        for(const el of els){
+          if(!isVisible(el)) continue;
+          if(hasNewChatText(el)){
+            el.focus();
+            el.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+            el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+            el.click();
+            return {ok:true,sel:sel,method:'text_match'};
+          }
+        }
+      }catch(e){continue;}
+    }
+    // fallback: any a with href /image/direct
+    for(const sel of sels){
+      try{
+        const els=document.querySelectorAll(sel);
+        for(const el of els){
+          if(!isVisible(el)) continue;
+          el.focus();
+          el.click();
+          return {ok:true,sel:sel,method:'fallback'};
+        }
+      }catch(e){continue;}
+    }
+    // last fallback: search all li[data-sidebar]
+    try{
+      const items=document.querySelectorAll('li[data-sidebar="menu-item"] a');
+      for(const el of items){
+        if(!isVisible(el)) continue;
+        if(hasNewChatText(el)){
+          el.click();
+          return {ok:true,sel:'li scan',method:'scan'};
+        }
+      }
+    }catch(e){}
+    return {ok:false,error:'new chat not found'};
+  }catch(e){return {ok:false,error:String(e)};}
+})()
+"""
+
+JS_CLICK_NEW_CHAT_EVAL = """
+(( ) => {
+  const res = (%s)();
+  return res;
+})
+"""
+
 
 class CDPArenaController:
     def __init__(self, cdp_client: CDPClient, log_callback=None):
@@ -462,6 +530,43 @@ class CDPArenaController:
             return result or {}
         except Exception as e:
             return {"error": str(e), "spinning": False}
+
+    async def click_new_chat(self) -> Tuple[bool, str]:
+        # ideal-size: 14 lines reason=post-generation reset per spec
+        if not await self.ensure_connected():
+            return False, "Not connected"
+        try:
+            await self.highlight_selector('a[href="/image/direct"]', color="#00AAFF", duration_ms=800, caption="New Chat")
+        except Exception:
+            pass
+        js = f";({JS_CLICK_NEW_CHAT})()"
+        result = await self.cdp.evaluate(js)
+        if not result:
+            return False, "No result"
+        if result.get("ok"):
+            self._log(f"✅ New Chat clicked via {result.get('sel')} {result.get('method')}", "success")
+            return True, f"Clicked {result.get('sel')}"
+        return False, result.get("error", "Failed")
+
+    async def reset_to_new_chat(self, timeout_sec: int = 15) -> Tuple[bool, str]:
+        # ideal-size: 20 lines reason=click new chat then wait ready
+        ok, reason = await self.click_new_chat()
+        if not ok:
+            self._log(f"⚠ New Chat click failed {reason}, trying reload", "warn")
+            return await self.reload_page()
+        self._log("🔄 New Chat clicked, waiting page ready", "info")
+        await asyncio.sleep(1.5)
+        for i in range(max(1, timeout_sec)):
+            try:
+                ready, reasons = await self.is_page_ready()
+                if ready:
+                    self._log(f"✅ New Chat ready after {i+1}s", "success")
+                    return True, "Ready after new chat"
+            except Exception as e:
+                self._log(f"Ready check failed {e}", "warn")
+            await asyncio.sleep(1)
+        self._log("⚠ New Chat clicked but not fully ready after timeout", "warn")
+        return True, "Clicked but not fully ready"
 
     async def reload_page(self) -> Tuple[bool, str]:
         # ideal-size: 14 lines reason=reload via CDP then JS fallback

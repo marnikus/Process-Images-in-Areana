@@ -239,6 +239,26 @@ SELECTORS: Dict[str, SelectorObject] = {
         evidence="Directly Chat...html",
         lastVerified="2026-09-15",
     ),
+    "new_chat_button": SelectorObject(
+        name="new_chat_button",
+        primary='a[href="/image/direct"]',
+        fallbacks=[
+            'li[data-sidebar="menu-item"] a[href="/image/direct"]',
+            'a[data-sidebar="menu-button"][href="/image/direct"]',
+            'a:has(span:text(\"New Chat\"))',
+            'li[data-sidebar="menu-item"] a:has-text(\"New Chat\")',
+            'a[href="/image/direct"]:has(span)',
+            'button:has-text(\"New Chat\")',
+            '[data-sidebar="menu-button"][data-active="false"][href="/image/direct"]',
+        ],
+        scope=None,
+        mustBeVisible=True,
+        mustBeEnabled=True,
+        expectedCount=1,
+        verification="click resets to clean chat, then wait for page ready — post-generation reset",
+        evidence="user provided HTML li data-sidebar menu-item a href=/image/direct span New Chat",
+        lastVerified="2026-09-16",
+    ),
 }
 
 # Composite readiness check

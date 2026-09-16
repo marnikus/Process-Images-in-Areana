@@ -58,16 +58,49 @@
 
     <!-- URL LIST -->
     <div class="panel" id="winUrlList" data-window="url_list">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List — Job Cycle & Cooldown <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
       <div style="display:flex; gap:6px; margin-bottom:8px;">
         <input id="urlInput" type="text" placeholder="https://example.com/page" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
         <button id="urlAddBtn" class="btn-primary" style="padding:6px 12px;">Add</button>
       </div>
+      <!-- Global Cooldown Controls — per spec 02 & 04 -->
+      <div style="border:1px solid var(--border); border-radius:6px; padding:8px; margin-bottom:8px; background:var(--bg-card);">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:11px; font-weight:600; color:var(--text-secondary); text-transform:uppercase;">
+          <span class="material-icons" style="font-size:14px;">timer</span> Job Cycle & Cooldown — Global
+          <span class="spacer"></span>
+          <button id="resetAllCooldownsBtn" class="btn-small" style="background:var(--bg-danger,#3a1a1a); border-color:var(--red,#ff4d4d); color:var(--red,#ff6b6b);" title="Reset all cooldown timers now">Reset All CD</button>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+          <div class="settings-group">
+            <label>Min cooldown between jobs (seconds) — e.g. 300 = 5 min</label>
+            <input id="globalMinCooldown" type="number" min="0" max="86400" placeholder="300" value="300">
+            <div style="font-size:9px; color:var(--text-muted);">Prevents spamming jobs every minute — tab shows ready only after cooldown expires</div>
+          </div>
+          <div class="settings-group">
+            <label>Captcha penalty per event (seconds) — e.g. 900 = 15 min</label>
+            <input id="globalCaptchaPenalty" type="number" min="0" max="86400" placeholder="900" value="900">
+            <div style="font-size:9px; color:var(--text-muted);">Each captcha adds extra time to cooldown, stacks, per-tab only</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+          <label style="display:flex; align-items:center; gap:4px; font-size:11px;"><input id="postGenResetCheck" type="checkbox" checked> Post-gen reset to New Chat</label>
+          <label style="display:flex; align-items:center; gap:4px; font-size:11px;"><input id="applyToAllCheck" type="checkbox"> Apply to all URLs</label>
+          <button id="globalCooldownApplyBtn" class="btn-small btn-primary" title="Save global cooldown config">Apply Cooldown</button>
+          <span style="font-size:10px; color:var(--text-muted);">After each generation, auto-click New Chat (href /image/direct) then wait full page load before marking tab ready. Cooldown timer per tab with countdown display, reset/edit controls per URL item.</span>
+        </div>
+      </div>
       <div style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px;">
         <table class="url-table">
-          <thead><tr><th>En</th><th>URL</th><th>Status</th><th>Conn</th><th>Error</th><th>Actions</th></tr></thead>
+          <thead><tr><th>En</th><th>URL</th><th>Status</th><th>Conn</th><th>Cooldown</th><th>Error</th><th>Actions</th></tr></thead>
           <tbody id="urlTableBody"></tbody>
         </table>
+      </div>
+      <div style="font-size:10px; color:var(--text-muted); margin-top:4px; border:1px dashed var(--border); border-radius:4px; padding:6px;">
+        <b>Job Cycle & Cooldown Logic:</b><br>
+        • 01 POST-GENERATION RESET — after each generation, webpage returns to clean new chat, auto-click New Chat (selector a[href="/image/direct"] li[data-sidebar="menu-item"]) then wait full page load before marking tab as ready<br>
+        • 02 MIN PAUSE — user sets min cooldown (e.g. 5 min) on URL list win, prevents spamming, tab shows ready only after cooldown expires<br>
+        • 03 COOLDOWN TIMER PER TAB — each link displays countdown timer showing time until next run, user can reset/edit at any time, each tab independent but one queue<br>
+        • 04 CAPTCHA PENALTY — each captcha adds extra time (e.g. +15 min) on individual URL, user configures penalty per captcha event, repeated captchas stack, per-tab only
       </div>
     </div>
 
