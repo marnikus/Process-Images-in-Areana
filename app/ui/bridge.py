@@ -463,8 +463,35 @@ class Bridge(QObject):
             log.error(f"Failed to save arena state: {e}")
             self.arena_log.emit(f"Failed to save state: {e}", "error")
 
+    def _check_url_cooldowns_expired(self):
+        try:
+            from app.core.cooldown import parse_iso_to_epoch, now_epoch
+            cur = now_epoch()
+            changed = False
+            for u in self.state.urls:
+                if u.cooldown_until:
+                    until = parse_iso_to_epoch(u.cooldown_until)
+                    if until is None or cur >= until:
+                        u.cooldown_until = None
+                        u.last_status = "ready"
+                        u.last_checked = None
+                        try:
+                            from app.core.cooldown import now_iso as cd_now_iso
+                            u.last_checked = cd_now_iso()
+                        except Exception:
+                            pass
+                        changed = True
+            if changed:
+                self._save_arena()
+        except Exception:
+            pass
+
     def _arena_to_js(self):
         """Convert AppState to JS-friendly shape matching old bridge expectations."""
+        try:
+            self._check_url_cooldowns_expired()
+        except Exception:
+            pass
         d = self.state.to_dict()
         # urls: map to {id, url, enabled, status, last_error, cooldown fields}
         urls_js = []
@@ -3245,6 +3272,137 @@ class Bridge(QObject):
 
                 self.state.recalculate_progress()
                 self._save_arena()
+
+                # --- Job Cycle & Cooldown Logic: post-gen reset + 5 min countdown ---
+                try:
+                    # cooldown seconds from url_row or global
+                    cd_sec = 300
+                    try:
+                        if url_row and hasattr(url_row, 'cooldown_seconds'):
+                            cd_sec = int(url_row.cooldown_seconds or 300)
+                        else:
+                            cd_sec = int(self.state.settings.cooldown.get('min_cooldown_seconds', 300))
+                    except Exception:
+                        cd_sec = 300
+
+                    # post-generation reset to New Chat if enabled
+                    reset_enabled = True
+                    try:
+                        reset_enabled = bool(self.state.settings.cooldown.get('post_generation_reset', True))
+                    except Exception:
+                        reset_enabled = True
+
+                    if reset_enabled:
+                        try:
+                            from app.browser.cdp_arena import CDPArenaController
+                            # ctrl already exists in this scope
+                            reset_timeout = 15
+                            try:
+                                reset_timeout = int(self.state.settings.cooldown.get('reset_timeout_sec', 15))
+                            except Exception:
+                                pass
+                            self._log(f"[{correlation_id}] 🔄 Post-generation reset: clicking New Chat (href /image/direct) then wait full load", "info")
+                            ok_reset, reason_reset = await ctrl.reset_to_new_chat(timeout_sec=reset_timeout)
+                            self._log(f"[{correlation_id}] {'✅' if ok_reset else '⚠'} New Chat reset {ok_reset} {reason_reset}", "success" if ok_reset else "warn")
+                        except Exception as e:
+                            self._log(f"[{correlation_id}] Reset failed {e}, trying reload", "warn")
+                            try:
+                                await ctrl.reload_page()
+                            except Exception:
+                                pass
+
+                    # set cooldown on UrlRow and PagePool
+                    try:
+                        from app.core.cooldown import now_iso as cd_now_iso, epoch_to_iso, now_epoch, calculate_cooldown_until, parse_iso_to_epoch
+                        now_iso_str = cd_now_iso()
+                        now_ep = now_epoch()
+                        # update UrlRow
+                        if url_row:
+                            try:
+                                last_ep = parse_iso_to_epoch(now_iso_str) or now_ep
+                                until_ep = calculate_cooldown_until(last_ep, cd_sec, now=now_ep)
+                                url_row.cooldown_until = epoch_to_iso(until_ep)
+                                url_row.cooldown_seconds = cd_sec
+                                url_row.last_completed_at = now_iso_str
+                                url_row.last_status = "cooldown"
+                                self._log(f"[{correlation_id}] ⏳ Cooldown set for {url_row.url[:60]}: {cd_sec}s until {url_row.cooldown_until} — status cooldown", "info")
+                            except Exception as e:
+                                self._log(f"Cooldown set failed {e}", "warn")
+                        # update PagePool if exists
+                        try:
+                            if self._page_pool:
+                                # find tab_id for this url_row if pool has pages
+                                tab_id_for_cd = None
+                                try:
+                                    # try get current tab id from cdp client
+                                    if hasattr(self.cdp, '_current_tab_id'):
+                                        tab_id_for_cd = self.cdp._current_tab_id
+                                except Exception:
+                                    pass
+                                if not tab_id_for_cd:
+                                    # fallback: find by url
+                                    for pid, info in list(self._page_pool._pages.items()):
+                                        try:
+                                            if url_row and (url_row.url in info.url or info.url in url_row.url):
+                                                tab_id_for_cd = pid
+                                                break
+                                        except Exception:
+                                            pass
+                                if tab_id_for_cd:
+                                    self._page_pool.set_cooldown(tab_id_for_cd, cd_sec, last_completed_iso=now_iso_str)
+                                self._emit_pool_status()
+                        except Exception as e:
+                            self._log(f"Pool cooldown set failed {e}", "warn")
+
+                        self._save_arena()
+                        self._emit_arena_state()
+
+                        # Wait for cooldown before next job (5 min countdown) — status calmdown/cooldown
+                        if cd_sec > 0:
+                            self._log(f"[{correlation_id}] ⏳ Starting {cd_sec}s cooldown countdown — tab shows cooldown until ready", "info")
+                            # countdown loop with 1s tick, respects cancel
+                            for remaining in range(cd_sec, 0, -1):
+                                if self._cancel_requested:
+                                    self._log(f"[{correlation_id}] Cooldown cancelled by user", "warn")
+                                    break
+                                if getattr(self, '_pause_requested', False):
+                                    self._log(f"[{correlation_id}] Cooldown paused, waiting resume", "warn")
+                                    while getattr(self, '_pause_requested', False):
+                                        await asyncio.sleep(1)
+                                        if self._cancel_requested:
+                                            break
+                                # update every 10s or last 10s for log spam reduction
+                                if remaining % 10 == 0 or remaining <= 10:
+                                    try:
+                                        self._log(f"[{correlation_id}] ⏳ Cooldown {remaining}s remaining — status cooldown", "info")
+                                    except Exception:
+                                        pass
+                                # emit state every second for UI countdown
+                                try:
+                                    self._emit_arena_state()
+                                    if self._page_pool:
+                                        self._emit_pool_status()
+                                except Exception:
+                                    pass
+                                await asyncio.sleep(1)
+
+                            # cooldown expired — set status back to ready
+                            try:
+                                if url_row:
+                                    url_row.cooldown_until = None
+                                    url_row.last_status = "ready"
+                                    url_row.last_checked = cd_now_iso()
+                                self._save_arena()
+                                self._emit_arena_state()
+                                self._log(f"[{correlation_id}] ✅ Cooldown finished — tab ready for next job", "success")
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        self._log(f"Cooldown handling failed {e}", "error")
+
+                except Exception as e:
+                    self._log(f"Post-gen cooldown block failed {e}", "error")
+
                 if self._cancel_requested:
                     break
                 await asyncio.sleep(1)

@@ -78,6 +78,10 @@ def set_url_cooldown(url_row: UrlRow, cooldown_seconds: int, last_completed_iso:
     url_row.cooldown_until = epoch_to_iso(until_epoch)
     url_row.cooldown_seconds = int(cooldown_seconds)
     url_row.last_completed_at = last_completed_iso or epoch_to_iso(now)
+    try:
+        url_row.last_status = "cooldown"
+    except Exception:
+        pass
     return url_row
 
 
@@ -94,6 +98,10 @@ def apply_captcha_penalty_to_url(url_row: UrlRow, penalty_seconds: Optional[int]
 def reset_url_cooldown(url_row: UrlRow) -> UrlRow:
     url_row.cooldown_until = None
     url_row.captcha_count = 0
+    try:
+        url_row.last_status = "ready"
+    except Exception:
+        pass
     return url_row
 
 
@@ -156,7 +164,16 @@ def _get_now_iso() -> Optional[str]:
         return None
 
 
+def _save_bridge(bridge):
+    try:
+        if hasattr(bridge, "_save_arena"):
+            bridge._save_arena()
+    except Exception:
+        pass
+
+
 def _emit_states(bridge, pool):
+    _save_bridge(bridge)
     try:
         if hasattr(bridge, "_emit_arena_state"):
             bridge._emit_arena_state()
