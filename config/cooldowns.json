@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "entries": {
+    "154FBF467AF2AA56AB96A7936E39D4C1": {
+      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1",
+      "url": "https://arena.ai/image/direct?model_a=max",
+      "title": "(3) Directly Chat with Frontier Image Generation AI Models",
+      "cooldown_until": 1789560987.7153876,
+      "cooldown_total": 300,
+      "pending_penalty": 0,
+      "captcha_count": 0,
+      "reason": "job done",
+      "saved_at": 1789560770.8752942
+    }
+  }
+}
