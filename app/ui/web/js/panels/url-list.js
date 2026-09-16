@@ -13,6 +13,13 @@ const UrlList = {
     addBtn.addEventListener('click', () => this.addUrl());
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.addUrl(); });
 
+    // Job cycle & cooldown controls live on this win (spec correction 2026-09-16)
+    const coolSave = document.getElementById('urlCooldownSaveBtn');
+    if (coolSave) coolSave.addEventListener('click', () => this.saveCooldownConfig());
+    setTimeout(() => this.loadCooldownConfig(), 1400);
+    this._coolSnapAt = 0;
+    setInterval(() => this.refreshCooldownCells(), 1000);
+
     tableBody.addEventListener('click', (e) => {
       const chk = e.target.closest('input[type=checkbox]');
       if (chk) {
@@ -31,6 +38,7 @@ const UrlList = {
       if (action === 'remove') this.removeUrl(urlId);
       if (action === 'edit') this.editUrl(urlId);
       if (action === 'connect') this.connectUrl(urlId);
+      if (action === 'cool-reset' || action === 'cool-edit') this.coolAction(action, btn);
     });
   },
 
@@ -52,8 +60,11 @@ const UrlList = {
         <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.esc(u.url)}">${this.esc(u.url)}</td>
         <td><span class="url-status url-status-${u.status || 'pending'}">${this.esc(u.status || 'pending')}</span></td>
         <td class="url-conn-status" style="font-size:11px;"><span style="color:var(--text-muted);">○ checking…</span></td>
+        <td class="url-cool-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td>
         <td style="font-size:10px; color:var(--text-muted)">${this.esc(u.last_error || '')}</td>
-        <td>
+        <td style="white-space:nowrap;">
+          <button class="btn-small" data-action="cool-reset" data-url-id="${u.id}" title="Reset cooldown — tab ready now">♻️</button>
+          <button class="btn-small" data-action="cool-edit" data-url-id="${u.id}" title="Edit cooldown timer">✎</button>
           <button class="btn-small" data-action="connect" data-url-id="${u.id}" title="Find Chrome tab matching this URL and connect">Connect</button>
           <button class="btn-small" data-action="test" data-url-id="${u.id}">Test</button>
           <button class="btn-small" data-action="edit" data-url-id="${u.id}">Edit</button>
@@ -170,5 +181,119 @@ const UrlList = {
     }
     const inp = document.getElementById('urlBookmarkInput');
     if (inp) inp.value = url;
+  },
+
+  /* ---- Job cycle & cooldown on URL rows (spec 02-04, win-level correction) ---- */
+
+  coolAction(action, btn) {
+    const tabId = btn.dataset.tabId;
+    if (!tabId) { LogConsole.log('⚠ Tab not in pool — Connect it, then add to pool first', 'warn'); return; }
+    if (typeof PagePoolPanel === 'undefined') return;
+    if (action === 'cool-reset') PagePoolPanel.resetCooldown(tabId);
+    else PagePoolPanel.editCooldown(tabId);
+  },
+
+  matchPoolPage(url) {
+    if (!url || typeof PagePoolPanel === 'undefined') return null;
+    const pages = (PagePoolPanel.snapshot && PagePoolPanel.snapshot.pages) || [];
+    if (!pages.length) return null;
+    const q = this._extractUrl(url).toLowerCase();
+    let hostBest = null;
+    for (const p of pages) {
+      const pu = (p.url || '').toLowerCase();
+      if (!pu) continue;
+      if (pu === q) return p;
+      if (pu.startsWith(q) || q.startsWith(pu)) return p;
+      try {
+        if (!hostBest && new URL(p.url).host === new URL(url).host) hostBest = p;
+      } catch {}
+    }
+    return hostBest;
+  },
+
+  refreshCooldownCells() {
+    if (typeof PagePoolPanel === 'undefined') return;
+    const tbody = document.getElementById('urlTableBody');
+    if (!tbody) return;
+    const snapAt = PagePoolPanel.snapAt || 0;
+    if (snapAt && snapAt !== this._coolSnapAt) {
+      this._coolSnapAt = snapAt;
+      tbody.querySelectorAll('tr').forEach(tr => this._fillCoolCell(tr));
+      return;
+    }
+    tbody.querySelectorAll('.url-cool-cell [data-cool-left]').forEach(el => {
+      const base = parseInt(el.getAttribute('data-cool-left') || '0', 10);
+      const at = parseInt(el.getAttribute('data-cool-at') || '0', 10);
+      const left = Math.max(0, base - Math.floor((Date.now() - at) / 1000));
+      const txt = el.textContent;
+      const suffix = txt.includes('/') ? txt.slice(txt.indexOf('/')) : '';
+      el.textContent = PagePoolPanel.fmt(left) + (suffix ? ' ' + suffix : '');
+    });
+  },
+
+  _fillCoolCell(tr) {
+    const cell = tr.querySelector('.url-cool-cell');
+    if (!cell) return;
+    const page = this.matchPoolPage(tr.dataset.url || '');
+    const resetBtn = tr.querySelector('button[data-action="cool-reset"]');
+    const editBtn = tr.querySelector('button[data-action="cool-edit"]');
+    const setTab = (btn, tabId) => {
+      if (!btn) return;
+      if (tabId) { btn.dataset.tabId = tabId; btn.disabled = false; btn.style.opacity = ''; }
+      else { delete btn.dataset.tabId; btn.disabled = true; btn.style.opacity = '0.4'; }
+    };
+    if (!page) {
+      cell.innerHTML = '<span style="color:var(--text-muted);" title="Tab not in pool — use Connect, then add to pool">—</span>';
+      setTab(resetBtn, null); setTab(editBtn, null);
+      return;
+    }
+    setTab(resetBtn, page.tab_id); setTab(editBtn, page.tab_id);
+    const fmt = (s) => PagePoolPanel.fmt(s);
+    const badge = (page.captcha_count || 0) > 0 ? ` <span title="Captcha detections on this tab">🛡x${page.captcha_count}</span>` : '';
+    const busy = page.status === 'busy' || page.status === 'waiting_generation' || page.status === 'waiting_captcha';
+    if (busy) {
+      cell.innerHTML = `<span style="color:#4dabf7;" title="Job running on this tab">🔵 busy</span>${badge}`;
+    } else if (page.status === 'cooldown' && (page.cooldown_remaining || 0) > 0) {
+      const total = page.cooldown_total || 0;
+      const of = total > 0 ? ` / ${fmt(total)}` : '';
+      cell.innerHTML = `<span data-cool-left="${page.cooldown_remaining}" data-cool-at="${Date.now()}" title="${this.esc(page.cooldown_reason || 'cooling')}">${fmt(page.cooldown_remaining)}${of}</span>${badge}`;
+    } else if ((page.pending_penalty || 0) > 0) {
+      cell.innerHTML = `<span title="Captcha penalty waiting for next cooldown">+${fmt(page.pending_penalty)} pending</span>${badge}`;
+    } else {
+      cell.innerHTML = `<span style="color:#4ade80;" title="Tab ready for next job">✅ ready</span>${badge}`;
+    }
+  },
+
+  loadCooldownConfig() {
+    if (App.bridge && App.bridge.get_cooldown_config) {
+      App.bridge.get_cooldown_config((res) => {
+        try {
+          const r = JSON.parse(res);
+          if (!r.ok || !r.config) return;
+          const c = r.config;
+          const en = document.getElementById('urlCooldownEnabled');
+          if (en) en.checked = c.enabled !== false;
+          const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+          setVal('urlCooldownMin', c.min_minutes ?? Math.round((c.min_seconds || 300) / 60));
+          setVal('urlCooldownPenalty', c.captcha_penalty_minutes ?? Math.round((c.captcha_penalty_seconds || 900) / 60));
+        } catch (e) {}
+      });
+    }
+  },
+
+  saveCooldownConfig() {
+    const en = document.getElementById('urlCooldownEnabled');
+    const getNum = (id, fb) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return isNaN(v) ? fb : v; };
+    const minM = Math.max(0, Math.min(1440, getNum('urlCooldownMin', 5)));
+    const penM = Math.max(0, Math.min(1440, getNum('urlCooldownPenalty', 15)));
+    const payload = {enabled: en ? en.checked : true, min_seconds: Math.round(minM * 60), captcha_penalty_seconds: Math.round(penM * 60)};
+    if (App.bridge && App.bridge.set_cooldown_config) {
+      App.bridge.set_cooldown_config(JSON.stringify(payload), (res) => {
+        try {
+          const r = JSON.parse(res);
+          LogConsole.log(r.ok ? `Cooldown saved: ${en && en.checked ? 'on' : 'off'} pause=${minM}m captcha=+${penM}m` : 'Cooldown save failed: ' + r.error, r.ok ? 'success' : 'error');
+        } catch (e) {}
+      });
+    }
   }
 };
