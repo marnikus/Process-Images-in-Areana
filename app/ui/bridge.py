@@ -1476,6 +1476,36 @@ class Bridge(QObject):
         return self.clear_queue()
 
     @Slot(result=str)
+    def filter_queue_drop_ai(self):
+        """Remove _AI outputs from the queue (files untouched)."""
+        return self._filter_queue(keep_ai=False)
+
+    @Slot(result=str)
+    def filter_queue_keep_ai(self):
+        """Keep only _AI outputs in the queue."""
+        return self._filter_queue(keep_ai=True)
+
+    def _filter_queue(self, keep_ai: bool) -> str:
+        """Drop queue entries by _AI suffix, with undo. Never raises."""
+        try:
+            from app.utils.queue_filter import is_ai_output
+            imgs = self.state.images
+            if keep_ai:
+                kept = [i for i in imgs if is_ai_output(i.relative_path or "")]
+            else:
+                kept = [i for i in imgs if not is_ai_output(i.relative_path or "")]
+            removed = len(imgs) - len(kept)
+            if removed:
+                self._push_queue_undo()
+                self.state.images = kept
+                self.state.recalculate_progress()
+                self._save_arena()
+            self._log(f"Queue: {removed} removed ({'only _AI' if keep_ai else 'no _AI'}), {len(kept)} left", "info")
+            return json.dumps({"ok": True, "removed": removed})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
     def reset_all(self):
         for img in self.state.images:
             img.status = "pending"

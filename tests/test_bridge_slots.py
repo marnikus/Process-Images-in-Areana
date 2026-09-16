@@ -17,6 +17,7 @@ REQUIRED_SLOTS = (
     "cancel_current", "reset_page_cooldown", "set_page_cooldown",
     "auto_connect_scan", "popup_url_tabs", "get_tabs", "connect_tab",
     "add_url", "remove_url", "ensure_primary_connected", "stop_tab_job",
+    "filter_queue_drop_ai", "filter_queue_keep_ai",
 )
 
 # Private helpers that must never capture a @Slot by accident.
