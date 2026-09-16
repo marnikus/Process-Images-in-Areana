@@ -386,3 +386,53 @@ def test_restore_page_stats_max_and_missing():
     assert svc.restore_page_stats(pool, "a", norm, stats) == 9  # max, idempotent
     assert svc.restore_page_stats(pool, "nope", norm, stats) == -1
     assert svc.restore_page_stats(pool, "a", norm, {}) == 9  # nothing saved: keep live
+
+
+@pytest.mark.unit
+def test_is_stuck_status_matrix():
+    assert svc.is_stuck_status(PageStatus.BUSY) is True
+    assert svc.is_stuck_status(PageStatus.WAITING_GENERATION) is True
+    assert svc.is_stuck_status(PageStatus.WAITING_CAPTCHA) is True
+    assert svc.is_stuck_status(PageStatus.ERROR) is True
+    assert svc.is_stuck_status("busy") is True  # plain str works (str-enum)
+    assert svc.is_stuck_status(PageStatus.STEADY) is False
+    assert svc.is_stuck_status(PageStatus.COOLDOWN) is False
+    assert svc.is_stuck_status(PageStatus.DISCONNECTED) is False
+    assert svc.is_stuck_status(None) is False
+    assert svc.is_stuck_status("nonsense") is False
+
+
+@pytest.mark.unit
+def test_force_reset_frees_busy_and_clears_timers():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job-1")
+    page = pool.get_page("a")
+    page.cooldown_until = time.time() + 100
+    page.pending_penalty = 60
+    page.error = "boom"
+    assert svc.force_reset_page(pool, "a") is True
+    assert page.status == PageStatus.STEADY
+    assert page.current_job_id is None
+    assert page.cooldown_until == 0.0
+    assert page.pending_penalty == 0
+    assert page.error is None
+
+
+@pytest.mark.unit
+def test_force_reset_keeps_history_and_identity():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    page = pool.get_page("a")
+    page.status = PageStatus.ERROR
+    page.jobs_completed = 5
+    page.captcha_count = 2
+    assert svc.force_reset_page(pool, "a") is True
+    assert (page.jobs_completed, page.captcha_count) == (5, 2)
+    assert page.url == "https://arena.ai" and page.is_connected is True
+
+
+@pytest.mark.unit
+def test_force_reset_unknown_is_false():
+    assert svc.force_reset_page(PagePool(), "nope") is False
+    assert svc.force_reset_page(None, "a") is False

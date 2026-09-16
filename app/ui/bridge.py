@@ -7,6 +7,7 @@ Handles:
 - arena operations (urls, folder, queue, prompt, settings, run controls, highlight)
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -1631,6 +1632,34 @@ class Bridge(QObject):
         return [u for u in self.state.urls if u.enabled]
 
     @Slot(result=str)
+    def _settle_stuck_primary(self, primary_tab_id) -> None:
+        """Best-effort steady for a busy-like primary page; cooling untouched."""
+        try:
+            from app.services.cooldown_service import is_stuck_status
+            if not (self._page_pool and primary_tab_id):
+                return
+            page = self._page_pool.get_page(primary_tab_id)
+            if page is not None and is_stuck_status(page.status):
+                self._page_pool.mark_steady(primary_tab_id)
+        except Exception:
+            pass
+
+    async def _finish_primary_tab(self, ctrl, primary_tab_id) -> None:
+        """Post-job reset + cooldown; settles a stuck page when finish fails."""
+        try:
+            from app.services.cooldown_service import FinishCtx, finish_page_after_job
+            if not (self._page_pool and primary_tab_id):
+                return
+            ctx = FinishCtx(pool=self._page_pool, bridge=self, tab_id=primary_tab_id,
+                            ctrl=ctrl, client=self.cdp)
+            await finish_page_after_job(ctx)
+        except asyncio.CancelledError:
+            self._settle_stuck_primary(primary_tab_id)
+            raise
+        except Exception as e:
+            self._log(f"Post-job reset/cooldown skipped: {e} — settling stuck page", "warn")
+            self._settle_stuck_primary(primary_tab_id)
+
     def start_run(self):
         prompt = self.state.prompt.get("user_prompt","").strip()
         if not prompt:
@@ -2004,9 +2033,14 @@ class Bridge(QObject):
     @Slot(str, result=str)
     def reset_page_cooldown(self, tab_id: str):
         try:
-            from app.services.cooldown_service import reset_cooldown
+            from app.services.cooldown_service import is_stuck_status, reset_cooldown
             if not self._page_pool:
                 return json.dumps({"ok": False, "error": "pool not initialized"})
+            page = self._page_pool.get_page(tab_id)
+            if page is None:
+                return json.dumps({"ok": False, "error": "unknown tab"})
+            if is_stuck_status(page.status):
+                return self._reset_stuck_page(tab_id, page)
             if reset_cooldown(self._page_pool, tab_id):
                 self._emit_pool_status()
                 self._log(f"♻️ Cooldown reset for {(tab_id or '')[:12]} — tab ready", "success")
@@ -2014,6 +2048,19 @@ class Bridge(QObject):
             return json.dumps({"ok": False, "error": "unknown tab"})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
+
+    def _reset_stuck_page(self, tab_id: str, page) -> str:
+        """Force-free a stuck page; refuses while its run is still alive."""
+        from app.services.cooldown_service import force_reset_page
+        was = getattr(page.status, "value", page.status)
+        if getattr(self, "_run_state", "idle") != "idle":
+            self._log(f"⚠ Reset refused for {(tab_id or '')[:12]} — run still active; stop the run first", "warn")
+            return json.dumps({"ok": False, "error": "job still running — stop the run first"})
+        if force_reset_page(self._page_pool, tab_id):
+            self._emit_pool_status()
+            self._log(f"♻️ Stuck {was} reset for {(tab_id or '')[:12]} (no run active) — tab ready, fix and run again", "success")
+            return json.dumps({"ok": True})
+        return json.dumps({"ok": False, "error": "unknown tab"})
 
     @Slot(str, int, result=str)
     def set_page_cooldown(self, tab_id: str, seconds: int):
@@ -3347,14 +3394,7 @@ class Bridge(QObject):
                 self.state.recalculate_progress()
                 self._save_arena()
                 # Post-generation reset + cooldown (single-page)
-                try:
-                    from app.services.cooldown_service import FinishCtx, finish_page_after_job
-                    if self._page_pool and primary_tab_id:
-                        _finish_ctx = FinishCtx(pool=self._page_pool, bridge=self, tab_id=primary_tab_id,
-                                                ctrl=ctrl, client=self.cdp)
-                        await finish_page_after_job(_finish_ctx)
-                except Exception as _e:
-                    self._log(f"Post-job reset/cooldown skipped: {_e}", "warn")
+                await self._finish_primary_tab(ctrl, primary_tab_id)
                 if self._cancel_requested:
                     break
                 await asyncio.sleep(1)
@@ -3366,6 +3406,15 @@ class Bridge(QObject):
             self._run_state = "idle"
             self._emit_arena_state()
 
+        except asyncio.CancelledError:
+            self._log("🏁 Batch cancelled", "warn")
+            self._run_state = "idle"
+            try:
+                self._settle_stuck_primary(primary_tab_id)
+            except Exception:
+                pass
+            self._emit_arena_state()
+            raise
         except Exception as e:
             if "Cancelled" in str(e) or self._cancel_requested:
                 self._log(f"🏁 Batch cancelled: {e}", "warn")

@@ -1,4 +1,5 @@
 """Multi-page dispatcher — parallel dispatch to different webpages."""
+# ideal-size: ~360 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
 
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from app.core.enums import ImageStatus
 from app.core.models import ImageItem, UrlRow
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
-from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job
+from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
 
 log = logging.getLogger("arena")
@@ -97,6 +98,19 @@ def _mark_steady_emit(pool, bridge, tab_id):
         pool.mark_steady(tab_id)
         bridge._emit_pool_status()
         bridge._log(f"✅ Page {tab_id[:12]} STEADY ready", "success")
+    except Exception:
+        pass
+
+
+def _settle_stuck_emit(pool, bridge, tab_id):
+    """Steady a busy-like page after failure; a started cooldown survives."""
+    try:
+        page = pool.get_page(tab_id)
+    except Exception:
+        return
+    try:
+        if page is not None and is_stuck_status(page.status):
+            _mark_steady_emit(pool, bridge, tab_id)
     except Exception:
         pass
 
@@ -251,8 +265,11 @@ async def run_one_image_on_page(bridge, pool, img, urls):
         try:
             finish_ctx = FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client)
             await finish_page_after_job(finish_ctx)
+        except asyncio.CancelledError:
+            _settle_stuck_emit(pool, bridge, tab_id)
+            raise
         except Exception:
-            _mark_steady_emit(pool, bridge, tab_id)
+            _settle_stuck_emit(pool, bridge, tab_id)
 
 
 def _log_no_free(bridge, img):
