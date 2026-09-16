@@ -91,32 +91,22 @@ def save_pool_snapshot(path, pool) -> None:
     save_entries(path, entries)
 
 
-def _url_score(want: Any, have: Any) -> int:
-    """2 exact, 1 prefix either way, else 0."""
-    if not isinstance(want, str) or not isinstance(have, str):
-        return 0
-    w = want.strip().lower()
-    h = have.strip().lower()
-    if not w or not h:
-        return 0
-    if w == h:
-        return 2
-    if w.startswith(h) or h.startswith(w):
-        return 1
-    return 0
+def _norm_url(url: Any) -> str:
+    """Comparable URL form (case/trailing-slash tolerant, query kept)."""
+    if not isinstance(url, str):
+        return ""
+    return url.strip().lower().rstrip("/")
 
 
 def consume_entry_for(entries: dict, tab_id: str, page_url: str):
-    """Pop best entry: exact tab id, else best URL score."""
+    """Pop entry by exact tab id, else exact normalized URL. Strict on
+    purpose: a fuzzy fallback would let an idle tab steal another tab's
+    timer (isolation bug 2026-09-16)."""
     if tab_id and tab_id in entries:
         return tab_id, entries.pop(tab_id)
-    best_key, best_score = None, 0
-    for key, entry in entries.items():
-        if not isinstance(entry, dict):
-            continue
-        score = _url_score(page_url, entry.get("url", ""))
-        if score > best_score:
-            best_key, best_score = key, score
-    if best_key is None:
-        return None, None
-    return best_key, entries.pop(best_key)
+    want = _norm_url(page_url)
+    if want:
+        for key, entry in list(entries.items()):
+            if isinstance(entry, dict) and _norm_url(entry.get("url", "")) == want:
+                return key, entries.pop(key)
+    return None, None

@@ -78,10 +78,17 @@ def test_consume_prefers_tab_then_url(tmp_path):
     assert store.consume_entry_for(entries, "zz", "https://nomatch.example/") == (None, None)
 
 
-def test_consume_prefix_fallback():
+def test_consume_strict_no_fuzzy_match():
+    # isolation: tab B must never steal tab A's entry via prefix/host
     entries = {"t9": {"tab_id": "t9", "url": "https://arena.ai/image/direct", "cooldown_until": 9}}
-    key, entry = store.consume_entry_for(entries, "new", "https://arena.ai/image/direct?model=a1")
-    assert key == "t9"
+    assert store.consume_entry_for(entries, "new", "https://arena.ai/image/direct?model=a1") == (None, None)
+    assert "t9" in entries
+
+
+def test_consume_url_exact_normalized():
+    entries = {"t9": {"tab_id": "t9", "url": "https://arena.ai/X?model=A/", "cooldown_until": 9}}
+    key, entry = store.consume_entry_for(entries, "new-id", "https://arena.ai/x?model=a")
+    assert (key, entry["tab_id"]) == ("t9", "t9")
 
 
 def test_load_missing_or_corrupt_returns_empty(tmp_path):
