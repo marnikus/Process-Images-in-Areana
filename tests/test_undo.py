@@ -1,8 +1,10 @@
 import shutil
 from pathlib import Path
+import pytest
 from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
 
+@pytest.mark.integration
 def test_undo_push_undo_redo(tmp_path=None):
     # use temp dir
     import tempfile
@@ -51,6 +53,7 @@ def test_undo_push_undo_redo(tmp_path=None):
     finally:
         shutil.rmtree(td)
 
+@pytest.mark.integration
 def test_undo_store_persistence():
     import tempfile
     td = Path(tempfile.mkdtemp())

@@ -22,7 +22,6 @@ const LogConsole = {
     // Dedup identical messages within 600ms (prevents double logs from old bridge emitting both signals)
     if (message === this._lastMsg && (nowMs - this._lastTime) < 600) {
       this._lastCount++;
-      // Update last entry to show count if repeated
       const lastEl = this._el.lastChild;
       if (lastEl && this._lastCount <= 3) {
         lastEl.textContent = lastEl.textContent.replace(/ \(x\d+\)$/, '') + ` (x${this._lastCount+1})`;
@@ -38,8 +37,15 @@ const LogConsole = {
     const ts = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
     entry.textContent = `[${ts}] ${message}`;
     this._el.appendChild(entry);
-    // auto-scroll
-    this._el.scrollTop = this._el.scrollHeight;
+    // auto-scroll debounced to avoid layout thrash freeze
+    if (!this._scrollTimer) {
+      this._scrollTimer = setTimeout(() => {
+        this._scrollTimer = null;
+        try {
+          if (this._el) this._el.scrollTop = this._el.scrollHeight;
+        } catch (e) {}
+      }, 100);
+    }
     // trim old entries
     while (this._el.children.length > this._maxEntries) {
       this._el.removeChild(this._el.firstChild);

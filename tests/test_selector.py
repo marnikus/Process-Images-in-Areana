@@ -1,10 +1,13 @@
+import pytest
 from app.browser.site_adapter import SELECTORS, get_selector, get_readiness_requirements
 
+@pytest.mark.unit
 def test_selectors_exist():
     required = ["prompt_textarea", "send_button", "file_input", "output_region", "output_image", "add_files_button"]
     for name in required:
         assert name in SELECTORS, f"Selector {name} missing"
 
+@pytest.mark.unit
 def test_selector_structure():
     for name, sel in SELECTORS.items():
         assert sel.name == name
@@ -12,16 +15,19 @@ def test_selector_structure():
         assert isinstance(sel.fallbacks, list)
         assert sel.expectedCount >= 0
 
+@pytest.mark.unit
 def test_readiness_requirements():
     reqs = get_readiness_requirements()
     assert "prompt_textarea" in reqs
     assert "send_button" in reqs
     assert "file_input" in reqs
 
+@pytest.mark.unit
 def test_get_selector():
     sel = get_selector("prompt_textarea")
     assert sel.primary == 'textarea[name="message"]'
 
+@pytest.mark.unit
 def test_selector_fallbacks():
     sel = get_selector("prompt_textarea")
     all_sels = sel.all_selectors()

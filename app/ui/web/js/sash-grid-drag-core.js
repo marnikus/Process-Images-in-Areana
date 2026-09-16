@@ -19,6 +19,10 @@ const SashGridDrag = {
   },
 
   _startDrag(winEl, ev) {
+    // Safety: if previous drag left body class stuck (freeze mouse clicks), clean it
+    if (document.body.classList.contains('sash-dragging')) {
+      document.body.classList.remove('sash-dragging');
+    }
     this._drag = {
       active: false, winEl, id: winEl.dataset.win,
       startX: ev.clientX, startY: ev.clientY, pointerId: ev.pointerId,
@@ -30,10 +34,21 @@ const SashGridDrag = {
     this._onDragMove = this._dragMove.bind(this);
     this._onDragUp = this._dragUp.bind(this);
     this._onDragKey = (e) => { if (e.key === 'Escape') this._cancelDrag(); };
+    this._onDragBlur = () => this._cancelDrag();
     document.addEventListener('pointermove', this._onDragMove, { passive: false });
     document.addEventListener('pointerup', this._onDragUp);
     document.addEventListener('pointercancel', this._onDragCancel = this._cancelDrag.bind(this));
     document.addEventListener('keydown', this._onDragKey, true);
+    window.addEventListener('blur', this._onDragBlur);
+    document.addEventListener('visibilitychange', this._onDragBlur);
+    // Capture pointer if possible to ensure we get pointerup even outside window
+    try {
+      if (ev.pointerId != null && winEl.setPointerCapture) {
+        winEl.setPointerCapture(ev.pointerId);
+        this._drag.pointerCaptured = true;
+        this._drag.capturedEl = winEl;
+      }
+    } catch (e) {}
   },
 
   _beginDrag() {
@@ -154,18 +169,32 @@ const SashGridDrag = {
 
   _cleanupDrag() {
     const d = this._drag;
-    if (!d) return;
-    document.removeEventListener('pointermove', this._onDragMove, { passive: false });
-    document.removeEventListener('pointerup', this._onDragUp);
-    document.removeEventListener('pointercancel', this._onDragCancel);
-    document.removeEventListener('keydown', this._onDragKey, true);
+    // Always clean body classes even if d null — fixes freeze mouse clicks when drag stuck
+    try {
+      document.body.classList.remove('sash-dragging');
+      document.body.classList.remove('sash-resizing-row', 'sash-resizing-col');
+    } catch (e) {}
+    if (!d) {
+      this._drag = null;
+      return;
+    }
+    try { document.removeEventListener('pointermove', this._onDragMove, { passive: false }); } catch (e) {}
+    try { document.removeEventListener('pointerup', this._onDragUp); } catch (e) {}
+    try { document.removeEventListener('pointercancel', this._onDragCancel); } catch (e) {}
+    try { document.removeEventListener('keydown', this._onDragKey, true); } catch (e) {}
+    try { window.removeEventListener('blur', this._onDragBlur); } catch (e) {}
+    try { document.removeEventListener('visibilitychange', this._onDragBlur); } catch (e) {}
+    try {
+      if (d.pointerCaptured && d.capturedEl && d.capturedEl.releasePointerCapture) {
+        d.capturedEl.releasePointerCapture(d.pointerId);
+      }
+    } catch (e) {}
     if (d.clone && d.clone.parentNode) d.clone.parentNode.removeChild(d.clone);
     if (d.badge && d.badge.parentNode) d.badge.parentNode.removeChild(d.badge);
     if (d.indicator && d.indicator.parentNode) d.indicator.parentNode.removeChild(d.indicator);
     if (d.targetEl) d.targetEl.classList.remove('sash-drag-target');
-    this.gridEl.querySelectorAll('.sash-target').forEach((s) => s.classList.remove('sash-target'));
+    try { this.gridEl.querySelectorAll('.sash-target').forEach((s) => s.classList.remove('sash-target')); } catch (e) {}
     if (d.winEl && d.winEl.isConnected) d.winEl.classList.remove('sash-drag-source');
-    document.body.classList.remove('sash-dragging');
     this._drag = null;
   },
 

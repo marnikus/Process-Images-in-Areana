@@ -62,11 +62,13 @@ const FolderPicker = {
 
   scan() {
     if (App.bridge && App.bridge.scan_folder) {
-      LogConsole.log('Scanning folder...', 'info');
+      LogConsole.log('Scanning folder... (non-blocking)', 'info');
       App.bridge.scan_folder((res) => {
         try {
           const r = JSON.parse(res);
-          if (r.ok) LogConsole.log(`Scan complete: ${r.count} images found`, 'success');
+          if (r.ok && r.pending) LogConsole.log('🔍 Scan started in background — UI stays responsive', 'info');
+          else if (r.ok) LogConsole.log(`Scan complete: ${r.count} images found`, 'success');
+          else if (r.pending) LogConsole.log('Scan already in progress, please wait', 'warn');
           else LogConsole.log('Scan failed: ' + r.error, 'error');
         } catch (e) {}
       });
@@ -76,11 +78,12 @@ const FolderPicker = {
   scanNewBatch() {
     if (!confirm('Start NEW batch? This will clear current list and scan folder anew.')) return;
     if (App.bridge && App.bridge.scan_folder_new_batch) {
-      LogConsole.log('🗑 Clearing old list + scanning new batch...', 'warn');
+      LogConsole.log('🗑 Clearing old list + scanning new batch... (non-blocking)', 'warn');
       App.bridge.scan_folder_new_batch((res) => {
         try {
           const r = JSON.parse(res);
-          if (r.ok) LogConsole.log(`✅ New batch: cleared ${r.cleared||0} old, ${r.count} new images found`, 'success');
+          if (r.ok && r.pending) LogConsole.log(`✅ New batch: cleared ${r.cleared||0} old — scanning in background, UI stays responsive`, 'success');
+          else if (r.ok) LogConsole.log(`✅ New batch: cleared ${r.cleared||0} old, ${r.count} new images found`, 'success');
           else LogConsole.log('New batch scan failed: ' + (r.error||res), 'error');
         } catch (e) { LogConsole.log('New batch scan done','info'); }
       });

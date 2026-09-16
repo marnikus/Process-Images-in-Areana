@@ -37,6 +37,40 @@ const ActionBlocksPanel = {
     window.addEventListener('arena-presets-updated', () => this.load());
     // Alt+arrows global handler
     document.addEventListener('keydown', (e) => this.handleKeydown(e));
+    // Safety: if drag leaves window or blur, clean stuck dragging state that freezes clicks
+    window.addEventListener('blur', () => this._cleanupDragState());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this._cleanupDragState();
+    });
+    // Global pointerup safety for sash-grid leftovers
+    document.addEventListener('pointerup', () => {
+      try {
+        if (document.body.classList.contains('sash-dragging') || document.body.classList.contains('sash-resizing-row') || document.body.classList.contains('sash-resizing-col')) {
+          // If no active drag in SashGrid, clean leftover
+          const sg = window.SashGrid;
+          if (!sg || (!sg._drag && !sg._resize)) {
+            document.body.classList.remove('sash-dragging', 'sash-resizing-row', 'sash-resizing-col');
+            console.warn('Cleaned stuck sash dragging class on global pointerup');
+          }
+        }
+      } catch (e) {}
+    });
+  },
+
+  _cleanupDragState() {
+    try {
+      this._dragSrc = null;
+      const cont = document.getElementById('actionBlocksStack');
+      if (cont) cont.querySelectorAll('.action-block').forEach(el => {
+        el.classList.remove('dragging', 'drag-over');
+      });
+      // Also clean sash-grid leftover that freezes mouse clicks
+      document.body.classList.remove('sash-dragging', 'sash-resizing-row', 'sash-resizing-col');
+      document.querySelectorAll('.sash-active').forEach(el => el.classList.remove('sash-active'));
+      document.querySelectorAll('.sash-drag-clone, .sash-drag-ghost, .sash-drag-badge, .sash-drop-indicator').forEach(el => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+    } catch (e) {}
   },
 
   ensurePauseOverlay() {

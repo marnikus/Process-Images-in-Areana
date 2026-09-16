@@ -39,6 +39,9 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 
 `docs/archive/<YYYY-MM-DD>-<topic>/` — every design/plan/root-cause doc goes here, dated by day written. Archived docs are record of what was believed then, never edited.
 
+- `archive/2026-09-16-image-below-prompt/` — fix for image-below-prompt correlation (JOB-ID verification for reverse layout)
+- `archive/2026-09-16-test-time-reduction/TEST_TIME_REDUCTION_PLAN.md` — structured plan to reduce test time: pyramid rebalance, fixture scopes, eliminate real-browser tier, xdist parallelisation, async sleep removal, DI fakes, CI 3-stage gates, roadmap with RULE 16/18 compliance
+
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 
 ---

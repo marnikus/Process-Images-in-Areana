@@ -1,6 +1,7 @@
 import pytest
 from app.services.watcher import WatcherConfig, WatcherState, WatcherService
 
+@pytest.mark.unit
 def test_watcher_config_defaults():
     cfg = WatcherConfig()
     assert cfg.check_interval_ms == 2000
@@ -8,11 +9,13 @@ def test_watcher_config_defaults():
     assert cfg.generation_timeout_sec == 600
     assert cfg.enabled is False
 
+@pytest.mark.unit
 def test_watcher_state_defaults():
     st = WatcherState()
     assert st.status == "idle"
     assert st.checks_count == 0
 
+@pytest.mark.unit
 def test_watcher_update_config():
     cfg = WatcherConfig()
     svc = WatcherService(config=cfg)
@@ -24,6 +27,7 @@ def test_watcher_update_config():
     # cleanup
     svc.stop()
 
+@pytest.mark.unit
 def test_watcher_get_config():
     cfg = WatcherConfig(enabled=True, check_interval_ms=1000)
     svc = WatcherService(config=cfg)
@@ -31,6 +35,7 @@ def test_watcher_get_config():
     assert d["enabled"] is True
     assert d["check_interval_ms"] == 1000
 
+@pytest.mark.unit
 def test_watcher_get_state():
     svc = WatcherService()
     st = svc.get_state()

@@ -79,6 +79,7 @@ class Bridge(QObject):
     watcher_status = Signal(str)  # JSON status
     watcher_log = Signal(str, str)  # msg, level
     page_pool_updated = Signal(str)  # JSON snapshot steady/busy
+    thumbnail_ready = Signal(str, str)  # img_id, payload_json — non-blocking thumb
 
     def __init__(self, config_manager: ConfigManager, state_path: Path, cdp_client=None, parent=None):
         super().__init__(parent)
@@ -105,6 +106,17 @@ class Bridge(QObject):
         self._last_connect_ts = 0.0
         self._find_in_progress = False
         self._connect_in_progress = False
+        # thumbnail cache + thread pool to avoid UI freeze on mouse clicks
+        # Previously get_image_thumbnail did PIL thumbnail sync in main thread for 80 images -> freeze
+        self._thumb_cache = {}
+        self._thumb_in_progress = set()
+        try:
+            import concurrent.futures as _cf
+            self._thumb_executor = _cf.ThreadPoolExecutor(max_workers=2, thread_name_prefix="thumb")
+        except Exception:
+            self._thumb_executor = None
+        # scan folder debouncing to avoid freeze
+        self._scan_in_progress = False
         # ensure undo history loaded
         try:
             self.config.undo.load()
@@ -842,10 +854,17 @@ class Bridge(QObject):
 
     @Slot(str, result=str)
     def get_image_thumbnail(self, img_id: str):
-        """Return base64 data URL thumbnail for image queue — fixes black rect when file:// blocked."""
+        """Return base64 thumbnail — non-blocking to avoid mouse freeze.
+
+        Previously did PIL sync in Qt main thread for 80 images -> freeze.
+        Now: cache hit returns immediately; miss schedules background thread
+        and returns pending with file:// fallback, then emits thumbnail_ready.
+        """
         try:
-            import base64, io
-            # Find image by id
+            if img_id in self._thumb_cache:
+                cached = self._thumb_cache[img_id]
+                return json.dumps({"ok": True, "id": img_id, "data_url": cached, "cached": True}, ensure_ascii=False)
+
             target = None
             for im in self.state.images:
                 if im.id == img_id:
@@ -853,56 +872,54 @@ class Bridge(QObject):
                     break
             if not target:
                 return json.dumps({"ok": False, "error": "not found"})
+
             p = Path(target.absolute_path)
             if not p.exists():
                 return json.dumps({"ok": False, "error": "file not exists"})
-            # Generate thumbnail 96x96 via PIL if available, else full file base64
-            try:
-                from PIL import Image
-                with Image.open(p) as im_pil:
-                    im_pil.thumbnail((96, 96))
-                    fmt = im_pil.format or "PNG"
-                    if fmt.upper() == "JPEG":
-                        fmt = "JPEG"
-                    elif fmt.upper() not in ("PNG", "JPEG", "WEBP", "GIF"):
-                        fmt = "PNG"
-                    buf = io.BytesIO()
-                    # Preserve transparency for PNG
-                    if fmt == "PNG":
-                        im_pil.save(buf, format="PNG")
-                        mime = "image/png"
-                    elif fmt == "JPEG":
-                        # Convert RGBA to RGB for JPEG
-                        if im_pil.mode in ("RGBA", "LA"):
-                            bg = Image.new("RGB", im_pil.size, (255,255,255))
-                            bg.paste(im_pil, mask=im_pil.split()[-1] if im_pil.mode=="RGBA" else None)
-                            im_pil = bg
-                        im_pil.save(buf, format="JPEG", quality=85)
-                        mime = "image/jpeg"
-                    else:
-                        im_pil.save(buf, format=fmt)
-                        mime = f"image/{fmt.lower()}"
-                    data = buf.getvalue()
-                    b64 = base64.b64encode(data).decode("ascii")
-                    data_url = f"data:{mime};base64,{b64}"
-                    return json.dumps({"ok": True, "id": img_id, "data_url": data_url, "mime": mime}, ensure_ascii=False)
-            except Exception as e_pil:
-                # Fallback: read file and base64 encode (may be large)
+
+            if img_id in self._thumb_in_progress:
+                return json.dumps({"ok": False, "pending": True, "id": img_id, "fallback_url": f"file://{p}"}, ensure_ascii=False)
+
+            # Phase 2: delegate to thumbnail_service (pure, no Qt)
+            from .services.thumbnail_service import generate_thumbnail_data_url
+
+            def _gen_thumb():
+                res = generate_thumbnail_data_url(p, size=96, quality=80)
+                res["id"] = img_id
+                return res
+
+            def _on_done(fut):
                 try:
-                    data = p.read_bytes()
-                    # Guess mime from extension
-                    ext = p.suffix.lower()
-                    mime_map = {".png":"image/png",".jpg":"image/jpeg",".jpeg":"image/jpeg",".webp":"image/webp",".gif":"image/gif",".bmp":"image/bmp"}
-                    mime = mime_map.get(ext, "image/png")
-                    # Limit size to 500KB for thumb — if larger, still return but warn
-                    if len(data) > 500*1024:
-                        # Try to truncate? return file:// fallback
-                        return json.dumps({"ok": False, "error": f"too large {len(data)} and PIL failed {e_pil}", "fallback_url": f"file://{p}"}, ensure_ascii=False)
-                    b64 = base64.b64encode(data).decode("ascii")
-                    data_url = f"data:{mime};base64,{b64}"
-                    return json.dumps({"ok": True, "id": img_id, "data_url": data_url, "mime": mime, "fallback": True}, ensure_ascii=False)
-                except Exception as e2:
-                    return json.dumps({"ok": False, "error": f"{e_pil} / {e2}"}, ensure_ascii=False)
+                    res = fut.result()
+                    if res.get("ok") and res.get("data_url"):
+                        self._thumb_cache[img_id] = res["data_url"]
+                        try:
+                            payload = json.dumps(res, ensure_ascii=False)
+                            self.thumbnail_ready.emit(img_id, payload)
+                        except Exception:
+                            pass
+                    self._thumb_in_progress.discard(img_id)
+                except Exception:
+                    self._thumb_in_progress.discard(img_id)
+
+            if self._thumb_executor:
+                self._thumb_in_progress.add(img_id)
+                try:
+                    fut = self._thumb_executor.submit(_gen_thumb)
+                    fut.add_done_callback(_on_done)
+                except Exception:
+                    self._thumb_in_progress.discard(img_id)
+                    res = _gen_thumb()
+                    if res.get("ok") and res.get("data_url"):
+                        self._thumb_cache[img_id] = res["data_url"]
+                    return json.dumps(res, ensure_ascii=False)
+                return json.dumps({"ok": False, "pending": True, "id": img_id, "fallback_url": f"file://{p}"}, ensure_ascii=False)
+            else:
+                res = _gen_thumb()
+                if res.get("ok") and res.get("data_url"):
+                    self._thumb_cache[img_id] = res["data_url"]
+                return json.dumps(res, ensure_ascii=False)
+
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
 
@@ -1136,41 +1153,61 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def scan_folder(self):
+        """Non-blocking scan to avoid UI freeze on mouse clicks."""
+        if getattr(self, '_scan_in_progress', False):
+            return json.dumps({"ok": False, "pending": True, "error": "scan already in progress"})
         root = self.state.folder.get("root_path", "")
         if not root:
             return json.dumps({"ok": False, "error": "No folder set"})
         root_path = Path(root)
         if not root_path.exists():
             return json.dumps({"ok": False, "error": "Folder does not exist"})
-        supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
-        ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
+
+        from .services.scan_service import scan_folder_pure
+
+        def _do_scan():
+            try:
+                supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
+                ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
+                scanned = scan_folder_pure(root_path, supported, ignore_ai)
+                existing = {img.relative_path: img for img in self.state.images}
+                added = 0
+                for s in scanned:
+                    rel = s["relative_path"]
+                    if rel not in existing:
+                        img = ImageItem.from_scan_dict(s, selected=False)
+                        self.state.images.append(img)
+                        added += 1
+                    else:
+                        e = existing[rel]
+                        e.size = s["size"]
+                        e.mtime = s["mtime"]
+                        e.absolute_path = s["absolute_path"]
+                self.state.recalculate_progress()
+                self._save_arena()
+                self._log(f"Scanned {len(scanned)} images, {added} new", "success")
+            except Exception as e:
+                self._log(f"Scan failed: {e}", "error")
+            finally:
+                self._scan_in_progress = False
+
+        # Schedule in thread pool — return pending immediately to avoid freeze
         try:
-            scanned = scan_folder(root_path, supported, ignore_ai)
-            existing = {img.relative_path: img for img in self.state.images}
-            added = 0
-            for s in scanned:
-                rel = s["relative_path"]
-                if rel not in existing:
-                    img = ImageItem.from_scan_dict(s, selected=False)
-                    self.state.images.append(img)
-                    added += 1
-                else:
-                    e = existing[rel]
-                    e.size = s["size"]
-                    e.mtime = s["mtime"]
-                    e.absolute_path = s["absolute_path"]
-            self.state.recalculate_progress()
-            self._save_arena()
-            self._log(f"Scanned {len(scanned)} images, {added} new", "success")
-            return json.dumps({"ok": True, "count": len(scanned), "added": added})
+            self._scan_in_progress = True
+            self._log(f"🔍 Scanning folder {root_path}… (non-blocking)", "info")
+            if self._thumb_executor:
+                self._thumb_executor.submit(_do_scan)
+            else:
+                import threading
+                threading.Thread(target=_do_scan, daemon=True).start()
+            return json.dumps({"ok": True, "pending": True, "count": 0, "message": "scan started non-blocking"})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
     @Slot(result=str)
     def scan_folder_new_batch(self):
-        """Clear queue then scan — atomic new batch start."""
+        """Clear queue then scan — non-blocking to avoid freeze."""
         try:
-            # push undo before clear
             try:
                 self._push_queue_undo()
             except Exception:
@@ -1178,27 +1215,42 @@ class Bridge(QObject):
             cleared = len(self.state.images)
             self.state.images = []
             self.state.jobs = []
-            # now scan
+            self.state.recalculate_progress()
+            self._save_arena()
+            self._log(f"🗑 Cleared {cleared} old — scanning new batch non-blocking", "warn")
+
             root = self.state.folder.get("root_path", "")
             if not root:
-                self.state.recalculate_progress()
-                self._save_arena()
                 return json.dumps({"ok": False, "error": "No folder set", "cleared": cleared})
             root_path = Path(root)
             if not root_path.exists():
-                self.state.recalculate_progress()
-                self._save_arena()
                 return json.dumps({"ok": False, "error": "Folder does not exist", "cleared": cleared})
-            supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
-            ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
-            scanned = scan_folder(root_path, supported, ignore_ai)
-            for s in scanned:
-                img = ImageItem.from_scan_dict(s, selected=False)
-                self.state.images.append(img)
-            self.state.recalculate_progress()
-            self._save_arena()
-            self._log(f"🗑 New batch: cleared {cleared} old, scanned {len(scanned)} new images", "warn")
-            return json.dumps({"ok": True, "count": len(scanned), "added": len(scanned), "cleared": cleared})
+
+            from .services.scan_service import scan_folder_pure
+
+            def _do_scan_new():
+                try:
+                    supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
+                    ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
+                    scanned = scan_folder_pure(root_path, supported, ignore_ai)
+                    for s in scanned:
+                        img = ImageItem.from_scan_dict(s, selected=False)
+                        self.state.images.append(img)
+                    self.state.recalculate_progress()
+                    self._save_arena()
+                    self._log(f"🗑 New batch: cleared {cleared} old, scanned {len(scanned)} new images", "warn")
+                except Exception as e:
+                    self._log(f"New batch scan failed: {e}", "error")
+                finally:
+                    self._scan_in_progress = False
+
+            self._scan_in_progress = True
+            if self._thumb_executor:
+                self._thumb_executor.submit(_do_scan_new)
+            else:
+                import threading
+                threading.Thread(target=_do_scan_new, daemon=True).start()
+            return json.dumps({"ok": True, "pending": True, "cleared": cleared, "message": "new batch scan started non-blocking"})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
