@@ -205,8 +205,10 @@ const UrlList = {
           else {
             input.value = '';
             LogConsole.log('URL added: ' + val, 'success');
+            // Do not push stale App.state.urls to backend — backend already pushed new list to undo.
+            // Use localOnly to keep undo timeline in sync without overwriting backend state.
             if (typeof ArenaHistory !== 'undefined') {
-              setTimeout(()=>ArenaHistory.recordGlobal('urls', App.state.urls), 100);
+              setTimeout(()=>ArenaHistory.recordGlobal('urls', App.state.urls, {localOnly:true}), 250);
             }
           }
         } catch (e) { console.error(e); }

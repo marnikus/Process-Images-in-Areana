@@ -3326,7 +3326,7 @@ class Bridge(QObject):
                 if isinstance(value, dict):
                     self.config.set_state(window_states=value)
             elif kind == "urls":
-                # value is list of url dicts (js shape) -> convert to UrlRow
+                # value is list of url dicts (js shape) -> convert to UrlRow, preserve cooldown fields
                 if isinstance(value, list):
                     self.state.urls = [UrlRow(
                         id=u.get("id", f"url_{i}"),
@@ -3334,7 +3334,13 @@ class Bridge(QObject):
                         enabled=u.get("enabled",True),
                         last_status=u.get("status","unchecked"),
                         last_checked=u.get("last_checked"),
-                        error=u.get("last_error") or u.get("error")
+                        error=u.get("last_error") or u.get("error"),
+                        cooldown_seconds=int(u.get("cooldown_seconds", 300)),
+                        cooldown_until=u.get("cooldown_until"),
+                        captcha_penalty_seconds=int(u.get("captcha_penalty_seconds", 900)),
+                        captcha_count=int(u.get("captcha_count", 0)),
+                        last_completed_at=u.get("last_completed_at"),
+                        total_cooldown_penalties=int(u.get("total_cooldown_penalties", 0)),
                     ) for i, u in enumerate(value)]
                     self._save_arena()
             elif kind == "folder":
@@ -3386,7 +3392,13 @@ class Bridge(QObject):
                             # js shape
                             self.state.urls = [UrlRow(
                                 id=u.get("id"), url=u.get("url"), enabled=u.get("enabled",True),
-                                last_status=u.get("status","unchecked"), error=u.get("last_error")
+                                last_status=u.get("status","unchecked"), error=u.get("last_error"),
+                                cooldown_seconds=int(u.get("cooldown_seconds", 300)),
+                                cooldown_until=u.get("cooldown_until"),
+                                captcha_penalty_seconds=int(u.get("captcha_penalty_seconds", 900)),
+                                captcha_count=int(u.get("captcha_count", 0)),
+                                last_completed_at=u.get("last_completed_at"),
+                                total_cooldown_penalties=int(u.get("total_cooldown_penalties", 0)),
                             ) for u in value["urls"]]
                         if "folder" in value:
                             self.state.folder.update(value["folder"])
@@ -3425,7 +3437,13 @@ class Bridge(QObject):
                         enabled=u.get("enabled",True),
                         last_status=u.get("status","unchecked"),
                         last_checked=u.get("last_checked"),
-                        error=u.get("last_error") or u.get("error")
+                        error=u.get("last_error") or u.get("error"),
+                        cooldown_seconds=int(u.get("cooldown_seconds", 300)),
+                        cooldown_until=u.get("cooldown_until"),
+                        captcha_penalty_seconds=int(u.get("captcha_penalty_seconds", 900)),
+                        captcha_count=int(u.get("captcha_count", 0)),
+                        last_completed_at=u.get("last_completed_at"),
+                        total_cooldown_penalties=int(u.get("total_cooldown_penalties", 0)),
                     ) for i, u in enumerate(value)]
                     self._save_arena()
                     self._log(f"↩ Undo URLs ({len(value)} items)", "info")
@@ -3486,7 +3504,13 @@ class Bridge(QObject):
                         if "urls" in value:
                             self.state.urls = [UrlRow(
                                 id=u.get("id"), url=u.get("url"), enabled=u.get("enabled",True),
-                                last_status=u.get("status","unchecked"), error=u.get("last_error")
+                                last_status=u.get("status","unchecked"), error=u.get("last_error"),
+                                cooldown_seconds=int(u.get("cooldown_seconds", 300)),
+                                cooldown_until=u.get("cooldown_until"),
+                                captcha_penalty_seconds=int(u.get("captcha_penalty_seconds", 900)),
+                                captcha_count=int(u.get("captcha_count", 0)),
+                                last_completed_at=u.get("last_completed_at"),
+                                total_cooldown_penalties=int(u.get("total_cooldown_penalties", 0)),
                             ) for u in value["urls"]]
                         if "folder" in value:
                             self.state.folder.update(value["folder"])
