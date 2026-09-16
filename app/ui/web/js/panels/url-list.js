@@ -1,5 +1,5 @@
 /* url-list.js — URL List panel */
-// ideal-size: ~370 lines reason=single UrlList panel object owns row render + pool matching + cooldown/counter cells; splitting the literal would scatter one refresh pass across files that always change together (RULE 18.2)
+// ideal-size: ~380 lines reason=single UrlList panel object owns row render + pool matching + cooldown/counter cells; splitting the literal would scatter one refresh pass across files that always change together (RULE 18.2)
 'use strict';
 
 const UrlList = {
@@ -12,6 +12,10 @@ const UrlList = {
     if (!addBtn || !input || !tableBody) return;
 
     addBtn.addEventListener('click', () => this.addUrl());
+    const reparseBtn = document.getElementById('urlReparseBtn');
+    if (reparseBtn) reparseBtn.addEventListener('click', () => this.reparseTabs());
+    const popupBtn = document.getElementById('urlPopupBtn');
+    if (popupBtn) popupBtn.addEventListener('click', () => this.popupTabs());
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.addUrl(); });
 
     // Job cycle & cooldown controls live on this win (spec correction 2026-09-16)
@@ -41,6 +45,15 @@ const UrlList = {
       if (action === 'connect') this.connectUrl(urlId);
       if (action === 'cool-reset' || action === 'cool-edit') this.coolAction(action, btn);
     });
+  },
+
+  reparseTabs() {
+    LogConsole.log('🔄 Reparse requested — scanning open tabs…', 'info');
+    if (App.bridge && App.bridge.auto_connect_scan) App.bridge.auto_connect_scan('manual');
+  },
+
+  popupTabs() {
+    if (App.bridge && App.bridge.popup_url_tabs) App.bridge.popup_url_tabs();
   },
 
   restore(state) {

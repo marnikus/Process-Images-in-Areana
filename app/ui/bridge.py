@@ -4006,18 +4006,27 @@ class Bridge(QObject):
         except Exception:
             return set()
 
-    @Slot(result=str)
-    def auto_connect_scan(self):
+    @Slot(str, result=str)
+    def auto_connect_scan(self, source: str):
         """Non-blocking auto-connect scan: rows + pool follow open tabs."""
         if not self.cdp or not self._page_pool:
             return json.dumps({"ok": False, "error": "CDP or pool not ready"})
         if self._auto_scan_running:
             return "pending"
-        self._schedule_coro(self._do_auto_connect_scan())
+        self._schedule_coro(self._do_auto_connect_scan(source or "auto"))
         return "pending"
 
+    def _prune_auto_rows(self, plan) -> int:
+        """Drop auto-linked rows whose tabs vanished; returns removed count."""
+        if not plan.remove:
+            return 0
+        gone = set(plan.remove)
+        before = len(self.state.urls)
+        self.state.urls = [u for u in self.state.urls if u.id not in gone]
+        return before - len(self.state.urls)
+
     def _apply_auto_plan(self, plan) -> bool:
-        """Claim/add URL rows from the plan; True when rows changed."""
+        """Claim/add/prune URL rows from the plan; True when rows changed."""
         by_id = {u.id: u for u in self.state.urls}
         changed = False
         for row_id, tab_id in plan.claim:
@@ -4028,19 +4037,25 @@ class Bridge(QObject):
         for url, tab_id in plan.add:
             self.state.urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
             changed = True
+        changed = changed or self._prune_auto_rows(plan) > 0
         if changed:
             # system action, reproducible by re-scan: no undo spam
             self._save_arena()
             self._emit_arena_state()
         return changed
 
-    def _report_auto_plan(self, plan, revived: int, stale: list):
-        """Pool emit + one-line summary when the scan changed anything."""
-        if plan.connect or revived or stale:
+    def _report_auto_plan(self, plan, revived: int, stale: list, source: str):
+        """Pool emit + summary; manual scans always answer, auto only on change."""
+        changed = plan.add or plan.claim or plan.connect or revived or stale or plan.remove
+        if not changed:
+            if source == "manual":
+                self._log("🤖 Reparse: no changes — rows and pool already match open tabs", "info")
+            return
+        if plan.connect or revived or stale or plan.remove:
             self._emit_pool_status()
-        if plan.add or plan.claim or plan.connect or revived or stale:
-            self._log(f"🤖 Auto-connect: +{len(plan.add)} rows, {len(plan.claim)} linked, "
-                      f"{len(plan.connect)} joined, {revived} revived, {len(stale)} stale", "info")
+        self._log(f"🤖 Auto-connect: +{len(plan.add)} rows, {len(plan.claim)} linked, "
+                  f"{len(plan.connect)} joined, {revived} revived, {len(stale)} stale, "
+                  f"{len(plan.remove)} removed", "info")
 
     async def _join_new_tabs(self, sockets) -> None:
         """Pool-join each connectable tab; skips empty sockets."""
@@ -4048,26 +4063,97 @@ class Bridge(QObject):
             if ws:
                 await self._do_connect_page_pool(ws)
 
-    async def _do_auto_connect_scan(self):
+    def _auto_prune_allowed(self, tabs) -> bool:
+        """Prune dead rows only with a healthy tab list and no live run."""
+        if getattr(self, "_run_state", "idle") != "idle":
+            return False
+        return any(getattr(t, "id", "") or getattr(t, "ws_url", "") for t in tabs or [])
+
+    def _plan_auto_sync(self, tabs, pattern, rows):
+        """Plan the scan; attach safe row pruning when allowed."""
+        from app.services.auto_connect import live_tab_keys, plan_auto_connect, prunable_row_ids
+        plan = plan_auto_connect(tabs, pattern, rows, self._pooled_ids())
+        if self._auto_prune_allowed(tabs):
+            plan.remove = prunable_row_ids(rows, live_tab_keys(tabs))
+        return plan
+
+    async def _do_auto_connect_scan(self, source: str = "auto"):
         """Fetch tabs, sync rows + pool + presence; skips when busy."""
         if self._auto_scan_running:
             return
         self._auto_scan_running = True
         try:
-            from app.services.auto_connect import plan_auto_connect, sync_pool_presence
+            from app.services.auto_connect import sync_pool_presence
             tabs = await self.cdp.fetch_tabs()
             pattern = self.config.get_state("url_pattern", "arena.ai")
             rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id} for u in self.state.urls]
-            plan = plan_auto_connect(tabs, pattern, rows, self._pooled_ids())
+            plan = self._plan_auto_sync(tabs, pattern, rows)
             self._apply_auto_plan(plan)
             await self._join_new_tabs(plan.connect)
             live = {(t.id or t.ws_url) for t in tabs or []} - {""}
             revived, stale = sync_pool_presence(self._page_pool, live)
-            self._report_auto_plan(plan, revived, stale)
+            self._report_auto_plan(plan, revived, stale, source)
         except Exception as e:
             self._log(f"Auto-connect scan skipped: {e}", "warn")
         finally:
             self._auto_scan_running = False
+
+    def _popup_targets(self) -> list:
+        """Enabled rows with live pool tabs: [(tab_id, ws_url, title)]."""
+        targets, seen = [], set()
+        try:
+            pool = self._page_pool
+            if not pool:
+                return targets
+            for u in self.state.urls:
+                if not (u.enabled and u.tab_id) or u.tab_id in seen:
+                    continue
+                page = pool.get_page(u.tab_id)
+                if page is None or not page.is_connected:
+                    continue
+                seen.add(u.tab_id)
+                targets.append((u.tab_id, page.ws_url or "", page.title or ""))
+        except Exception:
+            pass
+        return targets
+
+    async def _bring_tab_front(self, ws_url: str, tab_id: str) -> bool:
+        """Reconnect the pool client and activate its tab. Never raises."""
+        try:
+            client, _ctrl = self._page_pool.get_clients(tab_id)
+            if client is None or not ws_url:
+                return False
+            if not await client.connect(ws_url):
+                return False
+            await client.send("Page.bringToFront", {}, timeout=10)
+            return True
+        except Exception:
+            return False
+
+    @Slot(result=str)
+    def popup_url_tabs(self):
+        """Popup-on-top: front every active URL tab + raise its OS window."""
+        if not self._page_pool:
+            return json.dumps({"ok": False, "error": "pool not initialized"})
+        self._schedule_coro(self._do_popup_url_tabs())
+        return "pending"
+
+    async def _do_popup_url_tabs(self):
+        """Front live tabs via CDP, then raise their desktop windows."""
+        from app.utils.win_popup import raise_window_titles
+        targets = self._popup_targets()
+        if not targets:
+            self._log("⏫ Popup: no active URL tabs (need enabled + linked + connected)", "warn")
+            return
+        fronted = 0
+        for tab_id, ws_url, _title in targets:
+            if await self._bring_tab_front(ws_url, tab_id):
+                fronted += 1
+        try:
+            raised = raise_window_titles([t for _i, _w, t in targets])
+        except Exception:
+            raised = 0
+        self._log(f"⏫ Popup: {fronted}/{len(targets)} tabs fronted, {raised} windows raised", "success")
 
     @Slot(str)
     def connect_tab(self, ws_url: str):

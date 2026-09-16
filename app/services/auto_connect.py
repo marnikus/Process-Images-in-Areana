@@ -18,12 +18,13 @@ from app.browser.cdp_protocol import is_devtools_url
 @dataclass
 class AutoConnectPlan:
     """One scan outcome: rows to add (url, tab_id) / claim (row_id, tab_id),
-    tab sockets to join, pooled ids gone from Chrome."""
+    tab sockets to join, pooled ids gone from Chrome, linked rows to drop."""
 
     add: list = field(default_factory=list)
     claim: list = field(default_factory=list)
     connect: list = field(default_factory=list)
     stale: list = field(default_factory=list)
+    remove: list = field(default_factory=list)
 
 
 def matches_pattern(url: Any, pattern: Any) -> bool:
@@ -90,15 +91,30 @@ def _apply_row_action(plan: AutoConnectPlan, action, tab: Any, key: str) -> None
         plan.add.append((getattr(tab, "url", ""), key))
 
 
+def live_tab_keys(tabs: Any) -> set:
+    """Keyed ids of real tabs in this fetch (pattern-independent)."""
+    return {_tab_key(t) for t in _live_tabs(tabs)}
+
+
+def prunable_row_ids(rows: Any, live_keys) -> list:
+    """Ids of linked rows whose tabs vanished from the live keys."""
+    live = live_keys or set()
+    gone = []
+    for r in rows or []:
+        tid = r.get("tab_id", "")
+        if tid and tid not in live:
+            gone.append(r.get("id", ""))
+    return gone
+
+
 def plan_auto_connect(tabs: Any, pattern: Any, rows: Any, pooled: Any) -> AutoConnectPlan:
     """Pure plan: rows to add/claim, sockets to join, ids gone stale."""
     pooled = set(pooled or [])
     rows_by_tab, unlinked = _row_index(rows)
     plan = AutoConnectPlan()
-    live = set()
+    live = live_tab_keys(tabs)
     for tab in _live_tabs(tabs):
         key = _tab_key(tab)
-        live.add(key)
         if not matches_pattern(getattr(tab, "url", ""), pattern):
             continue
         _apply_row_action(plan, _row_action(rows_by_tab, unlinked, tab, key), tab, key)

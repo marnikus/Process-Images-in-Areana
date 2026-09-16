@@ -107,3 +107,26 @@ def test_sync_pool_presence_tolerates_garbage():
     assert ac.sync_pool_presence(None, {"a"}) == (0, [])
     pool = PagePool()
     assert ac.sync_pool_presence(pool, None) == (0, [])
+
+
+@pytest.mark.unit
+def test_live_tab_keys_skips_devtools_and_keyless():
+    tabs = [tab("t1", A1), tab("t2", "devtools://x"),
+            TabInfo(id="", title="", url=A2, ws_url="")]
+    assert ac.live_tab_keys(tabs) == {"t1"}
+    assert ac.live_tab_keys(None) == set()
+
+
+@pytest.mark.unit
+def test_prunable_row_ids_only_linked_gone():
+    rows = [row("r1", A1, "t1"), row("r2", A2, "gone"),
+            row("r3", A2), row("r4", "https://other.example/", "t9")]
+    assert ac.prunable_row_ids(rows, {"t1", "t9"}) == ["r2"]
+    assert ac.prunable_row_ids(rows, None) == ["r1", "r2", "r4"]
+    assert ac.prunable_row_ids(None, {"t1"}) == []
+
+
+@pytest.mark.unit
+def test_plan_remove_defaults_empty():
+    plan = ac.plan_auto_connect([tab("t1", A1)], "arena.ai", [row("r9", A1, "gone")], set())
+    assert plan.remove == []  # bridge fills it only when pruning is safe

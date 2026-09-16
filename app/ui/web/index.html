@@ -29,6 +29,7 @@
       <div class="tab-select-wrap" style="display:flex; align-items:center; gap:6px;">
         <select id="tabSelect" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; min-width:260px;"><option value="">— Select Chrome Tab —</option></select>
         <button id="refreshTabsBtn" class="btn-icon" title="Refresh tabs"><span class="material-icons">refresh</span></button>
+        <button id="reparseTabsBtn" class="btn-icon" title="Reparse now: rescan open tabs, add new matches, drop dead rows"><span class="material-icons">autorenew</span></button>
       </div>
       <span id="connectionStatus" class="status-dot disconnected" title="Disconnected"></span>
       <button id="connectBtn" class="btn-primary" title="Connect to selected tab"><span class="material-icons">link</span> Connect</button>
@@ -58,7 +59,7 @@
 
     <!-- URL LIST -->
     <div class="panel" id="winUrlList" data-window="url_list">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List <button id="urlReparseBtn" class="btn-small" title="Reparse now: rescan open tabs, add new matches, drop dead rows">🔄 Reparse</button><button id="urlPopupBtn" class="btn-small" title="Popup on top: bring every active URL tab and its window to the front">⏫ Popup tabs</button> <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
       <div style="display:flex; gap:6px; margin-bottom:8px;">
         <input id="urlInput" type="text" placeholder="https://example.com/page" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
         <button id="urlAddBtn" class="btn-primary" style="padding:6px 12px;">Add</button>
