@@ -129,6 +129,10 @@ class MainWindow(QMainWindow):
             self.config_manager.window_presets.save()
             self.config_manager.undo.save()
             self.config_manager.presets.save()
+            try:
+                self.bridge._persist_cooldowns()
+            except Exception:
+                pass
             self.view.page().runJavaScript("typeof SashGrid !== 'undefined' && SashGrid.flushPersistence && SashGrid.flushPersistence()")
         except Exception:
             pass
