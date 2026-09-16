@@ -107,6 +107,8 @@ class Bridge(QObject):
         self._find_in_progress = False
         self._connect_in_progress = False
         self._auto_scan_running = False
+        self._persist_ok = True
+        self._restore_note_done = False
         # thumbnail cache + thread pool to avoid UI freeze on mouse clicks
         # Previously get_image_thumbnail did PIL thumbnail sync in main thread for 80 images -> freeze
         self._thumb_cache = {}
@@ -268,8 +270,13 @@ class Bridge(QObject):
                 return
             from app.persistence.cooldown_store import save_pool_snapshot
             save_pool_snapshot(self._cooldowns_path(), self._page_pool)
-        except Exception:
-            pass
+            if not self._persist_ok:
+                self._persist_ok = True
+                self._log("✅ Cooldown autosave recovered", "success")
+        except Exception as e:
+            if self._persist_ok:
+                self._persist_ok = False
+                self._log(f"⚠ Cooldown autosave failing ({e}) — timers will NOT survive restart", "warn")
 
     def _restore_job_counter(self, tab_id: str, page_url: str):
         """Re-apply one tab's saved job counter (never moves backwards)."""
@@ -281,31 +288,54 @@ class Bridge(QObject):
         except Exception:
             pass
 
+    def _log_restore_miss(self, tab_id: str, page_url: str, entries: dict, report: dict):
+        """Loud miss: file-level notes once, tab-level mismatch per tab."""
+        if report.get("live", 0) == 0:
+            if self._restore_note_done:
+                return
+            self._restore_note_done = True
+            if not report.get("exists"):
+                self._log("⏳ No saved timers file yet — nothing to resume", "info")
+            elif report.get("dropped"):
+                self._log(f"⏳ Saved timer(s) already expired while app was closed "
+                          f"({len(report['dropped'])} dropped) — tab starts ready", "info")
+            else:
+                self._log("⏳ Saved timers file is empty — nothing to resume", "info")
+            return
+        want = f"{tab_id[:12]} / {page_url[:60]}"
+        have = ", ".join(f"{k[:8]}:{(v.get('url', '') if isinstance(v, dict) else '')[:40]}"
+                         for k, v in list(entries.items())[:5])
+        self._log(f"⚠ Cooldown restore missed for {want} — {report['live']} live saved timer(s) "
+                  f"for other tabs ({have}); tab ids/URLs changed since save?", "warn")
+
+    def _apply_restored_entry(self, path: str, entries: dict, tab_id: str, entry: dict):
+        """Apply a consumed entry: persist it back, announce, emit."""
+        from app.persistence.cooldown_store import save_entries
+        from app.services.cooldown_service import restore_cooldown_entry
+        if not restore_cooldown_entry(self._page_pool, tab_id, entry):
+            return
+        save_entries(path, entries)
+        page = self._page_pool.get_page(tab_id)
+        left = page.remaining_seconds() if page else 0
+        self._log(f"⏳ Restored cooldown for {tab_id[:12]}: {left // 60:02d}:{left % 60:02d} left (timer kept running while app was closed)", "info")
+        self._emit_pool_status()
+
     def _restore_page_state(self, tab_id: str):
         """Re-apply persisted wall-clock pause + job counter after restart."""
         try:
             if not self._page_pool or not tab_id:
                 return
-            from app.persistence.cooldown_store import consume_entry_for, load_entries, save_entries
-            from app.services.cooldown_service import restore_cooldown_entry
+            from app.persistence.cooldown_store import consume_entry_for, describe_cooldown_file, load_entries
             path = self._cooldowns_path()
             entries = load_entries(path)
             page = self._page_pool.get_page(tab_id)
             page_url = getattr(page, "url", "") if page else ""
-            try:
-                known_ids = set(self._page_pool._pages.keys())
-            except Exception:
-                known_ids = set()
-            _key, entry = consume_entry_for(entries, tab_id, page_url, known_ids)
+            _key, entry = consume_entry_for(entries, tab_id, page_url, self._pooled_ids())
             self._restore_job_counter(tab_id, page_url)
             if not entry:
+                self._log_restore_miss(tab_id, page_url, entries, describe_cooldown_file(path))
                 return
-            if restore_cooldown_entry(self._page_pool, tab_id, entry):
-                save_entries(path, entries)
-                page = self._page_pool.get_page(tab_id)
-                left = page.remaining_seconds() if page else 0
-                self._log(f"⏳ Restored cooldown for {tab_id[:12]}: {left // 60:02d}:{left % 60:02d} left (timer kept running while app was closed)", "info")
-                self._emit_pool_status()
+            self._apply_restored_entry(path, entries, tab_id, entry)
         except Exception as e:
             self._log(f"Cooldown restore skipped: {e}", "warn")
 

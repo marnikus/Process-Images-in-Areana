@@ -171,3 +171,36 @@ def test_normalize_url():
     assert store.normalize_url("https://Arena.AI/X/") == "https://arena.ai/x"
     assert store.normalize_url(None) == ""
     assert store.normalize_url(42) == ""
+
+
+def test_describe_missing_file(tmp_path):
+    rep = store.describe_cooldown_file(str(tmp_path / "nope.json"))
+    assert rep == {"exists": False, "raw": 0, "live": 0, "dropped": []}
+
+
+def test_describe_empty_and_malformed(tmp_path):
+    path = tmp_path / "c.json"
+    path.write_text('{"version": 1, "entries": {}}')
+    assert store.describe_cooldown_file(str(path))["live"] == 0
+    path.write_text('{"version": 1, "entries": [1, 2]}')
+    rep = store.describe_cooldown_file(str(path))
+    assert (rep["exists"], rep["raw"], rep["live"]) == (True, 0, 0)
+    path.write_text('not json {{{')
+    rep = store.describe_cooldown_file(str(path))
+    assert (rep["exists"], rep["live"]) == (True, 0)
+
+
+def test_describe_live_and_dropped(tmp_path):
+    path = str(tmp_path / "c.json")
+    now = time.time()
+    doc = {"version": 1, "entries": {
+        "live": {"tab_id": "live", "url": "https://arena.ai/x",
+                 "cooldown_until": now + 200, "pending_penalty": 0},
+        "old": {"tab_id": "old", "url": "https://arena.ai/x",
+                "cooldown_until": now - 200, "pending_penalty": 0},
+        "junk": [1, 2]}}
+    with open(path, "w") as f:
+        json.dump(doc, f)
+    rep = store.describe_cooldown_file(str(path))
+    assert (rep["exists"], rep["raw"], rep["live"]) == (True, 3, 1)
+    assert sorted(rep["dropped"]) == ["junk", "old"]

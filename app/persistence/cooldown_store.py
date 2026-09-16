@@ -63,6 +63,17 @@ def save_entries(path, entries: dict) -> None:
     _write_doc(path, entries, load_stats(path))
 
 
+def describe_cooldown_file(path) -> dict:
+    """One extra read of diagnostics for restore logging (no writes)."""
+    exists = Path(path).exists()
+    raw = _load_json(Path(path), {})
+    entries = raw.get("entries", {}) if isinstance(raw, dict) else {}
+    total = len(entries) if isinstance(entries, dict) else 0
+    live = load_entries(path)
+    dropped = [k for k in (entries if isinstance(entries, dict) else {}) if k not in live]
+    return {"exists": exists, "raw": total, "live": len(live), "dropped": dropped}
+
+
 def _saved_jobs(val: Any) -> int:
     """Counter inside a stats value; 0 unless a valid dict entry."""
     if not isinstance(val, dict):
