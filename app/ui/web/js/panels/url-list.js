@@ -211,6 +211,40 @@ const UrlList = {
     return hostBest;
   },
 
+  scorePoolPage(rowUrl, pageUrl) {
+    const q = this._extractUrl(rowUrl).toLowerCase();
+    const pu = (pageUrl || '').toLowerCase();
+    if (!pu || !q) return 0;
+    if (pu === q) return 500;
+    if (pu.startsWith(q) || q.startsWith(pu)) return 300;
+    try {
+      if (new URL(pageUrl).host === new URL(rowUrl).host) return 200;
+    } catch {}
+    return 0;
+  },
+
+  assignPoolPages(rows, pages) {
+    // Greedy 1:1 — best score first, each page claimed once, so a cooling
+    // tab can't hide behind a steady twin with a similar URL. Rows left
+    // without a claim fall back to shared best-match (1 tab serves N rows).
+    const cands = [];
+    rows.forEach((tr, ri) => {
+      (pages || []).forEach((p, pi) => {
+        const s = this.scorePoolPage(tr.dataset.url || '', p.url);
+        if (s > 0) cands.push({ri, pi, s});
+      });
+    });
+    cands.sort((a, b) => b.s - a.s);
+    const claimed = new Map(), taken = new Set();
+    cands.forEach(c => {
+      if (!claimed.has(c.ri) && !taken.has(c.pi)) {
+        claimed.set(c.ri, c.pi);
+        taken.add(c.pi);
+      }
+    });
+    return claimed;
+  },
+
   refreshCooldownCells() {
     if (typeof PagePoolPanel === 'undefined') return;
     const tbody = document.getElementById('urlTableBody');
@@ -218,7 +252,13 @@ const UrlList = {
     const snapAt = PagePoolPanel.snapAt || 0;
     if (snapAt && snapAt !== this._coolSnapAt) {
       this._coolSnapAt = snapAt;
-      tbody.querySelectorAll('tr').forEach(tr => this._fillCoolCell(tr));
+      const rows = [...tbody.querySelectorAll('tr')];
+      const pages = (PagePoolPanel.snapshot && PagePoolPanel.snapshot.pages) || [];
+      const claimed = this.assignPoolPages(rows, pages);
+      rows.forEach((tr, ri) => {
+        const page = claimed.has(ri) ? pages[claimed.get(ri)] : this.matchPoolPage(tr.dataset.url || '');
+        this._fillCoolCell(tr, page);
+      });
       return;
     }
     tbody.querySelectorAll('.url-cool-cell [data-cool-left]').forEach(el => {
@@ -231,10 +271,10 @@ const UrlList = {
     });
   },
 
-  _fillCoolCell(tr) {
+  _fillCoolCell(tr, page) {
     const cell = tr.querySelector('.url-cool-cell');
     if (!cell) return;
-    const page = this.matchPoolPage(tr.dataset.url || '');
+    if (typeof page === 'undefined') page = this.matchPoolPage(tr.dataset.url || '');
     const resetBtn = tr.querySelector('button[data-action="cool-reset"]');
     const editBtn = tr.querySelector('button[data-action="cool-edit"]');
     const setTab = (btn, tabId) => {

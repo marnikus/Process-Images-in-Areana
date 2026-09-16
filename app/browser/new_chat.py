@@ -125,6 +125,23 @@ def _is_cancelled(ctx: ResetCtx) -> bool:
         return False
 
 
+# Fresh new chat has no file/output yet — their absence is not failure.
+# prompt/send/Security reasons still block (composer proof required anyway).
+_FRESH_CHAT_OK = frozenset({
+    "file not found", "file not visible",
+    "output not found", "output not visible",
+})
+
+
+def _fresh_chat_ready(ready: bool, reasons) -> bool:
+    """Ready gate that tolerates missing file/output on a fresh chat."""
+    if ready:
+        return True
+    if not reasons:
+        return False
+    return all(r in _FRESH_CHAT_OK for r in (reasons or []))
+
+
 async def _wait_page_loaded(ctx: ResetCtx) -> tuple[bool, str]:
     """Poll until document complete + page ready + composer empty."""
     deadline = time.monotonic() + max(1.0, float(ctx.timeout_sec or 30))
@@ -137,7 +154,7 @@ async def _wait_page_loaded(ctx: ResetCtx) -> tuple[bool, str]:
                 ready, reasons = await ctx.ctrl.is_page_ready()
             except Exception as e:
                 return False, f"readiness check failed: {e}"
-            if ready and await _is_composer_empty(ctx.client):
+            if _fresh_chat_ready(ready, reasons) and await _is_composer_empty(ctx.client):
                 return True, "new chat ready"
             last = f"ready={ready} reasons={reasons}"
         else:

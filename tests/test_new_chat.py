@@ -159,3 +159,29 @@ async def test_reset_honours_cancel(monkeypatch):
     ok, reason = await nc.reset_to_new_chat(ctx)
     assert ok is False
     assert "cancel" in reason.lower()
+
+
+@pytest.mark.unit
+def test_fresh_chat_ready_rule():
+    assert nc._fresh_chat_ready(True, []) is True
+    assert nc._fresh_chat_ready(False, ["file not visible", "output not found"]) is True
+    assert nc._fresh_chat_ready(False, ["output not found"]) is True
+    assert nc._fresh_chat_ready(False, ["prompt not found"]) is False
+    assert nc._fresh_chat_ready(False, ["send not visible", "output not found"]) is False
+    assert nc._fresh_chat_ready(False, ["Security dialog"]) is False
+    assert nc._fresh_chat_ready(False, []) is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_reset_accepts_fresh_chat_without_output(monkeypatch):
+    # user log 2026-09-16: fresh new chat has no file/output yet — not failure
+    async def fake_click(client, req, engine=None):
+        return "ok"
+
+    monkeypatch.setattr(nc, "find_and_click", fake_click)
+    ctrl = FakeCtrl(ready_seq=[(False, ["file not visible", "output not found"])])
+    ctx = make_ctx(ctrl=ctrl, timeout=5)
+    ok, reason = await nc.reset_to_new_chat(ctx)
+    assert ok is True
+    assert reason == "new chat ready"
