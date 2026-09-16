@@ -3335,12 +3335,12 @@ class Bridge(QObject):
                         last_status=u.get("status","unchecked"),
                         last_checked=u.get("last_checked"),
                         error=u.get("last_error") or u.get("error"),
-                        cooldown_seconds=int(u.get("cooldown_seconds", 300)),
+                        cooldown_seconds=int(u.get("cooldown_seconds", 300) or 300),
                         cooldown_until=u.get("cooldown_until"),
-                        captcha_penalty_seconds=int(u.get("captcha_penalty_seconds", 900)),
-                        captcha_count=int(u.get("captcha_count", 0)),
+                        captcha_penalty_seconds=int(u.get("captcha_penalty_seconds", 900) or 900),
+                        captcha_count=int(u.get("captcha_count", 0) or 0),
                         last_completed_at=u.get("last_completed_at"),
-                        total_cooldown_penalties=int(u.get("total_cooldown_penalties", 0)),
+                        total_cooldown_penalties=int(u.get("total_cooldown_penalties", 0) or 0),
                     ) for i, u in enumerate(value)]
                     self._save_arena()
             elif kind == "folder":
@@ -3438,12 +3438,12 @@ class Bridge(QObject):
                         last_status=u.get("status","unchecked"),
                         last_checked=u.get("last_checked"),
                         error=u.get("last_error") or u.get("error"),
-                        cooldown_seconds=int(u.get("cooldown_seconds", 300)),
+                        cooldown_seconds=int(u.get("cooldown_seconds", 300) or 300),
                         cooldown_until=u.get("cooldown_until"),
-                        captcha_penalty_seconds=int(u.get("captcha_penalty_seconds", 900)),
-                        captcha_count=int(u.get("captcha_count", 0)),
+                        captcha_penalty_seconds=int(u.get("captcha_penalty_seconds", 900) or 900),
+                        captcha_count=int(u.get("captcha_count", 0) or 0),
                         last_completed_at=u.get("last_completed_at"),
-                        total_cooldown_penalties=int(u.get("total_cooldown_penalties", 0)),
+                        total_cooldown_penalties=int(u.get("total_cooldown_penalties", 0) or 0),
                     ) for i, u in enumerate(value)]
                     self._save_arena()
                     self._log(f"↩ Undo URLs ({len(value)} items)", "info")
