@@ -1985,10 +1985,15 @@ class Bridge(QObject):
             from app.utils.correlation import generate_correlation_id, build_final_prompt
             from app.core.naming import get_output_path, atomic_write_bytes
             from app.core.enums import ImageStatus
+            from app.services.cooldown_service import resolve_primary_tab, wait_for_batch_ready
             import asyncio
 
             ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
             primary_tab_id = getattr(self.cdp, "_current_tab_id", "") or ""
+            try:
+                primary_tab_id = resolve_primary_tab(self._page_pool, primary_tab_id)
+            except Exception:
+                pass
             ready, reasons = await ctrl.is_page_ready()
             if not ready:
                 self._log(f"⚠ Page not ready: {', '.join(reasons)} — trying anyway", "warn")
@@ -2024,6 +2029,20 @@ class Bridge(QObject):
                         self._log(f"ℹ Pool empty — using primary CDP connection single mode. Connect tabs to enable parallel.", "info")
             except Exception as e:
                 self._log(f"Parallel dispatch check failed {e}, fallback to single", "warn")
+
+            # Batch-start gate (single mode): new Start during active cooldown
+            # waits for 00:00 + ready before the first job (spec 02/03).
+            try:
+                if self._page_pool and primary_tab_id:
+                    await self._ensure_pool_page(primary_tab_id)
+                    _batch_go = await wait_for_batch_ready(self._page_pool, [primary_tab_id], self)
+                    if not _batch_go:
+                        self._log("Batch start aborted during cooldown wait", "warn")
+                        self._run_state = "idle"
+                        self._emit_arena_state()
+                        return
+            except Exception as e:
+                self._log(f"Batch-start cooldown wait skipped: {e}", "warn")
 
             url_idx = 0
             for img in selected_images:

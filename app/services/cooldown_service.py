@@ -1,4 +1,4 @@
-# ideal-size: ~345 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+# ideal-size: ~380 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
 """Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
 
 Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
@@ -100,6 +100,20 @@ def ensure_pool_page(pool: Any, info: PageInfo) -> bool:
     with pool._lock:
         _fill_missing(page, info.title, info.url)
     return True
+
+
+def resolve_primary_tab(pool: Any, tab_id: str) -> str:
+    """Adopt the single pooled page when the captured id is empty."""
+    tab_id = tab_id or ""
+    if pool is None or tab_id:
+        return tab_id
+    try:
+        pages = pool.status_snapshot().get("pages", [])
+    except Exception:
+        return tab_id
+    if len(pages) == 1:
+        return pages[0].get("tab_id", "") or tab_id
+    return tab_id
 
 
 def start_cooldown(pool, tab_id, base_seconds, reason="") -> bool:
@@ -257,6 +271,27 @@ async def wait_for_tab_ready(pool, tab_id, bridge) -> bool:
             left = format_remaining(page.remaining_seconds())
             _log(bridge, f"⏳ Tab {str(tab_id)[:8]} cooling {left} — next job waits", "info")
         await asyncio.sleep(_POLL_SEC)
+
+
+def _is_cooling_now(pool, tab_id: str) -> bool:
+    """True when the tab currently gates jobs behind its pause."""
+    try:
+        page = pool.get_page(tab_id)
+        return page is not None and page.is_cooling()
+    except Exception:
+        return False
+
+
+async def wait_for_batch_ready(pool, tab_ids, bridge) -> bool:
+    """Batch-start gate: every listed tab steady before the first job."""
+    for tab_id in tab_ids or []:
+        if not tab_id:
+            continue
+        if _is_cooling_now(pool, tab_id):
+            _log(bridge, f"⏳ New Start during cooldown — tab {str(tab_id)[:8]} must reach 00:00 + ready first", "info")
+        if not await wait_for_tab_ready(pool, tab_id, bridge):
+            return False
+    return True
 
 
 async def finish_page_after_job(ctx: FinishCtx) -> bool:

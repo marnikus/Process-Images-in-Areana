@@ -288,3 +288,57 @@ def test_ensure_fills_empty_url_title_only():
 def test_ensure_rejects_missing_pool_or_tab():
     assert svc.ensure_pool_page(None, PageInfo(tab_id="t")) is False
     assert svc.ensure_pool_page(PagePool(), PageInfo(tab_id="")) is False
+
+
+@pytest.mark.unit
+def test_resolve_primary_tab_adopts_single_page():
+    pool = PagePool()
+    pool.add_page(make_info("only"))
+    assert svc.resolve_primary_tab(pool, "") == "only"
+    assert svc.resolve_primary_tab(pool, "only") == "only"
+    assert svc.resolve_primary_tab(pool, "ghost") == "ghost"
+    pool.add_page(make_info("second"))
+    assert svc.resolve_primary_tab(pool, "") == ""
+
+
+@pytest.mark.unit
+def test_resolve_primary_tab_no_pool():
+    assert svc.resolve_primary_tab(None, "") == ""
+    assert svc.resolve_primary_tab(None, "x") == "x"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_for_batch_ready_immediate_when_ready():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    bridge = make_bridge()
+    assert await svc.wait_for_batch_ready(pool, ["a"], bridge) is True
+    assert await svc.wait_for_batch_ready(pool, [], bridge) is True
+    assert await svc.wait_for_batch_ready(pool, [""], bridge) is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_for_batch_ready_waits_for_zero(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0.01)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.start_cooldown(pool, "a", 2, reason="job done")
+    bridge = make_bridge()
+    started = time.monotonic()
+    assert await svc.wait_for_batch_ready(pool, ["a"], bridge) is True
+    assert time.monotonic() - started >= 0.5
+    assert pool.get_page("a").status == PageStatus.STEADY
+    assert any("00" in m or "cooldown" in m.lower() for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_for_batch_ready_cancel_returns_false(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0.01)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.start_cooldown(pool, "a", 300, reason="job done")
+    bridge = make_bridge(cancelled=True)
+    assert await svc.wait_for_batch_ready(pool, ["a"], bridge) is False
