@@ -23,15 +23,6 @@ class PagePool:
         self._host = "127.0.0.1"
         self._port = 9222
 
-    def set_host_port(self, host: str, port: int):
-        if host:
-            self._host = str(host)
-        if port:
-            try:
-                self._port = int(port)
-            except Exception:
-                pass
-
     def add_page(self, info: PageInfo):
         tid = info.tab_id or info.ws_url
         if not tid:
@@ -115,14 +106,30 @@ class PagePool:
                     return p
             return None
 
-    async def wait_for_free_page(self, timeout_sec: float, cancel_check=None) -> Optional[PageInfo]:
+    async def acquire_free_page(self, job_id: str) -> Optional[PageInfo]:
+        async with self._lock:
+            for p in self._pages.values():
+                if p.is_free():
+                    p.status = PageStatus.BUSY
+                    p.current_job_id = job_id
+                    p.busy_since = now_iso()
+                    p.error = None
+                    return p
+            return None
+
+    async def wait_for_free_page(self, timeout_sec: float, cancel_check=None, job_id: str = None) -> Optional[PageInfo]:
         start = asyncio.get_event_loop().time()
         while True:
             if cancel_check and cancel_check():
                 return None
-            free = await self.get_free_page()
-            if free:
-                return free
+            if job_id:
+                acquired = await self.acquire_free_page(job_id)
+                if acquired:
+                    return acquired
+            else:
+                free = await self.get_free_page()
+                if free:
+                    return free
             if asyncio.get_event_loop().time() - start > timeout_sec:
                 return None
             await asyncio.sleep(0.5)

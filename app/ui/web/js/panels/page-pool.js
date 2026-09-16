@@ -90,10 +90,21 @@ const PagePoolPanel = {
     setText('poolFree', snap.free||snap.steady||0);
     const badge = document.getElementById('poolStatusBadge');
     if (badge) {
-      badge.textContent = `${snap.total} pages ${snap.steady} steady ${snap.busy} busy`;
-      if (snap.busy>0) { badge.style.background='rgba(20,80,180,0.9)'; badge.style.color='#fff'; }
-      else if (snap.total>=2) { badge.style.background='var(--bg-success,#1a3a1a)'; badge.style.color='#4ade80'; }
-      else { badge.style.background='var(--bg-input)'; badge.style.color='var(--text-muted)'; }
+      if (snap.total>=2) {
+        badge.textContent = `✅ ${snap.total} pages ${snap.steady} steady ${snap.busy} busy — parallel ready`;
+        badge.style.background='var(--bg-success,#1a3a1a)'; badge.style.color='#4ade80';
+      } else if (snap.total===1) {
+        badge.textContent = `⚠ ${snap.total} page only — connect 2nd tab for parallel`;
+        badge.style.background='rgba(180,120,20,0.3)'; badge.style.color='#ffcc00';
+      } else {
+        badge.textContent = `${snap.total} pages ${snap.steady} steady ${snap.busy} busy`;
+        badge.style.background='var(--bg-input)'; badge.style.color='var(--text-muted)';
+      }
+      if (snap.busy>0) {
+        badge.textContent = `${snap.total} pages ${snap.steady} steady ${snap.busy} busy`;
+        badge.style.background='rgba(20,80,180,0.9)'; badge.style.color='#fff';
+        if (snap.total>=2) badge.textContent = `⏳ ${snap.total} pages ${snap.steady} steady ${snap.busy} busy — parallel running`;
+      }
     }
     const tbody = document.getElementById('poolTableBody');
     if (!tbody) return;

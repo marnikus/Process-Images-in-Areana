@@ -236,6 +236,9 @@ function setupBridgeListeners() {
   if (b.connection_status) {
     b.connection_status.connect((status) => {
       if (typeof CDPPanel !== 'undefined') CDPPanel.onConnectionStatus(status);
+      if (typeof PagePoolPanel !== 'undefined' && status === 'connected') {
+        setTimeout(()=>PagePoolPanel.refresh(), 800);
+      }
     });
   }
   if (b.tab_match_result) {

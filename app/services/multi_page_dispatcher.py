@@ -107,8 +107,12 @@ async def _wait_pause(bridge):
             break
 
 
-async def _get_free_page(pool, bridge):
-    return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested)
+async def _get_free_page(pool, bridge, job_id: str):
+    try:
+        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
+    except TypeError:
+        # fallback old signature
+        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested)
 
 
 def _get_clients(pool, tab_id) -> Tuple[object, object]:
@@ -117,6 +121,27 @@ def _get_clients(pool, tab_id) -> Tuple[object, object]:
         return ctrl, client
     except Exception:
         return None, None
+
+
+async def _acquire_page(pool, bridge, job_id: str):
+    try:
+        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
+    except TypeError:
+        try:
+            if hasattr(pool, "acquire_free_page"):
+                start = asyncio.get_event_loop().time()
+                while True:
+                    if bridge._cancel_requested:
+                        return None
+                    p = await pool.acquire_free_page(job_id)
+                    if p:
+                        return p
+                    if asyncio.get_event_loop().time() - start > 600:
+                        return None
+                    await asyncio.sleep(0.5)
+        except Exception:
+            pass
+        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested)
 
 
 async def prepare_image_for_job(bridge, img, urls):
@@ -180,10 +205,28 @@ def _log_result(bridge, info: LogInfo):
         pass
 
 
+def _emit_status_safe(bridge):
+    try:
+        bridge._emit_pool_status()
+    except Exception:
+        pass
+
+
+async def _get_free_or_acquire(pool, bridge, img):
+    free_page = await _acquire_page(pool, bridge, img.id)
+    if free_page:
+        _emit_status_safe(bridge)
+        return free_page
+    free_page = await _get_free_page(pool, bridge, img.id)
+    if free_page:
+        _mark_busy_emit(pool, bridge, free_page.tab_id, img.id)
+    return free_page
+
+
 async def run_one_image_on_page(bridge, pool, img, urls):
     if bridge._cancel_requested:
         return
-    free_page = await _get_free_page(pool, bridge)
+    free_page = await _get_free_or_acquire(pool, bridge, img)
     if not free_page:
         _log_no_free(bridge, img)
         return
@@ -193,7 +236,6 @@ async def run_one_image_on_page(bridge, pool, img, urls):
         _log_no_ctrl(bridge, tab_id)
         _mark_steady_emit(pool, bridge, tab_id)
         return
-    _mark_busy_emit(pool, bridge, tab_id, img.id)
     _log_assign(bridge, img, tab_id, free_page)
     try:
         url_row, corr_id, job_id, failed, err = await _run_image_job(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=urls, tab_id=tab_id, ctrl=ctrl, client=client))

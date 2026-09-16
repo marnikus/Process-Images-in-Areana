@@ -178,7 +178,8 @@ class Bridge(QObject):
             except Exception:
                 host = "127.0.0.1"
                 port = 9222
-            self._page_pool.set_host_port(host, port)
+            self._page_pool._host = str(host)
+            self._page_pool._port = int(port)
         except Exception as e:
             try:
                 self._log(f"PagePool init failed: {e}", "warn")
@@ -1794,7 +1795,10 @@ class Bridge(QObject):
             self._page_pool.add_page(info)
             self._page_pool.register_client(tab_id, client, ctrl)
             self._emit_pool_status()
-            self._log(f"✅ Pool added {tab_id[:12]} steady — {info.title[:40]}", "success")
+            total, free = self._page_pool.get_counts()
+            self._log(f"✅ Pool added {tab_id[:12]} steady — {info.title[:40]} — total {total} free {free}", "success")
+            if total >= 2:
+                self._log(f"✅ {total} tabs in pool ready for parallel — 2+ images will dispatch to different webpages", "success")
         except Exception as e:
             self._log(f"Pool connect exception {e}", "error")
 
@@ -1853,11 +1857,15 @@ class Bridge(QObject):
                 if self._page_pool and len(selected_images) >= 2:
                     total, free = self._page_pool.get_counts()
                     if total >= 2 and free >= 1:
-                        self._log(f"🚀 Parallel mode: {total} pages {free} free, {len(selected_images)} images — dispatching to different pages steady/busy tracked", "success")
+                        self._log(f"🚀 Parallel mode: {total} pages {free} free, {len(selected_images)} images — dispatching to different pages steady/busy tracked, no double-send", "success")
                         self._emit_pool_status()
                         from app.services.multi_page_dispatcher import dispatch_parallel
                         await dispatch_parallel(self, self._page_pool, selected_images, urls)
                         return
+                    elif total == 1:
+                        self._log(f"ℹ Pool has only {total} page — connect 2nd tab via Page Pool → Add Selected Tab or URL LIST Connect for parallel. Running sequentially on 1 page.", "warn")
+                    elif total == 0:
+                        self._log(f"ℹ Pool empty — using primary CDP connection single mode. Connect tabs to enable parallel.", "info")
             except Exception as e:
                 self._log(f"Parallel dispatch check failed {e}, fallback to single", "warn")
 
@@ -3666,24 +3674,56 @@ class Bridge(QObject):
             if ok:
                 self._log(f"✅ Connected to {ws_url[:80]} (tab {self.cdp._current_tab_id[:20]}…)", "success")
                 self.connection_status.emit("connected")
-                # Log current host/port for verification
                 self._log(f"CDP session active on ws://{self.cdp._host}:{self.cdp._port}/devtools/page/{self.cdp._current_tab_id[:30]}", "info")
-                # Also add to PagePool as steady page for multi-page parallel
+                # Also add to PagePool as steady page with dedicated client
+                # Fix: previously pool reused self.cdp for all tabs, causing second tab to overwrite first and both jobs using same websocket -> Submit failed
+                # Now create dedicated CDPClient per tab for pool, so 2+ tabs truly independent
                 try:
                     if self._page_pool:
                         from app.browser.page_status import PageInfo
                         from app.browser.cdp_arena import CDPArenaController
-                        tab_id = getattr(self.cdp, '_current_tab_id', '') or ws_url
+                        from app.browser.cdp_client import CDPClient
+                        import re as _re
+                        m_id = _re.search(r'/devtools/page/([^/]+)$', ws_url)
+                        tab_id = m_id.group(1) if m_id else getattr(self.cdp, '_current_tab_id', '') or ws_url
                         title = getattr(self.cdp, '_current_title', '') or tab_id
                         url = getattr(self.cdp, '_current_url', '') or ''
-                        info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url)
-                        self._page_pool.add_page(info)
-                        ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
-                        self._page_pool.register_client(tab_id, self.cdp, ctrl)
-                        self._emit_pool_status()
-                        self._log(f"📦 Pool: added primary tab {tab_id[:12]} steady", "success")
+                        # Check if pool already has dedicated client for this tab_id
+                        existing_client, _ = self._page_pool.get_clients(tab_id)
+                        if existing_client and getattr(existing_client, 'is_connected', False):
+                            # Update info only, keep existing dedicated client
+                            info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url)
+                            self._page_pool.add_page(info)
+                            self._emit_pool_status()
+                            self._log(f"📦 Pool: tab {tab_id[:12]} already has dedicated client steady (reuse)", "info")
+                        else:
+                            # Create dedicated client for pool (independent from self.cdp)
+                            host = getattr(self.cdp, '_host', '127.0.0.1')
+                            port = getattr(self.cdp, '_port', 9222)
+                            dedicated = CDPClient(host=host, port=port)
+                            ok2 = await dedicated.connect(ws_url)
+                            if ok2:
+                                info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url)
+                                self._page_pool.add_page(info)
+                                ctrl2 = CDPArenaController(dedicated, log_callback=lambda m: self._log(m, "info"))
+                                self._page_pool.register_client(tab_id, dedicated, ctrl2)
+                                self._emit_pool_status()
+                                total, free = self._page_pool.get_counts()
+                                self._log(f"📦 Pool: added tab {tab_id[:12]} steady with dedicated client — total {total} pages {free} free", "success")
+                                if total >= 2:
+                                    self._log(f"✅ {total} tabs in pool ready for parallel — when 2+ images selected, Run will dispatch to different webpages (steady/busy tracked, no double-send)", "success")
+                            else:
+                                # Fallback: use primary client if dedicated fails
+                                info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url)
+                                self._page_pool.add_page(info)
+                                ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+                                self._page_pool.register_client(tab_id, self.cdp, ctrl)
+                                self._emit_pool_status()
+                                total_f, _ = self._page_pool.get_counts() if self._page_pool else (0, 0)
+                                self._log(f"📦 Pool: added primary tab {tab_id[:12]} steady (dedicated failed, using primary) — total {total_f}", "warn")
                 except Exception as e:
-                    self._log(f"Pool add primary failed: {e}", "warn")
+                    import traceback as _tb
+                    self._log(f"Pool add primary failed: {e} {_tb.format_exc()[-500:]}", "warn")
             else:
                 self._log(f"❌ Connect failed for {ws_url[:120]} — check Chrome still open on port {self.cdp._port}, try Diagnose", "error")
                 self._log(f"💡 Tip: Ensure Chrome was started with --remote-debugging-port={self.cdp._port} --user-data-dir=... and that http://{self.cdp._host}:{self.cdp._port}/json/list shows JSON in browser", "warn")
@@ -4060,7 +4100,8 @@ class Bridge(QObject):
                     pass
             if self._page_pool:
                 try:
-                    self._page_pool.set_host_port(host, port_i)
+                    self._page_pool._host = str(host)
+                    self._page_pool._port = int(port_i)
                 except Exception:
                     pass
             self._log(f"CDP config saved: {host}:{port_i} dir={user_data_dir}", "success")
