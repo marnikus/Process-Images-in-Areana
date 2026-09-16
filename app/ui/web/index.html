@@ -63,9 +63,15 @@
         <input id="urlInput" type="text" placeholder="https://example.com/page" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
         <button id="urlAddBtn" class="btn-primary" style="padding:6px 12px;">Add</button>
       </div>
+      <div id="urlCooldownBar" style="display:flex; gap:8px; align-items:center; margin-bottom:8px; font-size:11px; color:var(--text-muted); flex-wrap:wrap;" title="Job cycle & cooldown — same settings as Settings panel, one shared image queue">
+        <span>⏳ pause <input id="urlCooldownMin" type="number" min="0" max="1440" placeholder="5" style="width:52px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">m</span>
+        <span>🛡 +<input id="urlCooldownPenalty" type="number" min="0" max="1440" placeholder="15" style="width:52px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">m/captcha</span>
+        <label style="display:flex; align-items:center; gap:3px;"><input id="urlCooldownEnabled" type="checkbox" checked> on</label>
+        <button id="urlCooldownSaveBtn" class="btn-small">Save</button>
+      </div>
       <div style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px;">
         <table class="url-table">
-          <thead><tr><th>En</th><th>URL</th><th>Status</th><th>Conn</th><th>Error</th><th>Actions</th></tr></thead>
+          <thead><tr><th>En</th><th>URL</th><th>Status</th><th>Conn</th><th>Cooldown</th><th>Error</th><th>Actions</th></tr></thead>
           <tbody id="urlTableBody"></tbody>
         </table>
       </div>
