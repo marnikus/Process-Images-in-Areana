@@ -78,6 +78,7 @@ class Bridge(QObject):
     job_finished = Signal(str, str)  # jobId, resultJson
     watcher_status = Signal(str)  # JSON status
     watcher_log = Signal(str, str)  # msg, level
+    page_pool_updated = Signal(str)  # JSON snapshot steady/busy
 
     def __init__(self, config_manager: ConfigManager, state_path: Path, cdp_client=None, parent=None):
         super().__init__(parent)
@@ -165,6 +166,34 @@ class Bridge(QObject):
             except Exception:
                 pass
             self._watcher = None
+
+        # PagePool — multi-page steady/busy tracking
+        self._page_pool = None
+        try:
+            from app.browser.page_pool import PagePool
+            self._page_pool = PagePool(logger=lambda m, l="info": self._log(m, l))
+            try:
+                host = self.config.get_state("cdp_host", "127.0.0.1")
+                port = int(self.config.get_state("cdp_port", 9222))
+            except Exception:
+                host = "127.0.0.1"
+                port = 9222
+            self._page_pool.set_host_port(host, port)
+        except Exception as e:
+            try:
+                self._log(f"PagePool init failed: {e}", "warn")
+            except Exception:
+                pass
+            self._page_pool = None
+
+    def _emit_pool_status(self):
+        try:
+            if not self._page_pool:
+                return
+            snap = self._page_pool.status_snapshot()
+            self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
+        except Exception:
+            pass
 
     def _on_cdp_error(self, err_msg: str):
         try:
@@ -1686,6 +1715,89 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
+    # ---- PagePool — multi-page steady/busy tracking ----
+    @Slot(result=str)
+    def get_page_pool_status(self):
+        try:
+            if not self._page_pool:
+                return json.dumps({"total": 0, "steady": 0, "busy": 0, "free": 0, "pages": []})
+            snap = self._page_pool.status_snapshot()
+            self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
+            return json.dumps(snap, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    @Slot(result=str)
+    def clear_page_pool(self):
+        try:
+            if not self._page_pool:
+                return json.dumps({"ok": True, "cleared": 0})
+            snap = self._page_pool.status_snapshot()
+            count = snap.get("total", 0)
+            # Clear internal dicts
+            try:
+                self._page_pool._pages.clear()
+                self._page_pool._clients.clear()
+                self._page_pool._controllers.clear()
+            except Exception:
+                pass
+            self._emit_pool_status()
+            self._log(f"Page pool cleared {count} pages", "warn")
+            return json.dumps({"ok": True, "cleared": count})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def connect_page_pool(self, ws_url: str):
+        try:
+            if not self._page_pool:
+                return json.dumps({"ok": False, "error": "pool not initialized"})
+            if not ws_url:
+                return json.dumps({"ok": False, "error": "empty ws_url"})
+            self._log(f"🔗 Adding tab to pool {ws_url[:80]}… steady", "info")
+            self._schedule_coro(self._do_connect_page_pool(ws_url))
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def disconnect_page_pool(self, tab_id: str):
+        try:
+            if not self._page_pool:
+                return json.dumps({"ok": False, "error": "pool not initialized"})
+            ok = self._page_pool.remove_page(tab_id)
+            self._emit_pool_status()
+            if ok:
+                self._log(f"Pool page {tab_id[:12]} removed", "info")
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "not found"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    async def _do_connect_page_pool(self, ws_url: str):
+        try:
+            from app.browser.cdp_client import CDPClient
+            from app.browser.cdp_arena import CDPArenaController
+            from app.browser.page_status import PageInfo
+            import re
+            m = re.search(r'/devtools/page/([^/]+)$', ws_url)
+            tab_id = m.group(1) if m else ws_url
+            host = self._page_pool._host if self._page_pool else "127.0.0.1"
+            port = self._page_pool._port if self._page_pool else 9222
+            client = CDPClient(host=host, port=port)
+            ok = await client.connect(ws_url)
+            if not ok:
+                self._log(f"❌ Pool connect failed {ws_url[:80]}", "error")
+                return
+            ctrl = CDPArenaController(client, log_callback=lambda msg: self._log(msg, "info"))
+            info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=client._current_title or tab_id, url=client._current_url or "")
+            self._page_pool.add_page(info)
+            self._page_pool.register_client(tab_id, client, ctrl)
+            self._emit_pool_status()
+            self._log(f"✅ Pool added {tab_id[:12]} steady — {info.title[:40]}", "success")
+        except Exception as e:
+            self._log(f"Pool connect exception {e}", "error")
+
     @Slot(str, result=str)
     def highlight_image(self, img_id: str):
         self._emit_highlight_demo()
@@ -1735,6 +1847,19 @@ class Bridge(QObject):
             action_stack = self._get_action_blocks()
             self._emit_action_blocks()
             self._log(f"📦 Action blocks stack: {len(action_stack)} blocks — " + ", ".join(f"{b.display_name}({'ON' if b.enabled else 'OFF'})" for b in action_stack[:6]) + ("..." if len(action_stack)>6 else ""), "info")
+
+            # Multi-page parallel dispatch: if 2+ pages and 2+ images, use pool
+            try:
+                if self._page_pool and len(selected_images) >= 2:
+                    total, free = self._page_pool.get_counts()
+                    if total >= 2 and free >= 1:
+                        self._log(f"🚀 Parallel mode: {total} pages {free} free, {len(selected_images)} images — dispatching to different pages steady/busy tracked", "success")
+                        self._emit_pool_status()
+                        from app.services.multi_page_dispatcher import dispatch_parallel
+                        await dispatch_parallel(self, self._page_pool, selected_images, urls)
+                        return
+            except Exception as e:
+                self._log(f"Parallel dispatch check failed {e}, fallback to single", "warn")
 
             url_idx = 0
             for img in selected_images:
@@ -3543,6 +3668,22 @@ class Bridge(QObject):
                 self.connection_status.emit("connected")
                 # Log current host/port for verification
                 self._log(f"CDP session active on ws://{self.cdp._host}:{self.cdp._port}/devtools/page/{self.cdp._current_tab_id[:30]}", "info")
+                # Also add to PagePool as steady page for multi-page parallel
+                try:
+                    if self._page_pool:
+                        from app.browser.page_status import PageInfo
+                        from app.browser.cdp_arena import CDPArenaController
+                        tab_id = getattr(self.cdp, '_current_tab_id', '') or ws_url
+                        title = getattr(self.cdp, '_current_title', '') or tab_id
+                        url = getattr(self.cdp, '_current_url', '') or ''
+                        info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url)
+                        self._page_pool.add_page(info)
+                        ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+                        self._page_pool.register_client(tab_id, self.cdp, ctrl)
+                        self._emit_pool_status()
+                        self._log(f"📦 Pool: added primary tab {tab_id[:12]} steady", "success")
+                except Exception as e:
+                    self._log(f"Pool add primary failed: {e}", "warn")
             else:
                 self._log(f"❌ Connect failed for {ws_url[:120]} — check Chrome still open on port {self.cdp._port}, try Diagnose", "error")
                 self._log(f"💡 Tip: Ensure Chrome was started with --remote-debugging-port={self.cdp._port} --user-data-dir=... and that http://{self.cdp._host}:{self.cdp._port}/json/list shows JSON in browser", "warn")
@@ -3915,6 +4056,11 @@ class Bridge(QObject):
             if self.cdp:
                 try:
                     self.cdp.set_host_port(host, port_i)
+                except Exception:
+                    pass
+            if self._page_pool:
+                try:
+                    self._page_pool.set_host_port(host, port_i)
                 except Exception:
                     pass
             self._log(f"CDP config saved: {host}:{port_i} dir={user_data_dir}", "success")
