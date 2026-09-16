@@ -211,6 +211,9 @@ const ImageQueue = {
                 el.style.display = 'block';
                 if (el.nextElementSibling) el.nextElementSibling.style.display = 'none';
               }
+            } else if (r.pending) {
+              // Non-blocking thumb — will arrive via thumbnail_ready signal, keep file:// for now
+              // Do not spam requests
             }
           } catch (e) {}
         });
@@ -231,8 +234,24 @@ const ImageQueue = {
         }
         return;
       }
-      setTimeout(() => this._requestThumb(img.id, null), idx * 60);
+      // Stagger more to avoid UI freeze — 120ms instead of 60ms, and only if not already pending
+      setTimeout(() => this._requestThumb(img.id, null), idx * 120);
     });
+  },
+
+  onThumbnailReady(imgId, payloadJson) {
+    try {
+      const r = typeof payloadJson === 'string' ? JSON.parse(payloadJson) : payloadJson;
+      if (r.ok && r.data_url) {
+        this._thumbCache[imgId] = r.data_url;
+        const el = document.querySelector(`img.queue-thumb[data-img-id="${imgId}"]`);
+        if (el) {
+          el.src = r.data_url;
+          el.style.display = 'block';
+          if (el.nextElementSibling) el.nextElementSibling.style.display = 'none';
+        }
+      }
+    } catch (e) {}
   },
 
   render(images) {

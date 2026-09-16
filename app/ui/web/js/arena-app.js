@@ -174,14 +174,27 @@ function setupBridgeListeners() {
       if (typeof LogConsole !== 'undefined') LogConsole.log(msg, level);
     });
   }
+  // Debounce arena_state_updated to avoid freeze on rapid batch updates
+  let _arenaStateTimer = null;
+  let _pendingArenaState = null;
   if (b.arena_state_updated) {
     b.arena_state_updated.connect((json) => {
       try {
-        const data = JSON.parse(json);
-        App.state = data;
-        if (typeof UrlList !== 'undefined' && UrlList.restore) UrlList.restore(data);
-        if (typeof ImageQueue !== 'undefined' && ImageQueue.restore) ImageQueue.restore(data);
-        if (typeof ProgressPanel !== 'undefined' && ProgressPanel.restore) ProgressPanel.restore(data);
+        _pendingArenaState = json;
+        if (_arenaStateTimer) return; // already scheduled
+        _arenaStateTimer = setTimeout(() => {
+          _arenaStateTimer = null;
+          const j = _pendingArenaState;
+          _pendingArenaState = null;
+          if (!j) return;
+          try {
+            const data = JSON.parse(j);
+            App.state = data;
+            if (typeof UrlList !== 'undefined' && UrlList.restore) UrlList.restore(data);
+            if (typeof ImageQueue !== 'undefined' && ImageQueue.restore) ImageQueue.restore(data);
+            if (typeof ProgressPanel !== 'undefined' && ProgressPanel.restore) ProgressPanel.restore(data);
+          } catch (e) {}
+        }, 250); // 250ms debounce
       } catch (e) {}
     });
   }
@@ -293,6 +306,14 @@ function setupBridgeListeners() {
   if (b.page_pool_updated) {
     b.page_pool_updated.connect((payload) => {
       if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.onUpdate(payload);
+    });
+  }
+  // Thumbnails — non-blocking to avoid freeze
+  if (b.thumbnail_ready) {
+    b.thumbnail_ready.connect((imgId, payload) => {
+      if (typeof ImageQueue !== 'undefined' && ImageQueue.onThumbnailReady) {
+        ImageQueue.onThumbnailReady(imgId, payload);
+      }
     });
   }
 }

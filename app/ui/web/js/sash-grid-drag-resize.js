@@ -5,6 +5,10 @@ Sash resize with pixel allocation, ≤250 LOC.
 
 const SashGridResize = {
   _startResize(sashEl, ev) {
+    // Safety: clean stuck dragging class that freezes mouse clicks
+    if (document.body.classList.contains('sash-dragging')) {
+      document.body.classList.remove('sash-dragging');
+    }
     const pEl = sashEl.parentElement;
     if (!pEl || !pEl.classList.contains('sash-split')) return;
     const sIdx = parseInt(sashEl.dataset.idx, 10);
@@ -24,12 +28,15 @@ const SashGridResize = {
     document.body.classList.add(isRow ? 'sash-resizing-row' : 'sash-resizing-col');
     this._onResizeMove = this._resizeMove.bind(this);
     this._onResizeUp = this._resizeUp.bind(this);
+    this._onResizeBlur = () => this._cancelResize(true);
     document.addEventListener('pointermove', this._onResizeMove, { passive: false });
     document.addEventListener('pointerup', this._onResizeUp);
     document.addEventListener('pointercancel', this._onResizeCancel = () => this._cancelResize(true));
     document.addEventListener('keydown', this._onResizeKey = (keyEvent) => {
       if (keyEvent.key === 'Escape') { keyEvent.preventDefault(); this._cancelResize(true); }
     }, true);
+    window.addEventListener('blur', this._onResizeBlur);
+    document.addEventListener('visibilitychange', this._onResizeBlur);
     ev.preventDefault();
   },
 
@@ -86,17 +93,25 @@ const SashGridResize = {
 
   _cancelResize(restore = true) {
     const z = this._resize;
-    if (!z) return;
-    document.removeEventListener('pointermove', this._onResizeMove, { passive: false });
-    document.removeEventListener('pointerup', this._onResizeUp);
-    document.removeEventListener('pointercancel', this._onResizeCancel);
-    document.removeEventListener('keydown', this._onResizeKey, true);
-    if (restore) z.childEls.forEach((child, i) => { child.style.flex = z.originalFlex[i]; });
+    // Always clean body classes — fixes freeze mouse clicks when resize stuck
+    try { document.body.classList.remove('sash-resizing-row', 'sash-resizing-col', 'sash-dragging'); } catch (e) {}
+    if (!z) {
+      this._resize = null;
+      return;
+    }
+    try { document.removeEventListener('pointermove', this._onResizeMove, { passive: false }); } catch (e) {}
+    try { document.removeEventListener('pointerup', this._onResizeUp); } catch (e) {}
+    try { document.removeEventListener('pointercancel', this._onResizeCancel); } catch (e) {}
+    try { document.removeEventListener('keydown', this._onResizeKey, true); } catch (e) {}
+    try { window.removeEventListener('blur', this._onResizeBlur); } catch (e) {}
+    try { document.removeEventListener('visibilitychange', this._onResizeBlur); } catch (e) {}
+    if (restore) {
+      try { z.childEls.forEach((child, i) => { child.style.flex = z.originalFlex[i]; }); } catch (e) {}
+    }
     if (z.pointerCaptured && typeof z.sashEl.releasePointerCapture === 'function') {
       try { z.sashEl.releasePointerCapture(z.pointerId); } catch (e) {}
     }
-    z.sashEl.classList.remove('sash-active');
-    document.body.classList.remove('sash-resizing-row', 'sash-resizing-col');
+    try { z.sashEl.classList.remove('sash-active'); } catch (e) {}
     this._resize = null;
   },
 
