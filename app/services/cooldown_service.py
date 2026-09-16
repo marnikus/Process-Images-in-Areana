@@ -1,0 +1,311 @@
+# ideal-size: ~310 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+"""Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
+
+Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
+`wait_for_tab_ready`) wires reset + pause into both dispatch paths. PagePool
+is at its 15-method limit, so ops live here as functions. Imports go
+services -> browser/core only.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from dataclasses import dataclass
+from typing import Any
+
+from app.browser.new_chat import ResetCtx, reset_to_new_chat
+from app.browser.page_status import PageStatus, now_iso
+from app.core.cooldown import (
+    DEFAULT_MIN_SECONDS,
+    DEFAULT_PENALTY_SECONDS,
+    CooldownConfig,
+    clamp_seconds,
+    cooldown_total,
+    format_remaining,
+)
+
+_POLL_SEC = 2.0
+_LOG_EVERY_SEC = 10.0
+
+
+@dataclass
+class FinishCtx:
+    """Post-job context to keep params small (RULE 16)."""
+
+    pool: Any
+    bridge: Any
+    tab_id: str
+    ctrl: Any
+    client: Any
+
+
+def _safe_int(get_state, key: str, default: int) -> int:
+    """Read clamped seconds, forgiving bad stored values."""
+    try:
+        raw = get_state(key, default)
+    except Exception:
+        return default
+    return clamp_seconds(raw, default)
+
+
+def load_config(get_state) -> CooldownConfig:
+    """Read user settings via session getter (bridge.config.get_state)."""
+    try:
+        enabled = bool(get_state("cooldown_enabled", True))
+    except Exception:
+        enabled = True
+    base = _safe_int(get_state, "cooldown_min_seconds", DEFAULT_MIN_SECONDS)
+    penalty = _safe_int(get_state, "cooldown_captcha_penalty_seconds", DEFAULT_PENALTY_SECONDS)
+    return CooldownConfig(enabled=enabled, min_seconds=base, captcha_penalty_seconds=penalty)
+
+
+def _settle_steady(page) -> bool:
+    """Mark ready when no pause is needed."""
+    page.status = PageStatus.STEADY
+    page.current_job_id = None
+    page.cooldown_until = 0.0
+    page.cooldown_total = 0
+    page.cooldown_reason = ""
+    page.last_steady_at = now_iso()
+    page.error = None
+    return True
+
+
+def start_cooldown(pool, tab_id, base_seconds, reason="") -> bool:
+    """Start the per-tab pause; applies stacked captcha penalty."""
+    with pool._lock:
+        page = pool._pages.get(tab_id)
+        if page is None:
+            return False
+        total = cooldown_total(int(base_seconds or 0), page.pending_penalty)
+        page.pending_penalty = 0
+        page.last_job_at = now_iso()
+        if total <= 0:
+            return _settle_steady(page)
+        page.status = PageStatus.COOLDOWN
+        page.cooldown_until = time.time() + total
+        page.cooldown_total = total
+        page.cooldown_reason = reason or "job done"
+        page.current_job_id = None
+        return True
+
+
+def add_captcha_penalty(pool, tab_id, penalty_seconds) -> int:
+    """Stack +penalty on this tab only; returns count (-1 unknown)."""
+    extra = clamp_seconds(penalty_seconds, 0)
+    with pool._lock:
+        page = pool._pages.get(tab_id)
+        if page is None:
+            return -1
+        page.captcha_count += 1
+        if page.status == PageStatus.COOLDOWN and page.is_cooling():
+            page.cooldown_until += extra
+            page.cooldown_total += extra
+        else:
+            page.pending_penalty += extra
+        return page.captcha_count
+
+
+def reset_cooldown(pool, tab_id) -> bool:
+    """User reset: ready now; never frees a running job."""
+    with pool._lock:
+        page = pool._pages.get(tab_id)
+        if page is None:
+            return False
+        page.pending_penalty = 0
+        if page.status != PageStatus.COOLDOWN:
+            return True
+        return _settle_steady(page)
+
+
+def edit_cooldown(pool, tab_id, seconds) -> bool:
+    """User edit: set remaining pause (0 = ready now)."""
+    total = clamp_seconds(seconds, 0)
+    with pool._lock:
+        page = pool._pages.get(tab_id)
+        if page is None or page.is_busy():
+            return False
+        if total <= 0:
+            return _settle_steady(page)
+        page.status = PageStatus.COOLDOWN
+        page.cooldown_until = time.time() + total
+        page.cooldown_total = total
+        page.cooldown_reason = "manual"
+        return True
+
+
+def refresh_expired(pool, now=None) -> list:
+    """Flip expired timers to STEADY; returns freed tab ids."""
+    freed = []
+    with pool._lock:
+        for tab_id, page in pool._pages.items():
+            try:
+                if page.try_expire(now):
+                    freed.append(tab_id)
+            except Exception:
+                continue
+    return freed
+
+
+def longest_remaining(pool, now=None) -> int:
+    """Max live countdown across tabs (0 when none cooling)."""
+    best = 0
+    with pool._lock:
+        for page in pool._pages.values():
+            try:
+                left = page.remaining_seconds(now)
+            except Exception:
+                continue
+            if left > best:
+                best = left
+    return best
+
+
+def cooldown_aware_timeout(pool, default_sec=600.0, extra_sec=60.0) -> float:
+    """Free-page wait must outlive the longest per-tab pause."""
+    try:
+        longest = longest_remaining(pool)
+    except Exception:
+        return float(default_sec)
+    return max(float(default_sec), float(longest + extra_sec))
+
+
+def remaining_for(pool, tab_id, now=None) -> int:
+    """Live countdown for one tab (-1 when unknown)."""
+    page = pool.get_page(tab_id)
+    if page is None:
+        return -1
+    try:
+        return page.remaining_seconds(now)
+    except Exception:
+        return 0
+
+
+def _is_cancelled(bridge) -> bool:
+    return bool(getattr(bridge, "_cancel_requested", False))
+
+
+def _is_paused(bridge) -> bool:
+    return bool(getattr(bridge, "_pause_requested", False))
+
+
+def _log(bridge, message: str, level: str = "info"):
+    try:
+        bridge._log(message, level)
+    except Exception:
+        pass
+
+
+async def _honour_pause(bridge):
+    """Wait while paused; cancel still breaks (RULE 7)."""
+    while _is_paused(bridge):
+        if _is_cancelled(bridge):
+            break
+        await asyncio.sleep(1.0)
+
+
+async def wait_for_tab_ready(pool, tab_id, bridge) -> bool:
+    """Single-page gate: wait until this tab's pause expires."""
+    last_log = 0.0
+    while True:
+        if _is_cancelled(bridge):
+            return False
+        await _honour_pause(bridge)
+        if _is_cancelled(bridge):
+            return False
+        refresh_expired(pool)
+        page = pool.get_page(tab_id)
+        if page is None:
+            _log(bridge, f"Tab {str(tab_id)[:8]} unknown to pool — proceeding", "warn")
+            return True
+        if page.is_free() or page.remaining_seconds() <= 0:
+            return True
+        now_m = time.monotonic()
+        if now_m - last_log >= _LOG_EVERY_SEC:
+            last_log = now_m
+            left = format_remaining(page.remaining_seconds())
+            _log(bridge, f"⏳ Tab {str(tab_id)[:8]} cooling {left} — next job waits", "info")
+        await asyncio.sleep(_POLL_SEC)
+
+
+async def finish_page_after_job(ctx: FinishCtx) -> bool:
+    """Post-job cycle: reset page, then pause or ready (spec 01+02)."""
+    if _is_cancelled(ctx.bridge):
+        return await _finish_cancelled(ctx)
+    return await _finish_normal(ctx)
+
+
+def _settle_pool_steady(ctx: FinishCtx) -> bool:
+    try:
+        return bool(ctx.pool.mark_steady(ctx.tab_id))
+    except Exception:
+        return False
+
+
+def _emit_status(ctx: FinishCtx):
+    try:
+        ctx.bridge._emit_pool_status()
+    except Exception:
+        pass
+
+
+async def _best_effort_reset(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, str]:
+    """Reset that never raises — failure is logged, never fatal."""
+    try:
+        reset_ctx = ResetCtx(ctrl=ctx.ctrl, client=ctx.client, engine=ctx.bridge,
+                             timeout_sec=timeout_sec,
+                             cancel_check=lambda: _is_cancelled(ctx.bridge))
+        return await reset_to_new_chat(reset_ctx)
+    except Exception as e:
+        return False, str(e)
+
+
+async def _finish_cancelled(ctx: FinishCtx) -> bool:
+    """Cancel path: hygiene reset, ready at once, no pause."""
+    await _best_effort_reset(ctx, timeout_sec=15.0)
+    ok = _settle_pool_steady(ctx)
+    _emit_status(ctx)
+    _log(ctx.bridge, f"✅ Page {str(ctx.tab_id)[:12]} STEADY ready (no cooldown after cancel)",
+         "success")
+    return ok
+
+
+def _reason_for(ctx: FinishCtx) -> str:
+    """Cooldown reason incl. stacked captcha count for the UI."""
+    try:
+        page = ctx.pool.get_page(ctx.tab_id)
+        pending = page.pending_penalty if page else 0
+        count = page.captcha_count if page else 0
+    except Exception:
+        return "job done"
+    if pending > 0 and count > 0:
+        return f"job done +captcha x{count}"
+    return "job done"
+
+
+def _log_finish(ctx: FinishCtx, started: bool):
+    """Report the new countdown (RULE 2)."""
+    if not started:
+        _log(ctx.bridge, f"⚠ Page {str(ctx.tab_id)[:12]} cooldown not started (unknown tab)", "warn")
+        return
+    left = remaining_for(ctx.pool, ctx.tab_id)
+    _log(ctx.bridge, f"⏳ Page {str(ctx.tab_id)[:12]} cooling {format_remaining(left)} — next job after pause",
+         "info")
+
+
+async def _finish_normal(ctx: FinishCtx) -> bool:
+    """Normal path: reset page, then start the per-tab pause."""
+    ok, reason = await _best_effort_reset(ctx, timeout_sec=30.0)
+    if not ok:
+        _log(ctx.bridge, f"⚠ New-chat reset failed ({reason}) — cooling anyway", "warn")
+    cfg = load_config(ctx.bridge.config.get_state)
+    if not cfg.enabled or cfg.min_seconds <= 0:
+        done = _settle_pool_steady(ctx)
+        _emit_status(ctx)
+        _log(ctx.bridge, f"✅ Page {str(ctx.tab_id)[:12]} STEADY ready (cooldown off)", "success")
+        return done
+    started = start_cooldown(ctx.pool, ctx.tab_id, cfg.min_seconds, _reason_for(ctx))
+    _emit_status(ctx)
+    _log_finish(ctx, started)
+    return started

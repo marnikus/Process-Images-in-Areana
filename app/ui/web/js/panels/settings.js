@@ -16,6 +16,7 @@ const SettingsPanel = {
 
     // load CDP config on init
     setTimeout(()=>this.loadCDPConfig(), 1000);
+    setTimeout(()=>this.loadCooldownConfig(), 1200);
   },
 
   restore(state) {
@@ -111,6 +112,41 @@ const SettingsPanel = {
     }
     // also save CDP if changed
     this.saveCDP();
+    this.saveCooldown();
+  },
+
+  loadCooldownConfig() {
+    if (App.bridge && App.bridge.get_cooldown_config) {
+      App.bridge.get_cooldown_config((res)=>{
+        try {
+          const r = JSON.parse(res);
+          if (!r.ok || !r.config) return;
+          const c = r.config;
+          const en = document.getElementById('cooldownEnabled');
+          if (en) en.checked = c.enabled !== false;
+          const setVal = (id, v) => { const el=document.getElementById(id); if(el) el.value=v; };
+          setVal('cooldownMinMinutes', c.min_minutes ?? Math.round((c.min_seconds||300)/60));
+          setVal('cooldownCaptchaMinutes', c.captcha_penalty_minutes ?? Math.round((c.captcha_penalty_seconds||900)/60));
+        } catch(e){}
+      });
+    }
+  },
+
+  saveCooldown() {
+    const en = document.getElementById('cooldownEnabled');
+    const getNum = (id, fb) => { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? fb : v; };
+    const enabled = en ? en.checked : true;
+    const minM = Math.max(0, Math.min(1440, getNum('cooldownMinMinutes', 5)));
+    const penM = Math.max(0, Math.min(1440, getNum('cooldownCaptchaMinutes', 15)));
+    const payload = {enabled, min_seconds: Math.round(minM*60), captcha_penalty_seconds: Math.round(penM*60)};
+    if (App.bridge && App.bridge.set_cooldown_config) {
+      App.bridge.set_cooldown_config(JSON.stringify(payload), (res)=>{
+        try {
+          const r = JSON.parse(res);
+          LogConsole.log(r.ok ? `Cooldown saved: ${enabled?'on':'off'} min=${minM}m captcha=+${penM}m` : 'Cooldown save failed: '+r.error, r.ok?'success':'error');
+        } catch(e){}
+      });
+    }
   },
 
   saveCDP() {

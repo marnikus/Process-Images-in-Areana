@@ -1773,7 +1773,13 @@ class Bridge(QObject):
     def get_page_pool_status(self):
         try:
             if not self._page_pool:
-                return json.dumps({"total": 0, "steady": 0, "busy": 0, "free": 0, "pages": []})
+                return json.dumps({"total": 0, "steady": 0, "busy": 0, "cooling": 0, "free": 0, "pages": []})
+            try:
+                from app.services.cooldown_service import refresh_expired
+                for _tid in refresh_expired(self._page_pool):
+                    self._log(f"✅ Page {_tid[:12]} cooldown expired — STEADY ready", "success")
+            except Exception:
+                pass
             snap = self._page_pool.status_snapshot()
             self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
             return json.dumps(snap, ensure_ascii=False)
@@ -1824,6 +1830,62 @@ class Bridge(QObject):
                 self._log(f"Pool page {tab_id[:12]} removed", "info")
                 return json.dumps({"ok": True})
             return json.dumps({"ok": False, "error": "not found"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_cooldown_config(self):
+        try:
+            from app.core.cooldown import config_to_dict
+            from app.services.cooldown_service import load_config
+            cfg = load_config(self.config.get_state)
+            return json.dumps({"ok": True, "config": config_to_dict(cfg)}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def set_cooldown_config(self, cfg_json: str):
+        try:
+            from app.core.cooldown import clamp_seconds
+            data = json.loads(cfg_json or "{}")
+            enabled = bool(data.get("enabled", True))
+            min_s = clamp_seconds(data.get("min_seconds", 300), 300)
+            pen_s = clamp_seconds(data.get("captcha_penalty_seconds", 900), 900)
+            self.config.set_state(cooldown_enabled=enabled, cooldown_min_seconds=min_s,
+                                  cooldown_captcha_penalty_seconds=pen_s)
+            self._log(f"Cooldown set: enabled={enabled} min={min_s // 60}m penalty={pen_s // 60}m per captcha", "success")
+            return json.dumps({"ok": True, "config": {"enabled": enabled, "min_seconds": min_s,
+                                                      "captcha_penalty_seconds": pen_s}}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def reset_page_cooldown(self, tab_id: str):
+        try:
+            from app.services.cooldown_service import reset_cooldown
+            if not self._page_pool:
+                return json.dumps({"ok": False, "error": "pool not initialized"})
+            if reset_cooldown(self._page_pool, tab_id):
+                self._emit_pool_status()
+                self._log(f"♻️ Cooldown reset for {(tab_id or '')[:12]} — tab ready", "success")
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "unknown tab"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, int, result=str)
+    def set_page_cooldown(self, tab_id: str, seconds: int):
+        try:
+            from app.core.cooldown import format_remaining
+            from app.services.cooldown_service import edit_cooldown
+            if not self._page_pool:
+                return json.dumps({"ok": False, "error": "pool not initialized"})
+            if edit_cooldown(self._page_pool, tab_id, int(seconds or 0)):
+                self._emit_pool_status()
+                left = format_remaining(int(seconds or 0))
+                self._log(f"⏳ Cooldown for {(tab_id or '')[:12]} set to {left}", "info")
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "unknown tab or job running"})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
@@ -1885,6 +1947,7 @@ class Bridge(QObject):
             import asyncio
 
             ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+            primary_tab_id = getattr(self.cdp, "_current_tab_id", "") or ""
             ready, reasons = await ctrl.is_page_ready()
             if not ready:
                 self._log(f"⚠ Page not ready: {', '.join(reasons)} — trying anyway", "warn")
@@ -1938,6 +2001,16 @@ class Bridge(QObject):
                 if self._cancel_requested:
                     self._log("Batch cancelled after pause", "warn")
                     break
+
+                # Cooldown gate (single-page): wait until this tab's pause expires
+                try:
+                    from app.services.cooldown_service import wait_for_tab_ready
+                    if self._page_pool and primary_tab_id:
+                        _tab_ready = await wait_for_tab_ready(self._page_pool, primary_tab_id, self)
+                        if not _tab_ready and self._cancel_requested:
+                            break
+                except Exception as _e:
+                    self._log(f"Cooldown gate skipped: {_e}", "warn")
 
                 url_row = urls[url_idx % len(urls)] if urls else None
                 url_idx += 1
@@ -2201,6 +2274,14 @@ class Bridge(QObject):
                                 self._run_state = "running"
                                 self._emit_arena_state()
                                 self._emit_job_action_status(job_id, block, "success", "Security dialog solved")
+                                try:
+                                    from app.services.cooldown_service import add_captcha_penalty
+                                    _pen = int(self.config.get_state("cooldown_captcha_penalty_seconds", 900))
+                                    if self._page_pool and primary_tab_id:
+                                        _n = add_captcha_penalty(self._page_pool, primary_tab_id, _pen)
+                                        self._log(f"[{correlation_id}] 🛡️ Captcha penalty +{_pen // 60}m on this tab (x{_n}) — stacks onto next cooldown", "warn")
+                                except Exception as _e:
+                                    self._log(f"Captcha penalty skipped: {_e}", "warn")
                             else:
                                 self._emit_job_action_status(job_id, block, "success", "No security dialog")
 
@@ -2424,6 +2505,14 @@ class Bridge(QObject):
                                                 continue
                                             await asyncio.sleep(2)
                                         self._log(f"[{correlation_id}] ✅ Captcha solved during generation — restoring generation overlay", "success")
+                                        try:
+                                            from app.services.cooldown_service import add_captcha_penalty
+                                            _pen2 = int(self.config.get_state("cooldown_captcha_penalty_seconds", 900))
+                                            if self._page_pool and primary_tab_id:
+                                                _n2 = add_captcha_penalty(self._page_pool, primary_tab_id, _pen2)
+                                                self._log(f"[{correlation_id}] 🛡️ Captcha penalty +{_pen2 // 60}m on this tab (x{_n2}) — stacks onto next cooldown", "warn")
+                                        except Exception as _e:
+                                            self._log(f"Captcha penalty skipped: {_e}", "warn")
                                         try:
                                             await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec, elapsed_sec=0)
                                         except Exception:
@@ -3091,6 +3180,15 @@ class Bridge(QObject):
 
                 self.state.recalculate_progress()
                 self._save_arena()
+                # Post-generation reset + cooldown (single-page)
+                try:
+                    from app.services.cooldown_service import FinishCtx, finish_page_after_job
+                    if self._page_pool and primary_tab_id:
+                        _finish_ctx = FinishCtx(pool=self._page_pool, bridge=self, tab_id=primary_tab_id,
+                                                ctrl=ctrl, client=self.cdp)
+                        await finish_page_after_job(_finish_ctx)
+                except Exception as _e:
+                    self._log(f"Post-job reset/cooldown skipped: {_e}", "warn")
                 if self._cancel_requested:
                     break
                 await asyncio.sleep(1)
@@ -3930,6 +4028,11 @@ class Bridge(QObject):
                 "images": js_state.get("images", []),
                 "cdp": cdp_cfg,
                 "action_blocks": action_blocks,
+                "cooldown": {
+                    "enabled": self.config.get_state("cooldown_enabled", True),
+                    "min_seconds": self.config.get_state("cooldown_min_seconds", 300),
+                    "captcha_penalty_seconds": self.config.get_state("cooldown_captcha_penalty_seconds", 900),
+                },
                 "updated_at": datetime.utcnow().isoformat() + "Z",
                 "app_version": "arena-1.0",
             }
@@ -3990,6 +4093,17 @@ class Bridge(QObject):
                     self._log(f"Restored {len(doc['action_blocks'])} action blocks from preset", "info")
                 except Exception as e:
                     log.warning(f"Failed to restore action blocks from preset: {e}")
+            if "cooldown" in doc and isinstance(doc["cooldown"], dict):
+                try:
+                    from app.core.cooldown import clamp_seconds
+                    cd = doc["cooldown"]
+                    self.config.set_state(
+                        cooldown_enabled=bool(cd.get("enabled", True)),
+                        cooldown_min_seconds=clamp_seconds(cd.get("min_seconds", 300), 300),
+                        cooldown_captcha_penalty_seconds=clamp_seconds(cd.get("captcha_penalty_seconds", 900), 900))
+                    self._log("Restored cooldown settings from preset", "info")
+                except Exception as e:
+                    log.warning(f"Failed to restore cooldown from preset: {e}")
             self.state.recalculate_progress()
             self._save_arena()
             self._log(f"Arena preset loaded: {name}", "success")

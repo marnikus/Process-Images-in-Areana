@@ -78,6 +78,7 @@ async def check_security(ctx: JobCtx) -> bool:
         pass
     _mark_waiting(ctx, "captcha")
     await _wait_security_gone(ctx)
+    _apply_captcha_penalty(ctx)
     _mark_busy(ctx)
     try:
         await ctx.ctrl.hide_watcher_overlay()
@@ -120,6 +121,22 @@ async def _wait_security_gone(ctx: JobCtx):
         except Exception:
             break
         await asyncio.sleep(2)
+
+
+def _apply_captcha_penalty(ctx: JobCtx):
+    """Stack captcha penalty onto this tab's next cooldown."""
+    try:
+        from app.services.cooldown_service import add_captcha_penalty
+        pool = getattr(ctx.bridge, "_page_pool", None)
+        if not pool:
+            return
+        get_state = getattr(ctx.bridge.config, "get_state", None)
+        penalty = int(get_state("cooldown_captcha_penalty_seconds", 900)) if get_state else 900
+        count = add_captcha_penalty(pool, ctx.tab_id, penalty)
+        if count >= 0:
+            ctx.bridge._log(f"[{ctx.corr_id}] Captcha penalty +{penalty // 60}m tab {ctx.tab_id[:6]} (x{count})", "warn")
+    except Exception:
+        pass
 
 
 async def attach_image(ctx: JobCtx) -> tuple[bool, str]:

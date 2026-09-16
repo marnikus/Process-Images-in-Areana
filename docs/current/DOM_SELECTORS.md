@@ -532,3 +532,24 @@ All selectors will be centralized in `app/browser/site_adapter.py` as constants 
 - `bridge.py` verifies before both WAIT and DOWNLOAD, fails without atomic_write.
 - `pytest 45 passed`, `verify_quality --changed --allow-legacy` PASSED.
 
+## L. New Chat Reset — Post-Generation Return to Clean Chat (2026-09-16)
+
+**Purpose:** After each job, return the tab to a clean new chat (spec 01).
+User HTML: `li[data-sidebar="menu-item"] > a[data-sidebar="menu-button"
+href="/image/direct"] > svg + span "New Chat"`.
+
+| Field | Value |
+|---|---|
+| **Primary** | `a[href="/image/direct"]` + child `span` contains "New Chat" |
+| **Fallback 1** | `li[data-sidebar="menu-item"] a[href="/image/direct"]` |
+| **Fallback 2** | `a[data-sidebar="menu-button"][href="/image/direct"]` |
+| **Scope** | `li[data-sidebar="menu-item"]` sidebar |
+| **mustBeVisible / mustBeEnabled** | true / true |
+| **expectedCount** | 1 |
+| **Click path** | Shared visual runner `find_and_click` (RULE 1): RED find → pause → ORANGE click, candidates tried in order |
+| **Loaded gate** | `document.readyState === "complete"` + `is_page_ready()` (textarea + send + file + output, no dialog) + composer `textarea.value === ""` |
+| **Verification** | Reset returns ready only when all three hold (else timeout reason); cooldown starts after reset, tab steady only after pause expires |
+| **Evidence** | User-provided sidebar HTML 2026-09-16 |
+| **Action Blocks** | None — automatic post-job step (`app/browser/new_chat.py` via `app/services/cooldown_service.py`), not a toggleable block |
+| **Site adapter** | `new_chat_button` entry, lastVerified 2026-09-16 |
+

@@ -54,7 +54,8 @@ It:
 | 17 | **Undo system** | One global history (RULE 12) for kinds `grid`, `urls`, `folder`, `queue`, `prompt`, `settings`, `window_states`, `arena`, `action_blocks`. 100 cap, truncate-on-branch, persisted in `config/session.json` + `config/undo.json`. Automatic engine side-effects (marking completed) NOT recorded. |
 | 18 | **Presets** | Arena presets: `config/arena.json` stores `prompt`, `action_blocks`, `settings`. Window presets: `grid_layout`, `window_states`, `window_preset_store` in `config/session.json` — save/load/import/export with preview, from Old App system. All UI parameters storable, rect duration saved in preset JSON. |
 | 19 | **Modern UI** | Dark-mode variables.css reused. Sash-grid draggable windows via win-grip drag_indicator, splittable/mergeable/resizable sashes, dock minimized, windows menu, Grid view menu layouts default/A/B/C + Reset. 11 windows: `url_list`, `folder`, `queue`, `prompt`, `action_blocks`, `run_controls`, `progress`, `log`, `settings`, `cdp`, `help`. |
-| 20 | **Persistence** | JSON only, no DB. `config/arena.json` (prompt + blocks + settings), `config/urls.json` (url list + status), `config/session.json` (grid_layout + window_states + preset_store + undo_history + queue + folder + selected), `config/undo.json` (full undo stack). Atomic writes, validated on load, never brick on corrupt JSON (RULE 13). |
+| 20 | **Persistence** | JSON only, no DB. `config/arena.json` (prompt + blocks + settings), `config/urls.json` (url list + status), `config/session.json` (grid_layout + window_states + preset_store + undo_history + queue + folder + selected + cooldown keys), `config/undo.json` (full undo stack). Atomic writes, validated on load, never brick on corrupt JSON (RULE 13). |
+| 21 | **Job cycle & cooldown** | After each job the tab auto-clicks New Chat (`a[href="/image/direct"]`, visual runner RED→ORANGE), waits for full load (readyState + page ready + empty composer), then cools down per-tab: user-set minimum (default 5 min, `cooldown_min_seconds`) + stacked captcha penalty (default +15 min each, `cooldown_captcha_penalty_seconds`, this tab only). Tab is `steady` (ready) only after its countdown ends; pool UI shows live MM:SS + reset/edit per row; cancel skips cooldown. Design: `docs/archive/2026-09-16-job-cooldown/design.md`. |
 
 ---
 
@@ -150,6 +151,10 @@ Adapted from Old App's `cycle_plan` + `process_conversation`, now for Arena imag
 | I-21 | Rect overlay N seconds configurable saved in preset JSON | New | `config/arena.json` |
 | I-22 | CDP connection with lock — prevents concurrent connect race causing instant disconnect | Fixed bug | `cdp_client.py` `asyncio.Lock` |
 | I-23 | Grid layout 11 windows exact set — `url_list`, `folder`, `queue`, `prompt`, `action_blocks`, `run_controls`, `progress`, `log`, `settings`, `cdp`, `help` | Old layout | `layout_service.py` |
+| I-24 | Post-generation reset — every finished job clicks New Chat and waits for full page load before the tab can go ready | New | `new_chat.py` + `cooldown_service.finish_page_after_job` |
+| I-25 | Cooldown ready-gate — tab shows steady (ready) only after its pause expires; expiry flips COOLDOWN→STEADY in locked reads, UI poll, and wait loops | New | `page_status.try_expire` (single source) |
+| I-26 | Per-tab independence — pause, captcha count, and pending penalty live on the tab; tab B never inherits tab A timers | New | `PageInfo` fields + `cooldown_service` |
+| I-27 | Captcha stacks, reset is safe — each detection adds configured extra time; user reset/edit never frees a BUSY/WAITING job | New | `add_captcha_penalty` / `reset_cooldown` / `edit_cooldown` |
 
 ---
 
@@ -253,6 +258,7 @@ Remediation order: nesting → cyclomatic → cognitive → size (RULE 19).
 
 * Old App designs: `Process Images in Areana/Old App/docs/archive/` — virt-chat specific, not reused except UI system and action blocks idea
 * New App designs: `docs/archive/<YYYY-MM-DD>-<topic>/` — each feature that moved complexity across files gets dated folder with design doc, then rows in this file updated
+* `docs/archive/2026-09-16-job-cooldown/design.md` — job cycle & cooldown (New Chat reset, per-tab pause, captcha stacking)
 * Selector research: `docs/selector_map.md` (detailed), `docs/research_summary.md`, `docs/current/DOM_SELECTORS.md` (living reference)
 * Workflow: `docs/workflow_diagram.md`, `docs/data_model.md`, `docs/implementation_plan.md`
 

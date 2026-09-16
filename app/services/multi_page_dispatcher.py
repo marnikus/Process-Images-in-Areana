@@ -13,6 +13,7 @@ from app.core.enums import ImageStatus
 from app.core.models import ImageItem, UrlRow
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
+from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
 
 log = logging.getLogger("arena")
@@ -108,11 +109,12 @@ async def _wait_pause(bridge):
 
 
 async def _get_free_page(pool, bridge, job_id: str):
+    wait_timeout = cooldown_aware_timeout(pool)
     try:
-        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
     except TypeError:
         # fallback old signature
-        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested)
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested)
 
 
 def _get_clients(pool, tab_id) -> Tuple[object, object]:
@@ -124,8 +126,9 @@ def _get_clients(pool, tab_id) -> Tuple[object, object]:
 
 
 async def _acquire_page(pool, bridge, job_id: str):
+    wait_timeout = cooldown_aware_timeout(pool)
     try:
-        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
     except TypeError:
         try:
             if hasattr(pool, "acquire_free_page"):
@@ -136,12 +139,12 @@ async def _acquire_page(pool, bridge, job_id: str):
                     p = await pool.acquire_free_page(job_id)
                     if p:
                         return p
-                    if asyncio.get_event_loop().time() - start > 600:
+                    if asyncio.get_event_loop().time() - start > wait_timeout:
                         return None
                     await asyncio.sleep(0.5)
         except Exception:
             pass
-        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested)
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested)
 
 
 async def prepare_image_for_job(bridge, img, urls):
@@ -245,7 +248,11 @@ async def run_one_image_on_page(bridge, pool, img, urls):
     except Exception as e:
         _handle_exception(bridge, img, tab_id, e)
     finally:
-        _mark_steady_emit(pool, bridge, tab_id)
+        try:
+            finish_ctx = FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client)
+            await finish_page_after_job(finish_ctx)
+        except Exception:
+            _mark_steady_emit(pool, bridge, tab_id)
 
 
 def _log_no_free(bridge, img):
