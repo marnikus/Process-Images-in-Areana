@@ -86,11 +86,11 @@
       "size": 400734,
       "mtime": 1487672652.0,
       "fingerprint": "d35f11528b955890",
-      "status": "pending",
+      "status": "completed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
-      "output_path": null,
+      "assigned_url_id": "url_bd6bf416",
+      "attempt_count": 1,
+      "output_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Oci\\oci-1_AI.png",
       "error": null,
       "content_hash": null
     },
@@ -153,9 +153,9 @@
   "progress": {
     "total": 4,
     "selected": 1,
-    "pending": 1,
+    "pending": 0,
     "processing": 0,
-    "completed": 0,
+    "completed": 1,
     "skipped": 0,
     "failed": 0,
     "needs_review": 0

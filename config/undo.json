@@ -2,10 +2,6 @@
   "history": [
     {
       "kind": "grid",
-      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[50.0,25.0,25.0]}],\"sizes\":[73.76916868442292,26.23083131557708]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[27.408138736263737,39.38934948979592,33.202511773940344]}}"
-    },
-    {
-      "kind": "grid",
       "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[73.76916868442292,26.23083131557708]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[27.408138736263737,39.38934948979592,33.202511773940344]}}"
     },
     {
@@ -28162,6 +28158,19 @@
     {
       "kind": "grid",
       "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[59.887005649717516,40.11299435028249]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[27.408138736263737,50.69233222135008,21.899529042386185]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "settings",
+          "block_config",
+          "browser"
+        ],
+        "minimized": []
+      }
     }
   ],
   "index": 99
