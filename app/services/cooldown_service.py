@@ -1,4 +1,4 @@
-# ideal-size: ~485 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+# ideal-size: ~517 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
 """Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
 
 Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
@@ -27,6 +27,8 @@ from app.core.cooldown import (
 
 _POLL_SEC = 2.0
 _LOG_EVERY_SEC = 10.0
+_STUCK_STATUSES = frozenset({PageStatus.BUSY, PageStatus.WAITING_GENERATION,
+                              PageStatus.WAITING_CAPTCHA, PageStatus.ERROR})
 
 
 @dataclass
@@ -230,6 +232,35 @@ def reset_cooldown(pool, tab_id) -> bool:
         if page.status != PageStatus.COOLDOWN:
             return True
         return _settle_steady(page)
+
+
+def is_stuck_status(status) -> bool:
+    """Busy-like states a finished run can leave behind (never a timer)."""
+    try:
+        return status in _STUCK_STATUSES
+    except Exception:
+        return False
+
+
+def force_reset_page(pool: Any, tab_id: str) -> bool:
+    """Operator reset: free a stuck page; history (jobs/captchas) kept."""
+    try:
+        with pool._lock:
+            page = pool._pages.get(tab_id)
+            if page is None:
+                return False
+            page.status = PageStatus.STEADY
+            page.current_job_id = None
+            page.busy_since = None
+            page.cooldown_until = 0.0
+            page.cooldown_total = 0
+            page.cooldown_reason = ""
+            page.pending_penalty = 0
+            page.error = None
+            page.last_steady_at = now_iso()
+            return True
+    except AttributeError:
+        return False
 
 
 def edit_cooldown(pool, tab_id, seconds) -> bool:

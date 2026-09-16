@@ -154,7 +154,7 @@ Adapted from Old App's `cycle_plan` + `process_conversation`, now for Arena imag
 | I-24 | Post-generation reset — every finished job clicks New Chat and waits for full page load before the tab can go ready | New | `new_chat.py` + `cooldown_service.finish_page_after_job` |
 | I-25 | Cooldown ready-gate — tab shows steady (ready) only after its pause expires; expiry flips COOLDOWN→STEADY in locked reads, UI poll, and wait loops | New | `page_status.try_expire` (single source) |
 | I-26 | Per-tab independence — pause, captcha count, and pending penalty live on the tab; tab B never inherits tab A timers | New | `PageInfo` fields + `cooldown_service` |
-| I-27 | Captcha stacks, reset is safe — each detection adds configured extra time; user reset/edit never frees a BUSY/WAITING job | New | `add_captcha_penalty` / `reset_cooldown` / `edit_cooldown` |
+| I-27 | Captcha stacks, reset is safe — each detection adds configured extra time; stuck busy/waiting/error frees only when no run is active (post-error recovery), live runs refuse with a message; user reset/edit never frees a running job | New | `add_captcha_penalty` / `reset_cooldown` + `force_reset_page` / `edit_cooldown` |
 | I-28 | Load balancing — next job goes to the free tab with fewest completed jobs; counters persist per URL and are never pruned | New | `register_job_done` + `_pick_lowest_count` + stats in `cooldown_store` |
 
 ---
