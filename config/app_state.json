@@ -6,7 +6,7 @@
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "ready",
-      "last_checked": "2026-09-16T11:51:42.530922Z",
+      "last_checked": "2026-09-16T12:28:36.595620Z",
       "error": null
     },
     {
@@ -14,7 +14,7 @@
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "ready",
-      "last_checked": "2026-09-16T11:51:41.405461Z",
+      "last_checked": "2026-09-16T12:28:37.502737Z",
       "error": null
     }
   ],
@@ -104,11 +104,11 @@
       "size": 154099,
       "mtime": 1487672648.0,
       "fingerprint": "a85a7280f4072f56",
-      "status": "pending",
-      "selected": false,
-      "assigned_url_id": null,
-      "attempt_count": 0,
-      "output_path": null,
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_bd6bf416",
+      "attempt_count": 1,
+      "output_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Oci\\oci-2_AI.png",
       "error": null,
       "content_hash": null
     },
@@ -152,10 +152,10 @@
   "jobs": [],
   "progress": {
     "total": 4,
-    "selected": 1,
+    "selected": 2,
     "pending": 0,
     "processing": 0,
-    "completed": 1,
+    "completed": 2,
     "skipped": 0,
     "failed": 0,
     "needs_review": 0

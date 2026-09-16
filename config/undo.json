@@ -1,14 +1,6 @@
 {
   "history": [
     {
-      "kind": "grid",
-      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[73.76916868442292,26.23083131557708]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[27.408138736263737,39.38934948979592,33.202511773940344]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[59.887005649717516,40.11299435028249]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[27.408138736263737,39.38934948979592,33.202511773940344]}}"
-    },
-    {
       "kind": "queue",
       "value": [
         {
@@ -28158,6 +28150,76 @@
     {
       "kind": "grid",
       "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[59.887005649717516,40.11299435028249]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[27.408138736263737,50.69233222135008,21.899529042386185]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "settings",
+          "block_config",
+          "browser"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "queue",
+      "value": [
+        {
+          "id": "d35f11528b955890",
+          "relative_path": "oci-1.jpg",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Oci\\oci-1.jpg",
+          "filename": "oci-1.jpg",
+          "status": "completed",
+          "selected": true,
+          "assigned_url": "url_bd6bf416",
+          "attempts": 1,
+          "output_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Oci\\oci-1_AI.png",
+          "error": "",
+          "size": 400734
+        },
+        {
+          "id": "a85a7280f4072f56",
+          "relative_path": "oci-2.jpg",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Oci\\oci-2.jpg",
+          "filename": "oci-2.jpg",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 154099
+        },
+        {
+          "id": "fa46600f76581521",
+          "relative_path": "oci-3.jpg",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Oci\\oci-3.jpg",
+          "filename": "oci-3.jpg",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 330119
+        },
+        {
+          "id": "5745fbea656aac15",
+          "relative_path": "oci-4.jpg",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Oci\\oci-4.jpg",
+          "filename": "oci-4.jpg",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 207408
+        }
+      ]
     },
     {
       "kind": "window_states",
