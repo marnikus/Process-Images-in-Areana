@@ -34,6 +34,7 @@ from app.core.layout_service import (
     canonical_grid_payload, default_payload, leaf_ids,
 )
 from app.core.models import AppState, UrlRow, ImageItem
+from app.services.page_dispatch import run_page_batch
 from app.core.persistence import load_state, save_state, save_preset, load_preset
 from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
@@ -1429,7 +1430,7 @@ class Bridge(QObject):
         if not self.cdp or not self.cdp.is_connected:
             self._log("❌ Chrome not connected — click Diagnose, Refresh, Connect first. CDP must be connected to automate.", "error")
             return json.dumps({"ok": False, "error": "cdp not connected"})
-        if self._run_state == "running":
+        if self._run_state != "idle":
             self._log("⚠ Already running", "warn")
             return json.dumps({"ok": False, "error": "already running"})
         self._run_state = "running"
@@ -1438,7 +1439,7 @@ class Bridge(QObject):
         self._stop_after = False
         self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
         self._emit_arena_state()
-        fut = self._schedule_coro(self._do_run_batch())
+        fut = self._schedule_coro(run_page_batch(self))
         if fut:
             self._batch_future = fut
         return json.dumps({"ok": True})
@@ -1469,8 +1470,10 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def cancel_current(self):
+        if self._run_state == "idle":
+            return json.dumps({"ok": True})
         self._cancel_requested = True
-        self._run_state = "idle"
+        self._run_state = "stopping"
         self._pause_requested = False
         self._stop_after = False
         self._log("✖ Cancel requested — stopping immediately", "error")
@@ -1499,7 +1502,7 @@ class Bridge(QObject):
     def _get_watcher_cdp_controller(self):
         """Get CDP controller for watcher — creates CDPArenaController from current cdp client."""
         try:
-            if not self.cdp or not getattr(self.cdp, 'is_connected', False):
+            if self._run_state != 'idle' or not self.cdp or not getattr(self.cdp, 'is_connected', False):
                 return None
             from app.browser.cdp_arena import CDPArenaController
             return CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
@@ -1704,26 +1707,20 @@ class Bridge(QObject):
         except Exception as e:
             self._log(f"Highlight failed: {e}", "warn")
 
-    async def _do_run_batch(self):
-        """Run batch using action blocks stack with visual confirmations — restored from old app idea.
-        Each job is a stack of blocks: observe baseline, attach, prompt, submit, wait, download, save.
-        Emits job_started, job_action_status (with rect), job_finished, highlight_rect.
+    async def _do_run_batch(self, page):
+        """Execute one reserved image on its dedicated page (legacy block stack).
+
+        ideal-size: legacy action stack retained; scheduling lives in page_dispatch.
         """
         try:
-            from app.browser.cdp_arena import CDPArenaController
             from app.utils.correlation import generate_correlation_id, build_final_prompt
             from app.core.naming import get_output_path, atomic_write_bytes
             from app.core.enums import ImageStatus
             import asyncio
 
-            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
-            ready, reasons = await ctrl.is_page_ready()
-            if not ready:
-                self._log(f"⚠ Page not ready: {', '.join(reasons)} — trying anyway", "warn")
-
-            prompt_template = self.state.prompt.get("user_prompt","")
-            selected_images = self._get_selected_images()
-            urls = self._get_enabled_urls()
+            ctrl = page.controller
+            prompt_template = self.state.prompt.get("user_prompt", "")
+            selected_images = [page.image]
             suffix = self.state.settings.output.get("suffix", "_AI")
             overwrite = self.state.settings.output.get("overwrite", False)
             preserve_format = self.state.settings.output.get("preserve_format", True)
@@ -1736,27 +1733,11 @@ class Bridge(QObject):
             self._emit_action_blocks()
             self._log(f"📦 Action blocks stack: {len(action_stack)} blocks — " + ", ".join(f"{b.display_name}({'ON' if b.enabled else 'OFF'})" for b in action_stack[:6]) + ("..." if len(action_stack)>6 else ""), "info")
 
-            url_idx = 0
             for img in selected_images:
                 if self._cancel_requested:
-                    self._log("Batch cancelled", "warn")
                     break
-                if getattr(self, '_stop_after', False):
-                    self._log("Stopping after current as requested", "warn")
-                    break
-                while getattr(self, '_pause_requested', False):
-                    self._log("Paused, waiting for resume...", "warn")
-                    await asyncio.sleep(1)
-                    if self._cancel_requested:
-                        break
-
-                if self._cancel_requested:
-                    self._log("Batch cancelled after pause", "warn")
-                    break
-
-                url_row = urls[url_idx % len(urls)] if urls else None
-                url_idx += 1
-                img.assigned_url_id = url_row.id if url_row else None
+                url_row = page.row
+                img.assigned_url_id = url_row.id
                 img.attempt_count += 1
                 img.status = ImageStatus.PROCESSING.value
                 self.state.recalculate_progress()
@@ -1833,7 +1814,7 @@ class Bridge(QObject):
                                 label=block.display_name or block.name,
                             )
                             # Use visual runner
-                            result = await find_and_click(self.cdp, req, engine=self)
+                            result = await find_and_click(ctrl.cdp, req, engine=self)
                             if result == "ok":
                                 # Try to get last rect from stash highlight — we already emitted via engine.report
                                 # For UI, also highlight selector for confirmation
@@ -1865,7 +1846,7 @@ class Bridge(QObject):
                                         highlight_ms=block.highlight_ms,
                                         label=f"{block.display_name} fallback {fb_sel[:30]}",
                                     )
-                                    result2 = await find_and_click(self.cdp, fallback_req, engine=self)
+                                    result2 = await find_and_click(ctrl.cdp, fallback_req, engine=self)
                                     if result2 == "ok":
                                         success_fb = fb_sel
                                         break
@@ -1892,7 +1873,7 @@ class Bridge(QObject):
                                 # Build JS probe directly for highlight-only
                                 from app.browser.dom_highlight import build_highlight_probe
                                 js = build_highlight_probe(block.selector or "div", spec)
-                                raw = await self.cdp.evaluate(js)
+                                raw = await ctrl.cdp.evaluate(js)
                                 import json as _js
                                 res = _js.loads(raw) if raw else {}
                                 rect = res.get("rect")
@@ -1963,8 +1944,6 @@ class Bridge(QObject):
                                     self._log(f"[{correlation_id}] 🛡️ Drawn watcher overlay: 'wait for user. Captcha' on left center — sleep circle waiting, timeout {captcha_timeout_sec_tmp}s (user setting from win)", "warn")
                                 except Exception as e:
                                     self._log(f"[{correlation_id}] Overlay show failed: {e}", "warn")
-                                self._run_state = "paused"
-                                self._pause_requested = True
                                 self._emit_arena_state()
                                 # User-configurable timeout for captcha solve (from watcher settings or block)
                                 try:
@@ -2012,8 +1991,6 @@ class Bridge(QObject):
                                 except Exception:
                                     pass
                                 self._log(f"[{correlation_id}] Security dialog gone, continuing", "success")
-                                self._pause_requested = False
-                                self._run_state = "running"
                                 self._emit_arena_state()
                                 self._emit_job_action_status(job_id, block, "success", "Security dialog solved")
                             else:
@@ -2046,7 +2023,7 @@ class Bridge(QObject):
                                         highlight_ms=block.highlight_ms,
                                         label=f"{block.display_name} open dialog",
                                     )
-                                    await find_and_click(self.cdp, req, engine=self)
+                                    await find_and_click(ctrl.cdp, req, engine=self)
                                     await asyncio.sleep(0.5)
                                 except Exception as e:
                                     self._log(f"[{correlation_id}] Open dialog click skipped: {e}", "warn")
@@ -2070,7 +2047,7 @@ class Bridge(QObject):
                                 from app.browser.dom_highlight import build_find_probe
                                 from app.browser.probe_requests import FindProbeSpec
                                 js = build_find_probe(sel, FindProbeSpec(highlight=block.highlight_enabled, highlight_ms=block.highlight_ms or 1500, color=block.color))
-                                raw = await self.cdp.evaluate(js)
+                                raw = await ctrl.cdp.evaluate(js)
                                 import json as _j
                                 res = _j.loads(raw) if raw else {}
                                 if res.get("found"):
@@ -2123,7 +2100,7 @@ class Bridge(QObject):
                                 highlight_ms=block.highlight_ms or block.highlight_duration_ms or 2000,
                                 label=block.display_name,
                             )
-                            result = await find_and_click(self.cdp, req, engine=self)
+                            result = await find_and_click(ctrl.cdp, req, engine=self)
                             if result != "ok":
                                 # Try fallback list split by comma
                                 fallback_list = []
@@ -2143,7 +2120,7 @@ class Bridge(QObject):
                                         highlight_ms=block.highlight_ms,
                                         label=f"Submit fallback {fb_sel[:40]}",
                                     )
-                                    result2 = await find_and_click(self.cdp, fb_req, engine=self)
+                                    result2 = await find_and_click(ctrl.cdp, fb_req, engine=self)
                                     if result2 == "ok":
                                         success_fallback = fb_sel
                                         break
@@ -2910,13 +2887,6 @@ class Bridge(QObject):
                     break
                 await asyncio.sleep(1)
 
-            if self._cancel_requested:
-                self._log("🏁 Batch cancelled by user", "warn")
-            else:
-                self._log("🏁 Batch complete", "success")
-            self._run_state = "idle"
-            self._emit_arena_state()
-
         except Exception as e:
             if "Cancelled" in str(e) or self._cancel_requested:
                 self._log(f"🏁 Batch cancelled: {e}", "warn")
@@ -2924,8 +2894,7 @@ class Bridge(QObject):
                 self._log(f"Batch runner crashed: {e}", "error")
             import traceback
             traceback.print_exc()
-            self._run_state = "idle"
-            self._emit_arena_state()
+            raise
 
 
 

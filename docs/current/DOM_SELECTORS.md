@@ -532,3 +532,5 @@ All selectors will be centralized in `app/browser/site_adapter.py` as constants 
 - `bridge.py` verifies before both WAIT and DOWNLOAD, fails without atomic_write.
 - `pytest 45 passed`, `verify_quality --changed --allow-legacy` PASSED.
 
+
+Batch admission uses the read-only probe in `app/browser/page_availability.py`: visible enabled prompt, visible Send control, file input (hidden allowed), no visible spinner/progressbar/aria-busy/Stop control, loading output image, or CAPTCHA. A disabled Send button alone is normal for an empty composer. Invalid probe responses never mean steady. Behavioral JavaScript tests: `tests/test_page_availability.py` via `tests/js_harness.js`.

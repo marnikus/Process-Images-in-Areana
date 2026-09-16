@@ -48,7 +48,9 @@ On first run, browser launches with profile `./browser_profile`. Log in to arena
 - **Settings:** timeouts, retry limits, output naming, supported file types, overwrite, highlight rect (enable, duration, color, border width), browser profile
 
 ## Workflow
-For each selected pending image (sequential, round-robin URLs):
+The desktop runner dispatches selected pending images concurrently to free, exact-matching Chrome tabs, using one dedicated connection per page. Each page must pass two live idle checks before receiving work. Busy, CAPTCHA-blocked, and unready pages wait; broken connections are not treated as free.
+
+For each assigned image:
 1. Create job with unique correlation ID
 2. Confirm webpage ready
 3. Capture baseline (old outputs, timestamp)
@@ -117,7 +119,7 @@ Responsibilities separate, site adapter replaceable.
 - Output detection relies on R2 host pattern, may need update if host changes
 - Attachment preview selector not fully verified (no HTML with attachment in saved evidence) — fallback to blob URL
 - Sign-in/error detection heuristic, may need refinement
-- Sequential processing only (MVP)
+- Legacy Playwright `JobRunner` remains sequential; the active desktop/CDP runner supports concurrent free-page dispatch.
 - No thumbnail generation yet (shows filename)
 - No watch-folder mode yet
 - No CSV/JSON export yet (but logs and job history in JSON)

@@ -43,6 +43,8 @@ Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process I
 
 ---
 
+Free-page dispatch: `docs/archive/2026-09-15-free-page-dispatch/design.md` (design) and `docs/archive/2026-09-15-free-page-dispatch/verification.md` (tests, quality review, live acceptance).
+
 ## How to add new doc
 
 1. Write design into `docs/archive/<YYYY-MM-DD>-<topic>/design.md` (dated)
