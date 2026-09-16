@@ -1214,11 +1214,15 @@ class Bridge(QObject):
         except Exception:
             pass
 
-    @Slot(result=str)
-    def pick_folder(self):
+    @Slot(str, result=str)
+    def pick_folder(self, start_dir: str):
         if QFileDialog is None:
             return json.dumps({"ok": False, "error": "No file dialog"})
-        folder = QFileDialog.getExistingDirectory(None, "Select image folder")
+        start = (start_dir or "").strip()
+        if not start or not Path(start).is_dir():
+            last = (self.state.folder.get("root_path", "") or "").strip()
+            start = last if last and Path(last).is_dir() else ""
+        folder = QFileDialog.getExistingDirectory(None, "Select image folder", start)
         if not folder:
             return json.dumps({"ok": False, "cancelled": True})
         self.state.folder["root_path"] = folder
