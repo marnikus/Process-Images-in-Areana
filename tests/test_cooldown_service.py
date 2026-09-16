@@ -296,7 +296,7 @@ def test_resolve_primary_tab_adopts_single_page():
     pool.add_page(make_info("only"))
     assert svc.resolve_primary_tab(pool, "") == "only"
     assert svc.resolve_primary_tab(pool, "only") == "only"
-    assert svc.resolve_primary_tab(pool, "ghost") == "ghost"
+    assert svc.resolve_primary_tab(pool, "ghost") == "only"  # stale id heals
     pool.add_page(make_info("second"))
     assert svc.resolve_primary_tab(pool, "") == ""
 
@@ -305,6 +305,42 @@ def test_resolve_primary_tab_adopts_single_page():
 def test_resolve_primary_tab_no_pool():
     assert svc.resolve_primary_tab(None, "") == ""
     assert svc.resolve_primary_tab(None, "x") == "x"
+
+
+def _cooling_pool(*tab_ids):
+    pool = PagePool()
+    for tid in tab_ids:
+        pool.add_page(make_info(tid))
+        svc.start_cooldown(pool, tid, 300, reason="job done")
+    return pool
+
+
+@pytest.mark.unit
+def test_resolve_prefers_ready_over_cooling_preferred():
+    pool = _cooling_pool("cool")
+    pool.add_page(make_info("ready"))
+    assert svc.resolve_primary_tab(pool, "cool") == "ready"
+    assert svc.resolve_primary_tab(pool, "ready") == "ready"
+
+
+@pytest.mark.unit
+def test_resolve_keeps_preferred_when_nothing_ready():
+    pool = _cooling_pool("cool")
+    pool.add_page(make_info("busy"))
+    pool.mark_busy("busy", "j1")
+    assert svc.resolve_primary_tab(pool, "cool") == "cool"  # caller waits
+
+
+@pytest.mark.unit
+def test_resolve_best_ready_uses_lowest_jobs_then_order():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    pool.get_page("a").jobs_completed = 5
+    pool.get_page("b").jobs_completed = 2
+    assert svc.resolve_primary_tab(pool, "ghost") == "b"
+    pool.get_page("b").jobs_completed = 5
+    assert svc.resolve_primary_tab(pool, "ghost") == "a"  # tie: pool order
 
 
 @pytest.mark.unit

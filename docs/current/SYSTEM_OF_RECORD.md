@@ -156,6 +156,7 @@ Adapted from Old App's `cycle_plan` + `process_conversation`, now for Arena imag
 | I-26 | Per-tab independence — pause, captcha count, and pending penalty live on the tab; tab B never inherits tab A timers | New | `PageInfo` fields + `cooldown_service` |
 | I-27 | Captcha stacks, reset is safe — each detection adds configured extra time; stuck busy/waiting/error frees only when no run is active (post-error recovery), live runs refuse with a message; user reset/edit never frees a running job | New | `add_captcha_penalty` / `reset_cooldown` + `force_reset_page` / `edit_cooldown` |
 | I-28 | Load balancing — next job goes to the free tab with fewest completed jobs; counters persist per URL and are never pruned | New | `register_job_done` + `_pick_lowest_count` + stats in `cooldown_store` |
+| I-29 | Run prefers a ready tab — single-mode start and each image re-resolve primary to the best ready pooled tab (lowest jobs); primary reconnects on move; waits only when all tabs cooling | New | `resolve_primary_tab` + `_select_run_tab` |
 
 ---
 

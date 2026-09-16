@@ -1,4 +1,4 @@
-# ideal-size: ~517 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+# ideal-size: ~540 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
 """Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
 
 Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
@@ -104,18 +104,40 @@ def ensure_pool_page(pool: Any, info: PageInfo) -> bool:
     return True
 
 
+def _snapshot_free(pages, tab_id: str) -> bool:
+    """Preferred tab is pooled and free right now."""
+    for p in pages or []:
+        if p.get("tab_id") == tab_id:
+            return p.get("status") == "steady" and bool(p.get("is_connected", False))
+    return False
+
+
+def _best_ready_id(pages) -> str:
+    """Free tab with fewest jobs; ties keep pool order, else ''."""
+    free = [p for p in pages or []
+            if p.get("status") == "steady" and p.get("is_connected", False)]
+    if not free:
+        return ""
+    best = min(free, key=lambda p: p.get("jobs_completed", 0) or 0)
+    return best.get("tab_id", "") or ""
+
+
 def resolve_primary_tab(pool: Any, tab_id: str) -> str:
-    """Adopt the single pooled page when the captured id is empty."""
+    """Keep a free preferred tab; a stale/busy one heals to best ready."""
     tab_id = tab_id or ""
-    if pool is None or tab_id:
+    if pool is None:
         return tab_id
     try:
         pages = pool.status_snapshot().get("pages", [])
     except Exception:
         return tab_id
-    if len(pages) == 1:
-        return pages[0].get("tab_id", "") or tab_id
-    return tab_id
+    if not tab_id:
+        if len(pages) == 1:
+            return pages[0].get("tab_id", "")
+        return ""
+    if _snapshot_free(pages, tab_id):
+        return tab_id
+    return _best_ready_id(pages) or tab_id
 
 
 def _restore_pending(page, entry: dict) -> None:

@@ -1644,6 +1644,25 @@ class Bridge(QObject):
         except Exception:
             pass
 
+    async def _select_run_tab(self, primary_tab_id) -> str:
+        """Prefer a ready pooled tab; reconnect primary when it moves."""
+        try:
+            from app.services.cooldown_service import resolve_primary_tab
+            want = resolve_primary_tab(self._page_pool, primary_tab_id)
+        except Exception:
+            return primary_tab_id
+        if not want or want == primary_tab_id:
+            return primary_tab_id
+        try:
+            page = self._page_pool.get_page(want) if self._page_pool else None
+            ws = getattr(page, "ws_url", "") or ""
+            if ws and self.cdp and await self.cdp.connect(ws):
+                self._log(f"🔀 Run moved to ready tab {want[:12]}", "info")
+                return want
+        except Exception:
+            pass
+        return primary_tab_id
+
     async def _finish_primary_tab(self, ctrl, primary_tab_id) -> None:
         """Post-job reset + cooldown; settles a stuck page when finish fails."""
         try:
@@ -2136,15 +2155,11 @@ class Bridge(QObject):
             from app.utils.correlation import generate_correlation_id, build_final_prompt
             from app.core.naming import get_output_path, atomic_write_bytes
             from app.core.enums import ImageStatus
-            from app.services.cooldown_service import resolve_primary_tab, wait_for_batch_ready
+            from app.services.cooldown_service import wait_for_batch_ready
             import asyncio
 
             ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
-            primary_tab_id = getattr(self.cdp, "_current_tab_id", "") or ""
-            try:
-                primary_tab_id = resolve_primary_tab(self._page_pool, primary_tab_id)
-            except Exception:
-                pass
+            primary_tab_id = await self._select_run_tab(getattr(self.cdp, "_current_tab_id", "") or "")
             ready, reasons = await ctrl.is_page_ready()
             if not ready:
                 self._log(f"⚠ Page not ready: {', '.join(reasons)} — trying anyway", "warn")
@@ -2213,6 +2228,8 @@ class Bridge(QObject):
                     self._log("Batch cancelled after pause", "warn")
                     break
 
+                # Prefer a ready tab per image (primary may have cooled); then gate.
+                primary_tab_id = await self._select_run_tab(primary_tab_id)
                 # Cooldown gate (single-page): wait until this tab's pause expires
                 try:
                     from app.services.cooldown_service import wait_for_tab_ready
