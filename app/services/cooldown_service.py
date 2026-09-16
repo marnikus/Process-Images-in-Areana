@@ -1,4 +1,4 @@
-# ideal-size: ~310 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+# ideal-size: ~345 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
 """Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
 
 Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.browser.new_chat import ResetCtx, reset_to_new_chat
-from app.browser.page_status import PageStatus, now_iso
+from app.browser.page_status import PageInfo, PageStatus, now_iso
 from app.core.cooldown import (
     DEFAULT_MIN_SECONDS,
     DEFAULT_PENALTY_SECONDS,
@@ -69,6 +69,36 @@ def _settle_steady(page) -> bool:
     page.cooldown_reason = ""
     page.last_steady_at = now_iso()
     page.error = None
+    return True
+
+
+def _fill_missing(page, title: str, url: str) -> None:
+    """Fill empty display fields; never clobbers filled ones."""
+    try:
+        if not page.url and url:
+            page.url = url
+        if not page.title and title:
+            page.title = title
+    except Exception:
+        pass
+
+
+def ensure_pool_page(pool: Any, info: PageInfo) -> bool:
+    """Register-if-missing so single-tab batches always have a page to cool."""
+    if pool is None or not info.tab_id:
+        return False
+    try:
+        page = pool.get_page(info.tab_id)
+    except Exception:
+        return False
+    if page is None:
+        try:
+            pool.add_page(info)
+            return True
+        except Exception:
+            return False
+    with pool._lock:
+        _fill_missing(page, info.title, info.url)
     return True
 
 

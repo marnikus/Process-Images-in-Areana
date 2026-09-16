@@ -257,3 +257,34 @@ async def test_finish_unknown_tab_returns_false(monkeypatch):
     bridge = make_bridge()
     ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="nope", ctrl=object(), client=object())
     assert await svc.finish_page_after_job(ctx) is False
+
+
+@pytest.mark.unit
+def test_ensure_registers_missing_primary_tab():
+    pool = PagePool()
+    info = PageInfo(tab_id="tab1", ws_url="ws://x", title="Arena", url="https://arena.ai/abc")
+    assert svc.ensure_pool_page(pool, info) is True
+    page = pool.get_page("tab1")
+    assert page.status == PageStatus.STEADY
+    assert page.is_connected is True
+    assert (page.title, page.url) == ("Arena", "https://arena.ai/abc")
+    # finish now cools instead of unknown-tab no-op
+    assert svc.start_cooldown(pool, "tab1", 300, reason="job done") is True
+    assert pool.get_page("tab1").status == PageStatus.COOLDOWN
+
+
+@pytest.mark.unit
+def test_ensure_fills_empty_url_title_only():
+    pool = PagePool()
+    pool.add_page(PageInfo(tab_id="t", ws_url="ws://t", title="", url=""))
+    assert svc.ensure_pool_page(pool, PageInfo(tab_id="t", title="Live", url="https://x.ai/y")) is True
+    page = pool.get_page("t")
+    assert (page.title, page.url) == ("Live", "https://x.ai/y")
+    assert svc.ensure_pool_page(pool, PageInfo(tab_id="t", title="Other", url="https://other/")) is True
+    assert (page.title, page.url) == ("Live", "https://x.ai/y")
+
+
+@pytest.mark.unit
+def test_ensure_rejects_missing_pool_or_tab():
+    assert svc.ensure_pool_page(None, PageInfo(tab_id="t")) is False
+    assert svc.ensure_pool_page(PagePool(), PageInfo(tab_id="")) is False

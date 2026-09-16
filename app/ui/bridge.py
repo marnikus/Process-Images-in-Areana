@@ -208,6 +208,46 @@ class Bridge(QObject):
         except Exception:
             pass
 
+    async def _resolve_tab_info(self, tab_id: str, ws_url: str):
+        """Best-known (title, url): live Chrome tabs first, cdp attrs then."""
+        title = getattr(self.cdp, "_current_title", "") or ""
+        url = getattr(self.cdp, "_current_url", "") or ""
+        try:
+            tabs = await self.cdp.fetch_tabs()
+        except Exception:
+            return title, url
+        try:
+            for t in tabs or []:
+                tid = getattr(t, "id", "") or ""
+                tws = getattr(t, "ws_url", "") or ""
+                if (tab_id and tid == tab_id) or (ws_url and tws == ws_url):
+                    return getattr(t, "title", "") or title, getattr(t, "url", "") or url
+        except Exception:
+            pass
+        return title, url
+
+    async def _ensure_pool_page(self, tab_id: str):
+        """Register primary tab for cooldown tracking (batch self-sufficiency)."""
+        try:
+            if not self._page_pool or not tab_id:
+                return
+            page = self._page_pool.get_page(tab_id)
+            if page is not None and getattr(page, "url", "") and getattr(page, "title", ""):
+                return
+            ws = getattr(self.cdp, "_current_ws_url", "") or ""
+            title = getattr(self.cdp, "_current_title", "") or ""
+            url = getattr(self.cdp, "_current_url", "") or ""
+            if not url or not title:
+                live_title, live_url = await self._resolve_tab_info(tab_id, ws)
+                title = title or live_title or tab_id
+                url = url or live_url
+            from app.browser.page_status import PageInfo
+            from app.services.cooldown_service import ensure_pool_page
+            ensure_pool_page(self._page_pool, PageInfo(tab_id=tab_id, ws_url=ws, title=title, url=url))
+            self._emit_pool_status()
+        except Exception as e:
+            self._log(f"Pool ensure skipped: {e}", "warn")
+
     def _on_cdp_error(self, err_msg: str):
         try:
             self._log(f"CDP error: {err_msg[:500]}", "error")
@@ -1905,7 +1945,8 @@ class Bridge(QObject):
                 self._log(f"❌ Pool connect failed {ws_url[:80]}", "error")
                 return
             ctrl = CDPArenaController(client, log_callback=lambda msg: self._log(msg, "info"))
-            info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=client._current_title or tab_id, url=client._current_url or "")
+            live_title, live_url = await self._resolve_tab_info(tab_id, ws_url)
+            info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
             self._page_pool.add_page(info)
             self._page_pool.register_client(tab_id, client, ctrl)
             self._emit_pool_status()
@@ -2006,6 +2047,7 @@ class Bridge(QObject):
                 try:
                     from app.services.cooldown_service import wait_for_tab_ready
                     if self._page_pool and primary_tab_id:
+                        await self._ensure_pool_page(primary_tab_id)
                         _tab_ready = await wait_for_tab_ready(self._page_pool, primary_tab_id, self)
                         if not _tab_ready and self._cancel_requested:
                             break
@@ -3836,8 +3878,12 @@ class Bridge(QObject):
                         import re as _re
                         m_id = _re.search(r'/devtools/page/([^/]+)$', ws_url)
                         tab_id = m_id.group(1) if m_id else getattr(self.cdp, '_current_tab_id', '') or ws_url
-                        title = getattr(self.cdp, '_current_title', '') or tab_id
+                        title = getattr(self.cdp, '_current_title', '') or ''
                         url = getattr(self.cdp, '_current_url', '') or ''
+                        if not url or not title:
+                            live_title, live_url = await self._resolve_tab_info(tab_id, ws_url)
+                            title = title or live_title or tab_id
+                            url = url or live_url
                         # Check if pool already has dedicated client for this tab_id
                         existing_client, _ = self._page_pool.get_clients(tab_id)
                         if existing_client and getattr(existing_client, 'is_connected', False):
