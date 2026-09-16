@@ -44,6 +44,7 @@ class PageInfo:
     last_job_at: Optional[str] = None
     cooldown_reason: str = ""
     jobs_completed: int = 0
+    current_image: Optional[str] = None
 
     def is_free(self) -> bool:
         return self.status == PageStatus.STEADY and self.is_connected
@@ -73,6 +74,7 @@ class PageInfo:
             return False
         self.status = PageStatus.STEADY
         self.current_job_id = None
+        self.current_image = None
         self.cooldown_until = 0.0
         self.cooldown_total = 0
         self.cooldown_reason = ""
@@ -99,4 +101,5 @@ class PageInfo:
             "last_job_at": self.last_job_at,
             "cooldown_reason": self.cooldown_reason,
             "jobs_completed": self.jobs_completed,
+            "current_image": self.current_image or "",
         }

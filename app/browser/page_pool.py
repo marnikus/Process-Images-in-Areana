@@ -65,6 +65,7 @@ def _snapshot_entry(page) -> dict:
 class PagePool:
     def __init__(self, logger=None):
         self._pages: Dict[str, PageInfo] = {}
+        self._aborts: set = set()
         self._clients: Dict[str, CDPClient] = {}
         self._controllers: Dict[str, CDPArenaController] = {}
         self._lock = threading.RLock()

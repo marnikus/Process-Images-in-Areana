@@ -472,3 +472,46 @@ def test_force_reset_keeps_history_and_identity():
 def test_force_reset_unknown_is_false():
     assert svc.force_reset_page(PagePool(), "nope") is False
     assert svc.force_reset_page(None, "a") is False
+
+
+@pytest.mark.unit
+def test_request_abort_needs_live_job():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    assert svc.request_tab_abort(pool, "ghost") is False
+    assert svc.request_tab_abort(pool, "a") is False  # idle tab
+    assert svc.is_tab_aborted(pool, "a") is False
+    svc.set_tab_image(pool, "a", "03-c.jpeg")
+    assert svc.request_tab_abort(pool, "a") is True
+    assert svc.is_tab_aborted(pool, "a") is True
+
+
+@pytest.mark.unit
+def test_clear_abort_and_image():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.set_tab_image(pool, "a", "x.png")
+    assert svc.request_tab_abort(pool, "a") is True
+    svc.clear_tab_abort(pool, "a")
+    assert svc.is_tab_aborted(pool, "a") is False
+    svc.set_tab_image(pool, "a", None)
+    assert svc.request_tab_abort(pool, "a") is False
+    svc.clear_tab_abort(pool, "ghost")  # never raises
+    svc.set_tab_image(pool, "ghost", "y.png")
+    assert svc.is_tab_aborted(None, "a") is False
+
+
+@pytest.mark.unit
+def test_tab_has_live_job():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    assert svc.tab_has_live_job(pool, "ghost") is False
+    assert svc.tab_has_live_job(pool, "a") is False
+    svc.set_tab_image(pool, "a", "x.png")
+    assert svc.tab_has_live_job(pool, "a") is True
+    pool.mark_busy("b", "j1")
+    assert svc.tab_has_live_job(pool, "b") is False  # stale busy stays resettable
+    svc.set_tab_image(pool, "b", "y.png")
+    assert svc.tab_has_live_job(pool, "b") is True
+    assert svc.tab_has_live_job(None, "a") is False

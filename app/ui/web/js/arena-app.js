@@ -306,6 +306,7 @@ function setupBridgeListeners() {
   if (b.page_pool_updated) {
     b.page_pool_updated.connect((payload) => {
       if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.onUpdate(payload);
+      if (typeof UrlList !== 'undefined' && UrlList.onPoolUpdate) UrlList.onPoolUpdate(payload);
     });
   }
   // Thumbnails — non-blocking to avoid freeze

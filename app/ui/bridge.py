@@ -1663,15 +1663,48 @@ class Bridge(QObject):
             pass
         return primary_tab_id
 
+    def _run_stop_requested(self, tab_id) -> bool:
+        """Global cancel or operator stop for this tab."""
+        if self._cancel_requested:
+            return True
+        try:
+            from app.services.cooldown_service import is_tab_aborted
+            return is_tab_aborted(self._page_pool, tab_id)
+        except Exception:
+            return False
+
+    def _stop_reason(self, tab_id) -> str:
+        """User-facing stop reason for this tab."""
+        try:
+            from app.services.cooldown_service import is_tab_aborted
+            if is_tab_aborted(self._page_pool, tab_id):
+                return "Aborted by operator"
+        except Exception:
+            pass
+        return "Cancelled by user"
+
+    def _start_tab_image(self, tab_id, img) -> None:
+        """Record the image on its tab; drop any stale stop request."""
+        try:
+            import os
+            from app.services.cooldown_service import clear_tab_abort, set_tab_image
+            clear_tab_abort(self._page_pool, tab_id)
+            set_tab_image(self._page_pool, tab_id, os.path.basename(img.relative_path or ""))
+            self._emit_pool_status()
+        except Exception:
+            pass
+
     async def _finish_primary_tab(self, ctrl, primary_tab_id) -> None:
         """Post-job reset + cooldown; settles a stuck page when finish fails."""
         try:
-            from app.services.cooldown_service import FinishCtx, finish_page_after_job
+            from app.services.cooldown_service import FinishCtx, finish_page_after_job, set_tab_image
             if not (self._page_pool and primary_tab_id):
                 return
             ctx = FinishCtx(pool=self._page_pool, bridge=self, tab_id=primary_tab_id,
                             ctrl=ctrl, client=self.cdp)
             await finish_page_after_job(ctx)
+            set_tab_image(self._page_pool, primary_tab_id, None)
+            self._emit_pool_status()
         except asyncio.CancelledError:
             self._settle_stuck_primary(primary_tab_id)
             raise
@@ -2069,13 +2102,26 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
+    @Slot(str, result=str)
+    def stop_tab_job(self, tab_id: str):
+        """Abort the live job on this tab; it fails as Aborted."""
+        try:
+            from app.services.cooldown_service import request_tab_abort
+            if request_tab_abort(self._page_pool, tab_id):
+                self._log(f"⛔ Stop requested for job on {(tab_id or '')[:12]}", "warn")
+                self._emit_pool_status()
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "no live job on this tab"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
     def _reset_stuck_page(self, tab_id: str, page) -> str:
-        """Force-free a stuck page; refuses while its run is still alive."""
-        from app.services.cooldown_service import force_reset_page
+        """Force-free a stuck page; refuses while its own job is alive."""
+        from app.services.cooldown_service import force_reset_page, tab_has_live_job
         was = getattr(page.status, "value", page.status)
-        if getattr(self, "_run_state", "idle") != "idle":
-            self._log(f"⚠ Reset refused for {(tab_id or '')[:12]} — run still active; stop the run first", "warn")
-            return json.dumps({"ok": False, "error": "job still running — stop the run first"})
+        if tab_has_live_job(self._page_pool, tab_id):
+            self._log(f"⚠ Reset refused for {(tab_id or '')[:12]} — job still running on this tab; stop it first", "warn")
+            return json.dumps({"ok": False, "error": "job still running on this tab — stop it first"})
         if force_reset_page(self._page_pool, tab_id):
             self._emit_pool_status()
             self._log(f"♻️ Stuck {was} reset for {(tab_id or '')[:12]} (no run active) — tab ready, fix and run again", "success")
@@ -2248,6 +2294,7 @@ class Bridge(QObject):
                 img.status = ImageStatus.PROCESSING.value
                 self.state.recalculate_progress()
                 self._save_arena()
+                self._start_tab_image(primary_tab_id, img)
 
                 correlation_id = generate_correlation_id()
                 job_id = correlation_id  # use correlation_id as job_id for traceability
@@ -2282,10 +2329,10 @@ class Bridge(QObject):
                 # Iterate through action blocks stack — restored visual runner + generic CUSTOM_FIND
                 for block in action_stack:
                     # Immediate cancel check — should stop any current run immediately
-                    if self._cancel_requested:
+                    if self._run_stop_requested(primary_tab_id):
                         self._log(f"[{correlation_id}] ❌ Cancelled before block {block.display_name}", "warn")
                         job_failed = True
-                        job_error = "Cancelled by user"
+                        job_error = self._stop_reason(primary_tab_id)
                         break
                     if not block.enabled:
                         self._emit_job_action_status(job_id, block, "skipped", f"Skipped (disabled)")
@@ -2294,10 +2341,10 @@ class Bridge(QObject):
                     btype = block.block_id
                     if block.pre_delay_ms and block.pre_delay_ms > 0:
                         await asyncio.sleep(block.pre_delay_ms / 1000.0)
-                        if self._cancel_requested:
+                        if self._run_stop_requested(primary_tab_id):
                             self._log(f"[{correlation_id}] ❌ Cancelled during pre-delay {block.display_name}", "warn")
                             job_failed = True
-                            job_error = "Cancelled by user"
+                            job_error = self._stop_reason(primary_tab_id)
                             break
 
                     self._emit_job_action_status(job_id, block, "running", f"Running {block.display_name}")
@@ -2467,12 +2514,12 @@ class Bridge(QObject):
                                         pass
                                 start_wait = asyncio.get_event_loop().time()
                                 while await ctrl.is_security_dialog_visible():
-                                    if self._cancel_requested:
+                                    if self._run_stop_requested(primary_tab_id):
                                         try:
                                             await ctrl.hide_watcher_overlay()
                                         except Exception:
                                             pass
-                                        raise RuntimeError("Cancelled during CAPTCHA")
+                                        raise RuntimeError(f"{self._stop_reason(primary_tab_id)} during CAPTCHA")
                                     elapsed = asyncio.get_event_loop().time() - start_wait
                                     if elapsed > captcha_timeout_sec:
                                         self._log(f"[{correlation_id}] ⏰ Captcha wait timeout after {int(elapsed)}s (limit {captcha_timeout_sec}s) — still waiting for user solve (as per settings)", "error")
@@ -2693,10 +2740,10 @@ class Bridge(QObject):
                             wait_success = False
                             last_wait_error = ""
                             for wait_cycle in range(max_wait_cycles):
-                                if self._cancel_requested:
+                                if self._run_stop_requested(primary_tab_id):
                                     self._log(f"[{correlation_id}] ❌ Cancelled during wait cycle {wait_cycle+1}", "warn")
                                     job_failed = True
-                                    job_error = "Cancelled by user"
+                                    job_error = self._stop_reason(primary_tab_id)
                                     break
                                 # ── During generation wait, check for captcha — if appears, switch overlay to captcha ──
                                 try:
@@ -2718,12 +2765,12 @@ class Bridge(QObject):
                                             captcha_timeout_sec = 300
                                         cap_start = asyncio.get_event_loop().time()
                                         while await ctrl.is_security_dialog_visible():
-                                            if self._cancel_requested:
+                                            if self._run_stop_requested(primary_tab_id):
                                                 try:
                                                     await ctrl.hide_watcher_overlay()
                                                 except Exception:
                                                     pass
-                                                raise RuntimeError("Cancelled during CAPTCHA in generation wait")
+                                                raise RuntimeError(f"{self._stop_reason(primary_tab_id)} during CAPTCHA in generation wait")
                                             cap_elapsed = asyncio.get_event_loop().time() - cap_start
                                             if cap_elapsed > captcha_timeout_sec:
                                                 self._log(f"[{correlation_id}] ⏰ Captcha during generation timeout {int(cap_elapsed)}s/{captcha_timeout_sec}s — still waiting (user setting from win)", "error")
@@ -2755,17 +2802,17 @@ class Bridge(QObject):
                                     self._log(f"[{correlation_id}] 🔄 Wait cycle {wait_cycle+1}/{max_wait_cycles} after reload — waiting again {wait_timeout}ms", "warn")
                                     self._emit_job_action_status(job_id, block, "waiting", f"{label} retry {wait_cycle+1}/{max_wait_cycles} after reload, timeout {wait_timeout}ms")
 
-                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
-                                if self._cancel_requested:
+                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
+                                if self._run_stop_requested(primary_tab_id):
                                     self._log(f"[{correlation_id}] ❌ Cancelled after wait_for_new_output", "warn")
                                     job_failed = True
-                                    job_error = "Cancelled by user"
+                                    job_error = self._stop_reason(primary_tab_id)
                                     break
                                 # Check if cancelled via wait_for_new_output result
                                 if data.get("cancelled") or (data.get("error") and "Cancelled" in str(data.get("error"))):
                                     self._log(f"[{correlation_id}] ❌ Cancelled (wait returned cancelled)", "warn")
                                     job_failed = True
-                                    job_error = "Cancelled by user"
+                                    job_error = self._stop_reason(primary_tab_id)
                                     break
 
                                 if status == "completed":
@@ -2859,7 +2906,7 @@ class Bridge(QObject):
                                                     # To avoid tight loop, wait a bit and continue to next wait attempt (but keep same cycle count? We'll just continue waiting)
                                                     await asyncio.sleep(2)
                                                     # Try wait again within same cycle (extend)
-                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
+                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
                                                     if status2 == "completed" and data2.get("new_src"):
                                                         new_src = data2.get("new_src")
                                                         # Try download again
@@ -3151,10 +3198,10 @@ class Bridge(QObject):
                                 dl_success = False
                                 last_dl_err = ""
                                 for dl_cycle in range(max_dl_cycles):
-                                    if self._cancel_requested:
+                                    if self._run_stop_requested(primary_tab_id):
                                         self._log(f"[{correlation_id}] ❌ Cancelled during download cycle {dl_cycle+1}", "warn")
                                         job_failed = True
-                                        job_error = "Cancelled by user"
+                                        job_error = self._stop_reason(primary_tab_id)
                                         break
                                     if dl_cycle > 0:
                                         self._log(f"[{correlation_id}] 🔄 Download cycle {dl_cycle+1}/{max_dl_cycles} after reload", "warn")
@@ -3163,10 +3210,10 @@ class Bridge(QObject):
                                     # Try download up to 5 attempts per cycle
                                     max_attempts = 5
                                     for attempt in range(max_attempts):
-                                        if self._cancel_requested:
+                                        if self._run_stop_requested(primary_tab_id):
                                             self._log(f"[{correlation_id}] ❌ Cancelled during download attempt {attempt+1}", "warn")
                                             job_failed = True
-                                            job_error = "Cancelled by user"
+                                            job_error = self._stop_reason(primary_tab_id)
                                             break
                                         try:
                                             s, f, c = await ctrl.download_image(new_src)
@@ -3185,7 +3232,7 @@ class Bridge(QObject):
                                                     self._log(f"[{correlation_id}] ⏳ Download failed but generation still in progress {gen_details} — returning to waiting state, will wait again", "warn")
                                                     self._emit_job_action_status(job_id, block, "waiting", f"Download not ready but generating {gen_details}, returning to waiting")
                                                     # Wait again for new output
-                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
+                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
                                                     if status_w == "completed" and data_w.get("new_src"):
                                                         new_src = data_w.get("new_src")
                                                         self._log(f"[{correlation_id}] New output after waiting again: {new_src[:80]}", "info")
@@ -3200,7 +3247,7 @@ class Bridge(QObject):
                                             is_gen, gen_details = await ctrl.is_generating()
                                             if is_gen:
                                                 self._log(f"[{correlation_id}] Exception but generating {gen_details} — returning to waiting", "warn")
-                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
+                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
                                                 if status_w == "completed" and data_w.get("new_src"):
                                                     new_src = data_w.get("new_src")
                                                     continue
@@ -3216,7 +3263,7 @@ class Bridge(QObject):
                                     if is_gen:
                                         self._log(f"[{correlation_id}] Generation still in progress, not failing download yet — will wait again", "warn")
                                         self._emit_job_action_status(job_id, block, "waiting", f"Download failed but still generating {gen_details}, waiting again")
-                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
+                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
                                         if status_w == "completed" and data_w.get("new_src"):
                                             new_src = data_w.get("new_src")
                                             self._log(f"[{correlation_id}] New src after waiting: {new_src[:80]} — retrying download", "info")

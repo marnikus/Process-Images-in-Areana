@@ -1,5 +1,5 @@
 """Multi-page dispatcher — parallel dispatch to different webpages."""
-# ideal-size: ~360 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
+# ideal-size: ~385 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
 
 from __future__ import annotations
 
@@ -240,6 +240,26 @@ async def _get_free_or_acquire(pool, bridge, img):
     return free_page
 
 
+def _start_tab_image(pool, tab_id, img):
+    """Record the image on its tab; drop any stale stop request."""
+    try:
+        import os
+        from .cooldown_service import clear_tab_abort, set_tab_image
+        clear_tab_abort(pool, tab_id)
+        set_tab_image(pool, tab_id, os.path.basename(img.relative_path or ""))
+    except Exception:
+        pass
+
+
+def _clear_tab_image(pool, tab_id):
+    """Forget the finished image (pool emit follows in finish)."""
+    try:
+        from .cooldown_service import set_tab_image
+        set_tab_image(pool, tab_id, None)
+    except Exception:
+        pass
+
+
 async def run_one_image_on_page(bridge, pool, img, urls):
     if bridge._cancel_requested:
         return
@@ -254,6 +274,7 @@ async def run_one_image_on_page(bridge, pool, img, urls):
         _mark_steady_emit(pool, bridge, tab_id)
         return
     _log_assign(bridge, img, tab_id, free_page)
+    _start_tab_image(pool, tab_id, img)
     try:
         url_row, corr_id, job_id, failed, err = await _run_image_job(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=urls, tab_id=tab_id, ctrl=ctrl, client=client))
         _handle_result(ResultCtx(bridge=bridge, pool=pool, img=img, tab_id=tab_id, corr_id=corr_id, job_id=job_id, failed=failed, err=err))
@@ -262,6 +283,7 @@ async def run_one_image_on_page(bridge, pool, img, urls):
     except Exception as e:
         _handle_exception(bridge, img, tab_id, e)
     finally:
+        _clear_tab_image(pool, tab_id)
         try:
             finish_ctx = FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client)
             await finish_page_after_job(finish_ctx)

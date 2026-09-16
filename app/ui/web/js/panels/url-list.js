@@ -1,5 +1,5 @@
 /* url-list.js — URL List panel */
-// ideal-size: ~380 lines reason=single UrlList panel object owns row render + pool matching + cooldown/counter cells; splitting the literal would scatter one refresh pass across files that always change together (RULE 18.2)
+// ideal-size: ~435 lines reason=single UrlList panel object owns row render + pool matching + cooldown/counter cells + per-tab job line/stop; splitting the literal would scatter one refresh pass across files that always change together (RULE 18.2)
 'use strict';
 
 const UrlList = {
@@ -43,6 +43,7 @@ const UrlList = {
       if (action === 'remove') this.removeUrl(urlId);
       if (action === 'edit') this.editUrl(urlId);
       if (action === 'connect') this.connectUrl(urlId);
+      if (action === 'stop-job') this.stopJob(urlId);
       if (action === 'cool-reset' || action === 'cool-edit') this.coolAction(action, btn);
     });
   },
@@ -71,7 +72,7 @@ const UrlList = {
       tr.dataset.url = u.url;
       tr.innerHTML = `
         <td><input type="checkbox" ${u.enabled !== false ? 'checked' : ''} data-action="toggle" data-url-id="${u.id}"></td>
-        <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.esc(u.url)}${u.tab_id ? ' — linked tab ' + this.esc(String(u.tab_id).slice(0,8)) : ''}">${this.esc(u.url)}</td>
+        <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.esc(u.url)}${u.tab_id ? ' — linked tab ' + this.esc(String(u.tab_id).slice(0,8)) : ''}">${this.esc(u.url)}<div class="url-job-line" style="font-size:10px; color:var(--warning, #fbbf24);"></div></td>
         <td><span class="url-status url-status-${u.status || 'pending'}">${this.esc(u.status || 'pending')}</span></td>
         <td class="url-conn-status" style="font-size:11px;"><span style="color:var(--text-muted);">○ checking…</span></td>
         <td class="url-cool-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td>
@@ -81,6 +82,7 @@ const UrlList = {
           <button class="btn-small" data-action="cool-reset" data-url-id="${u.id}" title="Reset cooldown — tab ready now">♻️</button>
           <button class="btn-small" data-action="cool-edit" data-url-id="${u.id}" title="Edit cooldown timer">✎</button>
           <button class="btn-small" data-action="connect" data-url-id="${u.id}" title="Find Chrome tab matching this URL and connect">Connect</button>
+          <button class="btn-small url-stop-btn" data-action="stop-job" data-url-id="${u.id}" title="Stop the job running on this tab" disabled>Stop</button>
           <button class="btn-small" data-action="test" data-url-id="${u.id}">Test</button>
           <button class="btn-small" data-action="edit" data-url-id="${u.id}">Edit</button>
           <button class="btn-small" data-action="remove" data-url-id="${u.id}">✕</button>
@@ -94,11 +96,60 @@ const UrlList = {
     if (typeof CDPPanel !== 'undefined' && CDPPanel.updateUrlRowsConnection) {
       setTimeout(()=>CDPPanel.updateUrlRowsConnection(), 50);
     }
+    this.updateJobLines();
   },
 
   esc(s) {
     if (!s) return '';
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  },
+
+  stopJob(urlId) {
+    const u = this._snapshotUrls().find(x => String(x.id) === String(urlId));
+    const tab = u ? u.tab_id : null;
+    if (!tab) {
+      LogConsole.log('Stop: row has no linked tab yet', 'warn');
+      return;
+    }
+    if (App.bridge && App.bridge.stop_tab_job) {
+      App.bridge.stop_tab_job(tab, (res) => {
+        try {
+          const r = JSON.parse(res);
+          LogConsole.log(r.ok ? `⛔ Stop requested for tab ${String(tab).slice(0,8)}` : 'Stop: ' + (r.error || 'failed'), r.ok ? 'warn' : 'error');
+        } catch (e) { LogConsole.log('Stop failed: ' + e, 'error'); }
+      });
+    }
+  },
+
+  onPoolUpdate(payload) {
+    try {
+      const snap = JSON.parse(payload);
+      this.poolPages = (snap && snap.pages) || [];
+    } catch (e) { this.poolPages = []; }
+    this.updateJobLines();
+  },
+
+  updateJobLines() {
+    if (!App.state || !App.state.urls) return;
+    const tbody = document.getElementById('urlTableBody');
+    if (!tbody) return;
+    const rows = tbody.querySelectorAll('tr');
+    App.state.urls.forEach((u, idx) => {
+      const tr = rows[idx];
+      if (!tr) return;
+      const line = tr.querySelector('.url-job-line');
+      const btn = tr.querySelector('.url-stop-btn');
+      const job = this.jobLineForTab(this.poolPages || [], u.tab_id);
+      if (line) line.textContent = job;
+      if (btn) btn.disabled = !job;
+    });
+  },
+
+  jobLineForTab(pages, tabId) {
+    if (!tabId) return '';
+    const p = (pages || []).find(x => x && x.tab_id === tabId);
+    const name = p ? (p.current_image || '') : '';
+    return name ? `\u25b6 ${name}` : '';
   },
 
   _snapshotUrls() {

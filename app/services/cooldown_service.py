@@ -1,4 +1,4 @@
-# ideal-size: ~540 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+# ideal-size: ~605 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
 """Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
 
 Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
@@ -102,6 +102,70 @@ def ensure_pool_page(pool: Any, info: PageInfo) -> bool:
     with pool._lock:
         _fill_missing(page, info.title, info.url)
     return True
+
+
+def _abort_set(pool: Any) -> set:
+    """Per-tab abort flags, created on first use."""
+    aborts = getattr(pool, "_aborts", None)
+    if aborts is None:
+        aborts = pool._aborts = set()
+    return aborts
+
+
+def request_tab_abort(pool: Any, tab_id: str) -> bool:
+    """Flag the tab's live job to stop; False when no job there."""
+    try:
+        with pool._lock:
+            page = pool._pages.get(tab_id)
+            if page is None or not getattr(page, "current_image", None):
+                return False
+            _abort_set(pool).add(tab_id)
+            return True
+    except Exception:
+        return False
+
+
+def is_tab_aborted(pool: Any, tab_id: str) -> bool:
+    """Operator stop requested for this tab's job."""
+    try:
+        return tab_id in getattr(pool, "_aborts", ())
+    except Exception:
+        return False
+
+
+def clear_tab_abort(pool: Any, tab_id: str) -> None:
+    """Drop a consumed/stale stop request."""
+    try:
+        with pool._lock:
+            getattr(pool, "_aborts", set()).discard(tab_id)
+    except Exception:
+        pass
+
+
+def set_tab_image(pool: Any, tab_id: str, name) -> None:
+    """Record/clear the image this tab is processing."""
+    try:
+        with pool._lock:
+            page = pool._pages.get(tab_id)
+            if page is not None:
+                page.current_image = name or None
+    except Exception:
+        pass
+
+
+def tab_has_live_job(pool: Any, tab_id: str) -> bool:
+    """A job is active on this tab (either run path sets the image).
+
+    Stale BUSY without an image is a leftover, not a live job, so it
+    must never block an operator reset.
+    """
+    try:
+        page = pool.get_page(tab_id) if pool else None
+        if page is None:
+            return False
+        return bool(getattr(page, "current_image", None))
+    except Exception:
+        return False
 
 
 def _snapshot_free(pages, tab_id: str) -> bool:
