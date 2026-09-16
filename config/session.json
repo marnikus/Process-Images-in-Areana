@@ -430,5 +430,8 @@
     "y": 23,
     "width": 2560,
     "height": 1377
-  }
+  },
+  "cooldown_enabled": true,
+  "cooldown_min_seconds": 300,
+  "cooldown_captcha_penalty_seconds": 900
 }
