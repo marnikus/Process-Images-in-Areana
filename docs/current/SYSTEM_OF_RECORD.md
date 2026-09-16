@@ -157,6 +157,7 @@ Adapted from Old App's `cycle_plan` + `process_conversation`, now for Arena imag
 | I-27 | Captcha stacks, reset is safe — each detection adds configured extra time; stuck busy/waiting/error frees only when no run is active (post-error recovery), live runs refuse with a message; user reset/edit never frees a running job | New | `add_captcha_penalty` / `reset_cooldown` + `force_reset_page` / `edit_cooldown` |
 | I-28 | Load balancing — next job goes to the free tab with fewest completed jobs; counters persist per URL and are never pruned | New | `register_job_done` + `_pick_lowest_count` + stats in `cooldown_store` |
 | I-29 | Run prefers a ready tab — single-mode start and each image re-resolve primary to the best ready pooled tab (lowest jobs); primary reconnects on move; waits only when all tabs cooling | New | `resolve_primary_tab` + `_select_run_tab` |
+| I-30 | Page-error fast-fail — wait loop scans alert/toast/error regions each poll; fresh limit/error text aborts the wait so the job finishes FAILED (retryable) instead of stalling to timeout; stale banners ignored via wait-start baseline | New | `app/utils/page_errors.py` + `_poll_output_diag` + `_reraise_abort` |
 
 ---
 

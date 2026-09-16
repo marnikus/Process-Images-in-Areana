@@ -4117,12 +4117,12 @@ class Bridge(QObject):
             self._auto_scan_running = False
 
     def _popup_targets(self) -> list:
-        """Enabled rows with live pool tabs: [(tab_id, ws_url, title)]."""
-        targets, seen = [], set()
+        """Titles of enabled rows with live pool tabs (deduped)."""
+        titles, seen = [], set()
         try:
             pool = self._page_pool
             if not pool:
-                return targets
+                return titles
             for u in self.state.urls:
                 if not (u.enabled and u.tab_id) or u.tab_id in seen:
                     continue
@@ -4130,48 +4130,32 @@ class Bridge(QObject):
                 if page is None or not page.is_connected:
                     continue
                 seen.add(u.tab_id)
-                targets.append((u.tab_id, page.ws_url or "", page.title or ""))
+                if page.title:
+                    titles.append(page.title)
         except Exception:
             pass
-        return targets
-
-    async def _bring_tab_front(self, ws_url: str, tab_id: str) -> bool:
-        """Reconnect the pool client and activate its tab. Never raises."""
-        try:
-            client, _ctrl = self._page_pool.get_clients(tab_id)
-            if client is None or not ws_url:
-                return False
-            if not await client.connect(ws_url):
-                return False
-            await client.send("Page.bringToFront", {}, timeout=10)
-            return True
-        except Exception:
-            return False
+        return titles
 
     @Slot(result=str)
     def popup_url_tabs(self):
-        """Popup-on-top: front every active URL tab + raise its OS window."""
+        """Popup-on-top: raise OS windows of live URL tabs, tabs untouched."""
         if not self._page_pool:
             return json.dumps({"ok": False, "error": "pool not initialized"})
         self._schedule_coro(self._do_popup_url_tabs())
         return "pending"
 
     async def _do_popup_url_tabs(self):
-        """Front live tabs via CDP, then raise their desktop windows."""
+        """Raise desktop windows of live URL tabs (no tab switching)."""
         from app.utils.win_popup import raise_window_titles
         targets = self._popup_targets()
         if not targets:
             self._log("⏫ Popup: no active URL tabs (need enabled + linked + connected)", "warn")
             return
-        fronted = 0
-        for tab_id, ws_url, _title in targets:
-            if await self._bring_tab_front(ws_url, tab_id):
-                fronted += 1
         try:
-            raised = raise_window_titles([t for _i, _w, t in targets])
+            raised = raise_window_titles(targets)
         except Exception:
             raised = 0
-        self._log(f"⏫ Popup: {fronted}/{len(targets)} tabs fronted, {raised} windows raised", "success")
+        self._log(f"⏫ Popup: {raised}/{len(targets)} windows on top (tabs untouched)", "success")
 
     def _primary_ws(self) -> str:
         """Socket of the first live pool tab, else ''."""
