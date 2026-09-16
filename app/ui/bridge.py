@@ -203,6 +203,18 @@ class Bridge(QObject):
             except Exception:
                 pass
             self._page_pool = None
+        self._log_build_version()
+
+    def _log_build_version(self) -> None:
+        """Log the running commit so behavior is traceable. Best effort."""
+        try:
+            import subprocess
+            here = Path(__file__).resolve().parents[2]
+            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=here, timeout=5).stdout.strip()
+            if sha:
+                self._log(f"📌 Build {sha}", "info")
+        except Exception:
+            pass
 
     def _emit_pool_status(self):
         try:
@@ -1652,6 +1664,7 @@ class Bridge(QObject):
         except Exception:
             return primary_tab_id
         if not want or want == primary_tab_id:
+            self._log_stay_reason(primary_tab_id)
             return primary_tab_id
         try:
             page = self._page_pool.get_page(want) if self._page_pool else None
@@ -1659,9 +1672,37 @@ class Bridge(QObject):
             if ws and self.cdp and await self.cdp.connect(ws):
                 self._log(f"🔀 Run moved to ready tab {want[:12]}", "info")
                 return want
+            self._log(f"⚠ Reconnect to ready tab {want[:12]} failed — staying on {(primary_tab_id or '?')[:12]} — pool: {self._pool_summary()}", "warn")
+        except Exception as e:
+            self._log(f"⚠ Primary move failed ({e}) — pool: {self._pool_summary()}", "warn")
+        return primary_tab_id
+
+    def _log_stay_reason(self, primary_tab_id) -> None:
+        """Warn when staying on an unready primary, with pool state."""
+        try:
+            if not (self._page_pool and primary_tab_id):
+                return
+            page = self._page_pool.get_page(primary_tab_id)
+            if page is None or page.is_free():
+                return
+            self._log(f"⏳ No ready tab — staying on {primary_tab_id[:12]} ({page.status}) — pool: {self._pool_summary()}", "warn")
         except Exception:
             pass
-        return primary_tab_id
+
+    def _pool_summary(self) -> str:
+        """One-line pool state for run decisions."""
+        try:
+            pages = self._page_pool.status_snapshot().get("pages", [])
+        except Exception:
+            return "pool n/a"
+        bits = []
+        for p in pages:
+            bit = f"{(p.get('tab_id') or '?')[:6]}:{p.get('status')}({'c' if p.get('is_connected') else 'd'})"
+            bit += f"·j{p.get('jobs_completed', 0)}"
+            if p.get("current_image"):
+                bit += f"·▶{p.get('current_image')}"
+            bits.append(bit)
+        return ", ".join(bits) or "pool empty"
 
     def _run_stop_requested(self, tab_id) -> bool:
         """Global cancel or operator stop for this tab."""
