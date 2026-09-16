@@ -1320,19 +1320,7 @@ class Bridge(QObject):
                 supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
                 ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
                 scanned = scan_folder_pure(root_path, supported, ignore_ai)
-                existing = {img.relative_path: img for img in self.state.images}
-                added = 0
-                for s in scanned:
-                    rel = s["relative_path"]
-                    if rel not in existing:
-                        img = ImageItem.from_scan_dict(s, selected=False)
-                        self.state.images.append(img)
-                        added += 1
-                    else:
-                        e = existing[rel]
-                        e.size = s["size"]
-                        e.mtime = s["mtime"]
-                        e.absolute_path = s["absolute_path"]
+                added = self._merge_scanned(scanned)
                 self.state.recalculate_progress()
                 self._save_arena()
                 self._log(f"Scanned {len(scanned)} images, {added} new", "success")
@@ -1477,13 +1465,13 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def filter_queue_drop_ai(self):
-        """Remove _AI outputs from the queue (files untouched)."""
-        return self._filter_queue(keep_ai=False)
+        """Scan picker folder, drop _AI outputs from the queue."""
+        return self._scan_and_filter_queue(keep_ai=False)
 
     @Slot(result=str)
     def filter_queue_keep_ai(self):
-        """Keep only _AI outputs in the queue."""
-        return self._filter_queue(keep_ai=True)
+        """Scan picker folder, keep only _AI outputs in the queue."""
+        return self._scan_and_filter_queue(keep_ai=True)
 
     def _filter_queue(self, keep_ai: bool) -> str:
         """Drop queue entries by _AI suffix, with undo. Never raises."""
@@ -1504,6 +1492,63 @@ class Bridge(QObject):
             return json.dumps({"ok": True, "removed": removed})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
+
+    def _merge_scanned(self, scanned) -> int:
+        """Merge scan dicts into the queue; returns added count."""
+        existing = {img.relative_path: img for img in self.state.images}
+        added = 0
+        for s in scanned:
+            rel = s["relative_path"]
+            if rel not in existing:
+                self.state.images.append(ImageItem.from_scan_dict(s, selected=False))
+                added += 1
+            else:
+                e = existing[rel]
+                e.size = s["size"]
+                e.mtime = s["mtime"]
+                e.absolute_path = s["absolute_path"]
+        return added
+
+    def _scan_and_filter_queue(self, keep_ai: bool) -> str:
+        """Background picker-folder scan + _AI filter; pending JSON."""
+        if getattr(self, '_scan_in_progress', False):
+            return json.dumps({"ok": False, "pending": True, "error": "scan already in progress"})
+        root = self.state.folder.get("root_path", "")
+        if not root:
+            return json.dumps({"ok": False, "error": "No folder set"})
+        root_path = Path(root)
+        if not root_path.exists():
+            return json.dumps({"ok": False, "error": "Folder does not exist"})
+        try:
+            self._scan_in_progress = True
+            supported = set(self.state.folder.get("supported_types", [".png", ".jpg", ".jpeg", ".webp"]))
+            self._log(f"Scanning {root_path}... (queue filter {'only _AI' if keep_ai else 'no _AI'})", "info")
+            self._submit_scan_worker(root_path, supported, keep_ai)
+        except Exception as e:
+            self._scan_in_progress = False
+            return json.dumps({"ok": False, "error": str(e)})
+        return json.dumps({"ok": True, "pending": True})
+
+    def _submit_scan_worker(self, root_path, supported, keep_ai) -> None:
+        """Run the scan+filter worker off the UI thread."""
+        if self._thumb_executor:
+            self._thumb_executor.submit(self._scan_filter_worker, root_path, supported, keep_ai)
+        else:
+            import threading
+            threading.Thread(target=self._scan_filter_worker, args=(root_path, supported, keep_ai), daemon=True).start()
+
+    def _scan_filter_worker(self, root_path, supported, keep_ai) -> None:
+        """Scan picker folder, merge, apply _AI filter. Off UI thread."""
+        try:
+            from .services.scan_service import scan_folder_pure
+            scanned = scan_folder_pure(root_path, supported, False)  # filter needs _AI files too
+            self._merge_scanned(scanned)
+            self._log(f"Scanned {len(scanned)} images from {root_path}", "info")
+            self._filter_queue(keep_ai)
+        except Exception as e:
+            self._log(f"Queue filter scan failed: {e}", "error")
+        finally:
+            self._scan_in_progress = False
 
     @Slot(result=str)
     def reset_all(self):

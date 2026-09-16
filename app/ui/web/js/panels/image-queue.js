@@ -347,7 +347,7 @@ const ImageQueue = {
     const slot = keepAi ? 'filter_queue_keep_ai' : 'filter_queue_drop_ai';
     if (App.bridge && App.bridge[slot]) {
       App.bridge[slot]((res)=>{
-        try{ const r=JSON.parse(res); LogConsole.log(`Queue filter: ${r.removed} removed`,'info'); }catch(e){}
+        try{ const r=JSON.parse(res); LogConsole.log(r.pending ? 'Queue filter: scanning folder…' : `Queue filter: ${r.removed} removed`,'info'); }catch(e){}
       });
     }
   },
