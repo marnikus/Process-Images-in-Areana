@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arena Image Processor</title>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<link rel="stylesheet" href="css/variables.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/window-presets.css">
+<link rel="stylesheet" href="css/sash-layout.css">
+<link rel="stylesheet" href="css/stack-drag.css">
+<link rel="stylesheet" href="css/arena.css">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <header class="app-header">
+    <div class="header-left">
+      <span class="app-title">🖼️ Arena Image Processor</span>
+      <span id="runStatus" style="font-size:11px; color:var(--text-muted); margin-left:12px;">idle</span>
+      <div style="display:flex; align-items:center; gap:4px; margin-left:12px;">
+        <button id="undoBtn" class="btn-icon-sm" title="Undo (Ctrl+Z)" disabled><span class="material-icons" style="font-size:18px;">undo</span></button>
+        <button id="redoBtn" class="btn-icon-sm" title="Redo (Ctrl+Y)" disabled><span class="material-icons" style="font-size:18px;">redo</span></button>
+        <span id="undoCountBadge" style="font-size:10px; color:var(--text-muted); min-width:32px;">0/0</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="tab-select-wrap" style="display:flex; align-items:center; gap:6px;">
+        <select id="tabSelect" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; min-width:260px;"><option value="">— Select Chrome Tab —</option></select>
+        <button id="refreshTabsBtn" class="btn-icon" title="Refresh tabs"><span class="material-icons">refresh</span></button>
+      </div>
+      <span id="connectionStatus" class="status-dot disconnected" title="Disconnected"></span>
+      <button id="connectBtn" class="btn-primary" title="Connect to selected tab"><span class="material-icons">link</span> Connect</button>
+      <button id="windowsMenuBtn" class="btn-icon" title="Windows — open, close, minimize"><span class="material-icons">widgets</span></button>
+      <button id="layoutMenuBtn" class="btn-icon" title="Grid view — layouts and window presets"><span class="material-icons">grid_view</span></button>
+      <button id="themeToggleBtn" class="btn-icon" title="Toggle dark/light theme"><span class="material-icons">brightness_6</span></button>
+    </div>
+  </header>
+
+  <!-- Chrome connection + URL bookmarks toolbar (restored from Old App) -->
+  <div id="chromeToolbar" class="url-toolbar" style="display:flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg-header); border-bottom:1px solid var(--border); flex-wrap:wrap;">
+    <span class="url-toolbar-label" style="display:flex; align-items:center; gap:4px; color:var(--text-secondary); font-size:12px; font-weight:600;"><span class="material-icons" style="font-size:14px; color:var(--accent);">language</span> Chrome: <code style="background:var(--bg-input); padding:2px 6px; border-radius:3px; font-size:11px;">chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\arena-images-chrome"</code></span>
+    <button id="chromeHelpBtn" class="btn-small" title="Show how to start Chrome" style="margin-left:8px;">Help</button>
+    <span class="spacer" style="flex:1;"></span>
+    <span style="font-size:11px; color:var(--text-muted);">If 0 tabs: close ALL Chrome, run start-arena-chrome.bat, open arena.ai in NEW window, then Diagnose</span>
+  </div>
+
+  <div id="urlBookmarksToolbar" class="url-toolbar" style="display:flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg-header); border-bottom:1px solid var(--border); flex-wrap:wrap;">
+    <span class="url-toolbar-label" style="display:flex; align-items:center; gap:4px; color:var(--text-secondary); font-size:12px; font-weight:600;"><span class="material-icons" style="font-size:14px; color:var(--accent);">bookmark</span> URL Bookmarks</span>
+    <input id="urlBookmarkInput" type="text" spellcheck="false" placeholder="Paste URL or keyword — e.g. https://example.com/page" autocomplete="off" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:5px 10px; font-size:12px; min-width:260px; width:320px;">
+    <button id="urlBookmarkConnectBtn" class="btn-primary btn-compact" title="Find matching tab and connect"><span class="material-icons" style="font-size:16px;">link</span> Auto-Connect</button>
+    <button id="addUrlBookmarkBtn" class="btn-icon" title="Save as bookmark"><span class="material-icons">add</span></button>
+    <div id="urlBookmarkChips" class="chip-wrap" style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;"></div>
+  </div>
+
+  <main class="sash-grid" id="sashGrid">
+
+    <!-- URL LIST -->
+    <div class="panel" id="winUrlList" data-window="url_list">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input id="urlInput" type="text" placeholder="https://example.com/page" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
+        <button id="urlAddBtn" class="btn-primary" style="padding:6px 12px;">Add</button>
+      </div>
+      <div style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px;">
+        <table class="url-table">
+          <thead><tr><th>En</th><th>URL</th><th>Status</th><th>Conn</th><th>Error</th><th>Actions</th></tr></thead>
+          <tbody id="urlTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FOLDER PICKER -->
+    <div class="panel" id="winFolder" data-window="folder">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">folder</span> Folder Picker</h3>
+      <div id="folderPathDisplay" class="folder-path">No folder selected</div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input id="folderPathInput" type="text" placeholder="/path/to/images" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
+        <button id="folderPickBtn" class="btn-small">Browse</button>
+        <button id="folderScanBtn" class="btn-primary">Scan</button>
+        <button id="folderScanNewBtn" class="btn-small" style="background:var(--bg-danger,#3a1a1a); border-color:var(--red,#ff4d4d); color:var(--red,#ff6b6b);" title="Clear list first, then scan — start new batch">🗑 New Batch Scan</button>
+      </div>
+      <div id="folderStats" class="folder-stats"></div>
+      <div style="font-size:11px; color:var(--text-muted);">Recursive scan, ignores *_AI files. Supports: png, jpg, jpeg, webp (configurable).</div>
+    </div>
+
+    <!-- IMAGE QUEUE -->
+    <div class="panel" id="winQueue" data-window="queue">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">photo_library</span> Image Queue <span class="spacer"></span><span id="queueCount" style="font-size:10px; color:var(--text-muted)">0 images</span></h3>
+      <div class="queue-toolbar">
+        <select id="queueFilter" style="background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; color:var(--text-primary); font-size:11px;">
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="selected">Selected</option>
+          <option value="processing">Processing</option>
+          <option value="completed">Completed</option>
+          <option value="failed">Failed</option>
+          <option value="skipped">Skipped</option>
+        </select>
+        <button id="queueSelectAllBtn" class="btn-small">Select All</button>
+        <button id="queueDeselectAllBtn" class="btn-small">Deselect All</button>
+        <button id="queueRetryFailedBtn" class="btn-small">Retry Failed</button>
+        <button id="queueResetBtn" class="btn-small">Reset All</button>
+        <button id="queueClearListBtn" class="btn-small" style="background:var(--bg-danger,#3a1a1a); border-color:var(--red,#ff4d4d); color:var(--red,#ff6b6b);" title="Remove all images from queue — start new batch">🗑 Clear List</button>
+      </div>
+      <div class="queue-table-wrap">
+        <table class="queue-table">
+          <thead><tr><th>Sel</th><th>Thumb</th><th>Path</th><th>Status</th><th>URL</th><th>Attempts</th><th>Output</th><th>Error</th><th>Actions</th></tr></thead>
+          <tbody id="queueTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PROMPT EDITOR -->
+    <div class="panel" id="winPrompt" data-window="prompt">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">edit_note</span> Prompt Editor <span class="spacer"></span><button id="promptSaveBtn" class="btn-small btn-primary">Save</button></h3>
+      <textarea id="promptTextarea" class="prompt-textarea" placeholder="Enter your prompt for image generation... e.g. 'Enhance this image, keep style'"></textarea>
+      <div id="promptPreview" class="prompt-preview">Preview will appear here with [JOB-ID: ...] token highlighted</div>
+      <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Token format: [JOB-ID: &lt;unique&gt;] will be appended automatically. Saved as preset JSON.</div>
+    </div>
+
+    <!-- RUN CONTROLS -->
+    <div class="panel" id="winRun" data-window="run">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">play_circle</span> Run Controls</h3>
+      <div class="run-grid">
+        <button id="runStartBtn" class="run-btn primary"><span class="material-icons" style="font-size:16px;">play_arrow</span> Start</button>
+        <button id="runPauseBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">pause</span> Pause</button>
+        <button id="runResumeBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">play_arrow</span> Resume</button>
+        <button id="runStopAfterBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">stop</span> Stop after current</button>
+        <button id="runCancelBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">cancel</span> Cancel current</button>
+        <button id="runRetryBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">replay</span> Retry failed</button>
+      </div>
+      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">🧪 CDP Quick Tests (requires Chrome connected)</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button id="cdpAttachTestBtn" class="btn-small" title="Attach first selected image via CDP DOM.setFileInputFiles"><span class="material-icons" style="font-size:14px;">attach_file</span> Test Attach</button>
+          <button id="cdpPromptTestBtn" class="btn-small" title="Insert prompt via CDP evaluate"><span class="material-icons" style="font-size:14px;">edit</span> Test Prompt</button>
+          <button id="cdpFullFlowTestBtn" class="btn-small" title="Attach + Prompt + Submit (no wait)"><span class="material-icons" style="font-size:14px;">science</span> Test Full Flow</button>
+        </div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Uses DOM.setFileInputFiles for image, Runtime.evaluate for prompt. Highlight rect shows for N seconds (from Settings).</div>
+      </div>
+      <div style="margin-top:12px; font-size:11px; color:var(--text-muted);">
+        <div>• Respects site terms, no CAPTCHA bypass</div>
+        <div>• Observe-baseline → act → verify → persist → advance</div>
+        <div>• Atomic save *_AI.ext beside source</div>
+      </div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="panel" id="winProgress" data-window="progress">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">insights</span> Progress</h3>
+      <div class="progress-bar"><div id="progressBarFill" class="progress-fill" style="width:0%"></div></div>
+      <div class="progress-stats">
+        <div class="progress-stat"><b id="progTotal">0</b> Total</div>
+        <div class="progress-stat"><b id="progPending">0</b> Pending</div>
+        <div class="progress-stat"><b id="progSelected">0</b> Selected</div>
+        <div class="progress-stat"><b id="progProcessing">0</b> Processing</div>
+        <div class="progress-stat"><b id="progCompleted">0</b> Completed</div>
+        <div class="progress-stat"><b id="progFailed">0</b> Failed</div>
+      </div>
+      <div style="margin-top:8px; font-size:11px; color:var(--text-muted);">Skipped: <span id="progSkipped">0</span></div>
+    </div>
+
+    <!-- WATCHER — passive recheck every x ms for generating icon or captcha -->
+    <div class="panel" id="winWatcher" data-window="watcher">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">visibility</span> Watcher — Generation & Captcha <span class="spacer"></span><span id="watcherStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">idle</span></h3>
+
+      <div style="display:flex; flex-direction:column; gap:10px; padding:4px;">
+
+        <!-- Enable + interval -->
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600;">
+            <input id="watcherEnabled" type="checkbox"> Enable Watcher
+          </label>
+          <span class="spacer"></span>
+          <button id="watcherStartBtn" class="btn-small btn-primary" title="Start watcher"><span class="material-icons" style="font-size:14px;">play_arrow</span> Start</button>
+          <button id="watcherStopBtn" class="btn-small" title="Stop watcher"><span class="material-icons" style="font-size:14px;">stop</span> Stop</button>
+          <button id="watcherCheckNowBtn" class="btn-small" title="Check now"><span class="material-icons" style="font-size:14px;">search</span> Check Now</button>
+          <button id="watcherClearOverlayBtn" class="btn-small" title="Clear overlay rectangle"><span class="material-icons" style="font-size:14px;">clear</span> Clear Overlay</button>
+        </div>
+
+        <!-- Settings: interval, timeouts -->
+        <div style="border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
+          <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; text-transform:uppercase;">Watcher Settings (user configurable, stored in session.json)</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+            <div class="settings-group">
+              <label>Check interval (ms) — every x ms</label>
+              <input id="watcherIntervalMs" type="number" min="500" max="30000" step="100" placeholder="2000">
+              <div style="font-size:10px; color:var(--text-muted);">How often to recheck page (500-30000 ms)</div>
+            </div>
+            <div class="settings-group">
+              <label>Auto-pause jobs</label>
+              <select id="watcherAutoPause"><option value="true">Yes — pause run when detected</option><option value="false">No — only show overlay</option></select>
+            </div>
+            <div class="settings-group">
+              <label>Captcha timeout (seconds) — time to solve</label>
+              <input id="watcherCaptchaTimeout" type="number" min="10" max="3600" placeholder="300">
+              <div style="font-size:10px; color:var(--text-muted);">Max wait for user to solve captcha (10-3600s)</div>
+            </div>
+            <div class="settings-group">
+              <label>Generation timeout (seconds)</label>
+              <input id="watcherGenerationTimeout" type="number" min="30" max="3600" placeholder="600">
+              <div style="font-size:10px; color:var(--text-muted);">Max wait for generation to finish (30-3600s)</div>
+            </div>
+          </div>
+          <div style="margin-top:8px; display:flex; gap:6px;">
+            <button id="watcherSaveBtn" class="btn-small btn-primary"><span class="material-icons" style="font-size:14px;">save</span> Save Settings</button>
+            <span style="font-size:11px; color:var(--text-muted); align-self:center;">Saved to config/session.json — auto restored on launch, position & size also storable on closing</span>
+          </div>
+        </div>
+
+        <!-- Current status -->
+        <div style="border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-input);">
+          <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; text-transform:uppercase;">Current Status</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; font-size:12px;">
+            <div>Status: <b id="watcherCurrentStatus">idle</b></div>
+            <div>Last check: <span id="watcherLastCheck">never</span></div>
+            <div>Checks: <b id="watcherChecksCount">0</b></div>
+            <div>Waiting: <span id="watcherWaitingInfo">—</span></div>
+            <div>Gen waits: <b id="watcherGenWaits">0</b></div>
+            <div>Captcha waits: <b id="watcherCaptchaWaits">0</b></div>
+          </div>
+          <div style="margin-top:8px; font-size:11px;">
+            <div>Last generation: <code id="watcherLastGen" style="font-size:10px; word-break:break-all;">—</code></div>
+            <div>Captcha detected: <b id="watcherLastCaptcha">false</b></div>
+          </div>
+        </div>
+
+        <!-- How it works -->
+        <div style="font-size:11px; color:var(--text-muted); border:1px dashed var(--border); border-radius:6px; padding:8px;">
+          <b>How watcher works — visual confirmation on webpage (CDP):</b><br>
+          • Passively rechecks every <b>x ms</b> if page has awaiting icon (<code>div.animate-spin</code>) as it generating or detects captcha (<code>div[role=dialog] Security Verification</code> + <code>iframe[title=reCAPTCHA]</code>)<br>
+          • If generating: draws <b>large rectangle msg on left center page</b> with msg <code>wait for finish generation</code>, <b>sleep circle spinner running</b>, waits until spinner disappears or timeout (user setting from win)<br>
+          • If captcha: draws rectangle <code>wait for user. Captcha</code> on left center, <b>sleep circle</b>, pauses jobs, waits for user to solve manually (never bypass), respects <b>captcha_timeout_sec from win settings</b><br>
+          • Overlay is large, left 2%, top 50% centered, width 38% min 360px, blue for generation, red for captcha, with spinner + elapsed time + timeout remaining (user configurable)<br>
+          • Also job runner now draws same overlay during WAIT_OUTPUT/AWAIT blocks — visual confirmation when in awaiting mode<br>
+          • All settings storable in preset JSON and session, window position/size auto saved on closing
+        </div>
+
+      </div>
+    </div>
+
+    <!-- PAGE POOL — multi-page steady/busy tracking -->
+    <div class="panel" id="winPagePool" data-window="page_pool">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tab</span> Page Pool — Multi-Tab Parallel <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
+      <div style="display:flex; flex-direction:column; gap:10px; padding:4px;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
+          <button id="poolRefreshBtn" class="btn-small" title="Refresh pool status"><span class="material-icons" style="font-size:14px;">refresh</span> Refresh</button>
+          <button id="poolConnectBtn" class="btn-small btn-primary" title="Add selected Chrome tab to pool as steady page"><span class="material-icons" style="font-size:14px;">add_link</span> Add Selected Tab to Pool</button>
+          <button id="poolClearBtn" class="btn-small" style="background:var(--bg-danger,#3a1a1a); border-color:var(--red,#ff4d4d); color:var(--red,#ff6b6b);" title="Clear all pages from pool">🗑 Clear Pool</button>
+          <span class="spacer"></span>
+          <span style="font-size:11px; color:var(--text-muted);">Total: <b id="poolTotal">0</b> • Steady/Free: <b id="poolSteady">0</b> • Busy: <b id="poolBusy">0</b> • Free: <b id="poolFree">0</b></span>
+        </div>
+        <div style="border:1px solid var(--border); border-radius:6px; padding:4px; background:var(--bg-input); max-height:220px; overflow:auto;">
+          <table class="queue-table" style="font-size:11px;">
+            <thead><tr><th>Tab ID</th><th>Title</th><th>URL</th><th>Status</th><th>Job</th><th>Action</th></tr></thead>
+            <tbody id="poolTableBody"></tbody>
+          </table>
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); border:1px dashed var(--border); border-radius:6px; padding:8px;">
+          <b>How pool works:</b><br>
+          • When 2+ webpages connected (CDP tabs) and 2+ images selected, Run uses <b>parallel mode</b> — dispatches to different pages, always selects steady (not processing) page.<br>
+          • Each page marked <span style="color:#4ade80;">steady</span> when free, <span style="color:#4dabf7;">busy</span> when processing. Busy pages never receive double-send.<br>
+          • Visual confirmation (RED find, ORANGE click, GREEN collect) still on correct webpage per tab.<br>
+          • Stop/Pause honoured per tab via shared flags; pool waits for free page with timeout, respects cancel.<br>
+          • Use <b>Add Selected Tab to Pool</b> to add extra tabs from Chrome — connect multiple arena.ai tabs for parallel.
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIVITY LOG -->
+    <div class="panel log-panel" id="winLog" data-window="log">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">terminal</span> Activity Log <span class="spacer"></span><button id="clearLogBtn" class="btn-small">Clear</button></h3>
+      <div id="logConsole" class="log-console"></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="panel" id="winSettings" data-window="settings">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">settings</span> Settings <span class="spacer"></span><button id="settingsSaveBtn" class="btn-small btn-primary">Save</button></h3>
+
+      <!-- CDP Chrome Config — user decides port and user-data-dir -->
+      <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:12px; background:var(--bg-card);">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+          <span class="material-icons" style="font-size:16px; color:var(--accent);">settings_ethernet</span>
+          <b style="font-size:12px;">Chrome Debug Connection (user configurable)</b>
+          <span class="spacer"></span>
+          <button id="cdpSaveBtn" class="btn-small btn-primary" title="Save host/port/dir">Save CDP</button>
+          <button id="cdpTestBtn" class="btn-small" title="Diagnose Chrome on this port">Diagnose</button>
+        </div>
+        <div class="settings-row">
+          <div class="settings-group">
+            <label>CDP Host</label>
+            <input id="cdpHost" type="text" placeholder="127.0.0.1">
+          </div>
+          <div class="settings-group">
+            <label>CDP Port (you decide)</label>
+            <input id="cdpPort" type="number" min="1" max="65535" placeholder="9222">
+          </div>
+        </div>
+        <div class="settings-group">
+          <label>User Data Dir (you decide) — e.g. C:\arena-images-chrome or C:\arena-9223</label>
+          <input id="cdpUserDataDir" type="text" placeholder="C:\arena-images-chrome">
+        </div>
+        <div class="settings-group">
+          <label>Extra Chrome args (optional)</label>
+          <input id="cdpExtraArgs" type="text" placeholder="--disable-extensions">
+        </div>
+        <div style="margin-top:8px;">
+          <label style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:600;">Generated launch command (copy & run):</label>
+          <div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
+            <code id="cdpLaunchCmd" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:11px; word-break:break-all; display:block;">"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\arena-images-chrome"</code>
+            <button id="cdpCopyCmdBtn" class="btn-small" title="Copy command">Copy</button>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Test URL: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — open in browser, should show JSON.</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">💡 Run different ports/dirs: e.g. 9222 for arena, 9223 for virt-chat. App will remember your choice in <code>config/session.json</code> and presets.</div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <label>Page Load Timeout (seconds)</label>
+        <input id="setTimeout" type="number" min="10" max="600">
+      </div>
+      <div class="settings-group">
+        <label>Generation / Waiting Max Time (seconds) — user configurable, e.g. 120 = 2 min, now synced to watcher win (30-3600s)</label>
+        <input id="setGenerationTimeout" type="number" min="30" max="3600" placeholder="120">
+        <div style="font-size:10px; color:var(--text-muted);">User setting from win — controls rect overlay timeout for "wait for finish generation" and watcher generation timeout</div>
+      </div>
+      <div class="settings-group">
+        <label>Max Retries</label>
+        <input id="setRetries" type="number" min="0" max="10">
+      </div>
+      <div class="settings-group">
+        <label>Naming Suffix</label>
+        <input id="setNaming" type="text" placeholder="_AI">
+      </div>
+      <div class="settings-group">
+        <label>File Types (comma separated)</label>
+        <input id="setFileTypes" type="text" placeholder=".png,.jpg,.jpeg,.webp">
+      </div>
+      <div class="settings-row">
+        <div class="settings-group">
+          <label>Overwrite</label>
+          <select id="setOverwrite"><option value="false">False</option><option value="true">True</option></select>
+        </div>
+        <div class="settings-group">
+          <label>Highlight Duration (s)</label>
+          <input id="setHighlightDur" type="number" min="1" max="10">
+        </div>
+      </div>
+      <div class="settings-group">
+        <label>Max Concurrent (future)</label>
+        <input id="setMaxConcurrent" type="number" min="1" max="5" disabled>
+      </div>
+      <div class="preset-bar">
+        <input id="presetNameInput" type="text" placeholder="preset name">
+        <button id="settingsExportBtn" class="btn-small">Export Preset JSON</button>
+        <button id="settingsImportBtn" class="btn-small">Import Preset</button>
+      </div>
+    </div>
+
+    <!-- BROWSER PREVIEW -->
+    <div class="panel" id="winBrowser" data-window="browser">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">preview</span> Browser Preview <span class="spacer"></span><button id="browserClearBtn" class="btn-small">Clear</button></h3>
+      <div id="browserFrame" class="browser-frame"><span>No preview — select image 👁 or run job to see rect highlight</span></div>
+      <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Rect highlight shows above clicked element for N seconds (configurable). All UI params storable in preset JSON.</div>
+    </div>
+
+    <!-- ACTION BLOCKS — Stacking Jobs — redesigned to match target screenshot -->
+    <div class="panel action-blocks-panel" id="winActionBlocks" data-window="action_blocks">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">view_module</span> Action Blocks — Stacking Jobs <span class="spacer"></span><span id="actionBlocksCount" style="font-size:10px; color:var(--text-muted)">0 blocks</span></h3>
+
+      <!-- Toolbar — matches target: Add Action green outline, Reset, Save, Export, Import, Save Custom preset -->
+      <div class="ab-toolbar">
+        <button id="addActionBlockBtn" class="ab-btn ab-btn-primary" title="Add block — click on btn/text areas"><span class="material-icons">add_circle</span> Add Action</button>
+        <button id="resetActionBlocksBtn" class="ab-btn" title="Reset to default stack"><span class="material-icons">restart_alt</span> Reset</button>
+        <button id="saveActionBlocksBtn" class="ab-btn" title="Save stack"><span class="material-icons">save</span> Save</button>
+        <span class="ab-toolbar-spacer"></span>
+        <button id="exportActionBlocksBtn" class="ab-btn" title="Export JSON"><span class="material-icons">ios_share</span> Export</button>
+        <button id="importActionBlocksBtn" class="ab-btn" title="Import JSON"><span class="material-icons">upload</span> Import</button>
+        <button id="saveCustomBlockBtn" class="ab-btn" title="Save selected CUSTOM_FIND as custom preset"><span class="material-icons">bookmark_add</span> Save Custom preset</button>
+      </div>
+
+      <!-- Info box — target text -->
+      <div class="ab-info-box">
+        <b>Reorder Blocks:</b> Drag the handle (alt + arrows as alternative). <span class="ab-visual-colors"><b>Visual confirmation colors:</b> <span style="color:#ff4d4d">RED find</span>, <span style="color:#ff9500">ORANGE click</span>, and <span style="color:#4ade80">GREEN collect</span>. All parameters stored in preset JSON.</span>
+      </div>
+
+      <!-- Main stack — full height resizable, no fixed max-height -->
+      <div id="actionBlocksStack" class="ab-stack"></div>
+
+      <!-- Footer stats + Run button — target design -->
+      <div class="ab-footer">
+        <div class="ab-footer-stats">
+          <span id="abTotalSteps">Total: 0 steps</span> • <span id="abSelectedSteps">Selected: 0 steps</span> • <span id="abStatus">Status: Awaiting run command</span>
+          <span id="abPauseBadge" class="ab-pause-badge hidden"><span class="material-icons">pause_circle</span> ON PAUSE — Captcha / Security detected</span>
+        </div>
+        <button id="abRunBtn" class="ab-run-btn"><span class="material-icons">play_circle</span> Run Automation</button>
+      </div>
+
+      <!-- Collapsible advanced sections -->
+      <details class="ab-details" open>
+        <summary><span class="material-icons">tune</span> Block Config &amp; Tips <span class="ab-details-hint">Select a block to edit in Block Config window → alt+↑↓ to reorder, double-click to highlight selector</span></summary>
+        <div style="font-size:11px; color:var(--text-muted); padding:6px; border:1px dashed var(--border); border-radius:6px; margin-top:6px;">
+          Drag <span class="material-icons" style="font-size:12px; vertical-align:middle;">reorder</span> to reorder, toggle enable, double-click to highlight selector. Visual rect confirmation on each click (RED find, ORANGE click, GREEN collect). Stored in preset JSON.
+        </div>
+      </details>
+
+      <details class="ab-details">
+        <summary><span class="material-icons">bookmarks</span> Custom Find & Click Presets — reusable blocks</summary>
+        <div id="customBlockChips" class="ab-chips"></div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Save CUSTOM_FIND blocks as presets for reuse across runs. Click chip to add to stack.</div>
+      </details>
+
+      <details class="ab-details">
+        <summary><span class="material-icons">play_circle</span> Current Job Stack — live execution with rects</summary>
+        <div id="jobActionStack" class="ab-job-stack"><span style="font-size:11px; color:var(--text-muted);">No job running — start a job to see live blocks with rect confirmations as it makes clicks</span></div>
+      </details>
+
+      <details class="ab-details">
+        <summary><span class="material-icons">history</span> All Separate Jobs — rectangles confirmations</summary>
+        <div id="allJobsStack" class="ab-all-jobs"><span style="font-size:11px; color:var(--text-muted);">No jobs yet — run batch to see all jobs with rect confirmations</span></div>
+      </details>
+    </div>
+
+    <!-- BLOCK CONFIG — separate win, redesigned as shown in screenshot (security Check Security Dialog) -->
+    <div class="panel" id="winBlockConfig" data-window="block_config">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tune</span> Block Config <span class="spacer"></span><button id="closeBlockConfigBtn" class="btn-small" title="Close config"><span class="material-icons" style="font-size:14px;">close</span></button></h3>
+      <div id="blockConfigHead" class="block-config-head" style="padding:8px 12px; background:var(--bg-input); border-bottom:1px solid var(--border); border-radius:6px 6px 0 0; display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; font-weight:600;">Select a block to configure — all params storable in preset JSON, rect duration configurable</div>
+      <div id="blockConfigForm" class="block-config-form config-panel" style="flex:1; overflow:auto; padding:12px; background:var(--bg-card); border:1px solid var(--border); border-top:0; border-radius:0 0 8px 8px; max-height:520px;">
+        <div style="padding:12px; color:var(--text-muted); font-size:11px; line-height:1.5;">
+          <p><b>Action Blocks</b> — stacking jobs system restored from Old App.</p>
+          <p>Each block is a separate job: click on btn, click on text areas, visual confirmations seeing images/waiting.</p>
+          <p>• <span style="color:#ff2d2d">RED</span> outline = found element<br>
+             • <span style="color:#ff9500">ORANGE</span> = click target<br>
+             • <span style="color:#00c853">GREEN</span> = new output / match<br>
+             • <span style="color:#00AAFF">BLUE</span> = prompt<br>
+             • <span style="color:#FFAA00">YELLOW</span> = submit</p>
+          <p>Double-click block row to highlight its selector on page for N seconds (saved in preset JSON).</p>
+          <p>Drag with <span class="material-icons" style="font-size:12px; vertical-align:middle;">drag_indicator</span> to reorder. Toggle enable. Custom Find & Click blocks can be saved as presets.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ARENA PRESETS — URLs, prompt, settings, highlight, custom variables -->
+    <div class="panel" id="winArenaPresets" data-window="arena_presets">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">bookmarks</span> Arena Presets <span class="spacer"></span><span id="arenaPresetsCount" style="font-size:10px; color:var(--text-muted)">0 presets</span></h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input id="arenaPresetNameInput" type="text" placeholder="preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
+        <button id="arenaPresetSaveBtn" class="btn-small btn-primary">Save</button>
+      </div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <button id="arenaPresetExportBtn" class="btn-small">Export</button>
+        <button id="arenaPresetImportBtn" class="btn-small">Import</button>
+        <input id="arenaPresetFileInput" type="file" accept=".json" style="display:none;">
+      </div>
+      <div id="arenaPresetsList" style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px; padding:4px; max-height:300px;"></div>
+      <div style="margin-top:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">Prompt Presets</div>
+        <div style="display:flex; gap:6px; margin-bottom:6px;">
+          <input id="promptPresetNameInput" type="text" placeholder="prompt preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:11px;">
+          <button id="promptPresetSaveBtn" class="btn-small">Save Prompt</button>
+        </div>
+        <div id="promptPresetsList" style="border:1px solid var(--border); border-radius:4px; padding:4px; max-height:150px; overflow:auto;"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- GRID VIEW MENU -->
+<div id="layoutMenu" class="layout-menu grid-menu hidden">
+  <div class="layout-menu-title">Grid view — layouts and window presets</div>
+  <section class="grid-menu-section grid-layout-section">
+    <div class="grid-menu-section-title"><span class="material-icons">grid_view</span> Grid layouts</div>
+    <div class="grid-layout-buttons">
+      <button data-layout="default">Default<span class="lm-sub">Classic arena arrangement</span></button>
+      <button data-layout="a">A — Stacked rows<span class="lm-sub">All windows stacked vertically</span></button>
+      <button data-layout="b">B — Split columns<span class="lm-sub">3 columns: queue, controls, preview</span></button>
+      <button data-layout="c">C — Side preview<span class="lm-sub">Browser preview on right, queue left</span></button>
+    </div>
+    <button id="resetLayoutBtn" class="lm-reset" title="Restore default and show all windows">↺ Reset to default</button>
+  </section>
+  <div class="layout-menu-sep"></div>
+  <section id="windowPresetPanel" class="grid-menu-section window-preset-panel">
+    <div class="grid-menu-section-title"><span class="material-icons">bookmarks</span> Window presets</div>
+    <div class="window-preset-actions">
+      <button id="saveWindowPresetBtn" class="btn-small btn-primary" title="Save current arrangement"><span class="material-icons">save</span> Save current</button>
+      <button id="importWindowPresetBtn" class="btn-small" title="Import .json preset"><span class="material-icons">file_upload</span> Import</button>
+      <button id="exportWindowPresetBtn" class="btn-small" title="Export selected preset" disabled><span class="material-icons">file_download</span> Export</button>
+    </div>
+    <input id="windowPresetFileInput" type="file" accept=".json,application/json" class="hidden">
+    <div id="windowPresetStatus" class="window-preset-status" aria-live="polite"></div>
+    <div id="windowPresetQuickChips" class="window-preset-quick-chips"></div>
+    <div id="windowPresetList" class="window-preset-list">
+      <div class="window-preset-list-empty">No saved presets yet.</div>
+    </div>
+  </section>
+</div>
+
+<!-- WINDOWS MENU -->
+<div id="windowsMenu" class="layout-menu windows-menu hidden">
+  <div class="layout-menu-title">Windows — ● open · ─ minimized · ○ closed</div>
+  <div id="windowsMenuList"></div>
+  <div class="layout-menu-sep"></div>
+  <div class="layout-menu-row">
+    <button id="windowsShowAllBtn" class="lm-mini"><span class="material-icons">visibility</span> Show all</button>
+    <button id="windowsHideAllBtn" class="lm-mini"><span class="material-icons">visibility_off</span> Hide all</button>
+  </div>
+</div>
+
+<!-- WINDOW PRESET PREVIEW -->
+<div id="windowPresetPreviewModal" class="modal hidden">
+  <div class="modal-content window-preset-preview-modal">
+    <h3 id="windowPresetPreviewTitle">Window preset preview</h3>
+    <div id="windowPresetPreviewMeta" class="window-preset-preview-meta"></div>
+    <div id="windowPresetPreviewCanvas" class="window-preset-preview-canvas"></div>
+    <div class="modal-actions">
+      <button id="windowPresetPreviewApply" class="btn-primary">Restore layout</button>
+      <button id="windowPresetPreviewCancel" class="btn-small">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- NAME MODAL -->
+<div id="nameModal" class="modal hidden">
+  <div class="modal-content name-modal">
+    <h3 id="nameModalTitle">Preset name</h3>
+    <input id="nameModalInput" type="text" maxlength="80" placeholder="Enter name…">
+    <div class="modal-actions">
+      <button id="nameModalOk" class="btn-primary">Save</button>
+      <button id="nameModalCancel" class="btn-small">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL -->
+<div id="confirmModal" class="modal hidden">
+  <div class="modal-content name-modal">
+    <h3 id="confirmModalTitle">Confirm</h3>
+    <div id="confirmModalText" class="confirm-text"></div>
+    <div class="modal-actions">
+      <button id="confirmModalYes" class="btn-danger btn-danger-solid">Delete</button>
+      <button id="confirmModalNo" class="btn-small">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/core/bridge-ready.js"></script>
+<script src="js/core/ui-helpers.js"></script>
+<script src="js/core/dialog.js"></script>
+<script src="js/sash-core.js"></script>
+<script src="js/sash-grid-tree.js"></script>
+<script src="js/sash-grid-windows.js"></script>
+<script src="js/sash-grid-presets.js"></script>
+<script src="js/sash-grid-drag-core.js"></script>
+<script src="js/sash-grid-drag-spec.js"></script>
+<script src="js/sash-grid-drag-resize.js"></script>
+<script src="js/sash-grid-drag.js"></script>
+<script src="js/sash-grid.js"></script>
+<script src="js/window-presets-core.js"></script>
+<script src="js/window-presets-actions.js"></script>
+<script src="js/window-presets-preview.js"></script>
+<script src="js/window-presets.js"></script>
+<script src="js/log-console.js"></script>
+<script src="js/panels/url-list.js"></script>
+<script src="js/panels/folder-picker.js"></script>
+<script src="js/panels/image-queue.js"></script>
+<script src="js/panels/prompt-editor.js"></script>
+<script src="js/panels/run-controls.js"></script>
+<script src="js/panels/progress.js"></script>
+<script src="js/panels/settings.js"></script>
+<script src="js/panels/browser-preview.js"></script>
+<script src="js/panels/highlight.js"></script>
+<script src="js/panels/cdp.js"></script>
+<script src="js/panels/arena-presets.js"></script>
+<script src="js/panels/action-blocks.js"></script>
+<script src="js/panels/watcher.js"></script>
+<script src="js/panels/page-pool.js"></script>
+<script src="js/arena-history.js"></script>
+<script src="js/arena-app.js"></script>
+</body>
+</html>

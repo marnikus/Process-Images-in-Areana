@@ -1,0 +1,1 @@
+"""Integration tests — touches FS or mock WS, module-scoped fixtures, <100ms (Phase 2+4)."""

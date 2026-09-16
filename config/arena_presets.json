@@ -1,0 +1,12 @@
+{
+  "url_presets": [
+    "https://arena.ai/c/01a0a5de-5d09-74ce-acc5-0875ac7ed352"
+  ],
+  "prompt_presets": {
+    "upscale drawing": {
+      "template": "Transform low-resolution, framed reference into high-definition, professional illustrations while strictly preserving the original artistic style, line work, and visual information. Increasing Quality. preserve the format it originally has!\n\n2. Style & Aesthetic Guidelines\nMedium & Art Technique\nStyle: Traditional medical/scientific hand-drawn illustration.\nLinework: Crisp, fine-point black ink outlines with clean, consistent line weights.\nShading: Soft colored pencil and graphite shading, featuring delicate cross-hatching to define depth and contour.\nColor Palette: Warm, muted pencil tones (natural skin/tissue hues, subtle accent colors like red/blue/grey where present in the original).\nPaper Texture: Smooth, clean off-white or neutral paper grain without age stains or background noise.\n3. Quality & Resolution Enhancements\nClarity: Enhance all fuzzy, pixelated, or compressed lines to sharp, high-definition details.\nFidelity: Retain 100% of the original drawing's structure, layout, dashed lines, arrows, and technical markings.\nCleanliness: Remove faint watermarks, digital noise, compression artifacts, and background shadows.\n4. Layout, Borders & Margins\nBorder Removal: Completely strip away all outer black rectangular frames, dark edge lines, and vignetting.\nBackground: Extend the canvas background into a solid, seamless, uniform pure white (#FFFFFF).\nMargins & Padding: Add a small, clean white margin around all four sides of the illustration so the subject breathes comfortably without touching the edges.\n\npreserve the format it originally has!"
+    }
+  },
+  "settings_presets": {},
+  "arena_presets": {}
+}
