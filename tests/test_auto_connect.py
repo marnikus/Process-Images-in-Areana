@@ -130,3 +130,16 @@ def test_prunable_row_ids_only_linked_gone():
 def test_plan_remove_defaults_empty():
     plan = ac.plan_auto_connect([tab("t1", A1)], "arena.ai", [row("r9", A1, "gone")], set())
     assert plan.remove == []  # bridge fills it only when pruning is safe
+
+
+@pytest.mark.unit
+def test_pick_primary_ws():
+    from types import SimpleNamespace
+    assert ac.pick_primary_ws(None) == ""
+    assert ac.pick_primary_ws([]) == ""
+    pages = [SimpleNamespace(ws_url="", is_connected=True),
+             SimpleNamespace(ws_url="ws://dead", is_connected=False),
+             SimpleNamespace(ws_url="ws://live1", is_connected=True),
+             SimpleNamespace(ws_url="ws://live2", is_connected=True)]
+    assert ac.pick_primary_ws(pages) == "ws://live1"
+    assert ac.pick_primary_ws([SimpleNamespace(ws_url="ws://x")]) == ""

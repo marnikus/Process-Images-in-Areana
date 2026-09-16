@@ -96,6 +96,15 @@ def live_tab_keys(tabs: Any) -> set:
     return {_tab_key(t) for t in _live_tabs(tabs)}
 
 
+def pick_primary_ws(pages) -> str:
+    """Socket of the first connected pooled tab, else ''."""
+    for p in pages or []:
+        ws = getattr(p, "ws_url", "") or ""
+        if ws and getattr(p, "is_connected", False):
+            return ws
+    return ""
+
+
 def prunable_row_ids(rows: Any, live_keys) -> list:
     """Ids of linked rows whose tabs vanished from the live keys."""
     live = live_keys or set()

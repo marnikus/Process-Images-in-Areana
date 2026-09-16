@@ -108,6 +108,7 @@ class Bridge(QObject):
         self._find_in_progress = False
         self._connect_in_progress = False
         self._auto_scan_running = False
+        self._ensure_running = False
         self._persist_ok = True
         self._restore_note_done = False
         # thumbnail cache + thread pool to avoid UI freeze on mouse clicks
@@ -4154,6 +4155,44 @@ class Bridge(QObject):
         except Exception:
             raised = 0
         self._log(f"⏫ Popup: {fronted}/{len(targets)} tabs fronted, {raised} windows raised", "success")
+
+    def _primary_ws(self) -> str:
+        """Socket of the first live pool tab, else ''."""
+        try:
+            from app.services.auto_connect import pick_primary_ws
+            pages = list(self._page_pool._pages.values()) if self._page_pool else []
+            return pick_primary_ws(pages)
+        except Exception:
+            return ""
+
+    async def _do_ensure_primary(self):
+        """Passive primary retry: connect first live pool tab when down."""
+        try:
+            if not self.cdp or self.cdp.is_connected or self._ensure_running:
+                return
+            self._ensure_running = True
+            try:
+                ws = self._primary_ws()
+                if ws and await self.cdp.connect(ws):
+                    self._log("✅ Primary auto-connected — runs can start", "success")
+                    self.connection_status.emit("connected")
+            finally:
+                self._ensure_running = False
+        except Exception:
+            pass
+
+    @Slot(result=str)
+    def ensure_primary_connected(self):
+        """500ms passive tick: keep the primary tab connected."""
+        if not self.cdp:
+            return json.dumps({"ok": False})
+        try:
+            if self.cdp.is_connected:
+                return json.dumps({"ok": True})
+        except Exception:
+            pass
+        self._schedule_coro(self._do_ensure_primary())
+        return "pending"
 
     @Slot(str)
     def connect_tab(self, ws_url: str):
