@@ -1,12 +1,12 @@
 {
-  "grid_layout": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[59.887005649717516,40.11299435028249]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[27.408138736263737,39.38934948979592,33.202511773940344]}}",
+  "grid_layout": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.00029042750929,27.211605483271374,27.788104089219328]}],\"sizes\":[59.90540180738931,40.09459819261069]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"watcher\"},{\"t\":\"leaf\",\"id\":\"queue\"}],\"sizes\":[17.851147174034697,14.338708856895762,67.81014396906954]}],\"sizes\":[55.30546623794213,44.69453376205787]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[27.408138736263737,39.38934948979592,33.202511773940344]}}",
   "window_states": {
     "closed": [
       "progress",
       "arena_presets",
-      "settings",
       "block_config",
-      "browser"
+      "browser",
+      "settings"
     ],
     "minimized": []
   },
