@@ -344,10 +344,15 @@ const ImageQueue = {
   },
 
   filterAi(keepAi) {
-    const slot = keepAi ? 'filter_queue_keep_ai' : 'filter_queue_drop_ai';
+    if (keepAi && !confirm('Delete ALL non-_AI images in the picker folder (recursive)? Files are removed from disk and cannot be undone.')) return;
+    const slot = keepAi ? 'keep_only_ai_files' : 'drop_ai_suffix';
     if (App.bridge && App.bridge[slot]) {
       App.bridge[slot]((res)=>{
-        try{ const r=JSON.parse(res); LogConsole.log(r.pending ? 'Queue filter: scanning folder…' : `Queue filter: ${r.removed} removed`,'info'); }catch(e){}
+        try{
+          const r=JSON.parse(res);
+          if (!r.ok && !r.pending) LogConsole.log('Folder _AI op: '+(r.error||'failed'),'error');
+          else if (r.pending) LogConsole.log('Folder _AI op running — see log','info');
+        }catch(e){}
       });
     }
   },

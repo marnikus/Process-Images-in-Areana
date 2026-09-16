@@ -1464,34 +1464,14 @@ class Bridge(QObject):
         return self.clear_queue()
 
     @Slot(result=str)
-    def filter_queue_drop_ai(self):
-        """Scan picker folder, drop _AI outputs from the queue."""
-        return self._scan_and_filter_queue(keep_ai=False)
+    def drop_ai_suffix(self):
+        """Drop _AI: strip the suffix from filenames in the picker folder."""
+        return self._run_folder_ai("strip")
 
     @Slot(result=str)
-    def filter_queue_keep_ai(self):
-        """Scan picker folder, keep only _AI outputs in the queue."""
-        return self._scan_and_filter_queue(keep_ai=True)
-
-    def _filter_queue(self, keep_ai: bool) -> str:
-        """Drop queue entries by _AI suffix, with undo. Never raises."""
-        try:
-            from app.utils.queue_filter import is_ai_output
-            imgs = self.state.images
-            if keep_ai:
-                kept = [i for i in imgs if is_ai_output(i.relative_path or "")]
-            else:
-                kept = [i for i in imgs if not is_ai_output(i.relative_path or "")]
-            removed = len(imgs) - len(kept)
-            if removed:
-                self._push_queue_undo()
-                self.state.images = kept
-                self.state.recalculate_progress()
-                self._save_arena()
-            self._log(f"Queue: {removed} removed ({'only _AI' if keep_ai else 'no _AI'}), {len(kept)} left", "info")
-            return json.dumps({"ok": True, "removed": removed})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
+    def keep_only_ai_files(self):
+        """Only _AI: delete non-_AI images in the picker folder."""
+        return self._run_folder_ai("only")
 
     def _merge_scanned(self, scanned) -> int:
         """Merge scan dicts into the queue; returns added count."""
@@ -1509,8 +1489,10 @@ class Bridge(QObject):
                 e.absolute_path = s["absolute_path"]
         return added
 
-    def _scan_and_filter_queue(self, keep_ai: bool) -> str:
-        """Background picker-folder scan + _AI filter; pending JSON."""
+    def _run_folder_ai(self, mode: str) -> str:
+        """Disk _AI op on the picker folder; refuses mid-run. Pending JSON."""
+        if getattr(self, "_run_state", "idle") != "idle":
+            return json.dumps({"ok": False, "error": "stop the run first"})
         if getattr(self, '_scan_in_progress', False):
             return json.dumps({"ok": False, "pending": True, "error": "scan already in progress"})
         root = self.state.folder.get("root_path", "")
@@ -1521,34 +1503,66 @@ class Bridge(QObject):
             return json.dumps({"ok": False, "error": "Folder does not exist"})
         try:
             self._scan_in_progress = True
-            supported = set(self.state.folder.get("supported_types", [".png", ".jpg", ".jpeg", ".webp"]))
-            self._log(f"Scanning {root_path}... (queue filter {'only _AI' if keep_ai else 'no _AI'})", "info")
-            self._submit_scan_worker(root_path, supported, keep_ai)
+            self._log(f"Folder {'Only _AI' if mode == 'only' else 'Drop _AI'} in {root_path}...", "warn")
+            self._submit_folder_ai(root_path, set(self.state.folder.get("supported_types", [".png", ".jpg", ".jpeg", ".webp"])), mode)
         except Exception as e:
             self._scan_in_progress = False
             return json.dumps({"ok": False, "error": str(e)})
         return json.dumps({"ok": True, "pending": True})
 
-    def _submit_scan_worker(self, root_path, supported, keep_ai) -> None:
-        """Run the scan+filter worker off the UI thread."""
+    def _submit_folder_ai(self, root_path, exts, mode) -> None:
+        """Run the folder _AI worker off the UI thread."""
         if self._thumb_executor:
-            self._thumb_executor.submit(self._scan_filter_worker, root_path, supported, keep_ai)
+            self._thumb_executor.submit(self._folder_ai_worker, root_path, exts, mode)
         else:
             import threading
-            threading.Thread(target=self._scan_filter_worker, args=(root_path, supported, keep_ai), daemon=True).start()
+            threading.Thread(target=self._folder_ai_worker, args=(root_path, exts, mode), daemon=True).start()
 
-    def _scan_filter_worker(self, root_path, supported, keep_ai) -> None:
-        """Scan picker folder, merge, apply _AI filter. Off UI thread."""
+    def _folder_ai_worker(self, root_path, exts, mode) -> None:
+        """Rename/delete _AI files on disk, sync queue. Off UI thread."""
         try:
-            from .services.scan_service import scan_folder_pure
-            scanned = scan_folder_pure(root_path, supported, False)  # filter needs _AI files too
-            self._merge_scanned(scanned)
-            self._log(f"Scanned {len(scanned)} images from {root_path}", "info")
-            self._filter_queue(keep_ai)
+            from app.core.folder_ai import delete_non_ai_images, strip_ai_suffixes
+            if mode == "only":
+                deleted, errors = delete_non_ai_images(root_path, exts)
+                self._drop_missing_queue_images(root_path, deleted)
+                self._log(f"Only _AI: deleted {len(deleted)} files from {root_path}", "warn")
+            else:
+                pairs, skipped, errors = strip_ai_suffixes(root_path, exts)
+                self._rename_queue_images(root_path, pairs)
+                self._log(f"Drop _AI: renamed {len(pairs)}, skipped {skipped} in {root_path}", "warn")
+            for err in errors[:3]:
+                self._log(str(err), "warn")
+            self.state.recalculate_progress()
+            self._save_arena()
         except Exception as e:
-            self._log(f"Queue filter scan failed: {e}", "error")
+            self._log(f"Folder _AI op failed: {e}", "error")
         finally:
             self._scan_in_progress = False
+
+    def _drop_missing_queue_images(self, root_path, deleted) -> None:
+        """Forget queue entries whose files were deleted."""
+        try:
+            gone = {str(Path(root_path, r).resolve()) for r in deleted}
+            self.state.images = [i for i in self.state.images if i.absolute_path not in gone]
+        except Exception:
+            pass
+
+    def _rename_queue_images(self, root_path, pairs) -> None:
+        """Point queue entries at renamed files (stats preserved)."""
+        try:
+            from app.utils.hashing import fingerprint_from_path_stat
+            by_old = {str(Path(root_path, old).resolve()): new for old, new in pairs}
+            for img in self.state.images:
+                new_rel = by_old.get(img.absolute_path)
+                if not new_rel:
+                    continue
+                img.relative_path = new_rel
+                img.absolute_path = str(Path(root_path, new_rel).resolve())
+                img.filename = Path(new_rel).name
+                img.base_name = Path(new_rel).stem
+                img.fingerprint = fingerprint_from_path_stat(new_rel, img.size, img.mtime)
+        except Exception:
+            pass
 
     @Slot(result=str)
     def reset_all(self):
