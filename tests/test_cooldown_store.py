@@ -91,6 +91,14 @@ def test_consume_url_exact_normalized():
     assert (key, entry["tab_id"]) == ("t9", "t9")
 
 
+def test_consume_skips_entry_owned_by_other_tab():
+    entries = {"A": {"tab_id": "A", "url": "https://arena.ai/same", "cooldown_until": 9}}
+    assert store.consume_entry_for(entries, "B", "https://arena.ai/same", {"A", "B"}) == (None, None)
+    assert "A" in entries
+    key, _ = store.consume_entry_for(entries, "A2", "https://arena.ai/same", set())
+    assert key == "A"  # fresh pool after restart: URL fallback still works
+
+
 def test_load_missing_or_corrupt_returns_empty(tmp_path):
     assert store.load_entries(str(tmp_path / "nope.json")) == {}
     bad = tmp_path / "bad.json"

@@ -246,10 +246,10 @@ const UrlList = {
   },
 
   matchUnclaimedPage(rowUrl, pages, claimed) {
-    // Strict isolation (multi-tab): an unclaimed row may only take an
-    // UNCLAIMED page with exact/prefix URL match — never re-render another
-    // row's tab, so one job's cooldown can't appear on all rows.
-    const taken = new Set(claimed.values());
+    // Strict isolation: an unclaimed row may only take an UNCLAIMED page
+    // with exact/prefix URL match — never re-render another row's tab, so
+    // one job's cooldown can't appear on all rows.
+    const taken = new Set((claimed || new Map()).values());
     let best = null, bestScore = 299;
     (pages || []).forEach((p, pi) => {
       if (taken.has(pi)) return;
@@ -269,11 +269,9 @@ const UrlList = {
       const rows = [...tbody.querySelectorAll('tr')];
       const pages = (PagePoolPanel.snapshot && PagePoolPanel.snapshot.pages) || [];
       const claimed = this.assignPoolPages(rows, pages);
-      const strict = pages.length > 1;
       rows.forEach((tr, ri) => {
         let page = null;
         if (claimed.has(ri)) page = pages[claimed.get(ri)];
-        else if (!strict) page = this.matchPoolPage(tr.dataset.url || '');
         else page = this.matchUnclaimedPage(tr.dataset.url || '', pages, claimed);
         this._fillCoolCell(tr, page);
       });

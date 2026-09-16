@@ -281,7 +281,11 @@ class Bridge(QObject):
             entries = load_entries(path)
             page = self._page_pool.get_page(tab_id)
             page_url = getattr(page, "url", "") if page else ""
-            _key, entry = consume_entry_for(entries, tab_id, page_url)
+            try:
+                known_ids = set(self._page_pool._pages.keys())
+            except Exception:
+                known_ids = set()
+            _key, entry = consume_entry_for(entries, tab_id, page_url, known_ids)
             if not entry:
                 return
             if restore_cooldown_entry(self._page_pool, tab_id, entry):

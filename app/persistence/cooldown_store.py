@@ -98,15 +98,25 @@ def _norm_url(url: Any) -> str:
     return url.strip().lower().rstrip("/")
 
 
-def consume_entry_for(entries: dict, tab_id: str, page_url: str):
-    """Pop entry by exact tab id, else exact normalized URL. Strict on
-    purpose: a fuzzy fallback would let an idle tab steal another tab's
-    timer (isolation bug 2026-09-16)."""
+def _owned_by_other(entry: dict, tab_id: str, known) -> bool:
+    """Entry belongs to a different registered tab — never hand it over."""
+    owner = entry.get("tab_id", "")
+    return bool(owner and owner != tab_id and owner in known)
+
+
+def consume_entry_for(entries: dict, tab_id: str, page_url: str, known_tab_ids=frozenset()):
+    """Pop entry by exact tab id, else exact normalized URL — but never an
+    entry owned by another registered tab (same-URL tabs stay isolated)."""
     if tab_id and tab_id in entries:
         return tab_id, entries.pop(tab_id)
     want = _norm_url(page_url)
     if want:
+        known = known_tab_ids or frozenset()
         for key, entry in list(entries.items()):
-            if isinstance(entry, dict) and _norm_url(entry.get("url", "")) == want:
+            if not isinstance(entry, dict):
+                continue
+            if _owned_by_other(entry, tab_id, known):
+                continue
+            if _norm_url(entry.get("url", "")) == want:
                 return key, entries.pop(key)
     return None, None
