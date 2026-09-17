@@ -62,6 +62,9 @@ const SashGrid = {
     this._setupLayoutMenu();
     this._setupWindowsMenu();
     this._setupVisibilityWatch();
+    // App-window resize reflows every title bar; keep ─/✕ visible.
+    this._onWinResize = () => this._fitTitleBars();
+    window.addEventListener('resize', this._onWinResize);
   },
   flushPersistence() {
     if (!this.root) return false;
@@ -88,12 +91,14 @@ const SashGrid = {
     this._applyStates();
   },
   /** Push all derived UI state (grid wrapper classes, empty splits, sash
-   *  visibility, dock, windows menu, empty-grid hint) from the
-   *  closed/minimized sets. Sash visibility has ONE writer (_syncSashes). */
+   *  visibility, title-bar fit, dock, windows menu, empty-grid hint) from
+   *  the closed/minimized sets. Sash visibility has ONE writer
+   *  (_syncSashes); title fit has ONE writer (_fitTitleBars). */
   _applyStates() {
     this._syncHidden();
     this._syncEmptySplits();
     this._syncSashes();
+    this._fitTitleBars();
     this._renderDock();
     this._updateWindowsMenu();
     this._checkEmptyGrid();
