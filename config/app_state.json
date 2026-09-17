@@ -2,15 +2,6 @@
   "version": "1.0.0",
   "urls": [
     {
-      "id": "url_8af56fdc",
-      "url": "https://arena.ai/image/direct?model_a=max",
-      "enabled": true,
-      "last_status": "unchecked",
-      "last_checked": null,
-      "error": null,
-      "tab_id": "4965ADCBDA3CADB16E3F2989964A5C22"
-    },
-    {
       "id": "url_2c2ff2d7",
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
@@ -18,10 +9,28 @@
       "last_checked": null,
       "error": null,
       "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+    },
+    {
+      "id": "url_550177d7",
+      "url": "https://arena.ai/image/direct?model_a=max",
+      "enabled": true,
+      "last_status": "unchecked",
+      "last_checked": null,
+      "error": null,
+      "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+    },
+    {
+      "id": "url_d6c3cebc",
+      "url": "https://arena.ai/image/direct?model_a=max",
+      "enabled": true,
+      "last_status": "unchecked",
+      "last_checked": null,
+      "error": null,
+      "tab_id": "F7F8CD13584B12AE825128CB83F75081"
     }
   ],
   "folder": {
-    "root_path": "F:/Creative Cloud Files/Plastika Dolezal/Images for web 2.0/plastika-oblicej/Celo",
+    "root_path": "F:/Creative Cloud Files/Plastika Dolezal/Images for web 2.0/plastika-oblicej - AI",
     "supported_types": [
       ".png",
       ".jpg",
@@ -77,29 +86,10 @@
     ],
     "ignore_ai_suffix": true
   },
-  "images": [
-    {
-      "id": "c082dbb6115ef42d",
-      "relative_path": "celo-1.jpg",
-      "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Celo\\celo-1.jpg",
-      "filename": "celo-1.jpg",
-      "base_name": "celo-1",
-      "extension": ".jpg",
-      "size": 366582,
-      "mtime": 1487673870.0,
-      "fingerprint": "c082dbb6115ef42d",
-      "status": "pending",
-      "selected": false,
-      "assigned_url_id": null,
-      "attempt_count": 0,
-      "output_path": null,
-      "error": null,
-      "content_hash": null
-    }
-  ],
+  "images": [],
   "jobs": [],
   "progress": {
-    "total": 1,
+    "total": 0,
     "selected": 0,
     "pending": 0,
     "processing": 0,
