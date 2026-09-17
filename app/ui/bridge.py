@@ -581,6 +581,71 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
+    @Slot(result=str)
+    def get_stack_presets(self):
+        try:
+            raw = self.config.get_state("stack_presets", [])
+            if isinstance(raw, list):
+                return json.dumps(raw, ensure_ascii=False)
+            return json.dumps([], ensure_ascii=False)
+        except Exception:
+            return json.dumps([], ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def save_stack_preset(self, preset_json: str):
+        try:
+            from app.core.action_blocks import upsert_stack_preset
+            data = json.loads(preset_json or "{}")
+            if not isinstance(data, dict):
+                return json.dumps({"ok": False, "error": "invalid stack preset format, need {name, blocks}"})
+            raw = self.config.get_state("stack_presets", [])
+            saved = upsert_stack_preset(raw, data.get("name", ""), data.get("blocks", []))
+            self.config.set_state(stack_presets=saved)
+            name = (data.get("name") or "").strip()
+            self._log(f"Stack preset saved: {name} ({len(data.get('blocks') or [])} blocks)", "success")
+            return json.dumps({"ok": True, "name": name})
+        except ValueError as e:
+            return json.dumps({"ok": False, "error": str(e)})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def delete_stack_preset(self, name: str):
+        try:
+            from app.core.action_blocks import remove_stack_preset
+            raw = self.config.get_state("stack_presets", [])
+            kept, removed = remove_stack_preset(raw, name)
+            if not removed:
+                return json.dumps({"ok": False, "error": "not found"})
+            self.config.set_state(stack_presets=kept)
+            self._log(f"Stack preset deleted: {name}", "info")
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def export_action_blocks(self, blocks_json: str):
+        try:
+            blocks = json.loads(blocks_json or "[]")
+            if not isinstance(blocks, list) or not blocks:
+                return json.dumps({"ok": False, "error": "empty stack"})
+            payload = json.dumps(blocks, ensure_ascii=False, indent=2)
+            fname = f"arena-action-blocks-{datetime.now().strftime('%Y-%m-%d')}.json"
+            if QFileDialog is None:
+                path = Path("config") / fname
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(payload, encoding="utf-8")
+            else:
+                folder = QFileDialog.getExistingDirectory(None, "Select folder to export action blocks")
+                if not folder:
+                    return json.dumps({"ok": False, "cancelled": True})
+                path = Path(folder) / fname
+                path.write_text(payload, encoding="utf-8")
+            self._log(f"Action blocks exported to {path}", "success")
+            return json.dumps({"ok": True, "path": str(path)})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
     @Slot(str, result=str)
     def export_custom_block(self, name: str):
         try:

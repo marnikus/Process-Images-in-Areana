@@ -18,6 +18,7 @@ REQUIRED_SLOTS = (
     "auto_connect_scan", "popup_url_tabs", "get_tabs", "connect_tab",
     "add_url", "remove_url", "ensure_primary_connected", "stop_tab_job",
     "drop_ai_suffix", "keep_only_ai_files",
+    "get_stack_presets", "save_stack_preset", "delete_stack_preset", "export_action_blocks",
 )
 
 # Private helpers that must never capture a @Slot by accident.
