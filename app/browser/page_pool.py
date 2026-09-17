@@ -35,9 +35,37 @@ async def _sleep_or_notify(opts: PageWaitOpts):
         pass
 
 
+def _expire_all(pages) -> None:
+    """Flip expired cooldowns to steady (call with lock held)."""
+    for page in pages:
+        try:
+            page.try_expire()
+        except Exception:
+            continue
+
+
+def _pick_lowest_count(pages) -> Optional[PageInfo]:
+    """Free page with fewest completed jobs; ties keep default order."""
+    free = [p for p in pages if p.is_free()]
+    if not free:
+        return None
+    return min(free, key=lambda p: p.jobs_completed)
+
+
+def _snapshot_entry(page) -> dict:
+    """One page snapshot entry incl. live cooldown countdown."""
+    entry = page.to_dict()
+    try:
+        entry["cooldown_remaining"] = page.remaining_seconds()
+    except Exception:
+        entry["cooldown_remaining"] = 0
+    return entry
+
+
 class PagePool:
     def __init__(self, logger=None):
         self._pages: Dict[str, PageInfo] = {}
+        self._aborts: set = set()
         self._clients: Dict[str, CDPClient] = {}
         self._controllers: Dict[str, CDPArenaController] = {}
         self._lock = threading.RLock()
@@ -84,6 +112,7 @@ class PagePool:
 
     def get_counts(self) -> Tuple[int, int]:
         with self._lock:
+            _expire_all(self._pages.values())
             return len(self._pages), len([p for p in self._pages.values() if p.is_free()])
 
     def mark_busy(self, tab_id: str, job_id: str) -> bool:
@@ -130,20 +159,21 @@ class PagePool:
     async def get_free_page(self) -> Optional[PageInfo]:
         with self._lock:
             for p in self._pages.values():
-                if p.is_free():
-                    return p
-            return None
+                p.try_expire()
+            return _pick_lowest_count(self._pages.values())
 
     async def acquire_free_page(self, job_id: str) -> Optional[PageInfo]:
         with self._lock:
             for p in self._pages.values():
-                if p.is_free():
-                    p.status = PageStatus.BUSY
-                    p.current_job_id = job_id
-                    p.busy_since = now_iso()
-                    p.error = None
-                    return p
-            return None
+                p.try_expire()
+            page = _pick_lowest_count(self._pages.values())
+            if page is None:
+                return None
+            page.status = PageStatus.BUSY
+            page.current_job_id = job_id
+            page.busy_since = now_iso()
+            page.error = None
+            return page
 
     async def wait_for_free_page(self, timeout_sec: float, cancel_check=None, job_id: str = None, wait_opts: PageWaitOpts | None = None) -> Optional[PageInfo]:
         opts = wait_opts or PageWaitOpts()
@@ -160,10 +190,12 @@ class PagePool:
 
     def status_snapshot(self) -> dict:
         with self._lock:
-            pages = [p.to_dict() for p in self._pages.values()]
+            pages = [_snapshot_entry(p) for p in self._pages.values()]
             steady = len([p for p in self._pages.values() if p.is_free()])
             busy = len([p for p in self._pages.values() if p.is_busy()])
-            return {"total": len(pages), "steady": steady, "busy": busy, "free": steady, "pages": pages}
+            cooling = len([p for p in self._pages.values() if p.status == PageStatus.COOLDOWN])
+            return {"total": len(pages), "steady": steady, "busy": busy,
+                    "cooling": cooling, "free": steady, "pages": pages}
 
     def register_client(self, tab_id: str, client: CDPClient, controller: CDPArenaController):
         with self._lock:

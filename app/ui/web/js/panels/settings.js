@@ -2,7 +2,7 @@
 'use strict';
 
 const SettingsPanel = {
-  cdpConfig: {host: '127.0.0.1', port: 9222, user_data_dir: 'C:\\arena-images-chrome', extra_args: ''},
+  cdpConfig: {host: '127.0.0.1', port: 9222, user_data_dir: 'C:\\arena-images-chrome', extra_args: '', url_pattern: 'arena.ai'},
 
   init() {
     document.getElementById('settingsSaveBtn')?.addEventListener('click', ()=>this.save());
@@ -16,6 +16,7 @@ const SettingsPanel = {
 
     // load CDP config on init
     setTimeout(()=>this.loadCDPConfig(), 1000);
+    setTimeout(()=>this.loadCooldownConfig(), 1200);
   },
 
   restore(state) {
@@ -44,6 +45,7 @@ const SettingsPanel = {
           setVal('cdpPort', cfg.port || 9222);
           setVal('cdpUserDataDir', cfg.user_data_dir || 'C:\\arena-images-chrome');
           setVal('cdpExtraArgs', cfg.extra_args || '');
+          setVal('cdpUrlPattern', (cfg.url_pattern === undefined || cfg.url_pattern === null) ? 'arena.ai' : cfg.url_pattern);
           this.updateChromeCmdPreview();
           // also update toolbar
           if (typeof CDPPanel !== 'undefined' && CDPPanel.updateChromeToolbar) {
@@ -111,6 +113,41 @@ const SettingsPanel = {
     }
     // also save CDP if changed
     this.saveCDP();
+    this.saveCooldown();
+  },
+
+  loadCooldownConfig() {
+    if (App.bridge && App.bridge.get_cooldown_config) {
+      App.bridge.get_cooldown_config((res)=>{
+        try {
+          const r = JSON.parse(res);
+          if (!r.ok || !r.config) return;
+          const c = r.config;
+          const en = document.getElementById('cooldownEnabled');
+          if (en) en.checked = c.enabled !== false;
+          const setVal = (id, v) => { const el=document.getElementById(id); if(el) el.value=v; };
+          setVal('cooldownMinMinutes', c.min_minutes ?? Math.round((c.min_seconds||300)/60));
+          setVal('cooldownCaptchaMinutes', c.captcha_penalty_minutes ?? Math.round((c.captcha_penalty_seconds||900)/60));
+        } catch(e){}
+      });
+    }
+  },
+
+  saveCooldown() {
+    const en = document.getElementById('cooldownEnabled');
+    const getNum = (id, fb) => { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? fb : v; };
+    const enabled = en ? en.checked : true;
+    const minM = Math.max(0, Math.min(1440, getNum('cooldownMinMinutes', 5)));
+    const penM = Math.max(0, Math.min(1440, getNum('cooldownCaptchaMinutes', 15)));
+    const payload = {enabled, min_seconds: Math.round(minM*60), captcha_penalty_seconds: Math.round(penM*60)};
+    if (App.bridge && App.bridge.set_cooldown_config) {
+      App.bridge.set_cooldown_config(JSON.stringify(payload), (res)=>{
+        try {
+          const r = JSON.parse(res);
+          LogConsole.log(r.ok ? `Cooldown saved: ${enabled?'on':'off'} min=${minM}m captcha=+${penM}m` : 'Cooldown save failed: '+r.error, r.ok?'success':'error');
+        } catch(e){}
+      });
+    }
   },
 
   saveCDP() {
@@ -120,14 +157,15 @@ const SettingsPanel = {
     if (port < 1 || port > 65535) { LogConsole.log('⚠ Port must be 1-65535', 'warn'); return; }
     const user_data_dir = (getVal('cdpUserDataDir')||'C:\\arena-images-chrome').trim() || 'C:\\arena-images-chrome';
     const extra = (getVal('cdpExtraArgs')||'').trim();
-    const payload = {host, port, user_data_dir, extra_args: extra};
+    const url_pattern = (getVal('cdpUrlPattern')||'').trim();
+    const payload = {host, port, user_data_dir, extra_args: extra, url_pattern};
     if (App.bridge && App.bridge.set_cdp_config) {
       App.bridge.set_cdp_config(JSON.stringify(payload), (res)=>{
         try {
           const r = JSON.parse(res);
           if (r.ok) {
-            LogConsole.log(`CDP config saved: ${host}:${port} dir=${user_data_dir} — restart Chrome with new command, then Diagnose`, 'success');
-            this.cdpConfig = {host, port, user_data_dir, extra_args: extra};
+            LogConsole.log(`CDP config saved: ${host}:${port} dir=${user_data_dir} pattern='${url_pattern || '(all)'}' — restart Chrome with new command, then Diagnose`, 'success');
+            this.cdpConfig = {host, port, user_data_dir, extra_args: extra, url_pattern};
             this.updateChromeCmdPreview();
           } else {
             LogConsole.log('Save CDP failed: '+r.error, 'error');

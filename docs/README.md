@@ -6,7 +6,7 @@ These three files in `docs/current/` are the **single source of truth** for what
 
 | File | What it is | When to read |
 |---|---|---|
-| [`current/SYSTEM_OF_RECORD.md`](current/SYSTEM_OF_RECORD.md) | Authoritative spec: behaviour table (20 capabilities), state machine 00-22, core flow plan→execute, invariants I-1..I-23, storage map JSON-only, key modules & layers, tests, quality gates, UI 11 windows, history pointers | Before any code change — understand what system actually does |
+| [`current/SYSTEM_OF_RECORD.md`](current/SYSTEM_OF_RECORD.md) | Authoritative spec: behaviour table (21 capabilities), state machine 00-22, core flow plan→execute, invariants I-1..I-27, storage map JSON-only, key modules & layers, tests, quality gates, UI 11 windows, history pointers | Before any code change — understand what system actually does |
 | [`current/AGENT_RULES.md`](current/AGENT_RULES.md) | Detailed code-quality rules (23 rules, adapted from Old App's 19 rules + 4 new for Arena). Includes RULE 1 visual runner, RULE 16 hard gates LOC 30/150 params 4 methods 15 CC 10 cognitive 15 nesting 4 coverage 80%/75%, override format, anti-gaming, remediation order RULE 19, selector priority, CAPTCHA compliance. Executable gate: `tools/verify_quality.py`, baseline `tools/quality_baseline.json`, pre-push hook `.git/hooks/pre-push` | Before adding/changing production code — mandatory gates |
 | [`current/CODE_VERIFICATION.md`](current/CODE_VERIFICATION.md) | **Mandatory verification workflow before push** — how to run `tools/verify_quality.py --changed --allow-legacy`, `tools/pre_push_check.sh`, tests, coverage, git hook enforcement, override format, remediation order. Based on Old App's rule16_gate.py | Before every `git push` — RULE 16 enforcement |
 | [`current/DOM_SELECTORS.md`](current/DOM_SELECTORS.md) | Living selector reference for arena.ai: verified selectors from saved HTML, primary+fallbacks, scope, visibility, expectedCount, verification, evidence, JS probes, visual runner colours, readiness composite, missing selectors list | Before touching `app/browser/site_adapter.py` or action blocks |
@@ -41,6 +41,8 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 
 - `archive/2026-09-16-image-below-prompt/` — fix for image-below-prompt correlation (JOB-ID verification for reverse layout)
 - `archive/2026-09-16-test-time-reduction/TEST_TIME_REDUCTION_PLAN.md` — structured plan to reduce test time: pyramid rebalance, fixture scopes, eliminate real-browser tier, xdist parallelisation, async sleep removal, DI fakes, CI 3-stage gates, roadmap with RULE 16/18 compliance
+- `archive/2026-09-17-watcher-grid-bugfixes/SOLUTION.md` — root causes + fixes for the blank Watcher window, "2nd divider rescales all rows" drag bug, and sashes vanishing after drop: single sash-visibility rule, hidden-child-safe resize commit, next-visible-child drag pair
+- `archive/2026-09-17-titlebar-controls-visibility/SOLUTION.md` — window ─/✕ controls can be clipped when a window narrows (title row min-content > 96px floor, `.panel{overflow:hidden}`): title text truncated via `span.win-name`, secondary title items dropped right-to-left by single-writer `_fitTitleBars()`, fixed core trimmed below the 96px minimum
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

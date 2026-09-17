@@ -200,3 +200,44 @@ def test_no_double_send_to_busy():
     assert free.tab_id == "tab2"
     pool.mark_steady("tab0")
     assert pool.get_counts()[1] == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_free_page_prefers_lowest_jobs():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    pool.add_page(make_info("c"))
+    pool.get_page("a").jobs_completed = 5
+    pool.get_page("b").jobs_completed = 2
+    pool.get_page("c").jobs_completed = 3
+    pool.mark_busy("b", "other")
+    got = await pool.get_free_page()
+    assert got.tab_id == "c"  # b lowest but busy, c next lowest
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_acquire_prefers_lowest_and_marks_busy():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    pool.get_page("a").jobs_completed = 4
+    pool.get_page("b").jobs_completed = 1
+    got = await pool.acquire_free_page("j1")
+    assert got.tab_id == "b"
+    assert pool.get_page("b").status == PageStatus.BUSY
+    assert pool.get_counts() == (2, 1)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_pick_ties_keep_default_order():
+    pool = PagePool()
+    pool.add_page(make_info("x"))
+    pool.add_page(make_info("y"))
+    got = await pool.acquire_free_page("j1")
+    assert got.tab_id == "x"
+    got2 = await pool.get_free_page()
+    assert got2.tab_id == "y"

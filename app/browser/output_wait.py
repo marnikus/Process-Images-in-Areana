@@ -121,8 +121,16 @@ async def _poll_check(check_fn: Callable, poll_interval: float):
         from .output_state import flatten_diagnostics
         return flatten_diagnostics(result), None
     except Exception as e:
+        _reraise_abort(e)
         await asyncio.sleep(poll_interval)
         return None, {"ready": False, "reason": str(e)}
+
+
+def _reraise_abort(exc: Exception) -> None:
+    """Let page-error aborts escape the poll wrapper immediately."""
+    from ..utils.page_errors import PageErrorAbort
+    if isinstance(exc, PageErrorAbort):
+        raise exc
 
 
 async def _process_ready(diag: dict, check_fn: Callable, log_cb: Callable) -> dict | None:

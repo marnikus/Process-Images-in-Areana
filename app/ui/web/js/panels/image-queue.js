@@ -1,4 +1,5 @@
 /* image-queue.js — thumbs + explorer reveal + copy path — fixed clipboard */
+// ideal-size: ~400 lines reason=single ImageQueue panel owns toolbar + row render + thumbs + selection; splitting the literal would scatter one queue lifecycle across files that always change together (RULE 18.2)
 'use strict';
 
 const ImageQueue = {
@@ -17,6 +18,8 @@ const ImageQueue = {
     document.getElementById('queueDeselectAllBtn')?.addEventListener('click', () => this.bulkSelect(false));
     document.getElementById('queueRetryFailedBtn')?.addEventListener('click', () => this.retryFailed());
     document.getElementById('queueResetBtn')?.addEventListener('click', () => this.resetAll());
+    document.getElementById('queueDropAiBtn')?.addEventListener('click', () => this.filterAi(false));
+    document.getElementById('queueKeepAiBtn')?.addEventListener('click', () => this.filterAi(true));
     document.getElementById('queueClearListBtn')?.addEventListener('click', () => this.clearList());
 
     const tbody = document.getElementById('queueTableBody');
@@ -336,6 +339,20 @@ const ImageQueue = {
     if (App.bridge && App.bridge.retry_failed) {
       App.bridge.retry_failed((res)=>{
         try{ const r=JSON.parse(res); LogConsole.log('Retry failed: '+r.count+' queued','info'); }catch(e){}
+      });
+    }
+  },
+
+  filterAi(keepAi) {
+    if (keepAi && !confirm('Delete ALL non-_AI images in the picker folder (recursive)? Files are removed from disk and cannot be undone.')) return;
+    const slot = keepAi ? 'keep_only_ai_files' : 'drop_ai_suffix';
+    if (App.bridge && App.bridge[slot]) {
+      App.bridge[slot]((res)=>{
+        try{
+          const r=JSON.parse(res);
+          if (!r.ok && !r.pending) LogConsole.log('Folder _AI op: '+(r.error||'failed'),'error');
+          else if (r.pending) LogConsole.log('Folder _AI op running — see log','info');
+        }catch(e){}
       });
     }
   },

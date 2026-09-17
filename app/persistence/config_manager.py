@@ -18,6 +18,7 @@ DEFAULT_SESSION = {
     "cdp_port": 9222,
     "cdp_user_data_dir": "C:\\arena-images-chrome",
     "cdp_extra_args": "",
+    "url_pattern": "arena.ai",
     "action_blocks": None,  # will be default stack if None
     "action_blocks_version": 1,
     "watcher_enabled": False,
@@ -25,6 +26,9 @@ DEFAULT_SESSION = {
     "watcher_captcha_timeout_sec": 300,
     "watcher_generation_timeout_sec": 600,
     "watcher_auto_pause": True,
+    "cooldown_enabled": True,
+    "cooldown_min_seconds": 300,
+    "cooldown_captcha_penalty_seconds": 900,
 }
 
 DEFAULT_WINDOW_PRESETS = {"window_presets": {}}

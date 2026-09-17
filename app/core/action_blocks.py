@@ -28,6 +28,7 @@ Blocks:
 
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any
+import copy
 import json
 import uuid
 
@@ -691,3 +692,25 @@ def parse_stack_json(payload: str) -> List[ActionBlock]:
 
 def get_builtin_blocks_json() -> str:
     return json.dumps(BUILTIN_BLOCKS, ensure_ascii=False, indent=2)
+def _is_other_preset(entry, clean: str) -> bool:
+    """True for dict presets whose name survives an upsert."""
+    return isinstance(entry, dict) and entry.get("name") != clean
+
+
+def upsert_stack_preset(presets, name: str, blocks: list) -> list:
+    """Upsert a named full-stack snapshot; latest save moves to the end."""
+    clean = (name or "").strip()
+    if not clean:
+        raise ValueError("preset name required")
+    if not isinstance(blocks, list) or not blocks:
+        raise ValueError("stack must be a non-empty list")
+    kept = [p for p in (presets or []) if _is_other_preset(p, clean)]
+    kept.append({"name": clean, "blocks": copy.deepcopy(blocks)})
+    return kept
+
+
+def remove_stack_preset(presets, name: str) -> tuple:
+    """Remove a named stack snapshot; (kept, removed?)."""
+    kept = [p for p in (presets or []) if not (isinstance(p, dict) and p.get("name") == name)]
+    before = len(presets) if isinstance(presets, list) else 0
+    return kept, len(kept) != before

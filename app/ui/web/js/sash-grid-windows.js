@@ -9,6 +9,7 @@ const SashGridWindowStore = {
       prompt: 'winPrompt',
       run: 'winRun',
       progress: 'winProgress',
+      watcher: 'winWatcher',
       log: 'winLog',
       settings: 'winSettings',
       browser: 'winBrowser',
@@ -229,6 +230,7 @@ const SashGridWindows = {
     if (panel.style.display === 'none') panel.style.display = '';
     this._syncHidden();
     this._syncEmptySplits();
+    this._syncSashes();
     this._checkEmptyGrid();
     return true;
   },
