@@ -38,6 +38,10 @@ test-results/
 playwright-report/
 playwright/.cache/
 
+# Node
+node_modules/
+coverage.json
+
 # Old project research (keep HTML but ignore large files dir)
 docs/research/*_files/
 Process Images in Areana/Old App/Restore/

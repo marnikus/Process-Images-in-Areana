@@ -44,6 +44,22 @@ class MainWindow(QMainWindow):
         self.state_path = Path(state_path)
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
 
+        self._init_cdp_client()
+
+        # Web view
+        self.view = QWebEngineView(self)
+        self.setCentralWidget(self.view)
+
+        self._configure_web_settings()
+
+        # Bridge
+        self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, cdp_client=self.cdp_client, parent=self)
+
+        self._attach_web_channel()
+
+        self._load_index()
+
+    def _init_cdp_client(self) -> None:
         # CDP client for Chrome remote debugging — host/port from config so user can choose
         self.cdp_client = None
         if CDPClient:
@@ -54,10 +70,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"CDP client init failed: {e}")
 
-        # Web view
-        self.view = QWebEngineView(self)
-        self.setCentralWidget(self.view)
-
+    def _configure_web_settings(self) -> None:
         # Enable local file access for thumbnails — file:// from file:// origin
         try:
             from PySide6.QtWebEngineCore import QWebEngineSettings
@@ -69,14 +82,13 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"WebEngine settings tweak failed: {e}")
 
-        # Bridge
-        self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, cdp_client=self.cdp_client, parent=self)
-
+    def _attach_web_channel(self) -> None:
         # WebChannel
         self.channel = QWebChannel(self.view.page())
         self.channel.registerObject("bridge", self.bridge)
         self.view.page().setWebChannel(self.channel)
 
+    def _load_index(self) -> None:
         # Load UI
         index_path = Path(__file__).parent / "web" / "index.html"
         if not index_path.exists():

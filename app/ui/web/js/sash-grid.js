@@ -41,6 +41,7 @@ const SashGrid = {
   WIN_ICONS: {
     url_list: 'link', folder: 'folder', queue: 'photo_library',
     prompt: 'edit_note', run: 'play_circle', progress: 'insights',
+    watcher: 'visibility',
     log: 'terminal', settings: 'settings', browser: 'preview',
     action_blocks: 'view_module', arena_presets: 'bookmarks',
   },
@@ -86,11 +87,13 @@ const SashGrid = {
     this._ensureWindowControls();
     this._applyStates();
   },
-  /** Push all derived UI state (grid wrapper classes, empty splits, dock,
-   *  windows menu, empty-grid hint) from the closed/minimized sets. */
+  /** Push all derived UI state (grid wrapper classes, empty splits, sash
+   *  visibility, dock, windows menu, empty-grid hint) from the
+   *  closed/minimized sets. Sash visibility has ONE writer (_syncSashes). */
   _applyStates() {
     this._syncHidden();
     this._syncEmptySplits();
+    this._syncSashes();
     this._renderDock();
     this._updateWindowsMenu();
     this._checkEmptyGrid();

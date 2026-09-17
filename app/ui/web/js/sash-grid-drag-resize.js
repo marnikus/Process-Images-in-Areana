@@ -18,8 +18,13 @@ const SashGridResize = {
     const axisSize = (el) => { const r = el.getBoundingClientRect(); return isRow ? r.width : r.height; };
     const childSizes = childEls.map(axisSize);
     const sashSizes = Array.from(pEl.children).filter((el) => el.classList.contains('sash')).map(axisSize);
-    const z = { pEl, sashEl, sIdx, isRow, childEls, pointerId: ev.pointerId, childSizes, sashSizes, otherWidths: {}, originalFlex: childEls.map((child) => child.style.flex), pointerCaptured: false };
-    for (let i = 0; i < childSizes.length; i++) { if (i === sIdx || i === sIdx + 1) continue; z.otherWidths[i] = childSizes[i]; }
+    // The draggable pair is this sash's left child (always visible — a sash
+    // whose left child is hidden is itself hidden) and the NEXT VISIBLE
+    // child; hidden children in between occupy no visible space.
+    let rIdx = sIdx + 1;
+    while (rIdx < childSizes.length && childSizes[rIdx] <= 1) rIdx++;
+    const z = { pEl, sashEl, sIdx, rIdx, isRow, childEls, pointerId: ev.pointerId, childSizes, sashSizes, otherWidths: {}, originalFlex: childEls.map((child) => child.style.flex), pointerCaptured: false };
+    for (let i = 0; i < childSizes.length; i++) { if (i === sIdx || i === rIdx) continue; z.otherWidths[i] = childSizes[i]; }
     this._resize = z;
     if (ev.pointerId != null && typeof sashEl.setPointerCapture === 'function') {
       try { sashEl.setPointerCapture(ev.pointerId); z.pointerCaptured = true; } catch (e) {}
@@ -41,6 +46,7 @@ const SashGridResize = {
   },
 
   _resizePixelAllocation(z, pointer, rect) {
+    if (z.rIdx >= z.childSizes.length) return null; // no visible child to the right
     const axis = z.isRow ? rect.width : rect.height;
     const sashTotal = z.sashSizes.reduce((sum, size) => sum + Math.max(0, size), 0);
     let others = 0;
@@ -54,7 +60,7 @@ const SashGridResize = {
     const first = Math.min(Math.max(requested, this.MIN_PX), span - this.MIN_PX);
     const allocation = z.childSizes.slice();
     allocation[z.sIdx] = first;
-    allocation[z.sIdx + 1] = span - first;
+    allocation[z.rIdx] = span - first;
     return allocation;
   },
 
@@ -72,23 +78,31 @@ const SashGridResize = {
     const z = this._resize;
     if (!z) return;
     this._cancelResize(false);
-    const rect = z.pEl.getBoundingClientRect();
-    const total = z.isRow ? rect.width : rect.height;
-    const sashTotal = z.sashSizes.reduce((sum, size) => sum + Math.max(0, size), 0);
-    const denom = Math.max(1, total - sashTotal);
     const path = this._parsePath(z.pEl.dataset.path);
     const p = SashCore.nodeAtPath(this.root, path);
-    const prev = p ? p.sizes : null;
-    const sizes = z.childEls.map((el, i) => {
-      const r = el.getBoundingClientRect();
-      const w = z.isRow ? r.width : r.height;
-      if (w > 1) return (Math.max(w, this.MIN_PX) / denom) * 100;
-      return prev ? prev[i] : 100 / z.childEls.length;
-    });
+    const sizes = this._commitResizeSizes(z, p ? p.sizes : null);
     this.root = SashCore.setSplitSizesByPath(this.root, path, sizes);
     this.render();
     this._save();
     if (typeof LogConsole !== 'undefined') LogConsole.log('📏 Grid resized', 'info');
+  },
+
+  /* Commit drag result to model sizes. Visible children keep the exact ratios
+     the user dragged, scaled to the visible budget (100 - hidden children's
+     stored sizes); hidden children keep their stored sizes. Without hidden
+     children this equals the old renderedPx/total*100 formula. */
+  _commitResizeSizes(z, prev) {
+    const kids = z.childEls.map((el, i) => {
+      const r = el.getBoundingClientRect();
+      const w = Math.max(0, z.isRow ? r.width : r.height);
+      return { i, w, shown: w > 1 };
+    });
+    const shownSum = kids.reduce((a, k) => a + (k.shown ? k.w : 0), 0);
+    const hiddenSum = kids.reduce((a, k) => a + (k.shown ? 0 : (prev ? prev[k.i] || 0 : 0)), 0);
+    const budget = Math.max(0, 100 - hiddenSum);
+    return kids.map((k) => k.shown
+      ? (shownSum > 0 ? (k.w / shownSum) * budget : 100 / kids.length)
+      : (prev ? prev[k.i] : 100 / kids.length));
   },
 
   _cancelResize(restore = true) {
