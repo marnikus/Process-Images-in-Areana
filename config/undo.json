@@ -1,586 +1,6 @@
 {
   "history": [
     {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "a1df66e86dd351d4",
-          "relative_path": "facelift-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-1.jpg",
-          "filename": "facelift-1.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 283629
-        },
-        {
-          "id": "acfaf6cfa468eb81",
-          "relative_path": "facelift-2.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-2.jpg",
-          "filename": "facelift-2.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 344120
-        },
-        {
-          "id": "2561b89c873185c6",
-          "relative_path": "facelift-3.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-3.jpg",
-          "filename": "facelift-3.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 265901
-        }
-      ]
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "a1df66e86dd351d4",
-          "relative_path": "facelift-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-1.jpg",
-          "filename": "facelift-1.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 283629
-        },
-        {
-          "id": "acfaf6cfa468eb81",
-          "relative_path": "facelift-2.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-2.jpg",
-          "filename": "facelift-2.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 344120
-        },
-        {
-          "id": "2561b89c873185c6",
-          "relative_path": "facelift-3.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-3.jpg",
-          "filename": "facelift-3.jpg",
-          "status": "pending",
-          "selected": true,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 265901
-        }
-      ]
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "a1df66e86dd351d4",
-          "relative_path": "facelift-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-1.jpg",
-          "filename": "facelift-1.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 283629
-        },
-        {
-          "id": "acfaf6cfa468eb81",
-          "relative_path": "facelift-2.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-2.jpg",
-          "filename": "facelift-2.jpg",
-          "status": "pending",
-          "selected": true,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 344120
-        },
-        {
-          "id": "2561b89c873185c6",
-          "relative_path": "facelift-3.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-3.jpg",
-          "filename": "facelift-3.jpg",
-          "status": "pending",
-          "selected": true,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 265901
-        }
-      ]
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "a1df66e86dd351d4",
-          "relative_path": "facelift-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-1.jpg",
-          "filename": "facelift-1.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 283629
-        },
-        {
-          "id": "acfaf6cfa468eb81",
-          "relative_path": "facelift-2.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-2.jpg",
-          "filename": "facelift-2.jpg",
-          "status": "pending",
-          "selected": true,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 344120
-        },
-        {
-          "id": "2561b89c873185c6",
-          "relative_path": "facelift-3.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-3.jpg",
-          "filename": "facelift-3.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 265901
-        }
-      ]
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "a1df66e86dd351d4",
-          "relative_path": "facelift-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-1.jpg",
-          "filename": "facelift-1.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 283629
-        },
-        {
-          "id": "acfaf6cfa468eb81",
-          "relative_path": "facelift-2.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-2.jpg",
-          "filename": "facelift-2.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 344120
-        },
-        {
-          "id": "2561b89c873185c6",
-          "relative_path": "facelift-3.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-3.jpg",
-          "filename": "facelift-3.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 265901
-        }
-      ]
-    },
-    {
-      "kind": "folder",
-      "value": {
-        "root_path": "F:/Creative Cloud Files/Plastika Dolezal/Images for web 2.0/plastika-oblicej/Celo",
-        "supported_types": [
-          ".png",
-          ".jpg",
-          ".jpeg",
-          ".webp"
-        ],
-        "ignore_ai_suffix": true
-      }
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "a1df66e86dd351d4",
-          "relative_path": "facelift-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-1.jpg",
-          "filename": "facelift-1.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 283629
-        },
-        {
-          "id": "acfaf6cfa468eb81",
-          "relative_path": "facelift-2.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-2.jpg",
-          "filename": "facelift-2.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 344120
-        },
-        {
-          "id": "2561b89c873185c6",
-          "relative_path": "facelift-3.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-3.jpg",
-          "filename": "facelift-3.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 265901
-        }
-      ]
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "c082dbb6115ef42d",
-          "relative_path": "celo-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Celo\\celo-1.jpg",
-          "filename": "celo-1.jpg",
-          "status": "pending",
-          "selected": true,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 366582
-        }
-      ]
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": []
-      }
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "c082dbb6115ef42d",
-          "relative_path": "celo-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Celo\\celo-1.jpg",
-          "filename": "celo-1.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 366582
-        }
-      ]
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "c082dbb6115ef42d",
-          "relative_path": "celo-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Celo\\celo-1.jpg",
-          "filename": "celo-1.jpg",
-          "status": "pending",
-          "selected": true,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 366582
-        }
-      ]
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "folder",
-      "value": {
-        "root_path": "F:/Creative Cloud Files/Plastika Dolezal/Images for web 2.0/plastika-oblicej/Facelift",
-        "supported_types": [
-          ".png",
-          ".jpg",
-          ".jpeg",
-          ".webp"
-        ],
-        "ignore_ai_suffix": true
-      }
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "c082dbb6115ef42d",
-          "relative_path": "celo-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Celo\\celo-1.jpg",
-          "filename": "celo-1.jpg",
-          "status": "completed",
-          "selected": true,
-          "assigned_url": "url_8af56fdc",
-          "attempts": 1,
-          "output_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Celo\\celo-1_AI.png",
-          "error": "",
-          "size": 366582
-        }
-      ]
-    },
-    {
-      "kind": "queue",
-      "value": [
-        {
-          "id": "a1df66e86dd351d4",
-          "relative_path": "facelift-1.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-1.jpg",
-          "filename": "facelift-1.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 283629
-        },
-        {
-          "id": "acfaf6cfa468eb81",
-          "relative_path": "facelift-2.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-2.jpg",
-          "filename": "facelift-2.jpg",
-          "status": "pending",
-          "selected": false,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 344120
-        },
-        {
-          "id": "2561b89c873185c6",
-          "relative_path": "facelift-3.jpg",
-          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Facelift\\facelift-3.jpg",
-          "filename": "facelift-3.jpg",
-          "status": "pending",
-          "selected": true,
-          "assigned_url": "",
-          "attempts": 0,
-          "output_path": "",
-          "error": "",
-          "size": 265901
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_8af56fdc",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "4965ADCBDA3CADB16E3F2989964A5C22"
-        },
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_8af56fdc",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "4965ADCBDA3CADB16E3F2989964A5C22"
-        },
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_8af56fdc",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "4965ADCBDA3CADB16E3F2989964A5C22"
-        },
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_8af56fdc",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "4965ADCBDA3CADB16E3F2989964A5C22"
-        },
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
       "kind": "urls",
       "value": [
         {
@@ -19541,6 +18961,261 @@
         ],
         "ignore_ai_suffix": true
       }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "urls",
+      "value": [
+        {
+          "id": "url_2c2ff2d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        },
+        {
+          "id": "url_550177d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+        }
+      ]
+    },
+    {
+      "kind": "urls",
+      "value": [
+        {
+          "id": "url_2c2ff2d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        },
+        {
+          "id": "url_550177d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+        },
+        {
+          "id": "url_b9e9d963",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+        }
+      ]
+    },
+    {
+      "kind": "urls",
+      "value": [
+        {
+          "id": "url_2c2ff2d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        },
+        {
+          "id": "url_550177d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+        },
+        {
+          "id": "url_b9e9d963",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+        }
+      ]
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser",
+          "watcher"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[54.22591131293581,45.77408868706419]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[57.63665594855305,42.363344051446944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.511875491738788,32.979076514555466,33.43454956726987,10.074498426435877]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[54.22591131293581,45.77408868706419]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[69.31348221670802,30.68651778329198]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.511875491738788,32.979076514555466,33.43454956726987,10.074498426435877]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[54.22591131293581,45.77408868706419]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[69.31348221670802,30.68651778329198]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.511875491738788,39.90275865460268,26.510867427222664,10.074498426435877]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "watcher"
+        ]
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings",
+          "watcher"
+        ]
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[54.22591131293581,45.77408868706419]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[69.31348221670802,30.68651778329198]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[26.14594868009132,44.373128819259314,14.74046125032468,14.74046125032468]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.0,40.0,22.0]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[50.784929356357935,29.215315934065934,19.999754709576138]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.0,40.0,22.0]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[50.784929356357935,33.084772370486654,16.130298273155415]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.0,40.0,22.0]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[50.784929356357935,33.084772370486654,16.130298273155415]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.00005195344971,32.32413757273483,29.67581047381546]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[50.784929356357935,33.084772370486654,16.130298273155415]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[49.12718204488778,21.197007481296758,29.67581047381546]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[50.784929356357935,33.084772370486654,16.130298273155415]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[49.12718204488778,24.023275145469658,26.849542809642564]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[50.784929356357935,33.084772370486654,16.130298273155415]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[47.21529509559434,25.935162094763093,26.849542809642564]}}"
     },
     {
       "kind": "window_states",
