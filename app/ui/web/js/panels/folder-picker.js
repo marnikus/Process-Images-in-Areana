@@ -29,7 +29,9 @@ const FolderPicker = {
 
   pickFolder() {
     if (App.bridge && App.bridge.pick_folder) {
-      App.bridge.pick_folder((res) => {
+      const inp = document.getElementById('folderPathInput');
+      const startDir = inp ? inp.value.trim() : '';
+      App.bridge.pick_folder(startDir, (res) => {
         try {
           const r = JSON.parse(res);
           if (r.ok) {

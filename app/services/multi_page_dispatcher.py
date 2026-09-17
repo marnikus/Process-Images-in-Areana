@@ -1,4 +1,5 @@
 """Multi-page dispatcher — parallel dispatch to different webpages."""
+# ideal-size: ~385 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from app.core.enums import ImageStatus
 from app.core.models import ImageItem, UrlRow
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
+from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
 
 log = logging.getLogger("arena")
@@ -100,6 +102,19 @@ def _mark_steady_emit(pool, bridge, tab_id):
         pass
 
 
+def _settle_stuck_emit(pool, bridge, tab_id):
+    """Steady a busy-like page after failure; a started cooldown survives."""
+    try:
+        page = pool.get_page(tab_id)
+    except Exception:
+        return
+    try:
+        if page is not None and is_stuck_status(page.status):
+            _mark_steady_emit(pool, bridge, tab_id)
+    except Exception:
+        pass
+
+
 async def _wait_pause(bridge):
     while getattr(bridge, "_pause_requested", False):
         await asyncio.sleep(1)
@@ -108,11 +123,12 @@ async def _wait_pause(bridge):
 
 
 async def _get_free_page(pool, bridge, job_id: str):
+    wait_timeout = cooldown_aware_timeout(pool)
     try:
-        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
     except TypeError:
         # fallback old signature
-        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested)
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested)
 
 
 def _get_clients(pool, tab_id) -> Tuple[object, object]:
@@ -124,8 +140,9 @@ def _get_clients(pool, tab_id) -> Tuple[object, object]:
 
 
 async def _acquire_page(pool, bridge, job_id: str):
+    wait_timeout = cooldown_aware_timeout(pool)
     try:
-        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
     except TypeError:
         try:
             if hasattr(pool, "acquire_free_page"):
@@ -136,12 +153,12 @@ async def _acquire_page(pool, bridge, job_id: str):
                     p = await pool.acquire_free_page(job_id)
                     if p:
                         return p
-                    if asyncio.get_event_loop().time() - start > 600:
+                    if asyncio.get_event_loop().time() - start > wait_timeout:
                         return None
                     await asyncio.sleep(0.5)
         except Exception:
             pass
-        return await pool.wait_for_free_page(timeout_sec=600, cancel_check=lambda: bridge._cancel_requested)
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested)
 
 
 async def prepare_image_for_job(bridge, img, urls):
@@ -158,6 +175,8 @@ async def prepare_image_for_job(bridge, img, urls):
 
 async def _run_image_job(ctx: PageJobCtx):
     url_row, corr_id, job_id, final_prompt = await prepare_image_for_job(ctx.bridge, ctx.img, ctx.urls)
+    if url_row is not None and url_row.link_tab(ctx.tab_id):
+        _recalc_save(ctx.bridge)  # carry the row-tab bind to the UI
     try:
         ctx.bridge.job_started.emit(job_id, ctx.img.absolute_path)
     except Exception:
@@ -223,6 +242,37 @@ async def _get_free_or_acquire(pool, bridge, img):
     return free_page
 
 
+def _start_tab_image(pool, tab_id, img):
+    """Record the image on its tab; drop any stale stop request."""
+    try:
+        import os
+        from .cooldown_service import clear_tab_abort, set_tab_image
+        clear_tab_abort(pool, tab_id)
+        set_tab_image(pool, tab_id, os.path.basename(img.relative_path or ""))
+    except Exception:
+        pass
+
+
+def _clear_tab_image(pool, tab_id):
+    """Forget the finished image (pool emit follows in finish)."""
+    try:
+        from .cooldown_service import set_tab_image
+        set_tab_image(pool, tab_id, None)
+    except Exception:
+        pass
+
+
+async def _finish_page_safely(finish_ctx: FinishCtx) -> None:
+    """Finish the page after the job; always settle the stuck-emit on error."""
+    try:
+        await finish_page_after_job(finish_ctx)
+    except asyncio.CancelledError:
+        _settle_stuck_emit(finish_ctx.pool, finish_ctx.bridge, finish_ctx.tab_id)
+        raise
+    except Exception:
+        _settle_stuck_emit(finish_ctx.pool, finish_ctx.bridge, finish_ctx.tab_id)
+
+
 async def run_one_image_on_page(bridge, pool, img, urls):
     if bridge._cancel_requested:
         return
@@ -237,6 +287,7 @@ async def run_one_image_on_page(bridge, pool, img, urls):
         _mark_steady_emit(pool, bridge, tab_id)
         return
     _log_assign(bridge, img, tab_id, free_page)
+    _start_tab_image(pool, tab_id, img)
     try:
         url_row, corr_id, job_id, failed, err = await _run_image_job(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=urls, tab_id=tab_id, ctrl=ctrl, client=client))
         _handle_result(ResultCtx(bridge=bridge, pool=pool, img=img, tab_id=tab_id, corr_id=corr_id, job_id=job_id, failed=failed, err=err))
@@ -245,7 +296,9 @@ async def run_one_image_on_page(bridge, pool, img, urls):
     except Exception as e:
         _handle_exception(bridge, img, tab_id, e)
     finally:
-        _mark_steady_emit(pool, bridge, tab_id)
+        _clear_tab_image(pool, tab_id)
+        finish_ctx = FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client)
+        await _finish_page_safely(finish_ctx)
 
 
 def _log_no_free(bridge, img):

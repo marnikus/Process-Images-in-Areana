@@ -1,14 +1,15 @@
 {
-  "grid_layout": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[59.887005649717516,40.11299435028249]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[27.408138736263737,50.69233222135008,21.899529042386185]}}",
+  "grid_layout": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[42.10526315789473,57.89473684210527]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[53.76344086021505,46.236559139784944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}",
   "window_states": {
     "closed": [
       "progress",
       "arena_presets",
-      "settings",
       "block_config",
       "browser"
     ],
-    "minimized": []
+    "minimized": [
+      "settings"
+    ]
   },
   "theme": "dark",
   "last_folder": "",
@@ -423,6 +424,33 @@
       "confirm_pause_ms": 700,
       "highlight_duration_ms": 2000,
       "extra": {}
+    },
+    {
+      "id": "custom_find_a212f7ac",
+      "block_id": "CUSTOM_FIND",
+      "name": "Find & Click",
+      "description": "Generic visual click — click on btn, text areas, images. RED outline on found, pause, ORANGE on click target.",
+      "icon": "search",
+      "enabled": true,
+      "selector": "button",
+      "label_selector": "",
+      "match_text": "",
+      "match_mode": "contains",
+      "click_enabled": true,
+      "click_selector": "",
+      "fallback_selector": "",
+      "fallback_text": "",
+      "highlight_enabled": true,
+      "color": "#ff2d2d",
+      "timeout_ms": 10000,
+      "required": false,
+      "category": "action",
+      "custom_name": "",
+      "pre_delay_ms": 200,
+      "highlight_ms": 2000,
+      "confirm_pause_ms": 700,
+      "highlight_duration_ms": 2000,
+      "extra": {}
     }
   ],
   "window_geometry": {
@@ -430,5 +458,9 @@
     "y": 23,
     "width": 2560,
     "height": 1377
-  }
+  },
+  "cooldown_enabled": true,
+  "cooldown_min_seconds": 300,
+  "cooldown_captcha_penalty_seconds": 900,
+  "url_pattern": "https://arena.ai/image"
 }

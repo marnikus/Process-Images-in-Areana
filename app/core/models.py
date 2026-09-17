@@ -15,9 +15,10 @@ class UrlRow:
     last_status: str = UrlStatus.UNCHECKED.value
     last_checked: Optional[str] = None
     error: Optional[str] = None
+    tab_id: str = ""  # linked CDP target id; "" = manual/unlinked row
 
     @staticmethod
-    def create(url: str, enabled: bool = True) -> "UrlRow":
+    def create(url: str, enabled: bool = True, tab_id: str = "") -> "UrlRow":
         return UrlRow(
             id=f"url_{uuid.uuid4().hex[:8]}",
             url=url,
@@ -25,7 +26,15 @@ class UrlRow:
             last_status=UrlStatus.UNCHECKED.value,
             last_checked=None,
             error=None,
+            tab_id=tab_id,
         )
+
+    def link_tab(self, tab_id: str) -> bool:
+        """Bind this row to the tab running it; empty never clears."""
+        if not tab_id:
+            return False
+        self.tab_id = tab_id
+        return True
 
 @dataclass
 class ImageItem:

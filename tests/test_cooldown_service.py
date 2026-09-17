@@ -1,0 +1,724 @@
+"""Tests for app/services/cooldown_service.py — real PagePool, fake bridge.
+
+RULE 8: executes the real pool + service; only CDP/bridge boundary faked.
+No real sleeps except one short expiry wait (<0.5s).
+"""
+
+import time
+from types import SimpleNamespace
+
+import pytest
+
+from app.browser.page_pool import PagePool
+from app.browser.page_status import PageInfo, PageStatus
+from app.services import cooldown_service as svc
+
+
+def make_info(tab_id):
+    return PageInfo(ws_url=f"ws://{tab_id}", tab_id=tab_id, title=f"T-{tab_id}",
+                     url="https://arena.ai", status=PageStatus.STEADY, is_connected=True)
+
+
+def make_bridge(session=None, cancelled=False, paused=False):
+    state = {"cooldown_enabled": True, "cooldown_min_seconds": 300,
+             "cooldown_captcha_penalty_seconds": 900}
+    if session:
+        state.update(session)
+    logs = []
+    return SimpleNamespace(
+        _cancel_requested=cancelled,
+        _pause_requested=paused,
+        config=SimpleNamespace(get_state=lambda k, d=None: state.get(k, d)),
+        _log=lambda m, l="info": logs.append((m, l)),
+        _emit_pool_status=lambda: logs.append(("emit", "")),
+        _logs=logs,
+        _session=state,
+    )
+
+
+@pytest.mark.unit
+def test_start_cooldown_blocks_acquire_until_expiry():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    assert svc.start_cooldown(pool, "a", 300, reason="job done") is True
+    page = pool.get_page("a")
+    assert page.status == PageStatus.COOLDOWN
+    assert page.is_free() is False
+    assert page.remaining_seconds() > 0
+    assert pool.get_counts() == (1, 0)
+    snap = pool.status_snapshot()
+    assert snap["cooling"] == 1
+    assert snap["pages"][0]["cooldown_remaining"] > 0
+
+
+@pytest.mark.unit
+def test_zero_base_cooldown_goes_steady():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    assert svc.start_cooldown(pool, "a", 0) is True
+    assert pool.get_page("a").status == PageStatus.STEADY
+
+
+@pytest.mark.unit
+def test_start_cooldown_unknown_tab_fails_open():
+    pool = PagePool()
+    assert svc.start_cooldown(pool, "nope", 300) is False
+
+
+@pytest.mark.unit
+def test_refresh_expired_flips_only_expired():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    svc.start_cooldown(pool, "a", 300)
+    svc.start_cooldown(pool, "b", 300)
+    pool.get_page("a").cooldown_until = time.time() - 1  # force expiry
+    expired = svc.refresh_expired(pool)
+    assert expired == ["a"]
+    assert pool.get_page("a").status == PageStatus.STEADY
+    assert pool.get_page("a").is_free() is True
+    assert pool.get_page("b").status == PageStatus.COOLDOWN
+
+
+@pytest.mark.unit
+def test_reset_cooldown_makes_steady_and_clears_pending():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.add_captcha_penalty(pool, "a", 900)
+    svc.start_cooldown(pool, "a", 300)
+    assert svc.reset_cooldown(pool, "a") is True
+    page = pool.get_page("a")
+    assert page.status == PageStatus.STEADY
+    assert page.pending_penalty == 0
+    assert page.captcha_count == 1  # history kept for display
+    assert svc.reset_cooldown(pool, "nope") is False
+
+
+@pytest.mark.unit
+def test_reset_never_frees_running_job():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    svc.add_captcha_penalty(pool, "a", 900)
+    assert svc.reset_cooldown(pool, "a") is True
+    page = pool.get_page("a")
+    assert page.status == PageStatus.BUSY  # untouched
+    assert page.pending_penalty == 900  # F8: job-cycle debt survives reset
+
+
+@pytest.mark.unit
+def test_edit_cooldown_rules():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    pool.mark_busy("b", "job1")
+    assert svc.edit_cooldown(pool, "b", 60) is False  # running job refused
+    assert svc.edit_cooldown(pool, "nope", 60) is False
+    assert svc.edit_cooldown(pool, "a", 120) is True  # parks steady tab
+    assert pool.get_page("a").status == PageStatus.COOLDOWN
+    assert pool.get_page("a").cooldown_reason == "manual"
+    assert svc.edit_cooldown(pool, "a", 0) is True  # 0 = ready now
+    assert pool.get_page("a").status == PageStatus.STEADY
+
+
+@pytest.mark.unit
+def test_captcha_penalty_stacks_and_is_per_tab():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    assert svc.add_captcha_penalty(pool, "a", 900) == 1
+    assert svc.add_captcha_penalty(pool, "a", 900) == 2
+    assert svc.add_captcha_penalty(pool, "nope", 900) == -1
+    page_a = pool.get_page("a")
+    assert page_a.pending_penalty == 1800  # stacked while idle
+    assert pool.get_page("b").pending_penalty == 0  # tab B unaffected
+    assert pool.get_page("b").captcha_count == 0
+    svc.start_cooldown(pool, "a", 300)
+    assert page_a.cooldown_total == 2100  # 300 base + 2x900
+    assert page_a.pending_penalty == 0  # applied
+    # penalty during active cooldown extends immediately
+    before = page_a.cooldown_until
+    assert svc.add_captcha_penalty(pool, "a", 900) == 3
+    assert page_a.cooldown_until == before + 900
+    assert page_a.cooldown_total == 3000
+
+
+@pytest.mark.unit
+def test_longest_remaining_and_aware_timeout():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    assert svc.longest_remaining(pool) == 0
+    assert svc.cooldown_aware_timeout(pool) == 600.0
+    svc.start_cooldown(pool, "a", 300)
+    assert 0 < svc.longest_remaining(pool) <= 300
+    svc.edit_cooldown(pool, "b", 3600)
+    assert svc.cooldown_aware_timeout(pool) > 3600
+    assert svc.remaining_for(pool, "nope") == -1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_ready_fast_paths():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    bridge = make_bridge()
+    assert await svc.wait_for_tab_ready(pool, "a", bridge) is True
+    assert await svc.wait_for_tab_ready(pool, "unknown", bridge) is True
+    pool.mark_busy("a", "job1")
+    cancelled = make_bridge(cancelled=True)
+    assert await svc.wait_for_tab_ready(pool, "a", cancelled) is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_ready_waits_for_expiry(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0.01)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.start_cooldown(pool, "a", 300)
+    pool.get_page("a").cooldown_until = time.time() + 1.2
+    bridge = make_bridge()
+    assert await svc.wait_for_tab_ready(pool, "a", bridge) is True
+    assert pool.get_page("a").status == PageStatus.STEADY
+    assert any("cooling" in m for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_normal_starts_cooldown(monkeypatch):
+    calls = []
+
+    async def fake_reset(ctx):
+        calls.append(ctx)
+        return True, "mock ready"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    assert len(calls) == 1
+    page = pool.get_page("a")
+    assert page.status == PageStatus.COOLDOWN
+    assert page.cooldown_total == 300
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_disabled_or_cancelled_goes_steady(monkeypatch):
+    async def fake_reset(ctx):
+        return True, "mock ready"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    pool.mark_busy("a", "job1")
+    pool.mark_busy("b", "job2")
+    disabled = make_bridge(session={"cooldown_enabled": False})
+    ctx_a = svc.FinishCtx(pool=pool, bridge=disabled, tab_id="a", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx_a) is True
+    assert pool.get_page("a").status == PageStatus.STEADY
+    cancelled = make_bridge(cancelled=True)
+    ctx_b = svc.FinishCtx(pool=pool, bridge=cancelled, tab_id="b", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx_b) is True
+    assert pool.get_page("b").status == PageStatus.STEADY  # no cooldown after cancel
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_failed_reset_still_cools(monkeypatch):
+    async def fake_reset(ctx):
+        return False, "boom"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    assert pool.get_page("a").status == PageStatus.COOLDOWN
+    assert any("boom" in m for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_unknown_tab_returns_false(monkeypatch):
+    async def fake_reset(ctx):
+        return True, "mock ready"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    bridge = make_bridge()
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="nope", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is False
+
+
+@pytest.mark.unit
+def test_ensure_registers_missing_primary_tab():
+    pool = PagePool()
+    info = PageInfo(tab_id="tab1", ws_url="ws://x", title="Arena", url="https://arena.ai/abc")
+    assert svc.ensure_pool_page(pool, info) is True
+    page = pool.get_page("tab1")
+    assert page.status == PageStatus.STEADY
+    assert page.is_connected is True
+    assert (page.title, page.url) == ("Arena", "https://arena.ai/abc")
+    # finish now cools instead of unknown-tab no-op
+    assert svc.start_cooldown(pool, "tab1", 300, reason="job done") is True
+    assert pool.get_page("tab1").status == PageStatus.COOLDOWN
+
+
+@pytest.mark.unit
+def test_ensure_fills_empty_url_title_only():
+    pool = PagePool()
+    pool.add_page(PageInfo(tab_id="t", ws_url="ws://t", title="", url=""))
+    assert svc.ensure_pool_page(pool, PageInfo(tab_id="t", title="Live", url="https://x.ai/y")) is True
+    page = pool.get_page("t")
+    assert (page.title, page.url) == ("Live", "https://x.ai/y")
+    assert svc.ensure_pool_page(pool, PageInfo(tab_id="t", title="Other", url="https://other/")) is True
+    assert (page.title, page.url) == ("Live", "https://x.ai/y")
+
+
+@pytest.mark.unit
+def test_ensure_rejects_missing_pool_or_tab():
+    assert svc.ensure_pool_page(None, PageInfo(tab_id="t")) is False
+    assert svc.ensure_pool_page(PagePool(), PageInfo(tab_id="")) is False
+
+
+@pytest.mark.unit
+def test_resolve_primary_tab_adopts_single_page():
+    pool = PagePool()
+    pool.add_page(make_info("only"))
+    assert svc.resolve_primary_tab(pool, "") == "only"
+    assert svc.resolve_primary_tab(pool, "only") == "only"
+    assert svc.resolve_primary_tab(pool, "ghost") == "only"  # stale id heals
+    pool.add_page(make_info("second"))
+    assert svc.resolve_primary_tab(pool, "") == ""
+
+
+@pytest.mark.unit
+def test_resolve_primary_tab_no_pool():
+    assert svc.resolve_primary_tab(None, "") == ""
+    assert svc.resolve_primary_tab(None, "x") == "x"
+
+
+def _cooling_pool(*tab_ids):
+    pool = PagePool()
+    for tid in tab_ids:
+        pool.add_page(make_info(tid))
+        svc.start_cooldown(pool, tid, 300, reason="job done")
+    return pool
+
+
+@pytest.mark.unit
+def test_resolve_prefers_ready_over_cooling_preferred():
+    pool = _cooling_pool("cool")
+    pool.add_page(make_info("ready"))
+    assert svc.resolve_primary_tab(pool, "cool") == "ready"
+    assert svc.resolve_primary_tab(pool, "ready") == "ready"
+
+
+@pytest.mark.unit
+def test_resolve_keeps_preferred_when_nothing_ready():
+    pool = _cooling_pool("cool")
+    pool.add_page(make_info("busy"))
+    pool.mark_busy("busy", "j1")
+    assert svc.resolve_primary_tab(pool, "cool") == "cool"  # caller waits
+
+
+@pytest.mark.unit
+def test_resolve_best_ready_uses_lowest_jobs_then_order():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    pool.get_page("a").jobs_completed = 5
+    pool.get_page("b").jobs_completed = 2
+    assert svc.resolve_primary_tab(pool, "ghost") == "b"
+    pool.get_page("b").jobs_completed = 5
+    assert svc.resolve_primary_tab(pool, "ghost") == "a"  # tie: pool order
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_for_batch_ready_immediate_when_ready():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    bridge = make_bridge()
+    assert await svc.wait_for_batch_ready(pool, ["a"], bridge) is True
+    assert await svc.wait_for_batch_ready(pool, [], bridge) is True
+    assert await svc.wait_for_batch_ready(pool, [""], bridge) is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_for_batch_ready_waits_for_zero(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0.01)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.start_cooldown(pool, "a", 2, reason="job done")
+    bridge = make_bridge()
+    started = time.monotonic()
+    assert await svc.wait_for_batch_ready(pool, ["a"], bridge) is True
+    assert time.monotonic() - started >= 0.5
+    assert pool.get_page("a").status == PageStatus.STEADY
+    assert any("00" in m or "cooldown" in m.lower() for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_for_batch_ready_cancel_returns_false(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0.01)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.start_cooldown(pool, "a", 300, reason="job done")
+    bridge = make_bridge(cancelled=True)
+    assert await svc.wait_for_batch_ready(pool, ["a"], bridge) is False
+
+
+@pytest.mark.unit
+def test_register_job_done_increments():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    assert svc.register_job_done(pool, "a") == 1
+    assert svc.register_job_done(pool, "a") == 2
+    assert pool.get_page("a").jobs_completed == 2
+
+
+@pytest.mark.unit
+def test_register_job_done_unknown():
+    assert svc.register_job_done(PagePool(), "nope") == -1
+    assert svc.register_job_done(None, "a") == -1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_increments_job_counter(monkeypatch):
+    async def fake_reset(ctx):
+        return True, "mock ready"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    bridge = make_bridge()
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    assert pool.get_page("a").jobs_completed == 1
+
+
+@pytest.mark.unit
+def test_restore_page_stats_max_and_missing():
+    from app.persistence.cooldown_store import normalize_url
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    norm = normalize_url("https://arena.ai")
+    stats = {norm: {"jobs_completed": 7}}
+    assert svc.restore_page_stats(pool, "a", norm, stats) == 7
+    pool.get_page("a").jobs_completed = 9
+    assert svc.restore_page_stats(pool, "a", norm, stats) == 9  # max, idempotent
+    assert svc.restore_page_stats(pool, "nope", norm, stats) == -1
+    assert svc.restore_page_stats(pool, "a", norm, {}) == 9  # nothing saved: keep live
+
+
+@pytest.mark.unit
+def test_is_stuck_status_matrix():
+    assert svc.is_stuck_status(PageStatus.BUSY) is True
+    assert svc.is_stuck_status(PageStatus.WAITING_GENERATION) is True
+    assert svc.is_stuck_status(PageStatus.WAITING_CAPTCHA) is True
+    assert svc.is_stuck_status(PageStatus.ERROR) is True
+    assert svc.is_stuck_status("busy") is True  # plain str works (str-enum)
+    assert svc.is_stuck_status(PageStatus.STEADY) is False
+    assert svc.is_stuck_status(PageStatus.COOLDOWN) is False
+    assert svc.is_stuck_status(PageStatus.DISCONNECTED) is False
+    assert svc.is_stuck_status(None) is False
+    assert svc.is_stuck_status("nonsense") is False
+
+
+@pytest.mark.unit
+def test_force_reset_frees_busy_and_clears_timers():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job-1")
+    page = pool.get_page("a")
+    page.cooldown_until = time.time() + 100
+    page.pending_penalty = 60
+    page.error = "boom"
+    assert svc.force_reset_page(pool, "a") is True
+    assert page.status == PageStatus.STEADY
+    assert page.current_job_id is None
+    assert page.cooldown_until == 0.0
+    assert page.pending_penalty == 0
+    assert page.error is None
+
+
+@pytest.mark.unit
+def test_force_reset_keeps_history_and_identity():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    page = pool.get_page("a")
+    page.status = PageStatus.ERROR
+    page.jobs_completed = 5
+    page.captcha_count = 2
+    assert svc.force_reset_page(pool, "a") is True
+    assert (page.jobs_completed, page.captcha_count) == (5, 2)
+    assert page.url == "https://arena.ai" and page.is_connected is True
+
+
+@pytest.mark.unit
+def test_force_reset_unknown_is_false():
+    assert svc.force_reset_page(PagePool(), "nope") is False
+    assert svc.force_reset_page(None, "a") is False
+
+
+@pytest.mark.unit
+def test_request_abort_needs_live_job():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    assert svc.request_tab_abort(pool, "ghost") is False
+    assert svc.request_tab_abort(pool, "a") is False  # idle tab
+    assert svc.is_tab_aborted(pool, "a") is False
+    svc.set_tab_image(pool, "a", "03-c.jpeg")
+    assert svc.request_tab_abort(pool, "a") is True
+    assert svc.is_tab_aborted(pool, "a") is True
+
+
+@pytest.mark.unit
+def test_clear_abort_and_image():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.set_tab_image(pool, "a", "x.png")
+    assert svc.request_tab_abort(pool, "a") is True
+    svc.clear_tab_abort(pool, "a")
+    assert svc.is_tab_aborted(pool, "a") is False
+    svc.set_tab_image(pool, "a", None)
+    assert svc.request_tab_abort(pool, "a") is False
+    svc.clear_tab_abort(pool, "ghost")  # never raises
+    svc.set_tab_image(pool, "ghost", "y.png")
+    assert svc.is_tab_aborted(None, "a") is False
+
+
+@pytest.mark.unit
+def test_tab_has_live_job():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    assert svc.tab_has_live_job(pool, "ghost") is False
+    assert svc.tab_has_live_job(pool, "a") is False
+    svc.set_tab_image(pool, "a", "x.png")
+    assert svc.tab_has_live_job(pool, "a") is True
+    pool.mark_busy("b", "j1")
+    assert svc.tab_has_live_job(pool, "b") is False  # stale busy stays resettable
+    svc.set_tab_image(pool, "b", "y.png")
+    assert svc.tab_has_live_job(pool, "b") is True
+    assert svc.tab_has_live_job(None, "a") is False
+
+
+# --- captcha-penalty hardening (2026-09-17): record on any page state ---
+
+
+@pytest.mark.unit
+def test_note_captcha_event_busy_stacks_and_logs_pending():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    assert svc.note_captcha_event(pool, "a", bridge, source="gen-wait") == 1
+    page = pool.get_page("a")
+    assert page.pending_penalty == 900
+    assert page.captcha_count == 1
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "🛡️" in text and "(x1)" in text and "+15m" in text
+    assert "via gen-wait" in text and "pending 15:00" in text
+    assert ("emit", "") in bridge._logs  # rows re-render live
+
+
+@pytest.mark.unit
+def test_note_captcha_event_cooling_extends_live_timer():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.start_cooldown(pool, "a", 300)
+    bridge = make_bridge()
+    assert svc.note_captcha_event(pool, "a", bridge, source="check") == 1
+    assert pool.get_page("a").cooldown_total == 1200
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "🛡️" in text and "extended to 20:00" in text
+
+
+@pytest.mark.unit
+def test_note_captcha_event_unknown_tab_warns_without_shield():
+    pool = PagePool()
+    bridge = make_bridge()
+    assert svc.note_captcha_event(pool, "nope", bridge) == -1
+    assert not any("🛡️" in m for m, _ in bridge._logs)
+    assert any(level == "warn" for _, level in bridge._logs)
+
+
+@pytest.mark.unit
+def test_note_captcha_event_defaults_without_config():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    logs = []
+    bare = SimpleNamespace(_log=lambda m, l="info": logs.append((m, l)))
+    assert svc.note_captcha_event(pool, "a", bare) == 1
+    assert pool.get_page("a").pending_penalty == 900  # default, never 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_solved(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0)
+    seq = [True, True, False]
+
+    async def fake_visible():
+        return seq.pop(0) if seq else False
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=fake_visible)
+    logs = []
+    ok = await svc.wait_captcha_cleared(
+        ctrl, stop=lambda: None, timeout_sec=300,
+        log=lambda m, l="info": logs.append((m, l)))
+    assert ok is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_stop_returns_false(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0)
+
+    async def always():
+        return True
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=always)
+    ok = await svc.wait_captcha_cleared(
+        ctrl, stop=lambda: "Cancelled by user", timeout_sec=300,
+        log=lambda m, l="info": None)
+    assert ok is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_timeout_logs_but_keeps_waiting(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0)
+    seq = [True, False]
+
+    async def fake_visible():
+        return seq.pop(0) if seq else False
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=fake_visible)
+    logs = []
+    ok = await svc.wait_captcha_cleared(
+        ctrl, stop=lambda: None, timeout_sec=0,
+        log=lambda m, l="info": logs.append((m, l)))
+    assert ok is True
+    assert any("⏰" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_breakdown_log_with_captcha(monkeypatch):
+    async def fake_reset(ctx):
+        return True, "ok"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    svc.add_captcha_penalty(pool, "a", 900)
+    bridge = make_bridge()
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a",
+                        ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    assert pool.get_page("a").cooldown_total == 1200
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "20:00" in text and "base 05:00" in text
+    assert "captcha 15:00 x1" in text
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_log_plain_without_captcha(monkeypatch):
+    async def fake_reset(ctx):
+        return True, "ok"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a",
+                        ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "cooling" in text and "captcha" not in text
+    assert "(" not in text  # legacy line: no breakdown detail
+
+
+@pytest.mark.unit
+def test_note_captcha_event_without_pool_warns():
+    bridge = make_bridge()
+    assert svc.note_captcha_event(None, "a", bridge) == -1
+    assert svc.note_captcha_event(PagePool(), "", bridge) == -1
+    assert any(level == "warn" for _, level in bridge._logs)
+
+
+@pytest.mark.unit
+def test_note_captcha_event_raising_config_uses_default():
+    def boom(_k, _d=None):
+        raise RuntimeError("cfg gone")
+
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    logs = []
+    bridge = SimpleNamespace(config=SimpleNamespace(get_state=boom),
+                             _log=lambda m, l="info": logs.append((m, l)))
+    assert svc.note_captcha_event(pool, "a", bridge) == 1
+    assert pool.get_page("a").pending_penalty == 900
+
+
+@pytest.mark.unit
+def test_note_captcha_event_raising_emit_still_records():
+    def boom():
+        raise RuntimeError("ui gone")
+
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    logs = []
+    bridge = SimpleNamespace(
+        config=SimpleNamespace(get_state=lambda k, d=None: 900),
+        _log=lambda m, l="info": logs.append((m, l)),
+        _emit_pool_status=boom)
+    assert svc.note_captcha_event(pool, "a", bridge) == 1
+    assert pool.get_page("a").pending_penalty == 900
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_ctrl_error_means_clear():
+    async def boom():
+        raise RuntimeError("cdp gone")
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=boom)
+    ok = await svc.wait_captcha_cleared(
+        ctrl, stop=lambda: None, timeout_sec=300,
+        log=lambda m, l="info": None)
+    assert ok is True
+
+
+@pytest.mark.unit
+def test_note_captcha_event_unreadable_page_still_counts():
+    import threading
+
+    class FlakyPool:
+        def __init__(self):
+            self._pages = {"a": make_info("a")}
+            self._lock = threading.Lock()
+
+        def get_page(self, _tab_id):
+            raise RuntimeError("pool gone")
+
+    bridge = make_bridge()
+    assert svc.note_captcha_event(FlakyPool(), "a", bridge) == 1

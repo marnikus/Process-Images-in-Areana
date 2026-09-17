@@ -67,6 +67,7 @@ const SashGridTree = {
     closeBtn.title = 'Close';
     controls.appendChild(toggleBtn);
     controls.appendChild(closeBtn);
+    this._wrapTitleText(title);
     this._attachWindowControls(title, controls);
     toggleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -91,6 +92,21 @@ const SashGridTree = {
       title.appendChild(sp);
       title.appendChild(controls);
     }
+  },
+
+  /* The title's bare text node becomes one shrinkable flex item
+     (span.win-name) — a browser cannot ellipsize a bare text node, and
+     without this the title text pushes the ─/✕ controls off the right edge
+     of narrow windows. Only top-level text nodes are wrapped, so re-running
+     is a no-op. */
+  _wrapTitleText(title) {
+    Array.from(title.childNodes).forEach((n) => {
+      if (n.nodeType !== 3 || !n.textContent.trim()) return;
+      const sp = document.createElement('span');
+      sp.className = 'win-name';
+      title.replaceChild(sp, n);
+      sp.appendChild(n);
+    });
   },
 
   _updateWindowControlIcons(title, id) {
@@ -132,16 +148,59 @@ const SashGridTree = {
       winEl.classList.toggle('sash-win-hidden', shouldHide);
       winEl.classList.toggle('sash-win-closed', isClosed);
     });
+  },
+
+  /* Single source of truth for sash visibility: a sash is hidden iff its
+     PREVIOUS (left/top) sibling is hidden — a closed/minimized window or an
+     emptied split. One rule, one writer: visible rows never lose the divider
+     between them, and a hidden window's slot boundary always keeps exactly
+     one visible, draggable sash. */
+  _syncSashes() {
+    if (!this.gridEl) return;
+    const hidden = (el) => !!el && (el.classList.contains('sash-win-hidden') ||
+      el.classList.contains('sash-win-closed') || el.classList.contains('sash-split-hidden'));
     this.gridEl.querySelectorAll('.sash-split').forEach((pEl) => {
       const kids = Array.from(pEl.children);
       kids.forEach((el, i) => {
         if (!el.classList || !el.classList.contains('sash')) return;
-        const prev = kids[i - 1], next = kids[i + 1];
-        const nearHidden = (prev && prev.classList.contains('sash-win-hidden')) ||
-                           (next && next.classList.contains('sash-win-hidden'));
-        el.classList.toggle('sash-hidden', !!nearHidden);
+        el.classList.toggle('sash-hidden', hidden(kids[i - 1]));
       });
     });
+  },
+
+  /* Title-bar fit — the single writer of .fit-hidden. Guarantees the ─/✕
+     controls stay fully visible at the right edge in ANY window width.
+     Pure recompute, never accumulates: first un-hide everything, then drop
+     SECONDARY items (Save/Clear/Reparse… buttons, count badges) right-to-
+     left while the row still overflows. Protected (never dropped): grip,
+     leading icon, .win-name (truncates via CSS), spacer, .win-controls.
+     The fixed core (grip+icon+controls+gaps+padding, sash-layout.css) is
+     < 96px — the minimum window — so the loop always terminates with the
+     controls visible; widening the window restores everything. */
+  _fitTitleBars() {
+    if (!this.gridEl) return;
+    this.gridEl.querySelectorAll('.sash-window > .panel > .win-title').forEach((title) => {
+      Array.from(title.children).forEach((el) => el.classList.remove('fit-hidden'));
+      let guard = title.children.length;
+      while (guard-- > 0 && title.scrollWidth > title.clientWidth + 1) {
+        const victim = this._titleSecondaryToHide(title);
+        if (!victim) break;
+        victim.classList.add('fit-hidden');
+      }
+    });
+  },
+
+  _titleSecondaryToHide(title) {
+    const kids = Array.from(title.children);
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const el = kids[i];
+      if (el.classList.contains('fit-hidden')) continue;
+      if (el.classList.contains('win-grip') || el.classList.contains('win-name') ||
+          el.classList.contains('spacer') || el.classList.contains('win-controls')) continue;
+      if (i === 1 && el.classList.contains('material-icons')) continue; // leading icon
+      return el;
+    }
+    return null;
   },
 
   // ── FIX FOR BUG #2: empty rows / splits ──────────────────────
@@ -174,22 +233,7 @@ const SashGridTree = {
     splits.forEach((splitEl) => {
       splitEl.classList.toggle('sash-split-hidden', !this._splitHasVisibleDescendant(splitEl));
     });
-    // also hide sashes that touch hidden splits/windows
-    this._hideTouchedSashes();
-  },
-
-  _hideTouchedSashes() {
-    this.gridEl.querySelectorAll('.sash-split').forEach((pEl) => {
-      if (pEl.classList.contains('sash-split-hidden')) return;
-      const kids = Array.from(pEl.children);
-      kids.forEach((el, i) => {
-        if (!el.classList || !el.classList.contains('sash')) return;
-        const prev = kids[i - 1], next = kids[i + 1];
-        const prevHidden = prev && (prev.classList.contains('sash-win-hidden') || prev.classList.contains('sash-win-closed') || prev.classList.contains('sash-split-hidden'));
-        const nextHidden = next && (next.classList.contains('sash-win-hidden') || next.classList.contains('sash-win-closed') || next.classList.contains('sash-split-hidden'));
-        if (prevHidden || nextHidden) el.classList.add('sash-hidden');
-      });
-    });
+    // sash visibility is written ONLY by _syncSashes() (single rule)
   },
 
   _checkEmptyGrid() {
@@ -229,6 +273,7 @@ const SashGridTree = {
       if (changed) {
         this._syncHidden();
         this._syncEmptySplits();
+        this._syncSashes();
         this._updateWindowsMenu();
         this._checkEmptyGrid();
       }

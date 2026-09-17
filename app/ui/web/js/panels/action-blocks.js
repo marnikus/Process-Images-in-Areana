@@ -10,6 +10,8 @@ const ActionBlocksPanel = {
   blocks: [],
   builtinCatalog: [],
   customBlocks: [],
+  stackPresets: [],
+  _lastStackPreset: '',
   jobStatuses: {},
   jobOrder: [],
   currentJobId: null,
@@ -22,6 +24,7 @@ const ActionBlocksPanel = {
     this.bindUI();
     this.loadBuiltin();
     this.loadCustom();
+    this.loadStackPresets();
     this.load();
     this.ensurePauseOverlay();
     if (window.App && App.bridge) {
@@ -140,7 +143,7 @@ const ActionBlocksPanel = {
     const runBtn = document.getElementById('abRunBtn');
     if (addBtn) addBtn.addEventListener('click', () => this.showAddDialog());
     if (resetBtn) resetBtn.addEventListener('click', () => this.resetToDefault());
-    if (saveBtn) saveBtn.addEventListener('click', () => this.save());
+    if (saveBtn) saveBtn.addEventListener('click', () => this.saveAsPreset());
     if (exportBtn) exportBtn.addEventListener('click', () => this.export());
     if (importBtn) importBtn.addEventListener('click', () => this.import());
     if (saveCustomBtn) saveCustomBtn.addEventListener('click', () => this.saveSelectedAsCustom());
@@ -362,7 +365,7 @@ const ActionBlocksPanel = {
     this.blocks.forEach((block, idx) => {
       try { container.appendChild(this.createBlockElement(block, idx)); } catch(e){ console.error('Failed to create block element', block, e); }
     });
-    this.renderAddMenu(); this.renderCustomChips();
+    this.renderAddMenu(); this.renderCustomChips(); this.renderStackChips();
     this.updateFooter();
     if (this.selectedIdx>=0 && this.selectedIdx<this.blocks.length) this.showConfig(this.selectedIdx); else this.showConfig(null);
     if (this.currentJobId){ this.renderJobStack(this.currentJobId); this.renderAllJobs(); }
@@ -729,7 +732,15 @@ const ActionBlocksPanel = {
     }
   },
 
-  export(){ const data=JSON.stringify(this.blocks,null,2); const blob=new Blob([data],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`arena-action-blocks-${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(url); if(typeof LogConsole!=='undefined') LogConsole.log('📤 Exported action blocks', 'success'); },
+  export(){
+    const payload=JSON.stringify(this.blocks,null,2);
+    if(App.bridge&&App.bridge.export_action_blocks){
+      let done=false;
+      try{ const res=App.bridge.export_action_blocks(payload); if(typeof res==='string'){ done=true; this._onExported(res); } } catch{}
+      if(!done){ try{ App.bridge.export_action_blocks(payload, (res)=>this._onExported(res)); } catch{} }
+      return;
+    }
+    const data=payload; const blob=new Blob([data],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`arena-action-blocks-${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(url); if(typeof LogConsole!=='undefined') LogConsole.log('📤 Exported action blocks', 'success'); },
   import(){ const input=document.createElement('input'); input.type='file'; input.accept='.json'; input.onchange=(e)=>{ const file=e.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=(ev)=>{ try{ const data=JSON.parse(ev.target.result); if(Array.isArray(data)){ this.blocks=data; this.save(); this.render(); if(typeof LogConsole!=='undefined') LogConsole.log(`📥 Imported ${data.length} action blocks`, 'success'); } } catch(err){ if(typeof LogConsole!=='undefined') LogConsole.log(`Import failed: ${err}`, 'error'); } }; reader.readAsText(file); }; input.click(); },
 
   renderCustomChips(){
@@ -755,6 +766,56 @@ const ActionBlocksPanel = {
       try{ const res=App.bridge.save_custom_block(payload); if(typeof res==='string'){ const r=JSON.parse(res); if(r.ok){ this.customBlocks=this.customBlocks.filter(c=>c.name!==name); this.customBlocks.push(entry); this.renderCustomChips(); } } } catch{}
       App.bridge.save_custom_block(payload, (res)=>{ try{ const r=typeof res==='string'?JSON.parse(res):res; if(r.ok) this.loadCustom(); } catch{} });
     } else { this.customBlocks=this.customBlocks.filter(c=>c.name!==name); this.customBlocks.push(entry); this.renderCustomChips(); }
+  },
+  _onExported(res){
+    try{
+      const r=typeof res==='string'?JSON.parse(res):res;
+      if(r&&r.ok){ if(typeof LogConsole!=='undefined') LogConsole.log(`📤 Exported action blocks to ${r.path||''}`, 'success'); }
+      else if(r&&r.cancelled){ if(typeof LogConsole!=='undefined') LogConsole.log('Export cancelled — no folder selected', 'info'); }
+      else { if(typeof LogConsole!=='undefined') LogConsole.log(`Export failed: ${(r&&r.error)||'unknown'}`, 'error'); }
+    } catch{}
+  },
+  loadStackPresets() {
+    if (App.bridge && App.bridge.get_stack_presets) {
+      try {
+        const res = App.bridge.get_stack_presets();
+        if (typeof res === 'string') { const data = JSON.parse(res); if (Array.isArray(data)) { this.stackPresets = data; this.renderStackChips(); } }
+      } catch {}
+    }
+  },
+  renderStackChips(){
+    const el=document.getElementById('stackPresetChips'); if(!el) return;
+    if(!this.stackPresets.length){ el.innerHTML='<span class="preset-row-empty" style="font-size:10px; color:var(--text-muted);">no saved stack presets — press Save to store the full stack, then click a chip to load it</span>'; return; }
+    el.innerHTML=''; this.stackPresets.forEach((entry)=>{ const name=entry.name||'Stack'; const n=Array.isArray(entry.blocks)?entry.blocks.length:0; const chip=document.createElement('div'); chip.className='preset-chip'; chip.style.cssText='display:inline-flex; align-items:center; gap:4px; padding:6px 10px; margin:2px; background:var(--bg-input); border:1px solid var(--border); border-radius:12px; font-size:11px; cursor:pointer;'; chip.innerHTML=`<span>📚 ${this.esc(name)} (${n})</span> <button class="btn-icon" title="Delete" style="margin-left:4px;"><span class="material-icons" style="font-size:12px;">close</span></button>`; chip.addEventListener('click',(e)=>{ if(e.target.closest('button')) return; this.loadStackPreset(entry); }); const delBtn=chip.querySelector('button'); if(delBtn) delBtn.addEventListener('click',(e)=>{ e.stopPropagation(); this.deleteStackPreset(name); }); chip.title='Load this full stack (replaces current stack)'; el.appendChild(chip); });
+  },
+  saveAsPreset(){
+    this.save();
+    if(!this.blocks.length){ if(typeof LogConsole!=='undefined') LogConsole.log('Nothing to save — the stack is empty', 'warn'); return; }
+    const name=prompt('Save full stack as preset — enter name:', this._lastStackPreset||'My stack'); if(!name) return;
+    this._lastStackPreset=name;
+    const entry={name:name, blocks:JSON.parse(JSON.stringify(this.blocks))};
+    if(App.bridge&&App.bridge.save_stack_preset){
+      const payload=JSON.stringify(entry);
+      let done=false;
+      try{ const res=App.bridge.save_stack_preset(payload); if(typeof res==='string'){ done=true; const r=JSON.parse(res); if(r.ok){ this.stackPresets=this.stackPresets.filter(c=>c.name!==name); this.stackPresets.push(entry); this.renderStackChips(); if(typeof LogConsole!=='undefined') LogConsole.log(`💾 Stack preset saved: ${name} (${entry.blocks.length} blocks)`, 'success'); } } } catch{}
+      if(!done){ try{ App.bridge.save_stack_preset(payload, (res)=>{ try{ const r=typeof res==='string'?JSON.parse(res):res; if(r.ok) this.loadStackPresets(); } catch{} }); } catch{} }
+    } else { this.stackPresets=this.stackPresets.filter(c=>c.name!==name); this.stackPresets.push(entry); this.renderStackChips(); }
+  },
+  loadStackPreset(entry){
+    if(!entry||!Array.isArray(entry.blocks)||!entry.blocks.length) return;
+    this.blocks=JSON.parse(JSON.stringify(entry.blocks));
+    this.selectedIdx=-1;
+    this.save(); this.render();
+    if(typeof LogConsole!=='undefined') LogConsole.log(`📚 Stack preset loaded: ${entry.name} (${entry.blocks.length} blocks)`, 'success');
+  },
+  deleteStackPreset(name){
+    if(!App.bridge) return; if(!confirm(`Delete stack preset "${name}"?`)) return;
+    if(App.bridge.delete_stack_preset){
+      let done=false;
+      try{ const res=App.bridge.delete_stack_preset(name); if(typeof res==='string'){ done=true; const r=JSON.parse(res); if(r.ok){ this.stackPresets=this.stackPresets.filter(c=>c.name!==name); this.renderStackChips(); } } } catch{}
+      if(!done){ try{ App.bridge.delete_stack_preset(name, (res)=>{ try{ const r=typeof res==='string'?JSON.parse(res):res; if(r.ok){ this.stackPresets=this.stackPresets.filter(c=>c.name!==name); this.renderStackChips(); } } catch{} }); } catch{} }
+    }
+    this.stackPresets=this.stackPresets.filter(c=>c.name!==name); this.renderStackChips();
   },
   saveSelectedAsCustom(){ if(this.selectedIdx<0||this.selectedIdx>=this.blocks.length){ if(typeof LogConsole!=='undefined') LogConsole.log('Select a CUSTOM_FIND block first to save as preset', 'warn'); return; } const block=this.blocks[this.selectedIdx]; this.saveBlockAsCustom(block); },
   renderAddMenu(){ const el=document.getElementById('addBlockMenu'); if(!el||!this.builtinCatalog.length) return; el.innerHTML=''; this.builtinCatalog.forEach(bt=>{ const opt=document.createElement('div'); opt.className='add-block-option'; opt.style.cssText='padding:6px 10px; cursor:pointer; font-size:11px; display:flex; gap:6px; align-items:center;'; opt.innerHTML=`<span>${bt.icon||'🔹'}</span><span>${bt.name}</span><span style="color:var(--text-muted); font-size:9px;">${bt.block_id}</span>`; opt.title=bt.description||''; opt.addEventListener('click',()=>{ if(App.bridge&&App.bridge.add_action_block){ App.bridge.add_action_block(bt.block_id); this.load(); } }); el.appendChild(opt); }); },

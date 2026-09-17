@@ -7,6 +7,7 @@ Handles:
 - arena operations (urls, folder, queue, prompt, settings, run controls, highlight)
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -106,6 +107,10 @@ class Bridge(QObject):
         self._last_connect_ts = 0.0
         self._find_in_progress = False
         self._connect_in_progress = False
+        self._auto_scan_running = False
+        self._ensure_running = False
+        self._persist_ok = True
+        self._restore_note_done = False
         # thumbnail cache + thread pool to avoid UI freeze on mouse clicks
         # Previously get_image_thumbnail did PIL thumbnail sync in main thread for 80 images -> freeze
         self._thumb_cache = {}
@@ -198,6 +203,18 @@ class Bridge(QObject):
             except Exception:
                 pass
             self._page_pool = None
+        self._log_build_version()
+
+    def _log_build_version(self) -> None:
+        """Log the running commit so behavior is traceable. Best effort."""
+        try:
+            import subprocess
+            here = Path(__file__).resolve().parents[2]
+            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=here, timeout=5).stdout.strip()
+            if sha:
+                self._log(f"📌 Build {sha}", "info")
+        except Exception:
+            pass
 
     def _emit_pool_status(self):
         try:
@@ -205,8 +222,136 @@ class Bridge(QObject):
                 return
             snap = self._page_pool.status_snapshot()
             self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
+            self._persist_cooldowns()
         except Exception:
             pass
+
+    async def _resolve_tab_info(self, tab_id: str, ws_url: str):
+        """Best-known (title, url): live Chrome tabs first, cdp attrs then."""
+        title = getattr(self.cdp, "_current_title", "") or ""
+        url = getattr(self.cdp, "_current_url", "") or ""
+        try:
+            tabs = await self.cdp.fetch_tabs()
+        except Exception:
+            return title, url
+        try:
+            for t in tabs or []:
+                tid = getattr(t, "id", "") or ""
+                tws = getattr(t, "ws_url", "") or ""
+                if (tab_id and tid == tab_id) or (ws_url and tws == ws_url):
+                    return getattr(t, "title", "") or title, getattr(t, "url", "") or url
+        except Exception:
+            pass
+        return title, url
+
+    async def _ensure_pool_page(self, tab_id: str):
+        """Register primary tab for cooldown tracking (batch self-sufficiency)."""
+        try:
+            if not self._page_pool or not tab_id:
+                return
+            page = self._page_pool.get_page(tab_id)
+            if page is not None and getattr(page, "url", "") and getattr(page, "title", ""):
+                return
+            ws = getattr(self.cdp, "_current_ws_url", "") or ""
+            title = getattr(self.cdp, "_current_title", "") or ""
+            url = getattr(self.cdp, "_current_url", "") or ""
+            if not url or not title:
+                live_title, live_url = await self._resolve_tab_info(tab_id, ws)
+                title = title or live_title or tab_id
+                url = url or live_url
+            from app.browser.page_status import PageInfo
+            from app.services.cooldown_service import ensure_pool_page
+            ensure_pool_page(self._page_pool, PageInfo(tab_id=tab_id, ws_url=ws, title=title, url=url))
+            self._restore_page_state(tab_id)
+            self._emit_pool_status()
+        except Exception as e:
+            self._log(f"Pool ensure skipped: {e}", "warn")
+
+    def _cooldowns_path(self):
+        """config/cooldowns.json next to the other stores."""
+        try:
+            base = getattr(self.config, "dir", None)
+            if base:
+                return str(Path(base) / "cooldowns.json")
+        except Exception:
+            pass
+        return "config/cooldowns.json"
+
+    def _persist_cooldowns(self):
+        """Autosave wall-clock timers + job counters across restarts."""
+        try:
+            if not self._page_pool:
+                return
+            from app.persistence.cooldown_store import save_pool_snapshot
+            save_pool_snapshot(self._cooldowns_path(), self._page_pool)
+            if not self._persist_ok:
+                self._persist_ok = True
+                self._log("✅ Cooldown autosave recovered", "success")
+        except Exception as e:
+            if self._persist_ok:
+                self._persist_ok = False
+                self._log(f"⚠ Cooldown autosave failing ({e}) — timers will NOT survive restart", "warn")
+
+    def _restore_job_counter(self, tab_id: str, page_url: str):
+        """Re-apply one tab's saved job counter (never moves backwards)."""
+        try:
+            from app.persistence.cooldown_store import load_stats, normalize_url
+            from app.services.cooldown_service import restore_page_stats
+            stats = load_stats(self._cooldowns_path())
+            restore_page_stats(self._page_pool, tab_id, normalize_url(page_url), stats)
+        except Exception:
+            pass
+
+    def _log_restore_miss(self, tab_id: str, page_url: str, entries: dict, report: dict):
+        """Loud miss: file-level notes once, tab-level mismatch per tab."""
+        if report.get("live", 0) == 0:
+            if self._restore_note_done:
+                return
+            self._restore_note_done = True
+            if not report.get("exists"):
+                self._log("⏳ No saved timers file yet — nothing to resume", "info")
+            elif report.get("dropped"):
+                self._log(f"⏳ Saved timer(s) already expired while app was closed "
+                          f"({len(report['dropped'])} dropped) — tab starts ready", "info")
+            else:
+                self._log("⏳ Saved timers file is empty — nothing to resume", "info")
+            return
+        want = f"{tab_id[:12]} / {page_url[:60]}"
+        have = ", ".join(f"{k[:8]}:{(v.get('url', '') if isinstance(v, dict) else '')[:40]}"
+                         for k, v in list(entries.items())[:5])
+        self._log(f"⚠ Cooldown restore missed for {want} — {report['live']} live saved timer(s) "
+                  f"for other tabs ({have}); tab ids/URLs changed since save?", "warn")
+
+    def _apply_restored_entry(self, path: str, entries: dict, tab_id: str, entry: dict):
+        """Apply a consumed entry: persist it back, announce, emit."""
+        from app.persistence.cooldown_store import save_entries
+        from app.services.cooldown_service import restore_cooldown_entry
+        if not restore_cooldown_entry(self._page_pool, tab_id, entry):
+            return
+        save_entries(path, entries)
+        page = self._page_pool.get_page(tab_id)
+        left = page.remaining_seconds() if page else 0
+        self._log(f"⏳ Restored cooldown for {tab_id[:12]}: {left // 60:02d}:{left % 60:02d} left (timer kept running while app was closed)", "info")
+        self._emit_pool_status()
+
+    def _restore_page_state(self, tab_id: str):
+        """Re-apply persisted wall-clock pause + job counter after restart."""
+        try:
+            if not self._page_pool or not tab_id:
+                return
+            from app.persistence.cooldown_store import consume_entry_for, describe_cooldown_file, load_entries
+            path = self._cooldowns_path()
+            entries = load_entries(path)
+            page = self._page_pool.get_page(tab_id)
+            page_url = getattr(page, "url", "") if page else ""
+            _key, entry = consume_entry_for(entries, tab_id, page_url, self._pooled_ids())
+            self._restore_job_counter(tab_id, page_url)
+            if not entry:
+                self._log_restore_miss(tab_id, page_url, entries, describe_cooldown_file(path))
+                return
+            self._apply_restored_entry(path, entries, tab_id, entry)
+        except Exception as e:
+            self._log(f"Cooldown restore skipped: {e}", "warn")
 
     def _on_cdp_error(self, err_msg: str):
         try:
@@ -436,6 +581,71 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
+    @Slot(result=str)
+    def get_stack_presets(self):
+        try:
+            raw = self.config.get_state("stack_presets", [])
+            if isinstance(raw, list):
+                return json.dumps(raw, ensure_ascii=False)
+            return json.dumps([], ensure_ascii=False)
+        except Exception:
+            return json.dumps([], ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def save_stack_preset(self, preset_json: str):
+        try:
+            from app.core.action_blocks import upsert_stack_preset
+            data = json.loads(preset_json or "{}")
+            if not isinstance(data, dict):
+                return json.dumps({"ok": False, "error": "invalid stack preset format, need {name, blocks}"})
+            raw = self.config.get_state("stack_presets", [])
+            saved = upsert_stack_preset(raw, data.get("name", ""), data.get("blocks", []))
+            self.config.set_state(stack_presets=saved)
+            name = (data.get("name") or "").strip()
+            self._log(f"Stack preset saved: {name} ({len(data.get('blocks') or [])} blocks)", "success")
+            return json.dumps({"ok": True, "name": name})
+        except ValueError as e:
+            return json.dumps({"ok": False, "error": str(e)})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def delete_stack_preset(self, name: str):
+        try:
+            from app.core.action_blocks import remove_stack_preset
+            raw = self.config.get_state("stack_presets", [])
+            kept, removed = remove_stack_preset(raw, name)
+            if not removed:
+                return json.dumps({"ok": False, "error": "not found"})
+            self.config.set_state(stack_presets=kept)
+            self._log(f"Stack preset deleted: {name}", "info")
+            return json.dumps({"ok": True})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def export_action_blocks(self, blocks_json: str):
+        try:
+            blocks = json.loads(blocks_json or "[]")
+            if not isinstance(blocks, list) or not blocks:
+                return json.dumps({"ok": False, "error": "empty stack"})
+            payload = json.dumps(blocks, ensure_ascii=False, indent=2)
+            fname = f"arena-action-blocks-{datetime.now().strftime('%Y-%m-%d')}.json"
+            if QFileDialog is None:
+                path = Path("config") / fname
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(payload, encoding="utf-8")
+            else:
+                folder = QFileDialog.getExistingDirectory(None, "Select folder to export action blocks")
+                if not folder:
+                    return json.dumps({"ok": False, "cancelled": True})
+                path = Path(folder) / fname
+                path.write_text(payload, encoding="utf-8")
+            self._log(f"Action blocks exported to {path}", "success")
+            return json.dumps({"ok": True, "path": str(path)})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
     @Slot(str, result=str)
     def export_custom_block(self, name: str):
         try:
@@ -476,6 +686,7 @@ class Bridge(QObject):
                 "status": u.get("last_status", "unchecked"),
                 "last_error": u.get("error", ""),
                 "last_checked": u.get("last_checked"),
+                "tab_id": u.get("tab_id", ""),
             })
         # images: map to expected fields
         images_js = []
@@ -1129,11 +1340,15 @@ class Bridge(QObject):
         except Exception:
             pass
 
-    @Slot(result=str)
-    def pick_folder(self):
+    @Slot(str, result=str)
+    def pick_folder(self, start_dir: str):
         if QFileDialog is None:
             return json.dumps({"ok": False, "error": "No file dialog"})
-        folder = QFileDialog.getExistingDirectory(None, "Select image folder")
+        start = (start_dir or "").strip()
+        if not start or not Path(start).is_dir():
+            last = (self.state.folder.get("root_path", "") or "").strip()
+            start = last if last and Path(last).is_dir() else ""
+        folder = QFileDialog.getExistingDirectory(None, "Select image folder", start)
         if not folder:
             return json.dumps({"ok": False, "cancelled": True})
         self.state.folder["root_path"] = folder
@@ -1170,19 +1385,7 @@ class Bridge(QObject):
                 supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
                 ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
                 scanned = scan_folder_pure(root_path, supported, ignore_ai)
-                existing = {img.relative_path: img for img in self.state.images}
-                added = 0
-                for s in scanned:
-                    rel = s["relative_path"]
-                    if rel not in existing:
-                        img = ImageItem.from_scan_dict(s, selected=False)
-                        self.state.images.append(img)
-                        added += 1
-                    else:
-                        e = existing[rel]
-                        e.size = s["size"]
-                        e.mtime = s["mtime"]
-                        e.absolute_path = s["absolute_path"]
+                added = self._merge_scanned(scanned)
                 self.state.recalculate_progress()
                 self._save_arena()
                 self._log(f"Scanned {len(scanned)} images, {added} new", "success")
@@ -1324,6 +1527,107 @@ class Bridge(QObject):
     def clear_images(self):
         # alias for clear_queue for compatibility
         return self.clear_queue()
+
+    @Slot(result=str)
+    def drop_ai_suffix(self):
+        """Drop _AI: strip the suffix from filenames in the picker folder."""
+        return self._run_folder_ai("strip")
+
+    @Slot(result=str)
+    def keep_only_ai_files(self):
+        """Only _AI: delete non-_AI images in the picker folder."""
+        return self._run_folder_ai("only")
+
+    def _merge_scanned(self, scanned) -> int:
+        """Merge scan dicts into the queue; returns added count."""
+        existing = {img.relative_path: img for img in self.state.images}
+        added = 0
+        for s in scanned:
+            rel = s["relative_path"]
+            if rel not in existing:
+                self.state.images.append(ImageItem.from_scan_dict(s, selected=False))
+                added += 1
+            else:
+                e = existing[rel]
+                e.size = s["size"]
+                e.mtime = s["mtime"]
+                e.absolute_path = s["absolute_path"]
+        return added
+
+    def _run_folder_ai(self, mode: str) -> str:
+        """Disk _AI op on the picker folder; refuses mid-run. Pending JSON."""
+        if getattr(self, "_run_state", "idle") != "idle":
+            return json.dumps({"ok": False, "error": "stop the run first"})
+        if getattr(self, '_scan_in_progress', False):
+            return json.dumps({"ok": False, "pending": True, "error": "scan already in progress"})
+        root = self.state.folder.get("root_path", "")
+        if not root:
+            return json.dumps({"ok": False, "error": "No folder set"})
+        root_path = Path(root)
+        if not root_path.exists():
+            return json.dumps({"ok": False, "error": "Folder does not exist"})
+        try:
+            self._scan_in_progress = True
+            self._log(f"Folder {'Only _AI' if mode == 'only' else 'Drop _AI'} in {root_path}...", "warn")
+            self._submit_folder_ai(root_path, set(self.state.folder.get("supported_types", [".png", ".jpg", ".jpeg", ".webp"])), mode)
+        except Exception as e:
+            self._scan_in_progress = False
+            return json.dumps({"ok": False, "error": str(e)})
+        return json.dumps({"ok": True, "pending": True})
+
+    def _submit_folder_ai(self, root_path, exts, mode) -> None:
+        """Run the folder _AI worker off the UI thread."""
+        if self._thumb_executor:
+            self._thumb_executor.submit(self._folder_ai_worker, root_path, exts, mode)
+        else:
+            import threading
+            threading.Thread(target=self._folder_ai_worker, args=(root_path, exts, mode), daemon=True).start()
+
+    def _folder_ai_worker(self, root_path, exts, mode) -> None:
+        """Rename/delete _AI files on disk, sync queue. Off UI thread."""
+        try:
+            from app.core.folder_ai import delete_non_ai_images, strip_ai_suffixes
+            if mode == "only":
+                deleted, errors = delete_non_ai_images(root_path, exts)
+                self._drop_missing_queue_images(root_path, deleted)
+                self._log(f"Only _AI: deleted {len(deleted)} files from {root_path}", "warn")
+            else:
+                pairs, skipped, errors = strip_ai_suffixes(root_path, exts)
+                self._rename_queue_images(root_path, pairs)
+                self._log(f"Drop _AI: renamed {len(pairs)}, skipped {skipped} in {root_path}", "warn")
+            for err in errors[:3]:
+                self._log(str(err), "warn")
+            self.state.recalculate_progress()
+            self._save_arena()
+        except Exception as e:
+            self._log(f"Folder _AI op failed: {e}", "error")
+        finally:
+            self._scan_in_progress = False
+
+    def _drop_missing_queue_images(self, root_path, deleted) -> None:
+        """Forget queue entries whose files were deleted."""
+        try:
+            gone = {str(Path(root_path, r).resolve()) for r in deleted}
+            self.state.images = [i for i in self.state.images if i.absolute_path not in gone]
+        except Exception:
+            pass
+
+    def _rename_queue_images(self, root_path, pairs) -> None:
+        """Point queue entries at renamed files (stats preserved)."""
+        try:
+            from app.utils.hashing import fingerprint_from_path_stat
+            by_old = {str(Path(root_path, old).resolve()): new for old, new in pairs}
+            for img in self.state.images:
+                new_rel = by_old.get(img.absolute_path)
+                if not new_rel:
+                    continue
+                img.relative_path = new_rel
+                img.absolute_path = str(Path(root_path, new_rel).resolve())
+                img.filename = Path(new_rel).name
+                img.base_name = Path(new_rel).stem
+                img.fingerprint = fingerprint_from_path_stat(new_rel, img.size, img.mtime)
+        except Exception:
+            pass
 
     @Slot(result=str)
     def reset_all(self):
@@ -1493,6 +1797,146 @@ class Bridge(QObject):
 
     def _get_enabled_urls(self):
         return [u for u in self.state.urls if u.enabled]
+
+    def _settle_stuck_primary(self, primary_tab_id) -> None:
+        """Best-effort steady for a busy-like primary page; cooling untouched."""
+        try:
+            from app.services.cooldown_service import is_stuck_status
+            if not (self._page_pool and primary_tab_id):
+                return
+            page = self._page_pool.get_page(primary_tab_id)
+            if page is not None and is_stuck_status(page.status):
+                self._page_pool.mark_steady(primary_tab_id)
+        except Exception:
+            pass
+
+    async def _select_run_tab(self, primary_tab_id) -> str:
+        """Prefer a ready pooled tab; reconnect primary when it moves."""
+        try:
+            from app.services.cooldown_service import resolve_primary_tab
+            want = resolve_primary_tab(self._page_pool, primary_tab_id)
+        except Exception:
+            return primary_tab_id
+        if not want or want == primary_tab_id:
+            self._log_stay_reason(primary_tab_id)
+            return primary_tab_id
+        try:
+            page = self._page_pool.get_page(want) if self._page_pool else None
+            ws = getattr(page, "ws_url", "") or ""
+            if ws and self.cdp and await self.cdp.connect(ws):
+                self._log(f"🔀 Run moved to ready tab {want[:12]}", "info")
+                return want
+            self._log(f"⚠ Reconnect to ready tab {want[:12]} failed — staying on {(primary_tab_id or '?')[:12]} — pool: {self._pool_summary()}", "warn")
+        except Exception as e:
+            self._log(f"⚠ Primary move failed ({e}) — pool: {self._pool_summary()}", "warn")
+        return primary_tab_id
+
+    def _log_stay_reason(self, primary_tab_id) -> None:
+        """Warn when staying on an unready primary, with pool state."""
+        try:
+            if not (self._page_pool and primary_tab_id):
+                return
+            page = self._page_pool.get_page(primary_tab_id)
+            if page is None or page.is_free():
+                return
+            self._log(f"⏳ No ready tab — staying on {primary_tab_id[:12]} ({page.status}) — pool: {self._pool_summary()}", "warn")
+        except Exception:
+            pass
+
+    def _pool_summary(self) -> str:
+        """One-line pool state for run decisions."""
+        try:
+            pages = self._page_pool.status_snapshot().get("pages", [])
+        except Exception:
+            return "pool n/a"
+        bits = []
+        for p in pages:
+            bit = f"{(p.get('tab_id') or '?')[:6]}:{p.get('status')}({'c' if p.get('is_connected') else 'd'})"
+            bit += f"·j{p.get('jobs_completed', 0)}"
+            if p.get("current_image"):
+                bit += f"·▶{p.get('current_image')}"
+            bits.append(bit)
+        return ", ".join(bits) or "pool empty"
+
+    def _run_stop_requested(self, tab_id) -> bool:
+        """Global cancel or operator stop for this tab."""
+        if self._cancel_requested:
+            return True
+        try:
+            from app.services.cooldown_service import is_tab_aborted
+            return is_tab_aborted(self._page_pool, tab_id)
+        except Exception:
+            return False
+
+    def _stop_reason(self, tab_id) -> str:
+        """User-facing stop reason for this tab."""
+        try:
+            from app.services.cooldown_service import is_tab_aborted
+            if is_tab_aborted(self._page_pool, tab_id):
+                return "Aborted by operator"
+        except Exception:
+            pass
+        return "Cancelled by user"
+
+    def _start_tab_image(self, tab_id, img) -> None:
+        """Record the image on its tab; drop any stale stop request."""
+        try:
+            import os
+            from app.services.cooldown_service import clear_tab_abort, set_tab_image
+            clear_tab_abort(self._page_pool, tab_id)
+            set_tab_image(self._page_pool, tab_id, os.path.basename(img.relative_path or ""))
+            self._emit_pool_status()
+        except Exception:
+            pass
+
+    async def _finish_primary_tab(self, ctrl, primary_tab_id) -> None:
+        """Post-job reset + cooldown; settles a stuck page when finish fails."""
+        try:
+            from app.services.cooldown_service import FinishCtx, finish_page_after_job, set_tab_image
+            if not (self._page_pool and primary_tab_id):
+                return
+            ctx = FinishCtx(pool=self._page_pool, bridge=self, tab_id=primary_tab_id,
+                            ctrl=ctrl, client=self.cdp)
+            await finish_page_after_job(ctx)
+            set_tab_image(self._page_pool, primary_tab_id, None)
+            self._emit_pool_status()
+        except asyncio.CancelledError:
+            self._settle_stuck_primary(primary_tab_id)
+            raise
+        except Exception as e:
+            self._log(f"Post-job reset/cooldown skipped: {e} — settling stuck page", "warn")
+            self._settle_stuck_primary(primary_tab_id)
+
+    async def _settle_boundary_captcha(self, ctrl, primary_tab_id, correlation_id, source):
+        """F4: captcha sitting unsolved at a phase boundary — wait + record."""
+        try:
+            visible = await ctrl.is_security_dialog_visible()
+        except Exception:
+            visible = False
+        if not visible:
+            return
+        self._log(f"[{correlation_id}] \u26a0 Captcha at {source} — waiting for manual solve", "error")
+        try:
+            timeout = int(self.config.get_state("watcher_captcha_timeout_sec", 300))
+        except Exception:
+            timeout = 300
+        try:
+            await ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=timeout, elapsed_sec=0)
+        except Exception:
+            pass
+        from app.services.cooldown_service import note_captcha_event, wait_captcha_cleared
+        stop = lambda: self._stop_reason(primary_tab_id) if self._run_stop_requested(primary_tab_id) else None
+        solved = await wait_captcha_cleared(ctrl, stop, timeout, self._log)
+        try:
+            await ctrl.hide_watcher_overlay()
+        except Exception:
+            pass
+        if not solved:
+            raise RuntimeError(f"{self._stop_reason(primary_tab_id)} during CAPTCHA at {source}")
+        try:
+            note_captcha_event(self._page_pool, primary_tab_id, self, source=source)
+        except Exception as e:
+            self._log(f"Captcha penalty skipped: {e}", "warn")
 
     @Slot(result=str)
     def start_run(self):
@@ -1773,9 +2217,16 @@ class Bridge(QObject):
     def get_page_pool_status(self):
         try:
             if not self._page_pool:
-                return json.dumps({"total": 0, "steady": 0, "busy": 0, "free": 0, "pages": []})
+                return json.dumps({"total": 0, "steady": 0, "busy": 0, "cooling": 0, "free": 0, "pages": []})
+            try:
+                from app.services.cooldown_service import refresh_expired
+                for _tid in refresh_expired(self._page_pool):
+                    self._log(f"✅ Page {_tid[:12]} cooldown expired — STEADY ready", "success")
+            except Exception:
+                pass
             snap = self._page_pool.status_snapshot()
             self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
+            self._persist_cooldowns()
             return json.dumps(snap, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"error": str(e)})
@@ -1792,6 +2243,11 @@ class Bridge(QObject):
                 self._page_pool._pages.clear()
                 self._page_pool._clients.clear()
                 self._page_pool._controllers.clear()
+            except Exception:
+                pass
+            try:
+                from app.persistence.cooldown_store import save_entries
+                save_entries(self._cooldowns_path(), {})
             except Exception:
                 pass
             self._emit_pool_status()
@@ -1827,6 +2283,93 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
+    @Slot(result=str)
+    def get_cooldown_config(self):
+        try:
+            from app.core.cooldown import config_to_dict
+            from app.services.cooldown_service import load_config
+            cfg = load_config(self.config.get_state)
+            return json.dumps({"ok": True, "config": config_to_dict(cfg)}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def set_cooldown_config(self, cfg_json: str):
+        try:
+            from app.core.cooldown import clamp_seconds
+            data = json.loads(cfg_json or "{}")
+            enabled = bool(data.get("enabled", True))
+            min_s = clamp_seconds(data.get("min_seconds", 300), 300)
+            pen_s = clamp_seconds(data.get("captcha_penalty_seconds", 900), 900)
+            self.config.set_state(cooldown_enabled=enabled, cooldown_min_seconds=min_s,
+                                  cooldown_captcha_penalty_seconds=pen_s)
+            self._log(f"Cooldown set: enabled={enabled} min={min_s // 60}m penalty={pen_s // 60}m per captcha", "success")
+            return json.dumps({"ok": True, "config": {"enabled": enabled, "min_seconds": min_s,
+                                                      "captcha_penalty_seconds": pen_s}}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def reset_page_cooldown(self, tab_id: str):
+        try:
+            from app.services.cooldown_service import is_stuck_status, reset_cooldown
+            if not self._page_pool:
+                return json.dumps({"ok": False, "error": "pool not initialized"})
+            page = self._page_pool.get_page(tab_id)
+            if page is None:
+                return json.dumps({"ok": False, "error": "unknown tab"})
+            if is_stuck_status(page.status):
+                return self._reset_stuck_page(tab_id, page)
+            if reset_cooldown(self._page_pool, tab_id):
+                self._emit_pool_status()
+                self._log(f"♻️ Cooldown reset for {(tab_id or '')[:12]} — tab ready", "success")
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "unknown tab"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def stop_tab_job(self, tab_id: str):
+        """Abort the live job on this tab; it fails as Aborted."""
+        try:
+            from app.services.cooldown_service import request_tab_abort
+            if request_tab_abort(self._page_pool, tab_id):
+                self._log(f"⛔ Stop requested for job on {(tab_id or '')[:12]}", "warn")
+                self._emit_pool_status()
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "no live job on this tab"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    def _reset_stuck_page(self, tab_id: str, page) -> str:
+        """Force-free a stuck page; refuses while its own job is alive."""
+        from app.services.cooldown_service import force_reset_page, tab_has_live_job
+        was = getattr(page.status, "value", page.status)
+        if tab_has_live_job(self._page_pool, tab_id):
+            self._log(f"⚠ Reset refused for {(tab_id or '')[:12]} — job still running on this tab; stop it first", "warn")
+            return json.dumps({"ok": False, "error": "job still running on this tab — stop it first"})
+        if force_reset_page(self._page_pool, tab_id):
+            self._emit_pool_status()
+            self._log(f"♻️ Stuck {was} reset for {(tab_id or '')[:12]} (no run active) — tab ready, fix and run again", "success")
+            return json.dumps({"ok": True})
+        return json.dumps({"ok": False, "error": "unknown tab"})
+
+    @Slot(str, int, result=str)
+    def set_page_cooldown(self, tab_id: str, seconds: int):
+        try:
+            from app.core.cooldown import format_remaining
+            from app.services.cooldown_service import edit_cooldown
+            if not self._page_pool:
+                return json.dumps({"ok": False, "error": "pool not initialized"})
+            if edit_cooldown(self._page_pool, tab_id, int(seconds or 0)):
+                self._emit_pool_status()
+                left = format_remaining(int(seconds or 0))
+                self._log(f"⏳ Cooldown for {(tab_id or '')[:12]} set to {left}", "info")
+                return json.dumps({"ok": True})
+            return json.dumps({"ok": False, "error": "unknown tab or job running"})
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
     async def _do_connect_page_pool(self, ws_url: str):
         try:
             from app.browser.cdp_client import CDPClient
@@ -1843,9 +2386,11 @@ class Bridge(QObject):
                 self._log(f"❌ Pool connect failed {ws_url[:80]}", "error")
                 return
             ctrl = CDPArenaController(client, log_callback=lambda msg: self._log(msg, "info"))
-            info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=client._current_title or tab_id, url=client._current_url or "")
+            live_title, live_url = await self._resolve_tab_info(tab_id, ws_url)
+            info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
             self._page_pool.add_page(info)
             self._page_pool.register_client(tab_id, client, ctrl)
+            self._restore_page_state(tab_id)
             self._emit_pool_status()
             total, free = self._page_pool.get_counts()
             self._log(f"✅ Pool added {tab_id[:12]} steady — {info.title[:40]} — total {total} free {free}", "success")
@@ -1882,9 +2427,11 @@ class Bridge(QObject):
             from app.utils.correlation import generate_correlation_id, build_final_prompt
             from app.core.naming import get_output_path, atomic_write_bytes
             from app.core.enums import ImageStatus
+            from app.services.cooldown_service import wait_for_batch_ready
             import asyncio
 
             ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+            primary_tab_id = await self._select_run_tab(getattr(self.cdp, "_current_tab_id", "") or "")
             ready, reasons = await ctrl.is_page_ready()
             if not ready:
                 self._log(f"⚠ Page not ready: {', '.join(reasons)} — trying anyway", "warn")
@@ -1921,6 +2468,20 @@ class Bridge(QObject):
             except Exception as e:
                 self._log(f"Parallel dispatch check failed {e}, fallback to single", "warn")
 
+            # Batch-start gate (single mode): new Start during active cooldown
+            # waits for 00:00 + ready before the first job (spec 02/03).
+            try:
+                if self._page_pool and primary_tab_id:
+                    await self._ensure_pool_page(primary_tab_id)
+                    _batch_go = await wait_for_batch_ready(self._page_pool, [primary_tab_id], self)
+                    if not _batch_go:
+                        self._log("Batch start aborted during cooldown wait", "warn")
+                        self._run_state = "idle"
+                        self._emit_arena_state()
+                        return
+            except Exception as e:
+                self._log(f"Batch-start cooldown wait skipped: {e}", "warn")
+
             url_idx = 0
             for img in selected_images:
                 if self._cancel_requested:
@@ -1939,13 +2500,29 @@ class Bridge(QObject):
                     self._log("Batch cancelled after pause", "warn")
                     break
 
+                # Prefer a ready tab per image (primary may have cooled); then gate.
+                primary_tab_id = await self._select_run_tab(primary_tab_id)
+                # Cooldown gate (single-page): wait until this tab's pause expires
+                try:
+                    from app.services.cooldown_service import wait_for_tab_ready
+                    if self._page_pool and primary_tab_id:
+                        await self._ensure_pool_page(primary_tab_id)
+                        _tab_ready = await wait_for_tab_ready(self._page_pool, primary_tab_id, self)
+                        if not _tab_ready and self._cancel_requested:
+                            break
+                except Exception as _e:
+                    self._log(f"Cooldown gate skipped: {_e}", "warn")
+
                 url_row = urls[url_idx % len(urls)] if urls else None
                 url_idx += 1
                 img.assigned_url_id = url_row.id if url_row else None
+                if url_row is not None:
+                    url_row.link_tab(primary_tab_id)
                 img.attempt_count += 1
                 img.status = ImageStatus.PROCESSING.value
                 self.state.recalculate_progress()
                 self._save_arena()
+                self._start_tab_image(primary_tab_id, img)
 
                 correlation_id = generate_correlation_id()
                 job_id = correlation_id  # use correlation_id as job_id for traceability
@@ -1980,10 +2557,10 @@ class Bridge(QObject):
                 # Iterate through action blocks stack — restored visual runner + generic CUSTOM_FIND
                 for block in action_stack:
                     # Immediate cancel check — should stop any current run immediately
-                    if self._cancel_requested:
+                    if self._run_stop_requested(primary_tab_id):
                         self._log(f"[{correlation_id}] ❌ Cancelled before block {block.display_name}", "warn")
                         job_failed = True
-                        job_error = "Cancelled by user"
+                        job_error = self._stop_reason(primary_tab_id)
                         break
                     if not block.enabled:
                         self._emit_job_action_status(job_id, block, "skipped", f"Skipped (disabled)")
@@ -1992,10 +2569,10 @@ class Bridge(QObject):
                     btype = block.block_id
                     if block.pre_delay_ms and block.pre_delay_ms > 0:
                         await asyncio.sleep(block.pre_delay_ms / 1000.0)
-                        if self._cancel_requested:
+                        if self._run_stop_requested(primary_tab_id):
                             self._log(f"[{correlation_id}] ❌ Cancelled during pre-delay {block.display_name}", "warn")
                             job_failed = True
-                            job_error = "Cancelled by user"
+                            job_error = self._stop_reason(primary_tab_id)
                             break
 
                     self._emit_job_action_status(job_id, block, "running", f"Running {block.display_name}")
@@ -2165,12 +2742,12 @@ class Bridge(QObject):
                                         pass
                                 start_wait = asyncio.get_event_loop().time()
                                 while await ctrl.is_security_dialog_visible():
-                                    if self._cancel_requested:
+                                    if self._run_stop_requested(primary_tab_id):
                                         try:
                                             await ctrl.hide_watcher_overlay()
                                         except Exception:
                                             pass
-                                        raise RuntimeError("Cancelled during CAPTCHA")
+                                        raise RuntimeError(f"{self._stop_reason(primary_tab_id)} during CAPTCHA")
                                     elapsed = asyncio.get_event_loop().time() - start_wait
                                     if elapsed > captcha_timeout_sec:
                                         self._log(f"[{correlation_id}] ⏰ Captcha wait timeout after {int(elapsed)}s (limit {captcha_timeout_sec}s) — still waiting for user solve (as per settings)", "error")
@@ -2201,6 +2778,11 @@ class Bridge(QObject):
                                 self._run_state = "running"
                                 self._emit_arena_state()
                                 self._emit_job_action_status(job_id, block, "success", "Security dialog solved")
+                                try:
+                                    from app.services.cooldown_service import note_captcha_event
+                                    note_captcha_event(self._page_pool, primary_tab_id, self, source="check-security")
+                                except Exception as _e:
+                                    self._log(f"Captcha penalty skipped: {_e}", "warn")
                             else:
                                 self._emit_job_action_status(job_id, block, "success", "No security dialog")
 
@@ -2343,6 +2925,7 @@ class Bridge(QObject):
                                     self._emit_job_action_status(job_id, block, "success", f"Submit via controller {reason}")
                             else:
                                 self._emit_job_action_status(job_id, block, "success", f"Clicked {block.selector}")
+                            await self._settle_boundary_captcha(ctrl, primary_tab_id, correlation_id, "submit")
 
                         elif btype in ("WAIT_OUTPUT", "AWAIT_PROCESSING_IMAGE"):
                             # Waiting block when system detects awaiting elements e.g. processing image, awaiting API result
@@ -2382,10 +2965,10 @@ class Bridge(QObject):
                             wait_success = False
                             last_wait_error = ""
                             for wait_cycle in range(max_wait_cycles):
-                                if self._cancel_requested:
+                                if self._run_stop_requested(primary_tab_id):
                                     self._log(f"[{correlation_id}] ❌ Cancelled during wait cycle {wait_cycle+1}", "warn")
                                     job_failed = True
-                                    job_error = "Cancelled by user"
+                                    job_error = self._stop_reason(primary_tab_id)
                                     break
                                 # ── During generation wait, check for captcha — if appears, switch overlay to captcha ──
                                 try:
@@ -2407,12 +2990,12 @@ class Bridge(QObject):
                                             captcha_timeout_sec = 300
                                         cap_start = asyncio.get_event_loop().time()
                                         while await ctrl.is_security_dialog_visible():
-                                            if self._cancel_requested:
+                                            if self._run_stop_requested(primary_tab_id):
                                                 try:
                                                     await ctrl.hide_watcher_overlay()
                                                 except Exception:
                                                     pass
-                                                raise RuntimeError("Cancelled during CAPTCHA in generation wait")
+                                                raise RuntimeError(f"{self._stop_reason(primary_tab_id)} during CAPTCHA in generation wait")
                                             cap_elapsed = asyncio.get_event_loop().time() - cap_start
                                             if cap_elapsed > captcha_timeout_sec:
                                                 self._log(f"[{correlation_id}] ⏰ Captcha during generation timeout {int(cap_elapsed)}s/{captcha_timeout_sec}s — still waiting (user setting from win)", "error")
@@ -2425,6 +3008,11 @@ class Bridge(QObject):
                                             await asyncio.sleep(2)
                                         self._log(f"[{correlation_id}] ✅ Captcha solved during generation — restoring generation overlay", "success")
                                         try:
+                                            from app.services.cooldown_service import note_captcha_event
+                                            note_captcha_event(self._page_pool, primary_tab_id, self, source="gen-wait")
+                                        except Exception as _e:
+                                            self._log(f"Captcha penalty skipped: {_e}", "warn")
+                                        try:
                                             await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec, elapsed_sec=0)
                                         except Exception:
                                             pass
@@ -2435,17 +3023,17 @@ class Bridge(QObject):
                                     self._log(f"[{correlation_id}] 🔄 Wait cycle {wait_cycle+1}/{max_wait_cycles} after reload — waiting again {wait_timeout}ms", "warn")
                                     self._emit_job_action_status(job_id, block, "waiting", f"{label} retry {wait_cycle+1}/{max_wait_cycles} after reload, timeout {wait_timeout}ms")
 
-                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
-                                if self._cancel_requested:
+                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
+                                if self._run_stop_requested(primary_tab_id):
                                     self._log(f"[{correlation_id}] ❌ Cancelled after wait_for_new_output", "warn")
                                     job_failed = True
-                                    job_error = "Cancelled by user"
+                                    job_error = self._stop_reason(primary_tab_id)
                                     break
                                 # Check if cancelled via wait_for_new_output result
                                 if data.get("cancelled") or (data.get("error") and "Cancelled" in str(data.get("error"))):
                                     self._log(f"[{correlation_id}] ❌ Cancelled (wait returned cancelled)", "warn")
                                     job_failed = True
-                                    job_error = "Cancelled by user"
+                                    job_error = self._stop_reason(primary_tab_id)
                                     break
 
                                 if status == "completed":
@@ -2539,7 +3127,7 @@ class Bridge(QObject):
                                                     # To avoid tight loop, wait a bit and continue to next wait attempt (but keep same cycle count? We'll just continue waiting)
                                                     await asyncio.sleep(2)
                                                     # Try wait again within same cycle (extend)
-                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
+                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
                                                     if status2 == "completed" and data2.get("new_src"):
                                                         new_src = data2.get("new_src")
                                                         # Try download again
@@ -2790,6 +3378,7 @@ class Bridge(QObject):
                             # else already raised (exception will also trigger hide in outer except via finally? we already hid)
 
                         elif btype == "DOWNLOAD":
+                            await self._settle_boundary_captcha(ctrl, primary_tab_id, correlation_id, "download")
                             # DOWNLOAD should not fail until generation indicates finished and no jobs running
                             # If generation in progress, return to waiting state
                             # After 2 min, try reload page first but not failed yet, because chance bad cache
@@ -2831,10 +3420,10 @@ class Bridge(QObject):
                                 dl_success = False
                                 last_dl_err = ""
                                 for dl_cycle in range(max_dl_cycles):
-                                    if self._cancel_requested:
+                                    if self._run_stop_requested(primary_tab_id):
                                         self._log(f"[{correlation_id}] ❌ Cancelled during download cycle {dl_cycle+1}", "warn")
                                         job_failed = True
-                                        job_error = "Cancelled by user"
+                                        job_error = self._stop_reason(primary_tab_id)
                                         break
                                     if dl_cycle > 0:
                                         self._log(f"[{correlation_id}] 🔄 Download cycle {dl_cycle+1}/{max_dl_cycles} after reload", "warn")
@@ -2843,10 +3432,10 @@ class Bridge(QObject):
                                     # Try download up to 5 attempts per cycle
                                     max_attempts = 5
                                     for attempt in range(max_attempts):
-                                        if self._cancel_requested:
+                                        if self._run_stop_requested(primary_tab_id):
                                             self._log(f"[{correlation_id}] ❌ Cancelled during download attempt {attempt+1}", "warn")
                                             job_failed = True
-                                            job_error = "Cancelled by user"
+                                            job_error = self._stop_reason(primary_tab_id)
                                             break
                                         try:
                                             s, f, c = await ctrl.download_image(new_src)
@@ -2865,7 +3454,7 @@ class Bridge(QObject):
                                                     self._log(f"[{correlation_id}] ⏳ Download failed but generation still in progress {gen_details} — returning to waiting state, will wait again", "warn")
                                                     self._emit_job_action_status(job_id, block, "waiting", f"Download not ready but generating {gen_details}, returning to waiting")
                                                     # Wait again for new output
-                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
+                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
                                                     if status_w == "completed" and data_w.get("new_src"):
                                                         new_src = data_w.get("new_src")
                                                         self._log(f"[{correlation_id}] New output after waiting again: {new_src[:80]}", "info")
@@ -2880,7 +3469,7 @@ class Bridge(QObject):
                                             is_gen, gen_details = await ctrl.is_generating()
                                             if is_gen:
                                                 self._log(f"[{correlation_id}] Exception but generating {gen_details} — returning to waiting", "warn")
-                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
+                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
                                                 if status_w == "completed" and data_w.get("new_src"):
                                                     new_src = data_w.get("new_src")
                                                     continue
@@ -2896,7 +3485,7 @@ class Bridge(QObject):
                                     if is_gen:
                                         self._log(f"[{correlation_id}] Generation still in progress, not failing download yet — will wait again", "warn")
                                         self._emit_job_action_status(job_id, block, "waiting", f"Download failed but still generating {gen_details}, waiting again")
-                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._cancel_requested)
+                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
                                         if status_w == "completed" and data_w.get("new_src"):
                                             new_src = data_w.get("new_src")
                                             self._log(f"[{correlation_id}] New src after waiting: {new_src[:80]} — retrying download", "info")
@@ -3091,6 +3680,8 @@ class Bridge(QObject):
 
                 self.state.recalculate_progress()
                 self._save_arena()
+                # Post-generation reset + cooldown (single-page)
+                await self._finish_primary_tab(ctrl, primary_tab_id)
                 if self._cancel_requested:
                     break
                 await asyncio.sleep(1)
@@ -3102,6 +3693,15 @@ class Bridge(QObject):
             self._run_state = "idle"
             self._emit_arena_state()
 
+        except asyncio.CancelledError:
+            self._log("🏁 Batch cancelled", "warn")
+            self._run_state = "idle"
+            try:
+                self._settle_stuck_primary(primary_tab_id)
+            except Exception:
+                pass
+            self._emit_arena_state()
+            raise
         except Exception as e:
             if "Cancelled" in str(e) or self._cancel_requested:
                 self._log(f"🏁 Batch cancelled: {e}", "warn")
@@ -3686,6 +4286,184 @@ class Bridge(QObject):
         except Exception as e:
             self._log(f"❌ Tab fetch failed: {e}", "error")
 
+    def _pooled_ids(self) -> set:
+        """Ids currently in the pool; empty when pool is unavailable."""
+        try:
+            return set(self._page_pool._pages.keys())
+        except Exception:
+            return set()
+
+    @Slot(str, result=str)
+    def auto_connect_scan(self, source: str):
+        """Non-blocking auto-connect scan: rows + pool follow open tabs."""
+        if not self.cdp or not self._page_pool:
+            return json.dumps({"ok": False, "error": "CDP or pool not ready"})
+        if self._auto_scan_running:
+            return "pending"
+        self._schedule_coro(self._do_auto_connect_scan(source or "auto"))
+        return "pending"
+
+    def _prune_auto_rows(self, plan) -> int:
+        """Drop auto-linked rows whose tabs vanished; returns removed count."""
+        if not plan.remove:
+            return 0
+        gone = set(plan.remove)
+        before = len(self.state.urls)
+        self.state.urls = [u for u in self.state.urls if u.id not in gone]
+        return before - len(self.state.urls)
+
+    def _apply_auto_plan(self, plan) -> bool:
+        """Claim/add/prune URL rows from the plan; True when rows changed."""
+        by_id = {u.id: u for u in self.state.urls}
+        changed = False
+        for row_id, tab_id in plan.claim:
+            row = by_id.get(row_id)
+            if row is not None and not row.tab_id:
+                row.tab_id = tab_id
+                changed = True
+        for url, tab_id in plan.add:
+            self.state.urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
+            changed = True
+        changed = changed or self._prune_auto_rows(plan) > 0
+        if changed:
+            # system action, reproducible by re-scan: no undo spam
+            self._save_arena()
+            self._emit_arena_state()
+        return changed
+
+    def _report_auto_plan(self, plan, revived: int, stale: list, source: str):
+        """Pool emit + summary; manual scans always answer, auto only on change."""
+        changed = plan.add or plan.claim or plan.connect or revived or stale or plan.remove
+        if not changed:
+            if source == "manual":
+                self._log("🤖 Reparse: no changes — rows and pool already match open tabs", "info")
+            return
+        if plan.connect or revived or stale or plan.remove:
+            self._emit_pool_status()
+        self._log(f"🤖 Auto-connect: +{len(plan.add)} rows, {len(plan.claim)} linked, "
+                  f"{len(plan.connect)} joined, {revived} revived, {len(stale)} stale, "
+                  f"{len(plan.remove)} removed", "info")
+
+    async def _join_new_tabs(self, sockets) -> None:
+        """Pool-join each connectable tab; skips empty sockets."""
+        for ws in sockets or []:
+            if ws:
+                await self._do_connect_page_pool(ws)
+
+    def _auto_prune_allowed(self, tabs) -> bool:
+        """Prune dead rows only with a healthy tab list and no live run."""
+        if getattr(self, "_run_state", "idle") != "idle":
+            return False
+        return any(getattr(t, "id", "") or getattr(t, "ws_url", "") for t in tabs or [])
+
+    def _plan_auto_sync(self, tabs, pattern, rows):
+        """Plan the scan; attach safe row pruning when allowed."""
+        from app.services.auto_connect import live_tab_keys, plan_auto_connect, prunable_row_ids
+        plan = plan_auto_connect(tabs, pattern, rows, self._pooled_ids())
+        if self._auto_prune_allowed(tabs):
+            plan.remove = prunable_row_ids(rows, live_tab_keys(tabs))
+        return plan
+
+    async def _do_auto_connect_scan(self, source: str = "auto"):
+        """Fetch tabs, sync rows + pool + presence; skips when busy."""
+        if self._auto_scan_running:
+            return
+        self._auto_scan_running = True
+        try:
+            from app.services.auto_connect import sync_pool_presence
+            tabs = await self.cdp.fetch_tabs()
+            pattern = self.config.get_state("url_pattern", "arena.ai")
+            rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id} for u in self.state.urls]
+            plan = self._plan_auto_sync(tabs, pattern, rows)
+            self._apply_auto_plan(plan)
+            await self._join_new_tabs(plan.connect)
+            live = {(t.id or t.ws_url) for t in tabs or []} - {""}
+            revived, stale = sync_pool_presence(self._page_pool, live)
+            self._report_auto_plan(plan, revived, stale, source)
+        except Exception as e:
+            self._log(f"Auto-connect scan skipped: {e}", "warn")
+        finally:
+            self._auto_scan_running = False
+
+    def _popup_targets(self) -> list:
+        """Titles of enabled rows with live pool tabs (deduped)."""
+        titles, seen = [], set()
+        try:
+            pool = self._page_pool
+            if not pool:
+                return titles
+            for u in self.state.urls:
+                if not (u.enabled and u.tab_id) or u.tab_id in seen:
+                    continue
+                page = pool.get_page(u.tab_id)
+                if page is None or not page.is_connected:
+                    continue
+                seen.add(u.tab_id)
+                if page.title:
+                    titles.append(page.title)
+        except Exception:
+            pass
+        return titles
+
+    @Slot(result=str)
+    def popup_url_tabs(self):
+        """Popup-on-top: raise OS windows of live URL tabs, tabs untouched."""
+        if not self._page_pool:
+            return json.dumps({"ok": False, "error": "pool not initialized"})
+        self._schedule_coro(self._do_popup_url_tabs())
+        return "pending"
+
+    async def _do_popup_url_tabs(self):
+        """Raise desktop windows of live URL tabs (no tab switching)."""
+        from app.utils.win_popup import raise_window_titles
+        targets = self._popup_targets()
+        if not targets:
+            self._log("⏫ Popup: no active URL tabs (need enabled + linked + connected)", "warn")
+            return
+        try:
+            raised = raise_window_titles(targets)
+        except Exception:
+            raised = 0
+        self._log(f"⏫ Popup: {raised}/{len(targets)} windows on top (tabs untouched)", "success")
+
+    def _primary_ws(self) -> str:
+        """Socket of the first live pool tab, else ''."""
+        try:
+            from app.services.auto_connect import pick_primary_ws
+            pages = list(self._page_pool._pages.values()) if self._page_pool else []
+            return pick_primary_ws(pages)
+        except Exception:
+            return ""
+
+    async def _do_ensure_primary(self):
+        """Passive primary retry: connect first live pool tab when down."""
+        try:
+            if not self.cdp or self.cdp.is_connected or self._ensure_running:
+                return
+            self._ensure_running = True
+            try:
+                ws = self._primary_ws()
+                if ws and await self.cdp.connect(ws):
+                    self._log("✅ Primary auto-connected — runs can start", "success")
+                    self.connection_status.emit("connected")
+            finally:
+                self._ensure_running = False
+        except Exception:
+            pass
+
+    @Slot(result=str)
+    def ensure_primary_connected(self):
+        """500ms passive tick: keep the primary tab connected."""
+        if not self.cdp:
+            return json.dumps({"ok": False})
+        try:
+            if self.cdp.is_connected:
+                return json.dumps({"ok": True})
+        except Exception:
+            pass
+        self._schedule_coro(self._do_ensure_primary())
+        return "pending"
+
     @Slot(str)
     def connect_tab(self, ws_url: str):
         if not self.cdp:
@@ -3738,8 +4516,12 @@ class Bridge(QObject):
                         import re as _re
                         m_id = _re.search(r'/devtools/page/([^/]+)$', ws_url)
                         tab_id = m_id.group(1) if m_id else getattr(self.cdp, '_current_tab_id', '') or ws_url
-                        title = getattr(self.cdp, '_current_title', '') or tab_id
+                        title = getattr(self.cdp, '_current_title', '') or ''
                         url = getattr(self.cdp, '_current_url', '') or ''
+                        if not url or not title:
+                            live_title, live_url = await self._resolve_tab_info(tab_id, ws_url)
+                            title = title or live_title or tab_id
+                            url = url or live_url
                         # Check if pool already has dedicated client for this tab_id
                         existing_client, _ = self._page_pool.get_clients(tab_id)
                         if existing_client and getattr(existing_client, 'is_connected', False):
@@ -3773,6 +4555,7 @@ class Bridge(QObject):
                                 self._emit_pool_status()
                                 total_f, _ = self._page_pool.get_counts() if self._page_pool else (0, 0)
                                 self._log(f"📦 Pool: added primary tab {tab_id[:12]} steady (dedicated failed, using primary) — total {total_f}", "warn")
+                            self._restore_page_state(tab_id)
                 except Exception as e:
                     import traceback as _tb
                     self._log(f"Pool add primary failed: {e} {_tb.format_exc()[-500:]}", "warn")
@@ -3930,6 +4713,11 @@ class Bridge(QObject):
                 "images": js_state.get("images", []),
                 "cdp": cdp_cfg,
                 "action_blocks": action_blocks,
+                "cooldown": {
+                    "enabled": self.config.get_state("cooldown_enabled", True),
+                    "min_seconds": self.config.get_state("cooldown_min_seconds", 300),
+                    "captcha_penalty_seconds": self.config.get_state("cooldown_captcha_penalty_seconds", 900),
+                },
                 "updated_at": datetime.utcnow().isoformat() + "Z",
                 "app_version": "arena-1.0",
             }
@@ -3990,6 +4778,17 @@ class Bridge(QObject):
                     self._log(f"Restored {len(doc['action_blocks'])} action blocks from preset", "info")
                 except Exception as e:
                     log.warning(f"Failed to restore action blocks from preset: {e}")
+            if "cooldown" in doc and isinstance(doc["cooldown"], dict):
+                try:
+                    from app.core.cooldown import clamp_seconds
+                    cd = doc["cooldown"]
+                    self.config.set_state(
+                        cooldown_enabled=bool(cd.get("enabled", True)),
+                        cooldown_min_seconds=clamp_seconds(cd.get("min_seconds", 300), 300),
+                        cooldown_captcha_penalty_seconds=clamp_seconds(cd.get("captcha_penalty_seconds", 900), 900))
+                    self._log("Restored cooldown settings from preset", "info")
+                except Exception as e:
+                    log.warning(f"Failed to restore cooldown from preset: {e}")
             self.state.recalculate_progress()
             self._save_arena()
             self._log(f"Arena preset loaded: {name}", "success")
@@ -4113,11 +4912,13 @@ class Bridge(QObject):
             port = self.config.get_state("cdp_port", 9222)
             user_data_dir = self.config.get_state("cdp_user_data_dir", "C:\\arena-images-chrome")
             extra = self.config.get_state("cdp_extra_args", "")
+            url_pattern = self.config.get_state("url_pattern", "arena.ai")
             payload = {
                 "host": host,
                 "port": int(port),
                 "user_data_dir": user_data_dir,
                 "extra_args": extra,
+                "url_pattern": url_pattern,
                 "base_url": f"http://{host}:{port}",
                 "is_connected": bool(self.cdp and self.cdp.is_connected),
                 "current_host": self.cdp._host if self.cdp else host,
@@ -4135,6 +4936,8 @@ class Bridge(QObject):
             port = data.get("port") or data.get("cdp_port") or 9222
             user_data_dir = data.get("user_data_dir") or data.get("cdp_user_data_dir") or "C:\\arena-images-chrome"
             extra = data.get("extra_args") or data.get("cdp_extra_args") or ""
+            url_pattern = data.get("url_pattern", self.config.get_state("url_pattern", "arena.ai"))
+            url_pattern = url_pattern.strip() if isinstance(url_pattern, str) else "arena.ai"
             # validate
             try:
                 port_i = int(port)
@@ -4143,7 +4946,8 @@ class Bridge(QObject):
             except:
                 return json.dumps({"ok": False, "error": "invalid port"})
             # save to session
-            self.config.set_state(cdp_host=host, cdp_port=port_i, cdp_user_data_dir=user_data_dir, cdp_extra_args=extra)
+            self.config.set_state(cdp_host=host, cdp_port=port_i, cdp_user_data_dir=user_data_dir, cdp_extra_args=extra,
+                                  url_pattern=url_pattern)
             # update cdp client
             if self.cdp:
                 try:
