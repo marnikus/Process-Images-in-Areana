@@ -462,11 +462,11 @@ def build_highlight_rect_js(x: float, y: float, w: float, h: float, color: str =
 WATCHER_ATTR = "data-arena-watcher-overlay"
 
 def build_watcher_overlay_js(message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, elapsed_sec: int = 0) -> str:
-    """Build JS that shows a large rectangle msg on left center page for watcher.
+    """Build JS for a small draggable popup at top-center of the page.
     kind: 'generation' -> blue, 'captcha' -> red
-    - Left 2%, top 50% translateY(-50%), width 38% min 360 max 560 min-height 160
-    - Includes sleep circle spinner animation running
-    - Shows timeout from user win settings
+    - Default: top-center (left 50% + translateX), compact (max 380px)
+    - Draggable by mouse anywhere; position kept across re-shows
+    - Spinner + elapsed/timeout counter from win settings
     - Persists until cleared
     """
     msg_json = json.dumps(message or "wait")
@@ -489,43 +489,53 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
     var isCaptcha = (kind === 'captcha' || msg.toLowerCase().indexOf('captcha') >=0);
     var bg = isCaptcha ? 'rgba(180, 20, 20, 0.96)' : 'rgba(20, 80, 180, 0.96)';
     var borderColor = isCaptcha ? '#ff4444' : '#44aaff';
-    var icon = isCaptcha ? '🛡️' : '⏳';
+    var icon = isCaptcha ? '\U0001f6e1\ufe0f' : '\u23f3';
 
     var overlay = document.createElement('div');
     overlay.setAttribute(ATTR, kind);
     overlay.style.cssText = [
       'position:fixed',
-      'left:2%',
-      'top:50%',
-      'transform:translateY(-50%)',
-      'width:38%',
-      'min-width:360px',
-      'max-width:560px',
-      'min-height:160px',
+      'left:50%',
+      'top:12px',
+      'transform:translateX(-50%)',
+      'max-width:380px',
+      'min-width:220px',
       'background:'+bg,
-      'border:3px solid '+borderColor,
-      'border-radius:14px',
-      'box-shadow:0 10px 36px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.15) inset',
+      'border:2px solid '+borderColor,
+      'border-radius:10px',
+      'box-shadow:0 8px 24px rgba(0,0,0,0.6)',
       'z-index:2147483646',
       'display:flex',
       'flex-direction:column',
       'align-items:center',
       'justify-content:center',
-      'padding:22px 26px',
+      'padding:12px 16px',
       'font-family:system-ui, -apple-system, Segoe UI, sans-serif',
       'color:#fff',
-      'pointer-events:none',
-      'animation: arenaWatcherPulse 1.5s ease-in-out infinite'
+      'pointer-events:auto',
+      'cursor:grab',
+      'user-select:none',
+      'animation:arenaWatcherPulse2 1.5s ease-in-out infinite'
     ].join(';');
 
-    // Add keyframes if not exists
-    if (!document.getElementById('arena-watcher-style')) {{
+    // Restore dragged position from previous shows on this page
+    try {{
+      var sp = window.__arenaWatcherPos;
+      if (sp && typeof sp.left === 'number' && typeof sp.top === 'number') {{
+        overlay.style.left = sp.left + 'px';
+        overlay.style.top = sp.top + 'px';
+        overlay.style.transform = 'none';
+      }}
+    }} catch(e) {{}}
+
+    // Keyframes v2: pulse without transform so it never fights dragging
+    if (!document.getElementById('arena-watcher-style-v2')) {{
       var st = document.createElement('style');
-      st.id = 'arena-watcher-style';
+      st.id = 'arena-watcher-style-v2';
       st.textContent = `
-        @keyframes arenaWatcherPulse {{
-          0%, 100% {{ transform: translateY(-50%) scale(1); box-shadow: 0 10px 36px rgba(0,0,0,0.7); }}
-          50% {{ transform: translateY(-50%) scale(1.03); box-shadow: 0 14px 44px rgba(0,0,0,0.8); }}
+        @keyframes arenaWatcherPulse2 {{
+          0%, 100% {{ box-shadow: 0 8px 24px rgba(0,0,0,0.6); opacity: 0.97; }}
+          50% {{ box-shadow: 0 8px 32px rgba(0,0,0,0.75); opacity: 1; }}
         }}
         @keyframes arenaWatcherSpin {{
           0% {{ transform: rotate(0deg); }}
@@ -539,39 +549,44 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
       document.head.appendChild(st);
     }}
 
+    var headRow = document.createElement('div');
+    headRow.style.cssText = 'display:flex; align-items:center; gap:8px;';
+
     var iconEl = document.createElement('div');
     iconEl.textContent = icon;
-    iconEl.style.cssText = 'font-size:52px; margin-bottom:12px; line-height:1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));';
+    iconEl.style.cssText = 'font-size:26px; line-height:1;';
 
     var titleEl = document.createElement('div');
     titleEl.textContent = msg.toUpperCase();
-    titleEl.style.cssText = 'font-size:19px; font-weight:800; text-align:center; line-height:1.3; letter-spacing:0.4px; text-shadow:0 1px 2px rgba(0,0,0,0.5);';
+    titleEl.style.cssText = 'font-size:14px; font-weight:800; line-height:1.25; letter-spacing:0.3px; text-shadow:0 1px 2px rgba(0,0,0,0.5);';
+
+    headRow.appendChild(iconEl);
+    headRow.appendChild(titleEl);
 
     var subEl = document.createElement('div');
-    subEl.textContent = isCaptcha ? 'Please solve captcha manually — watcher is waiting' : 'Generation in progress — watcher is waiting';
-    subEl.style.cssText = 'font-size:13px; opacity:0.95; margin-top:10px; text-align:center; font-weight:500;';
+    subEl.textContent = isCaptcha ? 'Solve captcha manually — watcher is waiting (drag me)' : 'Generation in progress — watcher is waiting (drag me)';
+    subEl.style.cssText = 'font-size:11px; opacity:0.9; margin-top:6px; text-align:center; font-weight:500;';
 
-    // Spinner container with sleep circle
     var spinnerWrap = document.createElement('div');
-    spinnerWrap.style.cssText = 'display:flex; align-items:center; gap:12px; margin-top:16px;';
+    spinnerWrap.style.cssText = 'display:flex; align-items:center; gap:8px; margin-top:8px;';
 
     var spinner = document.createElement('div');
-    spinner.style.cssText = 'width:32px; height:32px; border:3px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation: arenaWatcherSpin 0.9s linear infinite; box-shadow:0 0 8px rgba(255,255,255,0.3);';
+    spinner.style.cssText = 'width:18px; height:18px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation: arenaWatcherSpin 0.9s linear infinite;';
 
     var spinnerText = document.createElement('div');
     spinnerText.textContent = 'Waiting...';
-    spinnerText.style.cssText = 'font-size:12px; font-weight:600; opacity:0.9; animation: arenaWatcherGlow 1.5s ease-in-out infinite;';
+    spinnerText.style.cssText = 'font-size:11px; font-weight:600; opacity:0.9; animation: arenaWatcherGlow 1.5s ease-in-out infinite;';
 
     spinnerWrap.appendChild(spinner);
     spinnerWrap.appendChild(spinnerText);
 
     var timeEl = document.createElement('div');
     timeEl.id = 'arena-watcher-time';
-    timeEl.style.cssText = 'font-size:11px; opacity:0.85; margin-top:10px; font-family:monospace; background:rgba(0,0,0,0.25); padding:4px 10px; border-radius:6px;';
+    timeEl.style.cssText = 'font-size:10px; opacity:0.85; margin-top:8px; font-family:monospace; background:rgba(0,0,0,0.25); padding:3px 8px; border-radius:6px;';
 
     var timeoutEl = document.createElement('div');
     timeoutEl.id = 'arena-watcher-timeout';
-    timeoutEl.style.cssText = 'font-size:10px; opacity:0.75; margin-top:6px; font-family:monospace;';
+    timeoutEl.style.cssText = 'font-size:10px; opacity:0.75; margin-top:4px; font-family:monospace;';
 
     function updateTime() {{
       var elapsed = Math.floor((Date.now() - startTime)/1000);
@@ -579,19 +594,44 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
       var te = document.getElementById('arena-watcher-time');
       var to = document.getElementById('arena-watcher-timeout');
       if (te) {{
-        te.textContent = '⏱ ' + elapsed + 's elapsed — ' + new Date().toLocaleTimeString();
+        te.textContent = '\u23f1 ' + elapsed + 's elapsed \u2014 ' + new Date().toLocaleTimeString();
       }}
       if (to) {{
-        to.textContent = 'Timeout: ' + timeoutSec + 's (user setting from win) — ' + remaining + 's left';
+        to.textContent = 'Timeout: ' + timeoutSec + 's (win setting) \u2014 ' + remaining + 's left';
       }}
     }}
 
-    overlay.appendChild(iconEl);
-    overlay.appendChild(titleEl);
+    overlay.appendChild(headRow);
     overlay.appendChild(subEl);
     overlay.appendChild(spinnerWrap);
     overlay.appendChild(timeEl);
     overlay.appendChild(timeoutEl);
+
+    // Drag by mouse anywhere on the popup; clamped to viewport
+    var drag = null;
+    overlay.addEventListener('mousedown', function(e) {{
+      try {{
+        var r = overlay.getBoundingClientRect();
+        drag = {{ x: e.clientX - r.left, y: e.clientY - r.top }};
+        overlay.style.cursor = 'grabbing';
+        e.preventDefault();
+      }} catch(err) {{}}
+    }});
+    document.addEventListener('mousemove', function(e) {{
+      if (!drag || !overlay.isConnected) {{ drag = null; return; }}
+      try {{
+        var nx = Math.max(0, Math.min(window.innerWidth - overlay.offsetWidth, e.clientX - drag.x));
+        var ny = Math.max(0, Math.min(window.innerHeight - overlay.offsetHeight, e.clientY - drag.y));
+        overlay.style.transform = 'none';
+        overlay.style.left = nx + 'px';
+        overlay.style.top = ny + 'px';
+        window.__arenaWatcherPos = {{ left: nx, top: ny }};
+      }} catch(err) {{}}
+    }});
+    document.addEventListener('mouseup', function() {{
+      drag = null;
+      try {{ overlay.style.cursor = 'grab'; }} catch(err) {{}}
+    }});
 
     (document.body || document.documentElement).appendChild(overlay);
 

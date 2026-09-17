@@ -1,4 +1,5 @@
 /* cdp.js — Chrome remote debugging: fetch tabs, match URL to open tab, show connection status per row, pick desired tab — robust with diagnostics */
+// ideal-size: ~550 lines reason=single CDP panel owns tab list + matching + connection triggers incl. auto-scan; splitting would scatter one tab lifecycle across files that always change together (RULE 18.2)
 'use strict';
 
 const CDPPanel = {
@@ -62,6 +63,8 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
     }
 
     if (refreshBtn) refreshBtn.addEventListener('click', () => this.fetchTabs());
+    const reparseBtn = document.getElementById('reparseTabsBtn');
+    if (reparseBtn) reparseBtn.addEventListener('click', () => this.manualReparse());
     if (connectBtn) connectBtn.addEventListener('click', () => this.connectSelected());
     if (tabSelect) tabSelect.addEventListener('change', (e) => {
       this.selectedWs = e.target.value;
@@ -77,6 +80,26 @@ Test manually: open http://127.0.0.1:9222 in any browser — should show list of
     this.bindBridgeSignals();
     setTimeout(() => this.fetchTabs(), 800);
     setTimeout(() => this.loadBookmarks(), 900);
+    setTimeout(() => this.autoConnectScan(), 4000);
+    setInterval(() => this.autoConnectScan(), 15000);
+    setInterval(() => this.ensurePrimary(), 500);
+  },
+
+  ensurePrimary() {
+    if (App.bridge && App.bridge.ensure_primary_connected) {
+      App.bridge.ensure_primary_connected();
+    }
+  },
+
+  autoConnectScan() {
+    if (App.bridge && App.bridge.auto_connect_scan) {
+      App.bridge.auto_connect_scan('auto');
+    }
+  },
+
+  manualReparse() {
+    LogConsole.log('🔄 Reparse requested — scanning open tabs…', 'info');
+    if (App.bridge && App.bridge.auto_connect_scan) App.bridge.auto_connect_scan('manual');
   },
 
   bindBridgeSignals() {

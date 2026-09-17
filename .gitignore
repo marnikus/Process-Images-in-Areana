@@ -10,6 +10,7 @@ build/
 
 # App
 config/app_state.json
+config/cooldowns.json
 config/presets/
 browser_profile/
 logs/
@@ -36,6 +37,10 @@ Thumbs.db
 test-results/
 playwright-report/
 playwright/.cache/
+
+# Node
+node_modules/
+coverage.json
 
 # Old project research (keep HTML but ignore large files dir)
 docs/research/*_files/

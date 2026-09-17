@@ -17,6 +17,7 @@ from .cdp_client import CDPClient
 from .output_probes import build_baseline_js, build_check_js
 from .output_state import flatten_diagnostics, build_order_check_text
 from .output_wait import wait_for_new_output_loop
+from ..utils.page_errors import PageErrorAbort, build_error_scan_js, match_page_error
 
 log = logging.getLogger("arena")
 
@@ -283,20 +284,52 @@ class CDPArenaController:
             return True, "Clicked"
         return False, result.get("error", "Failed")
 
+    async def _scan_page_errors(self) -> str:
+        """Alert/toast/error-region text, else ''. Never raises."""
+        try:
+            res = await self.cdp.evaluate(build_error_scan_js())
+            return res if isinstance(res, str) else ""
+        except Exception:
+            return ""
+
+    async def _poll_output_diag(self, old_srcs, correlation_id, old_outputs):
+        """One output poll, aborting on fresh page errors."""
+        js = build_check_js(old_srcs, correlation_id, old_outputs)
+        res = await self.cdp.evaluate(js)
+        diag = flatten_diagnostics(res) if res else {"ready": False, "reason": "no_result"}
+        if diag.get("ready"):
+            return diag
+        err = match_page_error(await self._scan_page_errors(), self._err_base)
+        if err:
+            raise PageErrorAbort(err)
+        return diag
+
+    async def _map_wait_result(self, result, baseline, timeout_ms):
+        """Loop result to (status, data)."""
+        if result.get("ready"):
+            rect = result.get("rect")
+            return "completed", {"new_src": result.get("src"), "check": result, "baseline": baseline, "rect": rect}
+        if result.get("reason") == "cancelled":
+            return "failed", {"error": "Cancelled", "cancelled": True}
+        final_baseline = await self.capture_baseline()
+        return "failed", {"error": f"Timeout after {timeout_ms}ms", "last_baseline": final_baseline, "last_check": result}
+
     async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000, correlation_id: Optional[str] = None, cancel_check=None) -> Tuple[str, Dict[str, Any]]:
-        # ideal-size: 20 lines reason=delegates to wait loop with 3s stabilization
+        # ideal-size: 26 lines reason=delegates to wait loop; page-error baseline + fast-fail arming
         old_srcs = baseline.get("output_srcs", []) or []
         old_outputs = baseline.get("outputs", []) or []
+        self._err_base = await self._scan_page_errors()
 
         async def check_fn():
-            js = build_check_js(old_srcs, correlation_id, old_outputs)
-            res = await self.cdp.evaluate(js)
-            return flatten_diagnostics(res) if res else {"ready": False, "reason": "no_result"}
+            return await self._poll_output_diag(old_srcs, correlation_id, old_outputs)
 
         def log_cb(msg: str):
             self._log(msg)
 
         try:
+            first_err = match_page_error(self._err_base)
+            if first_err:
+                return "failed", {"error": first_err}
             result = await wait_for_new_output_loop(
                 check_fn=check_fn,
                 log_cb=log_cb,
@@ -304,13 +337,7 @@ class CDPArenaController:
                 timeout=timeout_ms / 1000.0,
                 poll_interval=2.0,
             )
-            if result.get("ready"):
-                rect = result.get("rect")
-                return "completed", {"new_src": result.get("src"), "check": result, "baseline": baseline, "rect": rect}
-            if result.get("reason") == "cancelled":
-                return "failed", {"error": "Cancelled", "cancelled": True}
-            final_baseline = await self.capture_baseline()
-            return "failed", {"error": f"Timeout after {timeout_ms}ms", "last_baseline": final_baseline, "last_check": result}
+            return await self._map_wait_result(result, baseline, timeout_ms)
         except Exception as e:
             return "failed", {"error": str(e)}
 

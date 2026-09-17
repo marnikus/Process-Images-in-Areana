@@ -1,3 +1,4 @@
+# ideal-size: ~490 lines reason=one block-runner owns all block handlers sharing JobCtx; splitting handlers across files would scatter one per-image lifecycle that always changes together (RULE 18.2)
 """Single job runner — small helpers per RULE 18/16."""
 
 from __future__ import annotations
@@ -78,6 +79,7 @@ async def check_security(ctx: JobCtx) -> bool:
         pass
     _mark_waiting(ctx, "captcha")
     await _wait_security_gone(ctx)
+    _apply_captcha_penalty(ctx)
     _mark_busy(ctx)
     try:
         await ctx.ctrl.hide_watcher_overlay()
@@ -120,6 +122,16 @@ async def _wait_security_gone(ctx: JobCtx):
         except Exception:
             break
         await asyncio.sleep(2)
+
+
+def _apply_captcha_penalty(ctx: JobCtx):
+    """Stack captcha penalty onto this tab's next cooldown."""
+    try:
+        from app.services.cooldown_service import note_captcha_event
+        pool = getattr(ctx.bridge, "_page_pool", None)
+        note_captcha_event(pool, ctx.tab_id, ctx.bridge, source="check-security")
+    except Exception:
+        pass
 
 
 async def attach_image(ctx: JobCtx) -> tuple[bool, str]:
@@ -168,8 +180,10 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
         await _show_gen_overlay(ctx, timeout_ms)
         status, data = await ctx.ctrl.wait_for_new_output(
             ctx.baseline, timeout_ms=timeout_ms, correlation_id=ctx.corr_id,
-            cancel_check=lambda: ctx.bridge._cancel_requested,
+            cancel_check=lambda: _is_cancelled(ctx),
         )
+        if isinstance(data, dict) and data.get("cancelled") and _tab_aborted(ctx):
+            data["error"] = "Aborted by operator"
         src = data.get("new_src") if isinstance(data, dict) else None
         if status == "completed" and src:
             return await _verify_download(ctx, src)
@@ -290,6 +304,7 @@ async def _handle_submit(ctx: JobCtx, block: Any):
     if not ok:
         raise RuntimeError(f"Submit failed: {reason}")
     _emit_action(ctx, block, "success", reason)
+    await check_security(ctx)  # F4: captcha often pops at submit time
 
 
 async def _handle_wait(ctx: JobCtx, block: Any):
@@ -309,6 +324,7 @@ async def _handle_wait(ctx: JobCtx, block: Any):
 
 async def _handle_download(ctx: JobCtx, block: Any):
     """Handle download."""
+    await check_security(ctx)  # F4: catch a captcha before pulling bytes
     if ctx.file_bytes and len(ctx.file_bytes) > 100:
         _emit_action(ctx, block, "success", f"Already {len(ctx.file_bytes)}")
         return
@@ -409,13 +425,22 @@ async def _maybe_delay(block: Any):
         await asyncio.sleep(d / 1000.0)
 
 
+def _tab_aborted(ctx: JobCtx) -> bool:
+    """Operator stop requested for this tab's job."""
+    try:
+        from .cooldown_service import is_tab_aborted
+        return is_tab_aborted(getattr(ctx.bridge, "_page_pool", None), ctx.tab_id)
+    except Exception:
+        return False
+
+
 def _is_cancelled(ctx: JobCtx) -> bool:
-    return bool(getattr(ctx.bridge, "_cancel_requested", False))
+    return bool(getattr(ctx.bridge, "_cancel_requested", False)) or _tab_aborted(ctx)
 
 
 async def _run_one_checked(ctx: JobCtx, block: Any) -> tuple[bool, str, bool]:
     if _is_cancelled(ctx):
-        return True, "Cancelled", True
+        return True, "Aborted by operator" if _tab_aborted(ctx) else "Cancelled", True
     if not getattr(block, "enabled", True):
         return False, "", False
     await _maybe_delay(block)
