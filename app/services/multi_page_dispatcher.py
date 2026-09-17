@@ -175,6 +175,8 @@ async def prepare_image_for_job(bridge, img, urls):
 
 async def _run_image_job(ctx: PageJobCtx):
     url_row, corr_id, job_id, final_prompt = await prepare_image_for_job(ctx.bridge, ctx.img, ctx.urls)
+    if url_row is not None and url_row.link_tab(ctx.tab_id):
+        _recalc_save(ctx.bridge)  # carry the row-tab bind to the UI
     try:
         ctx.bridge.job_started.emit(job_id, ctx.img.absolute_path)
     except Exception:

@@ -29,6 +29,13 @@ class UrlRow:
             tab_id=tab_id,
         )
 
+    def link_tab(self, tab_id: str) -> bool:
+        """Bind this row to the tab running it; empty never clears."""
+        if not tab_id:
+            return False
+        self.tab_id = tab_id
+        return True
+
 @dataclass
 class ImageItem:
     id: str

@@ -127,15 +127,9 @@ async def _wait_security_gone(ctx: JobCtx):
 def _apply_captcha_penalty(ctx: JobCtx):
     """Stack captcha penalty onto this tab's next cooldown."""
     try:
-        from app.services.cooldown_service import add_captcha_penalty
+        from app.services.cooldown_service import note_captcha_event
         pool = getattr(ctx.bridge, "_page_pool", None)
-        if not pool:
-            return
-        get_state = getattr(ctx.bridge.config, "get_state", None)
-        penalty = int(get_state("cooldown_captcha_penalty_seconds", 900)) if get_state else 900
-        count = add_captcha_penalty(pool, ctx.tab_id, penalty)
-        if count >= 0:
-            ctx.bridge._log(f"[{ctx.corr_id}] Captcha penalty +{penalty // 60}m tab {ctx.tab_id[:6]} (x{count})", "warn")
+        note_captcha_event(pool, ctx.tab_id, ctx.bridge, source="check-security")
     except Exception:
         pass
 
@@ -310,6 +304,7 @@ async def _handle_submit(ctx: JobCtx, block: Any):
     if not ok:
         raise RuntimeError(f"Submit failed: {reason}")
     _emit_action(ctx, block, "success", reason)
+    await check_security(ctx)  # F4: captcha often pops at submit time
 
 
 async def _handle_wait(ctx: JobCtx, block: Any):
@@ -329,6 +324,7 @@ async def _handle_wait(ctx: JobCtx, block: Any):
 
 async def _handle_download(ctx: JobCtx, block: Any):
     """Handle download."""
+    await check_security(ctx)  # F4: catch a captcha before pulling bytes
     if ctx.file_bytes and len(ctx.file_bytes) > 100:
         _emit_action(ctx, block, "success", f"Already {len(ctx.file_bytes)}")
         return

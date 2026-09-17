@@ -122,3 +122,53 @@ describe('matchUnclaimedPage strict fallback', () => {
     assert.equal(UrlList.matchUnclaimedPage(rows[0].dataset.url, pages, new Map()), null);
   });
 });
+
+describe('sticky row-tab binding (F10)', () => {
+  const srow = (url, tabId) => ({ dataset: { url, tabId } });
+
+  test('bound tab wins over a URL-score tie', () => {
+    const rows = [srow('https://arena.ai/same', 'B')];
+    const pages = [{ tab_id: 'A', url: 'https://arena.ai/same' },
+                   { tab_id: 'B', url: 'https://arena.ai/same' }];
+    const claimed = UrlList.assignPoolPages(rows, pages);
+    assert.equal(claimed.get(0), 1); // own tab, not the first twin
+  });
+
+  test('bound tab wins even when its URL scores lower', () => {
+    const rows = [srow('https://arena.ai/job', 'B')];
+    const pages = [{ tab_id: 'A', url: 'https://arena.ai/job' },
+                   { tab_id: 'B', url: 'https://arena.ai/job?sid=new' }];
+    const claimed = UrlList.assignPoolPages(rows, pages);
+    assert.equal(claimed.get(0), 1);
+  });
+
+  test('vanished bound tab falls back to greedy', () => {
+    const rows = [srow('https://arena.ai/same', 'ZZ')];
+    const pages = [{ tab_id: 'A', url: 'https://arena.ai/same' }];
+    const claimed = UrlList.assignPoolPages(rows, pages);
+    assert.equal(claimed.get(0), 0);
+  });
+
+  test('unbound rows keep greedy best-match', () => {
+    const rows = [srow('https://arena.ai/x?m=b', '')];
+    const pages = [{ tab_id: 'A', url: 'https://arena.ai/x?m=a' },
+                   { tab_id: 'B', url: 'https://arena.ai/x?m=b' }];
+    const claimed = UrlList.assignPoolPages(rows, pages);
+    assert.equal(claimed.get(0), 1);
+  });
+
+  test('matchPoolPage prefers the bound tab', () => {
+    const pages = [{ tab_id: 'A', url: 'https://arena.ai/same' },
+                   { tab_id: 'B', url: 'https://arena.ai/same' }];
+    const sandbox = { console, JSON, Math, Object, Array, Map, Set, Error, URL,
+      document: undefined, PagePoolPanel: { snapshot: { pages } } };
+    sandbox.self = sandbox;
+    sandbox.window = sandbox;
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    const code = fs.readFileSync(panelPath, 'utf-8');
+    vm.runInContext(code + '\nthis.__U = UrlList;', sandbox);
+    assert.equal(sandbox.__U.matchPoolPage('https://arena.ai/same', 'B').tab_id, 'B');
+    assert.equal(sandbox.__U.matchPoolPage('https://arena.ai/same', '').tab_id, 'A');
+  });
+});

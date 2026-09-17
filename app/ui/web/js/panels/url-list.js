@@ -70,6 +70,7 @@ const UrlList = {
       const tr = document.createElement('tr');
       tr.dataset.urlId = u.id;
       tr.dataset.url = u.url;
+      tr.dataset.tabId = u.tab_id || '';
       tr.innerHTML = `
         <td><input type="checkbox" ${u.enabled !== false ? 'checked' : ''} data-action="toggle" data-url-id="${u.id}"></td>
         <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.esc(u.url)}${u.tab_id ? ' — linked tab ' + this.esc(String(u.tab_id).slice(0,8)) : ''}">${this.esc(u.url)}<div class="url-job-line" style="font-size:10px; color:var(--warning, #fbbf24);"></div></td>
@@ -259,10 +260,14 @@ const UrlList = {
     else PagePoolPanel.editCooldown(tabId);
   },
 
-  matchPoolPage(url) {
+  matchPoolPage(url, boundTabId) {
     if (!url || typeof PagePoolPanel === 'undefined') return null;
     const pages = (PagePoolPanel.snapshot && PagePoolPanel.snapshot.pages) || [];
     if (!pages.length) return null;
+    if (boundTabId) {
+      const bound = pages.find(p => p && p.tab_id === boundTabId);
+      if (bound) return bound;
+    }
     const q = this._extractUrl(url).toLowerCase();
     let hostBest = null;
     for (const p of pages) {
@@ -293,6 +298,15 @@ const UrlList = {
     // Greedy 1:1 — best score first, each page claimed once, so a cooling
     // tab can't hide behind a steady twin with a similar URL. Rows left
     // without a claim fall back to shared best-match (1 tab serves N rows).
+    const claimed = new Map(), taken = new Set();
+    // Sticky first: a row bound to its run tab always shows that tab's
+    // timer, even when same-site twins tie on URL score (F10).
+    rows.forEach((tr, ri) => {
+      const bound = tr.dataset ? (tr.dataset.tabId || '') : '';
+      if (!bound) return;
+      const pi = (pages || []).findIndex(p => p && p.tab_id === bound);
+      if (pi >= 0 && !taken.has(pi)) { claimed.set(ri, pi); taken.add(pi); }
+    });
     const cands = [];
     rows.forEach((tr, ri) => {
       (pages || []).forEach((p, pi) => {
@@ -301,7 +315,6 @@ const UrlList = {
       });
     });
     cands.sort((a, b) => b.s - a.s);
-    const claimed = new Map(), taken = new Set();
     cands.forEach(c => {
       if (!claimed.has(c.ri) && !taken.has(c.pi)) {
         claimed.set(c.ri, c.pi);
@@ -368,7 +381,7 @@ const UrlList = {
   _fillCoolCell(tr, page) {
     const cell = tr.querySelector('.url-cool-cell');
     if (!cell) return;
-    if (typeof page === 'undefined') page = this.matchPoolPage(tr.dataset.url || '');
+    if (typeof page === 'undefined') page = this.matchPoolPage(tr.dataset.url || '', tr.dataset.tabId || '');
     const resetBtn = tr.querySelector('button[data-action="cool-reset"]');
     const editBtn = tr.querySelector('button[data-action="cool-edit"]');
     const setTab = (btn, tabId) => {

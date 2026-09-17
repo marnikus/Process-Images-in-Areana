@@ -104,7 +104,7 @@ def test_reset_never_frees_running_job():
     assert svc.reset_cooldown(pool, "a") is True
     page = pool.get_page("a")
     assert page.status == PageStatus.BUSY  # untouched
-    assert page.pending_penalty == 0  # only pending cleared
+    assert page.pending_penalty == 900  # F8: job-cycle debt survives reset
 
 
 @pytest.mark.unit
@@ -515,3 +515,210 @@ def test_tab_has_live_job():
     svc.set_tab_image(pool, "b", "y.png")
     assert svc.tab_has_live_job(pool, "b") is True
     assert svc.tab_has_live_job(None, "a") is False
+
+
+# --- captcha-penalty hardening (2026-09-17): record on any page state ---
+
+
+@pytest.mark.unit
+def test_note_captcha_event_busy_stacks_and_logs_pending():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    assert svc.note_captcha_event(pool, "a", bridge, source="gen-wait") == 1
+    page = pool.get_page("a")
+    assert page.pending_penalty == 900
+    assert page.captcha_count == 1
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "🛡️" in text and "(x1)" in text and "+15m" in text
+    assert "via gen-wait" in text and "pending 15:00" in text
+    assert ("emit", "") in bridge._logs  # rows re-render live
+
+
+@pytest.mark.unit
+def test_note_captcha_event_cooling_extends_live_timer():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.start_cooldown(pool, "a", 300)
+    bridge = make_bridge()
+    assert svc.note_captcha_event(pool, "a", bridge, source="check") == 1
+    assert pool.get_page("a").cooldown_total == 1200
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "🛡️" in text and "extended to 20:00" in text
+
+
+@pytest.mark.unit
+def test_note_captcha_event_unknown_tab_warns_without_shield():
+    pool = PagePool()
+    bridge = make_bridge()
+    assert svc.note_captcha_event(pool, "nope", bridge) == -1
+    assert not any("🛡️" in m for m, _ in bridge._logs)
+    assert any(level == "warn" for _, level in bridge._logs)
+
+
+@pytest.mark.unit
+def test_note_captcha_event_defaults_without_config():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    logs = []
+    bare = SimpleNamespace(_log=lambda m, l="info": logs.append((m, l)))
+    assert svc.note_captcha_event(pool, "a", bare) == 1
+    assert pool.get_page("a").pending_penalty == 900  # default, never 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_solved(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0)
+    seq = [True, True, False]
+
+    async def fake_visible():
+        return seq.pop(0) if seq else False
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=fake_visible)
+    logs = []
+    ok = await svc.wait_captcha_cleared(
+        ctrl, stop=lambda: None, timeout_sec=300,
+        log=lambda m, l="info": logs.append((m, l)))
+    assert ok is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_stop_returns_false(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0)
+
+    async def always():
+        return True
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=always)
+    ok = await svc.wait_captcha_cleared(
+        ctrl, stop=lambda: "Cancelled by user", timeout_sec=300,
+        log=lambda m, l="info": None)
+    assert ok is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_timeout_logs_but_keeps_waiting(monkeypatch):
+    monkeypatch.setattr(svc, "_POLL_SEC", 0)
+    seq = [True, False]
+
+    async def fake_visible():
+        return seq.pop(0) if seq else False
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=fake_visible)
+    logs = []
+    ok = await svc.wait_captcha_cleared(
+        ctrl, stop=lambda: None, timeout_sec=0,
+        log=lambda m, l="info": logs.append((m, l)))
+    assert ok is True
+    assert any("⏰" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_breakdown_log_with_captcha(monkeypatch):
+    async def fake_reset(ctx):
+        return True, "ok"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    svc.add_captcha_penalty(pool, "a", 900)
+    bridge = make_bridge()
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a",
+                        ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    assert pool.get_page("a").cooldown_total == 1200
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "20:00" in text and "base 05:00" in text
+    assert "captcha 15:00 x1" in text
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_log_plain_without_captcha(monkeypatch):
+    async def fake_reset(ctx):
+        return True, "ok"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a",
+                        ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "cooling" in text and "captcha" not in text
+    assert "(" not in text  # legacy line: no breakdown detail
+
+
+@pytest.mark.unit
+def test_note_captcha_event_without_pool_warns():
+    bridge = make_bridge()
+    assert svc.note_captcha_event(None, "a", bridge) == -1
+    assert svc.note_captcha_event(PagePool(), "", bridge) == -1
+    assert any(level == "warn" for _, level in bridge._logs)
+
+
+@pytest.mark.unit
+def test_note_captcha_event_raising_config_uses_default():
+    def boom(_k, _d=None):
+        raise RuntimeError("cfg gone")
+
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    logs = []
+    bridge = SimpleNamespace(config=SimpleNamespace(get_state=boom),
+                             _log=lambda m, l="info": logs.append((m, l)))
+    assert svc.note_captcha_event(pool, "a", bridge) == 1
+    assert pool.get_page("a").pending_penalty == 900
+
+
+@pytest.mark.unit
+def test_note_captcha_event_raising_emit_still_records():
+    def boom():
+        raise RuntimeError("ui gone")
+
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    logs = []
+    bridge = SimpleNamespace(
+        config=SimpleNamespace(get_state=lambda k, d=None: 900),
+        _log=lambda m, l="info": logs.append((m, l)),
+        _emit_pool_status=boom)
+    assert svc.note_captcha_event(pool, "a", bridge) == 1
+    assert pool.get_page("a").pending_penalty == 900
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_ctrl_error_means_clear():
+    async def boom():
+        raise RuntimeError("cdp gone")
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=boom)
+    ok = await svc.wait_captcha_cleared(
+        ctrl, stop=lambda: None, timeout_sec=300,
+        log=lambda m, l="info": None)
+    assert ok is True
+
+
+@pytest.mark.unit
+def test_note_captcha_event_unreadable_page_still_counts():
+    import threading
+
+    class FlakyPool:
+        def __init__(self):
+            self._pages = {"a": make_info("a")}
+            self._lock = threading.Lock()
+
+        def get_page(self, _tab_id):
+            raise RuntimeError("pool gone")
+
+    bridge = make_bridge()
+    assert svc.note_captcha_event(FlakyPool(), "a", bridge) == 1

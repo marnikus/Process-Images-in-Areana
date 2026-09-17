@@ -1842,6 +1842,37 @@ class Bridge(QObject):
             self._log(f"Post-job reset/cooldown skipped: {e} — settling stuck page", "warn")
             self._settle_stuck_primary(primary_tab_id)
 
+    async def _settle_boundary_captcha(self, ctrl, primary_tab_id, correlation_id, source):
+        """F4: captcha sitting unsolved at a phase boundary — wait + record."""
+        try:
+            visible = await ctrl.is_security_dialog_visible()
+        except Exception:
+            visible = False
+        if not visible:
+            return
+        self._log(f"[{correlation_id}] \u26a0 Captcha at {source} — waiting for manual solve", "error")
+        try:
+            timeout = int(self.config.get_state("watcher_captcha_timeout_sec", 300))
+        except Exception:
+            timeout = 300
+        try:
+            await ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=timeout, elapsed_sec=0)
+        except Exception:
+            pass
+        from app.services.cooldown_service import note_captcha_event, wait_captcha_cleared
+        stop = lambda: self._stop_reason(primary_tab_id) if self._run_stop_requested(primary_tab_id) else None
+        solved = await wait_captcha_cleared(ctrl, stop, timeout, self._log)
+        try:
+            await ctrl.hide_watcher_overlay()
+        except Exception:
+            pass
+        if not solved:
+            raise RuntimeError(f"{self._stop_reason(primary_tab_id)} during CAPTCHA at {source}")
+        try:
+            note_captcha_event(self._page_pool, primary_tab_id, self, source=source)
+        except Exception as e:
+            self._log(f"Captcha penalty skipped: {e}", "warn")
+
     @Slot(result=str)
     def start_run(self):
         prompt = self.state.prompt.get("user_prompt","").strip()
@@ -2420,6 +2451,8 @@ class Bridge(QObject):
                 url_row = urls[url_idx % len(urls)] if urls else None
                 url_idx += 1
                 img.assigned_url_id = url_row.id if url_row else None
+                if url_row is not None:
+                    url_row.link_tab(primary_tab_id)
                 img.attempt_count += 1
                 img.status = ImageStatus.PROCESSING.value
                 self.state.recalculate_progress()
@@ -2681,12 +2714,8 @@ class Bridge(QObject):
                                 self._emit_arena_state()
                                 self._emit_job_action_status(job_id, block, "success", "Security dialog solved")
                                 try:
-                                    from app.services.cooldown_service import add_captcha_penalty
-                                    _pen = int(self.config.get_state("cooldown_captcha_penalty_seconds", 900))
-                                    if self._page_pool and primary_tab_id:
-                                        _n = add_captcha_penalty(self._page_pool, primary_tab_id, _pen)
-                                        self._log(f"[{correlation_id}] 🛡️ Captcha penalty +{_pen // 60}m on this tab (x{_n}) — stacks onto next cooldown", "warn")
-                                        self._persist_cooldowns()
+                                    from app.services.cooldown_service import note_captcha_event
+                                    note_captcha_event(self._page_pool, primary_tab_id, self, source="check-security")
                                 except Exception as _e:
                                     self._log(f"Captcha penalty skipped: {_e}", "warn")
                             else:
@@ -2831,6 +2860,7 @@ class Bridge(QObject):
                                     self._emit_job_action_status(job_id, block, "success", f"Submit via controller {reason}")
                             else:
                                 self._emit_job_action_status(job_id, block, "success", f"Clicked {block.selector}")
+                            await self._settle_boundary_captcha(ctrl, primary_tab_id, correlation_id, "submit")
 
                         elif btype in ("WAIT_OUTPUT", "AWAIT_PROCESSING_IMAGE"):
                             # Waiting block when system detects awaiting elements e.g. processing image, awaiting API result
@@ -2913,12 +2943,8 @@ class Bridge(QObject):
                                             await asyncio.sleep(2)
                                         self._log(f"[{correlation_id}] ✅ Captcha solved during generation — restoring generation overlay", "success")
                                         try:
-                                            from app.services.cooldown_service import add_captcha_penalty
-                                            _pen2 = int(self.config.get_state("cooldown_captcha_penalty_seconds", 900))
-                                            if self._page_pool and primary_tab_id:
-                                                _n2 = add_captcha_penalty(self._page_pool, primary_tab_id, _pen2)
-                                                self._log(f"[{correlation_id}] 🛡️ Captcha penalty +{_pen2 // 60}m on this tab (x{_n2}) — stacks onto next cooldown", "warn")
-                                                self._persist_cooldowns()
+                                            from app.services.cooldown_service import note_captcha_event
+                                            note_captcha_event(self._page_pool, primary_tab_id, self, source="gen-wait")
                                         except Exception as _e:
                                             self._log(f"Captcha penalty skipped: {_e}", "warn")
                                         try:
@@ -3287,6 +3313,7 @@ class Bridge(QObject):
                             # else already raised (exception will also trigger hide in outer except via finally? we already hid)
 
                         elif btype == "DOWNLOAD":
+                            await self._settle_boundary_captcha(ctrl, primary_tab_id, correlation_id, "download")
                             # DOWNLOAD should not fail until generation indicates finished and no jobs running
                             # If generation in progress, return to waiting state
                             # After 2 min, try reload page first but not failed yet, because chance bad cache

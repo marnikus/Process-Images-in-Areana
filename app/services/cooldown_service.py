@@ -40,6 +40,8 @@ class FinishCtx:
     tab_id: str
     ctrl: Any
     client: Any
+    pending_before: int = 0
+    captcha_before: int = 0
 
 
 def _safe_int(get_state, key: str, default: int) -> int:
@@ -308,13 +310,81 @@ def add_captcha_penalty(pool, tab_id, penalty_seconds) -> int:
         return page.captcha_count
 
 
+def _penalty_from(bridge) -> int:
+    """Read the per-captcha seconds; default 900, never below 0."""
+    try:
+        get_state = getattr(getattr(bridge, "config", None), "get_state", None)
+        if get_state:
+            return max(0, int(get_state("cooldown_captcha_penalty_seconds", 900)))
+    except Exception:
+        pass
+    return 900
+
+
+def _persist_emit(bridge) -> None:
+    """Save timers + refresh rows; best effort, never raises."""
+    for name in ("_persist_cooldowns", "_emit_pool_status"):
+        try:
+            fn = getattr(bridge, name, None)
+            if fn:
+                fn()
+        except Exception:
+            pass
+
+
+def _captcha_suffix(page, penalty) -> str:
+    """Log tail: live extension or stacked pending."""
+    if page is not None and page.status == PageStatus.COOLDOWN and page.is_cooling():
+        return f"live cooldown extended to {format_remaining(page.cooldown_total)}"
+    pending = page.pending_penalty if page else 0
+    return f"pending {format_remaining(pending)} stacks onto next cooldown"
+
+
+def note_captcha_event(pool, tab_id, bridge, source="job") -> int:
+    """Record one solved captcha: stack, log, persist, emit. -1 unknown."""
+    if pool is None or not tab_id:
+        _log(bridge, f"Captcha NOT recorded (no pool/tab) via {source}", "warn")
+        return -1
+    penalty = _penalty_from(bridge)
+    count = add_captcha_penalty(pool, tab_id, penalty)
+    if count < 0:
+        _log(bridge, f"Captcha NOT recorded on tab {str(tab_id)[:12]} (unknown tab) via {source} — no extra cooldown", "warn")
+        return -1
+    try:
+        page = pool.get_page(tab_id)
+    except Exception:
+        page = None
+    _log(bridge, f"\U0001f6e1\ufe0f Captcha +{penalty // 60}m tab {str(tab_id)[:12]} (x{count}) via {source} — {_captcha_suffix(page, penalty)}", "warn")
+    _persist_emit(bridge)
+    return count
+
+
+async def wait_captcha_cleared(ctrl, stop, timeout_sec, log) -> bool:
+    """Poll until the dialog clears; False only on stop (never gives up)."""
+    start = time.monotonic()
+    warned = 0.0
+    while True:
+        try:
+            visible = await ctrl.is_security_dialog_visible()
+        except Exception:
+            return True
+        if not visible:
+            return True
+        if stop():
+            return False
+        now = time.monotonic()
+        if now - start > timeout_sec and now - warned >= 5:
+            warned = now
+            log(f"\u23f0 Captcha wait {int(now - start)}s/{timeout_sec}s — still waiting", "error")
+        await asyncio.sleep(_POLL_SEC)
+
+
 def reset_cooldown(pool, tab_id) -> bool:
-    """User reset: ready now; never frees a running job."""
+    """User reset: ready now; keeps the job-cycle captcha debt."""
     with pool._lock:
         page = pool._pages.get(tab_id)
         if page is None:
             return False
-        page.pending_penalty = 0
         if page.status != PageStatus.COOLDOWN:
             return True
         return _settle_steady(page)
@@ -575,13 +645,37 @@ def _reason_for(ctx: FinishCtx) -> str:
     return "job done"
 
 
+def _capture_pending(ctx) -> None:
+    """Snapshot stacked debt before start consumes it (for the log)."""
+    try:
+        page = ctx.pool.get_page(ctx.tab_id)
+        ctx.pending_before = page.pending_penalty if page else 0
+        ctx.captcha_before = page.captcha_count if page else 0
+    except Exception:
+        pass
+
+
+def _finish_detail(ctx) -> str:
+    """' (total 20:00 = base 05:00 + captcha 15:00 x1)' or '' when plain."""
+    try:
+        if ctx.pending_before <= 0:
+            return ""
+        page = ctx.pool.get_page(ctx.tab_id)
+        total = page.cooldown_total if page else 0
+        base = max(0, total - ctx.pending_before)
+        return (f" (total {format_remaining(total)} = base {format_remaining(base)}"
+                f" + captcha {format_remaining(ctx.pending_before)} x{ctx.captcha_before})")
+    except Exception:
+        return ""
+
+
 def _log_finish(ctx: FinishCtx, started: bool):
     """Report the new countdown (RULE 2)."""
     if not started:
         _log(ctx.bridge, f"⚠ Page {str(ctx.tab_id)[:12]} cooldown not started (unknown tab)", "warn")
         return
     left = remaining_for(ctx.pool, ctx.tab_id)
-    _log(ctx.bridge, f"⏳ Page {str(ctx.tab_id)[:12]} cooling {format_remaining(left)} — next job after pause",
+    _log(ctx.bridge, f"⏳ Page {str(ctx.tab_id)[:12]} cooling {format_remaining(left)}{_finish_detail(ctx)} — next job after pause",
          "info")
 
 
@@ -597,6 +691,7 @@ async def _finish_normal(ctx: FinishCtx) -> bool:
         _emit_status(ctx)
         _log(ctx.bridge, f"✅ Page {str(ctx.tab_id)[:12]} STEADY ready (cooldown off)", "success")
         return done
+    _capture_pending(ctx)
     started = start_cooldown(ctx.pool, ctx.tab_id, cfg.min_seconds, _reason_for(ctx))
     _emit_status(ctx)
     _log_finish(ctx, started)
