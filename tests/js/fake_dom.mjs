@@ -14,10 +14,23 @@ export class ClassList {
   _sync() { this.el.className = [...this.set].join(' '); }
 }
 
+/* Text node (nodeType 3) — real titles mix bare text between elements, and
+   the title-fit code (sash-grid-tree._wrapTitleText) walks childNodes. */
+export class TextNode {
+  constructor(text) {
+    this.nodeType = 3;
+    this.textContent = String(text);
+    this.parent = null;
+    this.isConnected = true;
+  }
+  get parentNode() { return this.parent; }
+}
+
 export class El {
   constructor(tag) {
     this.tagName = String(tag).toUpperCase();
-    this.children = [];
+    this.nodeType = 1;
+    this._nodes = [];            // mixed elements + text nodes (document order)
     this.parent = null;
     this.dataset = {};
     this.style = {};
@@ -26,48 +39,87 @@ export class El {
     this._className = '';
     this.classList = new ClassList(this);
     this.id = '';
-    this.textContent = '';
+    this._text = '';
     this.title = '';
     this._innerHTML = '';
     this.isConnected = true;
+  }
+  /* Like the browser: reading walks the subtree; writing replaces it. */
+  get textContent() {
+    if (this._nodes.length === 0) return this._text;
+    return this._nodes.map((n) => n.textContent).join('');
+  }
+  set textContent(v) {
+    this._nodes = [];
+    this._text = String(v);
   }
   get className() { return this._className; }
   set className(v) {
     this._className = String(v);
     this.classList.set = new Set(this._className.split(/\s+/).filter(Boolean));
   }
-  get firstChild() { return this.children[0] || null; }
+  get children() { return this._nodes.filter((n) => n.nodeType === 1); }
+  get childNodes() { return this._nodes.slice(); }
+  get firstChild() { return this._nodes[0] || null; }
   get parentNode() { return this.parent; }
-  get parentElement() { return this.parent; }
+  get parentElement() { return this.parent && this.parent.nodeType === 1 ? this.parent : null; }
   get nextSibling() {
     if (!this.parent) return null;
-    const i = this.parent.children.indexOf(this);
-    return this.parent.children[i + 1] || null;
+    const sibs = this.parent._nodes;
+    return sibs[sibs.indexOf(this) + 1] || null;
   }
   get offsetWidth() { return Math.round(this._rect.width); }
   get offsetHeight() { return Math.round(this._rect.height); }
+  /* Measured-geometry stubs for code that reads them (e.g. the title-bar
+     fit routine). clientWidth/Height mirror the laid-out rect; scrollWidth
+     is a no-overflow stub by default — tests can install _measureContent(el)
+     to simulate content that overflows the box (like a browser reflow). */
+  get clientWidth() { return Math.round(this._rect.width); }
+  get clientHeight() { return Math.round(this._rect.height); }
+  get scrollWidth() {
+    return this._measureContent
+      ? Math.max(this.clientWidth, this._measureContent(this))
+      : this.clientWidth;
+  }
   get innerHTML() { return this._innerHTML; }
-  set innerHTML(v) { this._innerHTML = String(v); this.children = []; }
+  set innerHTML(v) { this._innerHTML = String(v); this._nodes = []; }
+  _detach(c) {
+    const p = c.parent;
+    if (p) { const i = p._nodes.indexOf(c); if (i >= 0) p._nodes.splice(i, 1); }
+    c.parent = null;
+  }
   appendChild(c) {
-    if (c.parent) c.parent.children.splice(c.parent.children.indexOf(c), 1);
+    this._detach(c);
     c.parent = this; c.isConnected = true;
-    this.children.push(c);
+    this._nodes.push(c);
     return c;
   }
   insertBefore(c, ref) {
-    if (c.parent) c.parent.children.splice(c.parent.children.indexOf(c), 1);
+    this._detach(c);
     c.parent = this; c.isConnected = true;
-    const i = ref ? this.children.indexOf(ref) : -1;
-    if (i < 0) this.children.push(c); else this.children.splice(i, 0, c);
+    const i = ref ? this._nodes.indexOf(ref) : -1;
+    if (i < 0) this._nodes.push(c); else this._nodes.splice(i, 0, c);
     return c;
   }
+  replaceChild(newN, oldN) {
+    const i = this._nodes.indexOf(oldN);
+    if (i < 0) return oldN;
+    this._nodes[i] = newN;
+    oldN.parent = null; oldN.isConnected = false;
+    newN.parent = this; newN.isConnected = true;
+    return oldN;
+  }
+  appendText(text) { const t = new TextNode(text); return this.appendChild(t); }
   replaceChildren(...nodes) {
-    this.children.forEach((c) => { c.parent = null; c.isConnected = false; });
-    this.children = [];
+    this._nodes.forEach((c) => { c.parent = null; c.isConnected = false; });
+    this._nodes = [];
     nodes.forEach((n) => this.appendChild(n));
   }
   remove() {
-    if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1);
+    if (this.parent) {
+      const i = this.parent._nodes.indexOf(this);
+      if (i >= 0) this.parent._nodes.splice(i, 1);
+    }
     this.parent = null; this.isConnected = false;
   }
   getBoundingClientRect() {

@@ -23,6 +23,24 @@ export function panelIdOf(id) {
   return 'win' + id.split('_').map((p) => p[0].toUpperCase() + p.slice(1)).join('');
 }
 
+/* Secondary title items (buttons/badges) per window, mirroring index.html:
+   `pre` items sit before the spacer, `post` items after it. These are the
+   items the title-fit routine may drop when a window narrows. */
+export const TITLE_SECONDARIES = {
+  url_list: { pre: ['urlReparseBtn', 'urlPopupBtn'], post: ['urlCount'] },
+  queue: { pre: [], post: ['queueCount'] },
+  prompt: { pre: [], post: ['promptSaveBtn'] },
+  watcher: { pre: [], post: ['watcherStatusBadge'] },
+  log: { pre: [], post: ['clearLogBtn'] },
+  settings: { pre: [], post: ['settingsSaveBtn'] },
+  browser: { pre: [], post: ['browserClearBtn'] },
+  action_blocks: { pre: [], post: ['actionBlocksCount'] },
+  block_config: { pre: [], post: ['closeBlockConfigBtn'] },
+  arena_presets: { pre: [], post: ['arenaPresetsCount'] },
+};
+const BADGE_LIKE = new Set(['urlCount', 'queueCount', 'watcherStatusBadge',
+  'actionBlocksCount', 'arenaPresetsCount']);
+
 function makePanel(id) {
   const p = new El('div');
   p.className = 'panel';
@@ -30,9 +48,31 @@ function makePanel(id) {
   const title = new El('h3');
   title.className = 'win-title';
   const grip = new El('span');
-  grip.className = 'win-grip';
+  grip.className = 'win-grip material-icons';
+  grip.textContent = 'drag_indicator';
   title.appendChild(grip);
-  title.textContent = id;
+  const icon = new El('span');
+  icon.className = 'material-icons';
+  icon.textContent = 'icon';
+  title.appendChild(icon);
+  // bare text node (as in index.html) — the wrap target
+  title.appendText(' ' + id.replace(/_/g, ' ').toUpperCase() + ' ');
+  const sec = TITLE_SECONDARIES[id];
+  if (sec) {
+    for (const sid of sec.pre) {
+      const b = new El(BADGE_LIKE.has(sid) ? 'span' : 'button');
+      b.id = sid; b.textContent = sid;
+      title.appendChild(b);
+    }
+    const sp = new El('span');
+    sp.className = 'spacer';
+    title.appendChild(sp);
+    for (const sid of sec.post) {
+      const b = new El(BADGE_LIKE.has(sid) ? 'span' : 'button');
+      b.id = sid; b.textContent = sid;
+      title.appendChild(b);
+    }
+  }
   p.appendChild(title);
   return p;
 }
