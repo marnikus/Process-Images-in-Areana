@@ -72,7 +72,6 @@ const SashGridResize = {
     const allocation = this._resizePixelAllocation(z, z.isRow ? ev.clientX : ev.clientY, rect);
     if (!allocation) return;
     z.childEls.forEach((child, i) => { const px = allocation[i]; child.style.flex = px > 0 ? `0 0 ${px}px` : '0 0 0px'; });
-    this._fitTitleBars();
   },
 
   _resizeUp() {

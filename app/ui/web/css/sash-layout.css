@@ -66,10 +66,7 @@
 /* — title bar = drag handle (full-bleed via negative margins) — */
 .sash-window > .panel > .win-title {
   margin: calc(-1 * var(--gap-md)) calc(-1 * var(--gap-md)) var(--gap-sm);
-  /* 2px horizontal padding (was 6px): keeps the fixed title core
-     (padding+grip+icon+gaps+controls) at/below the 96px minimum window,
-     so ─/✕ can never be clipped by the panel's overflow rule. */
-  padding: 4px 2px;
+  padding: 4px 6px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
   cursor: grab;
@@ -271,42 +268,21 @@ body.sash-resizing-col, body.sash-resizing-col * { cursor: row-resize; user-sele
    is open and □ once it is minimized (docked at the bottom strip).
    ═══════════════════════════════════════════════════════════════ */
 
-/* title bar flex: grip + title text + spacer + controls + other buttons.
-   overflow:hidden = the ellipsis host for .win-name; the fit routine
-   (sash-grid-tree._fitTitleBars) guarantees the right edge (controls)
-   always fits before any clipping would happen. */
+/* title bar flex: grip + title text + spacer + controls + other buttons */
 .sash-window > .panel > .win-title {
   display: flex;
   align-items: center;
   gap: 4px;
-  overflow: hidden;
 }
 
-/* container for win controls (right side of title bar) — compact.
-   flex-shrink:0 + margin-left:0 keep this the ONLY item that can never
-   yield space: every other title item truncates (.win-name) or is dropped
-   (.fit-hidden) before the controls could be clipped (see title-fit rule). */
+/* container for win controls (right side of title bar) — compact */
 .win-controls {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin-left: 0;
+  margin-left: 6px;
   flex-shrink: 0;
 }
-/* Title text = one shrinkable flex item so it ellipsizes instead of pushing
-   the controls off the right edge. Bare text nodes can't be ellipsized, so
-   sash-grid-tree wraps the title text in this span. */
-.win-title .win-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* Secondary title items (Save/Clear/Reparse… buttons, count badges) that the
-   fit routine drops right-to-left when the window is too narrow. Purely
-   class-driven so the fitter stays the single writer of this state. */
-.win-title .fit-hidden { display: none; }
 /* Every window-control button: equal 20px hit area, centered glyph, no
    border — the standard ─ □ ✕ trio (here the toggle is ─ or □ by state). */
 .win-controls .win-btn {
