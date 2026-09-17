@@ -132,14 +132,22 @@ const SashGridTree = {
       winEl.classList.toggle('sash-win-hidden', shouldHide);
       winEl.classList.toggle('sash-win-closed', isClosed);
     });
+  },
+
+  /* Single source of truth for sash visibility: a sash is hidden iff its
+     PREVIOUS (left/top) sibling is hidden — a closed/minimized window or an
+     emptied split. One rule, one writer: visible rows never lose the divider
+     between them, and a hidden window's slot boundary always keeps exactly
+     one visible, draggable sash. */
+  _syncSashes() {
+    if (!this.gridEl) return;
+    const hidden = (el) => !!el && (el.classList.contains('sash-win-hidden') ||
+      el.classList.contains('sash-win-closed') || el.classList.contains('sash-split-hidden'));
     this.gridEl.querySelectorAll('.sash-split').forEach((pEl) => {
       const kids = Array.from(pEl.children);
       kids.forEach((el, i) => {
         if (!el.classList || !el.classList.contains('sash')) return;
-        const prev = kids[i - 1], next = kids[i + 1];
-        const nearHidden = (prev && prev.classList.contains('sash-win-hidden')) ||
-                           (next && next.classList.contains('sash-win-hidden'));
-        el.classList.toggle('sash-hidden', !!nearHidden);
+        el.classList.toggle('sash-hidden', hidden(kids[i - 1]));
       });
     });
   },
@@ -174,22 +182,7 @@ const SashGridTree = {
     splits.forEach((splitEl) => {
       splitEl.classList.toggle('sash-split-hidden', !this._splitHasVisibleDescendant(splitEl));
     });
-    // also hide sashes that touch hidden splits/windows
-    this._hideTouchedSashes();
-  },
-
-  _hideTouchedSashes() {
-    this.gridEl.querySelectorAll('.sash-split').forEach((pEl) => {
-      if (pEl.classList.contains('sash-split-hidden')) return;
-      const kids = Array.from(pEl.children);
-      kids.forEach((el, i) => {
-        if (!el.classList || !el.classList.contains('sash')) return;
-        const prev = kids[i - 1], next = kids[i + 1];
-        const prevHidden = prev && (prev.classList.contains('sash-win-hidden') || prev.classList.contains('sash-win-closed') || prev.classList.contains('sash-split-hidden'));
-        const nextHidden = next && (next.classList.contains('sash-win-hidden') || next.classList.contains('sash-win-closed') || next.classList.contains('sash-split-hidden'));
-        if (prevHidden || nextHidden) el.classList.add('sash-hidden');
-      });
-    });
+    // sash visibility is written ONLY by _syncSashes() (single rule)
   },
 
   _checkEmptyGrid() {
@@ -229,6 +222,7 @@ const SashGridTree = {
       if (changed) {
         this._syncHidden();
         this._syncEmptySplits();
+        this._syncSashes();
         this._updateWindowsMenu();
         this._checkEmptyGrid();
       }

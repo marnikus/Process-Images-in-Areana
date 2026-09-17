@@ -41,6 +41,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 
 - `archive/2026-09-16-image-below-prompt/` — fix for image-below-prompt correlation (JOB-ID verification for reverse layout)
 - `archive/2026-09-16-test-time-reduction/TEST_TIME_REDUCTION_PLAN.md` — structured plan to reduce test time: pyramid rebalance, fixture scopes, eliminate real-browser tier, xdist parallelisation, async sleep removal, DI fakes, CI 3-stage gates, roadmap with RULE 16/18 compliance
+- `archive/2026-09-17-watcher-grid-bugfixes/SOLUTION.md` — root causes + fixes for the blank Watcher window, "2nd divider rescales all rows" drag bug, and sashes vanishing after drop: single sash-visibility rule, hidden-child-safe resize commit, next-visible-child drag pair
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

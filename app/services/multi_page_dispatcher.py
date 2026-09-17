@@ -260,6 +260,17 @@ def _clear_tab_image(pool, tab_id):
         pass
 
 
+async def _finish_page_safely(finish_ctx: FinishCtx) -> None:
+    """Finish the page after the job; always settle the stuck-emit on error."""
+    try:
+        await finish_page_after_job(finish_ctx)
+    except asyncio.CancelledError:
+        _settle_stuck_emit(finish_ctx.pool, finish_ctx.bridge, finish_ctx.tab_id)
+        raise
+    except Exception:
+        _settle_stuck_emit(finish_ctx.pool, finish_ctx.bridge, finish_ctx.tab_id)
+
+
 async def run_one_image_on_page(bridge, pool, img, urls):
     if bridge._cancel_requested:
         return
@@ -284,14 +295,8 @@ async def run_one_image_on_page(bridge, pool, img, urls):
         _handle_exception(bridge, img, tab_id, e)
     finally:
         _clear_tab_image(pool, tab_id)
-        try:
-            finish_ctx = FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client)
-            await finish_page_after_job(finish_ctx)
-        except asyncio.CancelledError:
-            _settle_stuck_emit(pool, bridge, tab_id)
-            raise
-        except Exception:
-            _settle_stuck_emit(pool, bridge, tab_id)
+        finish_ctx = FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client)
+        await _finish_page_safely(finish_ctx)
 
 
 def _log_no_free(bridge, img):
