@@ -308,7 +308,7 @@ Remediation order: nesting → cyclomatic → cognitive → size (RULE 19).
 | `log` | Log | Log console with levels info/success/warn/error, filter, clear, export | `logs/arena.log` |
 | `settings` | Settings | Supported types, ignore suffix, highlight duration, confirm pause, max attempts, download timeout, CDP host/port, user-data-dir | `arena.json` settings |
 | `watcher` | Generation Watcher | Generation/captcha passive monitoring and state | ephemeral |
-| `captcha` | Captcha — Solver | Provider drop-down (2Captcha / CapMonster Cloud), per-provider opt-in + masked key, shared timeout, balance, and statistics | `config/captcha_solvers.json` + `captcha_stats.json` |
+| `captcha` | Captcha — Solver | Provider drop-down (2Captcha / CapMonster Cloud; user-owned selection committed by Save — never reverts on reload or balance failure), per-provider opt-in + masked key, shared timeout, balance, and statistics | `config/captcha_solvers.json` + `captcha_stats.json` |
 | `captcha_records` | Captcha Session Records | Session list, editable labels, A/B event/DOM evidence comparison, and per-session Open-folder action | `config/captcha_recordings/` |
 | `browser` | Browser Preview | Selected/generated image and webpage highlight context | ephemeral |
 | `block_config` | Block Config — Security Check | Selected action-block configuration | `arena.json` action blocks |
