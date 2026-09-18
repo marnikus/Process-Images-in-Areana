@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
-from app.browser.captcha_probes import build_detect_js
+from app.browser.captcha_probes import build_detect_js, build_hook_js
 
 from .api_client import ApiError, Captcha2Client
 from .key_store import CaptchaKeyStore, CaptchaSettings, clamp_timeout
@@ -112,8 +112,25 @@ def _anchor_desc(signal: CaptchaSignal) -> str:
             f"ams={a.get('ams') or '-'} ems={a.get('ems') or '-'}")
 
 
+def _hook_desc(signal: CaptchaSignal) -> str:
+    """Render-hook evidence: is the canonical solve path available (design §2.4)?"""
+    h = signal.hook or {}
+    if h.get("captured"):
+        key = str(h.get("sitekey") or "-")[-6:]
+        try:
+            age = f"{float(h.get('ageSec', -1)):.0f}s"
+        except Exception:
+            age = "?"
+        return f"hook=captured(sitekey=…{key}, age={age})"
+    return "hook=ready" if h.get("ready") else "hook=absent"
+
+
 async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
     """Kind + sitekey probe; probe error → probe_error (fail open, RULE 9)."""
+    try:  # defense-in-depth: idempotent no-op when the attach install ran
+        await ctx.ctrl.cdp.evaluate(build_hook_js())
+    except Exception:
+        pass
     try:
         res = await ctx.ctrl.cdp.evaluate(build_detect_js())
     except Exception as e:
@@ -138,7 +155,7 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     _mark_waiting(ctx)
     _record_stats(ctx, "detected", host_of(signal.page_url))
     _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}, "
-              f"{_anchor_desc(signal)}) via {ctx.source}", "error")
+              f"{_anchor_desc(signal)}, {_hook_desc(signal)}) via {ctx.source}", "error")
     svc = _service(ctx)
     if svc is not None and svc.auto_enabled() and signal.solvable:
         outcome = await _try_auto(ctx, signal, svc)

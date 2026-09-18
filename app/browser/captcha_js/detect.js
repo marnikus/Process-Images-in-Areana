@@ -10,6 +10,18 @@
    needs for its 2Captcha payload. RULE 21: semantic before structural. */
 (() => {
   const out = {visible: false, kind: "none", sitekey: "", invisible: false, url: location.href};
+  /* render-hook evidence (set before the early return — the hook state matters
+     even when no dialog is on screen: it tells the log why a challenge would
+     or would not be solvable via the canonical path) */
+  const win = typeof window !== "undefined" ? window : {};
+  const ch = win.__arenaV2Challenge;
+  out.hook = {
+    ready: !!(win.grecaptcha && win.grecaptcha.enterprise &&
+              win.grecaptcha.enterprise.render),
+    captured: !!(ch && ch.sitekey),
+    sitekey: (ch && ch.sitekey) || "",
+    ageSec: ch ? (Date.now() - ch.ts) / 1000 : -1,
+  };
   const IFRAME = 'iframe[title="reCAPTCHA"], iframe[src*="recaptcha"]';
   const WIDGET = IFRAME + ', div.recaptcha-v2-container, #recaptcha-v2-container';
   const isBadge = (el) => !!(el.closest && el.closest(".grecaptcha-badge"));

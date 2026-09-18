@@ -11,6 +11,15 @@
    use instead). */
 (token) => {
   try {
+    /* canonical path first (design 2026-09-18-captcha-escalation-path §2.4):
+       the captured render callback IS the closure that closes the dialog
+       and makes arena retry the request with our token */
+    const win = typeof window !== "undefined" ? window : {};
+    const ch = win.__arenaV2Challenge;
+    if (ch && typeof ch.solve === "function") {
+      const ok = ch.solve(token);
+      if (ok) return {ok: true, path: "hook", cb: "hook", cbCalled: true};
+    }
     const SEL = 'textarea[name="g-recaptcha-response"], input[name="g-recaptcha-response"], #g-recaptcha-response';
     let field = null;
     let scope = "";
@@ -47,7 +56,7 @@
         getResponsePatched = true;
       }
     } catch (e) { /* API shape changed — the field + cb paths still apply */ }
-    return {ok: true, scope, tag: field.tagName, len: (field.value || "").length, cb, cbCalled, cbError, getResponsePatched};
+    return {ok: true, path: "field", scope, tag: field.tagName, len: (field.value || "").length, cb, cbCalled, cbError, getResponsePatched};
   } catch (e) {
     return {ok: false, error: String(e)};
   }

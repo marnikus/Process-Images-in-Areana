@@ -118,10 +118,10 @@ function securityDialog({ iframeSrc = '', dataSitekey, withImageCaptcha = false,
 
 /* ——— detect probe ——— */
 
-const runDetect = (body) => {
+const runDetect = (body, win = {}) => {
   const document = makeDoc(body);
-  const fn = new Function('document', 'location', `return (${probe('detect.js')});`);
-  return fn(document, location);
+  const fn = new Function('document', 'location', 'window', `return (${probe('detect.js')});`);
+  return fn(document, location, win);
 };
 
 test('detect: visible enterprise widget with sitekey in anchor src', () => {

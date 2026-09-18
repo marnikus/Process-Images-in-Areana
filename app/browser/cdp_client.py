@@ -411,6 +411,7 @@ class CDPClient(QObject):
                             await self.send(f"{dom}.enable", timeout=10)
                         except Exception as e:
                             log.debug(f"Enable {dom} failed: {e}")
+                    await self._install_captcha_hook()
                     log.info(f"CDP connected: {cand[:120]}")
                     self.connected.emit()
                     return True
@@ -438,6 +439,21 @@ class CDPClient(QObject):
             return False
         finally:
             self._connecting = False
+
+    async def _install_captcha_hook(self) -> bool:
+        # ideal-size: 12 lines reason=render hook for the canonical captcha path
+        # (docs/archive/2026-09-18-captcha-escalation-path): survives reloads
+        # (addScriptToEvaluateOnNewDocument) + immediate eval; fail-open
+        try:
+            from app.browser.captcha_probes import build_hook_js
+            js = build_hook_js()
+            await self.send("Page.addScriptToEvaluateOnNewDocument", {"source": js}, timeout=10)
+            res = await self.send("Runtime.evaluate", {"expression": js, "returnByValue": True}, timeout=10)
+            data = (res.get("result") or {}).get("value") or {}
+            return bool(data.get("installed"))
+        except Exception as e:
+            log.debug(f"captcha hook install failed: {e}")
+            return False
 
     async def disconnect(self):
         self._connected = False

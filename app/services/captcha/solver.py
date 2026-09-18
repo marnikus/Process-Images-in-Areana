@@ -73,6 +73,18 @@ def _ready_token(res: Dict[str, Any]) -> str:
     return str((res.get("solution") or {}).get("gRecaptchaResponse") or "")
 
 
+def _maybe_slow_window_warn(solver: "CaptchaSolver", plan: SolvePlan,
+                            elapsed: float, warned: bool) -> bool:
+    # ideal-size: 9 lines reason=45 s into arena's 60 s dialog window (design
+    # 2026-09-18-captcha-escalation-path §3.1); only when a challenge was captured
+    if warned or not (plan.signal.hook or {}).get("captured"):
+        return warned
+    if elapsed > 45:
+        solver._log("🤖 2Captcha slow — 45 s into the 60 s dialog window", "warn")
+        return True
+    return warned
+
+
 async def _one_poll(solver: "CaptchaSolver", plan: SolvePlan, task_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[str, str]]]:
     """One getTaskResult; (result, None) or (None, (reason, detail))."""
     try:
@@ -90,10 +102,12 @@ async def _poll_task_loop(solver: "CaptchaSolver", plan: SolvePlan, task_id: str
     Module-level so the solver class stays under the class-LOC gate."""
     start = time.monotonic()
     last_status = ""
+    slow_warned = not (plan.signal.hook or {}).get("captured")
     while True:
         if plan.stop():
             solver._log("2Captcha polling stopped (user stop)", "info")
             return None, "stopped"
+        slow_warned = _maybe_slow_window_warn(solver, plan, time.monotonic() - start, slow_warned)
         res, err = await _one_poll(solver, plan, task_id)
         if err is not None:
             return solver._poll_fail(plan, err[0], err[1])
@@ -111,6 +125,21 @@ async def _poll_task_loop(solver: "CaptchaSolver", plan: SolvePlan, task_id: str
         if time.monotonic() - start > timeout_sec:
             return solver._poll_fail(plan, "poll_timeout")
         await asyncio.sleep(POLL_INTERVAL_SEC)
+
+
+def _log_capture_window(solver: "CaptchaSolver", signal: CaptchaSignal) -> None:
+    # ideal-size: 12 lines reason=arena's 60 s dialog window starts at render;
+    # make the remaining budget visible when the challenge is already captured
+    h = signal.hook or {}
+    if not h.get("captured"):
+        return
+    try:
+        age = float(h.get("ageSec", 0) or 0)
+        left = max(0.0, 60.0 - age)
+        solver._log(f"🤖 challenge captured (sitekey=…{signal.sitekey[-6:]}, "
+                    f"{left:.0f}s left of the 60 s dialog window)", "info")
+    except Exception:
+        pass
 
 
 def _task_payload(task_type: str, signal: CaptchaSignal) -> Dict[str, Any]:
@@ -212,6 +241,7 @@ class CaptchaSolver:
         if not settings.api_key:
             return _failed("no_key", "no 2Captcha key stored")
         self._stats.record("task_created", host_of(signal.page_url))
+        _log_capture_window(self, signal)
         client = Captcha2Client(settings.api_key)
         try:
             plan = SolvePlan(client=client, ctrl=ctrl, tab_id=tab_id, signal=signal,
@@ -237,8 +267,12 @@ class CaptchaSolver:
             await _delete_task(plan.client, task_id, self._stats)
             self._auto_fail(plan, "inject", "response field not found on page")
             return _failed("inject", "response field not found on page")
-        patch = ", getResponse=patched" if res.get("getResponsePatched") else ""
-        self._log(f"🤖 token injected (scope={res.get('scope')}, cb={_cb_desc(res)}{patch})", "info")
+        if res.get("path") == "hook":
+            self._log("🤖 canonical path — dialog callback resolved with the 2Captcha token; "
+                      "arena now retries the request itself with recaptchaV2Token", "info")
+        else:
+            patch = ", getResponse=patched" if res.get("getResponsePatched") else ""
+            self._log(f"🤖 token injected (scope={res.get('scope')}, cb={_cb_desc(res)}{patch})", "info")
         await _click_continue(plan, self._log)
         if await self._verify_gone(plan.ctrl, plan.stop):
             return self._solved(plan, task_id)

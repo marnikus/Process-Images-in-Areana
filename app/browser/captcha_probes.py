@@ -42,6 +42,11 @@ def build_visible_js() -> str:
     return ";" + _read("visible.js")
 
 
+def build_hook_js() -> str:
+    """Render-hook probe: captures the dialog sitecallback (idempotent IIFE)."""
+    return _read("recaptcha_hook.js")
+
+
 def build_inject_js(token: str) -> str:
     """Token-injection probe: wraps the (token)=>… function with the payload."""
     return f"({_read('inject.js')})({json.dumps(token)})"

@@ -20,6 +20,7 @@ class CaptchaSignal:
     page_url: str = ""
     is_invisible: bool = False  # probe: iframe src size=invisible (no visible checkbox)
     anchor: Dict[str, Any] = field(default_factory=dict)  # anchor-src diagnostics (cb/size/ams/ems)
+    hook: Dict[str, Any] = field(default_factory=dict)  # render-hook evidence (ready/captured/sitekey/ageSec)
 
     @property
     def solvable(self) -> bool:
@@ -42,6 +43,7 @@ class CaptchaSignal:
         if not isinstance(res, dict):
             return cls()
         anchor = res.get("anchor")
+        hook = res.get("hook")
         return cls(
             visible=bool(res.get("visible")),
             kind=str(res.get("kind") or "none"),
@@ -49,6 +51,7 @@ class CaptchaSignal:
             page_url=str(res.get("url") or ""),
             is_invisible=bool(res.get("invisible")),
             anchor=dict(anchor) if isinstance(anchor, dict) else {},
+            hook=dict(hook) if isinstance(hook, dict) else {},
         )
 
 
