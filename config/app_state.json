@@ -2,16 +2,7 @@
   "version": "1.0.0",
   "urls": [
     {
-      "id": "url_2c2ff2d7",
-      "url": "https://arena.ai/image/direct?model_a=max",
-      "enabled": true,
-      "last_status": "ready",
-      "last_checked": "2026-09-17T10:45:28.112354Z",
-      "error": null,
-      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-    },
-    {
-      "id": "url_550177d7",
+      "id": "url_c08ab04f",
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
@@ -20,7 +11,7 @@
       "tab_id": "6745025141CD2C14CD1EE865E1401A53"
     },
     {
-      "id": "url_8e48bb78",
+      "id": "url_14aa51e9",
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
@@ -29,16 +20,7 @@
       "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
     },
     {
-      "id": "url_dd693211",
-      "url": "https://arena.ai/image/direct?model_a=max",
-      "enabled": true,
-      "last_status": "unchecked",
-      "last_checked": null,
-      "error": null,
-      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-    },
-    {
-      "id": "url_25cb19c3",
+      "id": "url_388f39e9",
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
@@ -47,13 +29,13 @@
       "tab_id": "F7F8CD13584B12AE825128CB83F75081"
     },
     {
-      "id": "url_b2b9b265",
+      "id": "url_8287b6cc",
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
       "last_checked": null,
       "error": null,
-      "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
     }
   ],
   "folder": {
@@ -264,11 +246,11 @@
       "size": 53619,
       "mtime": 1789721064.2150776,
       "fingerprint": "c88f61629afa1f84",
-      "status": "processing",
+      "status": "completed",
       "selected": true,
-      "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 7,
-      "output_path": null,
+      "assigned_url_id": "url_c08ab04f",
+      "attempt_count": 8,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-hotdog_AI_3.png",
       "error": "Submit failed: Submit failed",
       "content_hash": null
     },
@@ -354,11 +336,11 @@
       "size": 62655,
       "mtime": 1789721064.2190819,
       "fingerprint": "d347b65be36ac597",
-      "status": "failed",
+      "status": "completed",
       "selected": true,
-      "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 1,
-      "output_path": null,
+      "assigned_url_id": "url_c08ab04f",
+      "attempt_count": 3,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-puzzle-pieces_AI_3.png",
       "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
@@ -392,8 +374,8 @@
       "fingerprint": "d2295a1ebf074511",
       "status": "failed",
       "selected": true,
-      "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 1,
+      "assigned_url_id": "url_14aa51e9",
+      "attempt_count": 3,
       "output_path": null,
       "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
@@ -408,12 +390,12 @@
       "size": 181121,
       "mtime": 1789720308.7497826,
       "fingerprint": "b4bc1a7152525d49",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_388f39e9",
+      "attempt_count": 2,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -426,12 +408,12 @@
       "size": 56508,
       "mtime": 1789720308.756789,
       "fingerprint": "94ff1930278decd3",
-      "status": "pending",
+      "status": "completed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
-      "output_path": null,
-      "error": null,
+      "assigned_url_id": "url_8287b6cc",
+      "attempt_count": 2,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-sync-arrows_AI_2.png",
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -444,12 +426,12 @@
       "size": 61178,
       "mtime": 1789721064.2140768,
       "fingerprint": "a44b1e1e1b67d61e",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_388f39e9",
+      "attempt_count": 2,
       "output_path": null,
-      "error": null,
+      "error": "Cancelled by user",
       "content_hash": null
     },
     {
@@ -462,12 +444,12 @@
       "size": 96902,
       "mtime": 1789720308.753786,
       "fingerprint": "7ad6f378f976554e",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_14aa51e9",
+      "attempt_count": 2,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -480,12 +462,12 @@
       "size": 75779,
       "mtime": 1789720308.7517853,
       "fingerprint": "750ab6f8dd37b6c8",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_c08ab04f",
+      "attempt_count": 2,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     }
   ],
@@ -493,11 +475,11 @@
   "progress": {
     "total": 21,
     "selected": 21,
-    "pending": 5,
-    "processing": 1,
-    "completed": 13,
+    "pending": 0,
+    "processing": 0,
+    "completed": 16,
     "skipped": 0,
-    "failed": 2,
+    "failed": 5,
     "needs_review": 0
   },
   "run_state": "idle",
