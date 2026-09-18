@@ -5,7 +5,6 @@ from __future__ import annotations
 import gzip
 import json
 import os
-import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -65,11 +64,6 @@ class RecordingStore:
         if limit is None or int(limit) <= 0:
             return clean
         return clean[:min(int(limit), 1000)]
-
-    def delete_session(self, session_id: str) -> str:
-        folder = self._folder(session_id)
-        shutil.rmtree(folder)
-        return session_id
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
         return self.set_labels(session_id, label, None)

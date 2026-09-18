@@ -22,6 +22,18 @@ def test_manager_refuses_active_recording_removal(tmp_path):
         manager.delete_session(manifest["session_id"])
 
     assert manager.store.list_sessions(limit=None)[0]["session_id"] == manifest["session_id"]
+    assert manager.undo_delete() == 0
+
+
+@pytest.mark.unit
+def test_manager_removes_and_restores_one_recording(tmp_path):
+    manager = RecordingManager(tmp_path)
+    session_id = manager.store.create(encounter("done"))["session_id"]
+
+    assert manager.delete_session(session_id) == session_id
+    assert manager.list_sessions(None) == []
+    assert manager.undo_delete() == 1
+    assert manager.list_sessions(None)[0]["session_id"] == session_id
 
 
 @pytest.mark.unit
@@ -36,3 +48,5 @@ def test_manager_removes_all_inactive_and_reports_active_skip(tmp_path):
 
     assert result == {"deleted": 2, "skipped_active": 1}
     assert [row["session_id"] for row in manager.list_sessions(limit=None)] == [active]
+    assert manager.undo_delete() == 2
+    assert len(manager.list_sessions(limit=None)) == 3

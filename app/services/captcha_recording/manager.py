@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 
 from .comparison import RecordingComparison
+from .deletion import RecordingDeletionUndo
 from .reader import EvidenceReader
 from .recorder import CaptchaRecorder
 from .store import RecordingStore
@@ -17,6 +18,7 @@ class RecordingManager:
         self.store = RecordingStore(config_dir)
         self.reader = EvidenceReader(self.store.root)
         self.comparison = RecordingComparison()
+        self.deletion = RecordingDeletionUndo(self.store.root)
         self.log = log or (lambda message, level="info": None)
         self._active: dict[str, CaptchaRecorder] = {}
 
@@ -71,20 +73,20 @@ class RecordingManager:
         return self.store.list_sessions(limit)
 
     def delete_session(self, session_id: str) -> str:
-        if session_id in self._active_session_ids():
+        if session_id in _active_session_ids(self._active):
             raise RuntimeError("active recording cannot be removed")
-        return self.store.delete_session(session_id)
+        self.deletion.stage([session_id])
+        return session_id
 
     def delete_all_sessions(self) -> dict[str, int]:
-        active = self._active_session_ids()
+        active = _active_session_ids(self._active)
         session_ids = [row["session_id"] for row in self.store.list_sessions(None)]
         removable = [session_id for session_id in session_ids if session_id not in active]
-        for session_id in removable:
-            self.store.delete_session(session_id)
-        return {"deleted": len(removable), "skipped_active": len(session_ids) - len(removable)}
+        deleted = self.deletion.stage(removable)
+        return {"deleted": deleted, "skipped_active": len(session_ids) - deleted}
 
-    def _active_session_ids(self) -> set[str]:
-        return {str(recorder.session_id) for recorder in self._active.values()}
+    def undo_delete(self) -> int:
+        return self.deletion.undo()
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
         return self.store.set_label(session_id, label)
@@ -106,3 +108,8 @@ class RecordingManager:
         for tab_id, active in tuple(self._active.items()):
             if active is recorder:
                 self._active.pop(tab_id, None)
+
+
+def _active_session_ids(active: dict[str, CaptchaRecorder]) -> set[str]:
+    """Return session IDs currently owned by live writers."""
+    return {str(recorder.session_id) for recorder in active.values()}

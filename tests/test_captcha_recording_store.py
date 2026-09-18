@@ -32,19 +32,13 @@ def test_store_create_finish_list_and_label(tmp_path):
 
 
 @pytest.mark.unit
-def test_store_lists_all_and_deletes_selected_session(tmp_path):
+def test_store_lists_every_retained_session_without_limit(tmp_path):
     store = RecordingStore(tmp_path)
     session_ids = [store.create(encounter(str(index)))["session_id"] for index in range(3)]
 
-    assert len(store.list_sessions(limit=None)) == 3
+    assert {row["session_id"] for row in store.list_sessions(limit=None)} == set(session_ids)
+    assert len(store.list_sessions(limit=0)) == 3
     assert len(store.list_sessions(limit=2)) == 2
-    deleted = store.delete_session(session_ids[1])
-
-    assert deleted == session_ids[1]
-    assert {row["session_id"] for row in store.list_sessions(limit=0)} == {
-        session_ids[0], session_ids[2]}
-    with pytest.raises(FileNotFoundError):
-        store.delete_session(session_ids[1])
 
 
 @pytest.mark.unit
@@ -105,7 +99,7 @@ def test_evidence_reader_returns_bounded_comparison_model(tmp_path):
 @pytest.mark.unit
 def test_retention_removes_oldest_folder_by_count(tmp_path):
     root = tmp_path / "records"
-    for name in ("20260101-old", "20260102-new"):
+    for name in ("20260101-old", "20260102-new", ".delete_undo"):
         folder = root / name
         folder.mkdir(parents=True)
         (folder / "data").write_bytes(b"1234")
@@ -114,3 +108,4 @@ def test_retention_removes_oldest_folder_by_count(tmp_path):
 
     assert not (root / "20260101-old").exists()
     assert (root / "20260102-new").exists()
+    assert (root / ".delete_undo").exists()

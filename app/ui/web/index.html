@@ -430,7 +430,7 @@
     </div>
 
     <div class="panel" id="winRecordings" data-window="recordings">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">history</span> Captcha Session Records <span class="spacer"></span><span id="captchaRecordsSummary" class="captcha-record-summary">All 0 retained sessions</span><button id="captchaRecordsDeleteAllBtn" class="btn-small captcha-delete-all-btn">Delete all</button><button id="captchaRecordsRefreshBtn" class="btn-small">↻ Refresh</button></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">history</span> Captcha Session Records <span class="spacer"></span><span id="captchaRecordsSummary" class="captcha-record-summary">All 0 retained sessions</span><button id="captchaRecordsUndoBtn" class="btn-small">↶ Undo delete</button><button id="captchaRecordsDeleteAllBtn" class="btn-small captcha-delete-all-btn">Delete all</button><button id="captchaRecordsRefreshBtn" class="btn-small">↻ Refresh</button></h3>
       <div class="captcha-records-wrap">
         <div class="captcha-record-note">Shows every recording still retained locally. Recordings start at visible captcha detection and stop at resolution; bounded retention may prune the oldest evidence. DOM and textual network data are redacted in <code>config/captcha_recordings</code>. Review before sharing.</div>
         <div id="captchaRecordsEmpty" class="captcha-record-empty">No captcha sessions recorded yet.</div>

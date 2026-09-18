@@ -73,8 +73,8 @@ test('records UI loads two bounded evidence panes side by side', () => {
   assert.equal(opened, 's1');
 });
 
-test('records UI loads every retained session and confirms removal', () => {
-  const dom = new JSDOM('<button id="captchaRecordsDeleteAllBtn"></button><span id="captchaRecordsSummary"></span><div id="captchaRecordsEmpty"></div><table><tbody id="captchaRecordsBody"></tbody></table>',
+test('records UI confirms only delete-all and makes every deletion undoable', () => {
+  const dom = new JSDOM('<button id="captchaRecordsDeleteAllBtn"></button><button id="captchaRecordsUndoBtn"></button><span id="captchaRecordsSummary"></span><div id="captchaRecordsEmpty"></div><table><tbody id="captchaRecordsBody"></tbody></table>',
     {url: 'https://app.local', runScripts: 'outside-only'});
   const scripts = path.resolve(ROOT, '../../../ui/web/js/panels');
   const calls = [];
@@ -87,6 +87,7 @@ test('records UI loads every retained session and confirms removal', () => {
     list_all_sessions(callback) { calls.push('all'); callback(JSON.stringify({ok: true, sessions: []})); },
     delete_session(id, callback) { calls.push(`delete:${id}`); callback(JSON.stringify({ok: true})); },
     delete_all_sessions(callback) { calls.push('delete:all'); callback(JSON.stringify({ok: true, deleted: 3, skipped_active: 0})); },
+    undo_delete(callback) { calls.push('undo'); callback(JSON.stringify({ok: true, restored: 3})); },
   };
   let source = fs.readFileSync(path.join(scripts, 'captcha-recordings.js'), 'utf8');
   source = source.replace('const CaptchaRecordingsPanel =', 'globalThis.CaptchaRecordingsPanel =');
@@ -95,9 +96,11 @@ test('records UI loads every retained session and confirms removal', () => {
   dom.window.CaptchaRecordingsPanel.load();
   dom.window.CaptchaRecordingsPanel.remove({session_id: 's1'});
   dom.window.CaptchaRecordingsPanel.removeAll();
+  dom.window.CaptchaRecordingsPanel.undoDelete();
 
-  assert.deepEqual(calls.filter((call) => call === 'all'), ['all', 'all', 'all']);
-  assert.ok(calls.includes('delete:s1') && calls.includes('delete:all'));
+  assert.deepEqual(calls.filter((call) => call === 'confirm'), ['confirm']);
+  assert.deepEqual(calls.filter((call) => call === 'all'), ['all', 'all', 'all', 'all']);
+  assert.ok(calls.includes('delete:s1') && calls.includes('delete:all') && calls.includes('undo'));
   assert.equal(dom.window.document.getElementById('captchaRecordsSummary').textContent,
     'All 0 retained sessions');
 });

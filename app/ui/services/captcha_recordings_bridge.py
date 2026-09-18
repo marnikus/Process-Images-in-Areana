@@ -65,6 +65,14 @@ class CaptchaRecordingsBridge(QObject):
         except Exception as exc:
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
+    @Slot(result=str)
+    def undo_delete(self) -> str:
+        try:
+            restored = self.manager.undo_delete()
+            return json.dumps({"ok": True, "restored": restored}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
     @Slot(str, str, result=str)
     def set_label(self, session_id: str, label: str) -> str:
         try:
