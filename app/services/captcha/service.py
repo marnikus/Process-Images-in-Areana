@@ -19,7 +19,6 @@ from typing import Any, Callable, Dict, Optional
 
 from app.browser.captcha_probes import build_detect_js
 from app.core.cooldown import DEFAULT_PENALTY_SECONDS
-from app.services.captcha_recording import RecordingManager
 
 from .api_client import POLL_INTERVAL_SEC, ApiError, Captcha2Client
 from .key_store import CaptchaKeyStore, CaptchaSettings, clamp_timeout
@@ -68,6 +67,51 @@ def _service(ctx: CaptchaCtx) -> Optional["CaptchaService"]:
         return None
 
 
+def _recorder(ctx: CaptchaCtx):
+    """The shared session-recording service, if the app has one."""
+    fn = getattr(ctx.bridge, "_recording_service", None)
+    if fn is None:
+        return None
+    try:
+        return fn()
+    except Exception as e:  # RULE 9: the gate's absence never stalls downstream
+        _log(ctx, f"Recording service unavailable: {e}", "warn")
+        return None
+
+
+async def _recording_start(ctx: CaptchaCtx, signal: CaptchaSignal) -> None:
+    """Probe is up (captcha ON, before any injection) — open the session."""
+    try:
+        svc = _recorder(ctx)
+        if svc is not None:
+            detect = {"url": signal.page_url, "trigger": ctx.source,
+                      "kind": signal.kind, "sitekey": signal.sitekey}
+            await svc.start(ctx.ctrl, ctx.tab_id, detect)
+    except Exception as e:
+        _log(ctx, f"Recording start skipped: {e}", "warn")
+
+
+async def _recording_edge(ctx: CaptchaCtx, note: str, snapshot: bool = False) -> None:
+    """Pin a transition: drain page-side buffers, snapshot on demand (RULE 9)."""
+    try:
+        svc = _recorder(ctx)
+        if svc is not None:
+            await svc.edge(ctx.ctrl, ctx.tab_id, note, snapshot)
+    except Exception:
+        pass
+
+
+async def _recording_stop(ctx: CaptchaCtx, outcome: SolveOutcome) -> None:
+    """Final snapshot + terminal event; no-op when no session started."""
+    try:
+        svc = _recorder(ctx)
+        if svc is not None:
+            await svc.edge(ctx.ctrl, ctx.tab_id, f"outcome={outcome.status}", True)
+            svc.stop(ctx.tab_id, outcome.status, outcome.method)
+    except Exception:
+        pass
+
+
 def _record_stats(ctx: CaptchaCtx, event: str, site: str = "") -> None:
     try:
         svc = _service(ctx)
@@ -109,6 +153,7 @@ def _signal_evidence(signal: CaptchaSignal) -> Dict[str, Any]:
         "integration": signal.integration,
         "anchor": {"present": signal.anchor_present, "visible": signal.anchor_visible},
         "challenge": {"present": signal.challenge_present, "visible": signal.challenge_visible,
+                       "active": signal.challenge_active,
                        "title": signal.challenge_title, "src": signal.challenge_src,
                        "identity": signal.challenge_identity},
         "response_fields": {"count": signal.response_fields, "scope": signal.response_scope},
@@ -224,25 +269,31 @@ async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
 
 
 async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
-    """Detect, record, resolve, and close one visible captcha encounter."""
+    """Detect → record → resolve (auto or manual) → penalty, one encounter.
+
+    Callers gate on `is_security_dialog_visible()` first; the detect probe's
+    own visible flag covers the vanishing-dialog race (→ `none`, no penalty).
+    The manual wait always states WHY the app is not solving (visual flag).
+    The session recording spans the whole visible window (start at detect,
+    stop with the outcome) and can never disturb the solve (RULE 9).
+    """
     signal = await detect_signal(ctx)
     if not signal.visible:
         return SolveOutcome(status="none")
+    await _recording_start(ctx, signal)
+    outcome = await _handle_visible(ctx, signal)
+    await _recording_stop(ctx, outcome)
+    return outcome
+
+
+async def _handle_visible(ctx: CaptchaCtx, signal: CaptchaSignal) -> SolveOutcome:
+    """The solve path once the captcha is confirmed on screen."""
     rep = _new_encounter(ctx, signal)
     _mark_waiting(ctx)
     _record_stats(ctx, "detected", host_of(signal.page_url))
     _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}) via {ctx.source}", "error")
     svc = _service(ctx)
-    recorder = await svc.recordings.start(ctx.ctrl, rep) if svc is not None else None
-    try:
-        outcome = await _resolve_captcha(ctx, signal, svc, rep)
-    except BaseException as exc:
-        if svc is not None:
-            await svc.recordings.abort(recorder, f"{type(exc).__name__}: {exc}")
-        raise
-    if svc is not None:
-        await svc.recordings.finish(recorder, outcome)
-    return outcome
+    return await _resolve_captcha(ctx, signal, svc, rep)
 
 
 async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
@@ -250,7 +301,6 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
     """Choose automatic or manual policy while recording stays orthogonal."""
     if svc is not None and svc.auto_enabled() and signal.solvable:
         outcome = await _try_auto(ctx, signal, svc, rep)
-        await svc.recordings.note(ctx.tab_id, "auto_attempt_finished", outcome)
         if outcome.status == "solved":
             _record_penalty(ctx)
             return outcome
@@ -270,6 +320,7 @@ async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
     _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
     solve_mono = time.monotonic()
     outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
+    await _recording_edge(ctx, f"auto-solve finished: {outcome.status}", snapshot=True)
     _finish_auto(rep, outcome, solve_mono, task_type_for(signal.kind))
     if outcome.status != "solved":
         _finish_resolution(rep, outcome)
@@ -299,6 +350,7 @@ async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
         await ctx.ctrl.hide_watcher_overlay()
     except Exception:
         pass
+    await _recording_edge(ctx, "manual wait ended", snapshot=True)
     if not solved:
         out = SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
     else:
@@ -318,7 +370,6 @@ class CaptchaService:
         self.stats = CaptchaStatsStore(config_dir)
         self._log = log or (lambda msg, level="info": None)
         self.solver = CaptchaSolver(self.keys, self.stats, self._log)
-        self.recordings = RecordingManager(config_dir, self._log)
 
     def auto_enabled(self) -> bool:
         try:

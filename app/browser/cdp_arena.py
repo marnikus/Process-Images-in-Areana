@@ -18,7 +18,8 @@ from .captcha_probes import build_visible_js
 from .output_probes import build_baseline_js, build_check_js
 from .output_state import flatten_diagnostics, build_order_check_text
 from .output_wait import wait_for_new_output_loop
-from ..utils.page_errors import PageErrorAbort, build_error_scan_js, match_page_error
+from ..utils.page_errors import (PageErrorAbort, build_error_scan_js,
+                                 match_dead_generation, match_page_error)
 
 log = logging.getLogger("arena")
 
@@ -212,6 +213,34 @@ async def _run_resume_gate(ctrl, diag):
         return diag
 
 
+async def _convert_dead_generation(ctrl, err: str):
+    """One-shot per wait: dead-generation toast -> revival diag, else None.
+
+    The captcha-blocked request dies server-side and the site's toast says
+    'Please try again.' — that is a dead request, not a terminal job error,
+    so the armed revival policy gets the poll instead of an instant abort.
+    Every other error (and a second toast) still aborts (RULE 4, fail honest).
+    """
+    if not match_dead_generation(err):
+        return None
+    if getattr(ctrl, "resume_gate", None) is None or getattr(ctrl, "_dead_gen_revived", False):
+        return None
+    ctrl._dead_gen_revived = True
+    ctrl._err_base = await ctrl._scan_page_errors()  # the lingering toast must not re-fire
+    return {"ready": False, "reason": "dead_generation", "dead_generation_error": err}
+
+
+async def _poll_diag_or_revive(ctrl, old_srcs, correlation_id, old_outputs):
+    """Output poll that converts the dead-generation abort into a diag."""
+    try:
+        return await ctrl._poll_output_diag(old_srcs, correlation_id, old_outputs)
+    except PageErrorAbort as e:
+        diag = await _convert_dead_generation(ctrl, str(e))
+        if diag is None:
+            raise
+        return diag
+
+
 class CDPArenaController:
     def __init__(self, cdp_client: CDPClient, log_callback=None):
         self.cdp = cdp_client
@@ -375,10 +404,11 @@ class CDPArenaController:
         old_srcs = baseline.get("output_srcs", []) or []
         old_outputs = baseline.get("outputs", []) or []
         self._err_base = await self._scan_page_errors()
+        self._dead_gen_revived = False  # one dead-generation revival per wait
 
         async def check_fn():
             await self._security_gate()
-            diag = await self._poll_output_diag(old_srcs, correlation_id, old_outputs)
+            diag = await _poll_diag_or_revive(self, old_srcs, correlation_id, old_outputs)
             return await _run_resume_gate(self, diag)
 
         def log_cb(msg: str):

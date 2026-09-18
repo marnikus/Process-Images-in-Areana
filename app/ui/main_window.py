@@ -9,7 +9,6 @@ from PySide6.QtWebChannel import QWebChannel
 
 from app.persistence.config_manager import ConfigManager
 from app.ui.bridge import Bridge
-from app.ui.services.captcha_recordings_bridge import CaptchaRecordingsBridge
 
 try:
     from app.browser.cdp_client import CDPClient
@@ -55,8 +54,6 @@ class MainWindow(QMainWindow):
 
         # Bridge
         self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, cdp_client=self.cdp_client, parent=self)
-        manager = self.bridge._captcha_service().recordings
-        self.recordings_bridge = CaptchaRecordingsBridge(manager, self)
 
         self._attach_web_channel()
 
@@ -89,7 +86,6 @@ class MainWindow(QMainWindow):
         # WebChannel
         self.channel = QWebChannel(self.view.page())
         self.channel.registerObject("bridge", self.bridge)
-        self.channel.registerObject("captchaRecordings", self.recordings_bridge)
         self.view.page().setWebChannel(self.channel)
 
     def _load_index(self) -> None:

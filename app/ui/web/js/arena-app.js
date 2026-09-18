@@ -40,11 +40,11 @@ function initApp() {
   if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.init();
   if (typeof SettingsPanel !== 'undefined') SettingsPanel.init();
   if (typeof CaptchaPanel !== 'undefined') CaptchaPanel.init();
-  if (typeof CaptchaRecordingsPanel !== 'undefined') CaptchaRecordingsPanel.init();
   if (typeof BrowserPreview !== 'undefined') BrowserPreview.init();
   if (typeof HighlightOverlay !== 'undefined') HighlightOverlay.init();
   if (typeof CDPPanel !== 'undefined') CDPPanel.init();
   if (typeof ArenaPresets !== 'undefined') ArenaPresets.init();
+  if (typeof RecordingsPanel !== 'undefined') RecordingsPanel.init();
   if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.init();
 
   document.getElementById('clearLogBtn')?.addEventListener('click', () => LogConsole.clear());

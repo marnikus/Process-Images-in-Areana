@@ -431,3 +431,128 @@ async def test_stopped_path_emits_report_with_zero_penalty(monkeypatch, isolated
     reps = solve_reports(bridge)
     assert len(reps) == 1  # edge data is never silent
     assert reps[0]["status"] == "stopped" and reps[0]["penalty_s"] == 0
+
+
+@pytest.mark.unit
+def test_signal_maps_challenge_active_evidence():
+    """Pass-path round: bframe escalation flag survives probe→signal (design §6.2)."""
+    from app.services.captcha.signals import CaptchaSignal
+
+    res = detect_result()
+    res["challengeActive"] = True
+    res["challengePresent"] = True
+    sig = CaptchaSignal.from_result(res)
+    assert sig.challenge_active is True and sig.challenge_present is True
+    assert CaptchaSignal.from_result(detect_result()).challenge_active is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_report_carries_challenge_active(monkeypatch, isolated_config_dir):
+    """CAPTCHA_SOLVE evidence reports the escalation state observed at detect."""
+    instant_sleep(monkeypatch)
+    from tests.test_captcha_solver import FakeClient
+
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    keys = CaptchaKeyStore(isolated_config_dir)
+    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+
+    class DomCtrl(FakeCtrl):
+        async def _evaluate(self, js):
+            import json
+            if "Security Verification" in js:
+                d = detect_result()
+                d["challengeActive"] = True
+                d["challengePresent"] = True
+                return json.dumps(d)
+            return await super()._evaluate(js)
+
+    ctrl = DomCtrl(visible_seq=[True, False])
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="job")
+    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    assert (await handle_captcha(ctx)).status == "solved"
+    rep = solve_reports(bridge)[0]
+    assert rep["challenge"]["active"] is True
+    assert rep["challenge"]["present"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handle_captcha_records_session_end_to_end(monkeypatch, isolated_config_dir, tmp_path):
+    """Recording spans the visible window: start at detect, stop with the
+    outcome; mutation/network buffers flushed, snapshots redacted on disk."""
+    import json as _json
+
+    from app.services.recording import payloads
+    from app.services.recording.recorder import RecordingService
+
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    rec = RecordingService(str(tmp_path / "rec"))
+    bridge._recording_service = lambda: rec
+
+    class RecCtrl(FakeCtrl):
+        async def _evaluate(self, js):
+            if "cloneNode" in js:  # snapshot probe
+                return _json.dumps({"ok": True, "redacted": 0,
+                                    "html": "<html><body><div id=chat>hi</div></body></html>"})
+            if "__arenaRecNet" in js and "__arenaRecMut" in js:  # flush probe
+                return _json.dumps({
+                    "mutations": [{"ts": "2026-09-18T00:00:00Z", "mut": "childList",
+                                   "sel": "div#dialog", "added": 1, "removed": 0}],
+                    "requests": [{"ts": "2026-09-18T00:00:01Z", "via": "fetch", "method": "POST",
+                                  "url": "https://arena.ai/api/chat?token=hunter2", "status": 200}]})
+            return await super()._evaluate(js)
+
+    ctrl = RecCtrl(visible_seq=[True, False])  # detect up → manual wait → dialog gone
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="check-security")
+    outcome = await handle_captcha(ctx)
+    assert outcome.status == "manual"
+    assert rec._active == {}  # session finalized + deregistered
+
+    headers, skipped = rec.store.list_sessions()
+    assert skipped == [] and len(headers) == 1
+    h = headers[0]
+    assert h["outcome"] == "manual" and h["method"] == "manual"
+    assert h["trigger"] == "check-security"
+    assert h["counters"]["snapshots"] >= 2  # start + at least one edge
+    assert len(h["snapshot_names"]) == h["counters"]["snapshots"]
+
+    detail = payloads.detail_payload(rec.store, h["id"])
+    kinds = [e["kind"] for e in detail["events"]]
+    assert "mutation" in kinds and "network" in kinds and "snapshot" in kinds
+    net = next(e for e in detail["events"] if e["kind"] == "network")
+    assert "hunter2" not in net["url"]  # RULE 20: secrets never persisted
+
+    snap = payloads.snapshot_payload(rec.store, h["id"], h["snapshot_names"][0])
+    assert snap["ok"] is True and "<div id=chat>" in snap["html"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handle_captcha_no_dialog_records_nothing(monkeypatch, isolated_config_dir, tmp_path):
+    """Vanishing-dialog race → status none → no session opened."""
+    instant_sleep(monkeypatch)
+    from app.services.recording.recorder import RecordingService
+
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    rec = RecordingService(str(tmp_path / "rec"))
+    bridge._recording_service = lambda: rec
+
+    class GoneCtrl(FakeCtrl):
+        async def _evaluate(self, js):
+            return __import__("json").dumps({"visible": False, "kind": "none", "sitekey": "", "url": ""})
+
+    ctx = CaptchaCtx(ctrl=GoneCtrl(visible_seq=[]), pool=pool, bridge=bridge, tab_id="t1")
+    assert (await handle_captcha(ctx)).status == "none"
+    from app.services.recording import payloads as _payloads
+    assert _payloads.list_payload(rec)["sessions"] == []
