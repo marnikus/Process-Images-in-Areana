@@ -107,3 +107,23 @@ async def test_poll_check_contains_ordinary_errors():
 
     diag, err = await _poll_check(boom, 0.01)
     assert diag is None and err == {"ready": False, "reason": "cdp hiccup"}
+
+
+@pytest.mark.unit
+def test_match_dead_generation_toast():
+    """The captcha-blocked request's death toast is classified as revivable
+    (docs/archive/2026-09-18-dead-generation-toast-revival/design.md §4.1)."""
+    hit = pe.match_page_error("Something went wrong while generating the response. Please try again.")
+    assert pe.match_dead_generation(hit) == "dead_generation"
+    # casing / wording drift
+    assert pe.match_dead_generation("something WENT wrong WHILE generating the image") == "dead_generation"
+
+
+@pytest.mark.unit
+def test_match_dead_generation_rejects_other_errors():
+    """Limits, quotas, trace ids stay terminal — never revivable."""
+    assert pe.match_dead_generation("Page error: You have reached your daily limit") == ""
+    assert pe.match_dead_generation("Page error: Something went wrong") == ""  # generic, not the dead-request signature
+    assert pe.match_dead_generation("Page error: Trace ID: 123") == ""
+    assert pe.match_dead_generation("") == ""
+    assert pe.match_dead_generation(None) == ""

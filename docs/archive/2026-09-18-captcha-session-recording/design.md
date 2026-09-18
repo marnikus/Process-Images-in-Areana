@@ -1,161 +1,169 @@
-# Captcha session recording — research and implementation design
+# Captcha session recording — diff-logging system + Recordings window
 
-Date: 2026-09-18
-Status: implementation blueprint written before code (RULE 17)
+**Date:** 2026-09-18
+**Status:** design complete; implementation follows this document in the same session
+**Request:** record page state + DOM changes around captcha events, git-style
+diff logging, manual-vs-bot session comparison, and a UI window to browse
+recordings and label each as **bot pass** or **manual pass**
 
-## 1. Problem and boundary
+## 1. Decision summary
 
-A single `CAPTCHA_SOLVE` report describes the solver decision but does not preserve the page transition that led to it. We need a bounded recording that starts after a visible captcha is detected and ends when the encounter resolves (`solved`, `manual`, `page_error`, `token_stale`, `stopped`, or auto failure followed by manual resolution). A Records window must list sessions and let the user assign the ground-truth actor label `bot`, `manual`, or `unknown`.
+A recording is a **bounded, redacted, append-only session folder** created the
+moment a captcha is detected and finalized when the solve edge is known
+(success or error). It captures:
 
-This is diagnostic observability, not a fingerprint-evasion subsystem. RULE 20 remains unchanged: recordings may explain lifecycle, callback, timing, and server outcomes; the app will not derive or apply browser-fingerprint spoofing, conceal automation, replay credentials, or defeat a site's controls.
+1. full sanitized DOM snapshots at significant edges (detect, token inject,
+   dialog gone, page error, stop);
+2. DOM mutation summaries with timestamps (MutationObserver buffer);
+3. page-originated network requests with timestamps (fetch/XHR wrapper);
+4. state-transition markers (the captcha lifecycle itself).
 
-## 2. Research findings
+Storage is `logs/recordings/<session-id>/` (git-ignored): `session.json`
+header + `events.jsonl` + `NNNN.html` snapshots. A new **Recordings** window
+(15th window) lists sessions, shows the event timeline + snapshots, renders a
+bounded side-by-side diff between any two snapshots, and lets the user set the
+label: `bot_pass` / `manual_pass` / cleared. RULE 20 privacy: recaptcha token
+fields are redacted IN THE PAGE PROBE before bytes cross CDP; recaptcha-family
+URLs keep host/path/param-names only.
 
-Chrome DevTools Protocol (CDP) already exposes the needed primitives:
+## 2. Lifecycle (user-specified contract)
 
-* `Runtime.evaluate` can install a `MutationObserver`; this is the low-cost source for chronological added/removed/attribute/text diffs.
-* `DOMSnapshot.captureSnapshot` returns a flattened DOM including iframe/template/shadow content, but its string table may contain sensitive page data and can be very large. The first release therefore stores a sanitized parent-document HTML checkpoint plus structured mutation diffs. CDP DOMSnapshot remains a future opt-in artifact.
-* `Network.requestWillBeSent`, `Network.responseReceived`, `Network.loadingFinished`, and `Network.loadingFailed` reconstruct request lifecycles by request id. `Network.getResponseBody` is only valid for some completed resources and can fail for downloads/cached resources, so body capture must be best-effort.
-* The current `CDPClient._receive_loop` consumes command replies but drops events. A small event-listener seam is required; callbacks must not await a new CDP command inside the receive loop or they would deadlock. The recorder listener queues events and its own worker retrieves eligible response bodies later.
-
-References consulted:
-
-* Chrome DevTools Protocol DOMSnapshot domain: https://chromedevtools.github.io/devtools-protocol/tot/DOMSnapshot/
-* Chrome DevTools Protocol Network domain: https://chromedevtools.github.io/devtools-protocol/1-3/Network/
-* MDN MutationObserver: https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver
-
-## 3. Recording contract
-
-### Lifecycle
-
-1. `handle_captcha` confirms a visible signal and creates the encounter report/eid.
-2. Recorder starts before automatic solving or manual waiting.
-3. Initial sanitized snapshot is written as checkpoint 0.
-4. Every 500 ms, a worker drains MutationObserver batches. Each batch is an immutable diff event. A debounced checkpoint is added when the sanitized DOM hash changes.
-5. CDP network events are queued concurrently. Metadata is always recorded; eligible textual response bodies are captured after `loadingFinished`.
-6. Resolution is recorded in a terminal event and final checkpoint. The manifest is atomically changed from `recording` to its final outcome.
-7. Startup recovery marks orphaned `recording` manifests as `interrupted`.
-
-Recorder failure is fail-open: it logs a warning but never changes captcha handling.
-
-### Session directory
-
-`config/captcha_recordings/<session-id>/`
-
-* `manifest.json` — schema, ids, UTC start/end, elapsed ms, URL origin/path, source, captcha kind, method/outcome/reason, actor label, counters, truncation flags.
-* `events.jsonl` — append-only ordered events (`state`, `mutation`, `network_request`, `network_response`, `network_failure`, `response_body`, `warning`). Each has sequence, wall-clock UTC, and monotonic offset.
-* `snapshots/000000.json.gz` — sanitized HTML checkpoint with hash, reason, URL, title, viewport, and timestamp.
-
-The index is reconstructed from manifests instead of maintaining a second mutable database. JSON only; no DB.
-
-### Labels
-
-`actor_label` is independent of observed `method`:
-
-* `unknown` — default; no ground truth asserted.
-* `bot` — user confirms automatic/provider path passed.
-* `manual` — user confirms a person passed it.
-
-The UI never silently infers the user label. It displays method and outcome as evidence beside the editable label.
-
-## 4. Diff and snapshot schema
-
-Mutation event payload is bounded and semantic:
-
-```json
-{
-  "kind": "mutation",
-  "changes": [
-    {"op":"add","path":"main>div:nth-of-type(2)","html":"<div role=...>..."},
-    {"op":"remove","path":"body>div[role=dialog]","html":"<div role=...>..."},
-    {"op":"attr","path":"...","name":"data-state","old":"open","new":"closed"},
-    {"op":"text","path":"...","old":"Verify","new":"Success"}
-  ],
-  "dropped": 0
-}
+```
+captcha detected (handle_captcha choke point, visible=true)
+  -> START: create session dir, install observer+netwrap probes, snapshot 0000
+  -> EDGES: flush mutation/network buffers + snapshot at token-inject,
+     dialog-gone, page-error (each event timestamped)
+  -> STOP + finalize outcome when the solve edge is known:
+     solved | manual | page_error | token_stale | auto_failed | stopped
 ```
 
-Limits protect the browser and disk: 200 changes per drain, 4 KiB per fragment, 2 MiB sanitized snapshot, 64 KiB textual response body, 2,000 events/session, and 25 snapshots/session. Exceeding a limit sets manifest truncation flags and emits one warning. Store retention is also bounded: prune oldest completed/interrupted session folders above 200 sessions or 512 MiB total, on startup and finalization.
+One recording per captcha encounter per tab; concurrent tabs record
+independently (same per-tab isolation as the solver). Recording is fail-open
+(RULE 9): any recorder error is logged and swallowed — the captcha flow never
+breaks because of telemetry. Toggle `recording_enabled` (default ON) lives in
+the Recordings window header — one control, one decision (RULE 10).
 
-Checkpoints are content-addressed by SHA-256. Identical checkpoints are skipped. The viewer can reconstruct a timeline from initial snapshot + diffs; later side-by-side comparison should align sessions by semantic milestones (`detected`, `token_received`, `injected`, `dialog_closed`, `page_error`) rather than raw sequence number.
+## 3. Comparison workflow (the purpose)
 
-## 5. Privacy and security model
+1. Solve a captcha **manually** in Chrome while the app watches → recording A
+   ends `manual`; the user labels it `manual_pass`.
+2. Let **auto-solve** run → recording B ends `solved`; label `bot_pass`
+   (or leave unlabeled when the job later failed — labels are human verdicts).
+3. In the Recordings window: pick A and B, pick snapshot indices, view the
+   bounded unified diff side by side; diff the event timelines (counts by
+   kind, request URL families, mutation rates).
+4. Findings feed future designs (e.g. requests the human path makes that the
+   bot path does not) — this system records evidence, it changes no site
+   behaviour (RULE 20).
 
-A literal full-page/network dump would collect credentials, cookies, prompts, generated content, and anti-abuse tokens. The safe recording contract is therefore:
+## 4. Architecture (RULE 18 module split)
 
-* never persist request/response headers, cookies, POST data, authorization, raw captcha token, API key, or local file paths;
-* strip URL query and fragment; retain scheme/host/path;
-* sanitize DOM: remove script/style content; clear input/textarea/select values; redact token-like long strings and attributes named value/token/authorization/cookie;
-* only retrieve response bodies for textual MIME types and relevant hosts observed during the encounter; redact token-like strings and cap size;
-* binary/image/font/media bodies are metadata-only;
-* recordings directory is git-ignored and local; UI clearly says artifacts may still contain page text and should be reviewed before sharing.
+### 4.1 `app/services/recording/` — pure + store + facade (no Qt, no browser)
 
-## 6. Components and dependency direction
+| File | Owns | Ideal size |
+|---|---|---:|
+| `sanitizer.py` | `redact_dom_html`, `redact_url`, `bound_str` — pure, tested | ~120 |
+| `session.py` | `RecordingSession` dataclass + header (de)serialisation with validation | ~110 |
+| `store.py` | `RecordingStore`: create/append/snapshot/finalize/list/label/load, atomic writes, corrupt-skip (RULE 4/13) | ~220 |
+| `diffview.py` | `snapshot_diff` (difflib, bounded hunks), `timeline_summary` | ~90 |
+| `recorder.py` | `RecordingService` facade: per-tab start/edge/stop + UI payloads; delegates probes through `ctrl.cdp.evaluate` | ~200 |
 
-`app/services/captcha_recording/`
+### 4.2 `app/browser/recording_js/` + `recording_probes.py` — page side
 
-* `models.py` — limits and immutable session metadata helpers; stdlib only.
-* `sanitize.py` — URL/text/event redaction; pure and directly tested.
-* `store.py` — atomic manifests, JSONL append, gzip snapshots, list/label API; stdlib only.
-* `probes.py` + `recording_js/*.js` — install/drain/snapshot probe builders; exact JS executed by Node tests.
-* `recorder.py` — per-tab async lifecycle, event queue, polling worker; imports store/probes, no Qt.
-* `manager.py` — active session map and fail-open start/finish facade used by captcha service.
+| Probe | Behaviour |
+|---|---|
+| `observer.js` | idempotent install of a MutationObserver into `window.__arenaRecMut`; entries `{ts, kind, sel, added, removed, attr, len}` — summaries, not subtree serialisation (snapshots carry the truth); 500-entry cap, drop-oldest; `flush` returns+clears |
+| `netwrap.js` | idempotent wrap of `window.fetch` + `XMLHttpRequest`; entries `{ts, via, method, url, status}` into `window.__arenaRecNet`; 300-entry cap |
+| `snapshot.js` | returns `document.documentElement.outerHTML` with every `g-recaptcha-response` field content replaced by `[REDACTED:len]` BEFORE the string leaves the page |
+| `recording_probes.py` | builders returning the exact file contents (RULE 8: node tests execute them) |
 
-Dependency direction: browser CDP event seam → recording service → store. UI Bridge imports manager/store lazily. Recording modules never import Qt or Bridge.
+### 4.3 Wiring — `app/services/captcha/service.py` choke point
 
-## 7. UI window
+* `_recording_start(ctx, signal)` after `_mark_waiting` (visible only);
+* `_recording_edge(ctx, note)` — flush + snapshot, called by `_try_auto`
+  before/after inject and by `_manual_wait` on clear;
+* `_recording_stop(ctx, outcome)` on EVERY return path of `handle_captcha`
+  (single helper, one call per exit);
+* service object rides the bridge like `_captcha_service()` —
+  `_recording_service()` lazy factory (identical pattern).
 
-New sash-grid id `captcha_records`, title `Captcha Session Records`:
+### 4.4 UI — Recordings window (15th)
 
-* Refresh button and compact summary.
-* Table: started, tab, host/path, method, outcome, duration, mutations/network/snapshots, editable actor label.
-* Label change calls one Bridge slot and updates only the manifest atomically.
-* “Folder” action is deferred because cross-platform reveal already has a separate service and is not required to establish the recording contract.
-* UI receives summaries only, never full DOM or response body. Raw artifacts remain files for offline diff tooling.
+* `sash-core.js` WINDOWS + `layout_service.py` WINDOW_IDS/WINDOWS gain
+  `recordings` — existing `migrate_grid_tree` appends the missing leaf to old
+  14-window layouts (RULE 13 preserved: nothing is substituted, only appended);
+* `index.html`: `#winRecordings` panel + script tag;
+* `panels/recordings.js`: list (time, tab, url host, outcome, events,
+  snapshots, label) + label buttons + detail timeline + snapshot viewer +
+  two-picker diff view (bounded hunks rendered as a table);
+* bridge slots (thin delegators, captcha-slot pattern):
+  `get_recordings_list`, `get_recording_detail`, `get_recording_snapshot`,
+  `get_recording_diff`, `set_recording_label`, `delete_recording`,
+  `get_recording_settings`, `set_recording_settings`; added to REQUIRED_SLOTS.
 
-Adding a window changes the frozen Python/JS window set and grid version. All default layouts, preset validation, migration, panel map, and grid tests must move together (RULE 13).
+## 5. Data contracts
 
-## 8. Integration details
+`session.json` (validated on read — corrupt ⇒ skipped with reason, never crash):
 
-### CDP events
+```json
+{"v": 1, "id": "20260918-152401-154FBF", "tab": "154FBF…", "url": "https://arena.ai/c/…",
+ "trigger": "check-security", "kind": "recaptcha_enterprise", "sitekey": "6Le3_cYs…",
+ "started": "2026-09-18T13:23:15Z", "stopped": "…", "status": "stopped",
+ "outcome": "solved|manual|page_error|token_stale|auto_failed|stopped|none",
+ "label": ""|bot_pass|manual_pass", "method": "auto|manual|mixed",
+ "counters": {"events": 0, "snapshots": 0, "mutations": 0, "requests": 0}}
+```
 
-`CDPClient` gains `add_event_listener`/`remove_event_listener`. `_receive_loop` dispatches method messages to a copied listener tuple. Sync callbacks execute immediately; coroutine results are scheduled, never awaited. Listener exceptions are isolated and logged.
+`events.jsonl` lines: `{"ts":…, "seq":…, "kind": "state|mutation|network|snapshot", …}`.
 
-### Captcha choke point
+## 6. Compliance (RULE 20) and non-goals
 
-`CaptchaService` owns one lazy `RecordingManager`. `handle_captcha` starts it immediately after `_new_encounter`. One resolution helper wraps every post-detection return so the manager always finishes. A `try/finally` guard marks unexpected exceptions `interrupted` without masking the original exception.
+* **Secrets never recorded:** recaptcha field values redacted in-probe;
+  recaptcha/google URLs keep host+path+param NAMES only; no request/response
+  bodies; no cookies; no headers; sitekey is public (already in reports).
+* Recordings stay on the user's machine in git-ignored `logs/recordings/`.
+* The system only OBSERVES: no injected clicks, no request replay, no site
+  behaviour change. Label/diff are human-in-the-loop research tools.
+* Non-goals: recording outside captcha windows; cross-machine sync; video.
 
-To keep service.py under quality limits, lifecycle orchestration lives in `captcha_recording.manager`, not in solver or UI code.
+## 7. Test matrix (RULE 8)
 
-## 9. Comparison roadmap
+1. sanitizer: token fields redacted; recaptcha URL params name-only; other
+   URLs untouched; bounds enforced.
+2. store: create/append/finalize round-trip; list skips corrupt header with
+   reason (empty vs broken); label validates + atomic rewrite; delete.
+3. service: start→edge→stop lifecycle with fake ctrl (probes recorded in
+   order); fail-open when evaluate raises; one session per tab; outcome map.
+4. diffview: bounded hunks; identical snapshots → empty diff; timeline counts.
+5. node harness executes the REAL probes: observer buffers+flush clears;
+   netwrap records fetch/XHR; snapshot output contains no recaptcha value.
+6. window set: Python↔JS 15-window sync (existing parse-and-compare test),
+   migration appends `recordings` to a 14-leaf tree; REQUIRED_SLOTS complete.
 
-This change creates trustworthy inputs. Follow-up offline comparison should:
+## 8. RULE 16 / 18 plan (recheck at the end)
 
-1. choose one `manual` and one `bot` session with the same sitekey/kind and similar page route;
-2. align milestone timestamps;
-3. compare sanitized snapshots by DOM path and normalized attributes;
-4. compare network endpoint/status/timing sequences, not secret payloads;
-5. report hypotheses with confidence and reproducibility;
-6. permit reliability fixes (correct callback, race, stale-page handling) but reject fingerprint spoofing or control evasion under RULE 20.
+* Every new Python function ≤30 LOC (aim 4–20), ≤4 params, CC ≤10, nesting ≤4.
+* Files aim 90–250 lines; the recording module = 5 cohesive files (within the
+  5–15 band); panel JS ≤300 lines.
+* Bridge hotspot: only thin delegating slots (captcha-slot pattern), no logic
+  in bridge.py; logic lives in `app/services/recording/` + `app/ui` helper.
+* Coverage must not decrease; every new function gets a deletion-failing test.
+* Stop honoured (RULE 7): manual-wait edge flush checks nothing new; recorder
+  finalizes on the `stopped` outcome too.
 
-No automatic strategy change is part of this recording release.
+## 9. Measured results (filled at implementation, 2026-09-18)
 
-## 10. Test plan
-
-* Store: atomic create/finish, orphan recovery, newest-first listing, valid/invalid label, corrupt manifest ignored, limits.
-* Sanitizer: URL query removal and secret/token redaction.
-* CDP client: event delivered once, listener removal, exception isolation, command response unchanged.
-* Recorder: real probe-builder strings through fake CDP, initial/final snapshots, mutation drain, network metadata/body eligibility, stop cancellation, truncation.
-* Service: session starts only for visible captcha and finishes for solved/manual/page-error/stopped; recorder failure does not affect outcome.
-* UI/Grid: Python and JS window sets identical; panel exists; label callback renders safely.
-* Full Python + Node suites and `tools/verify_quality.py --changed --allow-legacy`.
-
-## 11. RULE 16/18 design recheck
-
-* New Python files target 150–300 lines, one responsibility each.
-* New functions target 4–20 lines; hard max 30 LOC, 4 params, CC 10, nesting 4.
-* Recorder configuration is one dataclass instead of parameter growth.
-* No production logic is hidden in Bridge; slots delegate to store/manager.
-* JavaScript probes are standalone wire payloads and may carry an `ideal-size` constraint comment if they exceed the preference.
-* Complexity remediation order is nesting → CC → cognitive → size (RULE 19).
-* Tests execute actual store/probe/listener code (RULE 8).
+* Final module split = 7 files (RULE 16 size gate forced two more extractions
+  than §4.1 planned): `session.py`, `sanitizer.py`, `store.py`, `diffview.py`,
+  `recorder.py` (lifecycle only), `proberun.py` (CDP probe I/O + bounding),
+  `payloads.py` (WebChannel envelopes). UI payloads are module functions, not
+  service methods; bridge slots import them lazily.
+* `RecordingService.start(ctrl, tab_id, detect)` — `detect` is the
+  url/trigger/kind/sitekey dict gathered at captcha detect (≤3 params).
+* Choke point: `handle_captcha` = detect → `_recording_start` → `_handle_visible`
+  → `_recording_stop`; edges pinned after auto-solve finish and manual-wait end.
+* Window #15 `recordings` in both WINDOWS lists + builtin layouts; the old JS
+  `layoutA` preset had 14 leaves vs 13 sizes (threw on apply) — fixed in place.
+* Gates: 398 pytest + 114 node pass; verify_quality 0 fails; coverage
+  line 39.721% → 41.676% (+1.954pp), branch 27.717% → 29.532% (+1.815pp);
+  radon: every new function ≤B(7).

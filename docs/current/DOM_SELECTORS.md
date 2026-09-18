@@ -286,10 +286,22 @@ form.flex.w-full.flex-col
 | **Primary** | `iframe[title="reCAPTCHA"]` |
 | **Source fallback 1** | `iframe[src*="google.com/recaptcha/"]` |
 | **Fallback 2** | `iframe[src*="/recaptcha/enterprise/anchor"]` |
+| **Challenge frame (escalation)** | `iframe[src*="bframe"]` / title contains `challenge` — image-grid escalation of the same widget |
 | **Container** | `#recaptcha-v2-container` |
 | **Response field (detect only)** | `textarea[name="g-recaptcha-response"]`, `#g-recaptcha-response-1` |
 | **Status text** | "Protected by reCAPTCHA" |
 | **Indicator** | `div.size-1.animate-pulse.rounded-full.bg-green-500` |
+
+**Captcha-on saved state (2026-09-18, pass-path research):**
+`arena webpages/state-captcha on/(12) Directly Chat with Frontier Image Generation AI -captcha Models.html`
+confirms the live mechanics: Radix dialog + Enterprise checkbox widget
+(size=normal) + hidden bframe escalation bubble + PostHog/GTM telemetry
+(observation-only, never blocked). The page runs TWO widgets with DIFFERENT
+sitekeys — invisible badge `6LeTGMcs…` vs modal checkbox `6Le3_cYs…` — so
+detection prefers the dialog-scoped key (`dialog_iframe_k` →
+`dialog_data_sitekey`) and excludes the badge key from fallbacks once its
+iframe exposes it. Design + full mechanism inventory:
+`docs/archive/2026-09-18-captcha-pass-path/design.md`.
 
 ---
 

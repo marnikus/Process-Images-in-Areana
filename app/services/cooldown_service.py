@@ -1,4 +1,4 @@
-# ideal-size: ~605 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+# ideal-size: ~720 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
 """Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
 
 Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
@@ -188,8 +188,31 @@ def _best_ready_id(pages) -> str:
     return best.get("tab_id", "") or ""
 
 
-def resolve_primary_tab(pool: Any, tab_id: str) -> str:
-    """Keep a free preferred tab; a stale/busy one heals to best ready."""
+def _first_connected_id(pages) -> str:
+    """First pooled tab id worth waiting on (e.g. while it cools)."""
+    for p in pages or []:
+        if p.get("tab_id", "") and p.get("is_connected", False):
+            return p.get("tab_id", "")
+    return ""
+
+
+def _resolve_allowed_tab(pages, tab_id: str, allowed: set) -> str:
+    """Candidates restricted to checked tabs; '' = nothing usable (I-33)."""
+    pages = [p for p in pages if p.get("tab_id", "") in allowed]
+    if tab_id not in allowed:
+        tab_id = ""
+    if tab_id and _snapshot_free(pages, tab_id):
+        return tab_id
+    if tab_id:
+        return _best_ready_id(pages) or tab_id  # cooling: caller waits
+    return _best_ready_id(pages) or _first_connected_id(pages)
+
+
+def resolve_primary_tab(pool: Any, tab_id: str, allowed=None) -> str:
+    """Keep a free preferred tab; a stale/busy one heals to best ready.
+
+    `allowed` (checked-row tab ids, I-33) restricts every candidate; a
+    foreign preferred tab moves, and '' means nothing checked is usable."""
     tab_id = tab_id or ""
     if pool is None:
         return tab_id
@@ -197,6 +220,8 @@ def resolve_primary_tab(pool: Any, tab_id: str) -> str:
         pages = pool.status_snapshot().get("pages", [])
     except Exception:
         return tab_id
+    if allowed is not None:
+        return _resolve_allowed_tab(pages, tab_id, allowed)
     if not tab_id:
         if len(pages) == 1:
             return pages[0].get("tab_id", "")

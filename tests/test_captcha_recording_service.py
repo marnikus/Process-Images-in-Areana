@@ -63,3 +63,4 @@ async def test_recording_start_failure_does_not_change_manual_flow(monkeypatch, 
     outcome = await handle_captcha(CaptchaCtx(ctrl=FakeCtrl([True, False]), pool=pool,
                                                bridge=bridge, tab_id="t1"))
     assert outcome.status == "manual"
+    assert not hasattr(bridge, "_recording_service")  # one canonical lifecycle

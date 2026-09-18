@@ -13,11 +13,11 @@ const SashGridWindowStore = {
       log: 'winLog',
       settings: 'winSettings',
       captcha: 'winCaptcha',
-      captcha_records: 'winCaptchaRecords',
       browser: 'winBrowser',
       action_blocks: 'winActionBlocks',
       block_config: 'winBlockConfig',
       arena_presets: 'winArenaPresets',
+      recordings: 'winRecordings',
     };
     for (const w of SashCore.WINDOWS) {
       const el = document.getElementById(winElIds[w.id]);

@@ -68,6 +68,57 @@ def _service(ctx: CaptchaCtx) -> Optional["CaptchaService"]:
         return None
 
 
+def _recorder(ctx: CaptchaCtx):
+    """Return the legacy recorder only when the schema-v2 manager is absent.
+
+    This compatibility path keeps older bridge integrations functional without
+    starting two automatic recorders for the same captcha encounter.
+    """
+    if _service(ctx) is not None:
+        return None
+    fn = getattr(ctx.bridge, "_recording_service", None)
+    if fn is None:
+        return None
+    try:
+        return fn()
+    except Exception as e:  # RULE 9: the gate's absence never stalls downstream
+        _log(ctx, f"Recording service unavailable: {e}", "warn")
+        return None
+
+
+async def _recording_start(ctx: CaptchaCtx, signal: CaptchaSignal) -> None:
+    """Probe is up (captcha ON, before any injection) — open the session."""
+    try:
+        svc = _recorder(ctx)
+        if svc is not None:
+            detect = {"url": signal.page_url, "trigger": ctx.source,
+                      "kind": signal.kind, "sitekey": signal.sitekey}
+            await svc.start(ctx.ctrl, ctx.tab_id, detect)
+    except Exception as e:
+        _log(ctx, f"Recording start skipped: {e}", "warn")
+
+
+async def _recording_edge(ctx: CaptchaCtx, note: str, snapshot: bool = False) -> None:
+    """Pin a transition: drain page-side buffers, snapshot on demand (RULE 9)."""
+    try:
+        svc = _recorder(ctx)
+        if svc is not None:
+            await svc.edge(ctx.ctrl, ctx.tab_id, note, snapshot)
+    except Exception:
+        pass
+
+
+async def _recording_stop(ctx: CaptchaCtx, outcome: SolveOutcome) -> None:
+    """Final snapshot + terminal event; no-op when no session started."""
+    try:
+        svc = _recorder(ctx)
+        if svc is not None:
+            await svc.edge(ctx.ctrl, ctx.tab_id, f"outcome={outcome.status}", True)
+            svc.stop(ctx.tab_id, outcome.status, outcome.method)
+    except Exception:
+        pass
+
+
 def _record_stats(ctx: CaptchaCtx, event: str, site: str = "") -> None:
     try:
         svc = _service(ctx)
@@ -109,6 +160,7 @@ def _signal_evidence(signal: CaptchaSignal) -> Dict[str, Any]:
         "integration": signal.integration,
         "anchor": {"present": signal.anchor_present, "visible": signal.anchor_visible},
         "challenge": {"present": signal.challenge_present, "visible": signal.challenge_visible,
+                       "active": signal.challenge_active,
                        "title": signal.challenge_title, "src": signal.challenge_src,
                        "identity": signal.challenge_identity},
         "response_fields": {"count": signal.response_fields, "scope": signal.response_scope},
@@ -228,6 +280,7 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     signal = await detect_signal(ctx)
     if not signal.visible:
         return SolveOutcome(status="none")
+    await _recording_start(ctx, signal)
     rep = _new_encounter(ctx, signal)
     _mark_waiting(ctx)
     _record_stats(ctx, "detected", host_of(signal.page_url))
@@ -239,9 +292,11 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     except BaseException as exc:
         if svc is not None:
             await svc.recordings.abort(recorder, f"{type(exc).__name__}: {exc}")
+        await _recording_stop(ctx, SolveOutcome(status="interrupted", reason=str(exc)))
         raise
     if svc is not None:
         await svc.recordings.finish(recorder, outcome, rep)
+    await _recording_stop(ctx, outcome)
     return outcome
 
 
@@ -270,6 +325,7 @@ async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
     _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
     solve_mono = time.monotonic()
     outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
+    await _recording_edge(ctx, f"auto-solve finished: {outcome.status}", snapshot=True)
     _finish_auto(rep, outcome, solve_mono, task_type_for(signal.kind))
     if outcome.status != "solved":
         _finish_resolution(rep, outcome)
@@ -299,6 +355,7 @@ async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
         await ctx.ctrl.hide_watcher_overlay()
     except Exception:
         pass
+    await _recording_edge(ctx, "manual wait ended", snapshot=True)
     if not solved:
         out = SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
     else:

@@ -118,10 +118,16 @@ function securityDialog({ iframeSrc = '', dataSitekey, withImageCaptcha = false,
 
 /* ——— detect probe ——— */
 
+const fakeWindow = {
+  innerWidth: 1600,
+  innerHeight: 900,
+  getComputedStyle: (el) => (el && el._style) || { display: 'block', visibility: 'visible' },
+};
+
 const runDetect = (body) => {
   const document = makeDoc(body);
-  const fn = new Function('document', 'location', `return (${probe('detect.js')});`);
-  return fn(document, location);
+  const fn = new Function('document', 'location', 'window', `return (${probe('detect.js')});`);
+  return fn(document, location, fakeWindow);
 };
 
 test('detect: visible enterprise widget with sitekey in anchor src', () => {
@@ -265,6 +271,61 @@ test('detect: dialog with container only (no standard iframe) + footer text is v
   assert.equal(r.kind, 'recaptcha_enterprise');
   assert.equal(r.sitekey, '6LDialogScoped00000000000000000000');  // dialog-scoped data-sitekey
   assert.equal(r.invisible, false);
+});
+
+/* ——— detect: pass-path round (2026-09-18-captcha-pass-path) ———
+   The captcha-on saved state proved the page runs TWO reCAPTCHA widgets:
+   the invisible badge (key A) and the Security-Verification modal widget
+   (key B). The paid task must be created for B only — the badge key must
+   never leak into a dialog solve. Plus: bframe image-challenge escalation
+   evidence (challengeActive). */
+
+test('detect: dialog iframe key wins over badge script key', () => {
+  const badge = new El('div', { class: 'grecaptcha-badge' });
+  badge.append(new El('iframe', { title: 'reCAPTCHA', src: 'https://www.google.com/recaptcha/enterprise/anchor?k=6Lbadgekey00000000000000000000&size=invisible' }));
+  const script = new El('script');
+  script._text = "cfg.render.push('6Lbadgekey00000000000000000000')";
+  const body = new El('body').append(
+    badge,
+    securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6Lmodalkey00000000000000000000' }),
+    script,
+  );
+  const r = runDetect(body);
+  assert.equal(r.sitekey, '6Lmodalkey00000000000000000000');
+  assert.equal(r.sitekeySource, 'dialog_iframe_k');
+});
+
+test('detect: dialog without key never falls back to the badge key', () => {
+  const badge = new El('div', { class: 'grecaptcha-badge' });
+  badge.append(new El('iframe', { title: 'reCAPTCHA', src: 'https://www.google.com/recaptcha/enterprise/anchor?k=6Lbadgekey00000000000000000000&size=invisible' }));
+  const script = new El('script');
+  script._text = "cfg.render.push('6Lbadgekey00000000000000000000')";  // only key on page = badge's
+  const body = new El('body').append(
+    badge,
+    securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor' }),  // no k=
+    script,
+  );
+  const r = runDetect(body);
+  assert.equal(r.sitekey, '');  // refuse to guess → manual wait with WHY, no paid task for wrong widget
+  assert.equal(r.sitekeySource, 'none');
+  assert.equal(r.visible, true);  // dialog still detected — only the key is withheld
+});
+
+test('detect: bframe challenge captured from src + active when visible', () => {
+  const d = securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor?k=6Lmodalkey00000000000000000000' });
+  const bframe = new El('iframe', { title: 'recaptcha challenge expires in two minutes', src: 'https://www.google.com/recaptcha/enterprise/bframe?k=6Lmodalkey00000000000000000000' });
+  const r = runDetect(new El('body').append(d, bframe));
+  assert.equal(r.challengePresent, true);
+  assert.equal(r.challengeActive, true);
+});
+
+test('detect: bframe inside hidden bubble is present but NOT active', () => {
+  const d = securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor?k=6Lmodalkey00000000000000000000' });
+  const bubble = new El('div', { style: 'opacity: 0; visibility: hidden; top: -10000px' });
+  bubble.append(new El('iframe', { title: 'recaptcha challenge expires in two minutes', src: './files/bframe.html' }));
+  const r = runDetect(new El('body').append(d, bubble));
+  assert.equal(r.challengePresent, true);   // captured from the src family marker
+  assert.equal(r.challengeActive, false);   // saved-state shape: escalation not on screen
 });
 
 /* ——— visible.js — the gate predicate (is_security_dialog_visible) ———

@@ -44,6 +44,7 @@ playwright/.cache/
 # Node
 node_modules/
 coverage.json
+.coverage
 
 # Old project research (keep HTML but ignore large files dir)
 docs/research/*_files/
