@@ -9,18 +9,26 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .models import VALID_LABELS, new_session_id, utc_now
-from .retention import prune_recordings
+from .models import VALID_LABELS, day_folder_for, new_session_id, utc_now
+from .retention import drop_empty_day, find_session_folder, prune_recordings, session_folders
 from .sanitize import safe_url
 
 SCHEMA_VERSION = 1
+SETTINGS_NAME = "settings.json"
 
 
-def session_folders(root: Path) -> list[Path]:
-    """Session folders on disk, oldest first (session ids are time-prefixed)."""
-    if not root.exists():
-        return []
-    return sorted((path for path in root.iterdir() if path.is_dir()), key=lambda path: path.name)
+def recording_enabled(root: Path) -> bool:
+    """Records-window toggle; missing/corrupt settings default to on."""
+    try:
+        data = json.loads((root / SETTINGS_NAME).read_text(encoding="utf-8"))
+        return bool(data.get("recording_enabled", True))
+    except Exception:
+        return True
+
+
+def save_recording_enabled(root: Path, enabled: bool) -> None:
+    (root / SETTINGS_NAME).write_text(
+        json.dumps({"recording_enabled": bool(enabled)}), encoding="utf-8")
 
 
 class RecordingStore:
@@ -34,21 +42,29 @@ class RecordingStore:
 
     def create(self, encounter: dict[str, Any]) -> dict[str, Any]:
         session_id = new_session_id()
-        folder = self.root / session_id
+        folder = self.root / day_folder_for(session_id) / session_id
         (folder / "snapshots").mkdir(parents=True, exist_ok=False)
         manifest = self._new_manifest(session_id, encounter)
         self._write_manifest(folder, manifest)
         return manifest
 
+    def session_folder(self, session_id: str) -> Path:
+        if not session_id or Path(session_id).name != session_id:
+            raise ValueError("invalid session id")
+        folder = find_session_folder(self.root, session_id)
+        if folder is None:
+            raise FileNotFoundError("recording not found")
+        return folder
+
     def append_event(self, session_id: str, event: dict[str, Any]) -> None:
-        folder = self._folder(session_id)
+        folder = self.session_folder(session_id)
         line = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
         with (folder / "events.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
             handle.flush()
 
     def write_snapshot(self, session_id: str, number: int, payload: dict[str, Any]) -> str:
-        folder = self._folder(session_id) / "snapshots"
+        folder = self.session_folder(session_id) / "snapshots"
         name = f"{number:06d}.json.gz"
         target = folder / name
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -57,7 +73,7 @@ class RecordingStore:
         return f"snapshots/{name}"
 
     def finish(self, session_id: str, updates: dict[str, Any]) -> dict[str, Any]:
-        folder = self._folder(session_id)
+        folder = self.session_folder(session_id)
         manifest = self._read_manifest(folder)
         manifest.update(updates)
         manifest["ended_at"] = manifest.get("ended_at") or utc_now()
@@ -68,21 +84,22 @@ class RecordingStore:
     def list_sessions(self, limit: int = 1000) -> list[dict[str, Any]]:
         rows = [self._summary(folder) for folder in session_folders(self.root)]
         clean = [row for row in rows if row]
-        clean.sort(key=lambda row: row.get("started_at", ""), reverse=True)
+        clean.sort(key=lambda row: row.get("started_at") or "", reverse=True)
         return clean[:max(1, min(int(limit), 1000))]
 
     def count_sessions(self) -> int:
         return len(session_folders(self.root))
 
     def delete_session(self, session_id: str) -> dict[str, Any]:
-        folder = self._folder(session_id)
+        folder = self.session_folder(session_id)
         shutil.rmtree(folder, ignore_errors=True)
+        drop_empty_day(self.root, folder.parent)
         return {"session_id": session_id, "deleted": True}
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
         if label not in VALID_LABELS:
             raise ValueError("label must be unknown, bot, or manual")
-        folder = self._folder(session_id)
+        folder = self.session_folder(session_id)
         manifest = self._read_manifest(folder)
         manifest["actor_label"] = label
         manifest["label_updated_at"] = utc_now()
@@ -131,14 +148,6 @@ class RecordingStore:
             "snapshot_count", "truncated",
         )
         return {key: manifest.get(key) for key in keys}
-
-    def _folder(self, session_id: str) -> Path:
-        if not session_id or Path(session_id).name != session_id:
-            raise ValueError("invalid session id")
-        folder = self.root / session_id
-        if not folder.is_dir():
-            raise FileNotFoundError("recording not found")
-        return folder
 
     @staticmethod
     def _read_manifest(folder: Path, tolerate: bool = False) -> dict[str, Any]:

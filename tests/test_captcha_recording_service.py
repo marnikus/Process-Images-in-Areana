@@ -1,5 +1,7 @@
 """Captcha choke point owns recording start/finish without changing outcome."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.browser.page_pool import PagePool
@@ -58,6 +60,47 @@ def test_manager_count_and_delete_delegate_to_store(tmp_path):
     assert manager.count_sessions() == 1
     assert manager.delete_session(session_id) == {"session_id": session_id, "deleted": True}
     assert manager.count_sessions() == 0
+
+
+class _ProbeCDP:
+    def __init__(self):
+        self.calls = []
+
+    async def send(self, method, params, timeout=5):
+        self.calls.append(method)
+        return {"result": {}}
+
+    async def evaluate(self, script):
+        self.calls.append("evaluate")
+        return {"ok": True}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_manager_start_skips_when_recording_disabled(tmp_path):
+    from app.services.captcha_recording.manager import RecordingManager
+    manager = RecordingManager(str(tmp_path))
+    manager.set_enabled(False)
+    cdp = _ProbeCDP()
+    outcome = await manager.start(SimpleNamespace(cdp=cdp), {"tab": "t1", "eid": "e1"})
+    assert outcome is None
+    assert cdp.calls == []  # disabled = no recorder, no CDP probes at all
+    assert manager.count_sessions() == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_manager_start_records_when_enabled(tmp_path):
+    from app.services.captcha_recording.manager import RecordingManager
+    manager = RecordingManager(str(tmp_path))
+    assert manager.is_enabled() is True
+    recorder = await manager.start(SimpleNamespace(cdp=_ProbeCDP()),
+                                   {"tab": "t1", "eid": "e1", "url": "https://arena.ai/c/1"})
+    assert recorder is not None and manager.count_sessions() == 1
+    await manager.abort(recorder, "test end")
+    # the finished recording stays on disk, marked interrupted
+    row = manager.list_sessions()[0]
+    assert manager.count_sessions() == 1 and row["status"] == "interrupted"
 
 
 @pytest.mark.unit

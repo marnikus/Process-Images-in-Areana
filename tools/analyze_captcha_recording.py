@@ -138,13 +138,23 @@ def analyze(folder: Path) -> str:
     return "\n".join(parts)
 
 
+def _find_session_folders(root: Path) -> list[Path]:
+    """Session folders in single, flat (legacy) and per-day layouts."""
+    if not root.exists():
+        return []
+    found = {p.parent for p in root.glob("*/manifest.json")}
+    found.update(p.parent for p in root.glob("*/*/manifest.json"))
+    if (root / "manifest.json").exists():
+        found.add(root)
+    return sorted(found, key=lambda p: p.name)
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(__doc__)
         return 2
     root = Path(argv[1])
-    folders = [root] if (root / "manifest.json").exists() else \
-        sorted(d for d in root.iterdir() if (d / "manifest.json").exists())
+    folders = _find_session_folders(root)
     if not folders:
         print(f"no recordings found under {root}")
         return 1

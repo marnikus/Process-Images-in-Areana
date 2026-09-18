@@ -4,7 +4,28 @@
 const CaptchaRecordingsPanel = {
   init() {
     document.getElementById('captchaRecordsRefreshBtn')?.addEventListener('click', () => this.load());
+    this.initToggle();
     setTimeout(() => this.load(), 1600);
+  },
+
+  initToggle() {
+    const box = document.getElementById('captchaRecordToggle');
+    const bridge = window.CaptchaRecordingsBridge;
+    if (!box || !bridge?.recording_enabled) return;
+    bridge.recording_enabled((raw) => {
+      try { box.checked = JSON.parse(raw).enabled === true; }
+      catch (error) { LogConsole.log('Captcha record toggle state failed: ' + error, 'warn'); }
+    });
+    box.addEventListener('change', () => {
+      if (!bridge.set_recording_enabled) return;
+      bridge.set_recording_enabled(box.checked, (reply) => {
+        try {
+          const result = JSON.parse(reply);
+          if (result.ok) LogConsole.log(`🎞 Session recording ${result.enabled ? 'enabled' : 'disabled'}`, 'info');
+          else LogConsole.log('Captcha record toggle failed: ' + result.error, 'error');
+        } catch (error) { LogConsole.log('Captcha record toggle reply failed: ' + error, 'error'); }
+      });
+    });
   },
 
   load() {

@@ -30,3 +30,9 @@ def utc_now() -> str:
 def new_session_id() -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     return f"{stamp}-{secrets.token_hex(4)}"
+
+
+def day_folder_for(session_id: str) -> str:
+    """UTC day (YYYY-MM-DD) folder derived from the session id's stamp."""
+    stamp = str(session_id)[:8]
+    return f"{stamp[0:4]}-{stamp[4:6]}-{stamp[6:8]}"

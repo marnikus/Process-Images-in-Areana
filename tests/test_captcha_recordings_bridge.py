@@ -8,6 +8,9 @@ from app.ui.services.captcha_recordings_bridge import CaptchaRecordingsBridge
 
 
 class Manager:
+    def __init__(self):
+        self.enabled = True
+
     def list_sessions(self, limit):
         return [{"session_id": "s1", "actor_label": "unknown", "limit": limit}]
 
@@ -29,6 +32,13 @@ class Manager:
 
     def session_folder(self, session_id):
         return f"/records/{session_id}"
+
+    def is_enabled(self):
+        return self.enabled
+
+    def set_enabled(self, enabled):
+        self.enabled = bool(enabled)
+        return self.enabled
 
 
 @pytest.mark.unit
@@ -66,3 +76,13 @@ def test_recordings_bridge_returns_error_envelope():
     bridge = CaptchaRecordingsBridge(Manager())
     result = json.loads(bridge.set_label("s1", "bad"))
     assert result["ok"] is False and "bad label" in result["error"]
+
+
+@pytest.mark.unit
+def test_recordings_bridge_toggle_roundtrip():
+    manager = Manager()
+    bridge = CaptchaRecordingsBridge(manager)
+    assert json.loads(bridge.recording_enabled()) == {"ok": True, "enabled": True}
+    assert json.loads(bridge.set_recording_enabled(False)) == {"ok": True, "enabled": False}
+    assert manager.enabled is False
+    assert json.loads(bridge.recording_enabled()) == {"ok": True, "enabled": False}

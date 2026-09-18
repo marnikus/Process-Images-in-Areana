@@ -55,7 +55,7 @@ async def test_recorder_captures_diff_network_body_and_finish(tmp_path):
     await asyncio.sleep(0.03)
     result = await recorder.finish(SolveOutcome(status="solved", method="auto", reason="accepted"))
 
-    folder = recorder.store.root / recorder.session_id
+    folder = recorder.store.session_folder(recorder.session_id)
     events = [json.loads(line) for line in (folder / "events.jsonl").read_text().splitlines()]
     assert result["outcome"] == "solved" and result["method"] == "auto"
     assert any(event["kind"] == "mutation" for event in events)

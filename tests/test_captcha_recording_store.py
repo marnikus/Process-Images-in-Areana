@@ -4,10 +4,15 @@ import json
 
 import pytest
 
+from app.services.captcha_recording.models import day_folder_for
 from app.services.captcha_recording.reader import EvidenceReader
-from app.services.captcha_recording.retention import prune_recordings
+from app.services.captcha_recording.retention import prune_recordings, session_folders
 from app.services.captcha_recording.sanitize import clean_mapping, redact_text, safe_url, textual_mime
-from app.services.captcha_recording.store import RecordingStore
+from app.services.captcha_recording.store import (
+    RecordingStore,
+    recording_enabled,
+    save_recording_enabled,
+)
 
 
 def encounter(tab="tab-a"):
@@ -27,7 +32,53 @@ def test_store_create_finish_list_and_label(tmp_path):
     assert len(rows) == 1 and rows[0]["url"] == "https://arena.ai/c/1"
     updated = store.set_label(manifest["session_id"], "bot")
     assert updated["actor_label"] == "bot"
-    assert (store.root / manifest["session_id"] / "snapshots/000000.json.gz").exists()
+    folder = store.session_folder(manifest["session_id"])
+    assert (folder / "snapshots/000000.json.gz").exists()
+
+
+@pytest.mark.unit
+def test_store_create_writes_session_under_utc_day_folder(tmp_path):
+    store = RecordingStore(tmp_path)
+    manifest = store.create(encounter())
+    sid = manifest["session_id"]
+    folder = store.root / day_folder_for(sid) / sid
+    assert folder.is_dir() and (folder / "manifest.json").exists()
+    assert store.session_folder(sid) == folder
+
+
+@pytest.mark.unit
+def test_store_lists_legacy_flat_and_day_sessions_together(tmp_path):
+    store = RecordingStore(tmp_path)
+    legacy = store.root / "20260101T000000-legacy"
+    legacy.mkdir()
+    (legacy / "manifest.json").write_text(json.dumps({"session_id": "20260101T000000-legacy"}),
+                                          encoding="utf-8")
+    manifest = store.create(encounter())
+    rows = store.list_sessions()
+    assert {row["session_id"] for row in rows} == {"20260101T000000-legacy", manifest["session_id"]}
+    assert store.count_sessions() == 2
+
+
+@pytest.mark.unit
+def test_store_delete_last_session_removes_empty_day_folder(tmp_path):
+    store = RecordingStore(tmp_path)
+    sid = store.create(encounter())["session_id"]
+    day = store.root / day_folder_for(sid)
+    assert day.is_dir()
+    store.delete_session(sid)
+    assert not day.exists()
+
+
+@pytest.mark.unit
+def test_recording_toggle_persists_and_defaults_on(tmp_path):
+    root = tmp_path / "captcha_recordings"
+    root.mkdir()
+    assert recording_enabled(root) is True
+    save_recording_enabled(root, False)
+    assert (root / "settings.json").exists()
+    assert recording_enabled(root) is False
+    save_recording_enabled(root, True)
+    assert recording_enabled(root) is True
 
 
 @pytest.mark.unit
@@ -110,7 +161,7 @@ def test_evidence_reader_returns_bounded_comparison_model(tmp_path):
 
 @pytest.mark.unit
 def test_session_folders_empty_for_missing_root(tmp_path):
-    from app.services.captcha_recording.store import session_folders
+    from app.services.captcha_recording.retention import session_folders
     assert session_folders(tmp_path / "does-not-exist") == []
 
 
@@ -156,3 +207,19 @@ def test_retention_keeps_every_session_by_count(tmp_path):
     prune_recordings(root)
 
     assert len([path for path in root.iterdir() if path.is_dir()]) == 40
+
+
+@pytest.mark.unit
+def test_retention_day_layout_prunes_and_drops_empty_days(tmp_path):
+    root = tmp_path / "records"
+    for day, name in (("2026-01-01", "20260101T000000-aaaa"),
+                      ("2026-01-02", "20260102T000000-bbbb"),
+                      ("2026-01-02", "20260102T000001-cccc")):
+        folder = root / day / name
+        folder.mkdir(parents=True)
+        (folder / "data").write_bytes(b"x" * 400)
+
+    prune_recordings(root, max_bytes=800)  # 1200 > 800 -> oldest day removed
+
+    assert not (root / "2026-01-01").exists()
+    assert len(session_folders(root)) == 2

@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .retention import find_session_folder
+
 
 class EvidenceReader:
     """Read already-redacted evidence without returning unbounded artifacts."""
@@ -26,8 +28,8 @@ class EvidenceReader:
     def folder(self, session_id: str) -> Path:
         if not session_id or Path(session_id).name != session_id:
             raise ValueError("invalid session id")
-        folder = self.root / session_id
-        if not folder.is_dir():
+        folder = find_session_folder(self.root, session_id)
+        if folder is None:
             raise FileNotFoundError("recording not found")
         return folder
 

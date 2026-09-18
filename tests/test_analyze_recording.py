@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.analyze_captcha_recording import _classify, analyze
+from tools.analyze_captcha_recording import _classify, _find_session_folders, analyze
 
 
 def _session(folder: Path, manifest: dict, events: list[dict] | None = None) -> None:
@@ -79,6 +79,25 @@ def test_solved_and_dialog_gone_classified(tmp_path):
                                "url": "https://arena.ai/image/direct"}, [])
     assert "SOLVED — bot token accepted" in analyze(tmp_path / "s5")
     assert "DIALOG-GONE" in analyze(tmp_path / "s6")
+
+
+@pytest.mark.unit
+def test_find_session_folders_covers_flat_and_day_layouts(tmp_path):
+    _session(tmp_path / "20260101T000000-legacy", {"outcome": "manual", "method": "manual",
+                                                   "url": "https://arena.ai/c/1"})
+    _session(tmp_path / "2026-09-18" / "20260918T183921-77c22999",
+             {"outcome": "page_error", "method": "auto", "url": "https://arena.ai/c/2"})
+    (tmp_path / "settings.json").write_text("{}", encoding="utf-8")
+    found = _find_session_folders(tmp_path)
+    assert [p.name for p in found] == ["20260101T000000-legacy", "20260918T183921-77c22999"]
+
+
+@pytest.mark.unit
+def test_find_session_folders_single_folder_mode(tmp_path):
+    _session(tmp_path / "solo", {"outcome": "manual", "method": "manual",
+                                 "url": "https://arena.ai/c/3"})
+    found = _find_session_folders(tmp_path)
+    assert found == [tmp_path / "solo"]
 
 
 @pytest.mark.unit

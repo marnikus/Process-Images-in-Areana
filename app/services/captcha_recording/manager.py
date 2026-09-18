@@ -6,7 +6,7 @@ from typing import Any, Callable, Optional
 
 from .reader import EvidenceReader
 from .recorder import CaptchaRecorder
-from .store import RecordingStore
+from .store import RecordingStore, recording_enabled, save_recording_enabled
 
 
 class RecordingManager:
@@ -19,6 +19,8 @@ class RecordingManager:
         self._active: dict[str, CaptchaRecorder] = {}
 
     async def start(self, ctrl: Any, encounter: dict[str, Any]) -> Optional[CaptchaRecorder]:
+        if not recording_enabled(self.store.root):
+            return None
         tab_id = str(encounter.get("tab", ""))
         cdp = getattr(ctrl, "cdp", None)
         if tab_id in self._active or not callable(getattr(cdp, "send", None)):
@@ -81,6 +83,13 @@ class RecordingManager:
 
     def session_folder(self, session_id: str) -> str:
         return str(self.reader.folder(session_id))
+
+    def is_enabled(self) -> bool:
+        return recording_enabled(self.store.root)
+
+    def set_enabled(self, enabled: bool) -> bool:
+        save_recording_enabled(self.store.root, enabled)
+        return bool(enabled)
 
     def _drop(self, recorder: CaptchaRecorder) -> None:
         for tab_id, active in tuple(self._active.items()):
