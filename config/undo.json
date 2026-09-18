@@ -1,55 +1,6 @@
 {
   "history": [
     {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "folder",
-      "value": {
-        "root_path": "F:/Creative Cloud Files/Plastika Dolezal/Images for web 2.0/plastika-oblicej - AI",
-        "supported_types": [
-          ".png",
-          ".jpg",
-          ".jpeg",
-          ".webp"
-        ],
-        "ignore_ai_suffix": true
-      }
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[76.07093156234069,23.929068437659314]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,46.603970741901776,20.06269592476489]}],\"sizes\":[57.63665594855305,42.363344051446944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.5117210770385,27.614097799277378,33.43454956726987,15.439631556414248]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[76.07093156234069,23.929068437659314]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,26.100735710243352,40.565930956423315]}],\"sizes\":[57.63665594855305,42.363344051446944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.5117210770385,27.614097799277378,33.43454956726987,15.439631556414248]}}"
-    },
-    {
       "kind": "grid",
       "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[76.07093156234069,23.929068437659314]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.41292380511396,44.253742861552716]}],\"sizes\":[57.63665594855305,42.363344051446944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.5117210770385,27.614097799277378,33.43454956726987,15.439631556414248]}}"
     },
@@ -9020,6 +8971,53 @@
     {
       "kind": "grid",
       "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45,25,30]}],\"sizes\":[60,40]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30,25,20,25]}],\"sizes\":[45,35,20]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38,40,22]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser",
+          "settings"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45,25,30]}],\"sizes\":[60,40]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30,25,20,25]}],\"sizes\":[45,35,20]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38,40,22]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser",
+          "settings"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45,25,30]}],\"sizes\":[60,40]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30,25,20,25]}],\"sizes\":[45,35,20]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38,40,22]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser",
+          "settings"
+        ],
+        "minimized": []
+      }
     }
   ],
   "index": 99

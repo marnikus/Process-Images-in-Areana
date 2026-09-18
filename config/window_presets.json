@@ -5,8 +5,8 @@
       "schema_version": 1,
       "app_version": "0.1.0",
       "name": "v1",
-      "created_at": "2026-09-18T10:16:05.158Z",
-      "updated_at": "2026-09-18T10:16:05.160831Z",
+      "created_at": "2026-09-18T10:33:58.774Z",
+      "updated_at": "2026-09-18T10:33:58.776815Z",
       "grid": {
         "payload": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45,25,30]}],\"sizes\":[60,40]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30,25,20,25]}],\"sizes\":[45,35,20]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38,40,22]}}",
         "window_count": 14,
