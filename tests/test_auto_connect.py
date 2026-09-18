@@ -143,3 +143,32 @@ def test_pick_primary_ws():
              SimpleNamespace(ws_url="ws://live2", is_connected=True)]
     assert ac.pick_primary_ws(pages) == "ws://live1"
     assert ac.pick_primary_ws([SimpleNamespace(ws_url="ws://x")]) == ""
+
+
+# ── 2026-09-18 duplicate-row repair (one live tab ↔ one row, I-33) ──
+
+@pytest.mark.unit
+def test_dedupe_keeps_first_enabled_row_per_tab():
+    r_disabled, r_ok, r_extra = row("r1", A1, "t1"), row("r2", A1, "t1"), row("r3", A1, "t1")
+    r_disabled["enabled"], r_ok["enabled"], r_extra["enabled"] = False, True, True
+    kept, dropped = ac.dedupe_linked_rows([r_disabled, r_ok, r_extra])
+    assert [r["id"] for r in kept] == ["r2"]  # exactly one row per tab: first enabled
+    assert [r["id"] for r in dropped] == ["r1", "r3"]
+
+
+@pytest.mark.unit
+def test_dedupe_keeps_first_when_none_enabled():
+    rows = [row("r1", A1, "t1"), row("r2", A1, "t1")]
+    rows[0]["enabled"] = rows[1]["enabled"] = False
+    kept, dropped = ac.dedupe_linked_rows(rows)
+    assert [r["id"] for r in kept] == ["r1"]
+    assert [r["id"] for r in dropped] == ["r2"]
+
+
+@pytest.mark.unit
+def test_dedupe_leaves_unlinked_and_unique_rows_alone():
+    rows = [row("r1", A1, "t1"), row("r2", A2), row("r3", A2, "t2"),
+            {"id": "bad"}, {"id": "bad2", "tab_id": ""}]
+    kept, dropped = ac.dedupe_linked_rows(rows)
+    assert dropped == [] and len(kept) == 5
+    assert ac.dedupe_linked_rows(None) == ([], [])

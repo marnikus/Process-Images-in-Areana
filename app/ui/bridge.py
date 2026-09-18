@@ -58,6 +58,72 @@ from app.core.action_blocks import (
 
 log = logging.getLogger("arena")
 
+
+# ── URL-row ownership helpers (I-33) — module level, keep Bridge slim ──
+
+def _checked_tabs_ready(bridge) -> set:
+    """Rescue-claim checked unlinked rows; tab ids usable for runs."""
+    from app.services.auto_connect import claim_unlinked_from_pool, enabled_tab_ids
+    try:
+        pool = bridge._page_pool
+        pages = pool.status_snapshot().get("pages", []) if pool else []
+        if claim_unlinked_from_pool(bridge.state.urls, pages):
+            bridge._save_arena()
+    except Exception:
+        pass
+    return enabled_tab_ids(bridge._get_enabled_urls())
+
+
+_URL_GATE_MSG = {
+    "no enabled urls": ("⚠ No enabled URLs — check a URL row to use it for jobs", "warn"),
+    "no checked url linked to a tab": (
+        "❌ No checked URL is linked to a live tab — press Reparse or Connect on a checked row first",
+        "error"),
+}
+
+
+def _urls_gate_error(bridge, urls) -> str:
+    """Start gate: checked URLs must exist and own live tabs (I-33)."""
+    if not urls:
+        return "no enabled urls"
+    if not _checked_tabs_ready(bridge):
+        return "no checked url linked to a tab"
+    return ""
+
+
+def _dedupe_state_rows(state_urls) -> tuple[list, int]:
+    """Repair legacy N-rows-per-tab state; returns (plan rows, removed)."""
+    from app.services.auto_connect import dedupe_linked_rows
+    rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id, "enabled": u.enabled}
+            for u in state_urls]
+    kept, dropped = dedupe_linked_rows(rows)
+    if not dropped:
+        return rows, 0
+    drop = {r["id"] for r in dropped}
+    state_urls[:] = [u for u in state_urls if u.id not in drop]
+    return kept, len(dropped)
+
+
+def _tab_already_owned(urls, tab_id: str) -> bool:
+    """One row per tab (I-33): never add a second."""
+    for u in urls:
+        if u.tab_id == tab_id:
+            return True
+    return False
+
+
+def _add_missing_rows(urls, adds) -> int:
+    """Append rows for tabs none owns yet; returns count added."""
+    added = 0
+    for url, tab_id in adds:
+        if _tab_already_owned(urls, tab_id):
+            continue
+        from app.core.models import UrlRow
+        urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
+        added += 1
+    return added
+
+
 class Bridge(QObject):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
@@ -1813,14 +1879,16 @@ class Bridge(QObject):
         except Exception:
             pass
 
-    async def _select_run_tab(self, primary_tab_id) -> str:
-        """Prefer a ready pooled tab; reconnect primary when it moves."""
+    async def _select_run_tab(self, primary_tab_id, allowed=None) -> str:
+        """Prefer a ready pooled tab owned by a checked row (I-33)."""
         try:
             from app.services.cooldown_service import resolve_primary_tab
-            want = resolve_primary_tab(self._page_pool, primary_tab_id)
+            want = resolve_primary_tab(self._page_pool, primary_tab_id, allowed)
         except Exception:
             return primary_tab_id
-        if not want or want == primary_tab_id:
+        if not want:
+            return ""
+        if want == primary_tab_id:
             self._log_stay_reason(primary_tab_id)
             return primary_tab_id
         try:
@@ -1925,9 +1993,11 @@ class Bridge(QObject):
             self._log("⚠ No selected images — select images in queue", "warn")
             return json.dumps({"ok": False, "error": "no selected images"})
         urls = self._get_enabled_urls()
-        if not urls:
-            self._log("⚠ No enabled URLs", "warn")
-            return json.dumps({"ok": False, "error": "no enabled urls"})
+        gate = _urls_gate_error(self, urls)
+        if gate:
+            msg, level = _URL_GATE_MSG[gate]
+            self._log(msg, level)
+            return json.dumps({"ok": False, "error": gate})
         if not self.cdp or not self.cdp.is_connected:
             self._log("❌ Chrome not connected — click Diagnose, Refresh, Connect first. CDP must be connected to automate.", "error")
             return json.dumps({"ok": False, "error": "cdp not connected"})
@@ -2573,14 +2643,21 @@ class Bridge(QObject):
             import asyncio
 
             ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
-            primary_tab_id = await self._select_run_tab(getattr(self.cdp, "_current_tab_id", "") or "")
+            urls = self._get_enabled_urls()
+            from app.services.auto_connect import counts_in, enabled_tab_ids, pick_url_for_tab
+            allowed = enabled_tab_ids(urls)  # checked rows gate every tab pick (I-33)
+            primary_tab_id = await self._select_run_tab(getattr(self.cdp, "_current_tab_id", "") or "", allowed)
+            if not primary_tab_id:
+                self._log(f"❌ No usable checked tab in pool — check a URL row linked to a live tab — pool: {self._pool_summary()}", "error")
+                self._run_state = "idle"
+                self._emit_arena_state()
+                return
             ready, reasons = await ctrl.is_page_ready()
             if not ready:
                 self._log(f"⚠ Page not ready: {', '.join(reasons)} — trying anyway", "warn")
 
             prompt_template = self.state.prompt.get("user_prompt","")
             selected_images = self._get_selected_images()
-            urls = self._get_enabled_urls()
             suffix = self.state.settings.output.get("suffix", "_AI")
             overwrite = self.state.settings.output.get("overwrite", False)
             preserve_format = self.state.settings.output.get("preserve_format", True)
@@ -2593,10 +2670,10 @@ class Bridge(QObject):
             self._emit_action_blocks()
             self._log(f"📦 Action blocks stack: {len(action_stack)} blocks — " + ", ".join(f"{b.display_name}({'ON' if b.enabled else 'OFF'})" for b in action_stack[:6]) + ("..." if len(action_stack)>6 else ""), "info")
 
-            # Multi-page parallel dispatch: if 2+ pages and 2+ images, use pool
+            # Multi-page parallel dispatch: only tabs owned by CHECKED rows count (I-33)
             try:
                 if self._page_pool and len(selected_images) >= 2:
-                    total, free = self._page_pool.get_counts()
+                    total, free = counts_in(self._page_pool, allowed)
                     if total >= 2 and free >= 1:
                         self._log(f"🚀 Parallel mode: {total} pages {free} free, {len(selected_images)} images — dispatching to different pages steady/busy tracked, no double-send", "success")
                         self._emit_pool_status()
@@ -2624,7 +2701,6 @@ class Bridge(QObject):
             except Exception as e:
                 self._log(f"Batch-start cooldown wait skipped: {e}", "warn")
 
-            url_idx = 0
             for img in selected_images:
                 if self._cancel_requested:
                     self._log("Batch cancelled", "warn")
@@ -2642,8 +2718,11 @@ class Bridge(QObject):
                     self._log("Batch cancelled after pause", "warn")
                     break
 
-                # Prefer a ready tab per image (primary may have cooled); then gate.
-                primary_tab_id = await self._select_run_tab(primary_tab_id)
+                # Prefer a ready CHECKED tab per image (primary may have cooled); then gate.
+                primary_tab_id = await self._select_run_tab(primary_tab_id, allowed)
+                if not primary_tab_id:
+                    self._log("❌ No usable checked tab left in pool — stopping batch", "error")
+                    break
                 # Cooldown gate (single-page): wait until this tab's pause expires
                 try:
                     from app.services.cooldown_service import wait_for_tab_ready
@@ -2655,11 +2734,10 @@ class Bridge(QObject):
                 except Exception as _e:
                     self._log(f"Cooldown gate skipped: {_e}", "warn")
 
-                url_row = urls[url_idx % len(urls)] if urls else None
-                url_idx += 1
+                # Record the tab's OWN checked row — rows are never re-bound
+                # to foreign tabs (ownership belongs to auto-connect, I-33).
+                url_row = pick_url_for_tab(urls, primary_tab_id)
                 img.assigned_url_id = url_row.id if url_row else None
-                if url_row is not None:
-                    url_row.link_tab(primary_tab_id)
                 img.attempt_count += 1
                 img.status = ImageStatus.PROCESSING.value
                 self.state.recalculate_progress()
@@ -4366,10 +4444,9 @@ class Bridge(QObject):
             if row is not None and not row.tab_id:
                 row.tab_id = tab_id
                 changed = True
-        for url, tab_id in plan.add:
-            self.state.urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
-            changed = True
-        changed = changed or self._prune_auto_rows(plan) > 0
+        added = _add_missing_rows(self.state.urls, plan.add)
+        pruned = self._prune_auto_rows(plan)
+        changed = bool(added) or changed or pruned > 0
         if changed:
             # system action, reproducible by re-scan: no undo spam
             self._save_arena()
@@ -4418,7 +4495,9 @@ class Bridge(QObject):
             from app.services.auto_connect import sync_pool_presence
             tabs = await self.cdp.fetch_tabs()
             pattern = self.config.get_state("url_pattern", "arena.ai")
-            rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id} for u in self.state.urls]
+            rows, removed = _dedupe_state_rows(self.state.urls)
+            if removed:  # legacy broken state: N rows on one tab -> keep one (I-33)
+                self._log(f"🤖 Auto-connect: removed {removed} extra row(s) — their tab already has a row", "warn")
             plan = self._plan_auto_sync(tabs, pattern, rows)
             self._apply_auto_plan(plan)
             await self._join_new_tabs(plan.connect)
