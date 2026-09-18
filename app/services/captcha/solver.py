@@ -243,6 +243,22 @@ async def _stale_reason(plan: SolvePlan) -> str:
     return _identity_reason(plan, current) or ("sitekey_changed" if _sitekey_changed(plan, current) else "")
 
 
+async def _inject_failure(plan: SolvePlan, task_id: str) -> SolveOutcome:
+    """Record missing response fields and release the provider task."""
+    await _delete_task(plan.client, task_id, plan.stats, plan.logger)
+    _auto_fail(plan, "inject", "response field not found on page")
+    return _failed("inject", "response field not found on page", plan)
+
+
+async def _page_error_outcome(plan: SolvePlan, task_id: str,
+                              stats: Any, log: Callable[[str, str], None]) -> Optional[SolveOutcome]:
+    """Return terminal page-error outcome and free the provider task."""
+    if not await _note_page_error(plan, log):
+        return None
+    await _delete_task(plan.client, task_id, stats, log)
+    return _failed("page_error", plan.page_error, plan)
+
+
 async def _inject(ctrl: Any, token: str, sitekey: str,
                  log: Callable[[str, str], None]) -> Dict[str, Any]:
     """Set response fields and invoke the page callback; never raises."""
@@ -336,25 +352,26 @@ class CaptchaSolver:
         stale = await _stale_outcome(plan, task_id, self._stats, self._log)
         if stale is not None:
             return stale
-        if await _note_page_error(plan, self._log):
-            await _delete_task(plan.client, task_id, self._stats, self._log)
-            return _failed("page_error", plan.page_error, plan)
+        error = await _page_error_outcome(plan, task_id, self._stats, self._log)
+        if error is not None:
+            return error
         await _note_preinject_state(plan, self._log)
+        if plan.dialog_at_token == "gone":
+            await _delete_task(plan.client, task_id, self._stats, self._log)
+            return _failed("token_stale", "dialog_gone_before_token_injection", plan)
         res = await _inject(plan.ctrl, token, plan.signal.sitekey, self._log)
         if not res.get("ok"):
-            await _delete_task(plan.client, task_id, self._stats, self._log)
-            _auto_fail(plan, "inject", "response field not found on page")
-            return _failed("inject", "response field not found on page", plan)
+            return await _inject_failure(plan, task_id)
         plan.inject = f"scope={res.get('scope')} fields={res.get('fields', 1)} cb={_cb_desc(res)}"
         self._log(f"🤖 token injected ({plan.inject})", "info")
         await _click_continue(plan.ctrl)
-        if await _note_page_error(plan, self._log):
-            await _delete_task(plan.client, task_id, self._stats, self._log)
-            return _failed("page_error", plan.page_error, plan)
+        error = await _page_error_outcome(plan, task_id, self._stats, self._log)
+        if error is not None:
+            return error
         if await _verify_gone(plan.ctrl, plan.stop):
-            if await _note_page_error(plan, self._log):
-                await _delete_task(plan.client, task_id, self._stats, self._log)
-                return _failed("page_error", plan.page_error, plan)
+            error = await _page_error_outcome(plan, task_id, self._stats, self._log)
+            if error is not None:
+                return error
             stale = await _stale_outcome(plan, task_id, self._stats, self._log)
             return stale if stale is not None else self._solved(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats, self._log)
