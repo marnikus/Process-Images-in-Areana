@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple, Callable
 
 from .cdp_client import CDPClient
+from .attachment_probes import attach_file, build_verify_js
 from .captcha_probes import build_visible_js
 from .output_probes import build_baseline_js, build_check_js
 from .output_state import flatten_diagnostics, build_order_check_text
@@ -101,25 +102,6 @@ JS_CLICK_SEND = """
     btn.click();
     return {ok:true,sel:used};
   }catch(e){return {ok:false,error:String(e)};}
-})
-"""
-
-JS_VERIFY_ATTACHMENT = """
-((expectedFilename)=>{
-  try{
-    const sels=['div.flex.flex-wrap.gap-2 img[alt]','div.flex.flex-wrap.gap-2 img[src^="blob:"]','form img[src^="blob:"]'];
-    for(const sel of sels){
-      const els=document.querySelectorAll(sel);
-      for(const el of els){
-        if(el.offsetParent===null) continue;
-        const alt=el.getAttribute('alt')||'';
-        const src=el.getAttribute('src')||'';
-        if(src.startsWith('blob:')) return {found:true,alt,src,matched:'blob'};
-        if(alt) return {found:true,alt,src,matched:'alt'};
-      }
-    }
-    return {found:false};
-  }catch(e){return {found:false,error:String(e)};}
 })
 """
 
@@ -272,30 +254,33 @@ class CDPArenaController:
         return result
 
     async def attach_image(self, image_path: str) -> Tuple[bool, str]:
-        # ideal-size: 12 lines reason=attach via CDP then verify
+        """Attach one reference image to the active composer and prove it."""
         if not await self.ensure_connected():
             return False, "Not connected"
-        ok, reason = await self.cdp.attach_image_cdp(image_path)
-        if not ok:
-            self._log(f"Attach failed: {reason}", "warn")
-            return False, reason
-        self._log(f"Attached {image_path}: {reason}")
-        await asyncio.sleep(1)
-        verified, vreason = await self.verify_attachment(Path(image_path).name)
-        if verified:
-            return True, vreason
-        await asyncio.sleep(2)
-        return await self.verify_attachment(Path(image_path).name)
+        evidence = await attach_file(self.cdp, image_path)
+        if not evidence.ok:
+            self._log(f"Attach failed: {evidence.reason}", "warn")
+            return False, evidence.reason
+        expected = Path(image_path).name
+        last_reason = "attachment preview did not appear"
+        for delay in (0.25, 0.5, 1.0, 2.0):
+            await asyncio.sleep(delay)
+            verified, last_reason = await self.verify_attachment(expected, evidence.previews)
+            if verified:
+                self._log(f"Attached {image_path}: {last_reason}")
+                return True, last_reason
+        self._log(f"Attach verification failed: {last_reason}", "warn")
+        return False, last_reason
 
-    async def verify_attachment(self, expected_filename: str) -> Tuple[bool, str]:
-        # ideal-size: 7 lines reason=verify blob preview
-        js = f";({JS_VERIFY_ATTACHMENT})({json.dumps(expected_filename)})"
-        result = await self.cdp.evaluate(js)
-        if not result:
-            return False, "No result"
+    async def verify_attachment(self, expected_filename: str,
+                                baseline: Tuple[str, ...] = ()) -> Tuple[bool, str]:
+        """Require an input file or new preview inside the active composer."""
+        result = await self.cdp.evaluate(build_verify_js(expected_filename, baseline))
+        if not isinstance(result, dict):
+            return False, "No attachment evidence"
         if result.get("found"):
             return True, f"Found via {result.get('matched')}"
-        return False, f"Not found: {result}"
+        return False, f"Not found in active composer: {result}"
 
     async def insert_prompt(self, prompt_text: str) -> Tuple[bool, str]:
         # ideal-size: 9 lines reason=insert with highlight

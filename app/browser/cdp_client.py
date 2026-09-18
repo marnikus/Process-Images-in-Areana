@@ -544,54 +544,22 @@ class CDPClient(QObject):
             return []
 
     async def set_file_input_files(self, node_id: int, files: List[str]) -> bool:
-        """Set files for <input type=file> via CDP DOM.setFileInputFiles."""
+        """Set files and reject explicit or malformed protocol failures."""
         try:
-            # files must be absolute paths accessible to Chrome
-            r = await self.send("DOM.setFileInputFiles", {"nodeId": node_id, "files": files})
-            # Check error
-            if r.get("result"):
-                return True
-            # Some Chrome versions return empty result on success
-            return True
+            reply = await self.send("DOM.setFileInputFiles", {"nodeId": node_id, "files": files})
+            if not isinstance(reply, dict) or reply.get("error"):
+                log.warning(f"setFileInputFiles protocol failure for node {node_id}: {reply}")
+                return False
+            return "result" in reply
         except Exception as e:
             log.warning(f"setFileInputFiles failed for node {node_id} files {files}: {e}")
             return False
 
     async def attach_image_cdp(self, image_path: str, selectors: List[str] = None) -> tuple[bool, str]:
-        """Attach image via CDP: find file input and set files."""
-        if selectors is None:
-            selectors = [
-                'form input[type="file"][accept*="image"]',
-                'input[type="file"][accept*="image"]',
-                'input[type="file"]',
-            ]
-        try:
-            doc = await self.get_document()
-            if not doc:
-                return False, "Failed to get document root"
-            root_id = doc.get("nodeId")
-            if not root_id:
-                return False, "No root nodeId"
-            target_node_id = None
-            used_selector = ""
-            for sel in selectors:
-                nid = await self.query_selector(root_id, sel)
-                if nid:
-                    target_node_id = nid
-                    used_selector = sel
-                    break
-            if not target_node_id:
-                return False, f"File input not found for selectors {selectors}"
-            # Ensure absolute path
-            from pathlib import Path
-            abs_path = str(Path(image_path).resolve())
-            ok = await self.set_file_input_files(target_node_id, [abs_path])
-            if ok:
-                return True, f"Attached {abs_path} via {used_selector} node {target_node_id}"
-            else:
-                return False, f"setFileInputFiles failed for {abs_path}"
-        except Exception as e:
-            return False, f"Exception attach_image_cdp: {e}"
+        """Attach to the active composer; retained as the transport facade."""
+        from .attachment_probes import attach_file
+        evidence = await attach_file(self, image_path, selectors)
+        return evidence.ok, evidence.reason
 
     async def highlight_element(self, selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = ""):
         js = f"""

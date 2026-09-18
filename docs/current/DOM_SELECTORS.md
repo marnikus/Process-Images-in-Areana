@@ -61,12 +61,12 @@ All selectors below are **extracted from actual HTML** or verified via CDP. The 
 | **Fallback 3** | `button[aria-label*="upload" i]` |
 | **Underlying file input Primary** | `form input[type="file"][accept*="image"]` |
 | **File input Fallback** | `input[type="file"]` |
-| **Scope** | `form` that also contains `textarea[name="message"]` |
-| **mustBeVisible** | true for button, false for input (hidden) |
+| **Scope** | The form belonging to the visible, enabled prompt textarea; document-first input selection is forbidden because stale SPA composers may coexist |
+| **mustBeVisible** | true for prompt/button, false for the form-owned input (intentionally hidden) |
 | **mustBeEnabled** | true |
-| **expectedCount** | 1 button, 1 input |
-| **Verification** | After file set via `DOM.setFileInputFiles`, preview appears in `div.flex.flex-wrap.gap-2` with `img[alt="<filename>"]` or `img[src^="blob:"]` |
-| **Evidence** | Confirmed in saved HTML: `<input accept="image/png,..." type="file" class="hidden">` and `<button aria-label="Add files">` |
+| **expectedCount** | exactly 1 marked input in the active composer |
+| **Verification** | Active form input contains the expected filename, or a new visible image fingerprint appears inside that same form relative to the pre-attach baseline |
+| **Evidence** | Confirmed in saved HTML: prompt textarea + hidden image input + Add-files plus control share one form; regression design `docs/archive/2026-09-18-image-reference-paste-regression/design.md` |
 | **Action Blocks** | `HIGHLIGHT_ATTACH`, `ATTACH_IMAGE` |
 | **CDP Method** | `DOM.getDocument` → `DOM.querySelector` for input → `DOM.setFileInputFiles` with absolute path |
 
