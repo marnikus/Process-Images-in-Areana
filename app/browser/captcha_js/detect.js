@@ -52,5 +52,13 @@
       }
     } catch (e) { /* no inline scripts readable — stay without sitekey */ }
   }
+  /* anchor-src diagnostics: does the dialog expose a callable cb=? how long
+     does the widget give (anchor-ms/execute-ms)? Feeds the detect log line. */
+  out.anchor = {
+    cb: !!/[?&]cb=[A-Za-z0-9_$]/.test(src),
+    size: (src.match(/[?&]size=([a-z]+)/i) || [])[1] || "",
+    ams: (src.match(/[?&]anchor-ms=(\d+)/) || [])[1] || "",
+    ems: (src.match(/[?&]execute-ms=(\d+)/) || [])[1] || "",
+  };
   return out;
 })()

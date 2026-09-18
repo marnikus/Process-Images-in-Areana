@@ -99,6 +99,21 @@ def test_balance_and_error_captured(isolated_config_dir):
 
 
 @pytest.mark.unit
+def test_reset_clears_counters_keeps_balance(isolated_config_dir):
+    """Reset wipes history; balance is API state and survives."""
+    from app.services.captcha.stats import CaptchaStatsStore
+    s = CaptchaStatsStore(isolated_config_dir)
+    s.record("detected", "x.ai")
+    s.record("auto_failed", "x.ai")
+    s.set_balance(4.69)
+    s.set_last_error("dialog still visible")
+    s.reset()
+    d = s.to_dict()
+    assert d["detected_total"] == 0 and d["auto_failed"] == 0
+    assert d["last_error"] == ""
+    assert d["last_balance"] == 4.69  # API state, not history
+
+
 def test_last_error_is_bounded(isolated_config_dir):
     s = CaptchaStatsStore(isolated_config_dir)
     s.set_last_error("x" * 500)

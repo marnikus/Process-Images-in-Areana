@@ -160,6 +160,25 @@ test('detect: no dialog and no iframe → not visible', () => {
   assert.equal(r.sitekey, '');
 });
 
+test('detect: anchor diagnostics — cb present, size, anchor-ms, execute-ms', () => {
+  const src = 'https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6LEnterpkey0000000000000000000&size=normal&anchor-ms=20000&execute-ms=30000&cb=cf1ox98i3rhg';
+  const r = runDetect(new El('body').append(securityDialog({ iframeSrc: src })));
+  assert.equal(r.anchor.cb, true);
+  assert.equal(r.anchor.size, 'normal');
+  assert.equal(r.anchor.ams, '20000');
+  assert.equal(r.anchor.ems, '30000');
+});
+
+test('detect: anchor diagnostics — cb absent → false, empty params → empty', () => {
+  const r = runDetect(new El('body').append(
+    securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor?k=6LEnterpkey0000000000000000000' }),
+  ));
+  assert.equal(r.anchor.cb, false);
+  assert.equal(r.anchor.size, '');
+  assert.equal(r.anchor.ams, '');
+  assert.equal(r.anchor.ems, '');
+});
+
 test('detect: closed dialog with unmounted (hidden) iframe does not count', () => {
   const iframe = new El('iframe', { title: 'reCAPTCHA', src: 'https://www.google.com/recaptcha/enterprise/anchor?k=6Lx' });
   const d = securityDialog({});

@@ -8,6 +8,7 @@ const CaptchaPanel = {
   init() {
     document.getElementById('captchaSaveBtn')?.addEventListener('click', () => this.save());
     document.getElementById('captchaStatsBtn')?.addEventListener('click', () => this.loadStats());
+    document.getElementById('captchaResetBtn')?.addEventListener('click', () => this.resetStats());
     document.getElementById('captchaKeyShow')?.addEventListener('change', (e) => {
       const k = document.getElementById('captchaApiKey');
       if (k) k.type = e.target.checked ? 'text' : 'password';
@@ -76,6 +77,21 @@ const CaptchaPanel = {
           const r = JSON.parse(res);
           if (!r.ok) return;
           this.renderStats(r);
+        } catch (e) {}
+      });
+    }
+  },
+
+  resetStats() {
+    if (App.bridge && App.bridge.reset_captcha_stats) {
+      App.bridge.reset_captcha_stats((res) => {
+        try {
+          const r = JSON.parse(res);
+          if (r.ok) {
+            LogConsole.log('🧹 Captcha stats reset — fresh counters for the next run', 'info');
+            this.loadStats();
+            this.loadStatus();
+          }
         } catch (e) {}
       });
     }

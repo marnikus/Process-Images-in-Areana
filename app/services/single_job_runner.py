@@ -34,6 +34,7 @@ class JobCtx:
     file_bytes: Optional[bytes] = None
     ctype: Optional[str] = None
     old_srcs: List[str] = field(default_factory=list)
+    captcha_solved: Optional[str] = None  # last settled captcha status (solved|manual)
 
 
 def _emit_action(ctx: JobCtx, block: Any, status: str, msg: str):
@@ -85,7 +86,52 @@ async def check_security(ctx: JobCtx) -> bool:
                                               source="check-security", stop=stop, log=log))
     if outcome.status == "stopped":
         raise RuntimeError("Cancelled during CAPTCHA")
+    if outcome.status in ("solved", "manual"):
+        ctx.captcha_solved = outcome.status  # the gate turns this into a re-send check
     return True
+
+
+async def _security_gate(ctx: JobCtx) -> None:
+    """Settle a mid-wait captcha, then mirror the human step: re-send if the
+    generation request died with the challenge (the widget callback that
+    resumes a real solve never fires for an injected token — docs/archive/
+    2026-09-18-captcha-resubmit/design.md)."""
+    await check_security(ctx)
+    await _post_solve_resubmit(ctx)
+
+
+def _job_log(ctx: JobCtx, msg: str):
+    """Log on the job's corr line (the log window the user reads)."""
+    try:
+        ctx.bridge._log(f"[{ctx.corr_id}] {msg}", "info")
+    except Exception:
+        pass
+
+
+POST_SOLVE_SETTLE_SEC = 5.0  # a live request shows its spinner by ~2 s
+
+
+async def _post_solve_resubmit(ctx: JobCtx) -> None:
+    """Human-parity resume: re-send the prompt once if the solve left it unsent."""
+    status = getattr(ctx, "captcha_solved", None)
+    if not status:
+        return
+    ctx.captcha_solved = None  # one re-send per solve
+    try:
+        await asyncio.sleep(POST_SOLVE_SETTLE_SEC)
+        gen, _ = await ctx.ctrl.is_generating()
+        if gen:
+            _job_log(ctx, "post-solve: request alive (spinner) — no re-send")
+            return
+        ok, _ = await ctx.ctrl.verify_prompt(ctx.final_prompt)
+        if not ok:
+            _job_log(ctx, "post-solve: prompt not in composer — no re-send")
+            return
+        sub_ok, sub_why = await ctx.ctrl.submit()
+        _job_log(ctx, f"♻️ post-solve ({status}): request was dead — "
+                      f"{'re-sent prompt' if sub_ok else f're-send failed: {sub_why}'}")
+    except Exception:
+        pass
 
 
 def _mark_waiting(ctx: JobCtx, kind: str):
@@ -154,7 +200,7 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     """Wait output."""
     try:
         await _show_gen_overlay(ctx, timeout_ms)
-        ctx.ctrl.security_settler = lambda: check_security(ctx)  # captcha inside the wait
+        ctx.ctrl.security_settler = lambda: _security_gate(ctx)  # captcha + post-solve re-send
         status, data = await ctx.ctrl.wait_for_new_output(
             ctx.baseline, timeout_ms=timeout_ms, correlation_id=ctx.corr_id,
             cancel_check=lambda: _is_cancelled(ctx),

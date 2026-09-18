@@ -116,6 +116,14 @@ class CaptchaStatsStore:
         self._data["last_error"] = str(error or "")[:120]
         self._save()
 
+    def reset(self) -> None:
+        """Clear counters + last_error; balance stays (it is API state, not history)."""
+        blank = self._blank()
+        blank["last_balance"] = self._data.get("last_balance")
+        blank["balance_at"] = self._data.get("balance_at")
+        self._data = blank
+        self._save()
+
     @property
     def success_rate(self) -> float:
         """Auto-solve success: solved / (solved + failed); 0.0 when none."""

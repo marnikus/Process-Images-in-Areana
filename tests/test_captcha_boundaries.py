@@ -39,7 +39,7 @@ def make_bridge(pool, session=None):
     )
 
 
-def make_ctrl(visible_seq):
+def make_ctrl(visible_seq, generating=False, prompt_ok=True):
     seq = list(visible_seq)
     calls = []
 
@@ -54,10 +54,19 @@ def make_ctrl(visible_seq):
         calls.append("hide")
 
     async def fake_submit():
+        calls.append("submit")
         return True, "ok"
 
     async def fake_download(src):
         return True, b"y" * 200, "image/png"
+
+    async def fake_generating():
+        calls.append("generating")
+        return generating, {}
+
+    async def fake_verify(prompt):
+        calls.append("verify")
+        return prompt_ok, "match" if prompt_ok else "cleared"
 
     ctrl = SimpleNamespace(
         is_security_dialog_visible=fake_visible,
@@ -65,6 +74,8 @@ def make_ctrl(visible_seq):
         hide_watcher_overlay=fake_hide,
         submit=fake_submit,
         download_image=fake_download,
+        is_generating=fake_generating,
+        verify_prompt=fake_verify,
     )
     return ctrl, calls
 
@@ -194,6 +205,102 @@ async def test_dispatch_binds_url_row_to_run_tab():
     assert failed is False
     assert row.tab_id == "t9"  # sticky row timer follows the run tab
     assert saved  # bind persisted to the UI payload
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_post_solve_resubmit_re_sends_when_request_dead(monkeypatch):
+    """The 11:37 failure mode: token accepted, request dead, prompt in composer."""
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    pool.mark_busy("t1", "j1")
+    bridge = make_bridge(pool)
+    ctrl, calls = make_ctrl([], generating=False, prompt_ok=True)
+    ctx = make_ctx(pool, bridge, ctrl)
+    ctx.captcha_solved = "auto"
+    await sjr._post_solve_resubmit(ctx)
+    assert calls.count("submit") == 1
+    assert ctx.captcha_solved is None  # consumed — one re-send per solve
+    assert any("re-sent prompt" in m for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_post_solve_resubmit_skips_live_request(monkeypatch):
+    """A solve whose callback did resume (spinner up) must not double-send."""
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    pool.mark_busy("t1", "j1")
+    bridge = make_bridge(pool)
+    ctrl, calls = make_ctrl([], generating=True)
+    ctx = make_ctx(pool, bridge, ctrl)
+    ctx.captcha_solved = "manual"
+    await sjr._post_solve_resubmit(ctx)
+    assert calls.count("submit") == 0
+    assert any("request alive" in m for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_post_solve_resubmit_skips_cleared_composer(monkeypatch):
+    """Send already consumed (composer cleared) — never double-send."""
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    pool.mark_busy("t1", "j1")
+    bridge = make_bridge(pool)
+    ctrl, calls = make_ctrl([], generating=False, prompt_ok=False)
+    ctx = make_ctx(pool, bridge, ctrl)
+    ctx.captcha_solved = "auto"
+    await sjr._post_solve_resubmit(ctx)
+    assert calls.count("submit") == 0
+    assert any("prompt not in composer" in m for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_post_solve_resubmit_noop_without_flag():
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    pool.mark_busy("t1", "j1")
+    bridge = make_bridge(pool)
+    ctrl, calls = make_ctrl([])
+    ctx = make_ctx(pool, bridge, ctrl)
+    await sjr._post_solve_resubmit(ctx)
+    assert calls == []  # no probes at all in the common no-captcha path
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_security_gate_re_sends_after_settled_captcha(monkeypatch):
+    """Full gate: dialog settled (manual) + request dead → one re-send."""
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    pool.mark_busy("t1", "j1")
+    bridge = make_bridge(pool)
+    ctrl, calls = make_ctrl([True, False], generating=False, prompt_ok=True)
+    ctx = make_ctx(pool, bridge, ctrl)
+    await sjr._security_gate(ctx)
+    assert "submit" in calls
+    assert ctx.captcha_solved is None
+    assert any("re-sent prompt" in m for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_check_security_records_solved_status(monkeypatch):
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    pool.mark_busy("t1", "j1")
+    bridge = make_bridge(pool)
+    ctrl, _ = make_ctrl([True, False])
+    ctx = make_ctx(pool, bridge, ctrl)
+    assert await sjr.check_security(ctx) is True
+    assert ctx.captcha_solved == "manual"
 
 
 @pytest.mark.unit

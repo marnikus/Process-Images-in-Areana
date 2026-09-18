@@ -321,6 +321,11 @@ def test_signal_from_result_string_and_bad_shapes():
 
     sig = CaptchaSignal.from_result('{"visible": true, "kind": "recaptcha_enterprise", "sitekey": "6Lx", "url": "https://a.ai"}')
     assert sig.visible and sig.kind == "recaptcha_enterprise" and sig.sitekey == "6Lx"
+    assert sig.anchor == {}
+    anchor = {"cb": False, "size": "normal", "ams": "20000", "ems": "30000"}
+    sig2 = CaptchaSignal.from_result({"visible": True, "anchor": anchor})
+    assert sig2.anchor == anchor
+    assert CaptchaSignal.from_result({"visible": True, "anchor": "bad"}).anchor == {}
     assert CaptchaSignal.from_result("not json at all").visible is False
     assert CaptchaSignal.from_result(42).visible is False
     assert CaptchaSignal.from_result(None).visible is False

@@ -105,6 +105,13 @@ def _wait_timeout(ctx: CaptchaCtx) -> int:
         return 300
 
 
+def _anchor_desc(signal: CaptchaSignal) -> str:
+    """Anchor-src diagnostics for the detect log line (cb callable? sizes?)."""
+    a = signal.anchor
+    return (f"anchor cb={'yes' if a.get('cb') else 'no'} size={a.get('size') or '-'} "
+            f"ams={a.get('ams') or '-'} ems={a.get('ems') or '-'}")
+
+
 async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
     """Kind + sitekey probe; probe error → probe_error (fail open, RULE 9)."""
     try:
@@ -130,7 +137,8 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
         return SolveOutcome(status="none")
     _mark_waiting(ctx)
     _record_stats(ctx, "detected", host_of(signal.page_url))
-    _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}) via {ctx.source}", "error")
+    _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}, "
+              f"{_anchor_desc(signal)}) via {ctx.source}", "error")
     svc = _service(ctx)
     if svc is not None and svc.auto_enabled() and signal.solvable:
         outcome = await _try_auto(ctx, signal, svc)

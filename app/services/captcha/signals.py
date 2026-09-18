@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 # kinds the solver can hand to 2Captcha
@@ -19,6 +19,7 @@ class CaptchaSignal:
     sitekey: str = ""
     page_url: str = ""
     is_invisible: bool = False  # probe: iframe src size=invisible (no visible checkbox)
+    anchor: Dict[str, Any] = field(default_factory=dict)  # anchor-src diagnostics (cb/size/ams/ems)
 
     @property
     def solvable(self) -> bool:
@@ -40,12 +41,14 @@ class CaptchaSignal:
                 return cls()
         if not isinstance(res, dict):
             return cls()
+        anchor = res.get("anchor")
         return cls(
             visible=bool(res.get("visible")),
             kind=str(res.get("kind") or "none"),
             sitekey=str(res.get("sitekey") or ""),
             page_url=str(res.get("url") or ""),
             is_invisible=bool(res.get("invisible")),
+            anchor=dict(anchor) if isinstance(anchor, dict) else {},
         )
 
 
