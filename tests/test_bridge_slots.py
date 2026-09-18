@@ -20,6 +20,7 @@ REQUIRED_SLOTS = (
     "drop_ai_suffix", "keep_only_ai_files",
     "get_stack_presets", "save_stack_preset", "delete_stack_preset", "export_action_blocks",
     "set_captcha_settings", "get_captcha_status", "get_captcha_stats",
+    "request_grid_restore", "request_window_states_restore",
 )
 
 # Private helpers that must never capture a @Slot by accident.

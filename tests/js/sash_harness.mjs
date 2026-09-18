@@ -137,6 +137,7 @@ export function createSashGrid() {
     gridEl,
     body,
     layout: (w = 1600, h = 1000) => layoutGrid(gridEl, w, h),
+    sandbox,  // for restore tests: install a fake App/LogConsole then drive _loadFromBackend
   };
 }
 

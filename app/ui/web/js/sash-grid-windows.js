@@ -101,37 +101,80 @@ const SashGridWindowStore = {
   _finishRestore() {
     if (!this._restorePending) return;
     this._restorePending = false;
+    // If neither the invokeMethod response nor the signal push ever delivered
+    // a layout, say so — a silent reset is exactly the "grid lost" report.
+    const hasBridge = typeof App !== 'undefined' && !!App.bridge;
+    if (hasBridge && !this._gridRestoreSeen && !this._gridRestoreApplied) {
+      if (typeof LogConsole !== 'undefined') LogConsole.log('🪟 Grid restore: no backend response — using current layout', 'warn');
+    }
     if (this._saveQueued) { this._saveQueued = false; this._save(); }
   },
 
   _loadFromBackend() {
     try {
-      if (typeof App === 'undefined' || !App.bridge) return;
-      if (App.bridge.get_grid_layout) {
-        App.bridge.get_grid_layout((raw) => {
-          try {
-            if (raw) {
-              const res = SashCore.deserialize(raw);
-              if (res.ok && raw !== SashCore.serialize(this.root)) { this.root = res.tree; this.render(); }
-            }
-          } catch (e) {}
+      if (typeof App === 'undefined' || !App.bridge) { this._finishRestore(); return; }
+      const b = App.bridge;
+      if (b.get_grid_layout) {
+        b.get_grid_layout((raw) => {
+          this._gridRestoreSeen = true;
+          this._applyBackendGrid(raw);
           this._finishRestore();
         });
       }
-      if (App.bridge.get_window_states) {
-        App.bridge.get_window_states((raw) => {
-          if (!raw) return;
-          try {
-            const data = JSON.parse(raw);
-            if (!data || typeof data !== 'object') return;
-            if (Array.isArray(data.closed)) this.closedWindows = new Set(data.closed.filter((id) => SashCore.WINDOW_IDS.includes(id)));
-            if (Array.isArray(data.minimized)) this.minimizedWindows = new Set(data.minimized.filter((id) => SashCore.WINDOW_IDS.includes(id) && !this.closedWindows.has(id)));
-            // 'maximized' from old builds is intentionally ignored.
-            this.render();
-            this._saveWindowStates();
-          } catch (e) {}
-        });
+      if (b.get_window_states) {
+        b.get_window_states((raw) => { this._applyBackendStates(raw); });
       }
+      // Signal-push fallback (2026-09-18): if the invokeMethod responses above
+      // are lost, the callbacks never fire and the grid silently resets. Signals
+      // are the proven delivery path in this app — request the push right here,
+      // where the channel is provably ready (this call crosses the channel).
+      this._bindRestorePush();
+      if (b.request_grid_restore) b.request_grid_restore();
+      if (b.request_window_states_restore) b.request_window_states_restore();
+    } catch (e) {
+      this._finishRestore();
+    }
+  },
+
+  _bindRestorePush() {
+    const b = (typeof App !== 'undefined' && App.bridge) ? App.bridge : null;
+    if (!b || this._restorePushBound) return;
+    this._restorePushBound = true;
+    if (b.grid_layout_restored) b.grid_layout_restored.connect((raw) => { this._applyBackendGrid(raw); });
+    if (b.window_states_restored) b.window_states_restored.connect((raw) => { this._applyBackendStates(raw); });
+  },
+
+  _applyBackendGrid(raw) {
+    if (!raw) return false;
+    try {
+      const res = SashCore.deserialize(raw);
+      if (!res.ok) {
+        if (typeof LogConsole !== 'undefined') LogConsole.log('🪟 Grid restore rejected: ' + res.error, 'warn');
+        return false;
+      }
+      if (raw === SashCore.serialize(this.root)) return true;  // already current — idempotent
+      this.root = res.tree;
+      this.render();
+      this._gridRestoreApplied = true;
+      const n = SashCore.leafIds(this.root).length;
+      if (typeof LogConsole !== 'undefined') LogConsole.log('🪟 Grid restored from session (' + n + ' windows' + (res.migrated ? ', migrated' : '') + ')', 'info');
+      return true;
+    } catch (e) {
+      if (typeof LogConsole !== 'undefined') LogConsole.log('🪟 Grid restore failed: ' + e, 'warn');
+      return false;
+    }
+  },
+
+  _applyBackendStates(raw) {
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== 'object') return;
+      if (Array.isArray(data.closed)) this.closedWindows = new Set(data.closed.filter((id) => SashCore.WINDOW_IDS.includes(id)));
+      if (Array.isArray(data.minimized)) this.minimizedWindows = new Set(data.minimized.filter((id) => SashCore.WINDOW_IDS.includes(id) && !this.closedWindows.has(id)));
+      // 'maximized' from old builds is intentionally ignored.
+      this.render();
+      this._saveWindowStates();
     } catch (e) {}
   },
 

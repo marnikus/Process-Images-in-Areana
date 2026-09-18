@@ -61,6 +61,8 @@ class Bridge(QObject):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
+    grid_layout_restored = Signal(str)
+    window_states_restored = Signal(str)
     window_preset_list_updated = Signal(str)
     arena_log = Signal(str, str)
     arena_state_updated = Signal(str)
@@ -849,6 +851,27 @@ class Bridge(QObject):
         closed = [i for i in raw.get("closed", []) if isinstance(i, str) and i in WINDOW_IDS]
         minimized = [i for i in raw.get("minimized", []) if isinstance(i, str) and i in WINDOW_IDS and i not in closed]
         return json.dumps({"closed": closed, "minimized": minimized}, ensure_ascii=False)
+
+    @Slot(result=str)
+    def request_grid_restore(self):
+        """Boot handshake: JS proves the channel works, we push the saved layout as a
+        signal — the proven delivery path (every log line travels signals), immune to
+        a lost invokeMethod response that would leave the grid silently on default."""
+        payload = self.get_grid_layout()
+        if payload:
+            self._log(f"Grid restore: pushing saved layout ({len(payload)} chars) to UI", "info")
+            self.grid_layout_restored.emit(payload)
+        else:
+            self._log("Grid restore: no saved layout — UI keeps default", "info")
+        return payload
+
+    @Slot(result=str)
+    def request_window_states_restore(self):
+        """Boot handshake for closed/minimized window states (signal push)."""
+        raw = self.get_window_states()
+        if raw:
+            self.window_states_restored.emit(raw)
+        return raw
 
     @Slot(str, result=bool)
     def save_window_states(self, states_json: str):
