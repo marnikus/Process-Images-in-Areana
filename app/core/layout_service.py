@@ -9,7 +9,11 @@ from typing import Any
 
 log = logging.getLogger("arena")
 
-WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log", "settings", "browser", "action_blocks", "block_config", "arena_presets"]
+# MUST stay in sync with WINDOWS / WINDOW_IDS in app/ui/web/js/sash-core.js
+# (the JS list is the UI source of truth). 2026-09-18: the missing "captcha"
+# entry made every save of a 14-window grid fail validation and silently
+# replace the user's layout with the 13-window default on restart.
+WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log", "settings", "captcha", "browser", "action_blocks", "block_config", "arena_presets"]
 WINDOWS = [
     {"id": "url_list", "title": "URL List"},
     {"id": "folder", "title": "Folder Picker"},
@@ -20,6 +24,7 @@ WINDOWS = [
     {"id": "watcher", "title": "Watcher — Generation & Captcha"},
     {"id": "log", "title": "Activity Log"},
     {"id": "settings", "title": "Settings"},
+    {"id": "captcha", "title": "Captcha — 2Captcha Control"},
     {"id": "browser", "title": "Browser Preview"},
     {"id": "action_blocks", "title": "Action Blocks — Stacking Jobs"},
     {"id": "block_config", "title": "Block Config — Security Check"},
@@ -32,10 +37,11 @@ MIN_GRID_SIZE = 4
 def default_grid_tree() -> dict:
     def leaf(i): return {"t": "leaf", "id": i}
     def split(d, kids, sizes): return {"t": "split", "dir": d, "children": kids, "sizes": sizes}
+    # MUST mirror SashCore.defaultTree() in sash-core.js (same windows + sizes)
     return split("col", [
         split("row", [
             split("col", [leaf("url_list"), leaf("folder")], [55,45]),
-            split("col", [leaf("prompt"), leaf("run"), leaf("settings")], [45,25,30]),
+            split("col", [leaf("prompt"), leaf("run"), leaf("settings"), leaf("captcha")], [40,22,26,12]),
         ], [60,40]),
         split("row", [
             leaf("queue"),
@@ -156,12 +162,14 @@ def canonical_grid_payload(raw: str):
                     m_tree, m_err = parse_grid_payload(json.dumps({"v": GRID_VERSION, "tree": migrated}))
                     if not m_err:
                         return json.dumps({"v": GRID_VERSION, "tree": m_tree}, ensure_ascii=False, separators=(",",":")), None
-                    # If still error, fall back to default
-                    log.warning(f"Migration still failed after window mismatch: {m_err}, returning default")
-                    return default_payload(), None
+                    # Reject with the reason — never silently replace the user's
+                    # layout with the default (that silent replacement is the
+                    # 2026-09-18 "grid save not working" root cause).
+                    log.error(f"Layout migration failed ({m_err}) — rejecting instead of replacing")
+                    return None, f"layout cannot be migrated: {m_err}"
             except Exception as e:
-                log.warning(f"Failed to migrate grid after mismatch {err}: {e}, returning default")
-                return default_payload(), None
+                log.error(f"Failed to migrate grid after mismatch {err}: {e} — rejecting")
+                return None, f"layout migration error: {e}"
         return None, err
     return json.dumps({"v": GRID_VERSION, "tree": tree}, ensure_ascii=False, separators=(",",":")), None
 

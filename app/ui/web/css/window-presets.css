@@ -146,6 +146,17 @@
 }
 .window-preset-preview-tile.state-closed { opacity: .35; border-style: dashed; }
 .window-preset-preview-tile.state-minimized { opacity: .65; border-color: var(--yellow); }
+.window-preset-preview-note {
+  position: absolute;
+  inset: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
 @media (max-width: 800px) {
   .layout-menu.grid-menu { min-width: calc(100vw - 16px); }
   .grid-layout-buttons { grid-template-columns: 1fr; }

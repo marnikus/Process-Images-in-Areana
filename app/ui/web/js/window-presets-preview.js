@@ -39,24 +39,39 @@ const WindowPresetsPreview = {
     title.textContent = 'Preview: ' + result.document.name;
     meta.textContent = this._previewMeta(result.document, result.warning);
     canvas.replaceChildren();
-    result.document.windows.forEach((item) => {
-      const tile = document.createElement('div');
-      tile.className = 'window-preset-preview-tile state-' + item.state;
-      tile.style.left = (item.bounds.x * 100) + '%';
-      tile.style.top = (item.bounds.y * 100) + '%';
-      tile.style.width = (item.bounds.width * 100) + '%';
-      tile.style.height = (item.bounds.height * 100) + '%';
-      tile.textContent = item.title || item.id;
-      canvas.appendChild(tile);
-    });
+    if (result.document.screen && result.document.screen.synthetic) {
+      // Legacy preset: no per-window bounds were saved — full-size tiles would
+      // just overlap, so show the note instead (layout + states still apply).
+      const note = document.createElement('div');
+      note.className = 'window-preset-preview-note';
+      note.textContent = 'Legacy preset — saved before per-window positions. Layout and window states will be applied.';
+      canvas.appendChild(note);
+    } else {
+      result.document.windows.forEach((item) => {
+        const tile = document.createElement('div');
+        tile.className = 'window-preset-preview-tile state-' + item.state;
+        tile.style.left = (item.bounds.x * 100) + '%';
+        tile.style.top = (item.bounds.y * 100) + '%';
+        tile.style.width = (item.bounds.width * 100) + '%';
+        tile.style.height = (item.bounds.height * 100) + '%';
+        tile.textContent = item.title || item.id;
+        canvas.appendChild(tile);
+      });
+    }
     modal.classList.remove('hidden');
   },
 
   _previewMeta(document, warning) {
-    const resolution = document.screen.width + '×' + document.screen.height;
-    const note = SashGrid._screenSnapshot(SashGrid.gridEl && SashGrid.gridEl.getBoundingClientRect ? SashGrid.gridEl.getBoundingClientRect() : { width: 1, height: 1 });
-    const parts = [document.grid.window_count + ' windows · source screen ' + resolution];
-    if (note.width !== document.screen.width || note.height !== document.screen.height) parts.push('target screen differs; percentages will adapt');
+    const parts = [];
+    const synthetic = !!(document.screen && document.screen.synthetic);
+    if (synthetic) {
+      parts.push(document.grid.window_count + ' windows · legacy preset (no per-window positions)');
+    } else {
+      const resolution = document.screen.width + '×' + document.screen.height;
+      const note = SashGrid._screenSnapshot(SashGrid.gridEl && SashGrid.gridEl.getBoundingClientRect ? SashGrid.gridEl.getBoundingClientRect() : { width: 1, height: 1 });
+      parts.push(document.grid.window_count + ' windows · source screen ' + resolution);
+      if (note.width !== document.screen.width || note.height !== document.screen.height) parts.push('target screen differs; percentages will adapt');
+    }
     if (warning) parts.push(warning);
     return parts.join(' · ');
   },

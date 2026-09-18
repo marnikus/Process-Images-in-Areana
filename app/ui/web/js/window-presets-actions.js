@@ -76,14 +76,29 @@ const WindowPresetsActions = {
 
   load(name) { this._getDocument(name, (document) => { if (document) this._showPreview(document, 'restore'); }); },
 
+  /* load_window_preset now answers {"ok", "name", "document"} (the full
+     portable document — the validator rejects anything without `format`).
+     Tolerate a raw document from older builds; everything else → null. */
+  _presetResponseDocument(raw) {
+    let data = raw;
+    if (typeof raw === 'string') {
+      try { data = JSON.parse(raw); } catch (e) { return null; }
+    }
+    if (!data || typeof data !== 'object') return null;
+    if (data.ok && data.document && typeof data.document === 'object') return data.document;
+    if (data.format || (data.grid && typeof data.grid === 'object')) return data;
+    return null;
+  },
+
   _getDocument(name, callback) {
     const local = this._localDocuments()[name];
     const bridge = typeof App !== 'undefined' ? App.bridge : null;
     if (!bridge || !bridge.load_window_preset) { callback(local || null); return; }
     bridge.load_window_preset(name, (raw) => {
       if (!raw || raw === 'null') { callback(null); return; }
-      try { callback(typeof raw === 'string' ? JSON.parse(raw) : raw); }
-      catch (e) { this._message('Preset “' + name + '” is not valid JSON.', 'error'); callback(null); }
+      const document = this._presetResponseDocument(raw);
+      if (!document) { this._message('Preset “' + name + '” could not be read.', 'error'); }
+      callback(document);
     });
   },
 

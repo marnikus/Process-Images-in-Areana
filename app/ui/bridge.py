@@ -34,6 +34,10 @@ from app.core.layout_service import (
     WINDOW_IDS,
     canonical_grid_payload, default_payload, leaf_ids,
 )
+
+# Must match PRESET_FORMAT / PRESET_SCHEMA_VERSION in app/ui/web/js/sash-grid.js
+PRESET_FORMAT = "chat-v-bot.window-preset"
+PRESET_SCHEMA_VERSION = 1
 from app.core.models import AppState, UrlRow, ImageItem
 from app.core.persistence import load_state, save_state, save_preset, load_preset
 from app.core.scanner import scan_folder
@@ -962,6 +966,64 @@ class Bridge(QObject):
             return None, None, None, None, err
         return None, None, None, None, None
 
+    def _grid_payload_from_doc(self, grid: dict) -> str:
+        # ideal-size: 12 lines reason=canonical payload from either stored grid shape
+        if not isinstance(grid, dict):
+            return ""
+        if isinstance(grid.get("payload"), str):
+            tp, err = canonical_grid_payload(grid["payload"])
+            return tp if not err else ""
+        if isinstance(grid.get("tree"), dict):
+            cand = json.dumps({"v": grid.get("version") or 4, "tree": grid["tree"]}, separators=(",", ":"))
+            tp, err = canonical_grid_payload(cand)
+            return tp if not err else ""
+        return ""
+
+    def _legacy_window_entry(self, wid: str, closed: list, minimized: list) -> dict:
+        # ideal-size: 5 lines reason=one synthesized windows[] entry for legacy upgrade
+        state = "closed" if wid in closed else ("minimized" if wid in minimized else "open")
+        return {"id": wid, "title": wid, "state": state,
+                "bounds": {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0}}
+
+    def _legacy_preset_full(self, doc: dict, payload: str) -> dict:
+        # ideal-size: 20 lines reason=full portable doc synthesized from a legacy slim doc
+        data = json.loads(payload)
+        ws = doc.get("window_states") if isinstance(doc.get("window_states"), dict) else {}
+        closed = [i for i in ws.get("closed", []) if isinstance(i, str) and i in WINDOW_IDS]
+        minimized = [i for i in ws.get("minimized", []) if isinstance(i, str) and i in WINDOW_IDS and i not in closed]
+        windows = [self._legacy_window_entry(i, closed, minimized) for i in WINDOW_IDS]
+        return {
+            "format": PRESET_FORMAT, "schema_version": PRESET_SCHEMA_VERSION,
+            "app_version": str(doc.get("app_version") or "legacy"),
+            "name": str(doc.get("name") or "Untitled preset")[:80] or "Untitled preset",
+            "created_at": str(doc.get("updated_at") or ""),
+            "updated_at": str(doc.get("updated_at") or ""),
+            "grid": {"type": "sash-tree", "version": data.get("v", 4),
+                     "window_count": len(windows), "sizes_unit": "percent",
+                     "payload": payload, "tree": data.get("tree")},
+            "windows": windows,
+            "window_states": {"closed": closed, "minimized": minimized},
+            "screen": {"width": 1600, "height": 1000, "device_pixel_ratio": 1, "synthetic": True},
+        }
+
+    def _upgrade_preset_doc(self, doc: dict):
+        """Full portable document for JS preview/restore validation (RULE 4: reason on reject).
+
+        Docs saved by the current app already carry the portable schema and pass
+        through. Legacy slim docs (pre-portable-format) get format/schema, a
+        synthesized windows[] (full bounds) and a synthetic screen flagged so
+        the preview says 'legacy preset' instead of drawing overlapping tiles.
+        Returns None when the grid cannot be canonicalized.
+        """
+        if not isinstance(doc, dict):
+            return None
+        if doc.get("format") == PRESET_FORMAT:
+            return doc
+        payload = self._grid_payload_from_doc(doc.get("grid"))
+        if not payload:
+            return None
+        return self._legacy_preset_full(doc, payload)
+
     def _build_preset_doc(self, name: str, payload: str, info: dict):
         # ideal-size: 20 lines reason=build final preset document from info dict
         data = json.loads(payload)
@@ -973,7 +1035,7 @@ class Bridge(QObject):
             ws = self.config.get_state("window_states", {"closed": [], "minimized": []})
             if incoming and isinstance(incoming.get("window_states"), dict):
                 ws = incoming["window_states"]
-        if incoming and isinstance(incoming, dict) and incoming.get("format") == "chat-v-bot.window-preset":
+        if incoming and isinstance(incoming, dict) and incoming.get("format") == PRESET_FORMAT:
             doc = incoming.copy()
             doc["name"] = name
             doc["grid"] = {"payload": payload, "window_count": count, "tree": tree, "type": doc.get("grid", {}).get("type", "sash-tree"), "version": data.get("v", 4), "sizes_unit": "percent"}
@@ -1009,23 +1071,20 @@ class Bridge(QObject):
 
     @Slot(str, result=str)
     def load_window_preset(self, name: str):
+        """Pure reader: the full portable document for preview/restore.
+
+        No state writes — previewing must never rewrite the session's saved
+        layout (a cancelled preview used to desync backend and UI). Applying
+        is applyPortablePreset on the JS side, which persists via the save path.
+        """
         doc = self.config.window_presets.load_preset(name)
         if not doc:
             return json.dumps({"ok": False, "error": f"preset {name} not found"})
-        try:
-            grid = doc.get("grid", {})
-            payload = grid.get("payload")
-            if not payload:
-                return json.dumps({"ok": False, "error": "invalid preset"})
-            _, err = canonical_grid_payload(payload)
-            if err:
-                return json.dumps({"ok": False, "error": err})
-            self.config.set_state(grid_layout=payload, window_states=doc.get("window_states", {"closed": [], "minimized": []}))
-            self.grid_layout_changed.emit(payload)
-            self._log(f"Window preset loaded: {name}", "success")
-            return json.dumps({"ok": True, "name": name, "payload": payload, "window_states": doc.get("window_states")})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
+        full = self._upgrade_preset_doc(doc)
+        if not full:
+            return json.dumps({"ok": False, "error": "invalid preset: grid cannot be read"})
+        self._log(f"Window preset loaded: {name}", "info")
+        return json.dumps({"ok": True, "name": name, "document": full}, ensure_ascii=False)
 
     @Slot(str, result=str)
     def delete_window_preset(self, name: str):
@@ -1041,6 +1100,9 @@ class Bridge(QObject):
         doc = self.config.window_presets.load_preset(name)
         if not doc:
             return json.dumps({"ok": False, "error": "not found"})
+        # Export the full portable document (legacy docs upgraded) so the file
+        # round-trips the strict import validation on any machine.
+        doc = self._upgrade_preset_doc(doc) or doc
         try:
             if QFileDialog is None:
                 # headless fallback: export to config folder
