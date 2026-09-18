@@ -8,7 +8,7 @@
       "last_status": "ready",
       "last_checked": "2026-09-17T10:45:28.112354Z",
       "error": null,
-      "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
     },
     {
       "id": "url_550177d7",
@@ -17,7 +17,7 @@
       "last_status": "unchecked",
       "last_checked": null,
       "error": null,
-      "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+      "tab_id": "6745025141CD2C14CD1EE865E1401A53"
     },
     {
       "id": "url_8e48bb78",
@@ -246,12 +246,12 @@
       "size": 111392,
       "mtime": 1789720308.7547874,
       "fingerprint": "a1bff62f1112a4f0",
-      "status": "failed",
+      "status": "completed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 4,
-      "output_path": null,
-      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "attempt_count": 6,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-herbal-capsule_AI_3.png",
+      "error": null,
       "content_hash": null
     },
     {
@@ -267,9 +267,9 @@
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 2,
+      "attempt_count": 6,
       "output_path": null,
-      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "error": "Submit failed: Submit failed",
       "content_hash": null
     },
     {
@@ -282,12 +282,12 @@
       "size": 133256,
       "mtime": 1789721064.2160785,
       "fingerprint": "23c3507b152b0e1d",
-      "status": "failed",
+      "status": "completed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 2,
-      "output_path": null,
-      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "attempt_count": 5,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-lightbulb_AI.png",
+      "error": "Cancelled by user",
       "content_hash": null
     },
     {
@@ -300,12 +300,12 @@
       "size": 90071,
       "mtime": 1789721064.2170794,
       "fingerprint": "f7db402fae5eb678",
-      "status": "pending",
+      "status": "completed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
-      "output_path": null,
-      "error": null,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 2,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-money-plant_AI.png",
+      "error": "Cancelled by user",
       "content_hash": null
     },
     {
@@ -318,11 +318,11 @@
       "size": 116604,
       "mtime": 1789720308.7527852,
       "fingerprint": "f598653720b55fa7",
-      "status": "pending",
+      "status": "completed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
-      "output_path": null,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-person-at-desk_AI.png",
       "error": null,
       "content_hash": null
     },
@@ -493,11 +493,11 @@
   "progress": {
     "total": 21,
     "selected": 21,
-    "pending": 11,
+    "pending": 9,
     "processing": 0,
-    "completed": 7,
+    "completed": 11,
     "skipped": 0,
-    "failed": 3,
+    "failed": 1,
     "needs_review": 0
   },
   "run_state": "idle",
