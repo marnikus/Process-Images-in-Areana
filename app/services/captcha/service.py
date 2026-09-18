@@ -241,7 +241,7 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
             await svc.recordings.abort(recorder, f"{type(exc).__name__}: {exc}")
         raise
     if svc is not None:
-        await svc.recordings.finish(recorder, outcome)
+        await svc.recordings.finish(recorder, outcome, rep)
     return outcome
 
 

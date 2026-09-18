@@ -39,18 +39,22 @@ test('snapshot probe strips values, queries, and opaque tokens', () => {
 });
 
 test('records UI loads two bounded evidence panes side by side', () => {
-  const dom = new JSDOM('<section id="captchaCompareA"></section><section id="captchaCompareB"></section>',
+  const dom = new JSDOM('<section id="captchaCompareA"></section><section id="captchaCompareB"></section><pre id="captchaComparisonReport"></pre>',
     {url: 'https://app.local', runScripts: 'outside-only'});
   const scripts = path.resolve(ROOT, '../../../ui/web/js/panels');
   dom.window.LogConsole = {log() {}};
   const details = {manifest: {session_id: 's1', actor_label: 'manual', method: 'manual',
     outcome: 'manual', url: 'https://arena.ai/c/1'},
-  events: [{at_ms: 3, kind: 'mutation', payload: {path: 'main'}}],
+  events: [{offset_ms: 3, kind: 'mutation', payload: {path: 'main'}}],
   latest_snapshot: {html: '<main>safe</main>'}};
   let opened = '';
   dom.window.CaptchaRecordingsBridge = {
     get_session(_id, callback) { callback(JSON.stringify({ok: true, details})); },
     open_folder(id, callback) { opened = id; callback(JSON.stringify({ok: true})); },
+    compare_sessions(_a, _b, callback) { callback(JSON.stringify({ok: true, comparison: {
+      evidence_complete: true, warnings: [], first_divergence: {operation: 'replace', left: ['accepted'], right: ['failed']},
+      common: ['detected'], left_only: ['accepted'], right_only: ['failed'], dom_diff: ['-accepted', '+failed'],
+    }})); },
   };
   for (const name of ['captcha-recordings.js', 'captcha-recording-comparison.js']) {
     let source = fs.readFileSync(path.join(scripts, name), 'utf8');
@@ -62,6 +66,9 @@ test('records UI loads two bounded evidence panes side by side', () => {
   assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /manual/);
   assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /mutation/);
   assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /<main>safe<\/main>/);
+  dom.window.CaptchaRecordingComparison.load('s2', 1);
+  assert.match(dom.window.document.getElementById('captchaComparisonReport').textContent, /First divergence: replace/);
+  assert.match(dom.window.document.getElementById('captchaComparisonReport').textContent, /DOM diff/);
   dom.window.CaptchaRecordingsPanel.openButton({session_id: 's1'}).click();
   assert.equal(opened, 's1');
 });

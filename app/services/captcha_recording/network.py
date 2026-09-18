@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
+from collections import deque
+import threading
 from typing import Any, Awaitable, Callable
+from urllib.parse import urlsplit
 
 from .sanitize import redact_text, safe_url, textual_mime
 
 EventSink = Callable[[str, dict[str, Any], bool], Awaitable[None]]
+MAX_QUEUED_EVENTS = 5_000
 
 
 class NetworkCollector:
@@ -20,16 +23,33 @@ class NetworkCollector:
         self.sink = sink
         self.body_limit = body_limit
         self.mark_truncated = mark_truncated
-        self.queue: asyncio.Queue = asyncio.Queue()
+        self.queue: deque[dict[str, Any]] = deque()
+        self._lock = threading.Lock()
+        self.dropped = 0
+        self._reported_dropped = 0
         self.responses: dict[str, dict[str, Any]] = {}
 
     def on_event(self, message: dict[str, Any]) -> None:
         if str(message.get("method", "")).startswith("Network."):
-            self.queue.put_nowait(message)
+            with self._lock:
+                if len(self.queue) >= MAX_QUEUED_EVENTS:
+                    self.dropped += 1
+                    self.mark_truncated("network_events")
+                else:
+                    self.queue.append(message)
 
     async def drain(self) -> None:
-        while not self.queue.empty():
-            await self._record(self.queue.get_nowait())
+        while True:
+            with self._lock:
+                message = self.queue.popleft() if self.queue else None
+                dropped = self.dropped
+            if message is None:
+                if dropped > self._reported_dropped:
+                    self._reported_dropped = dropped
+                    await self.sink("warning", {"message": "network events dropped",
+                                                "count": dropped}, False)
+                return
+            await self._record(message)
 
     async def _record(self, message: dict[str, Any]) -> None:
         method = message.get("method", "")
@@ -45,13 +65,15 @@ class NetworkCollector:
 
     async def _request(self, request_id: str, params: dict[str, Any]) -> None:
         request = params.get("request") or {}
-        payload = {"request_id": request_id, "url": safe_url(request.get("url", "")),
+        url = safe_url(request.get("url", ""))
+        payload = {"request_id": request_id, "url": url, "category": _category(url),
                    "method": request.get("method", ""), "resource_type": params.get("type", "")}
         await self.sink("network_request", payload, True)
 
     async def _response(self, request_id: str, params: dict[str, Any]) -> None:
         response = params.get("response") or {}
-        payload = {"request_id": request_id, "url": safe_url(response.get("url", "")),
+        url = safe_url(response.get("url", ""))
+        payload = {"request_id": request_id, "url": url, "category": _category(url),
                    "status": response.get("status"), "mime": response.get("mimeType", ""),
                    "resource_type": params.get("type", ""),
                    "from_cache": bool(response.get("fromDiskCache"))}
@@ -84,3 +106,16 @@ class NetworkCollector:
         except Exception as exc:
             message = f"response body unavailable: {type(exc).__name__}"
             await self.sink("warning", {"message": message}, False)
+
+
+def _category(url: str) -> str:
+    """Safe endpoint class for comparisons; never inspect URL queries."""
+    parts = urlsplit(url)
+    value = f"{parts.hostname or ''}{parts.path}".lower()
+    if "recaptcha" in value or "captcha" in value:
+        return "captcha"
+    if any(word in parts.path.lower() for word in ("verify", "challenge", "security")):
+        return "verification"
+    if any(word in parts.path.lower() for word in ("generate", "image", "completion")):
+        return "generation"
+    return "page_api" if "/api/" in parts.path.lower() else "other"

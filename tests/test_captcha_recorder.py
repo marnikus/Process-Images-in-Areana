@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from app.browser.cdp_events import CDPEventRouter
 from app.services.captcha.signals import SolveOutcome
 from app.services.captcha_recording.models import RecordingLimits
+from app.services.captcha_recording.network import NetworkCollector
 from app.services.captcha_recording.recorder import CaptchaRecorder
 from app.services.captcha_recording.store import RecordingStore
 
@@ -46,21 +48,53 @@ async def test_recorder_captures_diff_network_body_and_finish(tmp_path):
     recorder = CaptchaRecorder(RecordingStore(tmp_path), ctrl, encounter, limits)
     await recorder.start()
 
-    cdp.events.dispatch({"method": "Network.requestWillBeSent", "params": {
-        "requestId": "1", "type": "Fetch", "request": {"url": "https://arena.ai/api/x?q=secret", "method": "POST"}}})
+    request = {"method": "Network.requestWillBeSent", "params": {
+        "requestId": "1", "type": "Fetch", "request": {
+            "url": "https://arena.ai/api/x?q=secret", "method": "POST"}}}
+    worker = threading.Thread(target=cdp.events.dispatch, args=(request,))
+    worker.start()
+    worker.join(timeout=1)
     cdp.events.dispatch({"method": "Network.responseReceived", "params": {
         "requestId": "1", "type": "Fetch", "response": {"url": "https://arena.ai/api/x?q=secret",
         "status": 200, "mimeType": "application/json"}}})
     cdp.events.dispatch({"method": "Network.loadingFinished", "params": {"requestId": "1"}})
     await asyncio.sleep(0.03)
-    result = await recorder.finish(SolveOutcome(status="solved", method="auto", reason="accepted"))
+    report = {"status": "solved", "method": "auto", "polls": 3,
+              "token": {"at_s": 12.5, "fp": "secret-token-shape"},
+              "response_fields": {"count": 2, "scope": "dialog"}}
+    result = await recorder.finish(
+        SolveOutcome(status="solved", method="auto", reason="accepted"), report)
 
     folder = recorder.store.root / recorder.session_id
     events = [json.loads(line) for line in (folder / "events.jsonl").read_text().splitlines()]
     assert result["outcome"] == "solved" and result["method"] == "auto"
     assert any(event["kind"] == "mutation" for event in events)
     assert any(event["kind"] == "response_body" for event in events)
+    solve_report = next(event for event in events if event["kind"] == "solve_report")
+    assert solve_report["solution_ready_at_s"] == 12.5
+    assert solve_report["field_evidence"]["count"] == 2
+    assert "secret-token-shape" not in json.dumps(events)
     assert "?q=" not in json.dumps(events)
     assert "A" * 100 not in json.dumps(events)
     assert cdp.sent[0][0] == "Network.getResponseBody"
     assert result["snapshot_count"] >= 1 and result["network_count"] == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_network_queue_reports_cross_thread_overflow(monkeypatch):
+    import app.services.captcha_recording.network as network_mod
+    monkeypatch.setattr(network_mod, "MAX_QUEUED_EVENTS", 1)
+    events, truncated = [], set()
+
+    async def sink(kind, payload, _network=False):
+        events.append((kind, payload))
+
+    collector = NetworkCollector(SimpleNamespace(), sink, 100, truncated.add)
+    message = {"method": "Network.requestWillBeSent", "params": {
+        "requestId": "1", "request": {"url": "https://arena.ai/api/x"}}}
+    collector.on_event(message)
+    collector.on_event(message)
+    await collector.drain()
+    assert "network_events" in truncated
+    assert events[-1] == ("warning", {"message": "network events dropped", "count": 1})

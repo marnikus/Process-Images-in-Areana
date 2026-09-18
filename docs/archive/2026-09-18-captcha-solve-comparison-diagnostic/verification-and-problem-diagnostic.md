@@ -1,7 +1,7 @@
 # CAPTCHA SOLVE COMPARISON — VERIFICATION AND PROBLEM DIAGNOSTIC
 
 **Date:** 2026-09-18  
-**Status:** evidence-gated diagnostic prepared before implementation  
+**Status:** diagnostic prepared before implementation; comparison redesign implemented, fresh recordings required
 **Scope:** user-authorized Arena pages; compare manual-pass, bot-pass, and bot-fail sessions  
 **Safety boundary:** diagnose integration, lifecycle, page-state, timing, callback, and server-result differences. Do not collect behavioral biometrics, spoof fingerprints, conceal automation, replay credentials, or weaken anti-bot controls.
 
@@ -450,3 +450,22 @@ Once valid session folders are available, this diagnostic can move from hypothes
 The repository already records useful bounded evidence, but the present A/B viewer cannot display most event details because its field names do not match the persisted schema. The evidence also lacks independent passed/failed ground truth, mixed-session labeling, aligned checkpoints, complete semantic solver milestones, and a computed first-divergence report. These limitations must be corrected before claiming exactly why a bot session failed.
 
 The highest-priority solve hypotheses to test are stale/late token delivery, active-challenge response-field mismatch, wrong callback/client association, false acceptance inferred from dialog disappearance, and missing page continuation. None is declared the cause of the user's recordings until those recordings are available and pass the integrity checks above.
+
+## 12. Implemented comparison redesign
+
+The source-level problems P1–P10 were addressed before requesting fresh evidence:
+
+| Problem | Implemented correction |
+|---|---|
+| P1 event mismatch | Reader normalizes flattened schema-v1/v2 events to `offset_ms + payload`; UI renders those exact fields. |
+| P2 checkpoint timing | New checkpoints persist UTC `at` and monotonic `offset_ms`; legacy `at_ms` remains readable. |
+| P3 latest-only view | Reader returns a bounded checkpoint index; each A/B pane can inspect every retained checkpoint. |
+| P4 no computed diff | A deterministic engine reports common, A-only, B-only, first ordered divergence, milestones, and bounded unified DOM diff. |
+| P5 iframe blind spot | Solve report retains safe challenge/anchor/integration/field-scope evidence; cross-origin internals and behavioral biometrics remain excluded. |
+| P6 missing milestones | Final token-free semantic solve report persists timing, polls, challenge evidence, field evidence, callback/injection summary, acceptance, stale reason, and page error. |
+| P7 invalid cohorts | Independent actor (`unknown/bot/manual/mixed`) and result (`unknown/passed/failed`) labels are user-owned. |
+| P8 broad network data | Request/response evidence carries a safe semantic category and remains correlated by request id. |
+| P9 cross-thread queue | Network listener handoff uses a lock-protected deque rather than cross-thread `asyncio.Queue` mutation. |
+| P10 hidden incompleteness | A/B panes and generated report visibly mark truncated/incomplete evidence and list warnings. |
+
+Schema version 2 is backward-readable, but old sessions cannot gain evidence that was never recorded. For the clearest diagnosis, create fresh manual-pass, bot-pass, and bot-fail recordings after this redesign, set both labels, then load them into A and B.
