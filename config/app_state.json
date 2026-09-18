@@ -8,7 +8,7 @@
       "last_status": "ready",
       "last_checked": "2026-09-17T10:45:28.112354Z",
       "error": null,
-      "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
     },
     {
       "id": "url_550177d7",
@@ -267,9 +267,9 @@
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 6,
+      "attempt_count": 7,
       "output_path": null,
-      "error": "Submit failed: Submit failed",
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -336,11 +336,11 @@
       "size": 115546,
       "mtime": 1789720308.7477806,
       "fingerprint": "5676eb9098a06e8b",
-      "status": "pending",
+      "status": "completed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
-      "output_path": null,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-process-gears_AI.png",
       "error": null,
       "content_hash": null
     },
@@ -354,12 +354,12 @@
       "size": 62655,
       "mtime": 1789721064.2190819,
       "fingerprint": "d347b65be36ac597",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -372,11 +372,11 @@
       "size": 263308,
       "mtime": 1789721064.2180808,
       "fingerprint": "d2ccaea2a13a77a6",
-      "status": "pending",
+      "status": "completed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
-      "output_path": null,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-snowflake_AI.png",
       "error": null,
       "content_hash": null
     },
@@ -493,11 +493,11 @@
   "progress": {
     "total": 21,
     "selected": 21,
-    "pending": 8,
+    "pending": 5,
     "processing": 0,
-    "completed": 11,
+    "completed": 13,
     "skipped": 0,
-    "failed": 2,
+    "failed": 3,
     "needs_review": 0
   },
   "run_state": "idle",
