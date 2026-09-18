@@ -13,9 +13,9 @@
   const out = {visible: false, kind: "none", sitekey: "", invisible: false,
     url: location.href, integration: "unknown", anchorPresent: false,
     anchorVisible: false, challengePresent: false, challengeVisible: false,
-    challengeTitle: "", challengeSrc: "", responseFields: 0,
+    challengeTitle: "", challengeSrc: "", challengeIdentity: "", responseFields: 0,
     responseScope: "none", sitekeySource: "none",
-    pageIdentity: location.href};
+    pageIdentity: location.href + "|" + (typeof performance !== "undefined" ? String(performance.timeOrigin || "") : "")};
   const IFRAME = 'iframe[title="reCAPTCHA"], iframe[src*="recaptcha"]';
   const WIDGET = IFRAME + ', div.recaptcha-v2-container, #recaptcha-v2-container';
   const isBadge = (el) => !!(el.closest && el.closest(".grecaptcha-badge"));
@@ -43,6 +43,7 @@
   if (challenges[0]) {
     out.challengeTitle = (challenges[0].title || "").slice(0, 120);
     out.challengeSrc = (() => { try { const u = new URL(challenges[0].src); return u.host + u.pathname; } catch (_) { return "challenge"; } })();
+    out.challengeIdentity = ((challenges[0].name || challenges[0].title || "challenge") + "|" + out.challengeSrc).slice(0, 120);
   }
   let iframe = dialog ? dialog.querySelector(IFRAME) : null;
   if (!iframe) {

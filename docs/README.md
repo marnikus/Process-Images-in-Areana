@@ -54,6 +54,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-18-captcha-reporting/design.md` — round 10: `CAPTCHA_SOLVE` JSON per encounter + `CAPTCHA_JOB` join at job end (outcome + page error)
 - `archive/2026-09-18-recaptcha-page-mechanics/research-design.md` — research/design: Enterprise bootstrap, anchor/challenge frames, response field, callback, backend acceptance, stale tokens, page-error state machine
 - `archive/2026-09-18-recaptcha-verification-architecture/design.md` — implementation architecture: probe evidence, terminal page-error/stale-token guards, acceptance candidate vs output success, penalty/report semantics, test matrix
+- `archive/2026-09-18-recaptcha-verification-architecture/implementation-2026-09-18.md` — implementation record: page/document timeOrigin identity + challenge-frame identity compared before token injection
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

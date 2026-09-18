@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from app.browser.captcha_probes import build_continue_js, build_inject_js
+from app.browser.captcha_probes import build_continue_js, build_detect_js, build_inject_js
 from app.utils.page_errors import match_page_error
 
 from .api_client import ApiError, Captcha2Client, POLL_INTERVAL_SEC
@@ -42,6 +42,8 @@ class SolvePlan:
     signal: CaptchaSignal
     stop: Callable[[], bool]
     start: float
+    stats: Any = None
+    logger: Optional[Callable[[str, str], None]] = None
     token_at: float = 0.0  # monotonic() when the provider token arrived
     err_base: Optional[str] = None  # error-scan corpus at solve start (None = not taken)
     err_seen: bool = False  # a mid-solve page error was already logged
@@ -52,6 +54,8 @@ class SolvePlan:
     page_error_at: float = 0.0  # solve-start-relative seconds of a mid-solve error
     page_error: str = ""
     stale_reason: str = ""
+    page_identity: str = ""
+    challenge_identity: str = ""
 
 
 def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> SolveOutcome:
@@ -206,6 +210,39 @@ async def _verify_gone(ctrl: Any, stop: Callable[[], bool]) -> bool:
         return False
 
 
+async def _current_signal(ctrl: Any) -> Optional[CaptchaSignal]:
+    """Read fresh page identity/evidence before using a provider token."""
+    try:
+        raw = await ctrl.cdp.evaluate(build_detect_js())
+        return CaptchaSignal.from_result(raw)
+    except Exception:
+        return None
+
+
+def _identity_reason(plan: SolvePlan, current: CaptchaSignal) -> str:
+    """Compare stable page/challenge evidence."""
+    if plan.page_identity and current.page_identity and plan.page_identity != current.page_identity:
+        return "page_identity_changed"
+    if plan.challenge_identity and current.challenge_identity and plan.challenge_identity != current.challenge_identity:
+        return "challenge_identity_changed"
+    return ""
+
+
+def _sitekey_changed(plan: SolvePlan, current: CaptchaSignal) -> bool:
+    """Only compare sitekeys when the fresh probe has identity evidence."""
+    return bool(plan.signal.sitekey and current.sitekey
+                and (current.page_identity or current.challenge_identity)
+                and plan.signal.sitekey != current.sitekey)
+
+
+async def _stale_reason(plan: SolvePlan) -> str:
+    """Return a mismatch reason; empty means the page is still the same."""
+    current = await _current_signal(plan.ctrl)
+    if current is None:
+        return ""
+    return _identity_reason(plan, current) or ("sitekey_changed" if _sitekey_changed(plan, current) else "")
+
+
 async def _inject(ctrl: Any, token: str, sitekey: str,
                  log: Callable[[str, str], None]) -> Dict[str, Any]:
     """Set response fields and invoke the page callback; never raises."""
@@ -219,6 +256,27 @@ async def _inject(ctrl: Any, token: str, sitekey: str,
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _auto_fail(plan: SolvePlan, reason: str, detail: str) -> None:
+    """Record a provider attempt failure without growing CaptchaSolver."""
+    try:
+        plan.stats.record("auto_failed", host_of(plan.signal.page_url))
+        plan.stats.set_last_error(detail[:80])
+        plan.logger(f"🤖 2Captcha auto-solve failed: {reason}", "warn")
+    except Exception:
+        pass
+
+
+async def _stale_outcome(plan: SolvePlan, task_id: str, stats: Any,
+                          log: Callable[[str, str], None]) -> Optional[SolveOutcome]:
+    """Delete provider work and return an outcome when page evidence changed."""
+    reason = await _stale_reason(plan)
+    if not reason:
+        return None
+    plan.stale_reason = reason
+    await _delete_task(plan.client, task_id, stats, log)
+    return _failed("token_stale", reason, plan)
 
 
 class CaptchaSolver:
@@ -252,7 +310,10 @@ class CaptchaSolver:
         client = Captcha2Client(settings.api_key)
         try:
             plan = SolvePlan(client=client, ctrl=ctrl, tab_id=tab_id, signal=signal,
-                             stop=stop, start=time.monotonic())
+                             stop=stop, start=time.monotonic(), stats=self._stats,
+                             logger=self._log,
+                             page_identity=signal.page_identity,
+                             challenge_identity=signal.challenge_identity)
             return await self._run_task(plan, settings.solve_timeout_sec)
         finally:
             await client.aclose()
@@ -272,6 +333,9 @@ class CaptchaSolver:
         return await self._inject_and_verify(plan, token, task_id)
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
+        stale = await _stale_outcome(plan, task_id, self._stats, self._log)
+        if stale is not None:
+            return stale
         if await _note_page_error(plan, self._log):
             await _delete_task(plan.client, task_id, self._stats, self._log)
             return _failed("page_error", plan.page_error, plan)
@@ -279,7 +343,7 @@ class CaptchaSolver:
         res = await _inject(plan.ctrl, token, plan.signal.sitekey, self._log)
         if not res.get("ok"):
             await _delete_task(plan.client, task_id, self._stats, self._log)
-            self._auto_fail(plan, "inject", "response field not found on page")
+            _auto_fail(plan, "inject", "response field not found on page")
             return _failed("inject", "response field not found on page", plan)
         plan.inject = f"scope={res.get('scope')} fields={res.get('fields', 1)} cb={_cb_desc(res)}"
         self._log(f"🤖 token injected ({plan.inject})", "info")
@@ -291,10 +355,11 @@ class CaptchaSolver:
             if await _note_page_error(plan, self._log):
                 await _delete_task(plan.client, task_id, self._stats, self._log)
                 return _failed("page_error", plan.page_error, plan)
-            return self._solved(plan, task_id)
+            stale = await _stale_outcome(plan, task_id, self._stats, self._log)
+            return stale if stale is not None else self._solved(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats, self._log)
         why = _reject_reason(res)
-        self._auto_fail(plan, "not_accepted", why)
+        _auto_fail(plan, "not_accepted", why)
         return _failed("not_accepted", why, plan)
 
     def _solved(self, plan: SolvePlan, task_id: str) -> SolveOutcome:
@@ -308,14 +373,6 @@ class CaptchaSolver:
                             polls=plan.polls, token_sec=tok, token_fp=plan.token_fp,
                             dialog_at_token=plan.dialog_at_token, inject=plan.inject,
                             page_error_at_s=plan.page_error_at, page_error=plan.page_error)
-
-    def _auto_fail(self, plan: SolvePlan, reason: str, detail: str) -> None:
-        try:
-            self._stats.record("auto_failed", host_of(plan.signal.page_url))
-            self._stats.set_last_error(detail[:80])
-            self._log(f"🤖 2Captcha auto-solve failed: {reason}", "warn")
-        except Exception:
-            pass
 
     async def _create_task(self, plan: SolvePlan) -> str:
         task_type = task_type_for(plan.signal.kind)

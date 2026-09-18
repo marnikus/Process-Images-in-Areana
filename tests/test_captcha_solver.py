@@ -159,6 +159,36 @@ async def test_v2_kind_maps_to_v2_task_type(monkeypatch, isolated_config_dir):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_changed_page_identity_stales_token_before_injection(monkeypatch, isolated_config_dir):
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+
+    class NavigatedCtrl(FakeCtrl):
+        def __init__(self):
+            super().__init__(visible_seq=[False])
+            self.detects = 0
+
+        async def _evaluate(self, js):
+            if "Security Verification" in js:
+                self.detects += 1
+                result = detect_result()
+                result["pageIdentity"] = "page-after"
+                return json.dumps(result)
+            return await super()._evaluate(js)
+
+    ctrl = NavigatedCtrl()
+    current = signal()
+    current.page_identity = "page-before"
+    outcome = await solver.solve(ctrl, "t", current, lambda: False)
+    assert outcome.status == "token_stale"
+    assert "page_identity_changed" in outcome.reason
+    assert client.deleted
+    assert not any("g-recaptcha-response" in probe for probe in ctrl.probes)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_api_error_falls_back_and_deletes_task(monkeypatch, isolated_config_dir):
     from app.services.captcha.api_client import ApiError
     client = FakeClient("K", exc=ApiError("no_credit", error_id=3))
@@ -293,7 +323,7 @@ async def test_inject_probe_receives_sitekey(monkeypatch, isolated_config_dir):
     ctrl = FakeCtrl(visible_seq=[False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "solved"
-    inject_js = [p for p in ctrl.probes if "g-recaptcha-response" in p]
+    inject_js = [p for p in ctrl.probes if "(token, sitekey)" in p]
     assert len(inject_js) == 1
     assert SITEKEY in inject_js[0]  # sitekey steers the client search
 
