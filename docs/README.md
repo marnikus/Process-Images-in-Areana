@@ -49,6 +49,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-18-revival-generalize/design.md` — round 6: trigger revival on spinner loss (seen, then 20 s gone with no pixels), not only on captcha settle — covers no-dialog dead generations like the 12:08 run
 - `archive/2026-09-18-grid-window-set/design.md` — grid persistence: Python/JS window sets synced (14 incl. `captcha`); invalid layouts rejected not defaulted (RULE 13); preset save→load round-trips the portable doc
 - `archive/2026-09-18-resubmit-send-ready/design.md` — round 7: visible-composer insert + Send-ready click + re-attach on resubmit; `Trace ID:` in-thread errors fast-fail the wait
+- `archive/2026-09-18-solve-observability/design.md` — round 8: task id, poll heartbeats, token fingerprint + time-to-token, pre-inject dialog state, provider error detail in logs
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 
