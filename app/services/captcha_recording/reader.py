@@ -15,7 +15,7 @@ class EvidenceReader:
         self.root = root
 
     def details(self, session_id: str) -> dict[str, Any]:
-        folder = self._folder(session_id)
+        folder = self.folder(session_id)
         manifest = self._json(folder / "manifest.json")
         return {
             "manifest": manifest,
@@ -23,7 +23,7 @@ class EvidenceReader:
             "latest_snapshot": self._snapshot(folder / "snapshots"),
         }
 
-    def _folder(self, session_id: str) -> Path:
+    def folder(self, session_id: str) -> Path:
         if not session_id or Path(session_id).name != session_id:
             raise ValueError("invalid session id")
         folder = self.root / session_id

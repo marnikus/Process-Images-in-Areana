@@ -38,10 +38,28 @@ const CaptchaRecordingsPanel = {
     this.cell(tr, `${item.mutation_count || 0}/${item.network_count || 0}/${item.snapshot_count || 0}`);
     const labelCell = document.createElement('td');
     labelCell.append(this.labelSelect(item), CaptchaRecordingComparison.button(item, 0),
-      CaptchaRecordingComparison.button(item, 1));
+      CaptchaRecordingComparison.button(item, 1), this.openButton(item));
     tr.appendChild(labelCell);
     tr.title = item.reason || item.session_id || '';
     return tr;
+  },
+
+  openButton(item) {
+    const button = document.createElement('button');
+    button.className = 'captcha-compare-btn';
+    button.textContent = 'Open';
+    button.title = 'Open this recording folder';
+    button.addEventListener('click', () => {
+      const bridge = window.CaptchaRecordingsBridge;
+      if (!bridge?.open_folder) return;
+      bridge.open_folder(item.session_id, (raw) => {
+        try {
+          const result = JSON.parse(raw);
+          if (!result.ok) LogConsole.log('Open recording folder failed: ' + result.error, 'error');
+        } catch (error) { LogConsole.log('Open recording folder reply failed: ' + error, 'error'); }
+      });
+    });
+    return button;
   },
 
   labelSelect(item) {

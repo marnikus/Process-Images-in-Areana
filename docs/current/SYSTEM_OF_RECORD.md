@@ -307,7 +307,7 @@ Remediation order: nesting → cyclomatic → cognitive → size (RULE 19).
 | `settings` | Settings | Supported types, ignore suffix, highlight duration, confirm pause, max attempts, download timeout, CDP host/port, user-data-dir | `arena.json` settings |
 | `watcher` | Generation Watcher | Generation/captcha passive monitoring and state | ephemeral |
 | `captcha` | Captcha — 2Captcha Control | Opt-in provider settings, masked key, timeout, balance, and statistics | `config/2captcha.json` + `captcha_stats.json` |
-| `captcha_records` | Captcha Session Records | Session list, editable labels, and A/B event/DOM evidence comparison | `config/captcha_recordings/` |
+| `captcha_records` | Captcha Session Records | Session list, editable labels, A/B event/DOM evidence comparison, and per-session Open-folder action | `config/captcha_recordings/` |
 | `browser` | Browser Preview | Selected/generated image and webpage highlight context | ephemeral |
 | `block_config` | Block Config — Security Check | Selected action-block configuration | `arena.json` action blocks |
 | `arena_presets` | Arena Presets | Save/load prompt, action-block, and setting combinations | `config/arena.json` |

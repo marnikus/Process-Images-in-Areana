@@ -47,9 +47,11 @@ test('records UI loads two bounded evidence panes side by side', () => {
     outcome: 'manual', url: 'https://arena.ai/c/1'},
   events: [{at_ms: 3, kind: 'mutation', payload: {path: 'main'}}],
   latest_snapshot: {html: '<main>safe</main>'}};
-  dom.window.CaptchaRecordingsBridge = {get_session(_id, callback) {
-    callback(JSON.stringify({ok: true, details}));
-  }};
+  let opened = '';
+  dom.window.CaptchaRecordingsBridge = {
+    get_session(_id, callback) { callback(JSON.stringify({ok: true, details})); },
+    open_folder(id, callback) { opened = id; callback(JSON.stringify({ok: true})); },
+  };
   for (const name of ['captcha-recordings.js', 'captcha-recording-comparison.js']) {
     let source = fs.readFileSync(path.join(scripts, name), 'utf8');
     source = source.replace('const CaptchaRecordingsPanel =', 'globalThis.CaptchaRecordingsPanel =')
@@ -60,4 +62,6 @@ test('records UI loads two bounded evidence panes side by side', () => {
   assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /manual/);
   assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /mutation/);
   assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /<main>safe<\/main>/);
+  dom.window.CaptchaRecordingsPanel.openButton({session_id: 's1'}).click();
+  assert.equal(opened, 's1');
 });

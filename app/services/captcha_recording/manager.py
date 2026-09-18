@@ -73,6 +73,9 @@ class RecordingManager:
     def get_session(self, session_id: str) -> dict[str, Any]:
         return self.reader.details(session_id)
 
+    def session_folder(self, session_id: str) -> str:
+        return str(self.reader.folder(session_id))
+
     def _drop(self, recorder: CaptchaRecorder) -> None:
         for tab_id, active in tuple(self._active.items()):
             if active is recorder:
