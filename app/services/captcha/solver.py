@@ -56,6 +56,7 @@ class SolvePlan:
     stale_reason: str = ""
     page_identity: str = ""
     challenge_identity: str = ""
+    task_id: str = ""
 
 
 def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> SolveOutcome:
@@ -63,6 +64,7 @@ def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> 
     status = "page_error" if reason == "page_error" else "token_stale" if reason == "token_stale" else "auto_failed"
     out = SolveOutcome(status=status, reason=f"{reason}: {detail}".strip(": "), method="auto")
     if plan is not None:
+        out.task_id = plan.task_id
         out.polls = plan.polls
         if plan.token_at:
             out.token_sec = plan.token_at - plan.start
@@ -338,6 +340,7 @@ class CaptchaSolver:
         task_id = await self._create_task(plan)
         if not task_id:
             return _failed("task_create", "createTask failed", plan)
+        plan.task_id = task_id
         token, why = await self._poll_task(plan, task_id, timeout_sec)
         if not token:
             await _delete_task(plan.client, task_id, self._stats, self._log)
@@ -372,8 +375,7 @@ class CaptchaSolver:
             error = await _page_error_outcome(plan, task_id, self._stats, self._log)
             if error is not None:
                 return error
-            stale = await _stale_outcome(plan, task_id, self._stats, self._log)
-            return stale if stale is not None else self._solved(plan, task_id)
+            return self._solved(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats, self._log)
         why = _reject_reason(res)
         _auto_fail(plan, "not_accepted", why)
