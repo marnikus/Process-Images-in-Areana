@@ -461,18 +461,19 @@ def build_highlight_rect_js(x: float, y: float, w: float, h: float, color: str =
 # ── watcher overlay ────────────────────────────────────────────────
 WATCHER_ATTR = "data-arena-watcher-overlay"
 
-def build_watcher_overlay_js(message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, elapsed_sec: int = 0) -> str:
+def build_watcher_overlay_js(message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, sub: str = "") -> str:
     """Build JS for a small draggable popup at top-center of the page.
     kind: 'generation' -> blue, 'captcha' -> red
     - Default: top-center (left 50% + translateX), compact (max 380px)
     - Draggable by mouse anywhere; position kept across re-shows
     - Spinner + elapsed/timeout counter from win settings
+    - sub: optional amber reason line (why the app is not solving, captcha)
     - Persists until cleared
     """
     msg_json = json.dumps(message or "wait")
     kind_json = json.dumps(kind or "generation")
     timeout_json = json.dumps(int(timeout_sec or 600))
-    elapsed_json = json.dumps(int(elapsed_sec or 0))
+    sub_json = json.dumps(sub or "")
     return f"""
 ;(function(){{
   try {{
@@ -480,8 +481,8 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
     var msg = {msg_json};
     var kind = {kind_json};
     var timeoutSec = {timeout_json};
-    var elapsedStart = {elapsed_json};
-    var startTime = Date.now() - (elapsedStart * 1000);
+    var subText = {sub_json};
+    var startTime = Date.now();
     // Remove existing watcher overlays
     var olds = document.querySelectorAll('['+ATTR+']');
     for (var i=0;i<olds.length;i++) {{ if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]); }}
@@ -603,6 +604,12 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
 
     overlay.appendChild(headRow);
     overlay.appendChild(subEl);
+    if (subText) {{
+      var reasonEl = document.createElement('div');
+      reasonEl.textContent = subText;
+      reasonEl.style.cssText = 'font-size:11px; font-weight:700; color:#ffd28a; margin-top:5px; text-align:center;';
+      overlay.appendChild(reasonEl);
+    }}
     overlay.appendChild(spinnerWrap);
     overlay.appendChild(timeEl);
     overlay.appendChild(timeoutEl);

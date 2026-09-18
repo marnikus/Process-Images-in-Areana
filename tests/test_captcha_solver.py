@@ -49,6 +49,7 @@ class FakeCtrl:
         self._visible = list(visible_seq)
         self._inject = list(inject_results if inject_results is not None else [True])
         self.probes = []
+        self.overlay_calls = []
         self.cdp = SimpleNamespace(evaluate=self._evaluate)
 
     async def _evaluate(self, js):
@@ -64,6 +65,7 @@ class FakeCtrl:
         return self._visible.pop(0) if self._visible else False
 
     async def show_watcher_overlay(self, *a, **k):
+        self.overlay_calls.append(k)
         return True
 
     async def hide_watcher_overlay(self):

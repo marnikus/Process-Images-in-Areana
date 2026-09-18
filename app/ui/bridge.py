@@ -2923,7 +2923,7 @@ class Bridge(QObject):
                             # Use block timeout or settings, but respect user win setting
                             effective_gen_timeout_sec = max(gen_timeout_sec, int(wait_timeout / 1000)) if wait_timeout else gen_timeout_sec
                             try:
-                                await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec, elapsed_sec=0)
+                                await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec)
                                 self._log(f"[{correlation_id}] ⏳ Drawn watcher overlay: 'wait for finish generation' on left center page — sleep circle running, timeout {effective_gen_timeout_sec}s (user setting from win)", "info")
                             except Exception as e:
                                 self._log(f"[{correlation_id}] Overlay show failed: {e}", "warn")
@@ -2953,7 +2953,7 @@ class Bridge(QObject):
                                         await self._settle_captcha_at(ctrl, primary_tab_id, correlation_id, "gen-wait")
                                         self._log(f"[{correlation_id}] ✅ Captcha solved during generation — restoring generation overlay", "success")
                                         try:
-                                            await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec, elapsed_sec=0)
+                                            await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec)
                                         except Exception:
                                             pass
                                 except Exception as e_cap:

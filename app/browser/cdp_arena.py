@@ -419,11 +419,11 @@ class CDPArenaController:
         except Exception as e:
             log.debug(f"clear failed {e}")
 
-    async def show_watcher_overlay(self, message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, elapsed_sec: int = 0) -> bool:
+    async def show_watcher_overlay(self, message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, sub: str = "") -> bool:
         # ideal-size: 10 lines reason=show watcher overlay with timeout from win settings
         try:
             from .dom_highlight import build_watcher_overlay_js
-            js = build_watcher_overlay_js(message=message, kind=kind, timeout_sec=timeout_sec, elapsed_sec=elapsed_sec)
+            js = build_watcher_overlay_js(message=message, kind=kind, timeout_sec=timeout_sec, sub=sub)
             raw = await self.cdp.evaluate(js)
             if raw:
                 try:

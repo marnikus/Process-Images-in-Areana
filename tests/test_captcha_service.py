@@ -84,6 +84,7 @@ async def test_disabled_service_waits_manually_and_records(monkeypatch, isolated
     assert d["detected_total"] == 1 and d["manual_solved"] == 1
     assert any("🛡️" in m for m, _ in bridge._logs)  # penalty choke-point line
     assert any("CAPTCHA_WAITING" in m and "awaiting your solve" in m for m, _ in bridge._logs)  # visual flag
+    assert ctrl.overlay_calls and ctrl.overlay_calls[-1]["sub"].startswith("auto-solve OFF")  # why-not-solving flag
 
 
 @pytest.mark.unit
@@ -163,6 +164,8 @@ async def test_unsolvable_kind_falls_back_to_manual(monkeypatch, isolated_config
     assert outcome.status == "manual"
     assert client.created == []  # nothing sent to 2Captcha
     assert pool.get_page("t1").pending_penalty == 900
+    assert any("CAPTCHA_AUTO skipped" in m for m, _ in bridge._logs)  # skip is never silent
+    assert ctrl.overlay_calls and ctrl.overlay_calls[-1]["sub"] == "auto-solve: no sitekey in dialog"
 
 
 @pytest.mark.unit
@@ -218,6 +221,7 @@ async def test_auto_solve_failure_falls_back_to_manual(monkeypatch, isolated_con
     assert outcome.status == "manual"
     assert pool.get_page("t1").pending_penalty == 900
     assert any("falling back to manual wait" in m for m, _ in bridge._logs)
+    assert ctrl.overlay_calls and ctrl.overlay_calls[-1]["sub"].startswith("auto-solve failed:")
 
 
 @pytest.mark.unit

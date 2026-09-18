@@ -174,7 +174,7 @@ async def _show_gen_overlay(ctx: JobCtx, timeout_ms: int):
     try:
         gen_to = int(ctx.bridge.config.get_state("watcher_generation_timeout_sec", 600))
         eff = max(gen_to, int(timeout_ms / 1000)) if timeout_ms else 600
-        await ctx.ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=eff, elapsed_sec=0)
+        await ctx.ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=eff)
         _mark_waiting(ctx, "generation")
     except Exception:
         pass

@@ -197,7 +197,7 @@ class WatcherService:
                 self._logger(f"🛡️ Watcher: Captcha detected — drawing rectangle 'wait for user. Captcha' on left center (timeout {self.config.captcha_timeout_sec}s user setting from win), pausing jobs", "warn")
                 # Show overlay with timeout from win settings
                 try:
-                    await cdp.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=self.config.captcha_timeout_sec, elapsed_sec=0)
+                    await cdp.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=self.config.captcha_timeout_sec)
                 except Exception as e:
                     self._logger(f"Watcher overlay show failed: {e}", "warn")
                 # Pause jobs if configured
@@ -244,7 +244,7 @@ class WatcherService:
                 details_str = ", ".join([d.get("label","") for d in gen_details.get("details", [])]) if isinstance(gen_details, dict) else ""
                 self._logger(f"⏳ Watcher: Generation detected {details_str} — drawing rectangle 'wait for finish generation' on left center (timeout {self.config.generation_timeout_sec}s user setting from win), pausing jobs", "warn")
                 try:
-                    await cdp.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=self.config.generation_timeout_sec, elapsed_sec=0)
+                    await cdp.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=self.config.generation_timeout_sec)
                 except Exception as e:
                     self._logger(f"Watcher overlay show failed: {e}", "warn")
                 if self.config.auto_pause_jobs:

@@ -123,6 +123,7 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
 
     Callers gate on `is_security_dialog_visible()` first; the detect probe's
     own visible flag covers the vanishing-dialog race (→ `none`, no penalty).
+    The manual wait always states WHY the app is not solving (visual flag).
     """
     signal = await detect_signal(ctx)
     if not signal.visible:
@@ -132,22 +133,33 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}) via {ctx.source}", "error")
     svc = _service(ctx)
     if svc is not None and svc.auto_enabled() and signal.solvable:
-        _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
-        outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
+        outcome = await _try_auto(ctx, signal, svc)
         if outcome.status == "solved":
             _record_penalty(ctx)
             return outcome
+        return await _manual_wait(ctx, signal, f"auto-solve failed: {outcome.reason}")
+    if svc is not None and svc.auto_enabled():
+        _log(ctx, "⚠️ FLAG CAPTCHA_AUTO skipped — no sitekey in dialog — manual wait", "warn")
+        return await _manual_wait(ctx, signal, "auto-solve: no sitekey in dialog")
+    return await _manual_wait(ctx, signal, "auto-solve OFF — solve in Chrome (enable 2Captcha in the Captcha window)")
+
+
+async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService) -> SolveOutcome:
+    """One 2Captcha attempt with its flag log; caller decides the fallback."""
+    _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
+    outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
+    if outcome.status != "solved":
         _log(ctx, f"2Captcha auto-solve failed ({outcome.reason}) — falling back to manual wait", "warn")
-    return await _manual_wait(ctx, signal)
+    return outcome
 
 
-async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal) -> SolveOutcome:
-    """Overlay + poll until the dialog clears; penalty once cleared."""
+async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str) -> SolveOutcome:
+    """Overlay (with the why-not-solving flag) + poll until the dialog clears."""
     timeout = _wait_timeout(ctx)
     _log(ctx, f"🛡️ FLAG CAPTCHA_WAITING — captcha on screen (tab {str(ctx.tab_id)[:12]}, {host_of(signal.page_url)}) — awaiting your solve in Chrome", "error")
     try:
         await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha",
-                                            timeout_sec=timeout, elapsed_sec=0)
+                                            timeout_sec=timeout, sub=reason)
     except Exception:
         pass
     from app.services.cooldown_service import wait_captcha_cleared
