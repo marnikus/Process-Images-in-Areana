@@ -40,6 +40,15 @@ ERROR_PATTERNS = (
 
 _COMPILED = [re.compile(p, re.IGNORECASE) for p in ERROR_PATTERNS]
 
+# Dead-request signature (2026-09-18 live evidence): the generation held by
+# the captcha modal dies server-side and the site says "Please try again."
+# ONLY this family is revivable; limits/quotas/trace ids stay terminal.
+DEAD_GENERATION_PATTERNS = (
+    r"something\s+went\s+wrong\s+while\s+generating",
+)
+
+_DEAD_COMPILED = [re.compile(p, re.IGNORECASE) for p in DEAD_GENERATION_PATTERNS]
+
 MAX_LINE = 160
 
 
@@ -61,6 +70,18 @@ def match_page_error(corpus: str, baseline: str = "") -> str:
         for rx in _COMPILED:
             if rx.search(line):
                 return f"Page error: {line[:MAX_LINE]}"
+    return ""
+
+
+def match_dead_generation(text: str) -> str:
+    """Non-empty when the error line is the dead-generation toast.
+
+    The blocked request died server-side; the site's own remedy is
+    'Please try again.' — revivable via the bounded resubmit policy.
+    """
+    for rx in _DEAD_COMPILED:
+        if rx.search(text or ""):
+            return "dead_generation"
     return ""
 
 

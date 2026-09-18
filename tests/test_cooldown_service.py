@@ -722,3 +722,56 @@ def test_note_captcha_event_unreadable_page_still_counts():
 
     bridge = make_bridge()
     assert svc.note_captcha_event(FlakyPool(), "a", bridge) == 1
+
+
+# ── 2026-09-18: checked-row gating — resolve stays inside allowed tabs (I-33) ──
+
+@pytest.mark.unit
+def test_resolve_allowed_moves_off_foreign_tab():
+    pool = PagePool()
+    pool.add_page(make_info("foreign"))
+    pool.add_page(make_info("checked"))
+    assert svc.resolve_primary_tab(pool, "foreign", allowed={"checked"}) == "checked"
+    assert svc.resolve_primary_tab(pool, "", allowed={"checked"}) == "checked"
+
+
+@pytest.mark.unit
+def test_resolve_allowed_keeps_free_checked_tab():
+    pool = PagePool()
+    pool.add_page(make_info("checked"))
+    assert svc.resolve_primary_tab(pool, "checked", allowed={"checked"}) == "checked"
+
+
+@pytest.mark.unit
+def test_resolve_allowed_empty_when_nothing_usable():
+    pool = PagePool()
+    pool.add_page(make_info("foreign"))
+    assert svc.resolve_primary_tab(pool, "foreign", allowed={"checked"}) == ""
+    assert svc.resolve_primary_tab(pool, "", allowed=set()) == ""
+
+
+@pytest.mark.unit
+def test_resolve_allowed_prefers_lowest_jobs_within_allowed():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    pool.add_page(make_info("c"))
+    pool.get_page("a").jobs_completed = 1
+    pool.get_page("b").jobs_completed = 7
+    pool.get_page("c").jobs_completed = 3
+    assert svc.resolve_primary_tab(pool, "ghost", allowed={"b", "c"}) == "c"
+
+
+@pytest.mark.unit
+def test_resolve_allowed_none_keeps_legacy_behaviour():
+    pool = PagePool()
+    pool.add_page(make_info("only"))
+    assert svc.resolve_primary_tab(pool, "ghost", None) == "only"
+
+
+@pytest.mark.unit
+def test_resolve_allowed_returns_cooling_tab_to_wait_on():
+    pool = _cooling_pool("checked")
+    pool.add_page(make_info("foreign"))
+    assert svc.resolve_primary_tab(pool, "", allowed={"checked"}) == "checked"
+    assert svc.resolve_primary_tab(pool, "foreign", allowed={"checked"}) == "checked"

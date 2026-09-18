@@ -1,6 +1,1692 @@
 {
   "history": [
     {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[77.8122575640031,22.187742435996896]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[53.76344086021505,46.236559139784944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,28.44967642121001,33.43454956726987,14.603644737792834]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[42.10526315789473,57.89473684210527]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[53.76344086021505,46.236559139784944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,28.44967642121001,33.43454956726987,14.603644737792834]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[42.10526315789473,57.89473684210527]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[53.76344086021505,46.236559139784944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[64.6677471636953,35.332252836304704]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[53.76344086021505,46.236559139784944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[75.12155591572123,24.878444084278765]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[53.76344086021505,46.236559139784944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[75.12155591572123,24.878444084278765]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[48.71382636655949,51.28617363344051]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[75.12155591572123,24.878444084278765]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,56.540084388185655,10.126582278481013]}],\"sizes\":[48.71382636655949,51.28617363344051]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
+    },
+    {
+      "kind": "queue",
+      "value": [
+        {
+          "id": "6f6804b0a1126fed",
+          "relative_path": "Celo/celo-1.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Celo\\celo-1.png",
+          "filename": "celo-1.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2589303
+        },
+        {
+          "id": "8be743e170ec5cf6",
+          "relative_path": "Facelift/facelift-1.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Facelift\\facelift-1.png",
+          "filename": "facelift-1.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2713840
+        },
+        {
+          "id": "523f0578cea67dc0",
+          "relative_path": "Facelift/facelift-2.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Facelift\\facelift-2.png",
+          "filename": "facelift-2.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2561472
+        },
+        {
+          "id": "9ee3ff130c7ef1ea",
+          "relative_path": "Facelift/facelift-3.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Facelift\\facelift-3.png",
+          "filename": "facelift-3.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2509597
+        },
+        {
+          "id": "c05217b897060e17",
+          "relative_path": "Nos/31_b.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Nos\\31_b.png",
+          "filename": "31_b.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2234718
+        },
+        {
+          "id": "5902cff39fc91a3a",
+          "relative_path": "Nos/nos-1.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Nos\\nos-1.png",
+          "filename": "nos-1.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2219467
+        },
+        {
+          "id": "185e4ce424baac50",
+          "relative_path": "Nos/nos-2.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Nos\\nos-2.png",
+          "filename": "nos-2.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2275239
+        },
+        {
+          "id": "3f91454d8bcf011a",
+          "relative_path": "Nos/nos-3.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Nos\\nos-3.png",
+          "filename": "nos-3.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2572332
+        },
+        {
+          "id": "f8b43dfac97e2e44",
+          "relative_path": "Oci/oci-1.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Oci\\oci-1.png",
+          "filename": "oci-1.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2596822
+        },
+        {
+          "id": "b45a82f24ac67448",
+          "relative_path": "Oci/oci-2.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Oci\\oci-2.png",
+          "filename": "oci-2.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2390551
+        },
+        {
+          "id": "4e1c630bec55cf9a",
+          "relative_path": "Oci/oci-3.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Oci\\oci-3.png",
+          "filename": "oci-3.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2720123
+        },
+        {
+          "id": "680705973bf00358",
+          "relative_path": "Oci/oci-4.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Oci\\oci-4.png",
+          "filename": "oci-4.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2640763
+        },
+        {
+          "id": "b8e5060d9a3f3048",
+          "relative_path": "Usi/usi-1.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Usi\\usi-1.png",
+          "filename": "usi-1.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2213113
+        },
+        {
+          "id": "854d6e2fe6a6f9c8",
+          "relative_path": "Usi/usi-2.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Usi\\usi-2.png",
+          "filename": "usi-2.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 1763628
+        },
+        {
+          "id": "c20bf779171b8982",
+          "relative_path": "Usi/usi-3.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\Usi\\usi-3.png",
+          "filename": "usi-3.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2375358
+        },
+        {
+          "id": "74b7cb139096f68a",
+          "relative_path": "the rest/01-b.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\01-b.png",
+          "filename": "01-b.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 1524484
+        },
+        {
+          "id": "a92cb40c7785b698",
+          "relative_path": "the rest/01-c.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\01-c.png",
+          "filename": "01-c.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 1559964
+        },
+        {
+          "id": "fb2a900d88fc62e0",
+          "relative_path": "the rest/01-cxxx.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\01-cxxx.png",
+          "filename": "01-cxxx.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 1613197
+        },
+        {
+          "id": "d850f25c0035a5c5",
+          "relative_path": "the rest/02-a.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\02-a.png",
+          "filename": "02-a.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 1643477
+        },
+        {
+          "id": "86b5bd6b7b881d78",
+          "relative_path": "the rest/02-b.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\02-b.png",
+          "filename": "02-b.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2056941
+        },
+        {
+          "id": "b8361eefbb317911",
+          "relative_path": "the rest/02-c.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\02-c.png",
+          "filename": "02-c.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 1718139
+        },
+        {
+          "id": "26d8f49d5b2c8370",
+          "relative_path": "the rest/03-a.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\03-a.png",
+          "filename": "03-a.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2113513
+        },
+        {
+          "id": "ffd12618d2624445",
+          "relative_path": "the rest/03-b.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\03-b.png",
+          "filename": "03-b.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2115745
+        },
+        {
+          "id": "f75dd9e3c9b0bb16",
+          "relative_path": "the rest/03-c.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\03-c.png",
+          "filename": "03-c.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2566961
+        },
+        {
+          "id": "1bbdbade0ebdb1cd",
+          "relative_path": "the rest/04-a.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\04-a.png",
+          "filename": "04-a.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2272431
+        },
+        {
+          "id": "79e6098fc8604c1e",
+          "relative_path": "the rest/04-b.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\04-b.png",
+          "filename": "04-b.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2599387
+        },
+        {
+          "id": "c28db818405f77ca",
+          "relative_path": "the rest/04-c.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\04-c.png",
+          "filename": "04-c.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 1806115
+        },
+        {
+          "id": "0aab6f849020efea",
+          "relative_path": "the rest/05-a.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\05-a.png",
+          "filename": "05-a.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2379824
+        },
+        {
+          "id": "8d44437921b4b106",
+          "relative_path": "the rest/06.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\06.png",
+          "filename": "06.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2324413
+        },
+        {
+          "id": "4623dc73e6576c00",
+          "relative_path": "the rest/07.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\07.png",
+          "filename": "07.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2553772
+        },
+        {
+          "id": "b6d59565e0eb8b87",
+          "relative_path": "the rest/08.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\08.png",
+          "filename": "08.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2508848
+        },
+        {
+          "id": "b09ea3d88f5cd9cc",
+          "relative_path": "the rest/09.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\09.png",
+          "filename": "09.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2475760
+        },
+        {
+          "id": "0aad03e6191b4760",
+          "relative_path": "the rest/10.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\10.png",
+          "filename": "10.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2384699
+        },
+        {
+          "id": "181e4e60ef6e6771",
+          "relative_path": "the rest/29.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\29.png",
+          "filename": "29.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2386830
+        },
+        {
+          "id": "88ceb48f8f8cbbbf",
+          "relative_path": "the rest/31-a.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\31-a.png",
+          "filename": "31-a.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2296052
+        },
+        {
+          "id": "b0b2414a51805954",
+          "relative_path": "the rest/31-b.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\31-b.png",
+          "filename": "31-b.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2395742
+        },
+        {
+          "id": "46f5dcd7e7093305",
+          "relative_path": "the rest/31-c.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\31-c.png",
+          "filename": "31-c.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2180047
+        },
+        {
+          "id": "4a18a068a8398d83",
+          "relative_path": "the rest/31b.jpg.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\31b.jpg.png",
+          "filename": "31b.jpg.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2443124
+        },
+        {
+          "id": "edc06b0026acb13c",
+          "relative_path": "the rest/plastika4.png",
+          "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej - AI\\the rest\\plastika4.png",
+          "filename": "plastika4.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 2311613
+        }
+      ]
+    },
+    {
+      "kind": "folder",
+      "value": {
+        "root_path": "F:/Stocks 2026/icons testing/single",
+        "supported_types": [
+          ".png",
+          ".jpg",
+          ".jpeg",
+          ".webp"
+        ],
+        "ignore_ai_suffix": true
+      }
+    },
+    {
+      "kind": "queue",
+      "value": [
+        {
+          "id": "4051213189a01db6",
+          "relative_path": "icon-airplane-landing.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-airplane-landing.png",
+          "filename": "icon-airplane-landing.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 45682
+        },
+        {
+          "id": "bda721fb1554463d",
+          "relative_path": "icon-bank-institution.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-bank-institution.png",
+          "filename": "icon-bank-institution.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 78231
+        },
+        {
+          "id": "6668674e6c1c503c",
+          "relative_path": "icon-call-accept-reject.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-call-accept-reject.png",
+          "filename": "icon-call-accept-reject.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 181079
+        },
+        {
+          "id": "57a018f19268a185",
+          "relative_path": "icon-color-picker.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-color-picker.png",
+          "filename": "icon-color-picker.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 99359
+        },
+        {
+          "id": "1fb4ee73bb10e3d0",
+          "relative_path": "icon-contactless-payment.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-contactless-payment.png",
+          "filename": "icon-contactless-payment.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 84697
+        },
+        {
+          "id": "a9c5117d03efa8dc",
+          "relative_path": "icon-crosshair-target.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-crosshair-target.png",
+          "filename": "icon-crosshair-target.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 55210
+        },
+        {
+          "id": "c0b47bd265017f06",
+          "relative_path": "icon-fire-flame.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-fire-flame.png",
+          "filename": "icon-fire-flame.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 205381
+        },
+        {
+          "id": "a1bff62f1112a4f0",
+          "relative_path": "icon-herbal-capsule.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-herbal-capsule.png",
+          "filename": "icon-herbal-capsule.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 111392
+        },
+        {
+          "id": "c88f61629afa1f84",
+          "relative_path": "icon-hotdog.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-hotdog.png",
+          "filename": "icon-hotdog.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 53619
+        },
+        {
+          "id": "23c3507b152b0e1d",
+          "relative_path": "icon-lightbulb.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-lightbulb.png",
+          "filename": "icon-lightbulb.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 133256
+        },
+        {
+          "id": "f7db402fae5eb678",
+          "relative_path": "icon-money-plant.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-money-plant.png",
+          "filename": "icon-money-plant.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 90071
+        },
+        {
+          "id": "f598653720b55fa7",
+          "relative_path": "icon-person-at-desk.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-person-at-desk.png",
+          "filename": "icon-person-at-desk.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 116604
+        },
+        {
+          "id": "5676eb9098a06e8b",
+          "relative_path": "icon-process-gears.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-process-gears.png",
+          "filename": "icon-process-gears.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 115546
+        },
+        {
+          "id": "d347b65be36ac597",
+          "relative_path": "icon-puzzle-pieces.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-puzzle-pieces.png",
+          "filename": "icon-puzzle-pieces.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 62655
+        },
+        {
+          "id": "d2ccaea2a13a77a6",
+          "relative_path": "icon-snowflake.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-snowflake.png",
+          "filename": "icon-snowflake.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 263308
+        },
+        {
+          "id": "d2295a1ebf074511",
+          "relative_path": "icon-steering-wheel.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steering-wheel.png",
+          "filename": "icon-steering-wheel.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 111669
+        },
+        {
+          "id": "b4bc1a7152525d49",
+          "relative_path": "icon-steps-to-goal.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steps-to-goal.png",
+          "filename": "icon-steps-to-goal.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 181121
+        },
+        {
+          "id": "94ff1930278decd3",
+          "relative_path": "icon-sync-arrows.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-sync-arrows.png",
+          "filename": "icon-sync-arrows.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 56508
+        },
+        {
+          "id": "a44b1e1e1b67d61e",
+          "relative_path": "icon-trophy-star.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-trophy-star.png",
+          "filename": "icon-trophy-star.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 61178
+        },
+        {
+          "id": "7ad6f378f976554e",
+          "relative_path": "icon-user-rating-stars.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-user-rating-stars.png",
+          "filename": "icon-user-rating-stars.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 96902
+        },
+        {
+          "id": "750ab6f8dd37b6c8",
+          "relative_path": "icon-user-search.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-user-search.png",
+          "filename": "icon-user-search.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 75779
+        }
+      ]
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[75.12155591572123,24.878444084278765]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,56.540084388185655,10.126582278481013]}],\"sizes\":[48.71382636655949,51.28617363344051]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[74.7163695299838,25.283630470016206]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,56.540084388185655,10.126582278481013]}],\"sizes\":[48.71382636655949,51.28617363344051]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
+    },
+    {
+      "kind": "prompt",
+      "value": "Keep aspect ratio of image exact the same!  Change icon to the illustration with style described below:  Here is a detailed, structured **Style Guide & Description Transfer Framework** based on your reference images.   This guide extracts the visual DNA, art direction, rendering physics, and color rules while remaining completely object-agnostic, allowing you to apply this exact look to **any object, scene, or UI icon**.  ---  # 🎨 Style Guide: \"Soft 3D Claymorphic UI Style\"  ## 1. Core Visual Identity & Concept * **Aesthetic Keywords:** Soft 3D, Claymorphism, Matte Plastic, Modern Tech UI, Friendly, Playful, Minimalist, Tactile, Levitating/Floating. * **Overall Feel:** Clean, approachable, smooth, premium app/web illustration aesthetic. * **Level of Realism:** Stylized & Abstracted 3D (Non-photorealistic, toy-like tactile realism).  ---  ## 2. Geometry & Shape Language * **Edge Treatment:** **Extremely rounded corners and soft bevels.** No sharp 90-degree angles anywhere. Every corner has a thick, smooth radius. * **Volume & Form:** Objects are plump, slightly inflated, thick, and pillow-like (chubby geometry). * **Simplification:** Shapes are reduced to their simplest geometric representation. Complex details are abstracted into smooth, rounded blocks or lines. * **Layering:** Elements are layered on top of each other with distinct depth separation (e.g., floating cards over background shapes).  ---  ## 3. Surface Finish & Materiality * **Material Type:** Smooth matte clay, soft-touch silicone, or unglazed smooth plastic. * **Reflectivity / Gloss:** Very low specular reflection. No harsh shiny highlights, no mirror reflections, and **zero metallic properties**. * **Texture:** Perfectly smooth surfaces with a soft, uniform sheen that gently catches light. * **Transparency:** 100% opaque materials; no glass, refraction, or transparency.  ---  ## 4. Lighting & Shading * **Light Source:** Soft, highly diffused studio lighting coming consistently from the top-front-left. * **Graduation:** Smooth, seamless color gradients across curved surfaces to define volume and subtle depth without harsh lighting breaks. * **Highlights:** Soft, wide light falls across rounded edges; no sharp pin-point highlights. * **Contrasts:** Low to medium lighting contrast. Shadows are soft and light, avoiding deep blacks or harsh shadows.  ---  ## 5. Shadows & Depth * **Drop Shadows:** Long, highly blurred, soft-edged drop shadows cast directly onto the surface below floating elements. * **Ambient Occlusion:** Soft, subtle darkening where two shapes touch or layer over one another to create visual dimension. * **Shadow Color:** Tinted shadows (soft purple, muted blue, or light pink grey) matching the ambient color scheme, never pure black.  * **Levitation / Floating:** The final icon must NEVER sit flat on the surface. It always levitates slightly above the ground plane with a small gap between the object and the surface below. A soft, diffused shadow is cast directly beneath the icon on the surface, reinforcing the floating effect — exactly as shown in the reference example (checklist clipboard floating above pink background with soft shadow underneath).\n---  ## 6. Color Palette & Harmony * **Primary Tones (Backgrounds & Large Surfaces):** White or very light neutral backgrounds only. * **Accent Tones (Interactive / Pop Elements):** Vibrant yet soft pastel accents—mint green, butter/mustard yellow, warm coral, turquoise, and deep purple. * **Neutrals:** Clean white backgrounds for all icons and illustrations. * **Color Relationship:** High pastel saturation with balanced, low-contrast harmony.  ---  ## 7. Composition & Camera Angles * **Framing / Viewpoint:** **3/4 Isometric or slight Perspective view**, angled slightly from above looking down. * **Subject Positioning:** Primary subject floats centrally in mid-air above a flat background plane. * **Background Style:** Clean, flat solid pastel background OR very gentle, seamless pastel gradient (top-to-bottom). * **Secondary Accents:** Optional floating 3D accent particles around the main subject (e.g., soft 4-point star sparkles, floating spheres, or small geometric bubbles).  --- "
+    },
+    {
+      "kind": "urls",
+      "value": [
+        {
+          "id": "url_2c2ff2d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "ready",
+          "last_error": null,
+          "last_checked": "2026-09-17T10:45:28.112354Z",
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        },
+        {
+          "id": "url_550177d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+        },
+        {
+          "id": "url_b9e9d963",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "ready",
+          "last_error": null,
+          "last_checked": "2026-09-17T10:45:34.622273Z",
+          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+        },
+        {
+          "id": "url_8e48bb78",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+        },
+        {
+          "id": "url_dd693211",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        }
+      ]
+    },
+    {
+      "kind": "urls",
+      "value": [
+        {
+          "id": "url_2c2ff2d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "ready",
+          "last_error": null,
+          "last_checked": "2026-09-17T10:45:28.112354Z",
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        },
+        {
+          "id": "url_550177d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+        },
+        {
+          "id": "url_b9e9d963",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "ready",
+          "last_error": null,
+          "last_checked": "2026-09-17T10:45:34.622273Z",
+          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+        },
+        {
+          "id": "url_8e48bb78",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+        },
+        {
+          "id": "url_dd693211",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        }
+      ]
+    },
+    {
+      "kind": "queue",
+      "value": [
+        {
+          "id": "4051213189a01db6",
+          "relative_path": "icon-airplane-landing.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-airplane-landing.png",
+          "filename": "icon-airplane-landing.png",
+          "status": "failed",
+          "selected": false,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "",
+          "error": "Wait failed: Aborted by operator",
+          "size": 45682
+        },
+        {
+          "id": "bda721fb1554463d",
+          "relative_path": "icon-bank-institution.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-bank-institution.png",
+          "filename": "icon-bank-institution.png",
+          "status": "failed",
+          "selected": false,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "",
+          "error": "Wait failed: Aborted by operator",
+          "size": 78231
+        },
+        {
+          "id": "6668674e6c1c503c",
+          "relative_path": "icon-call-accept-reject.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-call-accept-reject.png",
+          "filename": "icon-call-accept-reject.png",
+          "status": "failed",
+          "selected": false,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "",
+          "error": "Wait failed: Aborted by operator",
+          "size": 181079
+        },
+        {
+          "id": "57a018f19268a185",
+          "relative_path": "icon-color-picker.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-color-picker.png",
+          "filename": "icon-color-picker.png",
+          "status": "failed",
+          "selected": false,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "",
+          "error": "Wait failed: Aborted by operator",
+          "size": 99359
+        },
+        {
+          "id": "1fb4ee73bb10e3d0",
+          "relative_path": "icon-contactless-payment.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-contactless-payment.png",
+          "filename": "icon-contactless-payment.png",
+          "status": "completed",
+          "selected": false,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-contactless-payment_AI.png",
+          "error": "",
+          "size": 84697
+        },
+        {
+          "id": "a9c5117d03efa8dc",
+          "relative_path": "icon-crosshair-target.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-crosshair-target.png",
+          "filename": "icon-crosshair-target.png",
+          "status": "completed",
+          "selected": false,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-crosshair-target_AI.png",
+          "error": "",
+          "size": 55210
+        },
+        {
+          "id": "c0b47bd265017f06",
+          "relative_path": "icon-fire-flame.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-fire-flame.png",
+          "filename": "icon-fire-flame.png",
+          "status": "completed",
+          "selected": false,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-fire-flame_AI.png",
+          "error": "",
+          "size": 205381
+        },
+        {
+          "id": "a1bff62f1112a4f0",
+          "relative_path": "icon-herbal-capsule.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-herbal-capsule.png",
+          "filename": "icon-herbal-capsule.png",
+          "status": "completed",
+          "selected": false,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-herbal-capsule_AI.png",
+          "error": "",
+          "size": 111392
+        },
+        {
+          "id": "c88f61629afa1f84",
+          "relative_path": "icon-hotdog.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-hotdog.png",
+          "filename": "icon-hotdog.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 53619
+        },
+        {
+          "id": "23c3507b152b0e1d",
+          "relative_path": "icon-lightbulb.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-lightbulb.png",
+          "filename": "icon-lightbulb.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 133256
+        },
+        {
+          "id": "f7db402fae5eb678",
+          "relative_path": "icon-money-plant.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-money-plant.png",
+          "filename": "icon-money-plant.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 90071
+        },
+        {
+          "id": "f598653720b55fa7",
+          "relative_path": "icon-person-at-desk.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-person-at-desk.png",
+          "filename": "icon-person-at-desk.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 116604
+        },
+        {
+          "id": "5676eb9098a06e8b",
+          "relative_path": "icon-process-gears.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-process-gears.png",
+          "filename": "icon-process-gears.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 115546
+        },
+        {
+          "id": "d347b65be36ac597",
+          "relative_path": "icon-puzzle-pieces.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-puzzle-pieces.png",
+          "filename": "icon-puzzle-pieces.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 62655
+        },
+        {
+          "id": "d2ccaea2a13a77a6",
+          "relative_path": "icon-snowflake.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-snowflake.png",
+          "filename": "icon-snowflake.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 263308
+        },
+        {
+          "id": "d2295a1ebf074511",
+          "relative_path": "icon-steering-wheel.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steering-wheel.png",
+          "filename": "icon-steering-wheel.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 111669
+        },
+        {
+          "id": "b4bc1a7152525d49",
+          "relative_path": "icon-steps-to-goal.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steps-to-goal.png",
+          "filename": "icon-steps-to-goal.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 181121
+        },
+        {
+          "id": "94ff1930278decd3",
+          "relative_path": "icon-sync-arrows.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-sync-arrows.png",
+          "filename": "icon-sync-arrows.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 56508
+        },
+        {
+          "id": "a44b1e1e1b67d61e",
+          "relative_path": "icon-trophy-star.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-trophy-star.png",
+          "filename": "icon-trophy-star.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 61178
+        },
+        {
+          "id": "7ad6f378f976554e",
+          "relative_path": "icon-user-rating-stars.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-user-rating-stars.png",
+          "filename": "icon-user-rating-stars.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 96902
+        },
+        {
+          "id": "750ab6f8dd37b6c8",
+          "relative_path": "icon-user-search.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-user-search.png",
+          "filename": "icon-user-search.png",
+          "status": "pending",
+          "selected": false,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 75779
+        }
+      ]
+    },
+    {
+      "kind": "queue",
+      "value": [
+        {
+          "id": "4051213189a01db6",
+          "relative_path": "icon-airplane-landing.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-airplane-landing.png",
+          "filename": "icon-airplane-landing.png",
+          "status": "failed",
+          "selected": true,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "",
+          "error": "Wait failed: Aborted by operator",
+          "size": 45682
+        },
+        {
+          "id": "bda721fb1554463d",
+          "relative_path": "icon-bank-institution.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-bank-institution.png",
+          "filename": "icon-bank-institution.png",
+          "status": "failed",
+          "selected": true,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "",
+          "error": "Wait failed: Aborted by operator",
+          "size": 78231
+        },
+        {
+          "id": "6668674e6c1c503c",
+          "relative_path": "icon-call-accept-reject.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-call-accept-reject.png",
+          "filename": "icon-call-accept-reject.png",
+          "status": "failed",
+          "selected": true,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "",
+          "error": "Wait failed: Aborted by operator",
+          "size": 181079
+        },
+        {
+          "id": "57a018f19268a185",
+          "relative_path": "icon-color-picker.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-color-picker.png",
+          "filename": "icon-color-picker.png",
+          "status": "failed",
+          "selected": true,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "",
+          "error": "Wait failed: Aborted by operator",
+          "size": 99359
+        },
+        {
+          "id": "1fb4ee73bb10e3d0",
+          "relative_path": "icon-contactless-payment.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-contactless-payment.png",
+          "filename": "icon-contactless-payment.png",
+          "status": "completed",
+          "selected": true,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-contactless-payment_AI.png",
+          "error": "",
+          "size": 84697
+        },
+        {
+          "id": "a9c5117d03efa8dc",
+          "relative_path": "icon-crosshair-target.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-crosshair-target.png",
+          "filename": "icon-crosshair-target.png",
+          "status": "completed",
+          "selected": true,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-crosshair-target_AI.png",
+          "error": "",
+          "size": 55210
+        },
+        {
+          "id": "c0b47bd265017f06",
+          "relative_path": "icon-fire-flame.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-fire-flame.png",
+          "filename": "icon-fire-flame.png",
+          "status": "completed",
+          "selected": true,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-fire-flame_AI.png",
+          "error": "",
+          "size": 205381
+        },
+        {
+          "id": "a1bff62f1112a4f0",
+          "relative_path": "icon-herbal-capsule.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-herbal-capsule.png",
+          "filename": "icon-herbal-capsule.png",
+          "status": "completed",
+          "selected": true,
+          "assigned_url": "url_2c2ff2d7",
+          "attempts": 1,
+          "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-herbal-capsule_AI.png",
+          "error": "",
+          "size": 111392
+        },
+        {
+          "id": "c88f61629afa1f84",
+          "relative_path": "icon-hotdog.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-hotdog.png",
+          "filename": "icon-hotdog.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 53619
+        },
+        {
+          "id": "23c3507b152b0e1d",
+          "relative_path": "icon-lightbulb.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-lightbulb.png",
+          "filename": "icon-lightbulb.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 133256
+        },
+        {
+          "id": "f7db402fae5eb678",
+          "relative_path": "icon-money-plant.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-money-plant.png",
+          "filename": "icon-money-plant.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 90071
+        },
+        {
+          "id": "f598653720b55fa7",
+          "relative_path": "icon-person-at-desk.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-person-at-desk.png",
+          "filename": "icon-person-at-desk.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 116604
+        },
+        {
+          "id": "5676eb9098a06e8b",
+          "relative_path": "icon-process-gears.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-process-gears.png",
+          "filename": "icon-process-gears.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 115546
+        },
+        {
+          "id": "d347b65be36ac597",
+          "relative_path": "icon-puzzle-pieces.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-puzzle-pieces.png",
+          "filename": "icon-puzzle-pieces.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 62655
+        },
+        {
+          "id": "d2ccaea2a13a77a6",
+          "relative_path": "icon-snowflake.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-snowflake.png",
+          "filename": "icon-snowflake.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 263308
+        },
+        {
+          "id": "d2295a1ebf074511",
+          "relative_path": "icon-steering-wheel.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steering-wheel.png",
+          "filename": "icon-steering-wheel.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 111669
+        },
+        {
+          "id": "b4bc1a7152525d49",
+          "relative_path": "icon-steps-to-goal.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steps-to-goal.png",
+          "filename": "icon-steps-to-goal.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 181121
+        },
+        {
+          "id": "94ff1930278decd3",
+          "relative_path": "icon-sync-arrows.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-sync-arrows.png",
+          "filename": "icon-sync-arrows.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 56508
+        },
+        {
+          "id": "a44b1e1e1b67d61e",
+          "relative_path": "icon-trophy-star.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-trophy-star.png",
+          "filename": "icon-trophy-star.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 61178
+        },
+        {
+          "id": "7ad6f378f976554e",
+          "relative_path": "icon-user-rating-stars.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-user-rating-stars.png",
+          "filename": "icon-user-rating-stars.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 96902
+        },
+        {
+          "id": "750ab6f8dd37b6c8",
+          "relative_path": "icon-user-search.png",
+          "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-user-search.png",
+          "filename": "icon-user-search.png",
+          "status": "pending",
+          "selected": true,
+          "assigned_url": "",
+          "attempts": 0,
+          "output_path": "",
+          "error": "",
+          "size": 75779
+        }
+      ]
+    },
+    {
+      "kind": "prompt",
+      "value": "Keep aspect ratio of image exact the same!  Change icon to the illustration with style described below:  Here is a detailed, structured **Style Guide & Description Transfer Framework** based on your reference images.   This guide extracts the visual DNA, art direction, rendering physics, and color rules while remaining completely object-agnostic, allowing you to apply this exact look to **any object, scene, or UI icon**.  ---  # 🎨 Style Guide: \"Soft 3D Claymorphic UI Style\"  ## 1. Core Visual Identity & Concept * **Aesthetic Keywords:** Soft 3D, Claymorphism, Matte Plastic, Modern Tech UI, Friendly, Playful, Minimalist, Tactile, Levitating/Floating. * **Overall Feel:** Clean, approachable, smooth, premium app/web illustration aesthetic. * **Level of Realism:** Stylized & Abstracted 3D (Non-photorealistic, toy-like tactile realism).  ---  ## 2. Geometry & Shape Language * **Edge Treatment:** **Extremely rounded corners and soft bevels.** No sharp 90-degree angles anywhere. Every corner has a thick, smooth radius. * **Volume & Form:** Objects are plump, slightly inflated, thick, and pillow-like (chubby geometry). * **Simplification:** Shapes are reduced to their simplest geometric representation. Complex details are abstracted into smooth, rounded blocks or lines. * **Layering:** Elements are layered on top of each other with distinct depth separation (e.g., floating cards over background shapes).  ---  ## 3. Surface Finish & Materiality * **Material Type:** Smooth matte clay, soft-touch silicone, or unglazed smooth plastic. * **Reflectivity / Gloss:** Very low specular reflection. No harsh shiny highlights, no mirror reflections, and **zero metallic properties**. * **Texture:** Perfectly smooth surfaces with a soft, uniform sheen that gently catches light. * **Transparency:** 100% opaque materials; no glass, refraction, or transparency.  ---  ## 4. Lighting & Shading * **Light Source:** Soft, highly diffused studio lighting coming consistently from the top-front-left. * **Graduation:** Smooth, seamless color gradients across curved surfaces to define volume and subtle depth without harsh lighting breaks. * **Highlights:** Soft, wide light falls across rounded edges; no sharp pin-point highlights. * **Contrasts:** Low to medium lighting contrast. Shadows are soft and light, avoiding deep blacks or harsh shadows.  ---  ## 5. Shadows & Depth * **Drop Shadows:** Long, highly blurred, soft-edged drop shadows cast directly onto the surface below floating elements. * **Ambient Occlusion:** Soft, subtle darkening where two shapes touch or layer over one another to create visual dimension. * **Shadow Color:** Tinted shadows (soft purple, muted blue, or light pink grey) matching the ambient color scheme, never pure black.  * **Levitation / Floating:** The final icon must NEVER sit flat on the surface. It always levitates slightly above the ground plane with a small gap between the object and the surface below. A soft, diffused shadow is cast directly beneath the icon on the surface, reinforcing the floating effect — exactly as shown in the reference example (checklist clipboard floating above pink background with soft shadow underneath).\n---  ## 6. Color Palette & Harmony * **Primary Tones (Backgrounds & Large Surfaces):** White or very light neutral backgrounds only. * **Accent Tones (Interactive / Pop Elements):** Vibrant yet soft pastel accents—mint green, butter/mustard yellow, warm coral, turquoise, and deep purple. * **Neutrals:** Clean white backgrounds for all icons and illustrations. * **Color Relationship:** High pastel saturation with balanced, low-contrast harmony.  ---  ## 7. Composition & Camera Angles * **Framing / Viewpoint:** **3/4 Isometric or slight Perspective view**, angled slightly from above looking down. * **Subject Positioning:** Primary subject floats centrally in mid-air above a flat background plane. * **Background Style:** Clean, flat solid pastel background OR very gentle, seamless pastel gradient (top-to-bottom). * **Secondary Accents:** Optional floating 3D accent particles around the main subject (e.g., soft 4-point star sparkles, floating spheres, or small geometric bubbles).  --- "
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45,25,30]}],\"sizes\":[60,40]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30,25,20,25]}],\"sizes\":[45,35,20]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38,40,22]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45,25,30]}],\"sizes\":[60,40]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30,25,20,25]}],\"sizes\":[45,35,20]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38,40,22]}}"
+    },
+    {
+      "kind": "urls",
+      "value": [
+        {
+          "id": "url_2c2ff2d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "ready",
+          "last_error": null,
+          "last_checked": "2026-09-17T10:45:28.112354Z",
+          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+        },
+        {
+          "id": "url_550177d7",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+        },
+        {
+          "id": "url_8e48bb78",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+        },
+        {
+          "id": "url_dd693211",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        }
+      ]
+    },
+    {
       "kind": "queue",
       "value": [
         {
@@ -7633,746 +9319,6 @@
         ],
         "minimized": []
       }
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]}}"
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser",
-          "settings"
-        ],
-        "minimized": []
-      }
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "ready",
-          "last_error": null,
-          "last_checked": "2026-09-17T10:45:28.112354Z",
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_550177d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_8e48bb78",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_dd693211",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        },
-        {
-          "id": "url_25cb19c3",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "ready",
-          "last_error": null,
-          "last_checked": "2026-09-17T10:45:28.112354Z",
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_550177d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_8e48bb78",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_dd693211",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        },
-        {
-          "id": "url_25cb19c3",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "ready",
-          "last_error": null,
-          "last_checked": "2026-09-17T10:45:28.112354Z",
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_550177d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_8e48bb78",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_dd693211",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        },
-        {
-          "id": "url_25cb19c3",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "ready",
-          "last_error": null,
-          "last_checked": "2026-09-17T10:45:28.112354Z",
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_550177d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_8e48bb78",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_dd693211",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        },
-        {
-          "id": "url_25cb19c3",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "ready",
-          "last_error": null,
-          "last_checked": "2026-09-17T10:45:28.112354Z",
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_550177d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_8e48bb78",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_dd693211",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        },
-        {
-          "id": "url_25cb19c3",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]}}"
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser",
-          "settings"
-        ],
-        "minimized": []
-      }
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_550177d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_8e48bb78",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_dd693211",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        },
-        {
-          "id": "url_25cb19c3",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_8e48bb78",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_dd693211",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        },
-        {
-          "id": "url_25cb19c3",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_dd693211",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        },
-        {
-          "id": "url_25cb19c3",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_25cb19c3",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_b2b9b265",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": []
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_d83dc589",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_87a738e9",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_0e630302",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_449d6f1e",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_d83dc589",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_87a738e9",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_0e630302",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_449d6f1e",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_d83dc589",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_87a738e9",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_0e630302",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_449d6f1e",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[70.57877813504824,29.421221864951768]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[72.04643325219996,27.953566747800036]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[70.57877813504824,29.421221864951768]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[72.04643325219996,27.953566747800036]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[81.59163987138264,18.408360128617364]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[51.974707581665015,48.02529241833498]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[81.59163987138264,18.408360128617364]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[51.974707581665015,48.02529241833498]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[80.38585209003215,19.614147909967848]}}"
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "arena_presets",
-          "block_config",
-          "browser",
-          "settings"
-        ],
-        "minimized": []
-      }
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "arena_presets",
-          "block_config",
-          "browser",
-          "settings",
-          "progress"
-        ],
-        "minimized": []
-      }
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "arena_presets",
-          "block_config",
-          "browser",
-          "progress"
-        ],
-        "minimized": []
-      }
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[50.0,50.0]}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[51.974707581665015,48.02529241833498]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[80.38585209003215,19.614147909967848]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[51.974707581665015,48.02529241833498]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[80.38585209003215,19.614147909967848]},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[80.0,20.0]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[51.974707581665015,48.02529241833498]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[80.38585209003215,19.614147909967848]},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[74.74549725920126,25.254502740798745]}}"
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "arena_presets",
-          "block_config",
-          "browser",
-          "progress"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_d83dc589",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
-        },
-        {
-          "id": "url_87a738e9",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
-        },
-        {
-          "id": "url_0e630302",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
-        },
-        {
-          "id": "url_aa52b70a",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
     }
   ],
   "index": 99

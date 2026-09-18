@@ -21,11 +21,11 @@
     { id: 'log',      title: 'Activity Log' },
     { id: 'settings', title: 'Settings' },
     { id: 'captcha',  title: 'Captcha — 2Captcha Control' },
-    { id: 'captcha_records', title: 'Captcha Session Records' },
     { id: 'browser',  title: 'Browser Preview' },
     { id: 'action_blocks', title: 'Action Blocks — Stacking Jobs' },
     { id: 'block_config', title: 'Block Config — Security Check' },
     { id: 'arena_presets', title: 'Arena Presets' },
+    { id: 'recordings', title: 'Recordings — Captcha Sessions' },
   ];
   const V1_WINDOW_IDS = WINDOWS.map(w=>w.id);
   const V2_WINDOW_IDS = V1_WINDOW_IDS;
@@ -54,12 +54,12 @@
     return split('col', [
       split('row', [
         split('col', [leaf('url_list'), leaf('folder')], [55, 45]),
-        split('col', [leaf('prompt'), leaf('run'), leaf('settings'), leaf('captcha'), leaf('captcha_records')], [35, 20, 20, 12, 13]),
+        split('col', [leaf('prompt'), leaf('run'), leaf('settings'), leaf('captcha')], [40, 22, 26, 12]),
       ], [60, 40]),
       split('row', [
         leaf('queue'),
         split('col', [leaf('action_blocks'), leaf('block_config')], [55, 45]),
-        split('col', [leaf('browser'), leaf('arena_presets'), leaf('progress'), leaf('watcher')], [30, 25, 20, 25]),
+        split('col', [leaf('browser'), leaf('arena_presets'), leaf('recordings'), leaf('progress'), leaf('watcher')], [24, 20, 20, 18, 18]),
       ], [45, 35, 20]),
       leaf('log'),
     ], [38, 40, 22]);
@@ -69,16 +69,17 @@
     return split('col', [
       leaf('url_list'), leaf('folder'), leaf('queue'),
       leaf('prompt'), leaf('run'), leaf('progress'), leaf('watcher'),
-      leaf('log'), leaf('settings'), leaf('captcha'), leaf('captcha_records'), leaf('browser'),
+      leaf('log'), leaf('settings'), leaf('captcha'), leaf('browser'),
       leaf('action_blocks'), leaf('block_config'), leaf('arena_presets'),
-    ], [7, 5, 11, 9, 6, 6, 6, 7, 6, 6, 7, 7, 6, 6, 5]);
+      leaf('recordings'),
+    ], [8, 5, 13, 10, 6, 6, 6, 6, 5, 5, 5, 6, 6, 9, 8]);
   }
 
   function layoutB() {
     return split('row', [
-      split('col', [leaf('url_list'), leaf('folder'), leaf('queue'), leaf('action_blocks')], [25, 15, 35, 25]),
+      split('col', [leaf('url_list'), leaf('folder'), leaf('queue'), leaf('action_blocks'), leaf('recordings')], [22, 14, 30, 20, 14]),
       split('col', [leaf('prompt'), leaf('block_config'), leaf('progress'), leaf('watcher'), leaf('log')], [25, 20, 15, 20, 20]),
-      split('col', [leaf('browser'), leaf('settings'), leaf('captcha'), leaf('captcha_records'), leaf('arena_presets'), leaf('run')], [30, 14, 14, 14, 14, 14]),
+      split('col', [leaf('browser'), leaf('settings'), leaf('captcha'), leaf('arena_presets'), leaf('run')], [35, 16, 16, 17, 16]),
     ], [35, 35, 30]);
   }
 
@@ -90,7 +91,7 @@
       ], [45, 55]),
       split('row', [
         leaf('queue'),
-        split('col', [leaf('folder'), leaf('run'), leaf('settings'), leaf('captcha'), leaf('captcha_records'), leaf('progress'), leaf('watcher'), leaf('arena_presets')], [12, 12, 14, 14, 12, 12, 12, 12]),
+        split('col', [leaf('folder'), leaf('run'), leaf('settings'), leaf('captcha'), leaf('progress'), leaf('watcher'), leaf('arena_presets'), leaf('recordings')], [13, 13, 15, 15, 12, 12, 11, 9]),
       ], [60, 40]),
       leaf('log'),
     ], [35, 48, 17]);
@@ -423,14 +424,22 @@
     return null;
   }
 
+  /* Legacy ids for windows this app renamed. `captcha_records` (the parallel
+     recording window of 2026-09-18) is the same feature as `recordings`, so a
+     stored layout keeps its position + sizes instead of being rejected. */
+  const LEGACY_WINDOW_IDS = { captcha_records: 'recordings' };
+  const legacyId = (id) => LEGACY_WINDOW_IDS[id] || id;
+
   function pruneTree(node, seen, allowed) {
     seen = seen || new Set();
     allowed = allowed || new Set(WINDOW_IDS);
     if (isLeaf(node)) {
-      if (typeof node.id !== 'string' || !allowed.has(node.id)) return null;
-      if (seen.has(node.id)) return null;
-      seen.add(node.id);
-      return leaf(node.id);
+      if (typeof node.id !== 'string') return null;
+      const id = legacyId(node.id);
+      if (!allowed.has(id)) return null;
+      if (seen.has(id)) return null;
+      seen.add(id);
+      return leaf(id);
     }
     if (!isSplit(node) || !Array.isArray(node.children)) return null;
     const kids = [], sizes = [];

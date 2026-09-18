@@ -1,12 +1,12 @@
 """Multi-page dispatcher — parallel dispatch to different webpages."""
-# ideal-size: ~385 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
+# ideal-size: ~395 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx/FreeWaitSpec; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from app.browser.page_pool import PagePool
@@ -14,10 +14,13 @@ from app.core.enums import ImageStatus
 from app.core.models import ImageItem, UrlRow
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
+from . import auto_connect as ac
 from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
 
 log = logging.getLogger("arena")
+
+_WAIT_POLL_SEC = 0.5
 
 
 @dataclass
@@ -26,6 +29,7 @@ class DispatchCtx:
     pool: PagePool
     urls: List[UrlRow]
     sem: asyncio.Semaphore
+    allowed: set = field(default_factory=set)  # tab ids owned by checked rows (I-33)
 
 
 @dataclass
@@ -68,27 +72,10 @@ class LogInfo:
     err: str
 
 
-def _pick_enabled_url(urls: List[UrlRow]) -> Optional[UrlRow]:
-    if not urls:
-        return None
-    for u in urls:
-        if u.enabled:
-            return u
-    return urls[0]
-
-
 def _recalc_save(bridge):
     try:
         bridge.state.recalculate_progress()
         bridge._save_arena()
-    except Exception:
-        pass
-
-
-def _mark_busy_emit(pool, bridge, tab_id, job_id):
-    try:
-        pool.mark_busy(tab_id, job_id)
-        bridge._emit_pool_status()
     except Exception:
         pass
 
@@ -122,13 +109,58 @@ async def _wait_pause(bridge):
             break
 
 
-async def _get_free_page(pool, bridge, job_id: str):
-    wait_timeout = cooldown_aware_timeout(pool)
+def _acquire_free_in(pool, allowed: set, job_id: str):
+    """Lock-guarded acquire of a free page inside the checked-tab set (I-33).
+
+    External-lock pattern (same as sync_pool_presence): PagePool keeps its
+    15-method cap, dispatch keeps the gating decision."""
     try:
-        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
-    except TypeError:
-        # fallback old signature
-        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested)
+        with pool._lock:
+            for p in pool._pages.values():
+                p.try_expire()
+            free = [p for p in pool._pages.values()
+                    if p.is_free() and p.tab_id in (allowed or set())]
+            if not free:
+                return None
+            page = min(free, key=lambda p: p.jobs_completed)
+    except AttributeError:
+        return None
+    pool.mark_busy(page.tab_id, job_id)
+    return page
+
+
+@dataclass
+class FreeWaitSpec:
+    """Wait inputs for one checked free page (keeps params ≤4, RULE 16)."""
+
+    pool: object
+    allowed: set
+    job_id: str
+    timeout_sec: float
+    cancel_check: object = None
+
+
+async def _wait_free_in(spec: FreeWaitSpec):
+    """Wait for a checked free page; cancel and timeout bounded (RULE 7)."""
+    loop = asyncio.get_event_loop()
+    start = loop.time()
+    while True:
+        if spec.cancel_check and spec.cancel_check():
+            return None
+        got = _acquire_free_in(spec.pool, spec.allowed, spec.job_id)
+        if got:
+            return got
+        if loop.time() - start > spec.timeout_sec:
+            return None
+        await asyncio.sleep(_WAIT_POLL_SEC)
+
+
+async def _acquire_page(pool, bridge, job_id: str, allowed: set):
+    """One gate for both wait styles: only tabs owned by checked rows."""
+    spec = FreeWaitSpec(pool=pool, allowed=allowed, job_id=job_id,
+                        timeout_sec=cooldown_aware_timeout(pool),
+                        cancel_check=lambda: bridge._cancel_requested)
+    return await _wait_free_in(spec)
 
 
 def _get_clients(pool, tab_id) -> Tuple[object, object]:
@@ -139,40 +171,9 @@ def _get_clients(pool, tab_id) -> Tuple[object, object]:
         return None, None
 
 
-async def _acquire_via_fallback(pool, bridge, wait_timeout: float, job_id: str):
-    """Legacy pools: poll acquire_free_page until free, cancelled, or timeout."""
-    if not hasattr(pool, "acquire_free_page"):
-        return None
-    loop = asyncio.get_event_loop()
-    start = loop.time()
-    while True:
-        if bridge._cancel_requested:
-            return None
-        try:
-            page = await pool.acquire_free_page(job_id)
-        except Exception:
-            return None
-        if page:
-            return page
-        if loop.time() - start > wait_timeout:
-            return None
-        await asyncio.sleep(0.5)
-
-
-async def _acquire_page(pool, bridge, job_id: str):
-    wait_timeout = cooldown_aware_timeout(pool)
-    cancel = lambda: bridge._cancel_requested
-    try:
-        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=cancel, job_id=job_id)
-    except TypeError:
-        page = await _acquire_via_fallback(pool, bridge, wait_timeout, job_id)
-        if page is not None:
-            return page
-        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=cancel)
-
-
-async def prepare_image_for_job(bridge, img, urls):
-    url_row = _pick_enabled_url(urls)
+async def prepare_image_for_job(bridge, img, urls, tab_id: str):
+    """Record the tab's own checked row on the image (never re-links rows)."""
+    url_row = ac.pick_url_for_tab(urls, tab_id)
     img.assigned_url_id = url_row.id if url_row else None
     img.attempt_count += 1
     img.status = ImageStatus.PROCESSING.value
@@ -184,9 +185,8 @@ async def prepare_image_for_job(bridge, img, urls):
 
 
 async def _run_image_job(ctx: PageJobCtx):
-    url_row, corr_id, job_id, final_prompt = await prepare_image_for_job(ctx.bridge, ctx.img, ctx.urls)
-    if url_row is not None and url_row.link_tab(ctx.tab_id):
-        _recalc_save(ctx.bridge)  # carry the row-tab bind to the UI
+    url_row, corr_id, job_id, final_prompt = await prepare_image_for_job(
+        ctx.bridge, ctx.img, ctx.urls, ctx.tab_id)
     try:
         ctx.bridge.job_started.emit(job_id, ctx.img.absolute_path)
     except Exception:
@@ -241,17 +241,6 @@ def _emit_status_safe(bridge):
         pass
 
 
-async def _get_free_or_acquire(pool, bridge, img):
-    free_page = await _acquire_page(pool, bridge, img.id)
-    if free_page:
-        _emit_status_safe(bridge)
-        return free_page
-    free_page = await _get_free_page(pool, bridge, img.id)
-    if free_page:
-        _mark_busy_emit(pool, bridge, free_page.tab_id, img.id)
-    return free_page
-
-
 def _start_tab_image(pool, tab_id, img):
     """Record the image on its tab; drop any stale stop request."""
     try:
@@ -286,10 +275,12 @@ async def _finish_page_safely(finish_ctx: FinishCtx) -> None:
 async def run_one_image_on_page(bridge, pool, img, urls):
     if bridge._cancel_requested:
         return
-    free_page = await _get_free_or_acquire(pool, bridge, img)
+    allowed = ac.enabled_tab_ids(urls)
+    free_page = await _acquire_page(pool, bridge, img.id, allowed)
     if not free_page:
         _log_no_free(bridge, img)
         return
+    _emit_status_safe(bridge)
     tab_id = free_page.tab_id
     ctrl, client = _get_clients(pool, tab_id)
     if not ctrl or not client:
@@ -349,12 +340,16 @@ def _handle_exception(bridge, img, tab_id, e):
 async def dispatch_parallel(bridge, pool, images, urls):
     if not pool or not images:
         return
-    try:
-        total, _ = pool.get_counts()
-    except Exception:
-        total = len(getattr(pool, "_pages", {}))
+    allowed = ac.enabled_tab_ids(urls)
+    if not allowed:
+        try:
+            bridge._log("⚠ Parallel dispatch skipped — no checked URL owns a tab", "warn")
+        except Exception:
+            pass
+        return
+    total, _ = ac.counts_in(pool, allowed)
     sem = asyncio.Semaphore(max(1, total))
-    ctx = DispatchCtx(bridge=bridge, pool=pool, urls=urls, sem=sem)
+    ctx = DispatchCtx(bridge=bridge, pool=pool, urls=urls, sem=sem, allowed=allowed)
     tasks = await _create_tasks(ctx, images)
     await _await_tasks(bridge, tasks)
     _finalize_batch(bridge)

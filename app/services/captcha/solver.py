@@ -25,6 +25,10 @@ from .signals import CaptchaSignal, SolveOutcome, host_of
 
 VERIFY_GRACE_SEC = 20.0  # after injection: how long to watch the dialog close
 HEARTBEAT_SEC = 30.0  # processing polls: log a still-waiting line this often
+# Google tokens are single-use and expire ~2 min after issue (pass-path doc §3
+# G4). Injection happens seconds after receipt today; the guard encodes the
+# contract so a future slower path can never silently inject a dead token.
+TOKEN_MAX_AGE_SEC = 100.0
 MAX_TRANSIENT_POLL_ERRORS = 3  # tolerate short 2Captcha/HTTP response glitches
 
 _TASK_TYPES = {
@@ -43,6 +47,7 @@ class SolvePlan:
     signal: CaptchaSignal
     stop: Callable[[], bool]
     start: float
+    task_id: str = ""  # provider task (traceability on failure paths, RULE 22)
     stats: Any = None
     logger: Optional[Callable[[str, str], None]] = None
     token_at: float = 0.0  # monotonic() when the provider token arrived
@@ -65,6 +70,7 @@ def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> 
     out = SolveOutcome(status=status, reason=f"{reason}: {detail}".strip(": "), method="auto")
     if plan is not None:
         out.polls = plan.polls
+        out.task_id = plan.task_id
         if plan.token_at:
             out.token_sec = plan.token_at - plan.start
             out.token_fp = plan.token_fp
@@ -139,6 +145,21 @@ async def _note_page_error(plan: SolvePlan, log: Callable[[str, str], None]) -> 
     plan.page_error = err
     log(f"🛡️ page error appeared during solve ({plan.page_error_at:.0f}s in): {err}", "warn")
     return True
+
+
+def _stale_token_reason(plan: SolvePlan) -> str:
+    """Non-empty when the token outlived Google's single-use window."""
+    age = time.monotonic() - plan.token_at
+    if age <= TOKEN_MAX_AGE_SEC:
+        return ""
+    return f"token age {age:.0f}s exceeds Google's ~2-minute single-use window"
+
+
+def _note_escalation(signal: Any, log: Callable[[str, str], None]) -> None:
+    """Report-only: bframe image-grid escalation visible at solve start."""
+    if getattr(signal, "challenge_active", False):
+        log("🖼️ image-challenge escalation visible (bframe) — the provider "
+            "solves the selection on its side; expect a longer solve", "info")
 
 
 def _token_fingerprint(token: str) -> str:
@@ -287,11 +308,18 @@ def _auto_fail(plan: SolvePlan, reason: str, detail: str) -> None:
 
 async def _stale_outcome(plan: SolvePlan, task_id: str, stats: Any,
                           log: Callable[[str, str], None]) -> Optional[SolveOutcome]:
-    """Delete provider work and return an outcome when page evidence changed."""
-    reason = await _stale_reason(plan)
+    """Delete provider work and return `token_stale` when the token is unusable.
+
+    Two independent guards, cheapest first: the token's own age (Google's
+    single-use ~2-minute window, pass-path round) and the page/challenge
+    identity it was requested for (token-vs-page round). Either one means the
+    token must never be injected.
+    """
+    reason = _stale_token_reason(plan) or await _stale_reason(plan)
     if not reason:
         return None
     plan.stale_reason = reason
+    log(f"🤖 token refused before injection — {reason}", "warn")
     await _delete_task(plan.client, task_id, stats, log)
     return _failed("token_stale", reason, plan)
 
@@ -425,9 +453,11 @@ class CaptchaSolver:
             await client.aclose()
 
     async def _run_task(self, plan: SolvePlan, timeout_sec: int) -> SolveOutcome:
+        _note_escalation(plan.signal, self._log)
         task_id = await self._create_task(plan)
         if not task_id:
             return _failed("task_create", "createTask failed", plan)
+        plan.task_id = task_id  # traceability on poll-failure paths (RULE 22)
         token, why = await _poll_task(plan, task_id, timeout_sec)
         if not token:
             await _delete_task(plan.client, task_id, self._stats, self._log)
