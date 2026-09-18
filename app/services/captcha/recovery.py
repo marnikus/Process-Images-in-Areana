@@ -76,6 +76,65 @@ def note_settle(ctrl: Any) -> None:
         pass
 
 
+@dataclass
+class InlineWaitGates:
+    """Per-job gate bundle for drivers of `wait_for_new_output` (RULE 16).
+
+    The bridge inline run loop and the dispatcher both arm the same gates:
+    `settle` is an async () -> bool that resolves a visible security dialog
+    (auto-solve or manual wait); `prompt`/`image_path` feed the bounded
+    revival resubmit; `cancelled`/`report` mirror the driver's stop + log.
+    """
+
+    prompt: str = ""
+    image_path: str = ""
+    cancelled: Optional[Callable[[], bool]] = None
+    report: Optional[Callable[[str, str], None]] = None
+    settle: Optional[Callable[[], Any]] = None
+
+
+def arm_wait_gates(ctrl: Any, gates: InlineWaitGates) -> bool:
+    """Arm the mid-wait captcha gate + revival on one ctrl (fail-open, RULE 9).
+
+    The wait loop consults `ctrl.security_settler` every poll (~2 s): when the
+    security dialog is visible it settles, then stamps the revival policy.
+    """
+    try:
+        policy = arm_resume(ctrl, gates.prompt, cancelled=gates.cancelled,
+                            report=gates.report)
+        if gates.image_path:
+            policy.image_path = gates.image_path
+
+        async def _settler():
+            settled = await gates.settle() if gates.settle is not None else True
+            if settled:
+                note_settle(ctrl)
+        ctrl.security_settler = _settler
+        return True
+    except Exception:
+        return False
+
+
+def disarm_wait_gates(ctrl: Any) -> None:
+    """Remove the settler + revival at wait end; never raises."""
+    clear_resume(ctrl)
+    try:
+        delattr(ctrl, "security_settler")
+    except Exception:
+        pass
+
+
+async def wait_with_gates(ctrl: Any, gates: InlineWaitGates,
+                          wait_fn: Callable[[], Any]) -> Any:
+    """One wait with the gates armed for its duration; result passes through."""
+    armed = arm_wait_gates(ctrl, gates)
+    try:
+        return await wait_fn()
+    finally:
+        if armed:
+            disarm_wait_gates(ctrl)
+
+
 def _report(policy: ResumePolicy, msg: str, level: str = "info") -> None:
     try:
         if policy.report is not None:

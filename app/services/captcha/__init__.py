@@ -13,7 +13,10 @@ from .api_client import SolverApiClient, ApiError
 from .providers import DEFAULT_PROVIDER, PROVIDERS, ProviderSpec, provider_for
 from .solver import CaptchaSolver
 from .service import CaptchaCtx, CaptchaService, handle_captcha
-from .recovery import ResumePolicy, arm_resume, clear_resume, maybe_resume, note_settle
+from .recovery import (
+    InlineWaitGates, ResumePolicy, arm_resume, arm_wait_gates, clear_resume,
+    disarm_wait_gates, maybe_resume, note_settle, wait_with_gates,
+)
 
 __all__ = [
     "CaptchaSignal",
@@ -33,8 +36,12 @@ __all__ = [
     "CaptchaService",
     "handle_captcha",
     "ResumePolicy",
+    "InlineWaitGates",
     "arm_resume",
+    "arm_wait_gates",
     "clear_resume",
+    "disarm_wait_gates",
     "maybe_resume",
     "note_settle",
+    "wait_with_gates",
 ]

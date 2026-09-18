@@ -216,3 +216,80 @@ async def test_penalty_recorder_failure_never_breaks_the_job(monkeypatch):
     ctx = make_ctx(pool, bridge, ctrl)
     assert await sjr.check_security(ctx) is True  # must not raise
     assert any("Captcha penalty skipped" in m for m, _ in bridge._logs)
+
+
+
+# ---- bridge inline wait gates (fix 2026-09-18: mid-wait detection) ----
+#
+# Regression: the bridge run loop's inline WAIT_OUTPUT never armed
+# `security_settler`, so a captcha appearing MID-wait produced no detection
+# line at all and burned the whole generation timeout. The loop now builds
+# InlineWaitGates per job whose `settle` routes through the SAME choke point
+# as every other site (`_settle_captcha_at`, source "gen-wait") — these tests
+# pin that routing and the bool semantics the revival stamp depends on.
+
+
+def build_loop_gates(bridge, ctrl, settled_flag):
+    """The exact construction the bridge run loop does per job iteration."""
+    from app.services.captcha.recovery import InlineWaitGates
+    logs = []
+    bridge._log = lambda m, l="info": logs.append((m, l))
+    return InlineWaitGates(
+        prompt="[JOB-ID: x] prompt",
+        image_path="/tmp/a.png",
+        cancelled=lambda: bridge._run_stop_requested("t1"),
+        report=lambda m, l="info": logs.append((m, l)),
+        settle=lambda: bridge._settle_captcha_at(ctrl, "t1", "corr1", "gen-wait"),
+    ), logs
+
+
+def make_bridge_shell():
+    from app.ui.bridge import Bridge
+    bridge = object.__new__(Bridge)  # skip Qt init — wire only what the path uses
+    bridge._page_pool = PagePool()
+    bridge._run_stop_requested = lambda tab_id: False
+    bridge._stop_reason = lambda tab_id: "cancelled"
+    return bridge
+
+
+class GateCtrl:
+    """Dialog up at gate probe, gone after settle (manual-wait path)."""
+
+    def __init__(self):
+        self._visible = [True, False]
+
+    async def is_security_dialog_visible(self):
+        return self._visible.pop(0) if self._visible else False
+
+
+@pytest.mark.unit
+async def test_bridge_gate_settle_routes_through_choke_point(monkeypatch):
+    bridge = make_bridge_shell()
+    ctrl = GateCtrl()
+    settled_calls = []
+
+    async def fake_handle(ctx):
+        settled_calls.append(ctx.source)
+        from app.services.captcha.signals import SolveOutcome
+        return SolveOutcome(status="manual", method="manual")
+
+    import app.services.captcha as captcha_pkg  # the bridge imports from the package
+    monkeypatch.setattr(captcha_pkg, "handle_captcha", fake_handle)
+
+    gates, logs = build_loop_gates(bridge, ctrl, None)
+    assert await gates.settle() is True            # dialog visible and cleared
+    assert settled_calls == ["gen-wait"]           # SAME choke point (RULE 9 surface)
+    # the 🛡️ detection line itself is handle_captcha's contract — covered in
+    # test_captcha_service.py; this test pins that mid-wait settle ROUTES there.
+
+
+@pytest.mark.unit
+async def test_bridge_gate_settle_false_when_no_dialog():
+    bridge = make_bridge_shell()
+
+    class ClearCtrl:
+        async def is_security_dialog_visible(self):
+            return False
+
+    gates, _ = build_loop_gates(bridge, ClearCtrl(), None)
+    assert await gates.settle() is False           # no dialog → no revival stamp

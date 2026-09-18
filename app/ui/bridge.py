@@ -2405,12 +2405,12 @@ class Bridge(QObject):
             return json.dumps({"ok": False, "error": str(e)})
 
     async def _settle_captcha_at(self, ctrl, tab_id, correlation_id, source):
-        """Gate on visible, then auto-solve or wait; raise on stop (shared by 4 sites)."""
+        """Gate on visible, then auto-solve or wait; True when settled, raise on stop."""
         try:
             if not await ctrl.is_security_dialog_visible():
-                return
+                return False
         except Exception:
-            return
+            return False
         from app.services.captcha import CaptchaCtx, handle_captcha
         stop = lambda: bool(self._stop_reason(tab_id)) if self._run_stop_requested(tab_id) else False
         def log(msg, level="info"):
@@ -2419,6 +2419,7 @@ class Bridge(QObject):
                                                   tab_id=tab_id, source=source, stop=stop, log=log))
         if outcome.status == "stopped":
             raise RuntimeError(f"{self._stop_reason(tab_id)} during CAPTCHA at {source}")
+        return True
 
     @Slot(str, result=str)
     def reset_page_cooldown(self, tab_id: str):
@@ -2646,6 +2647,18 @@ class Bridge(QObject):
                 correlation_id = generate_correlation_id()
                 job_id = correlation_id  # use correlation_id as job_id for traceability
                 final_prompt = build_final_prompt(correlation_id, prompt_template)
+                # Mid-wait captcha gate + revival bundle (fix 2026-09-18): every
+                # inline wait arms the security settler, so a dialog appearing
+                # DURING the wait is detected and settled within ~2 s instead of
+                # staying invisible for the whole generation timeout. Settle
+                # routes through the same choke point as every other site.
+                from app.services.captcha.recovery import InlineWaitGates, wait_with_gates
+                wait_gates = InlineWaitGates(
+                    prompt=final_prompt or "",
+                    image_path=str(getattr(img, "absolute_path", "") or ""),
+                    cancelled=lambda: self._run_stop_requested(primary_tab_id),
+                    report=lambda m, l="info": self._log(f"[{correlation_id}] {m}", l),
+                    settle=lambda: self._settle_captcha_at(ctrl, primary_tab_id, correlation_id, "gen-wait"))
 
                 self._log(f"[{correlation_id}] Starting {img.relative_path} with URL {url_row.url if url_row else 'N/A'}", "info")
                 try:
@@ -3027,25 +3040,17 @@ class Bridge(QObject):
                                     job_failed = True
                                     job_error = self._stop_reason(primary_tab_id)
                                     break
-                                # ── During generation wait, check for captcha — auto-solve or manual wait ──
-                                try:
-                                    if await ctrl.is_security_dialog_visible():
-                                        self._log(f"[{correlation_id}] ⚠ Captcha detected during generation wait — solving or waiting", "error")
-                                        self._emit_job_action_status(job_id, block, "waiting", "Captcha during generation — solving or waiting")
-                                        await self._settle_captcha_at(ctrl, primary_tab_id, correlation_id, "gen-wait")
-                                        self._log(f"[{correlation_id}] ✅ Captcha solved during generation — restoring generation overlay", "success")
-                                        try:
-                                            await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec)
-                                        except Exception:
-                                            pass
-                                except Exception as e_cap:
-                                    self._log(f"[{correlation_id}] Captcha check during generation failed: {e_cap}", "warn")
+                                # Mid-wait captcha detection: `wait_gates` arms the
+                                # security settler on ctrl — wait_for_new_output's
+                                # poll settles a dialog appearing ANY time during the
+                                # wait (auto-solve or manual wait) within ~2 s, and
+                                # revives a generation the block killed (fix 2026-09-18).
 
                                 if wait_cycle > 0:
                                     self._log(f"[{correlation_id}] 🔄 Wait cycle {wait_cycle+1}/{max_wait_cycles} after reload — waiting again {wait_timeout}ms", "warn")
                                     self._emit_job_action_status(job_id, block, "waiting", f"{label} retry {wait_cycle+1}/{max_wait_cycles} after reload, timeout {wait_timeout}ms")
 
-                                status, data = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
+                                status, data = await wait_with_gates(ctrl, wait_gates, lambda: ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id)))
                                 if self._run_stop_requested(primary_tab_id):
                                     self._log(f"[{correlation_id}] ❌ Cancelled after wait_for_new_output", "warn")
                                     job_failed = True
@@ -3149,7 +3154,7 @@ class Bridge(QObject):
                                                     # To avoid tight loop, wait a bit and continue to next wait attempt (but keep same cycle count? We'll just continue waiting)
                                                     await asyncio.sleep(2)
                                                     # Try wait again within same cycle (extend)
-                                                    status2, data2 = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
+                                                    status2, data2 = await wait_with_gates(ctrl, wait_gates, lambda: ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id)))
                                                     if status2 == "completed" and data2.get("new_src"):
                                                         new_src = data2.get("new_src")
                                                         # Try download again
@@ -3476,7 +3481,7 @@ class Bridge(QObject):
                                                     self._log(f"[{correlation_id}] ⏳ Download failed but generation still in progress {gen_details} — returning to waiting state, will wait again", "warn")
                                                     self._emit_job_action_status(job_id, block, "waiting", f"Download not ready but generating {gen_details}, returning to waiting")
                                                     # Wait again for new output
-                                                    status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
+                                                    status_w, data_w = await wait_with_gates(ctrl, wait_gates, lambda: ctrl.wait_for_new_output(baseline, timeout_ms=wait_timeout if 'wait_timeout' in locals() else gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id)))
                                                     if status_w == "completed" and data_w.get("new_src"):
                                                         new_src = data_w.get("new_src")
                                                         self._log(f"[{correlation_id}] New output after waiting again: {new_src[:80]}", "info")
@@ -3491,7 +3496,7 @@ class Bridge(QObject):
                                             is_gen, gen_details = await ctrl.is_generating()
                                             if is_gen:
                                                 self._log(f"[{correlation_id}] Exception but generating {gen_details} — returning to waiting", "warn")
-                                                status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
+                                                status_w, data_w = await wait_with_gates(ctrl, wait_gates, lambda: ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id)))
                                                 if status_w == "completed" and data_w.get("new_src"):
                                                     new_src = data_w.get("new_src")
                                                     continue
@@ -3507,7 +3512,7 @@ class Bridge(QObject):
                                     if is_gen:
                                         self._log(f"[{correlation_id}] Generation still in progress, not failing download yet — will wait again", "warn")
                                         self._emit_job_action_status(job_id, block, "waiting", f"Download failed but still generating {gen_details}, waiting again")
-                                        status_w, data_w = await ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id))
+                                        status_w, data_w = await wait_with_gates(ctrl, wait_gates, lambda: ctrl.wait_for_new_output(baseline, timeout_ms=gen_timeout, correlation_id=correlation_id, cancel_check=lambda: self._run_stop_requested(primary_tab_id)))
                                         if status_w == "completed" and data_w.get("new_src"):
                                             new_src = data_w.get("new_src")
                                             self._log(f"[{correlation_id}] New src after waiting: {new_src[:80]} — retrying download", "info")

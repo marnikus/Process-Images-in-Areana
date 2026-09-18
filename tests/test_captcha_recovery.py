@@ -5,6 +5,8 @@ and a controllable clock for the grace window. Each test asserts on the
 recorded calls, so a gate that fires wrongly (or never) fails loudly.
 """
 
+import asyncio
+
 import pytest
 
 import app.services.captcha.recovery as recovery_mod
@@ -343,3 +345,105 @@ async def test_resubmit_attach_failure_still_sends(monkeypatch):
     _, reports = await fire(ctrl, clock, monkeypatch, image_path="/tmp/pic/img1.png")
     assert [c[0] for c in ctrl.calls] == ["verify", "insert", "submit_ready"]
     assert any("re-attach failed" in m for m, _ in reports)
+
+
+# ---- inline wait gates (bridge run-loop parity, fix 2026-09-18) ----
+#
+# Regression: the bridge's inline WAIT_OUTPUT never armed `security_settler`,
+# so a captcha appearing MID-wait was invisible for the whole generation
+# timeout (no detection line at all). These tests pin the arming contract.
+
+
+from app.services.captcha.recovery import (  # noqa: E402
+    InlineWaitGates, disarm_wait_gates, wait_with_gates,
+)
+
+
+def gates(**over):
+    settle_calls = []
+    settled = over.pop("settled", True)
+
+    async def settle():
+        settle_calls.append(1)
+        return settled
+    g = InlineWaitGates(prompt=PROMPT, image_path="/tmp/x.png",
+                        settle=settle, **over)
+    return g, settle_calls
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_with_gates_arms_settler_during_and_disarms_after():
+    seen = {}
+
+    async def wait_fn():
+        seen["settler"] = hasattr(ctrl, "security_settler")
+        seen["policy"] = getattr(ctrl, "_resume_policy", None) is not None
+        return ("completed", {"new_src": "x.png"})
+
+    ctrl = FakeCtrl()
+    g, _ = gates()
+    status, data = await wait_with_gates(ctrl, g, wait_fn)
+    assert (status, data) == ("completed", {"new_src": "x.png"})  # passthrough
+    assert seen["settler"] and seen["policy"]      # armed during the wait
+    assert not hasattr(ctrl, "security_settler")   # disarmed after
+    assert getattr(ctrl, "_resume_policy", None) is None
+    assert getattr(ctrl, "resume_gate", None) is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_settler_settles_and_stamps_when_dialog_visible():
+    ctrl = FakeCtrl()
+    g, settle_calls = gates()
+    await wait_with_gates(ctrl, g, lambda: asyncio.sleep(0))  # arms + disarms cleanly
+    assert not hasattr(ctrl, "security_settler")
+    from app.services.captcha.recovery import arm_wait_gates
+    assert arm_wait_gates(ctrl, g) is True  # re-arm to exercise the settler
+    policy = ctrl._resume_policy
+    assert policy.image_path == "/tmp/x.png"  # gates carry the image path
+    await ctrl.security_settler()
+    assert settle_calls == [1]                # settle was invoked
+    assert policy.settled_at is not None      # revival stamped
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_settler_does_not_stamp_when_settle_reports_false():
+    ctrl = FakeCtrl()
+    g, settle_calls = gates(settled=False)
+    from app.services.captcha.recovery import arm_wait_gates
+    arm_wait_gates(ctrl, g)
+    policy = ctrl._resume_policy
+    await ctrl.security_settler()
+    assert settle_calls == [1]
+    assert policy.settled_at is None  # probe failed → no revival stamp
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_still_runs_when_arming_fails():
+    class RottenCtrl(FakeCtrl):
+        @property
+        def __dict__(self):
+            raise RuntimeError("cdp down")
+
+    async def wait_fn():
+        return ("failed", {"error": "timeout"})
+
+    g, _ = gates()
+    status, data = await wait_with_gates(RottenCtrl(), g, wait_fn)  # fail-open
+    assert (status, data) == ("failed", {"error": "timeout"})
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_disarm_removes_everything_and_never_raises():
+    ctrl = FakeCtrl()
+    g, _ = gates()
+    from app.services.captcha.recovery import arm_wait_gates
+    arm_wait_gates(ctrl, g)
+    disarm_wait_gates(ctrl)
+    assert not hasattr(ctrl, "security_settler")
+    disarm_wait_gates(ctrl)  # idempotent
+    assert getattr(ctrl, "_resume_policy", None) is None
