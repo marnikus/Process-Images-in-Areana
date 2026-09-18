@@ -8,7 +8,7 @@
       "last_status": "ready",
       "last_checked": "2026-09-17T10:45:28.112354Z",
       "error": null,
-      "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+      "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
     },
     {
       "id": "url_550177d7",
@@ -255,10 +255,10 @@
       "size": 53619,
       "mtime": 1789721064.2150776,
       "fingerprint": "c88f61629afa1f84",
-      "status": "failed",
+      "status": "processing",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 2,
+      "attempt_count": 3,
       "output_path": null,
       "error": "Wait failed: Timeout after 180000ms",
       "content_hash": null
@@ -485,10 +485,10 @@
     "total": 21,
     "selected": 21,
     "pending": 5,
-    "processing": 0,
+    "processing": 1,
     "completed": 8,
     "skipped": 0,
-    "failed": 8,
+    "failed": 7,
     "needs_review": 0
   },
   "run_state": "idle",
