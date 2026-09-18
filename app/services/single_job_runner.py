@@ -154,7 +154,8 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     """Wait output."""
     try:
         await _show_gen_overlay(ctx, timeout_ms)
-        ctx.ctrl.security_settler = lambda: check_security(ctx)  # captcha inside the wait
+        _arm_revival(ctx)  # bounded resubmit if the blocked generation died
+        ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
         status, data = await ctx.ctrl.wait_for_new_output(
             ctx.baseline, timeout_ms=timeout_ms, correlation_id=ctx.corr_id,
             cancel_check=lambda: _is_cancelled(ctx),
@@ -173,6 +174,43 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
             delattr(ctx.ctrl, "security_settler")
         except Exception:
             pass
+        _clear_revival(ctx)
+
+
+async def _settle_and_note(ctx: JobCtx):
+    """Settle a mid-wait dialog, then stamp it for generation revival."""
+    from app.services.captcha.recovery import note_settle
+    settled = await check_security(ctx)
+    if settled:
+        note_settle(ctx.ctrl)
+    return settled
+
+
+def _report_recovery(ctx: JobCtx, msg: str, level: str = "info"):
+    """Revival log with the job correlation prefix (RULE 2)."""
+    try:
+        ctx.bridge._log(f"[{ctx.corr_id}] {msg}", level)
+    except Exception:
+        pass
+
+
+def _arm_revival(ctx: JobCtx):
+    """Arm post-captcha revival for this generation wait (services-owned)."""
+    from app.services.captcha.recovery import arm_resume
+    try:
+        arm_resume(ctx.ctrl, ctx.final_prompt, cancelled=lambda: _is_cancelled(ctx),
+                   report=lambda m, l="info": _report_recovery(ctx, m, l))
+    except Exception:
+        pass
+
+
+def _clear_revival(ctx: JobCtx):
+    """Disarm revival at wait end; never raises."""
+    from app.services.captcha.recovery import clear_resume
+    try:
+        clear_resume(ctx.ctrl)
+    except Exception:
+        pass
 
 
 async def _show_gen_overlay(ctx: JobCtx, timeout_ms: int):

@@ -51,20 +51,27 @@ def task_type_for(kind: str) -> str:
     return _TASK_TYPES.get(kind, "RecaptchaV2EnterpriseTaskProxyless")
 
 
+def _cb_source(res: Dict[str, Any]) -> str:
+    """Which chain step was attempted (tolerates legacy-shaped results)."""
+    return str(res.get("cbSource") or res.get("cb") or "?")[:40]
+
+
 def _cb_desc(res: Dict[str, Any]) -> str:
     """Inject-result callback status for the log line."""
     if res.get("cbCalled"):
-        return f"called {res.get('cb')}"
+        return f"called {res.get('cb')} via {_cb_source(res)}"
     if res.get("cbError"):
-        return f"error: {str(res.get('cbError'))[:40]}"
-    return "not found in anchor"
+        return f"{_cb_source(res)} error: {str(res.get('cbError'))[:40]}"
+    return "no site callback found (data-callback / grecaptcha cfg / anchor cb)"
 
 
 def _reject_reason(res: Dict[str, Any]) -> str:
     """Not-accepted reason: was the widget callback invoked before expiry?"""
     if res.get("cbCalled"):
-        return "dialog still visible after token injection (callback called — token likely rejected server-side)"
-    return "dialog still visible after token injection (no callback in dialog anchor)"
+        return (f"dialog still visible after token injection (callback called via "
+                f"{_cb_source(res)} — token likely rejected server-side)")
+    return ("dialog still visible after token injection (no site callback found: "
+            "data-callback / grecaptcha cfg / anchor cb)")
 
 
 def _task_payload(task_type: str, signal: CaptchaSignal) -> Dict[str, Any]:
@@ -142,12 +149,12 @@ class CaptchaSolver:
         return await self._inject_and_verify(plan, token, task_id)
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
-        res = await self._inject(plan.ctrl, token)
+        res = await self._inject(plan.ctrl, token, plan.signal.sitekey)
         if not res.get("ok"):
             await _delete_task(plan.client, task_id, self._stats)
             self._auto_fail(plan, "inject", "response field not found on page")
             return _failed("inject", "response field not found on page")
-        self._log(f"🤖 token injected (scope={res.get('scope')}, cb={_cb_desc(res)})", "info")
+        self._log(f"🤖 token injected (scope={res.get('scope')}, fields={res.get('fields', 1)}, cb={_cb_desc(res)})", "info")
         await _click_continue(plan.ctrl)
         if await self._verify_gone(plan.ctrl, plan.stop):
             return self._solved(plan, task_id)
@@ -214,9 +221,9 @@ class CaptchaSolver:
                 return self._poll_fail(plan, "poll_timeout")
             await asyncio.sleep(POLL_INTERVAL_SEC)
 
-    async def _inject(self, ctrl: Any, token: str) -> Dict[str, Any]:
+    async def _inject(self, ctrl: Any, token: str, sitekey: str = "") -> Dict[str, Any]:
         try:
-            res = await ctrl.cdp.evaluate(build_inject_js(token))
+            res = await ctrl.cdp.evaluate(build_inject_js(token, sitekey))
         except Exception as e:
             self._log(f"2Captcha inject probe failed: {e}", "warn")
             return {}

@@ -11,6 +11,7 @@ from .stats import CaptchaStatsStore
 from .api_client import Captcha2Client, ApiError
 from .solver import CaptchaSolver
 from .service import CaptchaCtx, CaptchaService, handle_captcha
+from .recovery import ResumePolicy, arm_resume, clear_resume, maybe_resume, note_settle
 
 __all__ = [
     "CaptchaSignal",
@@ -24,4 +25,9 @@ __all__ = [
     "CaptchaCtx",
     "CaptchaService",
     "handle_captcha",
+    "ResumePolicy",
+    "arm_resume",
+    "clear_resume",
+    "maybe_resume",
+    "note_settle",
 ]

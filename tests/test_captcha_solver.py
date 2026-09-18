@@ -228,7 +228,7 @@ async def test_token_not_accepted_falls_back(monkeypatch, isolated_config_dir):
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "not_accepted" in outcome.reason
-    assert "no callback in dialog anchor" in outcome.reason  # reason is specific, not opaque
+    assert "no site callback found" in outcome.reason  # reason is specific, not opaque
     assert client.deleted
 
 
@@ -241,8 +241,9 @@ async def test_token_not_accepted_callback_called(monkeypatch, isolated_config_d
     class CbCtrl(FakeCtrl):
         async def _evaluate(self, js):
             if "g-recaptcha-response" in js:
-                return json.dumps({"ok": True, "scope": "dialog", "tag": "TEXTAREA",
-                                   "cb": "abc123", "cbCalled": True})
+                return json.dumps({"ok": True, "scope": "dialog", "fields": 2,
+                                   "cb": "abc123", "cbCalled": True,
+                                   "cbSource": "anchor-cb:abc123", "clientsSeen": 0})
             return await super()._evaluate(js)
 
     client = FakeClient("K", results=[
@@ -252,8 +253,49 @@ async def test_token_not_accepted_callback_called(monkeypatch, isolated_config_d
     ctrl = CbCtrl(visible_seq=[True])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
-    assert "callback called" in outcome.reason
-    assert any("cb=called abc123" in m for m, _ in logs)  # inject detail logged
+    assert "callback called via anchor-cb:abc123" in outcome.reason
+    assert any("cb=called abc123 via anchor-cb:abc123" in m for m, _ in logs)  # inject detail logged
+    assert any("fields=2" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_token_not_accepted_data_callback_source(monkeypatch, isolated_config_dir):
+    """data-callback invoked but dialog persists → reason names the source."""
+
+    class DcCtrl(FakeCtrl):
+        async def _evaluate(self, js):
+            if "g-recaptcha-response" in js:
+                return json.dumps({"ok": True, "scope": "dialog", "fields": 1,
+                                   "cb": "onArenaSolve", "cbCalled": True,
+                                   "cbSource": "data-callback:onArenaSolve"})
+            return await super()._evaluate(js)
+
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
+    ctrl = DcCtrl(visible_seq=[True])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"
+    assert "callback called via data-callback:onArenaSolve" in outcome.reason
+    assert any("via data-callback:onArenaSolve" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_inject_probe_receives_sitekey(monkeypatch, isolated_config_dir):
+    """The dialog sitekey travels into the probe for the cfg-client search."""
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    ctrl = FakeCtrl(visible_seq=[False])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    inject_js = [p for p in ctrl.probes if "g-recaptcha-response" in p]
+    assert len(inject_js) == 1
+    assert SITEKEY in inject_js[0]  # sitekey steers the client search
 
 
 @pytest.mark.unit

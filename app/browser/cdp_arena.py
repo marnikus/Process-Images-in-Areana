@@ -176,6 +176,17 @@ JS_IS_GENERATING = """
 """
 
 
+async def _run_resume_gate(ctrl, diag):
+    """Post-captcha revival hook: the services-owned gate rides as an attr."""
+    gate = getattr(ctrl, "resume_gate", None)
+    if gate is None:
+        return diag
+    try:
+        return await gate(diag) or diag
+    except Exception:
+        return diag
+
+
 class CDPArenaController:
     def __init__(self, cdp_client: CDPClient, log_callback=None):
         self.cdp = cdp_client
@@ -305,14 +316,15 @@ class CDPArenaController:
         return "failed", {"error": f"Timeout after {timeout_ms}ms", "last_baseline": final_baseline, "last_check": result}
 
     async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000, correlation_id: Optional[str] = None, cancel_check=None) -> Tuple[str, Dict[str, Any]]:
-        # ideal-size: 26 lines reason=delegates to wait loop; page-error baseline + fast-fail arming
+        # ideal-size: 27 lines reason=delegates to wait loop; page-error baseline + fast-fail arming + resume gate
         old_srcs = baseline.get("output_srcs", []) or []
         old_outputs = baseline.get("outputs", []) or []
         self._err_base = await self._scan_page_errors()
 
         async def check_fn():
             await self._security_gate()
-            return await self._poll_output_diag(old_srcs, correlation_id, old_outputs)
+            diag = await self._poll_output_diag(old_srcs, correlation_id, old_outputs)
+            return await _run_resume_gate(self, diag)
 
         def log_cb(msg: str):
             self._log(msg)

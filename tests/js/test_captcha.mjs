@@ -330,7 +330,7 @@ test('visible: display:none ancestor is NOT on screen', () => {
 
 /* ——— inject probe ——— */
 
-const runInject = (token, body, win = {}) => {
+const runInject = (token, body, win = {}, sitekey = '') => {
   const document = makeDoc(body);
   const proto = {};
   Object.defineProperty(proto, 'value', {
@@ -343,22 +343,17 @@ const runInject = (token, body, win = {}) => {
   class Event { constructor(type, init) { this.type = type; this.bubbles = !!(init && init.bubbles); } }
   const fn = new Function('document', 'HTMLTextAreaElement', 'HTMLInputElement', 'Event', 'window',
                           'return (' + probe('inject.js') + ')');
-  return fn(document, HTMLTextAreaElement, HTMLInputElement, Event, win)(token);
+  return fn(document, HTMLTextAreaElement, HTMLInputElement, Event, win)(token, sitekey);
 };
 
 test('inject: sets dialog-scoped hidden field with events', () => {
   const field = new El('textarea', { name: 'g-recaptcha-response' });
   const d = securityDialog({});
   d.append(field);  // field inside the dialog → dialog-scope path
-  const document = makeDoc(new El('body').append(d));
-  const proto = {};
-  Object.defineProperty(proto, 'value', { configurable: true, get() { return this._value; }, set(v) { this._value = String(v); } });
-  class Event { constructor(type, init) { this.type = type; this.bubbles = !!(init && init.bubbles); } }
-  const fn = new Function('document', 'HTMLTextAreaElement', 'HTMLInputElement', 'Event',
-                          'return (' + probe('inject.js') + ')');
-  const r = fn(document, { prototype: proto }, { prototype: proto }, Event)('TOKEN123');
+  const r = runInject('TOKEN123', new El('body').append(d));
   assert.equal(r.ok, true);
   assert.equal(r.scope, 'dialog');
+  assert.equal(r.fields, 1);
   assert.equal(field._value, 'TOKEN123');
   assert.deepEqual(field.events.map(e => e.type), ['input', 'change']);  // React-safe events fired
 });
@@ -370,7 +365,21 @@ test('inject: falls back to document-level field', () => {
   const r = runInject('TOK9', body);
   assert.equal(r.ok, true);
   assert.equal(r.scope, 'document');
+  assert.equal(r.fields, 1);
   assert.equal(field._value, 'TOK9');
+});
+
+test('inject: sets EVERY field — dialog field plus the badge shadow field', () => {
+  const dialogField = new El('textarea', { id: 'g-recaptcha-response', name: 'g-recaptcha-response' });
+  const d = realDialog();
+  d.append(dialogField);
+  const [badge, badgeField] = realBadge();
+  const r = runInject('TOK_ALL', new El('body').append(badge, badgeField, d));
+  assert.equal(r.ok, true);
+  assert.equal(r.scope, 'dialog');
+  assert.equal(r.fields, 3);  // realDialog's own field + dialogField + badgeField
+  assert.equal(dialogField._value, 'TOK_ALL');
+  assert.equal(badgeField._value, 'TOK_ALL');  // badge field no longer shadows the dialog's
 });
 
 test('inject: no field on page → ok:false with error', () => {
@@ -379,7 +388,51 @@ test('inject: no field on page → ok:false with error', () => {
   assert.match(r.error, /response field not found/);
 });
 
-test('inject: invokes the dialog anchor callback with the token (the real solve path)', () => {
+test('inject: data-callback on the dialog widget is the first solve path', () => {
+  let got = null;
+  const d = securityDialog({});
+  d.append(new El('div', { class: 'g-recaptcha', 'data-sitekey': '6Lx', 'data-callback': 'onArenaSolve' }));
+  d.append(new El('textarea', { name: 'g-recaptcha-response' }));
+  const win = { onArenaSolve: (tok) => { got = tok; } };
+  const r = runInject('TOK_DC', new El('body').append(d), win);
+  assert.equal(r.ok, true);
+  assert.equal(r.cb, 'onArenaSolve');
+  assert.equal(r.cbCalled, true);
+  assert.equal(r.cbError, null);
+  assert.equal(r.cbSource, 'data-callback:onArenaSolve');
+  assert.equal(got, 'TOK_DC');
+});
+
+test('inject: unknown data-callback name falls through to grecaptcha cfg clients', () => {
+  let got = null;
+  const d = securityDialog({});
+  d.append(new El('div', { class: 'g-recaptcha', 'data-callback': 'missingFn' }));
+  d.append(new El('textarea', { name: 'g-recaptcha-response' }));
+  const win = { ___grecaptcha_cfg: { clients: { 0: { aa: { l: { callback: (tok) => { got = tok; } } } } } } };
+  const r = runInject('TOK_CFG', new El('body').append(d), win);
+  assert.equal(r.ok, true);
+  assert.equal(r.cbCalled, true);
+  assert.equal(r.cbSource, 'grecaptcha-cfg');
+  assert.equal(r.clientsSeen, 1);
+  assert.equal(got, 'TOK_CFG');
+});
+
+test('inject: cfg search prefers the client holding the dialog sitekey', () => {
+  const calls = [];
+  const d = securityDialog({});
+  d.append(new El('textarea', { name: 'g-recaptcha-response' }));
+  const win = { ___grecaptcha_cfg: { clients: {
+    0: { badge: true, cb: { callback: () => { calls.push('badge'); } } },
+    7: { sitekey: '6LDIALOGkey0000000000000000000', inner: { callback: (t) => { calls.push('dialog:' + t); } } },
+  } } };
+  const r = runInject('TOK_SK', new El('body').append(d), win, '6LDIALOGkey0000000000000000000');
+  assert.equal(r.cbCalled, true);
+  assert.equal(r.cbSource, 'grecaptcha-cfg');
+  assert.equal(r.clientsSeen, 2);
+  assert.deepEqual(calls, ['dialog:TOK_SK']);  // sitekey client won, badge client untouched
+});
+
+test('inject: dialog anchor cb stays as last resort with its source reported', () => {
   let got = null;
   const d = securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6LEnterpkey0000000000000000000&size=normal&cb=abc123' });
   d.append(new El('textarea', { name: 'g-recaptcha-response' }));
@@ -390,16 +443,20 @@ test('inject: invokes the dialog anchor callback with the token (the real solve 
   assert.equal(r.cb, 'abc123');
   assert.equal(r.cbCalled, true);
   assert.equal(r.cbError, null);
+  assert.equal(r.cbSource, 'anchor-cb:abc123');
   assert.equal(got, 'TOK_CB');
 });
 
-test('inject: no cb in anchor → ok, cb null, no window call', () => {
+test('inject: no callback anywhere → ok, cbSource none, clientsSeen reported', () => {
   const d = securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6LEnterpkey0000000000000000000&size=normal' });
   d.append(new El('textarea', { name: 'g-recaptcha-response' }));
-  const r = runInject('TOK2', new El('body').append(d), {});
+  const win = { ___grecaptcha_cfg: { clients: { 0: { noCallbackHere: 1 } } } };
+  const r = runInject('TOK2', new El('body').append(d), win);
   assert.equal(r.ok, true);
   assert.equal(r.cb, null);
   assert.equal(r.cbCalled, false);
+  assert.equal(r.cbSource, 'none');
+  assert.equal(r.clientsSeen, 1);
 });
 
 test('inject: cb throwing → ok, cbError captured, injection still counts', () => {
@@ -410,6 +467,7 @@ test('inject: cb throwing → ok, cbError captured, injection still counts', () 
   assert.equal(r.ok, true);
   assert.equal(r.cb, 'boom9');
   assert.equal(r.cbCalled, false);
+  assert.equal(r.cbSource, 'anchor-cb:boom9');
   assert.match(r.cbError, /handler down/);
 });
 

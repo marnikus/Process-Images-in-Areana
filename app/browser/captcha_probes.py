@@ -32,9 +32,13 @@ def build_visible_js() -> str:
     return ";" + _read("visible.js")
 
 
-def build_inject_js(token: str) -> str:
-    """Token-injection probe: wraps the (token)=>… function with the payload."""
-    return f"({_read('inject.js')})({json.dumps(token)})"
+def build_inject_js(token: str, sitekey: str = "") -> str:
+    """Token-injection probe: wraps (token, sitekey)=>… with the payload.
+
+    The sitekey steers the ___grecaptcha_cfg client search at the dialog's
+    own widget when several clients coexist (badge + challenge).
+    """
+    return f"({_read('inject.js')})({json.dumps(token)}, {json.dumps(sitekey)})"
 
 
 def build_continue_js() -> str:
