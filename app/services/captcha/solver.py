@@ -113,6 +113,11 @@ def _failed_detail(res: Dict[str, Any]) -> str:
     return str(res.get("errorCode") or res.get("errorDescription") or "")
 
 
+def _no_token_detail(plan: SolvePlan) -> str:
+    """S-2: the site's own words when a page error cut the token wait short."""
+    return (plan.page_error or "no solution token").removeprefix("Page error: ")
+
+
 def _heartbeat(log: Callable[[str, str], None], plan: SolvePlan,
                task_id: str, last: float) -> float:
     """Still-processing line every HEARTBEAT_SEC; returns the new mark."""
@@ -467,7 +472,7 @@ class CaptchaSolver:
         token, why = await _poll_task(plan, task_id, timeout_sec)
         if not token:
             await _delete_task(plan.client, task_id, self._stats, self._log)
-            return _failed(why or "no_token", "no solution token", plan)
+            return _failed(why or "no_token", _no_token_detail(plan), plan)
         plan.token_at = time.monotonic()
         plan.token_fp = _token_fingerprint(token)
         self._log(f"🤖 2Captcha task #{task_id} token received in "

@@ -82,6 +82,19 @@ def test_solved_and_dialog_gone_classified(tmp_path):
 
 
 @pytest.mark.unit
+def test_legacy_redacted_fields_do_not_crash(tmp_path):
+    """Old sanitizer wrote token_at_ms/dialog_at_token as '[REDACTED]' (S-1)."""
+    _session(tmp_path / "s7", {"outcome": "page_error", "reason": "page_error: no solution token",
+                               "task_id": "", "polls": 13, "attempts": 1, "method": "auto",
+                               "url": "https://arena.ai/c/abc"},
+             [_state(token_ms="[REDACTED]", dialog="[REDACTED]", inject="")])
+    out = analyze(tmp_path / "s7")
+    assert "token@0ms" in out
+    assert "redacted by old sanitizer" in out
+    assert "DEAD-GEN" in out
+
+
+@pytest.mark.unit
 def test_classify_uses_largest_token_state(tmp_path):
     manifest = {"outcome": "token_stale", "reason": "token_stale: challenge_identity_changed"}
     assert "dialog already gone at token" in _classify(

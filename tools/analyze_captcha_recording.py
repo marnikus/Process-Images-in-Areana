@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 GRACE_MS = 1000  # post-token acceptance window before counting site requests
@@ -62,12 +63,19 @@ def _net_rows(events: list[dict]) -> list[tuple[int, str, str, str]]:
     return rows
 
 
+def _as_ms(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0  # "[REDACTED]" by the legacy sanitizer, or missing
+
+
 def _token_state(events: list[dict]) -> tuple[int, str, str]:
     """Last auto-attempt state: (token_at_ms, dialog_at_token, inject)."""
     token_ms, dialog, inject = 0, "", ""
     for event in events:
         if event.get("kind") == "state" and event.get("state") == "auto_attempt_finished":
-            token_ms = int(event.get("token_at_ms", 0) or 0)
+            token_ms = _as_ms(event.get("token_at_ms"))
             dialog = str(event.get("dialog_at_token", ""))
             inject = str(event.get("inject", ""))
     return token_ms, dialog, inject
@@ -113,6 +121,8 @@ def _classify(manifest: dict, events: list[dict]) -> str:
 def analyze(folder: Path) -> str:
     manifest, events = _load(folder)
     token_ms, dialog, inject = _token_state(events)
+    if "REDACTED" in dialog:  # legacy sanitizer wiped the evidence
+        dialog = "? (redacted by old sanitizer)"
     rows = _net_rows(events)
     grecaptcha = sum(1 for _, _, h, _ in rows if "grecaptcha" in h or "recaptcha" in h)
     parts = [

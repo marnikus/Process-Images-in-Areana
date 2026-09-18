@@ -8,6 +8,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 _SECRET_KEY = re.compile(r"(authorization|cookie|token|secret|password|response)", re.I)
 _LONG_TOKEN = re.compile(r"(?<![\w-])[A-Za-z0-9_-]{80,}(?![\w-])")
+_OPAQUE = re.compile(r"(?<![\w-])[A-Za-z0-9._~+/=-]{16,}(?![\w-])")
 _BEARER = re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+")
 MAX_TEXT = 65_536
 
@@ -42,8 +43,20 @@ def clean_mapping(data: Any) -> Any:
     return data
 
 
+def _looks_like_credential(value: Any) -> bool:
+    """True when a value under a secret-named key is a real credential.
+
+    Timing (int/float) and short status strings (visible/gone) are evidence,
+    not secrets, and must survive redaction (S-1)."""
+    if not isinstance(value, str):
+        return False
+    if _BEARER.search(value):
+        return True
+    return bool(_OPAQUE.search(value))
+
+
 def _clean_item(key: str, value: Any) -> Any:
-    if _SECRET_KEY.search(key):
+    if _SECRET_KEY.search(key) and _looks_like_credential(value):
         return "[REDACTED]"
     return clean_mapping(value)
 

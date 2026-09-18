@@ -619,6 +619,7 @@ async def test_mid_solve_page_error_timestamped(monkeypatch, isolated_config_dir
                      visible_seq=[True, False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "page_error"
+    assert outcome.reason.startswith("page_error: Something went wrong")  # S-2: site's own words
     assert outcome.token_fp == ""
     assert any("appeared during solve (" in m and "Something went wrong" in m for m, _ in logs)
     assert client.deleted  # page failure makes the provider task stale

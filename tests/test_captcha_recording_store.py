@@ -62,11 +62,31 @@ def test_redaction_helpers_remove_secrets():
     token = "A" * 100
     assert safe_url("https://x.test/a?q=secret#f") == "https://x.test/a"
     assert token not in redact_text("Bearer abc.def " + token)
-    clean = clean_mapping({"authorization": "secret", "nested": {"token": token}, "ok": token})
+    clean = clean_mapping({"authorization": "Bearer " + token,
+                           "nested": {"token": token}, "ok": token})
     assert clean["authorization"] == "[REDACTED]"
     assert clean["nested"]["token"] == "[REDACTED]"
     assert token not in json.dumps(clean)
     assert textual_mime("application/json") and not textual_mime("image/png")
+
+
+@pytest.mark.unit
+def test_redaction_keeps_timing_and_status_evidence():
+    """S-1: evidence fields with secret-shaped names must survive redaction."""
+    clean = clean_mapping({
+        "token_at_ms": 1726550340000,
+        "token_sec": 55.8,
+        "dialog_at_token": "visible",
+        "token_fp": "len=512 head=03AGdB25 tail=xQ12",
+        "response": "03AGdB25" + "y" * 500,  # real recaptcha response token
+        "cookie": "sid=" + "b" * 60,
+    })
+    assert clean["token_at_ms"] == 1726550340000
+    assert clean["token_sec"] == 55.8
+    assert clean["dialog_at_token"] == "visible"
+    assert clean["token_fp"].startswith("len=512")
+    assert clean["response"] == "[REDACTED]"
+    assert clean["cookie"] == "[REDACTED]"
 
 @pytest.mark.unit
 def test_evidence_reader_returns_bounded_comparison_model(tmp_path):
