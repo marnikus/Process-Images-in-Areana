@@ -57,7 +57,14 @@ const SashGrid = {
     this.root = this._loadTree() || SashCore.defaultTree();
     this._loadWindowStates();
     this.render();
+    // Restore guard: the backend (session.json) is the source of truth, but its
+    // async restore may still be in flight. Deferring _save() until it lands
+    // stops a stale backend tree from being overwritten by the boot-time
+    // localStorage tree (and vice versa) — "grid lost after restart" fix.
+    this._restorePending = true;
+    this._saveQueued = false;
     this._loadFromBackend();
+    setTimeout(() => this._finishRestore(), 3000);
     this.gridEl.addEventListener('pointerdown', this._onDown = this._pointerDown.bind(this));
     this.gridEl.addEventListener('dblclick', this._onDbl = this._onDblClick.bind(this));
     this._setupLayoutMenu();

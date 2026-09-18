@@ -797,12 +797,21 @@ class Bridge(QObject):
         raw = self.config.get_state("grid_layout", None)
         if not isinstance(raw, str) or not raw:
             return ""
-        payload, err = canonical_grid_payload(raw)
-        return payload if not err else ""
+        try:
+            payload, err = canonical_grid_payload(raw)
+            return payload if not err else ""
+        except Exception as e:
+            self._log(f"Grid layout read error: {e}", "warn")
+            return ""
 
     @Slot(str, result=bool)
     def save_grid_layout(self, layout_json: str):
-        payload, err = canonical_grid_payload(layout_json or "")
+        try:
+            payload, err = canonical_grid_payload(layout_json or "")
+        except Exception as e:
+            self._log(f"Grid layout save error: {e}", "warn")
+            self.grid_layout_persisted.emit(False)
+            return False
         if err:
             self._log(f"Grid layout rejected: {err}", "warn")
             self.grid_layout_persisted.emit(False)
@@ -2327,6 +2336,18 @@ class Bridge(QObject):
         """Local solve counters + auto success rate + balance (API stat)."""
         try:
             return json.dumps({"ok": True, **self._captcha_service().stats_payload()}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def reset_captcha_stats(self):
+        """Clear counters + last error (stale cumulative stats mislead debugging)."""
+        try:
+            svc = self._captcha_service()
+            svc.stats.reset()
+            asyncio.create_task(svc.refresh_balance())
+            self._log("🧹 Captcha stats reset", "info")
+            return json.dumps({"ok": True, **svc.stats_payload()}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 

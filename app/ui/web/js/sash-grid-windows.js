@@ -83,6 +83,7 @@ const SashGridWindowStore = {
   _save() {
     const payload = SashCore.serialize(this.root);
     try { localStorage.setItem(this.STORAGE_KEY, payload); } catch (e) {}
+    if (this._restorePending) { this._saveQueued = true; return; }  // deferred until restore lands
     try {
       if (typeof App !== 'undefined' && App.bridge && App.bridge.save_grid_layout) {
         // Backend will push to undo and emit undo_state_changed -> ArenaHistory syncs
@@ -97,17 +98,24 @@ const SashGridWindowStore = {
     }
   },
 
+  _finishRestore() {
+    if (!this._restorePending) return;
+    this._restorePending = false;
+    if (this._saveQueued) { this._saveQueued = false; this._save(); }
+  },
+
   _loadFromBackend() {
     try {
       if (typeof App === 'undefined' || !App.bridge) return;
       if (App.bridge.get_grid_layout) {
         App.bridge.get_grid_layout((raw) => {
-          if (!raw) return;
-          const res = SashCore.deserialize(raw);
-          if (!res.ok) return;
-          if (raw === SashCore.serialize(this.root)) return;
-          this.root = res.tree;
-          this.render();
+          try {
+            if (raw) {
+              const res = SashCore.deserialize(raw);
+              if (res.ok && raw !== SashCore.serialize(this.root)) { this.root = res.tree; this.render(); }
+            }
+          } catch (e) {}
+          this._finishRestore();
         });
       }
       if (App.bridge.get_window_states) {

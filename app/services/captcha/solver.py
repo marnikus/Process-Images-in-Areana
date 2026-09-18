@@ -67,6 +67,51 @@ def _reject_reason(res: Dict[str, Any]) -> str:
     return "dialog still visible after token injection (no callback in dialog anchor)"
 
 
+def _ready_token(res: Dict[str, Any]) -> str:
+    """The solved token from a ready getTaskResult ('' when missing)."""
+    return str((res.get("solution") or {}).get("gRecaptchaResponse") or "")
+
+
+async def _one_poll(solver: "CaptchaSolver", plan: SolvePlan, task_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[str, str]]]:
+    """One getTaskResult; (result, None) or (None, (reason, detail))."""
+    try:
+        return await plan.client.get_result(task_id), None
+    except ApiError as e:
+        detail = "" if str(e) == e.reason else str(e)
+        solver._log(f"🤖 2Captcha API getTaskResult FAILED (task {task_id}): "
+                    f"{e.reason} (errorId={e.error_id})" + (f": {e}" if detail else ""), "warn")
+        return None, (e.reason, detail)
+
+
+async def _poll_task_loop(solver: "CaptchaSolver", plan: SolvePlan, task_id: str,
+                          timeout_sec: int) -> Tuple[Optional[str], str]:
+    """Poll until a token arrives; (None, why) on stop/error/timeout.
+    Module-level so the solver class stays under the class-LOC gate."""
+    start = time.monotonic()
+    last_status = ""
+    while True:
+        if plan.stop():
+            solver._log("2Captcha polling stopped (user stop)", "info")
+            return None, "stopped"
+        res, err = await _one_poll(solver, plan, task_id)
+        if err is not None:
+            return solver._poll_fail(plan, err[0], err[1])
+        status = str(res.get("status"))
+        if status != last_status:
+            solver._log(f"🤖 2Captcha API poll (task {task_id}): {last_status or 'start'} → {status}", "info")
+            last_status = status
+        if status == "ready":
+            token = _ready_token(res)
+            solver._log(f"🤖 2Captcha API token received (task {task_id}, …{token[-6:]}, "
+                        f"{time.monotonic() - start:.0f}s)", "info")
+            return token, ""
+        if status == "failed":
+            return solver._poll_fail(plan, "task_failed", str(res.get("errorCode", "")))
+        if time.monotonic() - start > timeout_sec:
+            return solver._poll_fail(plan, "poll_timeout")
+        await asyncio.sleep(POLL_INTERVAL_SEC)
+
+
 def _task_payload(task_type: str, signal: CaptchaSignal) -> Dict[str, Any]:
     """Docs-exact createTask payload (2captcha.com/api-docs/recaptcha-v2-enterprise)."""
     payload = {"type": task_type,
@@ -176,12 +221,13 @@ class CaptchaSolver:
         payload = _task_payload(task_type, plan.signal)
         try:
             task_id = await plan.client.create_task(payload)
-            self._log(f"🤖 2Captcha task {task_type} submitted (tab {str(plan.tab_id)[:12]}, key=****)", "info")
+            self._log(f"🤖 2Captcha API createTask OK → task {task_id} ({task_type}, "
+                      f"sitekey=…{plan.signal.sitekey[-6:]}, {host_of(plan.signal.page_url)})", "info")
             return task_id
         except ApiError as e:
             self._stats.record("auto_failed", host_of(plan.signal.page_url))
-            self._stats.set_last_error(e.reason)
-            self._log(f"🤖 2Captcha createTask failed: {e.reason}", "warn")
+            self._stats.set_last_error(f"{e.reason} (errorId={e.error_id}): {e}")
+            self._log(f"🤖 2Captcha API createTask FAILED: {e.reason} (errorId={e.error_id}): {e}", "warn")
             return ""
         except Exception as e:  # fail-open: solver problems never kill the job
             self._log(f"2Captcha createTask unexpected error: {e}", "warn")
@@ -190,29 +236,13 @@ class CaptchaSolver:
     def _poll_fail(self, plan: SolvePlan, why: str, detail: str = "") -> Tuple[None, str]:
         self._stats.record("auto_failed", host_of(plan.signal.page_url))
         self._stats.set_last_error(detail or why)
-        self._log(f"2Captcha poll ended: {why}", "warn")
-        return None, why
+        self._log(f"2Captcha poll ended: {why}" + (f" — {detail}" if detail else ""), "warn")
+        return None, (f"{why}: {detail}" if detail else why)
 
     async def _poll_task(self, plan: SolvePlan, task_id: str,
                          timeout_sec: int) -> Tuple[Optional[str], str]:
         """Poll until a token arrives; (None, why) on stop/error/timeout."""
-        start = time.monotonic()
-        while True:
-            if plan.stop():
-                self._log("2Captcha polling stopped (user stop)", "info")
-                return None, "stopped"
-            try:
-                res = await plan.client.get_result(task_id)
-            except ApiError as e:
-                return self._poll_fail(plan, e.reason)
-            status = res.get("status")
-            if status == "ready":
-                return str((res.get("solution") or {}).get("gRecaptchaResponse") or ""), ""
-            if status == "failed":
-                return self._poll_fail(plan, "task_failed")
-            if time.monotonic() - start > timeout_sec:
-                return self._poll_fail(plan, "poll_timeout")
-            await asyncio.sleep(POLL_INTERVAL_SEC)
+        return await _poll_task_loop(self, plan, task_id, timeout_sec)
 
     async def _inject(self, ctrl: Any, token: str) -> Dict[str, Any]:
         try:

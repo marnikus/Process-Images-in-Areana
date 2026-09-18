@@ -130,6 +130,22 @@ class MainWindow(QMainWindow):
             # Never fail close due to geometry save
             pass
 
+    def _flush_sash_grid(self, timeout_ms: int = 1500) -> None:
+        # ideal-size: 12 lines reason=synchronous sash-grid flush on close —
+        # fire-and-forget runJavaScript lost the final layout to teardown
+        try:
+            from PySide6.QtCore import QEventLoop, QTimer
+            page = self.view.page()
+            loop = QEventLoop()
+            page.runJavaScript(
+                "typeof SashGrid !== 'undefined' && SashGrid.flushPersistence ? SashGrid.flushPersistence() : false",
+                lambda _r: loop.quit(),
+            )
+            QTimer.singleShot(timeout_ms, loop.quit)
+            loop.exec()
+        except Exception:
+            pass
+
     def closeEvent(self, event):
         # Save window position and size automatically on closing — main win + sash-grid already flushed
         try:
@@ -145,7 +161,7 @@ class MainWindow(QMainWindow):
                 self.bridge._persist_cooldowns()
             except Exception:
                 pass
-            self.view.page().runJavaScript("typeof SashGrid !== 'undefined' && SashGrid.flushPersistence && SashGrid.flushPersistence()")
+            self._flush_sash_grid()
         except Exception:
             pass
         # disconnect CDP

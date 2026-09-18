@@ -132,6 +132,8 @@ async def test_success_path_records_solved(monkeypatch, isolated_config_dir):
     assert outcome.status == "solved"
     assert outcome.method == "auto"
     assert outcome.task_id == "101"
+    assert any("createTask OK → task 101" in m and "sitekey=" in m for m, _ in logs)  # API trace
+    assert any("token received (task 101" in m for m, _ in logs)  # API trace
     # docs-exact enterprise payload (2026-09-18 detection research)
     assert client.created == [{"type": "RecaptchaV2EnterpriseTaskProxyless",
                                "websiteURL": URL, "websiteKey": SITEKEY,
@@ -162,11 +164,12 @@ async def test_v2_kind_maps_to_v2_task_type(monkeypatch, isolated_config_dir):
 async def test_api_error_falls_back_and_deletes_task(monkeypatch, isolated_config_dir):
     from app.services.captcha.api_client import ApiError
     client = FakeClient("K", exc=ApiError("no_credit", error_id=3))
-    solver, stats, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
     ctrl = FakeCtrl(visible_seq=[])
     outcome = await solver.solve(ctrl, "tabB", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "no_credit" in outcome.reason
+    assert any("getTaskResult FAILED" in m and "errorId=3" in m for m, _ in logs)  # raw API error visible
     assert client.deleted  # credit freed
     assert stats.to_dict()["auto_failed"] == 1
     assert stats.last_error == "no_credit"
