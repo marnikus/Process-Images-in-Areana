@@ -25,6 +25,7 @@
     { id: 'action_blocks', title: 'Action Blocks — Stacking Jobs' },
     { id: 'block_config', title: 'Block Config — Security Check' },
     { id: 'arena_presets', title: 'Arena Presets' },
+    { id: 'recordings', title: 'Recordings — Captcha Sessions' },
   ];
   const V1_WINDOW_IDS = WINDOWS.map(w=>w.id);
   const V2_WINDOW_IDS = V1_WINDOW_IDS;
@@ -58,7 +59,7 @@
       split('row', [
         leaf('queue'),
         split('col', [leaf('action_blocks'), leaf('block_config')], [55, 45]),
-        split('col', [leaf('browser'), leaf('arena_presets'), leaf('progress'), leaf('watcher')], [30, 25, 20, 25]),
+        split('col', [leaf('browser'), leaf('arena_presets'), leaf('recordings'), leaf('progress'), leaf('watcher')], [24, 20, 20, 18, 18]),
       ], [45, 35, 20]),
       leaf('log'),
     ], [38, 40, 22]);
@@ -70,12 +71,13 @@
       leaf('prompt'), leaf('run'), leaf('progress'), leaf('watcher'),
       leaf('log'), leaf('settings'), leaf('captcha'), leaf('browser'),
       leaf('action_blocks'), leaf('block_config'), leaf('arena_presets'),
-    ], [9, 6, 14, 11, 7, 7, 7, 7, 6, 6, 6, 7, 7]);
+      leaf('recordings'),
+    ], [8, 5, 13, 10, 6, 6, 6, 6, 5, 5, 5, 6, 6, 9, 8]);
   }
 
   function layoutB() {
     return split('row', [
-      split('col', [leaf('url_list'), leaf('folder'), leaf('queue'), leaf('action_blocks')], [25, 15, 35, 25]),
+      split('col', [leaf('url_list'), leaf('folder'), leaf('queue'), leaf('action_blocks'), leaf('recordings')], [22, 14, 30, 20, 14]),
       split('col', [leaf('prompt'), leaf('block_config'), leaf('progress'), leaf('watcher'), leaf('log')], [25, 20, 15, 20, 20]),
       split('col', [leaf('browser'), leaf('settings'), leaf('captcha'), leaf('arena_presets'), leaf('run')], [35, 16, 16, 17, 16]),
     ], [35, 35, 30]);
@@ -89,7 +91,7 @@
       ], [45, 55]),
       split('row', [
         leaf('queue'),
-        split('col', [leaf('folder'), leaf('run'), leaf('settings'), leaf('captcha'), leaf('progress'), leaf('watcher'), leaf('arena_presets')], [14, 14, 17, 17, 13, 13, 12]),
+        split('col', [leaf('folder'), leaf('run'), leaf('settings'), leaf('captcha'), leaf('progress'), leaf('watcher'), leaf('arena_presets'), leaf('recordings')], [13, 13, 15, 15, 12, 12, 11, 9]),
       ], [60, 40]),
       leaf('log'),
     ], [35, 48, 17]);

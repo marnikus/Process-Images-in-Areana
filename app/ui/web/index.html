@@ -539,6 +539,30 @@
       </div>
     </div>
 
+    <div class="panel" id="winRecordings" data-window="recordings">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">videocam</span> Recordings — Captcha Sessions <span class="spacer"></span><button id="recRefreshBtn" class="btn-small" title="Refresh list">↻ Refresh</button></h3>
+      <div style="padding:10px; overflow:auto; display:flex; flex-direction:column; gap:8px; height:100%;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px;">
+          <input id="recEnabled" type="checkbox" checked> Record captcha sessions (auto-starts when a captcha is detected)
+        </label>
+        <div id="recList" style="border:1px solid var(--border); border-radius:4px; padding:4px; overflow:auto; min-height:80px; max-height:180px;"></div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <button id="recLabelBotBtn" class="btn-small">Label: bot pass</button>
+          <button id="recLabelManualBtn" class="btn-small">Label: manual pass</button>
+          <button id="recClearLabelBtn" class="btn-small">Clear label</button>
+          <button id="recDeleteBtn" class="btn-small" style="color:#e57373;">Delete</button>
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <span style="font-size:11px; color:var(--text-secondary);">Compare:</span>
+          <select id="recDiffA" style="max-width:220px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:11px;"></select>
+          <span style="font-size:11px; color:var(--text-muted);">vs</span>
+          <select id="recDiffB" style="max-width:220px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:11px;"></select>
+          <button id="recDiffBtn" class="btn-small btn-primary">Diff</button>
+        </div>
+        <div id="recDetail" style="flex:1; border:1px solid var(--border); border-radius:4px; padding:6px; overflow:auto; font-size:11px; font-family:ui-monospace,monospace; white-space:pre-wrap;"></div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -649,6 +673,7 @@
 <script src="js/panels/highlight.js"></script>
 <script src="js/panels/cdp.js"></script>
 <script src="js/panels/arena-presets.js"></script>
+<script src="js/panels/recordings.js"></script>
 <script src="js/panels/action-blocks.js"></script>
 <script src="js/panels/watcher.js"></script>
 <script src="js/panels/page-pool.js"></script>

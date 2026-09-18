@@ -9,7 +9,7 @@ from typing import Any
 
 log = logging.getLogger("arena")
 
-WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log", "settings", "captcha", "browser", "action_blocks", "block_config", "arena_presets"]
+WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log", "settings", "captcha", "browser", "action_blocks", "block_config", "arena_presets", "recordings"]
 WINDOWS = [
     {"id": "url_list", "title": "URL List"},
     {"id": "folder", "title": "Folder Picker"},
@@ -25,6 +25,7 @@ WINDOWS = [
     {"id": "action_blocks", "title": "Action Blocks — Stacking Jobs"},
     {"id": "block_config", "title": "Block Config — Security Check"},
     {"id": "arena_presets", "title": "Arena Presets"},
+    {"id": "recordings", "title": "Recordings — Captcha Sessions"},
 ]
 WINDOW_TITLES = {w["id"]: w["title"] for w in WINDOWS}
 GRID_VERSION = 4
@@ -41,7 +42,7 @@ def default_grid_tree() -> dict:
         split("row", [
             leaf("queue"),
             split("col", [leaf("action_blocks"), leaf("block_config")], [55,45]),
-            split("col", [leaf("browser"), leaf("arena_presets"), leaf("progress"), leaf("watcher")], [30,25,20,25]),
+            split("col", [leaf("browser"), leaf("arena_presets"), leaf("recordings"), leaf("progress"), leaf("watcher")], [24,20,20,18,18]),
         ], [45,35,20]),
         leaf("log"),
     ], [38,40,22])

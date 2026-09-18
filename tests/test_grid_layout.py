@@ -145,6 +145,23 @@ def test_legacy_13_window_payload_migrates():
 
 
 @pytest.mark.unit
+def test_legacy_14_window_payload_gains_recordings():
+    """Old 14-window layouts predate the Recordings window (#15): migration
+    appends it instead of rejecting or default-substituting (RULE 13)."""
+    tree = default_grid_tree()
+    col = col_with(tree, "recordings")
+    idx = [k.get("id") for k in col["children"]].index("recordings")
+    del col["children"][idx]
+    col["sizes"] = [30, 25, 22, 23]  # renormalized, sums to 100
+    assert "recordings" not in leaf_ids(tree)
+    out, err = canonical_grid_payload(json.dumps({"v": 4, "tree": tree}))
+    assert err is None
+    ids = leaf_ids(json.loads(out)["tree"])
+    assert sorted(ids) == sorted(WINDOW_IDS)  # recordings appended
+    assert "recordings" in ids
+
+
+@pytest.mark.unit
 def test_unknown_window_rejected_not_defaulted():
     tree = default_grid_tree()
     col = col_with(tree, "captcha")
@@ -203,15 +220,15 @@ def test_preset_save_load_round_trip(isolated_config_dir):
     res = json.loads(Bridge.save_window_preset(fake, "Desk", json.dumps(portable_doc(tree))))
     assert res == {"ok": True, "name": "Desk"}
     doc = fake.config.window_presets.load_preset("Desk")
-    assert doc["grid"]["window_count"] == 14
-    assert len(leaf_ids(json.loads(doc["grid"]["payload"])["tree"])) == 14
-    assert len(leaf_ids(doc["grid"]["tree"])) == 14
+    assert doc["grid"]["window_count"] == 15
+    assert len(leaf_ids(json.loads(doc["grid"]["payload"])["tree"])) == 15
+    assert len(leaf_ids(doc["grid"]["tree"])) == 15
     # load returns the portable doc (JS preview contract), applies nothing
     sentinel = json.dumps({"v": 4, "tree": default_grid_tree()}, separators=(",", ":"))
     Bridge.save_grid_layout(fake, sentinel)
     loaded = json.loads(Bridge.load_window_preset(fake, "Desk"))
     assert loaded["format"] == "chat-v-bot.window-preset"
-    assert len(leaf_ids(loaded["grid"]["tree"])) == 14
+    assert len(leaf_ids(loaded["grid"]["tree"])) == 15
     expect, _ = canonical_grid_payload(sentinel)
     assert fake.config.get_state("grid_layout") == expect  # untouched
 
