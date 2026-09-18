@@ -361,41 +361,6 @@
         </div>
         <div style="font-size:10px; color:var(--text-muted);">After each job the tab auto-clicks New Chat, waits for full load, then cools down. Each tab runs its own timer — see Page Pool for live countdowns, reset/edit anytime there.</div>
       </div>
-      <!-- Captcha solving (2Captcha) — opt-in, per-page parallel solving -->
-      <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin:10px 0; background:var(--bg-card);">
-        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
-          <span class="material-icons" style="font-size:16px; color:var(--accent);">captcha</span>
-          <b style="font-size:12px;">Captcha solving (2Captcha)</b>
-          <span class="spacer"></span>
-          <button id="captchaSaveBtn" class="btn-small btn-primary">Save 2Captcha</button>
-          <button id="captchaStatsBtn" class="btn-small" title="Refresh stats + balance">↻ Stats</button>
-        </div>
-        <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:8px;">
-          <input id="captchaEnabled" type="checkbox"> Enable auto-solve (opt-in — off = manual solve in Chrome)
-        </label>
-        <div class="settings-row">
-          <div class="settings-group" style="flex:2;">
-            <label>2Captcha API key — stored locally, masked, never in logs/presets</label>
-            <input id="captchaApiKey" type="password" placeholder="paste API key" autocomplete="off">
-            <label style="font-size:10px; color:var(--text-muted); display:flex; gap:4px; align-items:center; margin-top:2px;">
-              <input id="captchaKeyShow" type="checkbox"> show key
-            </label>
-          </div>
-          <div class="settings-group">
-            <label>Solve timeout (minutes)</label>
-            <input id="captchaTimeoutMin" type="number" min="0.5" max="10" step="0.5" placeholder="3">
-          </div>
-        </div>
-        <div id="captchaStatusLine" style="font-size:11px; color:var(--text-muted); margin:6px 0;">key: — · balance: —</div>
-        <div id="captchaStatsGrid" style="display:flex; gap:10px; flex-wrap:wrap; font-size:11px;">
-          <div><b id="capStatDetected">0</b> detected</div>
-          <div><b id="capStatAuto">0</b> auto-solved</div>
-          <div><b id="capStatFailed">0</b> auto-failed</div>
-          <div><b id="capStatRate">—</b> auto success</div>
-          <div><b id="capStatManual">0</b> manual</div>
-          <div><b id="capStatBalance">—</b> balance</div>
-        </div>
-        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;">Each page detects and solves its own captcha independently — parallel across pages, never blocks other tabs. If auto-solve fails, the job falls back to manual solve. Solved captchas still stack the cooldown penalty.</div>
       </div>
       <div class="settings-group">
         <label>Max Retries</label>
@@ -431,6 +396,38 @@
     </div>
 
     <!-- BROWSER PREVIEW -->
+    <div class="panel" id="winCaptcha" data-window="captcha">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">verified_user</span> Captcha — 2Captcha <span class="spacer"></span><button id="captchaSaveBtn" class="btn-small btn-primary">Save</button><button id="captchaStatsBtn" class="btn-small" title="Refresh stats + balance">↻ Stats</button></h3>
+      <div style="padding:10px; overflow:auto;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:8px;">
+          <input id="captchaEnabled" type="checkbox"> Enable auto-solve (opt-in — off = manual solve in Chrome)
+        </label>
+        <div class="settings-row">
+          <div class="settings-group" style="flex:2;">
+            <label>2Captcha API key — stored locally, masked, never in logs/presets</label>
+            <input id="captchaApiKey" type="password" placeholder="paste API key" autocomplete="off">
+            <label style="font-size:10px; color:var(--text-muted); display:flex; gap:4px; align-items:center; margin-top:2px;">
+              <input id="captchaKeyShow" type="checkbox"> show key
+            </label>
+          </div>
+          <div class="settings-group">
+            <label>Solve timeout (minutes)</label>
+            <input id="captchaTimeoutMin" type="number" min="0.5" max="10" step="0.5" placeholder="3">
+          </div>
+        </div>
+        <div id="captchaStatusLine" style="font-size:11px; color:var(--text-muted); margin:6px 0;">key: — · balance: —</div>
+        <div id="captchaStatsGrid" style="display:flex; gap:10px; flex-wrap:wrap; font-size:11px;">
+          <div><b id="capStatDetected">0</b> detected</div>
+          <div><b id="capStatAuto">0</b> auto-solved</div>
+          <div><b id="capStatFailed">0</b> auto-failed</div>
+          <div><b id="capStatRate">—</b> auto success</div>
+          <div><b id="capStatManual">0</b> manual</div>
+          <div><b id="capStatBalance">—</b> balance</div>
+        </div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;">Each page detects and solves its own captcha independently — parallel across pages, never blocks other tabs. If auto-solve fails, the job falls back to manual solve. Solved captchas still stack the cooldown penalty.</div>
+      </div>
+    </div>
+
     <div class="panel" id="winBrowser" data-window="browser">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">preview</span> Browser Preview <span class="spacer"></span><button id="browserClearBtn" class="btn-small">Clear</button></h3>
       <div id="browserFrame" class="browser-frame"><span>No preview — select image 👁 or run job to see rect highlight</span></div>
@@ -647,6 +644,7 @@
 <script src="js/panels/run-controls.js"></script>
 <script src="js/panels/progress.js"></script>
 <script src="js/panels/settings.js"></script>
+<script src="js/panels/captcha.js"></script>
 <script src="js/panels/browser-preview.js"></script>
 <script src="js/panels/highlight.js"></script>
 <script src="js/panels/cdp.js"></script>

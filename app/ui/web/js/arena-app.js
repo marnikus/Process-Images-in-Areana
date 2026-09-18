@@ -39,6 +39,7 @@ function initApp() {
   if (typeof WatcherPanel !== 'undefined') WatcherPanel.init();
   if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.init();
   if (typeof SettingsPanel !== 'undefined') SettingsPanel.init();
+  if (typeof CaptchaPanel !== 'undefined') CaptchaPanel.init();
   if (typeof BrowserPreview !== 'undefined') BrowserPreview.init();
   if (typeof HighlightOverlay !== 'undefined') HighlightOverlay.init();
   if (typeof CDPPanel !== 'undefined') CDPPanel.init();

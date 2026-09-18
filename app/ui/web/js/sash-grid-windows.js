@@ -12,6 +12,7 @@ const SashGridWindowStore = {
       watcher: 'winWatcher',
       log: 'winLog',
       settings: 'winSettings',
+      captcha: 'winCaptcha',
       browser: 'winBrowser',
       action_blocks: 'winActionBlocks',
       block_config: 'winBlockConfig',

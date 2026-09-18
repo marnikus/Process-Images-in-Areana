@@ -104,7 +104,7 @@ describe('A — CSS contract (sash-layout.css)', () => {
 });
 
 describe('C — bare title text becomes a truncatable span.win-name', () => {
-  test('all 13 titles: .win-name holds the text; .win-controls is last', () => {
+  test(`all ${ALL_WINDOW_IDS.length} titles: .win-name holds the text; .win-controls is last`, () => {
     const h = createSashGrid();
     for (const id of ALL_WINDOW_IDS) {
       const title = titleOf(h, id);
