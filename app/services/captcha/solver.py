@@ -23,6 +23,7 @@ from .api_client import ApiError, Captcha2Client, POLL_INTERVAL_SEC
 from .signals import CaptchaSignal, SolveOutcome, host_of
 
 VERIFY_GRACE_SEC = 20.0  # after injection: how long to watch the dialog close
+HEARTBEAT_SEC = 30.0  # processing polls: log a still-waiting line this often
 
 _TASK_TYPES = {
     "recaptcha_enterprise": "RecaptchaV2EnterpriseTaskProxyless",
@@ -40,6 +41,7 @@ class SolvePlan:
     signal: CaptchaSignal
     stop: Callable[[], bool]
     start: float
+    token_at: float = 0.0  # monotonic() when the provider token arrived
 
 
 def _failed(reason: str, detail: str = "") -> SolveOutcome:
@@ -74,6 +76,31 @@ def _reject_reason(res: Dict[str, Any]) -> str:
             "data-callback / grecaptcha cfg / anchor cb)")
 
 
+def _failed_detail(res: Dict[str, Any]) -> str:
+    """Provider's own words for a failed task (errorCode preferred)."""
+    return str(res.get("errorCode") or res.get("errorDescription") or "")
+
+
+def _heartbeat(log: Callable[[str, str], None], plan: SolvePlan,
+               task_id: str, last: float) -> float:
+    """Still-processing line every HEARTBEAT_SEC; returns the new mark."""
+    now = time.monotonic()
+    if now - last < HEARTBEAT_SEC:
+        return last
+    log(f"🤖 2Captcha task #{task_id} still processing ({now - plan.start:.0f}s elapsed)", "info")
+    return now
+
+
+def _token_fingerprint(token: str) -> str:
+    """Token evidence for logs: shape only, never the token (RULE 20)."""
+    t = str(token or "")
+    if not t:
+        return "EMPTY"
+    if len(t) <= 16:
+        return f"SUSPICIOUS len={len(t)}"
+    return f"len={len(t)} head={t[:8]} tail={t[-4:]}"
+
+
 def _task_payload(task_type: str, signal: CaptchaSignal) -> Dict[str, Any]:
     """Docs-exact createTask payload (2captcha.com/api-docs/recaptcha-v2-enterprise)."""
     payload = {"type": task_type,
@@ -85,11 +112,13 @@ def _task_payload(task_type: str, signal: CaptchaSignal) -> Dict[str, Any]:
 
 
 
-async def _delete_task(client: Captcha2Client, task_id: str, stats: Any) -> None:
+async def _delete_task(client: Captcha2Client, task_id: str, stats: Any,
+                     log: Callable[[str, str], None]) -> None:
     """Free credit on an abandoned task; best effort, never raises."""
     try:
         if await client.delete_task(task_id):
             stats.record("task_deleted")
+            log(f"🤖 2Captcha task #{task_id} deleted (credit freed)", "info")
     except Exception:
         pass
 
@@ -100,6 +129,35 @@ async def _click_continue(ctrl: Any) -> None:
         await ctrl.cdp.evaluate(build_continue_js())
     except Exception:
         pass
+
+
+async def _note_preinject_state(ctrl: Any, log: Callable[[str, str], None]) -> None:
+    """Log whether the dialog is still up when the token arrives."""
+    try:
+        visible = await ctrl.is_security_dialog_visible()
+    except Exception:
+        return
+    log("🤖 token arrived, dialog still visible — injecting" if visible else
+        "🤖 token arrived but the dialog is already gone (page moved on?) — injecting anyway",
+        "info")
+
+
+async def _verify_gone(ctrl: Any, stop: Callable[[], bool]) -> bool:
+    """Watch the dialog close after injection; fail closed on probe error."""
+    deadline = time.monotonic() + VERIFY_GRACE_SEC
+    while time.monotonic() < deadline:
+        if stop():
+            return False
+        try:
+            if not await ctrl.is_security_dialog_visible():
+                return True
+        except Exception:
+            pass
+        await asyncio.sleep(2.0)
+    try:
+        return not await ctrl.is_security_dialog_visible()
+    except Exception:
+        return False
 
 
 class CaptchaSolver:
@@ -144,29 +202,35 @@ class CaptchaSolver:
             return _failed("task_create", "createTask failed")
         token, why = await self._poll_task(plan, task_id, timeout_sec)
         if not token:
-            await _delete_task(plan.client, task_id, self._stats)
+            await _delete_task(plan.client, task_id, self._stats, self._log)
             return _failed(why or "no_token", "no solution token")
+        plan.token_at = time.monotonic()
+        self._log(f"🤖 2Captcha task #{task_id} token received in "
+                  f"{plan.token_at - plan.start:.0f}s ({_token_fingerprint(token)})", "success")
         return await self._inject_and_verify(plan, token, task_id)
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
+        await _note_preinject_state(plan.ctrl, self._log)
         res = await self._inject(plan.ctrl, token, plan.signal.sitekey)
         if not res.get("ok"):
-            await _delete_task(plan.client, task_id, self._stats)
+            await _delete_task(plan.client, task_id, self._stats, self._log)
             self._auto_fail(plan, "inject", "response field not found on page")
             return _failed("inject", "response field not found on page")
         self._log(f"🤖 token injected (scope={res.get('scope')}, fields={res.get('fields', 1)}, cb={_cb_desc(res)})", "info")
         await _click_continue(plan.ctrl)
-        if await self._verify_gone(plan.ctrl, plan.stop):
+        if await _verify_gone(plan.ctrl, plan.stop):
             return self._solved(plan, task_id)
-        await _delete_task(plan.client, task_id, self._stats)
+        await _delete_task(plan.client, task_id, self._stats, self._log)
         why = _reject_reason(res)
         self._auto_fail(plan, "not_accepted", why)
         return _failed("not_accepted", why)
 
     def _solved(self, plan: SolvePlan, task_id: str) -> SolveOutcome:
         secs = time.monotonic() - plan.start
+        tok = plan.token_at - plan.start if plan.token_at else 0.0
         self._stats.record("auto_solved", host_of(plan.signal.page_url))
-        self._log(f"🤖 2Captcha solved tab {str(plan.tab_id)[:12]} in {secs:.0f}s (token accepted)", "success")
+        self._log(f"🤖 2Captcha solved tab {str(plan.tab_id)[:12]} in {secs:.0f}s "
+                  f"(token {tok:.0f}s, token accepted)", "success")
         return SolveOutcome(status="solved", method="auto", task_id=task_id,
                             reason="token accepted", elapsed_sec=secs)
 
@@ -183,7 +247,7 @@ class CaptchaSolver:
         payload = _task_payload(task_type, plan.signal)
         try:
             task_id = await plan.client.create_task(payload)
-            self._log(f"🤖 2Captcha task {task_type} submitted (tab {str(plan.tab_id)[:12]}, key=****)", "info")
+            self._log(f"🤖 2Captcha task {task_type} #{task_id} submitted (tab {str(plan.tab_id)[:12]}, key=****)", "info")
             return task_id
         except ApiError as e:
             self._stats.record("auto_failed", host_of(plan.signal.page_url))
@@ -197,13 +261,15 @@ class CaptchaSolver:
     def _poll_fail(self, plan: SolvePlan, why: str, detail: str = "") -> Tuple[None, str]:
         self._stats.record("auto_failed", host_of(plan.signal.page_url))
         self._stats.set_last_error(detail or why)
-        self._log(f"2Captcha poll ended: {why}", "warn")
+        suffix = f" ({detail})" if detail and detail != why else ""
+        self._log(f"2Captcha poll ended: {why}{suffix}", "warn")
         return None, why
 
     async def _poll_task(self, plan: SolvePlan, task_id: str,
                          timeout_sec: int) -> Tuple[Optional[str], str]:
         """Poll until a token arrives; (None, why) on stop/error/timeout."""
         start = time.monotonic()
+        last_beat = start
         while True:
             if plan.stop():
                 self._log("2Captcha polling stopped (user stop)", "info")
@@ -211,14 +277,15 @@ class CaptchaSolver:
             try:
                 res = await plan.client.get_result(task_id)
             except ApiError as e:
-                return self._poll_fail(plan, e.reason)
+                return self._poll_fail(plan, e.reason, str(e))
             status = res.get("status")
             if status == "ready":
                 return str((res.get("solution") or {}).get("gRecaptchaResponse") or ""), ""
             if status == "failed":
-                return self._poll_fail(plan, "task_failed")
+                return self._poll_fail(plan, "task_failed", _failed_detail(res))
             if time.monotonic() - start > timeout_sec:
                 return self._poll_fail(plan, "poll_timeout")
+            last_beat = _heartbeat(self._log, plan, task_id, last_beat)
             await asyncio.sleep(POLL_INTERVAL_SEC)
 
     async def _inject(self, ctrl: Any, token: str, sitekey: str = "") -> Dict[str, Any]:
@@ -233,20 +300,4 @@ class CaptchaSolver:
         except Exception:
             return {}
 
-    async def _verify_gone(self, ctrl: Any, stop: Callable[[], bool]) -> bool:
-        """Watch the dialog close after injection; fail closed on probe error."""
-        deadline = time.monotonic() + VERIFY_GRACE_SEC
-        while time.monotonic() < deadline:
-            if stop():
-                return False
-            try:
-                if not await ctrl.is_security_dialog_visible():
-                    return True
-            except Exception:
-                pass
-            await asyncio.sleep(2.0)
-        try:
-            return not await ctrl.is_security_dialog_visible()
-        except Exception:
-            return False
 
