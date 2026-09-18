@@ -13,6 +13,7 @@ from app.browser.page_pool import PagePool
 from app.browser.page_status import PageInfo, PageStatus
 from app.services.captcha.key_store import CaptchaKeyStore, CaptchaSettings
 from app.services.captcha.service import CaptchaCtx, CaptchaService, handle_captcha
+from app.services.captcha.signals import SolveOutcome
 from tests.test_captcha_solver import FakeCtrl, detect_result, make_env
 
 import asyncio
@@ -102,7 +103,7 @@ async def test_enabled_service_auto_solves_and_records(monkeypatch, isolated_con
     bridge = make_bridge(pool, isolated_config_dir)
     keys = CaptchaKeyStore(isolated_config_dir)
     keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
-    ctrl = FakeCtrl(visible_seq=[True, False])  # verify loop: gone on first check
+    ctrl = FakeCtrl(visible_seq=[True, True, False])  # start up; verify gone on first check
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="check-security")
     monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
     outcome = await handle_captcha(ctx)
@@ -376,7 +377,7 @@ async def test_auto_solve_emits_structured_report(monkeypatch, isolated_config_d
                 return json.dumps(d)
             return await super()._evaluate(js)
 
-    ctrl = DomCtrl(visible_seq=[True, False])  # pre-inject up; verify gone
+    ctrl = DomCtrl(visible_seq=[True, True, False])  # start up; pre-inject up; verify gone
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="check-security")
     monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
     assert (await handle_captcha(ctx)).status == "solved"
@@ -389,7 +390,7 @@ async def test_auto_solve_emits_structured_report(monkeypatch, isolated_config_d
     assert rep["sitekey"] == SITEKEY  # full public sitekey, not masked
     assert rep["url"] == "https://arena.ai/image/direct" and rep["invisible"] is False
     assert rep["task_id"] == "101" and rep["task_type"] == "RecaptchaV2EnterpriseTaskProxyless"
-    assert rep["polls"] == 1 and rep["poll_interval_s"] == 5.0
+    assert rep["polls"] == 1 and rep["attempts"] == 1 and rep["poll_interval_s"] == 5.0
     assert rep["token"]["fp"] == f"len={len(token)} head={token[:8]} tail={token[-4:]}"
     assert rep["dialog_at_token"] == "visible"
     assert "scope=dialog" in rep["inject"]
@@ -431,3 +432,73 @@ async def test_stopped_path_emits_report_with_zero_penalty(monkeypatch, isolated
     reps = solve_reports(bridge)
     assert len(reps) == 1  # edge data is never silent
     assert reps[0]["status"] == "stopped" and reps[0]["penalty_s"] == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dialog_gone_before_task_manual_fallback_is_instant(monkeypatch, isolated_config_dir):
+    """H2: challenge cleared before we pay → nothing charged, instant manual resolve."""
+    instant_sleep(monkeypatch)
+    from tests.test_captcha_solver import FakeClient
+
+    client = FakeClient("K")
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    keys = CaptchaKeyStore(isolated_config_dir)
+    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    ctrl = FakeCtrl(visible_seq=[])  # dialog already gone
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1")
+    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    outcome = await handle_captcha(ctx)
+    assert outcome.status == "manual"  # the user's own solve is credited
+    assert client.created == []  # nothing billed for a gone challenge
+    assert any("dialog_gone_before_task" in m for m, _ in bridge._logs)
+
+
+def _stub_solver_with_stale(bridge, reason):
+    """Pin the bridge to ONE service instance, then stub its solver (token_stale)."""
+    svc = bridge._captcha_service()
+    bridge._captcha_service = lambda: svc  # the default lambda mints a fresh service
+
+    async def fake_solve(ctrl, tab_id, sig, stop):
+        return SolveOutcome(status="token_stale", reason=f"token_stale: {reason}", method="auto")
+
+    svc.solver.solve = fake_solve
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_token_stale_with_visible_dialog_falls_back_to_manual(monkeypatch, isolated_config_dir):
+    """H4: token stale but the challenge is still on screen → human fallback."""
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    keys = CaptchaKeyStore(isolated_config_dir)
+    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    ctrl = FakeCtrl(visible_seq=[True, False])  # H4 probe: visible; wait: cleared
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1")
+    _stub_solver_with_stale(bridge, "page_identity_changed")
+    outcome = await handle_captcha(ctx)
+    assert outcome.status == "manual"
+    assert ctrl.overlay_calls  # watcher overlay shown for the manual solve
+    assert ctrl.overlay_calls[-1]["sub"].startswith("auto-solve failed:")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_token_stale_with_gone_dialog_ends_encounter(monkeypatch, isolated_config_dir):
+    """H4: challenge already cleared → token_stale stands, no pointless wait."""
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    keys = CaptchaKeyStore(isolated_config_dir)
+    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    ctrl = FakeCtrl(visible_seq=[False])  # H4 probe: already gone
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1")
+    _stub_solver_with_stale(bridge, "sitekey_changed")
+    outcome = await handle_captcha(ctx)
+    assert outcome.status == "token_stale"
+    assert ctrl.overlay_calls == []  # nobody can solve a cleared challenge

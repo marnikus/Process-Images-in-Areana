@@ -72,24 +72,67 @@ def test_redaction_helpers_remove_secrets():
 def test_evidence_reader_returns_bounded_comparison_model(tmp_path):
     store = RecordingStore(tmp_path)
     session_id = store.create(encounter())["session_id"]
-    store.append_event(session_id, {"kind": "mutation", "at_ms": 1, "payload": {"path": "main"}})
-    store.write_snapshot(session_id, 0, {"at_ms": 2, "html": "x" * 21000})
+    store.append_event(session_id, {"seq": 0, "kind": "mutation",
+                                    "at": "2026-09-18T10:00:00Z", "offset_ms": 12,
+                                    "changes": [{"op": "add", "path": "main"}]})
+    store.write_snapshot(session_id, 0, {"at": "2026-09-18T10:00:05Z", "html": "x" * 21000})
 
     details = EvidenceReader(store.root).details(session_id)
 
-    assert details["events"][0]["kind"] == "mutation"
-    assert len(details["latest_snapshot"]["html"]) == 20000
-    assert details["latest_snapshot"]["truncated_for_view"] is True
+    event = details["events"][0]
+    assert event["kind"] == "mutation" and event["offset_ms"] == 12
+    assert event["changes"][0]["path"] == "main"  # flat fields must reach the viewer
+    snapshot = details["latest_snapshot"]
+    assert snapshot["at"] == "2026-09-18T10:00:05Z"  # persisted timestamp, not a fake ms field
+    assert len(snapshot["html"]) == 20000
+    assert snapshot["truncated_for_view"] is True
+
 
 @pytest.mark.unit
-def test_retention_removes_oldest_folder_by_count(tmp_path):
+def test_session_folders_empty_for_missing_root(tmp_path):
+    from app.services.captcha_recording.store import session_folders
+    assert session_folders(tmp_path / "does-not-exist") == []
+
+
+@pytest.mark.unit
+def test_store_count_and_delete_session(tmp_path):
+    store = RecordingStore(tmp_path)
+    first = store.create(encounter())["session_id"]
+    second = store.create(encounter(tab="tab-b"))["session_id"]
+    store.append_event(first, {"seq": 0, "kind": "state"})
+
+    assert store.count_sessions() == 2
+    assert store.delete_session(first) == {"session_id": first, "deleted": True}
+    assert store.count_sessions() == 1
+    assert [row["session_id"] for row in store.list_sessions()] == [second]
+    with pytest.raises(FileNotFoundError):
+        store.delete_session(first)
+    with pytest.raises(ValueError):
+        store.delete_session("../escape")
+
+
+@pytest.mark.unit
+def test_retention_prunes_only_by_byte_safety(tmp_path):
     root = tmp_path / "records"
     for name in ("20260101-old", "20260102-new"):
         folder = root / name
         folder.mkdir(parents=True)
-        (folder / "data").write_bytes(b"1234")
+        (folder / "data").write_bytes(b"x" * 400)
 
-    prune_recordings(root, max_sessions=1, max_bytes=100)
+    prune_recordings(root, max_bytes=500)  # 800 total > 500 -> oldest removed, 400 left
 
     assert not (root / "20260101-old").exists()
     assert (root / "20260102-new").exists()
+
+
+@pytest.mark.unit
+def test_retention_keeps_every_session_by_count(tmp_path):
+    root = tmp_path / "records"
+    for index in range(40):
+        folder = root / f"20260101T000000-{index:02d}-x"
+        folder.mkdir(parents=True)
+        (folder / "data").write_bytes(b"12")
+
+    prune_recordings(root)
+
+    assert len([path for path in root.iterdir() if path.is_dir()]) == 40

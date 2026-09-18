@@ -26,6 +26,10 @@ from .signals import CaptchaSignal, SolveOutcome, host_of
 VERIFY_GRACE_SEC = 20.0  # after injection: how long to watch the dialog close
 HEARTBEAT_SEC = 30.0  # processing polls: log a still-waiting line this often
 MAX_TRANSIENT_POLL_ERRORS = 3  # tolerate short 2Captcha/HTTP response glitches
+MAX_SOLVE_ATTEMPTS = 2  # RULE 20: hard cap on paid 2Captcha tasks per encounter
+DIALOG_CHECK_EVERY_POLLS = 3  # H3: mid-poll dialog liveness probe cadence
+RETRYABLE_STALE_REASONS = (  # H1: identity drift is a freshness problem (RC-1)
+    "page_identity_changed", "challenge_identity_changed", "sitekey_changed")
 
 _TASK_TYPES = {
     "recaptcha_enterprise": "RecaptchaV2EnterpriseTaskProxyless",
@@ -49,6 +53,7 @@ class SolvePlan:
     err_base: Optional[str] = None  # error-scan corpus at solve start (None = not taken)
     err_seen: bool = False  # a mid-solve page error was already logged
     polls: int = 0  # provider poll rounds (report retry count)
+    attempts: int = 0  # paid 2Captcha tasks used for this encounter (H1)
     token_fp: str = ""  # token fingerprint (shape only)
     dialog_at_token: str = ""  # visible | gone | "" (no token yet)
     inject: str = ""  # "scope=.. fields=.. cb=.." summary
@@ -65,6 +70,7 @@ def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> 
     out = SolveOutcome(status=status, reason=f"{reason}: {detail}".strip(": "), method="auto")
     if plan is not None:
         out.polls = plan.polls
+        out.attempts = max(1, plan.attempts)
         if plan.token_at:
             out.token_sec = plan.token_at - plan.start
             out.token_fp = plan.token_fp
@@ -244,6 +250,22 @@ async def _stale_reason(plan: SolvePlan) -> str:
     return _identity_reason(plan, current) or ("sitekey_changed" if _sitekey_changed(plan, current) else "")
 
 
+async def _dialog_visible(plan: SolvePlan) -> bool:
+    """H2/H3: is the challenge dialog still on screen (fail closed on error)."""
+    try:
+        return bool(await plan.ctrl.is_security_dialog_visible())
+    except Exception:
+        return False
+
+
+def _retryable(outcome: SolveOutcome, plan: SolvePlan) -> bool:
+    """H1: only identity drift / a rejected token justify a paid re-attempt."""
+    if outcome.status == "token_stale":
+        return plan.stale_reason in RETRYABLE_STALE_REASONS
+    return (outcome.status == "auto_failed"
+            and outcome.reason.startswith("not_accepted"))
+
+
 async def _inject_failure(plan: SolvePlan, task_id: str) -> SolveOutcome:
     """Record missing response fields and release the provider task."""
     await _delete_task(plan.client, task_id, plan.stats, plan.logger)
@@ -358,6 +380,8 @@ async def _poll_task(plan: SolvePlan, task_id: str,
         if time.monotonic() - start > timeout_sec:
             return _poll_fail(plan, "poll_timeout")
         last_beat = _heartbeat(plan.logger, plan, task_id, last_beat)
+        if plan.polls % DIALOG_CHECK_EVERY_POLLS == 0 and not await _dialog_visible(plan):
+            return _poll_fail(plan, "dialog_gone_during_poll")
         await asyncio.sleep(POLL_INTERVAL_SEC)
 
 
@@ -369,7 +393,8 @@ def _solved(plan: SolvePlan, task_id: str) -> SolveOutcome:
                 f"(token {tok:.0f}s, token accepted)", "success")
     return SolveOutcome(status="solved", method="auto", task_id=task_id,
                         reason="token accepted", elapsed_sec=secs,
-                        polls=plan.polls, token_sec=tok, token_fp=plan.token_fp,
+                        polls=plan.polls, attempts=max(1, plan.attempts),
+                        token_sec=tok, token_fp=plan.token_fp,
                         dialog_at_token=plan.dialog_at_token, inject=plan.inject,
                         page_error_at_s=plan.page_error_at, page_error=plan.page_error)
 
@@ -412,7 +437,6 @@ class CaptchaSolver:
         settings = self._keys.load()
         if not settings.api_key:
             return _failed("no_key", "no 2Captcha key stored")
-        self._stats.record("task_created", host_of(signal.page_url))
         client = Captcha2Client(settings.api_key)
         try:
             plan = SolvePlan(client=client, ctrl=ctrl, tab_id=tab_id, signal=signal,
@@ -425,6 +449,18 @@ class CaptchaSolver:
             await client.aclose()
 
     async def _run_task(self, plan: SolvePlan, timeout_sec: int) -> SolveOutcome:
+        """Bounded paid attempts (H1): at most MAX_SOLVE_ATTEMPTS tasks total."""
+        while True:
+            plan.attempts += 1
+            outcome = await self._attempt(plan, timeout_sec)
+            if not await self._retry_with(plan, outcome):
+                return outcome
+
+    async def _attempt(self, plan: SolvePlan, timeout_sec: int) -> SolveOutcome:
+        """One paid pass: H2 pre-task dialog probe, then create → poll → verify."""
+        if not await _dialog_visible(plan):
+            plan.logger("🛡️ challenge dialog gone before task — nothing to solve (nothing charged)", "info")
+            return _failed("dialog_gone_before_task", "challenge cleared before task", plan)
         task_id = await self._create_task(plan)
         if not task_id:
             return _failed("task_create", "createTask failed", plan)
@@ -437,6 +473,29 @@ class CaptchaSolver:
         self._log(f"🤖 2Captcha task #{task_id} token received in "
                   f"{plan.token_at - plan.start:.0f}s ({plan.token_fp})", "success")
         return await self._inject_and_verify(plan, token, task_id)
+
+    async def _retry_with(self, plan: SolvePlan, outcome: SolveOutcome) -> bool:
+        """H1: one bounded fresh-task retry, gated on a live rotated challenge."""
+        if plan.attempts >= MAX_SOLVE_ATTEMPTS or plan.stop() or not _retryable(outcome, plan):
+            return False
+        if await self._rebaseline(plan) is None or not await _dialog_visible(plan):
+            return False
+        plan.logger(f"🤖 challenge rotated — retrying with fresh task "
+                    f"({plan.attempts + 1}/{MAX_SOLVE_ATTEMPTS})", "info")
+        return True
+
+    async def _rebaseline(self, plan: SolvePlan) -> Optional[CaptchaSignal]:
+        """Adopt the fresh page identity for the next attempt (polls stay cumulative)."""
+        current = await _current_signal(plan.ctrl)
+        if current is None or not current.solvable:
+            return None
+        plan.signal = current
+        plan.page_identity = current.page_identity
+        plan.challenge_identity = current.challenge_identity
+        plan.token_at, plan.token_fp = 0.0, ""
+        plan.dialog_at_token, plan.inject, plan.stale_reason = "", "", ""
+        plan.err_base, plan.err_seen = None, False
+        return current
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
         stale = await _stale_outcome(plan, task_id, self._stats, self._log)
@@ -470,6 +529,7 @@ class CaptchaSolver:
         payload = _task_payload(task_type, plan.signal)
         try:
             task_id = await plan.client.create_task(payload)
+            self._stats.record("task_created", host_of(plan.signal.page_url))
             self._log(f"🤖 2Captcha task {task_type} #{task_id} submitted (tab {str(plan.tab_id)[:12]}, "
                       f"isInvisible={plan.signal.is_invisible}, key=****)", "info")
             return task_id

@@ -11,6 +11,9 @@ class Manager:
     def list_sessions(self, limit):
         return [{"session_id": "s1", "actor_label": "unknown", "limit": limit}]
 
+    def count_sessions(self):
+        return 1
+
     def set_label(self, session_id, label):
         if label == "bad":
             raise ValueError("bad label")
@@ -19,17 +22,23 @@ class Manager:
     def get_session(self, session_id):
         return {"manifest": {"session_id": session_id}, "events": []}
 
+    def delete_session(self, session_id):
+        if session_id != "s1":
+            raise FileNotFoundError("recording not found")
+        return {"session_id": session_id, "deleted": True}
+
     def session_folder(self, session_id):
         return f"/records/{session_id}"
 
 
 @pytest.mark.unit
-def test_recordings_bridge_lists_and_labels():
+def test_recordings_bridge_lists_all_with_total_and_labels():
     bridge = CaptchaRecordingsBridge(Manager())
     listed = json.loads(bridge.list_sessions(25))
     changed = json.loads(bridge.set_label("s1", "manual"))
     details = json.loads(bridge.get_session("s1"))
-    assert listed == {"ok": True, "sessions": [{"session_id": "s1", "actor_label": "unknown", "limit": 25}]}
+    assert listed == {"ok": True, "total": 1,
+                      "sessions": [{"session_id": "s1", "actor_label": "unknown", "limit": 25}]}
     assert changed["ok"] and changed["session"]["actor_label"] == "manual"
     assert details["details"]["manifest"]["session_id"] == "s1"
 
@@ -41,6 +50,15 @@ def test_recordings_bridge_opens_selected_session_folder():
     result = json.loads(bridge.open_folder("s1"))
     assert result == {"ok": True, "path": "/records/s1"}
     assert opened == ["/records/s1"]
+
+
+@pytest.mark.unit
+def test_recordings_bridge_delete_session():
+    bridge = CaptchaRecordingsBridge(Manager())
+    deleted = json.loads(bridge.delete_session("s1"))
+    assert deleted == {"ok": True, "session": {"session_id": "s1", "deleted": True}}
+    missing = json.loads(bridge.delete_session("nope"))
+    assert missing["ok"] is False and "not found" in missing["error"]
 
 
 @pytest.mark.unit

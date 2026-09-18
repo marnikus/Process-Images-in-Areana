@@ -64,3 +64,60 @@ async def test_recorder_captures_diff_network_body_and_finish(tmp_path):
     assert "A" * 100 not in json.dumps(events)
     assert cdp.sent[0][0] == "Network.getResponseBody"
     assert result["snapshot_count"] >= 1 and result["network_count"] == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_network_collector_no_loss_across_threads():
+    """P9/H5: events are appended from a worker thread while the loop drains."""
+    import threading
+    import time
+
+    from app.services.captcha_recording.network import NetworkCollector
+
+    recorded = []
+
+    async def sink(kind, payload, network):
+        recorded.append((kind, payload))
+
+    async def send(method, params, timeout=5):
+        return {"result": {}}
+
+    collector = NetworkCollector(SimpleNamespace(send=send), sink, 1000, set().add)
+
+    def feeder():
+        for i in range(500):
+            collector.on_event({"method": "Network.requestWillBeSent",
+                                "params": {"requestId": str(i), "type": "Fetch",
+                                           "request": {"url": f"https://x.test/{i}",
+                                                       "method": "GET"}}})
+            if i % 50 == 0:
+                time.sleep(0.002)
+
+    thread = threading.Thread(target=feeder)
+    thread.start()
+    while thread.is_alive():
+        await collector.drain()
+        await asyncio.sleep(0.001)
+    await collector.drain()
+    thread.join()
+    assert len(recorded) == 500  # zero loss
+    assert recorded[0][0] == "network_request"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_manifest_carries_attempt_evidence(tmp_path):
+    """H5: manifest persists task_id/polls/attempts (bounded, token-free)."""
+    cdp = FakeRecordingCDP()
+    ctrl = SimpleNamespace(cdp=cdp)
+    limits = RecordingLimits(poll_interval_sec=0.01, checkpoint_interval_sec=0,
+                             max_events=100, max_snapshots=5)
+    encounter = {"eid": "e2", "tab": "t2", "url": "https://arena.ai/c/2",
+                 "source": "test", "kind": "recaptcha_enterprise"}
+    recorder = CaptchaRecorder(RecordingStore(tmp_path), ctrl, encounter, limits)
+    await recorder.start()
+    outcome = SolveOutcome(status="solved", method="auto", task_id="42", polls=3,
+                           attempts=2, reason="accepted")
+    result = await recorder.finish(outcome)
+    assert result["task_id"] == "42" and result["polls"] == 3 and result["attempts"] == 2

@@ -50,6 +50,17 @@ async def test_manual_captcha_starts_and_finishes_recording(monkeypatch, isolate
 
 
 @pytest.mark.unit
+def test_manager_count_and_delete_delegate_to_store(tmp_path):
+    from app.services.captcha_recording.manager import RecordingManager
+    manager = RecordingManager(str(tmp_path))
+    session_id = manager.store.create({"eid": "e1", "tab": "t", "source": "test",
+                                       "url": "https://arena.ai", "kind": "v2"})["session_id"]
+    assert manager.count_sessions() == 1
+    assert manager.delete_session(session_id) == {"session_id": session_id, "deleted": True}
+    assert manager.count_sessions() == 0
+
+
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_recording_start_failure_does_not_change_manual_flow(monkeypatch, isolated_config_dir):
     instant_sleep(monkeypatch)

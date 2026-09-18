@@ -38,30 +38,75 @@ test('snapshot probe strips values, queries, and opaque tokens', () => {
   assert.ok(!result.html.includes(token));
 });
 
-test('records UI loads two bounded evidence panes side by side', () => {
-  const dom = new JSDOM('<section id="captchaCompareA"></section><section id="captchaCompareB"></section>',
-    {url: 'https://app.local', runScripts: 'outside-only'});
-  const scripts = path.resolve(ROOT, '../../../ui/web/js/panels');
-  dom.window.LogConsole = {log() {}};
-  const details = {manifest: {session_id: 's1', actor_label: 'manual', method: 'manual',
-    outcome: 'manual', url: 'https://arena.ai/c/1'},
-  events: [{at_ms: 3, kind: 'mutation', payload: {path: 'main'}}],
-  latest_snapshot: {html: '<main>safe</main>'}};
-  let opened = '';
-  dom.window.CaptchaRecordingsBridge = {
-    get_session(_id, callback) { callback(JSON.stringify({ok: true, details})); },
-    open_folder(id, callback) { opened = id; callback(JSON.stringify({ok: true})); },
-  };
+const PANELS = path.resolve(ROOT, '../../../ui/web/js/panels');
+
+function loadPanelScripts(dom) {
   for (const name of ['captcha-recordings.js', 'captcha-recording-comparison.js']) {
-    let source = fs.readFileSync(path.join(scripts, name), 'utf8');
+    let source = fs.readFileSync(path.join(PANELS, name), 'utf8');
     source = source.replace('const CaptchaRecordingsPanel =', 'globalThis.CaptchaRecordingsPanel =')
       .replace('const CaptchaRecordingComparison =', 'globalThis.CaptchaRecordingComparison =');
     dom.window.eval(source);
   }
+}
+
+// Fixture shaped like the PERSISTED schema (recorder.py::_event / _checkpoint):
+// flat event fields with offset_ms, snapshot with ISO at. If the viewer contract
+// drifts from this schema, the assertions below fail (RULE 8).
+const persistedDetails = {manifest: {session_id: 's1', actor_label: 'manual', method: 'manual',
+  outcome: 'manual', url: 'https://arena.ai/c/1', started_at: '2026-09-18T10:00:00Z'},
+events: [{seq: 0, at: '2026-09-18T10:00:00.012Z', offset_ms: 12, kind: 'network_response',
+          request_id: 'r1', status: 200, url: 'https://www.google.com/recaptcha/api2/anchor'}],
+latest_snapshot: {at: '2026-09-18T10:00:05Z', html: '<main>safe</main>', truncated_for_view: false}};
+
+test('records UI renders the persisted event and snapshot schema', () => {
+  const dom = new JSDOM('<section id="captchaCompareA"></section><section id="captchaCompareB"></section>',
+    {url: 'https://app.local', runScripts: 'outside-only'});
+  dom.window.LogConsole = {log() {}};
+  let opened = '';
+  dom.window.CaptchaRecordingsBridge = {
+    get_session(_id, callback) { callback(JSON.stringify({ok: true, details: persistedDetails})); },
+    open_folder(id, callback) { opened = id; callback(JSON.stringify({ok: true})); },
+  };
+  loadPanelScripts(dom);
   dom.window.CaptchaRecordingComparison.load('s1', 0);
-  assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /manual/);
-  assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /mutation/);
-  assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /<main>safe<\/main>/);
+  const text = dom.window.document.getElementById('captchaCompareA').textContent;
+  assert.match(text, /manual/);
+  assert.match(text, /12ms/);            // offset_ms rendered (was 0ms with the old contract)
+  assert.match(text, /network_response/);
+  assert.match(text, /recaptcha\/api2\/anchor/);  // event detail fields rendered (was empty)
+  assert.match(text, /<main>safe<\/main>/);
+  assert.match(text, /checkpoint/i);      // snapshot timestamp from persisted at
   dom.window.CaptchaRecordingsPanel.openButton({session_id: 's1'}).click();
   assert.equal(opened, 's1');
+});
+
+test('records UI lists all retained sessions and deletes with confirmation', () => {
+  const dom = new JSDOM(
+    '<div id="captchaRecordsSummary"></div><div id="captchaRecordsEmpty" style="display:none"></div>' +
+    '<table><tbody id="captchaRecordsBody"></tbody></table>',
+    {url: 'https://app.local', runScripts: 'outside-only'});
+  dom.window.LogConsole = {log() {}};
+  dom.window.confirm = () => true;
+  const rows = [{session_id: 's1', actor_label: 'bot', method: 'auto', outcome: 'solved',
+    url: 'https://arena.ai/c/1', started_at: '2026-09-18T10:00:00Z', elapsed_ms: 5000,
+    mutation_count: 1, network_count: 2, snapshot_count: 1}];
+  let listed = 0;
+  let deleted = '';
+  dom.window.CaptchaRecordingsBridge = {
+    list_sessions(limit, callback) { listed += 1;
+      callback(JSON.stringify({ok: true, sessions: rows, total: 2, limit})); },
+    set_label(id, label, callback) { callback(JSON.stringify({ok: true, session: {session_id: id}})); },
+    delete_session(id, callback) { deleted = id;
+      callback(JSON.stringify({ok: true, session: {session_id: id, deleted: true}})); },
+  };
+  loadPanelScripts(dom);
+  dom.window.CaptchaRecordingsPanel.load();
+  assert.equal(listed, 1);
+  assert.match(dom.window.document.getElementById('captchaRecordsSummary').textContent,
+    /showing last 1 of 2 local sessions/);
+  const deleteButton = dom.window.document.querySelector('#captchaRecordsBody button[title*="Delete"]');
+  assert.ok(deleteButton, 'row carries a delete button');
+  deleteButton.click();
+  assert.equal(deleted, 's1');
+  assert.equal(listed, 2, 'list refreshes after delete');
 });

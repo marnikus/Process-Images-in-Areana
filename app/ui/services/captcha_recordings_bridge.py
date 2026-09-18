@@ -34,10 +34,19 @@ class CaptchaRecordingsBridge(QObject):
         self._opener = opener or _open_local_folder
 
     @Slot(int, result=str)
-    def list_sessions(self, limit: int = 200) -> str:
+    def list_sessions(self, limit: int = 1000) -> str:
         try:
             rows = self.manager.list_sessions(limit)
-            return json.dumps({"ok": True, "sessions": rows}, ensure_ascii=False)
+            return json.dumps({"ok": True, "sessions": rows,
+                               "total": self.manager.count_sessions()}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def delete_session(self, session_id: str) -> str:
+        try:
+            row = self.manager.delete_session(session_id)
+            return json.dumps({"ok": True, "session": row}, ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 

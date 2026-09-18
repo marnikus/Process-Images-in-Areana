@@ -64,8 +64,14 @@ class RecordingManager:
         finally:
             self._drop(recorder)
 
-    def list_sessions(self, limit: int = 200) -> list[dict[str, Any]]:
+    def list_sessions(self, limit: int = 1000) -> list[dict[str, Any]]:
         return self.store.list_sessions(limit)
+
+    def count_sessions(self) -> int:
+        return self.store.count_sessions()
+
+    def delete_session(self, session_id: str) -> dict[str, Any]:
+        return self.store.delete_session(session_id)
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
         return self.store.set_label(session_id, label)
