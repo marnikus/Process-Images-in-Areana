@@ -8,7 +8,7 @@
       "last_status": "ready",
       "last_checked": "2026-09-17T10:45:28.112354Z",
       "error": null,
-      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+      "tab_id": "6745025141CD2C14CD1EE865E1401A53"
     },
     {
       "id": "url_550177d7",
@@ -390,12 +390,12 @@
       "size": 111669,
       "mtime": 1789720308.7507834,
       "fingerprint": "d2295a1ebf074511",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -493,11 +493,11 @@
   "progress": {
     "total": 21,
     "selected": 21,
-    "pending": 9,
+    "pending": 8,
     "processing": 0,
     "completed": 11,
     "skipped": 0,
-    "failed": 1,
+    "failed": 2,
     "needs_review": 0
   },
   "run_state": "idle",
