@@ -2462,11 +2462,38 @@ class Bridge(QObject):
 
         async def settle():
             await self._settle_captcha_at(ctrl, tab_id, corr_id, "gen-wait")
+            await self._post_genwait_resubmit(ctrl, corr_id)  # round-6 parity: resume a dead request
             try:
                 await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=overlay_sec)
             except Exception:
                 pass
         ctrl.security_settler = settle
+
+    async def _composer_has_prompt(self, ctrl) -> bool:
+        # ideal-size: 7 lines reason=non-empty message composer = prompt still unsent
+        js = "(() => { const t = document.querySelector('textarea[name=\"message\"]'); return !!(t && (t.value || '').trim()); })()"
+        try:
+            return bool(await ctrl.cdp.evaluate(js))
+        except Exception:
+            return False
+
+    async def _post_genwait_resubmit(self, ctrl, corr_id):
+        # ideal-size: 15 lines reason=round-6 parity in the bridge flow: re-send once if the solve
+        # left the prompt unsent (mirrors single_job_runner._post_solve_resubmit)
+        try:
+            await asyncio.sleep(5.0)
+            gen, _ = await ctrl.is_generating()
+            if gen:
+                self._log(f"[{corr_id}] ♻️ post-solve: request alive (spinner) — no re-send", "info")
+                return
+            if not await self._composer_has_prompt(ctrl):
+                self._log(f"[{corr_id}] post-solve: prompt not in composer — no re-send", "info")
+                return
+            ok, why = await ctrl.submit()
+            self._log(f"[{corr_id}] ♻️ post-solve: request was dead — {'re-sent prompt' if ok else f're-send failed: {why}'}",
+                      "success" if ok else "warn")
+        except Exception as e:
+            self._log(f"[{corr_id}] post-solve re-send failed: {e}", "warn")
 
     @Slot(result=str)
     def diagnose_captcha(self):
@@ -2477,9 +2504,10 @@ class Bridge(QObject):
         return json.dumps({"ok": True, "scanning": True})
 
     async def _run_captcha_scan(self):
-        # ideal-size: 13 lines reason=one diagnose probe + 2Captcha status → numbered report
+        # ideal-size: 15 lines reason=diagnose probe + 2Captcha status + deep evidence → report
+        from app.browser.captcha_probes import build_scan_deep_js
         from app.browser.cdp_arena import CDPArenaController
-        from app.services.captcha.diagnose import build_scan_report
+        from app.services.captcha.diagnose import build_scan_report, deep_scan_lines
         try:
             ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
             info = await ctrl._security_diagnose()
@@ -2487,8 +2515,18 @@ class Bridge(QObject):
             status = self._captcha_service().status_payload()
             for line in build_scan_report(info, page_url, status):
                 self._log(line, "warn" if line.lstrip().startswith(("❌", "⚠️")) else "info")
+            for line in deep_scan_lines(await self._captcha_scan_deep(ctrl, build_scan_deep_js)):
+                self._log(line, "info")
         except Exception as e:
             self._log(f"❌ Captcha scan failed: {e}", "error")
+
+    async def _captcha_scan_deep(self, ctrl, deep_js_fn) -> dict:
+        # ideal-size: 7 lines reason=one async deep-evidence probe (RULE 9 fail open)
+        try:
+            raw = await ctrl.cdp.evaluate(deep_js_fn())
+            return json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except Exception:
+            return {}
 
     @Slot(str, result=str)
     def reset_page_cooldown(self, tab_id: str):
@@ -3096,6 +3134,7 @@ class Bridge(QObject):
                                         self._log(f"[{correlation_id}] ⚠ Captcha detected during generation wait — solving or waiting", "error")
                                         self._emit_job_action_status(job_id, block, "waiting", "Captcha during generation — solving or waiting")
                                         await self._settle_captcha_at(ctrl, primary_tab_id, correlation_id, "gen-wait")
+                                        await self._post_genwait_resubmit(ctrl, correlation_id)
                                         self._log(f"[{correlation_id}] ✅ Captcha solved during generation — restoring generation overlay", "success")
                                         try:
                                             await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec)

@@ -47,6 +47,19 @@ def build_inject_js(token: str) -> str:
     return f"({_read('inject.js')})({json.dumps(token)})"
 
 
+def build_close_js(step: str) -> str:
+    """Dialog close probe, one step per call: 'esc' | 'close' | 'nuclear'."""
+    return f"({_read('close_dialog.js')})({json.dumps(step)})"
+
+
+def build_scan_deep_js() -> str:
+    """Deep evidence (dialog HTML + grecaptcha surface + bundle source).
+
+    Async IIFE — evaluate with await_promise=True.
+    """
+    return _read("scan_deep.js")
+
+
 def build_continue_js() -> str:
     """Dialog action-button click probe (best effort, IIFE)."""
     return _read("continue_click.js")

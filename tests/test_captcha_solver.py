@@ -45,9 +45,11 @@ class FakeClock:
 class FakeCtrl:
     """CDP double: dispatches probes by JS content, dialog flag by sequence."""
 
-    def __init__(self, visible_seq, inject_results=None):
+    def __init__(self, visible_seq, inject_results=None, close_results=None, visible_default=False):
         self._visible = list(visible_seq)
+        self._visible_default = visible_default
         self._inject = list(inject_results if inject_results is not None else [True])
+        self._close = list(close_results if close_results is not None else [{"ok": True, "used": "none"}])
         self.probes = []
         self.overlay_calls = []
         self.cdp = SimpleNamespace(evaluate=self._evaluate)
@@ -59,10 +61,14 @@ class FakeCtrl:
         if "g-recaptcha-response" in js:  # inject probe
             ok = self._inject.pop(0) if self._inject else False
             return json.dumps({"ok": ok, "scope": "dialog", "tag": "TEXTAREA"})
+        # close-dialog steps (one full function source per call; the step arg is the tail)
+        if js.endswith('("esc")') or js.endswith('("close")') or js.endswith('("nuclear")'):
+            r = self._close.pop(0) if self._close else {"ok": True, "used": "nuclear", "removed": 1}
+            return json.dumps(r)
         return json.dumps({"ok": True, "used": "submit"})  # continue probe
 
     async def is_security_dialog_visible(self):
-        return self._visible.pop(0) if self._visible else False
+        return self._visible.pop(0) if self._visible else self._visible_default
 
     async def show_watcher_overlay(self, *a, **k):
         self.overlay_calls.append(k)
@@ -223,16 +229,67 @@ async def test_inject_failure_falls_back(monkeypatch, isolated_config_dir):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_token_not_accepted_falls_back(monkeypatch, isolated_config_dir):
+    """Dialog survives grace AND all three force-close steps → not_accepted."""
     client = FakeClient("K", results=[
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, stats, _, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
-    ctrl = FakeCtrl(visible_seq=[True])  # dialog never closes after injection
+    ctrl = FakeCtrl(visible_seq=[], visible_default=True,
+                    close_results=[{"ok": False, "reason": "no close control found"}] * 3)
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "not_accepted" in outcome.reason
     assert "no callback in dialog anchor" in outcome.reason  # reason is specific, not opaque
     assert client.deleted
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_force_close_rescues_stuck_dialog(monkeypatch, isolated_config_dir):
+    """Completion fix: dialog can't self-close on an injected token — Escape does."""
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
+    # grace final check True; after esc the dialog is gone; second verify gone
+    ctrl = FakeCtrl(visible_seq=[True, False, False], visible_default=True,
+                    close_results=[{"ok": True, "used": "esc"}])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert any("force-closed (esc)" in m for m, _ in logs)
+    assert client.deleted == []  # token was consumed — no credit refund
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_force_close_nuclear_after_failed_steps(monkeypatch, isolated_config_dir):
+    """esc + close fail (no control), nuclear removes the dialog → solved."""
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
+    close_results = [{"ok": True, "used": "esc"},
+                     {"ok": True, "used": "close-btn"},
+                     {"ok": True, "used": "nuclear", "removed": 3}]
+    # grace final True; after esc True; after close True; after nuclear gone; second verify gone
+    ctrl = FakeCtrl(visible_seq=[True, True, True, False, False], close_results=close_results)
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert any("force-closed (nuclear)" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_force_close_already_closed(monkeypatch, isolated_config_dir):
+    """Close probe reports the dialog already gone → no removal, solved."""
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
+    ctrl = FakeCtrl(visible_seq=[True, False], close_results=[{"ok": True, "used": "none"}])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert any("force-closed (already-closed)" in m for m, _ in logs)
 
 
 @pytest.mark.unit
@@ -252,7 +309,8 @@ async def test_token_not_accepted_callback_called(monkeypatch, isolated_config_d
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
-    ctrl = CbCtrl(visible_seq=[True])
+    ctrl = CbCtrl(visible_seq=[], visible_default=True,
+                  close_results=[{"ok": False, "reason": "no close control found"}] * 3)
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "callback called" in outcome.reason

@@ -17,12 +17,13 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from app.browser.captcha_probes import build_continue_js, build_inject_js
+from app.browser.captcha_probes import build_close_js, build_continue_js, build_inject_js
 
 from .api_client import ApiError, Captcha2Client, POLL_INTERVAL_SEC
 from .signals import CaptchaSignal, SolveOutcome, host_of
 
-VERIFY_GRACE_SEC = 20.0  # after injection: how long to watch the dialog close
+VERIFY_GRACE_SEC = 3.0  # after injection: self-close window before force-closing the dialog
+FORCE_CLOSE_STEP_WAIT = 0.8  # between close steps: let React re-render (esc → close → nuclear)
 
 _TASK_TYPES = {
     "recaptcha_enterprise": "RecaptchaV2EnterpriseTaskProxyless",
@@ -147,6 +148,42 @@ async def _click_continue(plan: SolvePlan, log: Callable[[str, str], None]) -> N
         pass
 
 
+async def _close_step(plan: SolvePlan, step: str) -> str:
+    # ideal-size: 9 lines reason=one close attempt; '' when the step reports failure
+    try:
+        raw = await plan.ctrl.cdp.evaluate(build_close_js(step))
+        data = json.loads(raw) if isinstance(raw, str) else (raw or {})
+    except Exception:
+        return ""
+    if not isinstance(data, dict) or not data.get("ok"):
+        return ""
+    return str(data.get("used") or step)
+
+
+async def _dialog_gone(plan: SolvePlan) -> bool:
+    # ideal-size: 5 lines reason=visibility check after a close step (fail-open on probe error)
+    try:
+        return not await plan.ctrl.is_security_dialog_visible()
+    except Exception:
+        return True
+
+
+async def _force_close(plan: SolvePlan) -> str:
+    # ideal-size: 13 lines reason=esc → close control → nuclear, verified between steps
+    for step in ("esc", "close", "nuclear"):
+        if plan.stop():
+            return ""
+        used = await _close_step(plan, step)
+        if not used:
+            continue
+        if used == "none":
+            return "already-closed"
+        await asyncio.sleep(FORCE_CLOSE_STEP_WAIT)
+        if await _dialog_gone(plan):
+            return used
+    return ""
+
+
 class CaptchaSolver:
     """Owns the inflight task map; all methods are small (RULE 18)."""
 
@@ -194,19 +231,27 @@ class CaptchaSolver:
         return await self._inject_and_verify(plan, token, task_id)
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
+        # ideal-size: 15 lines reason=injection → self-close → force-complete (completion fix)
         res = await self._inject(plan.ctrl, token)
         if not res.get("ok"):
             await _delete_task(plan.client, task_id, self._stats)
             self._auto_fail(plan, "inject", "response field not found on page")
             return _failed("inject", "response field not found on page")
-        self._log(f"🤖 token injected (scope={res.get('scope')}, cb={_cb_desc(res)})", "info")
+        patch = ", getResponse=patched" if res.get("getResponsePatched") else ""
+        self._log(f"🤖 token injected (scope={res.get('scope')}, cb={_cb_desc(res)}{patch})", "info")
         await _click_continue(plan, self._log)
         if await self._verify_gone(plan.ctrl, plan.stop):
+            return self._solved(plan, task_id)
+        how = await _force_close(plan)  # the dialog cannot self-close on an injected token
+        if how and await self._verify_gone(plan.ctrl, plan.stop):
+            self._log(f"🤖 dialog force-closed ({how}) — token stays in the field for the re-send", "warn")
             return self._solved(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats)
         why = _reject_reason(res)
         self._auto_fail(plan, "not_accepted", why)
         return _failed("not_accepted", why)
+
+
 
     def _solved(self, plan: SolvePlan, task_id: str) -> SolveOutcome:
         secs = time.monotonic() - plan.start

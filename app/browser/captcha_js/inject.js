@@ -2,9 +2,13 @@
    A real user solve does TWO things in the parent page: (1) the widget
    fills the hidden g-recaptcha-response field, (2) the anchor iframe calls
    the random-named global callback registered in its src (&cb=<name>).
-   arena.ai closes the dialog and resumes the request from (2) — so we do
-   both: set the field (dialog-scoped first, then document) with a
-   React-safe setter + input/change events, then invoke window[cb](token). */
+   The DIALOG widget has no cb= — its sitecallback is a JS closure that
+   closes the dialog and resumes the request (2026-09-18 completion fix),
+   so we cover both consumption paths: set the field (dialog-scoped first,
+   then document) with a React-safe setter + input/change events, invoke
+   window[cb](token) when present, and patch grecaptcha.getResponse() to
+   return the token (the widget-internal read path the send handler may
+   use instead). */
 (token) => {
   try {
     const SEL = 'textarea[name="g-recaptcha-response"], input[name="g-recaptcha-response"], #g-recaptcha-response';
@@ -35,7 +39,15 @@
       cb = m[1];
       try { window[cb](field.value); cbCalled = true; } catch (e) { cbError = String(e); }
     }
-    return {ok: true, scope, tag: field.tagName, len: (field.value || "").length, cb, cbCalled, cbError};
+    let getResponsePatched = false;
+    try {
+      const api = window.grecaptcha;
+      if (api && typeof api.getResponse === "function") {
+        api.getResponse = () => token;  // widget-internal read path → our token
+        getResponsePatched = true;
+      }
+    } catch (e) { /* API shape changed — the field + cb paths still apply */ }
+    return {ok: true, scope, tag: field.tagName, len: (field.value || "").length, cb, cbCalled, cbError, getResponsePatched};
   } catch (e) {
     return {ok: false, error: String(e)};
   }

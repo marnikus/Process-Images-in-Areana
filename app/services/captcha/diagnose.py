@@ -52,6 +52,26 @@ def _action_line(info: Dict[str, Any], status: Dict[str, Any]) -> str:
     return "  5. action: none — nothing to solve on this page"
 
 
+def deep_scan_lines(deep: Dict[str, Any]) -> List[str]:
+    # ideal-size: 14 lines reason=steps 6-8: the evidence that shows WHAT the dialog is
+    lines = []
+    html = (deep.get("dialog_html") or "").strip()
+    lines.append("  6. dialog markup: " + (html[:900] or "(no open dialog)"))
+    g = deep.get("grecaptcha")
+    if g:
+        cur = g.get("current_response_len")
+        cur_s = f", current response len={cur}" if cur is not None else ""
+        lines.append(f"  7. grecaptcha API: {len(g.get('keys') or [])} keys, "
+                     f"getResponse={'yes' if g.get('has_getResponse') else 'no'}{cur_s}")
+    else:
+        lines.append("  7. grecaptcha API: not present on window")
+    hits = deep.get("hits") or []
+    lines.append(f"  8. bundle source hits: {len(hits)} (dialog component / sitecallback logic)")
+    for h in hits[:4]:
+        lines.append(f"     [{h.get('file')}] {h.get('marker')}: …{str(h.get('src') or '')[:260]}…")
+    return lines
+
+
 def build_scan_report(info: Dict[str, Any], page_url: str, status: Dict[str, Any]) -> List[str]:
     # ideal-size: 13 lines reason=numbered verdict + evidence + auto-solve state
     ev = info.get("evidence") or {}
