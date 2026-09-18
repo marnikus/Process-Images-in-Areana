@@ -86,6 +86,10 @@ async def check_security(ctx: JobCtx) -> bool:
                                               source="check-security", stop=stop, log=log))
     if outcome.status == "stopped":
         raise RuntimeError("Cancelled during CAPTCHA")
+    if outcome.status == "page_error":
+        raise RuntimeError(outcome.reason or "Page error during CAPTCHA")
+    if outcome.status == "token_stale":
+        raise RuntimeError(outcome.reason or "Stale CAPTCHA token/page")
     return True
 
 

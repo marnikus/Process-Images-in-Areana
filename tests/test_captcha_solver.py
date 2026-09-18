@@ -519,8 +519,10 @@ async def test_mid_solve_page_error_timestamped(monkeypatch, isolated_config_dir
     ctrl = WatchCtrl(corpora=["", "", "Something went wrong while generating the response. Trace ID: 1"],
                      visible_seq=[False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
-    assert outcome.status == "solved"  # watch-only: the solve is unaffected
+    assert outcome.status == "page_error"
+    assert outcome.token_fp == ""
     assert any("appeared during solve (" in m and "Something went wrong" in m for m, _ in logs)
+    assert client.deleted  # page failure makes the provider task stale
 
 
 @pytest.mark.unit
@@ -574,6 +576,7 @@ async def test_outcome_carries_mid_solve_page_error(monkeypatch, isolated_config
     solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
     ctrl = WatchCtrl(corpora=["", "Something went wrong. Trace ID: 7"], visible_seq=[False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
-    assert outcome.status == "solved"
+    assert outcome.status == "page_error"
     assert "Something went wrong" in outcome.page_error
     assert outcome.page_error_at_s >= 0.0
+    assert client.deleted  # late token is never injected after page failure
