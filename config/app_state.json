@@ -17,7 +17,7 @@
       "last_status": "unchecked",
       "last_checked": null,
       "error": null,
-      "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+      "tab_id": "F7F8CD13584B12AE825128CB83F75081"
     },
     {
       "id": "url_8e48bb78",
@@ -45,6 +45,15 @@
       "last_checked": null,
       "error": null,
       "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+    },
+    {
+      "id": "url_b2b9b265",
+      "url": "https://arena.ai/image/direct?model_a=max",
+      "enabled": true,
+      "last_status": "unchecked",
+      "last_checked": null,
+      "error": null,
+      "tab_id": "6745025141CD2C14CD1EE865E1401A53"
     }
   ],
   "folder": {
@@ -183,10 +192,10 @@
       "size": 84697,
       "mtime": 1789720308.7557886,
       "fingerprint": "1fb4ee73bb10e3d0",
-      "status": "processing",
-      "selected": true,
-      "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 1,
+      "status": "pending",
+      "selected": false,
+      "assigned_url_id": null,
+      "attempt_count": 0,
       "output_path": null,
       "error": null,
       "content_hash": null
@@ -201,10 +210,10 @@
       "size": 55210,
       "mtime": 1789720308.7557886,
       "fingerprint": "a9c5117d03efa8dc",
-      "status": "pending",
+      "status": "processing",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_550177d7",
+      "attempt_count": 1,
       "output_path": null,
       "error": null,
       "content_hash": null
@@ -483,8 +492,8 @@
   "jobs": [],
   "progress": {
     "total": 21,
-    "selected": 21,
-    "pending": 16,
+    "selected": 20,
+    "pending": 15,
     "processing": 1,
     "completed": 4,
     "skipped": 0,
