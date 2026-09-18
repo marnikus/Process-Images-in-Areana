@@ -580,3 +580,63 @@ async def test_outcome_carries_mid_solve_page_error(monkeypatch, isolated_config
     assert "Something went wrong" in outcome.page_error
     assert outcome.page_error_at_s >= 0.0
     assert client.deleted  # late token is never injected after page failure
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stale_token_refuses_injection_and_deletes_task(monkeypatch, isolated_config_dir):
+    """Pass-path guard: a token older than Google's single-use ~2-minute window
+    is never injected (docs/archive/2026-09-18-captcha-pass-path/design.md §5 G-3).
+    FakeClock(step=150) puts 150 s between token receipt and the inject check."""
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=150)
+    ctrl = FakeCtrl(visible_seq=[True, True, False])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "token_stale"
+    assert "single-use" in outcome.reason
+    assert client.deleted == ["101"]  # credit freed, not billed for a dead token
+    assert ctrl.probes == []          # injection never attempted
+    assert any("token age" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_fresh_token_passes_staleness_guard(monkeypatch, isolated_config_dir):
+    """The guard must never fire on a normal solve (age seconds, not minutes)."""
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
+    ctrl = FakeCtrl(visible_seq=[True, False])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_challenge_active_logs_escalation(monkeypatch, isolated_config_dir):
+    """bframe image-grid escalation is reported, solving behavior unchanged."""
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
+    ctrl = FakeCtrl(visible_seq=[True, False])
+    sig = signal()
+    sig.challenge_active = True
+    outcome = await solver.solve(ctrl, "t", sig, lambda: False)
+    assert outcome.status == "solved"  # same path, same acceptance gate
+    assert any("image-challenge escalation" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_no_escalation_line_when_challenge_inactive(monkeypatch, isolated_config_dir):
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
+    ctrl = FakeCtrl(visible_seq=[True, False])
+    assert (await solver.solve(ctrl, "t", signal(), lambda: False)).status == "solved"
+    assert not any("image-challenge escalation" in m for m, _ in logs)

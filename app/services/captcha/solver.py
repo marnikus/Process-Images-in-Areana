@@ -25,6 +25,10 @@ from .signals import CaptchaSignal, SolveOutcome, host_of
 
 VERIFY_GRACE_SEC = 20.0  # after injection: how long to watch the dialog close
 HEARTBEAT_SEC = 30.0  # processing polls: log a still-waiting line this often
+# Google tokens are single-use and expire ~2 min after issue (pass-path doc §3
+# G4). Injection happens seconds after receipt today; the guard encodes the
+# contract so a future slower path can never silently inject a dead token.
+TOKEN_MAX_AGE_SEC = 100.0
 
 _TASK_TYPES = {
     "recaptcha_enterprise": "RecaptchaV2EnterpriseTaskProxyless",
@@ -134,6 +138,32 @@ async def _note_page_error(plan: SolvePlan, log: Callable[[str, str], None]) -> 
     plan.page_error = err
     log(f"🛡️ page error appeared during solve ({plan.page_error_at:.0f}s in): {err}", "warn")
     return True
+
+
+def _stale_token_reason(plan: SolvePlan) -> str:
+    """Non-empty when the token outlived Google's single-use window."""
+    age = time.monotonic() - plan.token_at
+    if age <= TOKEN_MAX_AGE_SEC:
+        return ""
+    return f"token age {age:.0f}s exceeds Google's ~2-minute single-use window"
+
+
+async def _refuse_stale_token(plan: SolvePlan, task_id: str, stats: Any,
+                              log: Callable[[str, str], None]) -> Optional[SolveOutcome]:
+    """Terminal token_stale outcome when the token is past Google's window."""
+    stale = _stale_token_reason(plan)
+    if not stale:
+        return None
+    log(f"🤖 token too old to inject — {stale}", "warn")
+    await _delete_task(plan.client, task_id, stats, log)
+    return _failed("token_stale", stale, plan)
+
+
+def _note_escalation(signal: Any, log: Callable[[str, str], None]) -> None:
+    """Report-only: bframe image-grid escalation visible at solve start."""
+    if getattr(signal, "challenge_active", False):
+        log("🖼️ image-challenge escalation visible (bframe) — the provider "
+            "solves the selection on its side; expect a longer solve", "info")
 
 
 def _token_fingerprint(token: str) -> str:
@@ -258,6 +288,7 @@ class CaptchaSolver:
             await client.aclose()
 
     async def _run_task(self, plan: SolvePlan, timeout_sec: int) -> SolveOutcome:
+        _note_escalation(plan.signal, self._log)
         task_id = await self._create_task(plan)
         if not task_id:
             return _failed("task_create", "createTask failed", plan)
@@ -272,6 +303,9 @@ class CaptchaSolver:
         return await self._inject_and_verify(plan, token, task_id)
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
+        stale = await _refuse_stale_token(plan, task_id, self._stats, self._log)
+        if stale:
+            return stale
         if await _note_page_error(plan, self._log):
             await _delete_task(plan.client, task_id, self._stats, self._log)
             return _failed("page_error", plan.page_error, plan)

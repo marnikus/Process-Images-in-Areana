@@ -108,6 +108,7 @@ def _signal_evidence(signal: CaptchaSignal) -> Dict[str, Any]:
         "integration": signal.integration,
         "anchor": {"present": signal.anchor_present, "visible": signal.anchor_visible},
         "challenge": {"present": signal.challenge_present, "visible": signal.challenge_visible,
+                       "active": signal.challenge_active,
                        "title": signal.challenge_title, "src": signal.challenge_src},
         "response_fields": {"count": signal.response_fields, "scope": signal.response_scope},
         "sitekey_source": signal.sitekey_source,

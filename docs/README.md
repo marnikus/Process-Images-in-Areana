@@ -54,6 +54,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-18-captcha-reporting/design.md` — round 10: `CAPTCHA_SOLVE` JSON per encounter + `CAPTCHA_JOB` join at job end (outcome + page error)
 - `archive/2026-09-18-recaptcha-page-mechanics/research-design.md` — research/design: Enterprise bootstrap, anchor/challenge frames, response field, callback, backend acceptance, stale tokens, page-error state machine
 - `archive/2026-09-18-recaptcha-verification-architecture/design.md` — implementation architecture: probe evidence, terminal page-error/stale-token guards, acceptance candidate vs output success, penalty/report semantics, test matrix
+- `archive/2026-09-18-captcha-pass-path/design.md` — research on the exact user-saved captcha-on state: full "is the user real" mechanism inventory (Enterprise checkbox gate, bframe escalation, badge risk feed, server assessment, PostHog/GTM observation-only, cooldown), dialog-scoped sitekey preference (badge key never leaks into paid tasks), bframe escalation evidence (`challenge.active`), token-TTL injection guard, probes pinned against the real saved pages
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

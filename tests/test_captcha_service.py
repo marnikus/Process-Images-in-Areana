@@ -431,3 +431,51 @@ async def test_stopped_path_emits_report_with_zero_penalty(monkeypatch, isolated
     reps = solve_reports(bridge)
     assert len(reps) == 1  # edge data is never silent
     assert reps[0]["status"] == "stopped" and reps[0]["penalty_s"] == 0
+
+
+@pytest.mark.unit
+def test_signal_maps_challenge_active_evidence():
+    """Pass-path round: bframe escalation flag survives probe→signal (design §6.2)."""
+    from app.services.captcha.signals import CaptchaSignal
+
+    res = detect_result()
+    res["challengeActive"] = True
+    res["challengePresent"] = True
+    sig = CaptchaSignal.from_result(res)
+    assert sig.challenge_active is True and sig.challenge_present is True
+    assert CaptchaSignal.from_result(detect_result()).challenge_active is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_report_carries_challenge_active(monkeypatch, isolated_config_dir):
+    """CAPTCHA_SOLVE evidence reports the escalation state observed at detect."""
+    instant_sleep(monkeypatch)
+    from tests.test_captcha_solver import FakeClient
+
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    keys = CaptchaKeyStore(isolated_config_dir)
+    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+
+    class DomCtrl(FakeCtrl):
+        async def _evaluate(self, js):
+            import json
+            if "Security Verification" in js:
+                d = detect_result()
+                d["challengeActive"] = True
+                d["challengePresent"] = True
+                return json.dumps(d)
+            return await super()._evaluate(js)
+
+    ctrl = DomCtrl(visible_seq=[True, False])
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="job")
+    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    assert (await handle_captcha(ctx)).status == "solved"
+    rep = solve_reports(bridge)[0]
+    assert rep["challenge"]["active"] is True
+    assert rep["challenge"]["present"] is True
