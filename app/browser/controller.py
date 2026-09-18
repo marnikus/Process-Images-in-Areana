@@ -128,9 +128,10 @@ class BrowserController:
                 const iframes = document.querySelectorAll('iframe[title="reCAPTCHA"]');
                 for (const f of iframes) {
                     const style = window.getComputedStyle(f);
-                    // the always-on .grecaptcha-badge widget is on screen in the
-                    // normal state — it is not a challenge, never counts (2026-09-18)
-                    if (style.display !== 'none' && f.offsetParent !== null && !inBadge(f)) return true;
+                    // the always-on .grecaptcha-badge is on screen in layout but
+                    // visibility:hidden / off-screen in the normal state — never counts
+                    if (style.display !== 'none' && style.visibility !== 'hidden'
+                        && f.offsetParent !== null && !inBadge(f)) return true;
                 }
                 return false;
             }

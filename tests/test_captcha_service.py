@@ -83,6 +83,7 @@ async def test_disabled_service_waits_manually_and_records(monkeypatch, isolated
     d = bridge._captcha_service().stats.to_dict()
     assert d["detected_total"] == 1 and d["manual_solved"] == 1
     assert any("🛡️" in m for m, _ in bridge._logs)  # penalty choke-point line
+    assert any("CAPTCHA_WAITING" in m and "awaiting your solve" in m for m, _ in bridge._logs)  # visual flag
 
 
 @pytest.mark.unit
@@ -110,6 +111,7 @@ async def test_enabled_service_auto_solves_and_records(monkeypatch, isolated_con
     d = bridge._captcha_service().stats.to_dict()
     assert d["auto_solved"] == 1 and d["detected_total"] == 1
     assert len(client.created) == 1
+    assert any("CAPTCHA_AUTO" in m for m, _ in bridge._logs)  # auto-solve is never silent
 
 
 @pytest.mark.unit
