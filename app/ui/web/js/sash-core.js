@@ -30,7 +30,7 @@
   const V1_WINDOW_IDS = WINDOWS.map(w=>w.id);
   const V2_WINDOW_IDS = V1_WINDOW_IDS;
   const V3_WINDOW_IDS = V1_WINDOW_IDS;
-  const VERSION = 4;
+  const VERSION = 5;
   const WINDOW_IDS = WINDOWS.map((w) => w.id);
   const WINDOW_TITLES = Object.fromEntries(WINDOWS.map((w) => [w.id, w.title]));
 
@@ -424,14 +424,22 @@
     return null;
   }
 
+  /* Legacy ids for windows this app renamed. `captcha_records` (the parallel
+     recording window of 2026-09-18) is the same feature as `recordings`, so a
+     stored layout keeps its position + sizes instead of being rejected. */
+  const LEGACY_WINDOW_IDS = { captcha_records: 'recordings' };
+  const legacyId = (id) => LEGACY_WINDOW_IDS[id] || id;
+
   function pruneTree(node, seen, allowed) {
     seen = seen || new Set();
     allowed = allowed || new Set(WINDOW_IDS);
     if (isLeaf(node)) {
-      if (typeof node.id !== 'string' || !allowed.has(node.id)) return null;
-      if (seen.has(node.id)) return null;
-      seen.add(node.id);
-      return leaf(node.id);
+      if (typeof node.id !== 'string') return null;
+      const id = legacyId(node.id);
+      if (!allowed.has(id)) return null;
+      if (seen.has(id)) return null;
+      seen.add(id);
+      return leaf(id);
     }
     if (!isSplit(node) || !Array.isArray(node.children)) return null;
     const kids = [], sizes = [];

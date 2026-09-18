@@ -28,7 +28,10 @@ WINDOWS = [
     {"id": "recordings", "title": "Recordings — Captcha Sessions"},
 ]
 WINDOW_TITLES = {w["id"]: w["title"] for w in WINDOWS}
-GRID_VERSION = 4
+# Windows this app renamed. A stored layout that still uses one keeps its
+# position + sizes under the new id (never rejected, never default-substituted).
+LEGACY_WINDOW_IDS = {"captcha_records": "recordings"}
+GRID_VERSION = 5
 MIN_GRID_SIZE = 4
 
 def default_grid_tree() -> dict:
@@ -168,7 +171,21 @@ def canonical_grid_payload(raw: str):
         return None, err
     return json.dumps({"v": GRID_VERSION, "tree": tree}, ensure_ascii=False, separators=(",",":")), None
 
+def _rename_legacy_windows(node):
+    """Rewrite renamed window ids in a stored tree (identity elsewhere)."""
+    if not isinstance(node, dict):
+        return node
+    t = node.get("t", node.get("type"))
+    if t == "leaf":
+        new_id = LEGACY_WINDOW_IDS.get(node.get("id"))
+        return {**node, "id": new_id} if new_id else node
+    if t == "split" and isinstance(node.get("children"), list):
+        return {**node, "children": [_rename_legacy_windows(k) for k in node["children"]]}
+    return node
+
+
 def migrate_grid_tree(tree: dict) -> dict:
+    tree = _rename_legacy_windows(tree)
     present = {i for i in leaf_ids(tree) if i}
     missing = [i for i in sorted(WINDOW_IDS) if i not in present]
     if not missing:

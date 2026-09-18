@@ -11,6 +11,10 @@
      (dialog_iframe_k → dialog_data_sitekey → page chain); the badge key is
      excluded from fallbacks when its iframe exposes it, so a paid task is
      never created for the wrong widget.
+   * identity correlation (token-vs-page round): the challenge frame identity
+     + the page's own timeOrigin travel with the signal so a token is only
+     injected into the page state that asked for it
+     (docs/archive/2026-09-18-recaptcha-verification-architecture/).
    Output: {visible, kind, sitekey, invisible, url, dom} — exact data the
    solver needs for its 2Captcha payload, plus the semantic DOM anchor
    for captcha reports. RULE 21: semantic before structural. */
@@ -19,8 +23,9 @@
     url: location.href, integration: "unknown", anchorPresent: false,
     anchorVisible: false, challengePresent: false, challengeVisible: false,
     challengeActive: false, challengeTitle: "", challengeSrc: "",
-    responseFields: 0, responseScope: "none", sitekeySource: "none",
-    pageIdentity: location.href};
+    challengeIdentity: "", responseFields: 0, responseScope: "none",
+    sitekeySource: "none",
+    pageIdentity: location.href + "|" + (typeof performance !== "undefined" ? String(performance.timeOrigin || "") : "")};
   const IFRAME = 'iframe[title="reCAPTCHA"], iframe[src*="recaptcha"], iframe[src*="bframe"]';
   const WIDGET = IFRAME + ', div.recaptcha-v2-container, #recaptcha-v2-container';
   const KEY = /[?&]k=([A-Za-z0-9_-]{20,})/;
@@ -63,6 +68,7 @@
   if (challenges[0]) {
     out.challengeTitle = (challenges[0].title || "").slice(0, 120);
     out.challengeSrc = (() => { try { const u = new URL(challenges[0].src); return u.host + u.pathname; } catch (_) { return "challenge"; } })();
+    out.challengeIdentity = ((challenges[0].name || challenges[0].title || "challenge") + "|" + out.challengeSrc).slice(0, 120);
   }
   let iframe = dialog ? dialog.querySelector(IFRAME) : null;
   if (!iframe) {

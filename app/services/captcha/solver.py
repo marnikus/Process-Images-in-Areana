@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from app.browser.captcha_probes import build_continue_js, build_inject_js
+from app.browser.captcha_probes import build_continue_js, build_detect_js, build_inject_js
 from app.utils.page_errors import match_page_error
 
 from .api_client import ApiError, Captcha2Client, POLL_INTERVAL_SEC
@@ -29,6 +29,7 @@ HEARTBEAT_SEC = 30.0  # processing polls: log a still-waiting line this often
 # G4). Injection happens seconds after receipt today; the guard encodes the
 # contract so a future slower path can never silently inject a dead token.
 TOKEN_MAX_AGE_SEC = 100.0
+MAX_TRANSIENT_POLL_ERRORS = 3  # tolerate short 2Captcha/HTTP response glitches
 
 _TASK_TYPES = {
     "recaptcha_enterprise": "RecaptchaV2EnterpriseTaskProxyless",
@@ -47,6 +48,8 @@ class SolvePlan:
     stop: Callable[[], bool]
     start: float
     task_id: str = ""  # provider task (traceability on failure paths, RULE 22)
+    stats: Any = None
+    logger: Optional[Callable[[str, str], None]] = None
     token_at: float = 0.0  # monotonic() when the provider token arrived
     err_base: Optional[str] = None  # error-scan corpus at solve start (None = not taken)
     err_seen: bool = False  # a mid-solve page error was already logged
@@ -57,6 +60,8 @@ class SolvePlan:
     page_error_at: float = 0.0  # solve-start-relative seconds of a mid-solve error
     page_error: str = ""
     stale_reason: str = ""
+    page_identity: str = ""
+    challenge_identity: str = ""
 
 
 def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> SolveOutcome:
@@ -150,17 +155,6 @@ def _stale_token_reason(plan: SolvePlan) -> str:
     return f"token age {age:.0f}s exceeds Google's ~2-minute single-use window"
 
 
-async def _refuse_stale_token(plan: SolvePlan, task_id: str, stats: Any,
-                              log: Callable[[str, str], None]) -> Optional[SolveOutcome]:
-    """Terminal token_stale outcome when the token is past Google's window."""
-    stale = _stale_token_reason(plan)
-    if not stale:
-        return None
-    log(f"🤖 token too old to inject — {stale}", "warn")
-    await _delete_task(plan.client, task_id, stats, log)
-    return _failed("token_stale", stale, plan)
-
-
 def _note_escalation(signal: Any, log: Callable[[str, str], None]) -> None:
     """Report-only: bframe image-grid escalation visible at solve start."""
     if getattr(signal, "challenge_active", False):
@@ -238,6 +232,55 @@ async def _verify_gone(ctrl: Any, stop: Callable[[], bool]) -> bool:
         return False
 
 
+async def _current_signal(ctrl: Any) -> Optional[CaptchaSignal]:
+    """Read fresh page identity/evidence before using a provider token."""
+    try:
+        raw = await ctrl.cdp.evaluate(build_detect_js())
+        return CaptchaSignal.from_result(raw)
+    except Exception:
+        return None
+
+
+def _identity_reason(plan: SolvePlan, current: CaptchaSignal) -> str:
+    """Compare stable page/challenge evidence."""
+    if plan.page_identity and current.page_identity and plan.page_identity != current.page_identity:
+        return "page_identity_changed"
+    if plan.challenge_identity and current.challenge_identity and plan.challenge_identity != current.challenge_identity:
+        return "challenge_identity_changed"
+    return ""
+
+
+def _sitekey_changed(plan: SolvePlan, current: CaptchaSignal) -> bool:
+    """Only compare sitekeys when the fresh probe has identity evidence."""
+    return bool(plan.signal.sitekey and current.sitekey
+                and (current.page_identity or current.challenge_identity)
+                and plan.signal.sitekey != current.sitekey)
+
+
+async def _stale_reason(plan: SolvePlan) -> str:
+    """Return a mismatch reason; empty means the page is still the same."""
+    current = await _current_signal(plan.ctrl)
+    if current is None:
+        return ""
+    return _identity_reason(plan, current) or ("sitekey_changed" if _sitekey_changed(plan, current) else "")
+
+
+async def _inject_failure(plan: SolvePlan, task_id: str) -> SolveOutcome:
+    """Record missing response fields and release the provider task."""
+    await _delete_task(plan.client, task_id, plan.stats, plan.logger)
+    _auto_fail(plan, "inject", "response field not found on page")
+    return _failed("inject", "response field not found on page", plan)
+
+
+async def _page_error_outcome(plan: SolvePlan, task_id: str,
+                              stats: Any, log: Callable[[str, str], None]) -> Optional[SolveOutcome]:
+    """Return terminal page-error outcome and free the provider task."""
+    if not await _note_page_error(plan, log):
+        return None
+    await _delete_task(plan.client, task_id, stats, log)
+    return _failed("page_error", plan.page_error, plan)
+
+
 async def _inject(ctrl: Any, token: str, sitekey: str,
                  log: Callable[[str, str], None]) -> Dict[str, Any]:
     """Set response fields and invoke the page callback; never raises."""
@@ -251,6 +294,123 @@ async def _inject(ctrl: Any, token: str, sitekey: str,
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _auto_fail(plan: SolvePlan, reason: str, detail: str) -> None:
+    """Record a provider attempt failure without growing CaptchaSolver."""
+    try:
+        plan.stats.record("auto_failed", host_of(plan.signal.page_url))
+        plan.stats.set_last_error(detail[:80])
+        plan.logger(f"🤖 2Captcha auto-solve failed: {reason}", "warn")
+    except Exception:
+        pass
+
+
+async def _stale_outcome(plan: SolvePlan, task_id: str, stats: Any,
+                          log: Callable[[str, str], None]) -> Optional[SolveOutcome]:
+    """Delete provider work and return `token_stale` when the token is unusable.
+
+    Two independent guards, cheapest first: the token's own age (Google's
+    single-use ~2-minute window, pass-path round) and the page/challenge
+    identity it was requested for (token-vs-page round). Either one means the
+    token must never be injected.
+    """
+    reason = _stale_token_reason(plan) or await _stale_reason(plan)
+    if not reason:
+        return None
+    plan.stale_reason = reason
+    log(f"🤖 token refused before injection — {reason}", "warn")
+    await _delete_task(plan.client, task_id, stats, log)
+    return _failed("token_stale", reason, plan)
+
+
+def _poll_fail(plan: SolvePlan, why: str, detail: str = "") -> Tuple[None, str]:
+    plan.stats.record("auto_failed", host_of(plan.signal.page_url))
+    plan.stats.set_last_error(detail or why)
+    suffix = f" ({detail})" if detail and detail != why else ""
+    plan.logger(f"2Captcha poll ended: {why}{suffix}", "warn")
+    return None, why
+
+
+async def _retry_network(plan: SolvePlan, started: float, count: int,
+                         timeout_sec: int) -> bool:
+    """Wait before another transient poll; false means retry budget expired."""
+    elapsed = time.monotonic() - started
+    if count >= MAX_TRANSIENT_POLL_ERRORS or elapsed > timeout_sec:
+        return False
+    plan.logger(
+        f"2Captcha poll network glitch — retrying "
+        f"({count}/{MAX_TRANSIENT_POLL_ERRORS}, {elapsed:.0f}s elapsed)", "warn")
+    await asyncio.sleep(POLL_INTERVAL_SEC)
+    return True
+
+
+async def _provider_result(plan: SolvePlan, res: Dict[str, Any]
+                           ) -> Tuple[bool, Optional[str], str]:
+    """Interpret one successful provider response."""
+    if await _note_page_error(plan, plan.logger):
+        return True, None, "page_error"
+    status = res.get("status")
+    if status == "ready":
+        token = str((res.get("solution") or {}).get("gRecaptchaResponse") or "")
+        return True, token, ""
+    if status == "failed":
+        token, why = _poll_fail(plan, "task_failed", _failed_detail(res))
+        return True, token, why
+    return False, None, ""
+
+
+async def _poll_task(plan: SolvePlan, task_id: str,
+                     timeout_sec: int) -> Tuple[Optional[str], str]:
+    """Poll until a token arrives; (None, why) on stop/error/timeout."""
+    start = time.monotonic()
+    last_beat = start
+    transient_errors = 0
+    while True:
+        if plan.stop():
+            plan.logger("2Captcha polling stopped (user stop)", "info")
+            return None, "stopped"
+        plan.polls += 1
+        try:
+            res = await plan.client.get_result(task_id)
+        except ApiError as exc:
+            transient_errors += 1
+            if exc.reason == "network" and await _retry_network(
+                    plan, start, transient_errors, timeout_sec):
+                continue
+            return _poll_fail(plan, exc.reason, str(exc))
+        transient_errors = 0
+        done, token, why = await _provider_result(plan, res)
+        if done:
+            return token, why
+        if time.monotonic() - start > timeout_sec:
+            return _poll_fail(plan, "poll_timeout")
+        last_beat = _heartbeat(plan.logger, plan, task_id, last_beat)
+        await asyncio.sleep(POLL_INTERVAL_SEC)
+
+
+def _solved(plan: SolvePlan, task_id: str) -> SolveOutcome:
+    secs = time.monotonic() - plan.start
+    tok = plan.token_at - plan.start if plan.token_at else 0.0
+    plan.stats.record("auto_solved", host_of(plan.signal.page_url))
+    plan.logger(f"🤖 2Captcha solved tab {str(plan.tab_id)[:12]} in {secs:.0f}s "
+                f"(token {tok:.0f}s, token accepted)", "success")
+    return SolveOutcome(status="solved", method="auto", task_id=task_id,
+                        reason="token accepted", elapsed_sec=secs,
+                        polls=plan.polls, token_sec=tok, token_fp=plan.token_fp,
+                        dialog_at_token=plan.dialog_at_token, inject=plan.inject,
+                        page_error_at_s=plan.page_error_at, page_error=plan.page_error)
+
+
+async def _accepted_after_close(plan: SolvePlan, task_id: str) -> SolveOutcome:
+    """Check for a concurrent page failure, then accept the dialog closure."""
+    error = await _page_error_outcome(plan, task_id, plan.stats, plan.logger)
+    if error is not None:
+        return error
+    # The accepted-token transition can expose a badge with a different key.
+    # Staleness was checked immediately before injection, so do not mistake
+    # this expected post-close transition for `token_stale: sitekey_changed`.
+    return _solved(plan, task_id)
 
 
 class CaptchaSolver:
@@ -284,7 +444,10 @@ class CaptchaSolver:
         client = Captcha2Client(settings.api_key)
         try:
             plan = SolvePlan(client=client, ctrl=ctrl, tab_id=tab_id, signal=signal,
-                             stop=stop, start=time.monotonic())
+                             stop=stop, start=time.monotonic(), stats=self._stats,
+                             logger=self._log,
+                             page_identity=signal.page_identity,
+                             challenge_identity=signal.challenge_identity)
             return await self._run_task(plan, settings.solve_timeout_sec)
         finally:
             await client.aclose()
@@ -295,7 +458,7 @@ class CaptchaSolver:
         if not task_id:
             return _failed("task_create", "createTask failed", plan)
         plan.task_id = task_id  # traceability on poll-failure paths (RULE 22)
-        token, why = await self._poll_task(plan, task_id, timeout_sec)
+        token, why = await _poll_task(plan, task_id, timeout_sec)
         if not token:
             await _delete_task(plan.client, task_id, self._stats, self._log)
             return _failed(why or "no_token", "no solution token", plan)
@@ -306,53 +469,31 @@ class CaptchaSolver:
         return await self._inject_and_verify(plan, token, task_id)
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
-        stale = await _refuse_stale_token(plan, task_id, self._stats, self._log)
-        if stale:
+        stale = await _stale_outcome(plan, task_id, self._stats, self._log)
+        if stale is not None:
             return stale
-        if await _note_page_error(plan, self._log):
-            await _delete_task(plan.client, task_id, self._stats, self._log)
-            return _failed("page_error", plan.page_error, plan)
+        error = await _page_error_outcome(plan, task_id, self._stats, self._log)
+        if error is not None:
+            return error
         await _note_preinject_state(plan, self._log)
+        if plan.dialog_at_token == "gone":
+            await _delete_task(plan.client, task_id, self._stats, self._log)
+            return _failed("token_stale", "dialog_gone_before_token_injection", plan)
         res = await _inject(plan.ctrl, token, plan.signal.sitekey, self._log)
         if not res.get("ok"):
-            await _delete_task(plan.client, task_id, self._stats, self._log)
-            self._auto_fail(plan, "inject", "response field not found on page")
-            return _failed("inject", "response field not found on page", plan)
+            return await _inject_failure(plan, task_id)
         plan.inject = f"scope={res.get('scope')} fields={res.get('fields', 1)} cb={_cb_desc(res)}"
         self._log(f"🤖 token injected ({plan.inject})", "info")
         await _click_continue(plan.ctrl)
-        if await _note_page_error(plan, self._log):
-            await _delete_task(plan.client, task_id, self._stats, self._log)
-            return _failed("page_error", plan.page_error, plan)
+        error = await _page_error_outcome(plan, task_id, self._stats, self._log)
+        if error is not None:
+            return error
         if await _verify_gone(plan.ctrl, plan.stop):
-            if await _note_page_error(plan, self._log):
-                await _delete_task(plan.client, task_id, self._stats, self._log)
-                return _failed("page_error", plan.page_error, plan)
-            return self._solved(plan, task_id)
+            return await _accepted_after_close(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats, self._log)
         why = _reject_reason(res)
-        self._auto_fail(plan, "not_accepted", why)
+        _auto_fail(plan, "not_accepted", why)
         return _failed("not_accepted", why, plan)
-
-    def _solved(self, plan: SolvePlan, task_id: str) -> SolveOutcome:
-        secs = time.monotonic() - plan.start
-        tok = plan.token_at - plan.start if plan.token_at else 0.0
-        self._stats.record("auto_solved", host_of(plan.signal.page_url))
-        self._log(f"🤖 2Captcha solved tab {str(plan.tab_id)[:12]} in {secs:.0f}s "
-                  f"(token {tok:.0f}s, token accepted)", "success")
-        return SolveOutcome(status="solved", method="auto", task_id=task_id,
-                            reason="token accepted", elapsed_sec=secs,
-                            polls=plan.polls, token_sec=tok, token_fp=plan.token_fp,
-                            dialog_at_token=plan.dialog_at_token, inject=plan.inject,
-                            page_error_at_s=plan.page_error_at, page_error=plan.page_error)
-
-    def _auto_fail(self, plan: SolvePlan, reason: str, detail: str) -> None:
-        try:
-            self._stats.record("auto_failed", host_of(plan.signal.page_url))
-            self._stats.set_last_error(detail[:80])
-            self._log(f"🤖 2Captcha auto-solve failed: {reason}", "warn")
-        except Exception:
-            pass
 
     async def _create_task(self, plan: SolvePlan) -> str:
         task_type = task_type_for(plan.signal.kind)
@@ -370,38 +511,4 @@ class CaptchaSolver:
         except Exception as e:  # fail-open: solver problems never kill the job
             self._log(f"2Captcha createTask unexpected error: {e}", "warn")
             return ""
-
-    def _poll_fail(self, plan: SolvePlan, why: str, detail: str = "") -> Tuple[None, str]:
-        self._stats.record("auto_failed", host_of(plan.signal.page_url))
-        self._stats.set_last_error(detail or why)
-        suffix = f" ({detail})" if detail and detail != why else ""
-        self._log(f"2Captcha poll ended: {why}{suffix}", "warn")
-        return None, why
-
-    async def _poll_task(self, plan: SolvePlan, task_id: str,
-                         timeout_sec: int) -> Tuple[Optional[str], str]:
-        """Poll until a token arrives; (None, why) on stop/error/timeout."""
-        start = time.monotonic()
-        last_beat = start
-        while True:
-            if plan.stop():
-                self._log("2Captcha polling stopped (user stop)", "info")
-                return None, "stopped"
-            plan.polls += 1
-            try:
-                res = await plan.client.get_result(task_id)
-            except ApiError as e:
-                return self._poll_fail(plan, e.reason, str(e))
-            status = res.get("status")
-            if await _note_page_error(plan, self._log):
-                return None, "page_error"
-            if status == "ready":
-                return str((res.get("solution") or {}).get("gRecaptchaResponse") or ""), ""
-            if status == "failed":
-                return self._poll_fail(plan, "task_failed", _failed_detail(res))
-            if time.monotonic() - start > timeout_sec:
-                return self._poll_fail(plan, "poll_timeout")
-            last_beat = _heartbeat(self._log, plan, task_id, last_beat)
-            await asyncio.sleep(POLL_INTERVAL_SEC)
-
 

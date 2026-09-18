@@ -154,7 +154,8 @@ def _signal_evidence(signal: CaptchaSignal) -> Dict[str, Any]:
         "anchor": {"present": signal.anchor_present, "visible": signal.anchor_visible},
         "challenge": {"present": signal.challenge_present, "visible": signal.challenge_visible,
                        "active": signal.challenge_active,
-                       "title": signal.challenge_title, "src": signal.challenge_src},
+                       "title": signal.challenge_title, "src": signal.challenge_src,
+                       "identity": signal.challenge_identity},
         "response_fields": {"count": signal.response_fields, "scope": signal.response_scope},
         "sitekey_source": signal.sitekey_source,
         "page_identity": signal.page_identity,
@@ -268,7 +269,7 @@ async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
 
 
 async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
-    """Detect → record → stats → auto-solve (opt-in) → manual wait → penalty.
+    """Detect → record → resolve (auto or manual) → penalty, one encounter.
 
     Callers gate on `is_security_dialog_visible()` first; the detect probe's
     own visible flag covers the vanishing-dialog race (→ `none`, no penalty).
@@ -292,6 +293,12 @@ async def _handle_visible(ctx: CaptchaCtx, signal: CaptchaSignal) -> SolveOutcom
     _record_stats(ctx, "detected", host_of(signal.page_url))
     _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}) via {ctx.source}", "error")
     svc = _service(ctx)
+    return await _resolve_captcha(ctx, signal, svc, rep)
+
+
+async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
+                           svc: Optional["CaptchaService"], rep: Dict[str, Any]) -> SolveOutcome:
+    """Choose automatic or manual policy while recording stays orthogonal."""
     if svc is not None and svc.auto_enabled() and signal.solvable:
         outcome = await _try_auto(ctx, signal, svc, rep)
         if outcome.status == "solved":
@@ -303,7 +310,8 @@ async def _handle_visible(ctx: CaptchaCtx, signal: CaptchaSignal) -> SolveOutcom
     if svc is not None and svc.auto_enabled():
         _log(ctx, "⚠️ FLAG CAPTCHA_AUTO skipped — no sitekey in dialog — manual wait", "warn")
         return await _manual_wait(ctx, signal, "auto-solve: no sitekey in dialog", rep)
-    return await _manual_wait(ctx, signal, "auto-solve OFF — solve in Chrome (enable 2Captcha in the Captcha window)", rep)
+    reason = "auto-solve OFF — solve in Chrome (enable 2Captcha in the Captcha window)"
+    return await _manual_wait(ctx, signal, reason, rep)
 
 
 async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,

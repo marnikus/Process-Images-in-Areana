@@ -224,7 +224,7 @@ def test_preset_save_load_round_trip(isolated_config_dir):
     assert len(leaf_ids(json.loads(doc["grid"]["payload"])["tree"])) == 15
     assert len(leaf_ids(doc["grid"]["tree"])) == 15
     # load returns the portable doc (JS preview contract), applies nothing
-    sentinel = json.dumps({"v": 4, "tree": default_grid_tree()}, separators=(",", ":"))
+    sentinel = json.dumps({"v": 5, "tree": default_grid_tree()}, separators=(",", ":"))
     Bridge.save_grid_layout(fake, sentinel)
     loaded = json.loads(Bridge.load_window_preset(fake, "Desk"))
     assert loaded["format"] == "chat-v-bot.window-preset"

@@ -179,7 +179,12 @@ describe('B — _fitTitleBars(): single pure writer', () => {
 
   test('fit holds across resize drags on the user layout (controls never hidden)', () => {
     const h = createSashGrid();
-    resetGrid(h, h.SashCore.clone(USER_TREE), USER_CLOSED, USER_MINIMIZED);
+    // the persisted layout predates later windows — the app migrates it on
+    // load (missing leaves appended), so exercise the migrated tree
+    const migrated = h.SashCore.deserialize(JSON.stringify({ v: 5, tree: USER_TREE }));
+    assert.ok(migrated.ok, 'user layout migrates: ' + (migrated.error || ''));
+    assert.equal(h.SashCore.leafIds(migrated.tree).length, ALL_WINDOW_IDS.length);
+    resetGrid(h, migrated.tree, USER_CLOSED, USER_MINIMIZED);
     for (const id of ALL_WINDOW_IDS) {
       const title = titleOf(h, id);
       // simulate a tight bar per window with its own secondaries

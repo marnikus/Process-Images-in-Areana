@@ -27,6 +27,7 @@ def _evidence_kwargs(res: Dict[str, Any]) -> Dict[str, Any]:
         "challenge_active": bool(res.get("challengeActive")),
         "challenge_title": str(res.get("challengeTitle") or "")[:120],
         "challenge_src": str(res.get("challengeSrc") or "")[:120],
+        "challenge_identity": str(res.get("challengeIdentity") or "")[:120],
         "response_fields": _safe_count(res),
         "response_scope": str(res.get("responseScope") or "none"),
         "sitekey_source": str(res.get("sitekeySource") or "none"),
@@ -52,6 +53,7 @@ class CaptchaSignal:
     challenge_active: bool = False  # image-grid escalation visible (bframe)
     challenge_title: str = ""
     challenge_src: str = ""
+    challenge_identity: str = ""
     response_fields: int = 0
     response_scope: str = "none"
     sitekey_source: str = "none"

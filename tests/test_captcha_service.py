@@ -102,7 +102,7 @@ async def test_enabled_service_auto_solves_and_records(monkeypatch, isolated_con
     bridge = make_bridge(pool, isolated_config_dir)
     keys = CaptchaKeyStore(isolated_config_dir)
     keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
-    ctrl = FakeCtrl(visible_seq=[False])  # verify loop: gone on first check
+    ctrl = FakeCtrl(visible_seq=[True, False])  # verify loop: gone on first check
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="check-security")
     monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
     outcome = await handle_captcha(ctx)
