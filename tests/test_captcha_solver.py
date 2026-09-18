@@ -228,7 +228,32 @@ async def test_token_not_accepted_falls_back(monkeypatch, isolated_config_dir):
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "not_accepted" in outcome.reason
+    assert "no callback in dialog anchor" in outcome.reason  # reason is specific, not opaque
     assert client.deleted
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_token_not_accepted_callback_called(monkeypatch, isolated_config_dir):
+    """cb invoked but dialog persists → server-side rejection signature."""
+    import json
+
+    class CbCtrl(FakeCtrl):
+        async def _evaluate(self, js):
+            if "g-recaptcha-response" in js:
+                return json.dumps({"ok": True, "scope": "dialog", "tag": "TEXTAREA",
+                                   "cb": "abc123", "cbCalled": True})
+            return await super()._evaluate(js)
+
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
+    ctrl = CbCtrl(visible_seq=[True])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"
+    assert "callback called" in outcome.reason
+    assert any("cb=called abc123" in m for m, _ in logs)  # inject detail logged
 
 
 @pytest.mark.unit

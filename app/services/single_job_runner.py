@@ -154,6 +154,7 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     """Wait output."""
     try:
         await _show_gen_overlay(ctx, timeout_ms)
+        ctx.ctrl.security_settler = lambda: check_security(ctx)  # captcha inside the wait
         status, data = await ctx.ctrl.wait_for_new_output(
             ctx.baseline, timeout_ms=timeout_ms, correlation_id=ctx.corr_id,
             cancel_check=lambda: _is_cancelled(ctx),
@@ -167,6 +168,11 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     except Exception as e:
         await _hide_overlay(ctx)
         return None, None, str(e)
+    finally:
+        try:
+            delattr(ctx.ctrl, "security_settler")
+        except Exception:
+            pass
 
 
 async def _show_gen_overlay(ctx: JobCtx, timeout_ms: int):

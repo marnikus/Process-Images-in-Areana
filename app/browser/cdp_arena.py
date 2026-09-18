@@ -311,6 +311,7 @@ class CDPArenaController:
         self._err_base = await self._scan_page_errors()
 
         async def check_fn():
+            await self._security_gate()
             return await self._poll_output_diag(old_srcs, correlation_id, old_outputs)
 
         def log_cb(msg: str):
@@ -330,6 +331,17 @@ class CDPArenaController:
             return await self._map_wait_result(result, baseline, timeout_ms)
         except Exception as e:
             return "failed", {"error": str(e)}
+
+    async def _security_gate(self) -> None:
+        # ideal-size: 9 lines reason=settle the security dialog inline during the output wait
+        settler = getattr(self, "security_settler", None)
+        if settler is None:
+            return
+        try:
+            if await self.is_security_dialog_visible():
+                await settler()
+        except Exception as e:
+            log.debug(f"security gate settle failed {e}")
 
     async def _python_download(self, src: str) -> Tuple[bool, bytes, str]:
         def sync_fetch(url: str):

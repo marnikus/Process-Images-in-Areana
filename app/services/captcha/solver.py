@@ -51,6 +51,22 @@ def task_type_for(kind: str) -> str:
     return _TASK_TYPES.get(kind, "RecaptchaV2EnterpriseTaskProxyless")
 
 
+def _cb_desc(res: Dict[str, Any]) -> str:
+    """Inject-result callback status for the log line."""
+    if res.get("cbCalled"):
+        return f"called {res.get('cb')}"
+    if res.get("cbError"):
+        return f"error: {str(res.get('cbError'))[:40]}"
+    return "not found in anchor"
+
+
+def _reject_reason(res: Dict[str, Any]) -> str:
+    """Not-accepted reason: was the widget callback invoked before expiry?"""
+    if res.get("cbCalled"):
+        return "dialog still visible after token injection (callback called — token likely rejected server-side)"
+    return "dialog still visible after token injection (no callback in dialog anchor)"
+
+
 def _task_payload(task_type: str, signal: CaptchaSignal) -> Dict[str, Any]:
     """Docs-exact createTask payload (2captcha.com/api-docs/recaptcha-v2-enterprise)."""
     payload = {"type": task_type,
@@ -126,16 +142,19 @@ class CaptchaSolver:
         return await self._inject_and_verify(plan, token, task_id)
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
-        if not await self._inject(plan.ctrl, token):
+        res = await self._inject(plan.ctrl, token)
+        if not res.get("ok"):
             await _delete_task(plan.client, task_id, self._stats)
             self._auto_fail(plan, "inject", "response field not found on page")
             return _failed("inject", "response field not found on page")
+        self._log(f"🤖 token injected (scope={res.get('scope')}, cb={_cb_desc(res)})", "info")
         await _click_continue(plan.ctrl)
         if await self._verify_gone(plan.ctrl, plan.stop):
             return self._solved(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats)
-        self._auto_fail(plan, "not_accepted", "dialog still visible after token injection")
-        return _failed("not_accepted", "dialog still visible after token injection")
+        why = _reject_reason(res)
+        self._auto_fail(plan, "not_accepted", why)
+        return _failed("not_accepted", why)
 
     def _solved(self, plan: SolvePlan, task_id: str) -> SolveOutcome:
         secs = time.monotonic() - plan.start
@@ -195,17 +214,17 @@ class CaptchaSolver:
                 return self._poll_fail(plan, "poll_timeout")
             await asyncio.sleep(POLL_INTERVAL_SEC)
 
-    async def _inject(self, ctrl: Any, token: str) -> bool:
+    async def _inject(self, ctrl: Any, token: str) -> Dict[str, Any]:
         try:
             res = await ctrl.cdp.evaluate(build_inject_js(token))
         except Exception as e:
             self._log(f"2Captcha inject probe failed: {e}", "warn")
-            return False
+            return {}
         try:
             data = json.loads(res) if isinstance(res, str) else res
-            return bool(data and data.get("ok"))
+            return data if isinstance(data, dict) else {}
         except Exception:
-            return False
+            return {}
 
     async def _verify_gone(self, ctrl: Any, stop: Callable[[], bool]) -> bool:
         """Watch the dialog close after injection; fail closed on probe error."""

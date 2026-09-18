@@ -330,7 +330,7 @@ test('visible: display:none ancestor is NOT on screen', () => {
 
 /* ——— inject probe ——— */
 
-const runInject = (token, body) => {
+const runInject = (token, body, win = {}) => {
   const document = makeDoc(body);
   const proto = {};
   Object.defineProperty(proto, 'value', {
@@ -341,9 +341,9 @@ const runInject = (token, body) => {
   const HTMLTextAreaElement = { prototype: proto };
   const HTMLInputElement = { prototype: proto };
   class Event { constructor(type, init) { this.type = type; this.bubbles = !!(init && init.bubbles); } }
-  const fn = new Function('document', 'HTMLTextAreaElement', 'HTMLInputElement', 'Event',
+  const fn = new Function('document', 'HTMLTextAreaElement', 'HTMLInputElement', 'Event', 'window',
                           'return (' + probe('inject.js') + ')');
-  return fn(document, HTMLTextAreaElement, HTMLInputElement, Event)(token);
+  return fn(document, HTMLTextAreaElement, HTMLInputElement, Event, win)(token);
 };
 
 test('inject: sets dialog-scoped hidden field with events', () => {
@@ -377,6 +377,40 @@ test('inject: no field on page → ok:false with error', () => {
   const r = runInject('TOK', new El('body').append(securityDialog({})));
   assert.equal(r.ok, false);
   assert.match(r.error, /response field not found/);
+});
+
+test('inject: invokes the dialog anchor callback with the token (the real solve path)', () => {
+  let got = null;
+  const d = securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6LEnterpkey0000000000000000000&size=normal&cb=abc123' });
+  d.append(new El('textarea', { name: 'g-recaptcha-response' }));
+  const win = { abc123: (tok) => { got = tok; } };
+  const r = runInject('TOK_CB', new El('body').append(d), win);
+  assert.equal(r.ok, true);
+  assert.equal(r.scope, 'dialog');
+  assert.equal(r.cb, 'abc123');
+  assert.equal(r.cbCalled, true);
+  assert.equal(r.cbError, null);
+  assert.equal(got, 'TOK_CB');
+});
+
+test('inject: no cb in anchor → ok, cb null, no window call', () => {
+  const d = securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6LEnterpkey0000000000000000000&size=normal' });
+  d.append(new El('textarea', { name: 'g-recaptcha-response' }));
+  const r = runInject('TOK2', new El('body').append(d), {});
+  assert.equal(r.ok, true);
+  assert.equal(r.cb, null);
+  assert.equal(r.cbCalled, false);
+});
+
+test('inject: cb throwing → ok, cbError captured, injection still counts', () => {
+  const d = securityDialog({ iframeSrc: 'https://www.google.com/recaptcha/enterprise/anchor?k=6LEnterpkey0000000000000000000&cb=boom9' });
+  d.append(new El('textarea', { name: 'g-recaptcha-response' }));
+  const win = { boom9: () => { throw new Error('handler down'); } };
+  const r = runInject('TOK3', new El('body').append(d), win);
+  assert.equal(r.ok, true);
+  assert.equal(r.cb, 'boom9');
+  assert.equal(r.cbCalled, false);
+  assert.match(r.cbError, /handler down/);
 });
 
 /* ——— continue-click probe ——— */
