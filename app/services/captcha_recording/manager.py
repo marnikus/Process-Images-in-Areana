@@ -68,13 +68,20 @@ class RecordingManager:
         return self.store.list_sessions(limit)
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
-        return self.store.set_label(session_id, label)
+        return self.store.set_label(session_id, "actor", label)
+
+    def set_result_label(self, session_id: str, label: str) -> dict[str, Any]:
+        return self.store.set_label(session_id, "result", label)
 
     def get_session(self, session_id: str) -> dict[str, Any]:
         return self.reader.details(session_id)
 
     def session_folder(self, session_id: str) -> str:
         return str(self.reader.folder(session_id))
+
+    def delete_session(self, session_id: str) -> None:
+        """Delete one recording session and all its artifacts."""
+        self.store.delete_session(session_id)
 
     def _drop(self, recorder: CaptchaRecorder) -> None:
         for tab_id, active in tuple(self._active.items()):

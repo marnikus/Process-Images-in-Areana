@@ -5,10 +5,11 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
-from .models import VALID_LABELS, new_session_id, utc_now
+from .models import VALID_LABELS, VALID_RESULT_LABELS, new_session_id, utc_now
 from .retention import prune_recordings
 from .sanitize import safe_url
 
@@ -63,15 +64,29 @@ class RecordingStore:
         clean.sort(key=lambda row: row.get("started_at", ""), reverse=True)
         return clean[:max(1, min(int(limit), 1000))]
 
-    def set_label(self, session_id: str, label: str) -> dict[str, Any]:
-        if label not in VALID_LABELS:
-            raise ValueError("label must be unknown, bot, or manual")
+    _LABEL_FIELDS = {
+        "actor": ("actor_label", "label_updated_at", VALID_LABELS),
+        "result": ("result_label", "result_label_updated_at", VALID_RESULT_LABELS),
+    }
+
+    def set_label(self, session_id: str, field: str, label: str) -> dict[str, Any]:
+        """Apply an actor or result label to a session manifest."""
+        if field not in self._LABEL_FIELDS:
+            raise ValueError(f"field must be one of {', '.join(sorted(self._LABEL_FIELDS))}")
+        key, stamp, allowed = self._LABEL_FIELDS[field]
+        if label not in allowed:
+            raise ValueError(f"label must be one of {', '.join(sorted(allowed))}")
         folder = self._folder(session_id)
         manifest = self._read_manifest(folder)
-        manifest["actor_label"] = label
-        manifest["label_updated_at"] = utc_now()
+        manifest[key] = label
+        manifest[stamp] = utc_now()
         self._write_manifest(folder, manifest)
         return self._summary(folder)
+
+    def delete_session(self, session_id: str) -> None:
+        """Remove one session folder and all its artifacts."""
+        folder = self._folder(session_id)
+        shutil.rmtree(folder, ignore_errors=False)
 
     def recover_interrupted(self) -> None:
         for folder in self._session_folders():
@@ -96,6 +111,7 @@ class RecordingStore:
             "reason": "",
             "method": "",
             "actor_label": "unknown",
+            "result_label": "unknown",
             "elapsed_ms": 0,
             "event_count": 0,
             "mutation_count": 0,
@@ -111,8 +127,8 @@ class RecordingStore:
         keys = (
             "session_id", "eid", "tab", "source", "url", "kind", "started_at",
             "ended_at", "status", "outcome", "reason", "method", "actor_label",
-            "elapsed_ms", "event_count", "mutation_count", "network_count",
-            "snapshot_count", "truncated",
+            "result_label", "elapsed_ms", "event_count", "mutation_count",
+            "network_count", "snapshot_count", "truncated",
         )
         return {key: manifest.get(key) for key in keys}
 

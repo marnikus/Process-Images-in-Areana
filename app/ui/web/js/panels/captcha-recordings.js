@@ -10,15 +10,15 @@ const CaptchaRecordingsPanel = {
   load() {
     const bridge = window.CaptchaRecordingsBridge;
     if (!bridge?.list_sessions) return;
-    bridge.list_sessions(200, (raw) => {
+    bridge.list_sessions(1000, (raw) => {
       try {
         const result = JSON.parse(raw);
-        if (result.ok) this.render(result.sessions || []);
+        if (result.ok) this.render(result.sessions || [], result.total || 0);
       } catch (error) { LogConsole.log('Captcha records parse failed: ' + error, 'warn'); }
     });
   },
 
-  render(rows) {
+  render(rows, total) {
     const body = document.getElementById('captchaRecordsBody');
     if (!body) return;
     body.replaceChildren(...rows.map((row) => this.row(row)));
@@ -37,8 +37,14 @@ const CaptchaRecordingsPanel = {
     this.cell(tr, this.duration(item.elapsed_ms));
     this.cell(tr, `${item.mutation_count || 0}/${item.network_count || 0}/${item.snapshot_count || 0}`);
     const labelCell = document.createElement('td');
-    labelCell.append(this.labelSelect(item), CaptchaRecordingComparison.button(item, 0),
-      CaptchaRecordingComparison.button(item, 1), this.openButton(item));
+    labelCell.append(
+      this.labelSelect(item),
+      this.resultSelect(item),
+      CaptchaRecordingComparison.button(item, 0),
+      CaptchaRecordingComparison.button(item, 1),
+      this.openButton(item),
+      this.deleteButton(item),
+    );
     tr.appendChild(labelCell);
     tr.title = item.reason || item.session_id || '';
     return tr;
@@ -62,16 +68,70 @@ const CaptchaRecordingsPanel = {
     return button;
   },
 
+  deleteButton(item) {
+    const button = document.createElement('button');
+    button.className = 'captcha-compare-btn captcha-delete-btn';
+    button.textContent = '✕';
+    button.title = 'Delete this recording';
+    button.addEventListener('click', () => {
+      if (!confirm(`Delete recording ${item.session_id}?`)) return;
+      const bridge = window.CaptchaRecordingsBridge;
+      if (!bridge?.delete_session) return;
+      bridge.delete_session(item.session_id, (raw) => {
+        try {
+          const result = JSON.parse(raw);
+          if (result.ok) { this.load(); }
+          else LogConsole.log('Delete recording failed: ' + result.error, 'error');
+        } catch (error) { LogConsole.log('Delete reply failed: ' + error, 'error'); }
+      });
+    });
+    return button;
+  },
+
   labelSelect(item) {
     const select = document.createElement('select');
     select.className = 'captcha-record-label';
-    [['unknown', 'Unknown'], ['bot', 'Bot passed'], ['manual', 'User passed']].forEach(([value, text]) => {
+    [
+      ['unknown', 'Unknown actor'],
+      ['bot', 'Bot'],
+      ['manual', 'User'],
+      ['mixed', 'Bot→User'],
+    ].forEach(([value, text]) => {
       const option = document.createElement('option');
       option.value = value; option.textContent = text; select.appendChild(option);
     });
     select.value = item.actor_label || 'unknown';
     select.addEventListener('change', () => this.setLabel(item.session_id, select));
     return select;
+  },
+
+  resultSelect(item) {
+    const select = document.createElement('select');
+    select.className = 'captcha-record-label';
+    [
+      ['unknown', '? result'],
+      ['passed', 'Passed'],
+      ['failed', 'Failed'],
+    ].forEach(([value, text]) => {
+      const option = document.createElement('option');
+      option.value = value; option.textContent = text; select.appendChild(option);
+    });
+    select.value = item.result_label || 'unknown';
+    select.addEventListener('change', () => this.setResultLabel(item.session_id, select));
+    return select;
+  },
+
+  setResultLabel(sessionId, select) {
+    const bridge = window.CaptchaRecordingsBridge;
+    if (!bridge?.set_result_label) return;
+    select.disabled = true;
+    bridge.set_result_label(sessionId, select.value, (raw) => {
+      select.disabled = false;
+      try {
+        const result = JSON.parse(raw);
+        if (!result.ok) LogConsole.log('Result label failed: ' + result.error, 'error');
+      } catch (error) { LogConsole.log('Result label reply failed: ' + error, 'error'); }
+    });
   },
 
   setLabel(sessionId, select) {

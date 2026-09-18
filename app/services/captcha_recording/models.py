@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import secrets
 
-VALID_LABELS = frozenset({"unknown", "bot", "manual"})
+VALID_LABELS = frozenset({"unknown", "bot", "manual", "mixed"})
+VALID_RESULT_LABELS = frozenset({"unknown", "passed", "failed"})
 FINAL_OUTCOMES = frozenset({
     "solved", "manual", "page_error", "token_stale", "auto_failed",
     "stopped", "interrupted",

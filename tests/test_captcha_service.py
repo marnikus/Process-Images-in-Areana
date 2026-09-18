@@ -117,6 +117,33 @@ async def test_enabled_service_auto_solves_and_records(monkeypatch, isolated_con
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_auto_solve_feeds_timing_database(monkeypatch, isolated_config_dir):
+    """Phase 1 feedback loop: every auto attempt records a timing sample."""
+    instant_sleep(monkeypatch)
+    from tests.test_captcha_solver import FakeClient
+
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    keys = CaptchaKeyStore(isolated_config_dir)
+    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    ctrl = FakeCtrl(visible_seq=[True, False])
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="check-security")
+    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    outcome = await handle_captcha(ctx)
+    assert outcome.status == "solved"
+    svc = bridge._captcha_service()
+    entry = svc.timing.get_entry("arena.ai")
+    assert entry["attempts"] == 1 and entry["successes"] == 1
+    assert entry["kind"] == "recaptcha_enterprise"
+    assert svc.solver._warm._warm == {}  # warm task consumed, none leaked
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_probe_error_fails_open_to_manual(monkeypatch, isolated_config_dir):
     """RULE 9: a broken detect probe must not stall the job."""
     instant_sleep(monkeypatch)

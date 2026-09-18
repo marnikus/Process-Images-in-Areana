@@ -37,7 +37,8 @@ class CaptchaRecordingsBridge(QObject):
     def list_sessions(self, limit: int = 200) -> str:
         try:
             rows = self.manager.list_sessions(limit)
-            return json.dumps({"ok": True, "sessions": rows}, ensure_ascii=False)
+            return json.dumps({"ok": True, "sessions": rows,
+                               "total": len(rows)}, ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
@@ -45,6 +46,14 @@ class CaptchaRecordingsBridge(QObject):
     def set_label(self, session_id: str, label: str) -> str:
         try:
             row = self.manager.set_label(session_id, label)
+            return json.dumps({"ok": True, "session": row}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+    @Slot(str, str, result=str)
+    def set_result_label(self, session_id: str, label: str) -> str:
+        try:
+            row = self.manager.set_result_label(session_id, label)
             return json.dumps({"ok": True, "session": row}, ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
@@ -64,5 +73,13 @@ class CaptchaRecordingsBridge(QObject):
             if not self._opener(path):
                 raise RuntimeError("operating system did not open the folder")
             return json.dumps({"ok": True, "path": path}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def delete_session(self, session_id: str) -> str:
+        try:
+            self.manager.delete_session(session_id)
+            return json.dumps({"ok": True}, ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)

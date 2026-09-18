@@ -25,7 +25,7 @@ def test_store_create_finish_list_and_label(tmp_path):
 
     rows = store.list_sessions()
     assert len(rows) == 1 and rows[0]["url"] == "https://arena.ai/c/1"
-    updated = store.set_label(manifest["session_id"], "bot")
+    updated = store.set_label(manifest["session_id"], "actor", "bot")
     assert updated["actor_label"] == "bot"
     assert (store.root / manifest["session_id"] / "snapshots/000000.json.gz").exists()
 
@@ -35,9 +35,9 @@ def test_store_rejects_bad_label_and_path(tmp_path):
     store = RecordingStore(tmp_path)
     session_id = store.create(encounter())["session_id"]
     with pytest.raises(ValueError):
-        store.set_label(session_id, "robot")
+        store.set_label(session_id, "actor", "robot")
     with pytest.raises(ValueError):
-        store.set_label("../escape", "bot")
+        store.set_label("../escape", "actor", "bot")
 
 
 @pytest.mark.unit
@@ -93,3 +93,54 @@ def test_retention_removes_oldest_folder_by_count(tmp_path):
 
     assert not (root / "20260101-old").exists()
     assert (root / "20260102-new").exists()
+
+
+@pytest.mark.unit
+def test_store_delete_session(tmp_path):
+    store = RecordingStore(tmp_path)
+    sid = store.create(encounter())["session_id"]
+    assert (store.root / sid).is_dir()
+    store.delete_session(sid)
+    assert not (store.root / sid).exists()
+    with pytest.raises(FileNotFoundError):
+        store.delete_session(sid)
+
+
+@pytest.mark.unit
+def test_store_set_result_label(tmp_path):
+    store = RecordingStore(tmp_path)
+    sid = store.create(encounter())["session_id"]
+    updated = store.set_label(sid, "result", "passed")
+    assert updated["result_label"] == "passed"
+    with pytest.raises(ValueError):
+        store.set_label(sid, "result", "bogus")
+
+
+@pytest.mark.unit
+def test_store_set_label_rejects_unknown_field(tmp_path):
+    store = RecordingStore(tmp_path)
+    sid = store.create(encounter())["session_id"]
+    with pytest.raises(ValueError):
+        store.set_label(sid, "bogus_field", "bot")
+
+
+@pytest.mark.unit
+def test_evidence_reader_adapts_flat_events(tmp_path):
+    """Reader must reshape flat recorder events for the comparison UI."""
+    store = RecordingStore(tmp_path)
+    sid = store.create(encounter())["session_id"]
+    store.append_event(sid, {"seq": 0, "at": "2026-09-18T10:00:00Z",
+                             "offset_ms": 1200, "kind": "state",
+                             "state": "recording_started"})
+    store.append_event(sid, {"seq": 1, "at": "2026-09-18T10:00:01Z",
+                             "offset_ms": 2400, "kind": "mutation",
+                             "changes": [{"path": "main"}]})
+
+    details = EvidenceReader(store.root).details(sid)
+    events = details["events"]
+    assert len(events) == 2
+    assert events[0]["at_ms"] == 1200
+    assert events[0]["kind"] == "state"
+    assert events[0]["payload"]["state"] == "recording_started"
+    assert events[1]["at_ms"] == 2400
+    assert events[1]["payload"]["changes"] == [{"path": "main"}]

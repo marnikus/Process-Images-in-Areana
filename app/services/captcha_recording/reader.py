@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import gzip
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+_ENVELOPE_KEYS = frozenset({"seq", "at", "offset_ms", "kind"})
 
 
 class EvidenceReader:
@@ -48,7 +51,7 @@ class EvidenceReader:
             try:
                 value = json.loads(line)
                 if isinstance(value, dict):
-                    rows.append(value)
+                    rows.append(_adapt_event(value))
             except (json.JSONDecodeError, TypeError):
                 continue
         return rows
@@ -63,5 +66,35 @@ class EvidenceReader:
         if not isinstance(value, dict):
             return {}
         html = str(value.get("html", ""))
-        return {"at_ms": value.get("at_ms", 0), "html": html[:20000],
+        at_ms = _parse_at_ms(value.get("at"))
+        return {"at_ms": at_ms, "html": html[:20000],
                 "truncated_for_view": len(html) > 20000}
+
+
+def _adapt_event(raw: dict[str, Any]) -> dict[str, Any]:
+    """Reshape a recorder event for the comparison UI.
+
+    Recorder writes flat keys: {seq, at, offset_ms, kind, ...extra}.
+    The comparison JS expects: {at_ms, kind, payload}.
+    """
+    adapted: dict[str, Any] = {
+        "at_ms": raw.get("offset_ms", 0),
+        "kind": raw.get("kind", "?"),
+    }
+    payload = {k: v for k, v in raw.items() if k not in _ENVELOPE_KEYS}
+    if payload:
+        adapted["payload"] = payload
+    return adapted
+
+
+def _parse_at_ms(value: Any) -> int:
+    """Best-effort: turn an ISO UTC string into epoch-ms, or return 0."""
+    if isinstance(value, (int, float)):
+        return int(value)
+    if not isinstance(value, str):
+        return 0
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return int(dt.timestamp() * 1000)
+    except (ValueError, OSError):
+        return 0

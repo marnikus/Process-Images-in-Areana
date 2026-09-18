@@ -24,8 +24,10 @@ from app.services.captcha_recording import RecordingManager
 from .api_client import POLL_INTERVAL_SEC, ApiError, Captcha2Client
 from .key_store import CaptchaKeyStore, CaptchaSettings, clamp_timeout
 from .signals import CaptchaSignal, SolveOutcome, host_of
-from .solver import CaptchaSolver, task_type_for
+from .solver import CaptchaSolver, SolveRequest
 from .stats import CaptchaStatsStore
+from .timing_db import TimingDatabase, TimingSample
+from .warm import task_type_for
 
 
 @dataclass
@@ -84,6 +86,19 @@ def _record_penalty(ctx: CaptchaCtx) -> None:
         note_captcha_event(ctx.pool, ctx.tab_id, ctx.bridge, source=ctx.source)
     except Exception as e:
         _log(ctx, f"Captcha penalty skipped: {e}", "warn")
+
+
+def _record_timing(svc: "CaptchaService", signal: CaptchaSignal,
+                   outcome: SolveOutcome) -> None:
+    """Feed timing data to the adaptive database (fail-open)."""
+    try:
+        svc.timing.record_attempt(host_of(signal.page_url), TimingSample(
+            solve_sec=outcome.elapsed_sec,
+            token_sec=outcome.token_sec,
+            success=outcome.status == "solved",
+            kind=signal.kind))
+    except Exception:
+        pass
 
 
 def _mark_waiting(ctx: CaptchaCtx) -> None:
@@ -233,6 +248,7 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     _record_stats(ctx, "detected", host_of(signal.page_url))
     _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}) via {ctx.source}", "error")
     svc = _service(ctx)
+    _warm_provider(svc, ctx, signal)
     recorder = await svc.recordings.start(ctx.ctrl, rep) if svc is not None else None
     try:
         outcome = await _resolve_captcha(ctx, signal, svc, rep)
@@ -240,17 +256,44 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
         if svc is not None:
             await svc.recordings.abort(recorder, f"{type(exc).__name__}: {exc}")
         raise
+    finally:
+        if svc is not None:
+            await svc.solver.discard_warm(ctx.tab_id)
     if svc is not None:
         await svc.recordings.finish(recorder, outcome)
     return outcome
+
+
+def _warm_provider(svc: Optional["CaptchaService"], ctx: CaptchaCtx,
+                   signal: CaptchaSignal) -> None:
+    """Pre-start the 2Captcha task so its latency overlaps the flow setup."""
+    if svc is None or not _auto_viable(svc, signal):
+        return
+    try:
+        svc.solver.warm_up(ctx.tab_id, signal)
+    except Exception as e:
+        _log(ctx, f"warm-up skipped: {e}", "warn")
+
+
+def _auto_viable(svc: "CaptchaService", signal: CaptchaSignal) -> bool:
+    """Auto-solve is worthwhile: enabled, solvable, site not known-impossible."""
+    return (svc.auto_enabled() and signal.solvable
+            and svc.timing.get_verdict(host_of(signal.page_url)) != "impossible")
 
 
 async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
                            svc: Optional["CaptchaService"], rep: Dict[str, Any]) -> SolveOutcome:
     """Choose automatic or manual policy while recording stays orthogonal."""
     if svc is not None and svc.auto_enabled() and signal.solvable:
+        if not _auto_viable(svc, signal):
+            host = host_of(signal.page_url)
+            reason = (f"auto-solve skipped — {host} is known-impossible "
+                      f"(tokens arrive after page patience)")
+            _log(ctx, f"🤖 {reason}", "warn")
+            return await _manual_wait(ctx, signal, reason, rep)
         outcome = await _try_auto(ctx, signal, svc, rep)
         await svc.recordings.note(ctx.tab_id, "auto_attempt_finished", outcome)
+        _record_timing(svc, signal, outcome)
         if outcome.status == "solved":
             _record_penalty(ctx)
             return outcome
@@ -266,10 +309,16 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
 
 async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
                  rep: Dict[str, Any]) -> SolveOutcome:
-    """One 2Captcha attempt; fills + emits the report when solved."""
-    _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
+    """One 2Captcha attempt with adaptive timeout; fills + emits the report."""
+    host = host_of(signal.page_url)
+    effective_timeout = svc.timing.get_effective_timeout(
+        host, svc.keys.load().solve_timeout_sec)
+    _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started "
+         f"(tab {str(ctx.tab_id)[:12]}, timeout={effective_timeout:.0f}s)", "warn")
     solve_mono = time.monotonic()
-    outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
+    outcome = await svc.solver.solve(SolveRequest(
+        ctrl=ctx.ctrl, tab_id=ctx.tab_id, signal=signal,
+        stop=_stop_pred(ctx), timeout=effective_timeout))
     _finish_auto(rep, outcome, solve_mono, task_type_for(signal.kind))
     if outcome.status != "solved":
         _finish_resolution(rep, outcome)
@@ -311,11 +360,12 @@ async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
 
 
 class CaptchaService:
-    """Bridge-side facade: key store + stats + solver + payloads (no Qt)."""
+    """Bridge-side facade: key store + stats + solver + timing + recordings."""
 
     def __init__(self, config_dir: str, log: Optional[Callable[[str, str], None]] = None):
         self.keys = CaptchaKeyStore(config_dir)
         self.stats = CaptchaStatsStore(config_dir)
+        self.timing = TimingDatabase(config_dir)
         self._log = log or (lambda msg, level="info": None)
         self.solver = CaptchaSolver(self.keys, self.stats, self._log)
         self.recordings = RecordingManager(config_dir, self._log)
