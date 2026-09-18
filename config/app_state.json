@@ -267,7 +267,7 @@
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 7,
+      "attempt_count": 8,
       "output_path": null,
       "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
@@ -357,7 +357,7 @@
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 1,
+      "attempt_count": 2,
       "output_path": null,
       "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
@@ -393,7 +393,7 @@
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 1,
+      "attempt_count": 2,
       "output_path": null,
       "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
@@ -408,12 +408,12 @@
       "size": 181121,
       "mtime": 1789720308.7497826,
       "fingerprint": "b4bc1a7152525d49",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -493,11 +493,11 @@
   "progress": {
     "total": 21,
     "selected": 21,
-    "pending": 5,
+    "pending": 4,
     "processing": 0,
     "completed": 13,
     "skipped": 0,
-    "failed": 3,
+    "failed": 4,
     "needs_review": 0
   },
   "run_state": "idle",
