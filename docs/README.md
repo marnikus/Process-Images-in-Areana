@@ -46,6 +46,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-17-2captcha-integration/` — `design.md` + `summary.md`: opt-in 2Captcha auto-solve for visible Security-Verification captchas (RULE 20 amendment), `handle_captcha` choke point, masked-only key store, statistics panel, JS probes tested under `node --test`
 - `archive/2026-09-18-captcha-detection-verification/design.md` — detection verified/adapted against real arena.ai states (challenge dialog vs always-on badge: two sitekeys, `size=invisible` vs `normal`): badge exclusion, dialog-scoped sitekey, `isInvisible` in the docs-exact 2Captcha payload, real container/text signals
 - `archive/2026-09-18-captcha-delivery-recovery/design.md` — round 5: token never travelled the real solve path (anchor `cb=` premise disproved by live logs) — every-field injection + `data-callback` → `___grecaptcha_cfg` → anchor chain; bounded post-settle resubmit when the blocked generation died
+- `archive/2026-09-18-revival-generalize/design.md` — round 6: trigger revival on spinner loss (seen, then 20 s gone with no pixels), not only on captcha settle — covers no-dialog dead generations like the 12:08 run
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

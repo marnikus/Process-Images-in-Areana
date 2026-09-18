@@ -165,6 +165,55 @@ async def test_second_settle_after_fire_does_not_refire(monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_spinner_loss_fires_without_any_settle(monkeypatch):
+    """The 12:08 run: spinner seen, then lost, nothing arrives — revive."""
+    ctrl, clock = FakeCtrl(), FakeClock()
+    policy, reports = arm(ctrl, clock, monkeypatch)
+    await maybe_resume(ctrl, dead_diag(spinning=True))  # generation starts
+    assert policy.spinner_seen
+    for _ in range(6):  # 30 s of dead polls, no settle ever stamped
+        clock.t += 5
+        await maybe_resume(ctrl, dead_diag())
+    assert ctrl.calls == [("insert", PROMPT), ("submit",)]
+    assert any("spinner lost" in m for m, _ in reports)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_spinner_flicker_rearms_dead_window(monkeypatch):
+    ctrl, clock = FakeCtrl(), FakeClock()
+    policy, _ = arm(ctrl, clock, monkeypatch)
+    await maybe_resume(ctrl, dead_diag(spinning=True))
+    for _ in range(3):  # 15 s dead — inside the window
+        clock.t += 5
+        await maybe_resume(ctrl, dead_diag())
+    assert policy.dead_since is not None and ctrl.calls == []
+    await maybe_resume(ctrl, dead_diag(spinning=True))  # flicker back
+    assert policy.dead_since is None
+    for _ in range(6):  # fresh window must fully mature before firing
+        clock.t += 5
+        await maybe_resume(ctrl, dead_diag())
+    assert [c[0] for c in ctrl.calls] == ["insert", "submit"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_settle_then_resume_then_die_fires_via_loss(monkeypatch):
+    """Resumed generation stands the settle trigger down; later loss revives."""
+    ctrl, clock = FakeCtrl(), FakeClock()
+    policy, reports = arm(ctrl, clock, monkeypatch)
+    note_settle(ctrl)
+    await maybe_resume(ctrl, dead_diag(spinning=True))  # resumed, not dead
+    assert policy.settled_at is None and ctrl.calls == []
+    for _ in range(6):  # then it dies for real — loss trigger matures
+        clock.t += 5
+        await maybe_resume(ctrl, dead_diag())
+    assert [c[0] for c in ctrl.calls] == ["insert", "submit"]
+    assert any("spinner lost" in m for m, _ in reports)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_gate_attribute_protocol_matches_cdp_arena(monkeypatch):
     """cdp_arena calls ctrl.resume_gate(diag) — the armed attribute works."""
     ctrl, clock = FakeCtrl(), FakeClock()
