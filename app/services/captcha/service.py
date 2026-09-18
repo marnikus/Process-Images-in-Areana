@@ -11,15 +11,19 @@ inside the waits. Penalty records exactly once per solved edge.
 
 from __future__ import annotations
 
+import json
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
 from app.browser.captcha_probes import build_detect_js
+from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 
-from .api_client import ApiError, Captcha2Client
+from .api_client import POLL_INTERVAL_SEC, ApiError, Captcha2Client
 from .key_store import CaptchaKeyStore, CaptchaSettings, clamp_timeout
 from .signals import CaptchaSignal, SolveOutcome, host_of
-from .solver import CaptchaSolver
+from .solver import CaptchaSolver, task_type_for
 from .stats import CaptchaStatsStore
 
 
@@ -98,6 +102,96 @@ def _page_url(ctx: CaptchaCtx) -> str:
         return ""
 
 
+def _new_encounter(ctx: CaptchaCtx, signal: CaptchaSignal) -> Dict[str, Any]:
+    """Fresh report skeleton, stamped at detection (attempt fields blank)."""
+    return {
+        "v": 1,
+        "eid": uuid.uuid4().hex[:8],
+        "tab": ctx.tab_id,
+        "source": ctx.source,
+        "kind": signal.kind,
+        "url": signal.page_url,
+        "dom": signal.dom,
+        "sitekey": signal.sitekey,
+        "invisible": signal.is_invisible,
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "detect_to_solve_s": 0.0,
+        "task_type": "",
+        "task_id": "",
+        "polls": 0,
+        "poll_interval_s": POLL_INTERVAL_SEC,
+        "token": None,
+        "dialog_at_token": "",
+        "inject": "",
+        "page_error": None,
+        "status": "",
+        "reason": "",
+        "method": "",
+        "penalty_s": 0,
+        "solve_total_s": 0.0,
+        "_detected_mono": time.monotonic(),
+    }
+
+
+def _finish_auto(rep: Dict[str, Any], outcome: SolveOutcome,
+                 solve_mono: float, task_type: str) -> None:
+    """Fill the 2Captcha-attempt fields (durations relative to detect)."""
+    det = rep.get("_detected_mono", solve_mono)
+    to_solve = round(solve_mono - det, 1)
+    rep["detect_to_solve_s"] = to_solve
+    rep["task_type"] = task_type
+    rep["task_id"] = outcome.task_id
+    rep["polls"] = outcome.polls
+    rep["token"] = ({"at_s": round(to_solve + outcome.token_sec, 1),
+                     "fp": outcome.token_fp} if outcome.token_fp else None)
+    rep["dialog_at_token"] = outcome.dialog_at_token
+    rep["inject"] = outcome.inject
+    rep["page_error"] = ({"at_s": round(to_solve + outcome.page_error_at_s, 1),
+                          "text": outcome.page_error} if outcome.page_error else None)
+
+
+def _finish_resolution(rep: Dict[str, Any], outcome: SolveOutcome) -> None:
+    """Fill status/reason/total (mutates rep, drops the internal stamp)."""
+    det = rep.pop("_detected_mono", None)
+    rep["status"] = outcome.status
+    rep["reason"] = outcome.reason
+    rep["method"] = outcome.method
+    rep["solve_total_s"] = round(time.monotonic() - det, 1) if det else 0.0
+
+
+def _penalty_seconds(ctx: CaptchaCtx) -> int:
+    """Configured per-captcha penalty (fail-open to the default)."""
+    try:
+        return int(ctx.bridge.config.get_state("cooldown_captcha_penalty_seconds",
+                                               DEFAULT_PENALTY_SECONDS))
+    except Exception:
+        return DEFAULT_PENALTY_SECONDS
+
+
+def _stash_encounter(ctx: CaptchaCtx, eid: str) -> None:
+    """Remember the eid on the ctrl for the runner's CAPTCHA_JOB line."""
+    if not eid:
+        return
+    try:
+        lst = getattr(ctx.ctrl, "_captcha_reports", None)
+        if not isinstance(lst, list):
+            lst = []
+            ctx.ctrl._captcha_reports = lst
+        lst.append({"eid": eid, "tab": ctx.tab_id})
+    except Exception:
+        pass
+
+
+def _emit_report(ctx: CaptchaCtx, rep: Dict[str, Any]) -> None:
+    """Log the encounter JSON + stash the eid for the job-end join."""
+    try:
+        rep["penalty_s"] = _penalty_seconds(ctx) if rep.get("status") in ("solved", "manual") else 0
+        _log(ctx, f"🧾 CAPTCHA_SOLVE {json.dumps(rep, ensure_ascii=False)}", "info")
+    except Exception:
+        pass
+    _stash_encounter(ctx, str(rep.get("eid", "")))
+
+
 def _wait_timeout(ctx: CaptchaCtx) -> int:
     try:
         return int(ctx.bridge.config.get_state("watcher_captcha_timeout_sec", 300))
@@ -128,32 +222,40 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     signal = await detect_signal(ctx)
     if not signal.visible:
         return SolveOutcome(status="none")
+    rep = _new_encounter(ctx, signal)
     _mark_waiting(ctx)
     _record_stats(ctx, "detected", host_of(signal.page_url))
     _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}) via {ctx.source}", "error")
     svc = _service(ctx)
     if svc is not None and svc.auto_enabled() and signal.solvable:
-        outcome = await _try_auto(ctx, signal, svc)
+        outcome = await _try_auto(ctx, signal, svc, rep)
         if outcome.status == "solved":
             _record_penalty(ctx)
             return outcome
-        return await _manual_wait(ctx, signal, f"auto-solve failed: {outcome.reason}")
+        return await _manual_wait(ctx, signal, f"auto-solve failed: {outcome.reason}", rep)
     if svc is not None and svc.auto_enabled():
         _log(ctx, "⚠️ FLAG CAPTCHA_AUTO skipped — no sitekey in dialog — manual wait", "warn")
-        return await _manual_wait(ctx, signal, "auto-solve: no sitekey in dialog")
-    return await _manual_wait(ctx, signal, "auto-solve OFF — solve in Chrome (enable 2Captcha in the Captcha window)")
+        return await _manual_wait(ctx, signal, "auto-solve: no sitekey in dialog", rep)
+    return await _manual_wait(ctx, signal, "auto-solve OFF — solve in Chrome (enable 2Captcha in the Captcha window)", rep)
 
 
-async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService) -> SolveOutcome:
-    """One 2Captcha attempt with its flag log; caller decides the fallback."""
+async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
+                 rep: Dict[str, Any]) -> SolveOutcome:
+    """One 2Captcha attempt; fills + emits the report when solved."""
     _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
+    solve_mono = time.monotonic()
     outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
+    _finish_auto(rep, outcome, solve_mono, task_type_for(signal.kind))
     if outcome.status != "solved":
         _log(ctx, f"2Captcha auto-solve failed ({outcome.reason}) — falling back to manual wait", "warn")
+        return outcome
+    _finish_resolution(rep, outcome)
+    _emit_report(ctx, rep)
     return outcome
 
 
-async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str) -> SolveOutcome:
+async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
+                       rep: Dict[str, Any]) -> SolveOutcome:
     """Overlay (with the why-not-solving flag) + poll until the dialog clears."""
     timeout = _wait_timeout(ctx)
     _log(ctx, f"🛡️ FLAG CAPTCHA_WAITING — captcha on screen (tab {str(ctx.tab_id)[:12]}, {host_of(signal.page_url)}) — awaiting your solve in Chrome", "error")
@@ -170,10 +272,14 @@ async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str) -> S
     except Exception:
         pass
     if not solved:
-        return SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
-    _record_stats(ctx, "manual_solved", host_of(signal.page_url))
-    _record_penalty(ctx)
-    return SolveOutcome(status="manual", method="manual")
+        out = SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
+    else:
+        _record_stats(ctx, "manual_solved", host_of(signal.page_url))
+        _record_penalty(ctx)
+        out = SolveOutcome(status="manual", method="manual")
+    _finish_resolution(rep, out)
+    _emit_report(ctx, rep)
+    return out
 
 
 class CaptchaService:

@@ -133,6 +133,7 @@ test('detect: visible enterprise widget with sitekey in anchor src', () => {
   assert.equal(r.kind, 'recaptcha_enterprise');
   assert.equal(r.sitekey, '6LEnterpkey0000000000000000000');
   assert.equal(r.url, 'https://arena.ai/image/direct');
+  assert.equal(r.dom, 'dialog:recaptcha-iframe');
 });
 
 test('detect: v2 anchor src classifies as recaptcha_v2', () => {
@@ -158,6 +159,17 @@ test('detect: no dialog and no iframe → not visible', () => {
   assert.equal(r.visible, false);
   assert.equal(r.kind, 'none');
   assert.equal(r.sitekey, '');
+  assert.equal(r.dom, undefined);
+});
+
+test('detect: page-level iframe without dialog → page anchor', () => {
+  const body = new El('body').append(
+    new El('iframe', { title: 'reCAPTCHA', src: 'https://www.google.com/recaptcha/enterprise/anchor?k=6LPagekey000000000000000000000' }),
+  );
+  const r = runDetect(body);
+  assert.equal(r.visible, true);
+  assert.equal(r.kind, 'recaptcha_enterprise');
+  assert.equal(r.dom, 'page:recaptcha-iframe');
 });
 
 test('detect: closed dialog with unmounted (hidden) iframe does not count', () => {
@@ -174,6 +186,7 @@ test('detect: image captcha without widget classified as image', () => {
   const r = runDetect(new El('body').append(securityDialog({ withImageCaptcha: true })));
   assert.equal(r.visible, true);
   assert.equal(r.kind, 'image');
+  assert.equal(r.dom, 'dialog:image');
 });
 
 test('detect: script-scan fallback finds embedded sitekey', () => {

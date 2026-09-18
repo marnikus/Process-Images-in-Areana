@@ -19,6 +19,7 @@ class CaptchaSignal:
     sitekey: str = ""
     page_url: str = ""
     is_invisible: bool = False  # probe: iframe src size=invisible (no visible checkbox)
+    dom: str = ""  # probe: semantic anchor (dialog|page : recaptcha-iframe|image|no-widget)
 
     @property
     def solvable(self) -> bool:
@@ -46,6 +47,7 @@ class CaptchaSignal:
             sitekey=str(res.get("sitekey") or ""),
             page_url=str(res.get("url") or ""),
             is_invisible=bool(res.get("invisible")),
+            dom=str(res.get("dom") or ""),
         )
 
 
@@ -70,3 +72,10 @@ class SolveOutcome:
     method: str = ""  # auto | manual | ""
     task_id: str = ""
     elapsed_sec: float = 0.0
+    polls: int = 0  # getTaskResult rounds (retry count)
+    token_sec: float = 0.0  # solve start → token arrival
+    token_fp: str = ""  # token fingerprint (shape only, RULE 20)
+    dialog_at_token: str = ""  # visible | gone | "" (no token)
+    inject: str = ""  # "scope=.. fields=.. cb=.." summary
+    page_error_at_s: float = 0.0  # solve start → mid-solve page error
+    page_error: str = ""

@@ -51,6 +51,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-18-resubmit-send-ready/design.md` — round 7: visible-composer insert + Send-ready click + re-attach on resubmit; `Trace ID:` in-thread errors fast-fail the wait
 - `archive/2026-09-18-solve-observability/design.md` — round 8: task id, poll heartbeats, token fingerprint + time-to-token, pre-inject dialog state, provider error detail in logs
 - `archive/2026-09-18-too-late-to-solve/design.md` — round 9: tokens real-but-late verdict + data-first slice (isInvisible log, mid-solve error timestamps, no behavior change)
+- `archive/2026-09-18-captcha-reporting/design.md` — round 10: `CAPTCHA_SOLVE` JSON per encounter + `CAPTCHA_JOB` join at job end (outcome + page error)
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

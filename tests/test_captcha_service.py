@@ -338,3 +338,96 @@ def test_service_apply_settings_masks_key(isolated_config_dir):
     assert "abcdef1234567890" not in str(payload)
     assert payload["masked_key"] == "abcd****7890"
     assert payload["solve_timeout_sec"] == 240
+
+
+def solve_reports(bridge):
+    """Parse the CAPTCHA_SOLVE JSON lines from the bridge log."""
+    import json
+
+    out = []
+    for m, _ in bridge._logs:
+        if "🧾 CAPTCHA_SOLVE " in m:
+            out.append(json.loads(m.split("🧾 CAPTCHA_SOLVE ", 1)[1]))
+    return out
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_auto_solve_emits_structured_report(monkeypatch, isolated_config_dir):
+    instant_sleep(monkeypatch)
+    from tests.test_captcha_solver import SITEKEY, FakeClient
+
+    token = "03AG" + "z" * 100 + "Q12"
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": token}},
+    ])
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    keys = CaptchaKeyStore(isolated_config_dir)
+    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+
+    class DomCtrl(FakeCtrl):
+        async def _evaluate(self, js):
+            import json
+            if "Security Verification" in js:
+                d = detect_result()
+                d["dom"] = "dialog:recaptcha-iframe"
+                return json.dumps(d)
+            return await super()._evaluate(js)
+
+    ctrl = DomCtrl(visible_seq=[True, False])  # pre-inject up; verify gone
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="check-security")
+    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    assert (await handle_captcha(ctx)).status == "solved"
+    reps = solve_reports(bridge)
+    assert len(reps) == 1
+    rep = reps[0]
+    assert rep["v"] == 1 and len(rep["eid"]) == 8
+    assert rep["tab"] == "t1" and rep["source"] == "check-security"
+    assert rep["kind"] == "recaptcha_enterprise" and rep["dom"] == "dialog:recaptcha-iframe"
+    assert rep["sitekey"] == SITEKEY  # full public sitekey, not masked
+    assert rep["url"] == "https://arena.ai/image/direct" and rep["invisible"] is False
+    assert rep["task_id"] == "101" and rep["task_type"] == "RecaptchaV2EnterpriseTaskProxyless"
+    assert rep["polls"] == 1 and rep["poll_interval_s"] == 5.0
+    assert rep["token"]["fp"] == f"len={len(token)} head={token[:8]} tail={token[-4:]}"
+    assert rep["dialog_at_token"] == "visible"
+    assert "scope=dialog" in rep["inject"]
+    assert rep["page_error"] is None
+    assert rep["status"] == "solved" and rep["penalty_s"] == 900
+    assert "_detected_mono" not in rep
+    assert ctrl._captcha_reports == [{"eid": rep["eid"], "tab": "t1"}]  # stashed for the join
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_manual_path_emits_report_without_task(monkeypatch, isolated_config_dir):
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    ctrl = FakeCtrl(visible_seq=[True, False])  # manual wait: up, then cleared
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="job")
+    assert (await handle_captcha(ctx)).status == "manual"  # auto OFF by default
+    reps = solve_reports(bridge)
+    assert len(reps) == 1
+    rep = reps[0]
+    assert rep["task_id"] == "" and rep["task_type"] == "" and rep["polls"] == 0
+    assert rep["token"] is None and rep["inject"] == ""
+    assert rep["status"] == "manual" and rep["penalty_s"] == 900
+    assert ctrl._captcha_reports[0]["eid"] == rep["eid"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stopped_path_emits_report_with_zero_penalty(monkeypatch, isolated_config_dir):
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    ctrl = FakeCtrl(visible_seq=[True, True, True])
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", stop=lambda: True)
+    assert (await handle_captcha(ctx)).status == "stopped"
+    reps = solve_reports(bridge)
+    assert len(reps) == 1  # edge data is never silent
+    assert reps[0]["status"] == "stopped" and reps[0]["penalty_s"] == 0

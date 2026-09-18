@@ -6,8 +6,9 @@
      footer "Protected by reCAPTCHA", textarea[name=g-recaptcha-response]
    * badge (normal) state: .grecaptcha-badge with a size=invisible anchor
      iframe carrying a DIFFERENT sitekey — never a challenge, never a trigger.
-   Output: {visible, kind, sitekey, invisible, url} — exact data the solver
-   needs for its 2Captcha payload. RULE 21: semantic before structural. */
+   Output: {visible, kind, sitekey, invisible, url, dom} — exact data the
+   solver needs for its 2Captcha payload, plus the semantic DOM anchor
+   for captcha reports. RULE 21: semantic before structural. */
 (() => {
   const out = {visible: false, kind: "none", sitekey: "", invisible: false, url: location.href};
   const IFRAME = 'iframe[title="reCAPTCHA"], iframe[src*="recaptcha"]';
@@ -29,6 +30,8 @@
   out.visible = true;
   const src = iframe ? (iframe.getAttribute("src") || "") : "";
   const imageCaptcha = !!(dialog && dialog.querySelector('img[src*="captcha"], img[alt*="captcha" i]'));
+  out.dom = (dialog ? "dialog" : "page") + ":"
+    + (imageCaptcha && !iframe ? "image" : iframe ? "recaptcha-iframe" : "no-widget");
   out.kind = imageCaptcha && !iframe ? "image"
            : src.includes("/recaptcha/api2/") ? "recaptcha_v2"
            : "recaptcha_enterprise";

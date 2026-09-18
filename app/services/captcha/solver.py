@@ -45,11 +45,27 @@ class SolvePlan:
     token_at: float = 0.0  # monotonic() when the provider token arrived
     err_base: Optional[str] = None  # error-scan corpus at solve start (None = not taken)
     err_seen: bool = False  # a mid-solve page error was already logged
+    polls: int = 0  # provider poll rounds (report retry count)
+    token_fp: str = ""  # token fingerprint (shape only)
+    dialog_at_token: str = ""  # visible | gone | "" (no token yet)
+    inject: str = ""  # "scope=.. fields=.. cb=.." summary
+    page_error_at: float = 0.0  # solve-start-relative seconds of a mid-solve error
+    page_error: str = ""
 
 
-def _failed(reason: str, detail: str = "") -> SolveOutcome:
+def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> SolveOutcome:
     """Auto attempt failed — caller falls back to the manual wait (RULE 4)."""
-    return SolveOutcome(status="auto_failed", reason=f"{reason}: {detail}".strip(": "), method="auto")
+    out = SolveOutcome(status="auto_failed", reason=f"{reason}: {detail}".strip(": "), method="auto")
+    if plan is not None:
+        out.polls = plan.polls
+        if plan.token_at:
+            out.token_sec = plan.token_at - plan.start
+            out.token_fp = plan.token_fp
+        out.dialog_at_token = plan.dialog_at_token
+        out.inject = plan.inject
+        out.page_error_at_s = plan.page_error_at
+        out.page_error = plan.page_error
+    return out
 
 
 def task_type_for(kind: str) -> str:
@@ -112,7 +128,9 @@ async def _note_page_error(plan: SolvePlan, log: Callable[[str, str], None]) -> 
     err = match_page_error(corpus if isinstance(corpus, str) else "", plan.err_base)
     if err:
         plan.err_seen = True
-        log(f"🛡️ page error appeared during solve ({time.monotonic() - plan.start:.0f}s in): {err}",
+        plan.page_error_at = time.monotonic() - plan.start
+        plan.page_error = err
+        log(f"🛡️ page error appeared during solve ({plan.page_error_at:.0f}s in): {err}",
             "warn")
 
 
@@ -156,12 +174,13 @@ async def _click_continue(ctrl: Any) -> None:
         pass
 
 
-async def _note_preinject_state(ctrl: Any, log: Callable[[str, str], None]) -> None:
-    """Log whether the dialog is still up when the token arrives."""
+async def _note_preinject_state(plan: SolvePlan, log: Callable[[str, str], None]) -> None:
+    """Log + stamp whether the dialog is still up when the token arrives."""
     try:
-        visible = await ctrl.is_security_dialog_visible()
+        visible = await plan.ctrl.is_security_dialog_visible()
     except Exception:
         return
+    plan.dialog_at_token = "visible" if visible else "gone"
     log("🤖 token arrived, dialog still visible — injecting" if visible else
         "🤖 token arrived but the dialog is already gone (page moved on?) — injecting anyway",
         "info")
@@ -224,31 +243,33 @@ class CaptchaSolver:
     async def _run_task(self, plan: SolvePlan, timeout_sec: int) -> SolveOutcome:
         task_id = await self._create_task(plan)
         if not task_id:
-            return _failed("task_create", "createTask failed")
+            return _failed("task_create", "createTask failed", plan)
         token, why = await self._poll_task(plan, task_id, timeout_sec)
         if not token:
             await _delete_task(plan.client, task_id, self._stats, self._log)
-            return _failed(why or "no_token", "no solution token")
+            return _failed(why or "no_token", "no solution token", plan)
         plan.token_at = time.monotonic()
+        plan.token_fp = _token_fingerprint(token)
         self._log(f"🤖 2Captcha task #{task_id} token received in "
-                  f"{plan.token_at - plan.start:.0f}s ({_token_fingerprint(token)})", "success")
+                  f"{plan.token_at - plan.start:.0f}s ({plan.token_fp})", "success")
         return await self._inject_and_verify(plan, token, task_id)
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
-        await _note_preinject_state(plan.ctrl, self._log)
+        await _note_preinject_state(plan, self._log)
         res = await self._inject(plan.ctrl, token, plan.signal.sitekey)
         if not res.get("ok"):
             await _delete_task(plan.client, task_id, self._stats, self._log)
             self._auto_fail(plan, "inject", "response field not found on page")
-            return _failed("inject", "response field not found on page")
-        self._log(f"🤖 token injected (scope={res.get('scope')}, fields={res.get('fields', 1)}, cb={_cb_desc(res)})", "info")
+            return _failed("inject", "response field not found on page", plan)
+        plan.inject = f"scope={res.get('scope')} fields={res.get('fields', 1)} cb={_cb_desc(res)}"
+        self._log(f"🤖 token injected ({plan.inject})", "info")
         await _click_continue(plan.ctrl)
         if await _verify_gone(plan.ctrl, plan.stop):
             return self._solved(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats, self._log)
         why = _reject_reason(res)
         self._auto_fail(plan, "not_accepted", why)
-        return _failed("not_accepted", why)
+        return _failed("not_accepted", why, plan)
 
     def _solved(self, plan: SolvePlan, task_id: str) -> SolveOutcome:
         secs = time.monotonic() - plan.start
@@ -257,7 +278,10 @@ class CaptchaSolver:
         self._log(f"🤖 2Captcha solved tab {str(plan.tab_id)[:12]} in {secs:.0f}s "
                   f"(token {tok:.0f}s, token accepted)", "success")
         return SolveOutcome(status="solved", method="auto", task_id=task_id,
-                            reason="token accepted", elapsed_sec=secs)
+                            reason="token accepted", elapsed_sec=secs,
+                            polls=plan.polls, token_sec=tok, token_fp=plan.token_fp,
+                            dialog_at_token=plan.dialog_at_token, inject=plan.inject,
+                            page_error_at_s=plan.page_error_at, page_error=plan.page_error)
 
     def _auto_fail(self, plan: SolvePlan, reason: str, detail: str) -> None:
         try:
@@ -300,6 +324,7 @@ class CaptchaSolver:
             if plan.stop():
                 self._log("2Captcha polling stopped (user stop)", "info")
                 return None, "stopped"
+            plan.polls += 1
             try:
                 res = await plan.client.get_result(task_id)
             except ApiError as e:

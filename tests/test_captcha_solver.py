@@ -534,3 +534,46 @@ async def test_preexisting_page_error_stays_silent(monkeypatch, isolated_config_
     ctrl = WatchCtrl(corpora=[banner, banner], visible_seq=[False])
     assert (await solver.solve(ctrl, "t", signal(), lambda: False)).status == "solved"
     assert not any("appeared during solve" in m for m, _ in logs)  # stale at solve start
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_outcome_carries_report_lifecycle(monkeypatch, isolated_config_dir):
+    token = "03AGdB25" + "y" * 500 + "xQ12"
+    processing = {"errorId": 0, "status": "processing"}
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": token}}
+    client = FakeClient("K", results=[processing, processing, ready])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert outcome.polls == 3
+    assert outcome.token_fp == "len=512 head=03AGdB25 tail=xQ12"
+    assert outcome.token_sec > 0
+    assert outcome.dialog_at_token == "visible"
+    assert "scope=dialog" in outcome.inject and "fields=1" in outcome.inject
+    assert outcome.page_error == "" and outcome.page_error_at_s == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_failed_outcome_carries_attempt_evidence(monkeypatch, isolated_config_dir):
+    client = FakeClient("K", results=[{"errorId": 0, "status": "processing"}])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client, step=31)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"
+    assert outcome.polls >= 1  # retry count survives the failure
+    assert outcome.token_fp == "" and outcome.dialog_at_token == ""
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_outcome_carries_mid_solve_page_error(monkeypatch, isolated_config_dir):
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    processing = {"errorId": 0, "status": "processing"}
+    client = FakeClient("K", results=[processing, processing, ready])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    ctrl = WatchCtrl(corpora=["", "Something went wrong. Trace ID: 7"], visible_seq=[False])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert "Something went wrong" in outcome.page_error
+    assert outcome.page_error_at_s >= 0.0
