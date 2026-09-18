@@ -2,12 +2,17 @@
   "version": "1.0.0",
   "urls": [
     {
+<<<<<<< Updated upstream
       "id": "url_c08ab04f",
+=======
+      "id": "url_43ababe7",
+>>>>>>> Stashed changes
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
       "last_checked": null,
       "error": null,
+<<<<<<< Updated upstream
       "tab_id": "6745025141CD2C14CD1EE865E1401A53"
     },
     {
@@ -36,6 +41,9 @@
       "last_checked": null,
       "error": null,
       "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+=======
+      "tab_id": "C515A1C992AE2AAFCB63BDB116B25D74"
+>>>>>>> Stashed changes
     }
   ],
   "folder": {
@@ -103,7 +111,7 @@
       "mtime": 1789720308.753786,
       "fingerprint": "4051213189a01db6",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 1,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-airplane-landing_AI.png",
@@ -121,7 +129,7 @@
       "mtime": 1789720308.7487822,
       "fingerprint": "bda721fb1554463d",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 1,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-bank-institution_AI.png",
@@ -139,7 +147,7 @@
       "mtime": 1789720308.74678,
       "fingerprint": "6668674e6c1c503c",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 1,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-call-accept-reject_AI.png",
@@ -156,12 +164,12 @@
       "size": 99359,
       "mtime": 1789720308.7517853,
       "fingerprint": "57a018f19268a185",
-      "status": "completed",
+      "status": "processing",
       "selected": true,
-      "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 1,
-      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-color-picker_AI.png",
-      "error": null,
+      "assigned_url_id": "url_43ababe7",
+      "attempt_count": 4,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-color-picker_AI_2.png",
+      "error": "Cancelled by user",
       "content_hash": null
     },
     {
@@ -175,7 +183,7 @@
       "mtime": 1789720308.7557886,
       "fingerprint": "1fb4ee73bb10e3d0",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 2,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-contactless-payment_AI_3.png",
@@ -193,7 +201,7 @@
       "mtime": 1789720308.7557886,
       "fingerprint": "a9c5117d03efa8dc",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 6,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-crosshair-target_AI_3.png",
@@ -211,7 +219,7 @@
       "mtime": 1789721064.2180808,
       "fingerprint": "c0b47bd265017f06",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 4,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-fire-flame_AI_3.png",
@@ -229,7 +237,7 @@
       "mtime": 1789720308.7547874,
       "fingerprint": "a1bff62f1112a4f0",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 6,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-herbal-capsule_AI_3.png",
@@ -246,11 +254,19 @@
       "size": 53619,
       "mtime": 1789721064.2150776,
       "fingerprint": "c88f61629afa1f84",
+<<<<<<< Updated upstream
       "status": "completed",
       "selected": true,
       "assigned_url_id": "url_c08ab04f",
       "attempt_count": 8,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-hotdog_AI_3.png",
+=======
+      "status": "failed",
+      "selected": false,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 6,
+      "output_path": null,
+>>>>>>> Stashed changes
       "error": "Submit failed: Submit failed",
       "content_hash": null
     },
@@ -265,7 +281,7 @@
       "mtime": 1789721064.2160785,
       "fingerprint": "23c3507b152b0e1d",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 5,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-lightbulb_AI.png",
@@ -283,7 +299,7 @@
       "mtime": 1789721064.2170794,
       "fingerprint": "f7db402fae5eb678",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 2,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-money-plant_AI.png",
@@ -301,7 +317,7 @@
       "mtime": 1789720308.7527852,
       "fingerprint": "f598653720b55fa7",
       "status": "completed",
-      "selected": true,
+      "selected": false,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 1,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-person-at-desk_AI.png",
@@ -318,11 +334,19 @@
       "size": 115546,
       "mtime": 1789720308.7477806,
       "fingerprint": "5676eb9098a06e8b",
+<<<<<<< Updated upstream
       "status": "completed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 1,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-process-gears_AI_4.png",
+=======
+      "status": "pending",
+      "selected": false,
+      "assigned_url_id": null,
+      "attempt_count": 0,
+      "output_path": null,
+>>>>>>> Stashed changes
       "error": null,
       "content_hash": null
     },
@@ -336,12 +360,21 @@
       "size": 62655,
       "mtime": 1789721064.2190819,
       "fingerprint": "d347b65be36ac597",
+<<<<<<< Updated upstream
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_14aa51e9",
       "attempt_count": 4,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-puzzle-pieces_AI_3.png",
       "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+=======
+      "status": "pending",
+      "selected": false,
+      "assigned_url_id": null,
+      "attempt_count": 0,
+      "output_path": null,
+      "error": null,
+>>>>>>> Stashed changes
       "content_hash": null
     },
     {
@@ -354,11 +387,19 @@
       "size": 263308,
       "mtime": 1789721064.2180808,
       "fingerprint": "d2ccaea2a13a77a6",
+<<<<<<< Updated upstream
       "status": "completed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 1,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-snowflake_AI_4.png",
+=======
+      "status": "pending",
+      "selected": false,
+      "assigned_url_id": null,
+      "attempt_count": 0,
+      "output_path": null,
+>>>>>>> Stashed changes
       "error": null,
       "content_hash": null
     },
@@ -373,9 +414,15 @@
       "mtime": 1789720308.7507834,
       "fingerprint": "d2295a1ebf074511",
       "status": "failed",
+<<<<<<< Updated upstream
       "selected": true,
       "assigned_url_id": "url_388f39e9",
       "attempt_count": 5,
+=======
+      "selected": false,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
+>>>>>>> Stashed changes
       "output_path": null,
       "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
@@ -390,12 +437,21 @@
       "size": 181121,
       "mtime": 1789720308.7497826,
       "fingerprint": "b4bc1a7152525d49",
+<<<<<<< Updated upstream
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_8287b6cc",
       "attempt_count": 4,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steps-to-goal_AI_3.png",
       "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+=======
+      "status": "pending",
+      "selected": false,
+      "assigned_url_id": null,
+      "attempt_count": 0,
+      "output_path": null,
+      "error": null,
+>>>>>>> Stashed changes
       "content_hash": null
     },
     {
@@ -408,12 +464,21 @@
       "size": 59326,
       "mtime": 1789747168.8525398,
       "fingerprint": "94ff1930278decd3",
+<<<<<<< Updated upstream
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_c08ab04f",
       "attempt_count": 3,
       "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-sync-arrows_AI_2.png",
       "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+=======
+      "status": "pending",
+      "selected": false,
+      "assigned_url_id": null,
+      "attempt_count": 0,
+      "output_path": null,
+      "error": null,
+>>>>>>> Stashed changes
       "content_hash": null
     },
     {
@@ -427,9 +492,15 @@
       "mtime": 1789721064.2140768,
       "fingerprint": "a44b1e1e1b67d61e",
       "status": "pending",
+<<<<<<< Updated upstream
       "selected": true,
       "assigned_url_id": "url_c08ab04f",
       "attempt_count": 3,
+=======
+      "selected": false,
+      "assigned_url_id": null,
+      "attempt_count": 0,
+>>>>>>> Stashed changes
       "output_path": null,
       "error": null,
       "content_hash": null
@@ -445,9 +516,15 @@
       "mtime": 1789720308.753786,
       "fingerprint": "7ad6f378f976554e",
       "status": "pending",
+<<<<<<< Updated upstream
       "selected": true,
       "assigned_url_id": "url_8287b6cc",
       "attempt_count": 3,
+=======
+      "selected": false,
+      "assigned_url_id": null,
+      "attempt_count": 0,
+>>>>>>> Stashed changes
       "output_path": null,
       "error": null,
       "content_hash": null
@@ -463,6 +540,7 @@
       "mtime": 1789720308.7517853,
       "fingerprint": "750ab6f8dd37b6c8",
       "status": "pending",
+<<<<<<< Updated upstream
       "selected": true,
       "assigned_url_id": "url_c08ab04f",
       "attempt_count": 3,
@@ -968,6 +1046,9 @@
       "fingerprint": "0dfb6ea7f375deb2",
       "status": "pending",
       "selected": true,
+=======
+      "selected": false,
+>>>>>>> Stashed changes
       "assigned_url_id": null,
       "attempt_count": 0,
       "output_path": null,
@@ -977,11 +1058,19 @@
   ],
   "jobs": [],
   "progress": {
+<<<<<<< Updated upstream
     "total": 49,
     "selected": 49,
     "pending": 31,
     "processing": 0,
     "completed": 14,
+=======
+    "total": 21,
+    "selected": 1,
+    "pending": 0,
+    "processing": 1,
+    "completed": 10,
+>>>>>>> Stashed changes
     "skipped": 0,
     "failed": 4,
     "needs_review": 0

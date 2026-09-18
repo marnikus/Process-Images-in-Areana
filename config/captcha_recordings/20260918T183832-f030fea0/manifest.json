@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "session_id": "20260918T183832-f030fea0",
+  "eid": "f7b99a13",
+  "tab": "59FA0C0D7FBC074F23535FE02B95B54D",
+  "source": "check-security",
+  "url": "https://arena.ai/c/01a0b5cc-e7c9-75ab-9861-0832cc529467",
+  "kind": "recaptcha_enterprise",
+  "started_at": "2026-09-18T18:38:32.721Z",
+  "ended_at": "2026-09-18T18:39:33.749Z",
+  "status": "page_error",
+  "outcome": "page_error",
+  "reason": "page_error: no solution token",
+  "method": "auto",
+  "actor_label": "bot",
+  "elapsed_ms": 61032,
+  "event_count": 93,
+  "mutation_count": 328,
+  "network_count": 20,
+  "snapshot_count": 25,
+  "truncated": [
+    "snapshots"
+  ],
+  "task_id": "",
+  "polls": 13,
+  "attempts": 1,
+  "label_updated_at": "2026-09-18T18:40:16.375Z"
+}

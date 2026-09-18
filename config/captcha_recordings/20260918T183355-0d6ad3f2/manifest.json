@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "session_id": "20260918T183355-0d6ad3f2",
+  "eid": "c8b87769",
+  "tab": "F7F8CD13584B12AE825128CB83F75081",
+  "source": "check-security",
+  "url": "https://arena.ai/c/01a0b5c8-700b-762b-9bd9-1a5bf69cc81d",
+  "kind": "recaptcha_enterprise",
+  "started_at": "2026-09-18T18:33:55.880Z",
+  "ended_at": "2026-09-18T18:34:51.973Z",
+  "status": "token_stale",
+  "outcome": "token_stale",
+  "reason": "token_stale: sitekey_changed",
+  "method": "auto",
+  "actor_label": "manual",
+  "elapsed_ms": 56093,
+  "event_count": 110,
+  "mutation_count": 337,
+  "network_count": 34,
+  "snapshot_count": 25,
+  "truncated": [
+    "response_bodies",
+    "snapshots"
+  ],
+  "label_updated_at": "2026-09-18T18:34:43.761Z",
+  "task_id": "",
+  "polls": 12,
+  "attempts": 1
+}
