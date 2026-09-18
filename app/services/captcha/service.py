@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, Optional
 
 from app.browser.captcha_probes import build_detect_js
 from app.core.cooldown import DEFAULT_PENALTY_SECONDS
+from app.services.captcha_recording import RecordingManager
 
 from .api_client import POLL_INTERVAL_SEC, ApiError, Captcha2Client
 from .key_store import CaptchaKeyStore, CaptchaSettings, clamp_timeout
@@ -223,12 +224,7 @@ async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
 
 
 async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
-    """Detect → stats → auto-solve (opt-in) → manual wait → penalty record.
-
-    Callers gate on `is_security_dialog_visible()` first; the detect probe's
-    own visible flag covers the vanishing-dialog race (→ `none`, no penalty).
-    The manual wait always states WHY the app is not solving (visual flag).
-    """
+    """Detect, record, resolve, and close one visible captcha encounter."""
     signal = await detect_signal(ctx)
     if not signal.visible:
         return SolveOutcome(status="none")
@@ -237,8 +233,24 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     _record_stats(ctx, "detected", host_of(signal.page_url))
     _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}) via {ctx.source}", "error")
     svc = _service(ctx)
+    recorder = await svc.recordings.start(ctx.ctrl, rep) if svc is not None else None
+    try:
+        outcome = await _resolve_captcha(ctx, signal, svc, rep)
+    except BaseException as exc:
+        if svc is not None:
+            await svc.recordings.abort(recorder, f"{type(exc).__name__}: {exc}")
+        raise
+    if svc is not None:
+        await svc.recordings.finish(recorder, outcome)
+    return outcome
+
+
+async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
+                           svc: Optional["CaptchaService"], rep: Dict[str, Any]) -> SolveOutcome:
+    """Choose automatic or manual policy while recording stays orthogonal."""
     if svc is not None and svc.auto_enabled() and signal.solvable:
         outcome = await _try_auto(ctx, signal, svc, rep)
+        await svc.recordings.note(ctx.tab_id, "auto_attempt_finished", outcome)
         if outcome.status == "solved":
             _record_penalty(ctx)
             return outcome
@@ -248,7 +260,8 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     if svc is not None and svc.auto_enabled():
         _log(ctx, "⚠️ FLAG CAPTCHA_AUTO skipped — no sitekey in dialog — manual wait", "warn")
         return await _manual_wait(ctx, signal, "auto-solve: no sitekey in dialog", rep)
-    return await _manual_wait(ctx, signal, "auto-solve OFF — solve in Chrome (enable 2Captcha in the Captcha window)", rep)
+    reason = "auto-solve OFF — solve in Chrome (enable 2Captcha in the Captcha window)"
+    return await _manual_wait(ctx, signal, reason, rep)
 
 
 async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
@@ -305,6 +318,7 @@ class CaptchaService:
         self.stats = CaptchaStatsStore(config_dir)
         self._log = log or (lambda msg, level="info": None)
         self.solver = CaptchaSolver(self.keys, self.stats, self._log)
+        self.recordings = RecordingManager(config_dir, self._log)
 
     def auto_enabled(self) -> bool:
         try:

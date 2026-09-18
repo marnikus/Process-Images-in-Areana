@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="css/sash-layout.css">
 <link rel="stylesheet" href="css/stack-drag.css">
 <link rel="stylesheet" href="css/arena.css">
+<link rel="stylesheet" href="css/captcha-recordings.css">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body>
@@ -428,6 +429,23 @@
       </div>
     </div>
 
+    <div class="panel" id="winCaptchaRecords" data-window="captcha_records">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">history</span> Captcha Session Records <span class="spacer"></span><span id="captchaRecordsSummary" class="captcha-record-summary">0 local sessions</span><button id="captchaRecordsRefreshBtn" class="btn-small">↻ Refresh</button></h3>
+      <div class="captcha-records-wrap">
+        <div class="captcha-record-note">Recordings start at visible captcha detection and stop at resolution. DOM and textual network data are redacted and stored locally in <code>config/captcha_recordings</code>. Review before sharing.</div>
+        <div id="captchaRecordsEmpty" class="captcha-record-empty">No captcha sessions recorded yet.</div>
+        <table class="captcha-record-table">
+          <thead><tr><th>Started</th><th>Page</th><th>Method</th><th>Outcome</th><th>Time</th><th title="Mutations / network events / snapshots">M/N/S</th><th>Ground truth</th></tr></thead>
+          <tbody id="captchaRecordsBody"></tbody>
+        </table>
+        <div class="captcha-compare-title">Side-by-side evidence — use A/B on labeled manual and bot rows</div>
+        <div class="captcha-compare-grid">
+          <section id="captchaCompareA" class="captcha-compare-pane">Select comparison A</section>
+          <section id="captchaCompareB" class="captcha-compare-pane">Select comparison B</section>
+        </div>
+      </div>
+    </div>
+
     <div class="panel" id="winBrowser" data-window="browser">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">preview</span> Browser Preview <span class="spacer"></span><button id="browserClearBtn" class="btn-small">Clear</button></h3>
       <div id="browserFrame" class="browser-frame"><span>No preview — select image 👁 or run job to see rect highlight</span></div>
@@ -645,6 +663,8 @@
 <script src="js/panels/progress.js"></script>
 <script src="js/panels/settings.js"></script>
 <script src="js/panels/captcha.js"></script>
+<script src="js/panels/captcha-recording-comparison.js"></script>
+<script src="js/panels/captcha-recordings.js"></script>
 <script src="js/panels/browser-preview.js"></script>
 <script src="js/panels/highlight.js"></script>
 <script src="js/panels/cdp.js"></script>

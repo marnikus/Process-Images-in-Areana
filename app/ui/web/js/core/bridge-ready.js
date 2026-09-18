@@ -34,6 +34,7 @@ window.BridgeReady = (function () {
 
   function onChannel(channel) {
     bridge = channel.objects.bridge;
+    window.CaptchaRecordingsBridge = channel.objects.captchaRecordings || null;
     connected = true;
     // `App` is declared as a top-level `const` in app.js — a classic
     // script's top-level const/let lives in the global LEXICAL scope,

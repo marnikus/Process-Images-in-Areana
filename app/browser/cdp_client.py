@@ -34,6 +34,7 @@ except ImportError:
         return _Sig()
 
 # Phase 2: pure protocol extracted to cdp_protocol.py — transport stays here
+from .cdp_events import CDPEventRouter, route_cdp_message
 from .cdp_protocol import (
     TabInfo as _PureTabInfo,
     is_devtools_url as _pure_is_devtools,
@@ -187,6 +188,7 @@ class CDPClient(QObject):
         self._ws = None
         self._cmd_id = 0
         self._pending = {}
+        self.events = CDPEventRouter()
         self._receive_task = None
         self._connected = False
         self._current_ws_url = ""
@@ -480,11 +482,7 @@ class CDPClient(QObject):
                     data = json.loads(raw)
                 except Exception:
                     continue
-                mid = data.get("id")
-                if mid and mid in self._pending:
-                    fut = self._pending.pop(mid)
-                    if not fut.done():
-                        fut.set_result(data)
+                route_cdp_message(self, data)
             log.warning(f"CDP receive loop ended normally for {self._current_ws_url[:80]} — websocket closed by Chrome")
         except asyncio.CancelledError:
             log.info(f"CDP receive loop cancelled for {self._current_ws_url[:80]}")

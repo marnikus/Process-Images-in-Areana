@@ -9,7 +9,7 @@ from typing import Any
 
 log = logging.getLogger("arena")
 
-WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log", "settings", "captcha", "browser", "action_blocks", "block_config", "arena_presets"]
+WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log", "settings", "captcha", "captcha_records", "browser", "action_blocks", "block_config", "arena_presets"]
 WINDOWS = [
     {"id": "url_list", "title": "URL List"},
     {"id": "folder", "title": "Folder Picker"},
@@ -21,13 +21,14 @@ WINDOWS = [
     {"id": "log", "title": "Activity Log"},
     {"id": "settings", "title": "Settings"},
     {"id": "captcha", "title": "Captcha — 2Captcha Control"},
+    {"id": "captcha_records", "title": "Captcha Session Records"},
     {"id": "browser", "title": "Browser Preview"},
     {"id": "action_blocks", "title": "Action Blocks — Stacking Jobs"},
     {"id": "block_config", "title": "Block Config — Security Check"},
     {"id": "arena_presets", "title": "Arena Presets"},
 ]
 WINDOW_TITLES = {w["id"]: w["title"] for w in WINDOWS}
-GRID_VERSION = 4
+GRID_VERSION = 5
 MIN_GRID_SIZE = 4
 
 def default_grid_tree() -> dict:
@@ -36,7 +37,7 @@ def default_grid_tree() -> dict:
     return split("col", [
         split("row", [
             split("col", [leaf("url_list"), leaf("folder")], [55,45]),
-            split("col", [leaf("prompt"), leaf("run"), leaf("settings"), leaf("captcha")], [40,22,26,12]),
+            split("col", [leaf("prompt"), leaf("run"), leaf("settings"), leaf("captcha"), leaf("captcha_records")], [35,20,20,12,13]),
         ], [60,40]),
         split("row", [
             leaf("queue"),

@@ -13,6 +13,7 @@ config/app_state.json
 config/cooldowns.json
 config/2captcha.json
 config/captcha_stats.json
+config/captcha_recordings/
 config/presets/
 browser_profile/
 logs/

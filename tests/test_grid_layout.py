@@ -114,8 +114,8 @@ def test_default_payload_valid_with_captcha():
 def test_default_tree_mirrors_js_captcha_column():
     col = col_with(default_grid_tree(), "captcha")
     assert col is not None
-    assert [k.get("id") for k in col["children"]] == ["prompt", "run", "settings", "captcha"]
-    assert col["sizes"] == [40, 22, 26, 12]
+    assert [k.get("id") for k in col["children"]] == ["prompt", "run", "settings", "captcha", "captcha_records"]
+    assert col["sizes"] == [35, 20, 20, 12, 13]
 
 
 @pytest.mark.unit
@@ -136,7 +136,7 @@ def test_legacy_13_window_payload_migrates():
     col = col_with(tree, "captcha")
     idx = [k.get("id") for k in col["children"]].index("captcha")
     del col["children"][idx]
-    col["sizes"] = [44, 24, 32]  # renormalized, sums to 100
+    col["sizes"] = [35, 20, 20, 25]  # renormalized, sums to 100
     assert "captcha" not in leaf_ids(tree)
     out, err = canonical_grid_payload(json.dumps({"v": 4, "tree": tree}))
     assert err is None
@@ -203,15 +203,15 @@ def test_preset_save_load_round_trip(isolated_config_dir):
     res = json.loads(Bridge.save_window_preset(fake, "Desk", json.dumps(portable_doc(tree))))
     assert res == {"ok": True, "name": "Desk"}
     doc = fake.config.window_presets.load_preset("Desk")
-    assert doc["grid"]["window_count"] == 14
-    assert len(leaf_ids(json.loads(doc["grid"]["payload"])["tree"])) == 14
-    assert len(leaf_ids(doc["grid"]["tree"])) == 14
+    assert doc["grid"]["window_count"] == 15
+    assert len(leaf_ids(json.loads(doc["grid"]["payload"])["tree"])) == 15
+    assert len(leaf_ids(doc["grid"]["tree"])) == 15
     # load returns the portable doc (JS preview contract), applies nothing
-    sentinel = json.dumps({"v": 4, "tree": default_grid_tree()}, separators=(",", ":"))
+    sentinel = json.dumps({"v": 5, "tree": default_grid_tree()}, separators=(",", ":"))
     Bridge.save_grid_layout(fake, sentinel)
     loaded = json.loads(Bridge.load_window_preset(fake, "Desk"))
     assert loaded["format"] == "chat-v-bot.window-preset"
-    assert len(leaf_ids(loaded["grid"]["tree"])) == 14
+    assert len(leaf_ids(loaded["grid"]["tree"])) == 15
     expect, _ = canonical_grid_payload(sentinel)
     assert fake.config.get_state("grid_layout") == expect  # untouched
 
