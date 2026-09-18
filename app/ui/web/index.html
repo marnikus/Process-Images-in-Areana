@@ -428,6 +428,20 @@
       </div>
     </div>
 
+    <div class="panel" id="winCaptchaRecords" data-window="captcha_records">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">history</span> CAPTCHA Session Records</h3>
+      <div style="display:flex;gap:6px;align-items:center;padding:4px;flex-wrap:wrap;">
+        <button id="captchaRecordsRefreshBtn" class="btn-small">↻ Refresh</button>
+        <button id="captchaRecordsClearBtn" class="btn-small">🗑 Clear</button>
+        <select id="captchaRecordLabel"><option value="unknown">unknown</option><option value="manual_pass">manual pass</option><option value="bot_pass">bot pass</option><option value="manual_fail">manual fail</option><option value="bot_fail">bot fail</option></select>
+        <input id="captchaRecordNote" placeholder="label note" style="min-width:100px;flex:1;">
+        <button id="captchaRecordSaveBtn" class="btn-small btn-primary">Save label</button>
+      </div>
+      <div id="captchaRecordsStatus" style="font-size:10px;color:var(--text-muted);padding:3px;"></div>
+      <div id="captchaRecordsList" style="max-height:150px;overflow:auto;font-size:10px;"></div>
+      <pre id="captchaRecordDetail" style="max-height:180px;overflow:auto;white-space:pre-wrap;font-size:9px;background:var(--bg-input);padding:4px;"></pre>
+    </div>
+
     <div class="panel" id="winBrowser" data-window="browser">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">preview</span> Browser Preview <span class="spacer"></span><button id="browserClearBtn" class="btn-small">Clear</button></h3>
       <div id="browserFrame" class="browser-frame"><span>No preview — select image 👁 or run job to see rect highlight</span></div>
@@ -645,6 +659,7 @@
 <script src="js/panels/progress.js"></script>
 <script src="js/panels/settings.js"></script>
 <script src="js/panels/captcha.js"></script>
+<script src="js/panels/captcha-records.js"></script>
 <script src="js/panels/browser-preview.js"></script>
 <script src="js/panels/highlight.js"></script>
 <script src="js/panels/cdp.js"></script>

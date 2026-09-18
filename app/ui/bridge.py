@@ -2333,6 +2333,37 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
+    @Slot(result=str)
+    def list_captcha_recordings(self):
+        from app.services.captcha.recording import RecordingStore
+        return json.dumps({"ok": True, "records": list(RecordingStore(str(self.config.dir)).list())}, ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def get_captcha_recording(self, rid: str):
+        from app.services.captcha.recording import RecordingStore
+        store = RecordingStore(str(self.config.dir))
+        return json.dumps({"ok": bool(store.load(rid)), "manifest": store.load(rid),
+                           "events": store.load_events(rid)}, ensure_ascii=False)
+
+    @Slot(str, str, str, result=bool)
+    def label_captcha_recording(self, rid: str, label: str, note: str = ""):
+        from app.services.captcha.recording import RecordingStore
+        return RecordingStore(str(self.config.dir)).label(rid, label, note)
+
+    @Slot(str, result=bool)
+    def delete_captcha_recording(self, rid: str):
+        from app.services.captcha.recording import RecordingStore
+        return RecordingStore(str(self.config.dir)).delete(rid)
+
+    @Slot(result=bool)
+    def clear_captcha_recordings(self):
+        from app.services.captcha.recording import RecordingStore
+        store = RecordingStore(str(self.config.dir))
+        ok = True
+        for row in list(store.list()):
+            ok = store.delete(str(row.get("rid", ""))) and ok
+        return ok
+
     async def _settle_captcha_at(self, ctrl, tab_id, correlation_id, source):
         """Gate on visible, then auto-solve or wait; raise on stop (shared by 4 sites)."""
         try:

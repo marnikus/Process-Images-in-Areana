@@ -21,6 +21,7 @@
     { id: 'log',      title: 'Activity Log' },
     { id: 'settings', title: 'Settings' },
     { id: 'captcha',  title: 'Captcha — 2Captcha Control' },
+    { id: 'captcha_records', title: 'Captcha Session Records' },
     { id: 'browser',  title: 'Browser Preview' },
     { id: 'action_blocks', title: 'Action Blocks — Stacking Jobs' },
     { id: 'block_config', title: 'Block Config — Security Check' },
@@ -53,7 +54,7 @@
     return split('col', [
       split('row', [
         split('col', [leaf('url_list'), leaf('folder')], [55, 45]),
-        split('col', [leaf('prompt'), leaf('run'), leaf('settings'), leaf('captcha')], [40, 22, 26, 12]),
+        split('col', [leaf('prompt'), leaf('run'), leaf('settings'), leaf('captcha'), leaf('captcha_records')], [34, 18, 22, 12, 14]),
       ], [60, 40]),
       split('row', [
         leaf('queue'),

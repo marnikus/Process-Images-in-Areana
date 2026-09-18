@@ -548,10 +548,25 @@ def _emit_captcha_job_lines(ctx: JobCtx, failed: bool, error: str) -> None:
             pass
 
 
+def _stop_captcha_recording(ctx: JobCtx, failed: bool, error: str) -> None:
+    """Close the recording at the actual image-job terminal result."""
+    session = getattr(ctx.ctrl, "_captcha_recording", None)
+    if session is None:
+        return
+    try:
+        session.event("job_outcome", {"status": "failed" if failed else "completed",
+                                       "error": str(error or "")[:200]})
+        session.stop("job_terminal", "failed" if failed else "completed")
+        delattr(ctx.ctrl, "_captcha_recording")
+    except Exception:
+        pass
+
+
 async def run_blocks_for_image(ctx: JobCtx) -> tuple[bool, str, Optional[str], Optional[bytes]]:
     blocks = _get_blocks(ctx)
     _init_old_srcs(ctx)
     _reset_captcha_reports(ctx)
     failed, error = await _loop_blocks(ctx, blocks)
+    _stop_captcha_recording(ctx, failed, error)
     _emit_captcha_job_lines(ctx, failed, error)
     return failed, error, ctx.new_src, ctx.file_bytes

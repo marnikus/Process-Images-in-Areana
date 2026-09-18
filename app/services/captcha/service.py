@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
-from app.browser.captcha_probes import build_detect_js
+from app.browser.captcha_probes import build_detect_js, build_record_js
 from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 
 from .api_client import POLL_INTERVAL_SEC, ApiError, Captcha2Client
@@ -65,6 +65,50 @@ def _service(ctx: CaptchaCtx) -> Optional["CaptchaService"]:
         return fn()
     except Exception:
         return None
+
+
+def _recording(ctx: CaptchaCtx) -> Any:
+    return getattr(ctx.ctrl, "_captcha_recording", None)
+
+
+def _start_recording(ctx: CaptchaCtx, rep: Dict[str, Any], signal: CaptchaSignal) -> None:
+    try:
+        from .recording import RecordingStore
+        store = RecordingStore(str(ctx.bridge.config.dir))
+        session = store.start(str(rep["eid"]), str(getattr(ctx.bridge, "_current_corr_id", "")),
+                              str(ctx.tab_id), {"kind": signal.kind, "dom": signal.dom,
+                              "url": signal.page_url, "sitekey": signal.sitekey,
+                              "integration": signal.integration})
+        ctx.ctrl._captcha_recording = session
+    except Exception as exc:
+        _log(ctx, f"Captcha recording start skipped: {exc}", "warn")
+
+
+async def _record_probe(ctx: CaptchaCtx, kind: str, data: Optional[Dict[str, Any]] = None) -> None:
+    session = _recording(ctx)
+    if session is None:
+        return
+    try:
+        raw = await ctx.ctrl.cdp.evaluate(build_record_js())
+        value = json.loads(raw) if isinstance(raw, str) else raw
+        if isinstance(value, dict):
+            if value.get("snapshot"):
+                session.snapshot(value["snapshot"])
+            for event in value.get("events", []):
+                session.event(event.get("kind", "mutation"), event)
+        session.event(kind, data or {})
+    except Exception as exc:
+        session.event("recording_probe_error", {"error": str(exc)[:120]})
+
+
+def _stop_recording(ctx: CaptchaCtx, outcome: str, reason: str = "") -> None:
+    session = _recording(ctx)
+    if session is not None:
+        session.stop(reason or outcome, outcome)
+        try:
+            delattr(ctx.ctrl, "_captcha_recording")
+        except Exception:
+            pass
 
 
 def _record_stats(ctx: CaptchaCtx, event: str, site: str = "") -> None:
@@ -233,6 +277,8 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     if not signal.visible:
         return SolveOutcome(status="none")
     rep = _new_encounter(ctx, signal)
+    _start_recording(ctx, rep, signal)
+    await _record_probe(ctx, "captcha_detected", {"kind": signal.kind})
     _mark_waiting(ctx)
     _record_stats(ctx, "detected", host_of(signal.page_url))
     _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}) via {ctx.source}", "error")
@@ -261,11 +307,13 @@ async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
     if outcome.status != "solved":
         _finish_resolution(rep, outcome)
         _emit_report(ctx, rep)
+        await _record_probe(ctx, "captcha_outcome", {"status": outcome.status, "reason": outcome.reason})
         _log(ctx, f"2Captcha auto-solve failed ({outcome.reason}) — "
-                  f"{'preserving page failure' if outcome.status in ('page_error', 'token_stale') else 'falling back to manual wait'}", "warn")
+              f"{'preserving page failure' if outcome.status in ('page_error', 'token_stale') else 'falling back to manual wait'}", "warn")
         return outcome
     _finish_resolution(rep, outcome)
     _emit_report(ctx, rep)
+    await _record_probe(ctx, "captcha_outcome", {"status": outcome.status, "reason": outcome.reason})
     return outcome
 
 
@@ -294,6 +342,7 @@ async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
         out = SolveOutcome(status="manual", method="manual")
     _finish_resolution(rep, out)
     _emit_report(ctx, rep)
+    await _record_probe(ctx, "captcha_outcome", {"status": out.status, "reason": out.reason})
     return out
 
 

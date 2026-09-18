@@ -41,6 +41,11 @@ def build_inject_js(token: str, sitekey: str = "") -> str:
     return f"({_read('inject.js')})({json.dumps(token)}, {json.dumps(sitekey)})"
 
 
+def build_record_js() -> str:
+    """Redacted snapshot + mutation queue probe for a CAPTCHA recording."""
+    return _read("record.js")
+
+
 def build_continue_js() -> str:
     """Dialog action-button click probe (best effort, IIFE)."""
     return _read("continue_click.js")

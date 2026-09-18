@@ -283,6 +283,7 @@ Remediation order: nesting → cyclomatic → cognitive → size (RULE 19).
 * `docs/archive/2026-09-18-recaptcha-page-mechanics/research-design.md` — follow-up research/design: CAPTCHA is layered (Enterprise bootstrap, anchor, challenge, response field, callback, page/backend acceptance, generation output); callback + dialog gone is not whole-job success
 * `docs/archive/2026-09-18-recaptcha-verification-architecture/design.md` — round 11 architecture: evidence-rich probe, page-error/stale-token terminal outcomes, callback acceptance candidate separated from output completion, no penalty for stale/page-failed attempts
 * `docs/archive/2026-09-18-recaptcha-verification-architecture/implementation-2026-09-18.md` — implemented identity gate: page URL + performance.timeOrigin and bounded challenge-frame identity are re-probed before token injection; mismatch deletes provider task and returns token_stale; `SolveOutcome` carries the lifecycle (polls, token fp, dialog state, inject, mid-solve error)
+* `docs/archive/2026-09-18-captcha-session-recording/design.md` — redacted session recording and review design: starts at CAPTCHA detection, stores structural snapshots/mutation and safe network metadata, stops at job terminal result, and supports manual `manual_pass`/`bot_pass`/fail/unknown labels
 * Selector research: `docs/selector_map.md` (detailed), `docs/research_summary.md`, `docs/current/DOM_SELECTORS.md` (living reference)
 * Workflow: `docs/workflow_diagram.md`, `docs/data_model.md`, `docs/implementation_plan.md`
 
