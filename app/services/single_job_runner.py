@@ -62,6 +62,19 @@ async def capture_baseline(ctrl) -> Dict[str, Any]:
         return {"output_count": 0, "output_srcs": []}
 
 
+def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
+    """Map security outcomes without mistaking manual supersession for failure."""
+    if outcome.status == "stopped":
+        raise RuntimeError("Cancelled during CAPTCHA")
+    if outcome.status == "page_error":
+        raise RuntimeError(outcome.reason or "Page error during CAPTCHA")
+    if outcome.status == "token_stale":
+        try:
+            ctx.bridge._log("⚠️ CAPTCHA API token stale; continuing page flow", "warn")
+        except Exception:
+            pass
+
+
 async def check_security(ctx: JobCtx) -> bool:
     """Captcha gate: auto-solve (2Captcha, opt-in) else wait for user (RULE 20)."""
     try:
@@ -84,12 +97,7 @@ async def check_security(ctx: JobCtx) -> bool:
     outcome = await handle_captcha(CaptchaCtx(ctrl=ctx.ctrl, pool=getattr(ctx.bridge, "_page_pool", None),
                                               bridge=ctx.bridge, tab_id=ctx.tab_id,
                                               source="check-security", stop=stop, log=log))
-    if outcome.status == "stopped":
-        raise RuntimeError("Cancelled during CAPTCHA")
-    if outcome.status == "page_error":
-        raise RuntimeError(outcome.reason or "Page error during CAPTCHA")
-    if outcome.status == "token_stale":
-        raise RuntimeError(outcome.reason or "Stale CAPTCHA token/page")
+    _handle_captcha_outcome(ctx, outcome)
     return True
 
 

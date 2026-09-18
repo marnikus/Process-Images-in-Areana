@@ -150,7 +150,7 @@ async def test_v2_kind_maps_to_v2_task_type(monkeypatch, isolated_config_dir):
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = FakeCtrl(visible_seq=[False])  # verify loop sees it gone on first check
+    ctrl = FakeCtrl(visible_seq=[True, False])  # verify loop sees it gone on first check
     outcome = await solver.solve(ctrl, "t", signal(kind="recaptcha_v2", sitekey="6Lv2key"),
                                  lambda: False)
     assert outcome.status == "solved"
@@ -166,7 +166,7 @@ async def test_changed_page_identity_stales_token_before_injection(monkeypatch, 
 
     class NavigatedCtrl(FakeCtrl):
         def __init__(self):
-            super().__init__(visible_seq=[False])
+            super().__init__(visible_seq=[True, False])
             self.detects = 0
 
         async def _evaluate(self, js):
@@ -320,7 +320,7 @@ async def test_inject_probe_receives_sitekey(monkeypatch, isolated_config_dir):
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = FakeCtrl(visible_seq=[False])
+    ctrl = FakeCtrl(visible_seq=[True, False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "solved"
     inject_js = [p for p in ctrl.probes if "(token, sitekey)" in p]
@@ -353,8 +353,8 @@ async def test_different_tabs_solve_in_parallel(monkeypatch, isolated_config_dir
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "T2"}},
     ])
     solver, stats, _, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl_a = FakeCtrl(visible_seq=[False])
-    ctrl_b = FakeCtrl(visible_seq=[False])
+    ctrl_a = FakeCtrl(visible_seq=[True, False])
+    ctrl_b = FakeCtrl(visible_seq=[True, False])
     a, b = await asyncio.gather(
         solver.solve(ctrl_a, "tabA", signal(), lambda: False),
         solver.solve(ctrl_b, "tabB", signal(), lambda: False),
@@ -412,7 +412,7 @@ async def test_submit_logs_task_id_and_token_evidence(monkeypatch, isolated_conf
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": token}},
     ])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[False]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True, False]), "t", signal(), lambda: False)
     assert outcome.status == "solved"
     assert any("#101 submitted" in m for m, _ in logs)
     assert any("token received in " in m and "len=512" in m for m, _ in logs)
@@ -430,7 +430,7 @@ async def test_heartbeat_on_slow_poll(monkeypatch, isolated_config_dir):
     ])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=20)
     solver._keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=300))
-    outcome = await solver.solve(FakeCtrl(visible_seq=[False]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True, False]), "t", signal(), lambda: False)
     assert outcome.status == "solved"
     assert any("still processing" in m and "elapsed" in m for m, _ in logs)
 
@@ -445,7 +445,7 @@ async def test_preinject_states_logged(monkeypatch, isolated_config_dir):
     assert (await solver.solve(ctrl, "t1", signal(), lambda: False)).status == "solved"
     assert any("dialog still visible — injecting" in m for m, _ in logs)
     ctrl2 = FakeCtrl(visible_seq=[False])
-    assert (await solver.solve(ctrl2, "t2", signal(), lambda: False)).status == "solved"
+    assert (await solver.solve(ctrl2, "t2", signal(), lambda: False)).status == "token_stale"
     assert any("already gone" in m for m, _ in logs)
 
 
@@ -533,8 +533,8 @@ async def test_submit_logs_isinvisible_flag(monkeypatch, isolated_config_dir):
     ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
     client = FakeClient("K", results=[ready, ready])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
-    await solver.solve(FakeCtrl(visible_seq=[False]), "t1", signal(is_invisible=True), lambda: False)
-    await solver.solve(FakeCtrl(visible_seq=[False]), "t2", signal(is_invisible=False), lambda: False)
+    await solver.solve(FakeCtrl(visible_seq=[True, False]), "t1", signal(is_invisible=True), lambda: False)
+    await solver.solve(FakeCtrl(visible_seq=[True, False]), "t2", signal(is_invisible=False), lambda: False)
     assert any("isInvisible=True" in m for m, _ in logs)
     assert any("isInvisible=False" in m for m, _ in logs)
 
@@ -547,7 +547,7 @@ async def test_mid_solve_page_error_timestamped(monkeypatch, isolated_config_dir
     client = FakeClient("K", results=[processing, processing, processing, ready])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
     ctrl = WatchCtrl(corpora=["", "", "Something went wrong while generating the response. Trace ID: 1"],
-                     visible_seq=[False])
+                     visible_seq=[True, False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "page_error"
     assert outcome.token_fp == ""
@@ -563,7 +563,7 @@ async def test_preexisting_page_error_stays_silent(monkeypatch, isolated_config_
     client = FakeClient("K", results=[processing, processing, ready])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
     banner = "Something went wrong while generating the response. Trace ID: 1"
-    ctrl = WatchCtrl(corpora=[banner, banner], visible_seq=[False])
+    ctrl = WatchCtrl(corpora=[banner, banner], visible_seq=[True, False])
     assert (await solver.solve(ctrl, "t", signal(), lambda: False)).status == "solved"
     assert not any("appeared during solve" in m for m, _ in logs)  # stale at solve start
 
@@ -604,7 +604,7 @@ async def test_outcome_carries_mid_solve_page_error(monkeypatch, isolated_config
     processing = {"errorId": 0, "status": "processing"}
     client = FakeClient("K", results=[processing, processing, ready])
     solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = WatchCtrl(corpora=["", "Something went wrong. Trace ID: 7"], visible_seq=[False])
+    ctrl = WatchCtrl(corpora=["", "Something went wrong. Trace ID: 7"], visible_seq=[True, False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "page_error"
     assert "Something went wrong" in outcome.page_error
