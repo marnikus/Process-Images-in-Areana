@@ -248,6 +248,53 @@ test('detect: dialog with container only (no standard iframe) + footer text is v
   assert.equal(r.invisible, false);
 });
 
+/* ——— visible.js — the gate predicate (is_security_dialog_visible) ———
+   The 2026-09-18 user report: the reCAPTCHA widget on screen (badge
+   state) made the app start the captcha flow. The badge must never
+   count; a real challenge dialog still must. */
+
+const runVisible = (body) => {
+  const document = makeDoc(body);
+  const fn = new Function('document', `return (${probe('visible.js')});`);
+  return fn(document);
+};
+
+test('visible: badge widget on screen (normal state) is NOT a challenge', () => {
+  const r = runVisible(new El('body').append(...realBadge()));
+  assert.equal(r, false);  // ← the user report: do not start the captcha flow
+});
+
+test('visible: open challenge dialog is a challenge', () => {
+  assert.equal(runVisible(new El('body').append(realDialog())), true);
+});
+
+test('visible: badge + open dialog coexist → challenge (dialog wins)', () => {
+  assert.equal(runVisible(new El('body').append(...realBadge(), realDialog())), true);
+});
+
+test('visible: closed dialog + badge → not a challenge', () => {
+  const iframe = new El('iframe', { title: 'reCAPTCHA', src: DIALOG_SRC });
+  const d = new El('div', { role: 'dialog', 'data-state': 'closed', _text: 'Security Verification' });
+  d.append(iframe);
+  iframe._hidden = true;  // closed Radix dialog unmounts its children
+  assert.equal(runVisible(new El('body').append(...realBadge(), d)), false);
+});
+
+test('visible: classic standalone visible reCAPTCHA iframe (no badge) still counts', () => {
+  const r = runVisible(new El('body').append(
+    new El('iframe', { title: 'reCAPTCHA', src: 'https://www.google.com/recaptcha/api2/anchor?k=6Lx' }),
+  ));
+  assert.equal(r, true);
+});
+
+test('visible: hidden badge iframe (never rendered) is not a challenge either', () => {
+  const f = new El('iframe', { title: 'reCAPTCHA', src: BADGE_SRC });
+  f._hidden = true;
+  const badge = new El('div', { class: 'grecaptcha-badge' });
+  badge.append(f);
+  assert.equal(runVisible(new El('body').append(badge)), false);
+});
+
 /* ——— inject probe ——— */
 
 const runInject = (token, body) => {

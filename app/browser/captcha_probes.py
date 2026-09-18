@@ -23,6 +23,15 @@ def build_detect_js() -> str:
     return _read("detect.js")
 
 
+def build_visible_js() -> str:
+    """Gate predicate for is_security_dialog_visible (boolean IIFE).
+
+    Badge-aware: the always-present .grecaptcha-badge widget is on screen
+    in the normal state and must never count as a visible captcha.
+    """
+    return ";" + _read("visible.js")
+
+
 def build_inject_js(token: str) -> str:
     """Token-injection probe: wraps the (token)=>… function with the payload."""
     return f"({_read('inject.js')})({json.dumps(token)})"

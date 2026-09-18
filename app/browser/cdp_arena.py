@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple, Callable
 
 from .cdp_client import CDPClient
+from .captcha_probes import build_visible_js
 from .output_probes import build_baseline_js, build_check_js
 from .output_state import flatten_diagnostics, build_order_check_text
 from .output_wait import wait_for_new_output_loop
@@ -161,18 +162,7 @@ JS_PAGE_READY = """
 })()
 """
 
-JS_SECURITY_DIALOG = """
-;(() => {
-  const dialogs=document.querySelectorAll('div[role="dialog"][data-state="open"]');
-  for(const d of dialogs){
-    if(d.innerText&&d.innerText.includes('Security Verification')) return true;
-    if(d.querySelector('iframe[title="reCAPTCHA"]')) return true;
-  }
-  const iframes=document.querySelectorAll('iframe[title="reCAPTCHA"]');
-  for(const f of iframes){ if(f.offsetParent!==null) return true; }
-  return false;
-})()
-"""
+JS_SECURITY_DIALOG = build_visible_js()
 
 JS_IS_GENERATING = """
 ;(() => {
