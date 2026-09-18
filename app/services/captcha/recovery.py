@@ -19,7 +19,8 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Tuple
 
 log = logging.getLogger("arena")
 
@@ -32,6 +33,7 @@ class ResumePolicy:
     """Per-wait revival budget to keep gate functions ≤4 params (RULE 16)."""
 
     prompt: str
+    image_path: Optional[str] = None
     grace_sec: float = RESUME_GRACE_SEC
     max_resubmits: int = MAX_RESUBMITS
     resubmits: int = 0
@@ -141,16 +143,54 @@ async def _maybe_resume(ctrl: Any, diag: Dict[str, Any]) -> Dict[str, Any]:
     return diag
 
 
+async def _attachment_missing(verify: Callable, path: str) -> bool:
+    """True when the composer no longer shows the attached image."""
+    ok, _ = await verify(Path(path).name)
+    return not ok
+
+
+def _attach_outcome(res: Any) -> Tuple[bool, str]:
+    """Normalize attach results (tuple or bare bool) to (ok, msg)."""
+    if isinstance(res, (tuple, list)):
+        ok = bool(res[0]) if res else False
+        msg = str(res[1]) if len(res) > 1 else ""
+        return ok, msg
+    return bool(res), str(res)
+
+
+async def _reattach(attach: Callable, policy: ResumePolicy, path: str) -> None:
+    """Re-attach the image, reporting the outcome."""
+    ok, msg = _attach_outcome(await attach(path))
+    _report(policy, f"🔄 Resubmit re-attach: {msg} ({'ok' if ok else 'FAILED'})",
+            "info" if ok else "warn")
+
+
+async def _ensure_attachment(ctrl: Any, policy: ResumePolicy) -> None:
+    """Re-attach the image when the error state dropped it (fail-open)."""
+    path = policy.image_path
+    verify = getattr(ctrl, "verify_attachment", None)
+    attach = getattr(ctrl, "attach_image", None)
+    if not path or verify is None or attach is None:
+        return
+    try:
+        if await _attachment_missing(verify, path):
+            await _reattach(attach, policy, path)
+    except Exception as e:
+        _report(policy, f"🔄 Resubmit re-attach failed: {e}", "warn")
+
+
 async def _resubmit(ctrl: Any, policy: ResumePolicy, reason: str) -> None:
-    """Re-insert the identical prompt, then Send — one attempt, logged."""
+    """Re-attach, re-insert the identical prompt, then Send — once, logged."""
     _report(policy, f"🔄 {reason} — resubmitting once", "warn")
+    await _ensure_attachment(ctrl, policy)
     try:
         ok, msg = await ctrl.insert_prompt(policy.prompt)
         _report(policy, f"🔄 Resubmit prompt re-insert: {msg} ({'ok' if ok else 'FAILED'})", "info")
     except Exception as e:
         _report(policy, f"🔄 Resubmit prompt re-insert failed: {e} — trying Send anyway", "warn")
     try:
-        ok, msg = await ctrl.submit()
+        sender = getattr(ctrl, "submit_when_ready", None)
+        ok, msg = await sender() if sender is not None else await ctrl.submit()
         _report(policy, f"🔄 Resubmit Send: {msg} ({'ok' if ok else 'FAILED'})", "info" if ok else "warn")
     except Exception as e:
         _report(policy, f"🔄 Resubmit Send failed: {e}", "warn")

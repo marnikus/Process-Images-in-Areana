@@ -48,6 +48,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-18-captcha-delivery-recovery/design.md` — round 5: token never travelled the real solve path (anchor `cb=` premise disproved by live logs) — every-field injection + `data-callback` → `___grecaptcha_cfg` → anchor chain; bounded post-settle resubmit when the blocked generation died
 - `archive/2026-09-18-revival-generalize/design.md` — round 6: trigger revival on spinner loss (seen, then 20 s gone with no pixels), not only on captcha settle — covers no-dialog dead generations like the 12:08 run
 - `archive/2026-09-18-grid-window-set/design.md` — grid persistence: Python/JS window sets synced (14 incl. `captcha`); invalid layouts rejected not defaulted (RULE 13); preset save→load round-trips the portable doc
+- `archive/2026-09-18-resubmit-send-ready/design.md` — round 7: visible-composer insert + Send-ready click + re-attach on resubmit; `Trace ID:` in-thread errors fast-fail the wait
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

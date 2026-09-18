@@ -33,8 +33,17 @@ JS_FIND_TEXTAREA = """
 JS_INSERT_PROMPT = """
 ((promptText) => {
   try {
-    const el=document.querySelector('textarea[name="message"]')||document.querySelector('textarea[placeholder^="Describe"]');
-    if(!el) return {ok:false,error:'textarea not found'};
+    const sels=['textarea[name="message"]','textarea[placeholder^="Describe"]','textarea[rows="1"]'];
+    let el=null;
+    for(const sel of sels){
+      const els=document.querySelectorAll(sel);
+      for(const cand of els){ if(cand.offsetParent!==null){ el=cand; break; } }
+      if(el) break;
+    }
+    if(!el){
+      const any=document.querySelector(sels.join(','));
+      return {ok:false,error:any?'textarea hidden':'textarea not found'};
+    }
     el.focus();
     const setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
     setter.call(el,promptText);
@@ -43,6 +52,22 @@ JS_INSERT_PROMPT = """
     el.value=promptText;
     return {ok:true,len:el.value.length};
   } catch(e){return {ok:false,error:String(e)};}
+})
+"""
+
+JS_SEND_STATE = """
+(() => {
+  try{
+    const els=document.querySelectorAll('button[aria-label="Send message"]');
+    if(!els.length) return {found:false,visible:false,enabled:false};
+    let visible=false, enabled=false;
+    for(const el of els){
+      if(el.offsetParent===null) continue;
+      visible=true;
+      if(!el.disabled){ enabled=true; break; }
+    }
+    return {found:true,visible:visible,enabled:enabled};
+  }catch(e){return {found:false,visible:false,enabled:false};}
 })
 """
 
@@ -284,6 +309,32 @@ class CDPArenaController:
         if result.get("ok"):
             return True, "Clicked"
         return False, result.get("error", "Failed")
+
+    async def _poll_send_state(self, timeout_sec: float) -> Dict[str, Any]:
+        # ideal-size: 11 lines reason=bounded send-ready poll
+        js = f";({JS_SEND_STATE})()"
+        deadline = time.monotonic() + max(0.0, timeout_sec)
+        state: Dict[str, Any] = {"found": False, "visible": False, "enabled": False}
+        while True:
+            res = await self.cdp.evaluate(js)
+            if isinstance(res, dict):
+                state = res
+            if state.get("enabled") or time.monotonic() >= deadline:
+                return state
+            await asyncio.sleep(0.5)
+
+    async def submit_when_ready(self, timeout_sec: float = 8.0) -> Tuple[bool, str]:
+        # ideal-size: 11 lines reason=click send once enabled, else terminal state
+        if not await self.ensure_connected():
+            return False, "Not connected"
+        state = await self._poll_send_state(timeout_sec)
+        if not state.get("enabled"):
+            if not state.get("found"):
+                return False, "send not found"
+            if not state.get("visible"):
+                return False, "send hidden"
+            return False, "send disabled"
+        return await self.submit()
 
     async def _scan_page_errors(self) -> str:
         """Alert/toast/error-region text, else ''. Never raises."""

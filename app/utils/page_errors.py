@@ -26,6 +26,7 @@ ERROR_PATTERNS = (
     r"try\s+again\s+(later|in\s+\d+|tomorrow)",
     r"come\s+back\s+(later|tomorrow)",
     r"something\s+went\s+wrong",
+    r"trace\s*id",
     r"failed\s+to\s+(generate|send|create|upload|process)",
     r"generation\s+failed",
     r"couldn'?t\s+(generate|create|process|complete)",
@@ -74,5 +75,14 @@ def build_error_scan_js() -> str:
     const t = (el.innerText || "").trim().replace(/\\s+/g, " ");
     if (t) out.push(t.slice(0, 300));
   });
-  return out.slice(0, 10).join("\\n").slice(0, 3000);
+  try {
+    const divs = document.querySelectorAll("div");
+    let hits = 0;
+    for (let i = 0; i < divs.length && i < 8000 && hits < 3; i++) {
+      const t = (divs[i].innerText || "").trim();
+      if (!t || t.length > 500) continue;
+      if (t.toLowerCase().indexOf("trace id") !== -1) { out.push(t.slice(0, 300)); hits++; }
+    }
+  } catch (e) {}
+  return out.slice(0, 13).join("\\n").slice(0, 4000);
 })()"""

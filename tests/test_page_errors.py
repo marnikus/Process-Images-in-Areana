@@ -53,3 +53,21 @@ def test_build_error_scan_js_scopes_alerts():
     assert 'role="alert"' in js
     assert "toast" in js
     assert "innerText" in js
+
+
+@pytest.mark.unit
+def test_match_arena_thread_error_with_trace_id():
+    # Exact in-thread bubble text from the 12:36 run screenshot.
+    line = ("Something went wrong while generating the response. "
+            "Please try again. Trace ID: 5132d45a-77b6")
+    hit = pe.match_page_error(line)
+    assert hit.startswith("Page error: Something went wrong")
+    assert "Trace ID: 5132d45a-77b6" in hit
+    assert pe.match_page_error("Error Trace ID: abc-123") != ""
+    assert pe.match_page_error(line, baseline=line) == ""  # stale: ignored
+
+
+@pytest.mark.unit
+def test_build_error_scan_js_collects_trace_id_bubbles():
+    js = pe.build_error_scan_js()
+    assert "trace id" in js  # in-thread bubbles have no alert role

@@ -198,8 +198,12 @@ def _arm_revival(ctx: JobCtx):
     """Arm post-captcha revival for this generation wait (services-owned)."""
     from app.services.captcha.recovery import arm_resume
     try:
-        arm_resume(ctx.ctrl, ctx.final_prompt, cancelled=lambda: _is_cancelled(ctx),
-                   report=lambda m, l="info": _report_recovery(ctx, m, l))
+        policy = arm_resume(ctx.ctrl, ctx.final_prompt, cancelled=lambda: _is_cancelled(ctx),
+                            report=lambda m, l="info": _report_recovery(ctx, m, l))
+        img = getattr(ctx, "img", None)
+        path = getattr(img, "absolute_path", None) if img is not None else None
+        if path:
+            policy.image_path = str(path)
     except Exception:
         pass
 

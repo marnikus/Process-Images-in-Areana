@@ -266,3 +266,80 @@ async def test_clear_removes_policy_and_gate(monkeypatch):
     clear_resume(ctrl)
     assert getattr(ctrl, "_resume_policy", None) is None
     assert getattr(ctrl, "resume_gate", None) is None
+
+
+class AttachCtrl(FakeCtrl):
+    """FakeCtrl + attachment + send-ready surface (CDP controller shape)."""
+
+    def __init__(self, attached=True, attach_fail=False, **kw):
+        super().__init__(**kw)
+        self._attached = attached
+        self._attach_fail = attach_fail
+
+    async def verify_attachment(self, expected_filename):
+        self.calls.append(("verify", expected_filename))
+        return self._attached, "Found via blob" if self._attached else "Not found"
+
+    async def attach_image(self, image_path):
+        if self._attach_fail:
+            raise RuntimeError("file input gone")
+        self.calls.append(("attach", image_path))
+        return True, "Attached"
+
+    async def submit_when_ready(self, timeout_sec=8.0):
+        self.calls.append(("submit_ready",))
+        return self._submit_ok, "Clicked"
+
+
+async def fire(ctrl, clock, monkeypatch, image_path=None):
+    """Arm, settle, mature the grace window, run one dead poll."""
+    policy, reports = arm(ctrl, clock, monkeypatch)
+    if image_path:
+        policy.image_path = image_path
+    note_settle(ctrl)
+    clock.t += RESUME_GRACE_SEC + 1
+    await maybe_resume(ctrl, dead_diag())
+    return policy, reports
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resubmit_prefers_submit_when_ready(monkeypatch):
+    ctrl, clock = AttachCtrl(), FakeClock()
+    await fire(ctrl, clock, monkeypatch)
+    assert [c[0] for c in ctrl.calls] == ["insert", "submit_ready"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resubmit_reattaches_when_attachment_missing(monkeypatch):
+    ctrl, clock = AttachCtrl(attached=False), FakeClock()
+    await fire(ctrl, clock, monkeypatch, image_path="/tmp/pic/img1.png")
+    assert ctrl.calls[0] == ("verify", "img1.png")
+    assert ctrl.calls[1] == ("attach", "/tmp/pic/img1.png")
+    assert [c[0] for c in ctrl.calls[2:]] == ["insert", "submit_ready"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resubmit_skips_attach_when_present(monkeypatch):
+    ctrl, clock = AttachCtrl(attached=True), FakeClock()
+    await fire(ctrl, clock, monkeypatch, image_path="/tmp/pic/img1.png")
+    assert [c[0] for c in ctrl.calls] == ["verify", "insert", "submit_ready"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resubmit_without_image_path_skips_attach(monkeypatch):
+    ctrl, clock = AttachCtrl(attached=False), FakeClock()
+    await fire(ctrl, clock, monkeypatch)  # no image_path armed
+    assert [c[0] for c in ctrl.calls] == ["insert", "submit_ready"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resubmit_attach_failure_still_sends(monkeypatch):
+    ctrl, clock = AttachCtrl(attached=False, attach_fail=True), FakeClock()
+    _, reports = await fire(ctrl, clock, monkeypatch, image_path="/tmp/pic/img1.png")
+    assert [c[0] for c in ctrl.calls] == ["verify", "insert", "submit_ready"]
+    assert any("re-attach failed" in m for m, _ in reports)
