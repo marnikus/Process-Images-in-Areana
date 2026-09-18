@@ -102,35 +102,36 @@ def _page_url(ctx: CaptchaCtx) -> str:
         return ""
 
 
+def _signal_evidence(signal: CaptchaSignal) -> Dict[str, Any]:
+    """Report-only page evidence; never includes token material."""
+    return {
+        "integration": signal.integration,
+        "anchor": {"present": signal.anchor_present, "visible": signal.anchor_visible},
+        "challenge": {"present": signal.challenge_present, "visible": signal.challenge_visible,
+                       "title": signal.challenge_title, "src": signal.challenge_src},
+        "response_fields": {"count": signal.response_fields, "scope": signal.response_scope},
+        "sitekey_source": signal.sitekey_source,
+        "page_identity": signal.page_identity,
+        "callback": {"attempted": False, "source": "", "called": False},
+        "acceptance": {"state": "pending", "at_s": 0.0},
+        "stale": None,
+    }
+
+
 def _new_encounter(ctx: CaptchaCtx, signal: CaptchaSignal) -> Dict[str, Any]:
     """Fresh report skeleton, stamped at detection (attempt fields blank)."""
-    return {
-        "v": 1,
-        "eid": uuid.uuid4().hex[:8],
-        "tab": ctx.tab_id,
-        "source": ctx.source,
-        "kind": signal.kind,
-        "url": signal.page_url,
-        "dom": signal.dom,
-        "sitekey": signal.sitekey,
-        "invisible": signal.is_invisible,
+    report = {
+        "v": 1, "eid": uuid.uuid4().hex[:8], "tab": ctx.tab_id, "source": ctx.source,
+        "kind": signal.kind, "url": signal.page_url, "dom": signal.dom,
+        "sitekey": signal.sitekey, "invisible": signal.is_invisible,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "detect_to_solve_s": 0.0,
-        "task_type": "",
-        "task_id": "",
-        "polls": 0,
-        "poll_interval_s": POLL_INTERVAL_SEC,
-        "token": None,
-        "dialog_at_token": "",
-        "inject": "",
-        "page_error": None,
-        "status": "",
-        "reason": "",
-        "method": "",
-        "penalty_s": 0,
-        "solve_total_s": 0.0,
-        "_detected_mono": time.monotonic(),
+        "detect_to_solve_s": 0.0, "task_type": "", "task_id": "", "polls": 0,
+        "poll_interval_s": POLL_INTERVAL_SEC, "token": None, "dialog_at_token": "",
+        "inject": "", "page_error": None, "status": "", "reason": "", "method": "",
+        "penalty_s": 0, "solve_total_s": 0.0, "_detected_mono": time.monotonic(),
     }
+    report.update(_signal_evidence(signal))
+    return report
 
 
 def _finish_auto(rep: Dict[str, Any], outcome: SolveOutcome,
@@ -146,8 +147,16 @@ def _finish_auto(rep: Dict[str, Any], outcome: SolveOutcome,
                      "fp": outcome.token_fp} if outcome.token_fp else None)
     rep["dialog_at_token"] = outcome.dialog_at_token
     rep["inject"] = outcome.inject
+    rep["callback"] = {"attempted": bool(outcome.inject),
+                       "source": outcome.inject.split(" via ", 1)[1].split(")", 1)[0]
+                       if " via " in outcome.inject else "",
+                       "called": "cb=called" in outcome.inject}
+    acceptance_at = outcome.page_error_at_s if outcome.status == "page_error" else outcome.token_sec
+    rep["acceptance"] = {"state": outcome.status, "at_s": round(to_solve + acceptance_at, 1)}
     rep["page_error"] = ({"at_s": round(to_solve + outcome.page_error_at_s, 1),
                           "text": outcome.page_error} if outcome.page_error else None)
+    if outcome.status == "token_stale" or "stale" in outcome.reason:
+        rep["stale"] = {"reason": outcome.reason, "at_s": round(to_solve + outcome.token_sec, 1)}
 
 
 def _finish_resolution(rep: Dict[str, Any], outcome: SolveOutcome) -> None:
@@ -232,6 +241,8 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
         if outcome.status == "solved":
             _record_penalty(ctx)
             return outcome
+        if outcome.status in ("page_error", "token_stale"):
+            return outcome
         return await _manual_wait(ctx, signal, f"auto-solve failed: {outcome.reason}", rep)
     if svc is not None and svc.auto_enabled():
         _log(ctx, "⚠️ FLAG CAPTCHA_AUTO skipped — no sitekey in dialog — manual wait", "warn")
@@ -247,7 +258,10 @@ async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
     outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
     _finish_auto(rep, outcome, solve_mono, task_type_for(signal.kind))
     if outcome.status != "solved":
-        _log(ctx, f"2Captcha auto-solve failed ({outcome.reason}) — falling back to manual wait", "warn")
+        _finish_resolution(rep, outcome)
+        _emit_report(ctx, rep)
+        _log(ctx, f"2Captcha auto-solve failed ({outcome.reason}) — "
+                  f"{'preserving page failure' if outcome.status in ('page_error', 'token_stale') else 'falling back to manual wait'}", "warn")
         return outcome
     _finish_resolution(rep, outcome)
     _emit_report(ctx, rep)

@@ -51,11 +51,13 @@ class SolvePlan:
     inject: str = ""  # "scope=.. fields=.. cb=.." summary
     page_error_at: float = 0.0  # solve-start-relative seconds of a mid-solve error
     page_error: str = ""
+    stale_reason: str = ""
 
 
 def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> SolveOutcome:
-    """Auto attempt failed — caller falls back to the manual wait (RULE 4)."""
-    out = SolveOutcome(status="auto_failed", reason=f"{reason}: {detail}".strip(": "), method="auto")
+    """Auto attempt failed — caller may fall back to manual (RULE 4)."""
+    status = "page_error" if reason == "page_error" else "token_stale" if reason == "token_stale" else "auto_failed"
+    out = SolveOutcome(status=status, reason=f"{reason}: {detail}".strip(": "), method="auto")
     if plan is not None:
         out.polls = plan.polls
         if plan.token_at:
@@ -110,28 +112,28 @@ def _heartbeat(log: Callable[[str, str], None], plan: SolvePlan,
     return now
 
 
-async def _note_page_error(plan: SolvePlan, log: Callable[[str, str], None]) -> None:
-    """Log when a page error appears mid-solve (timestamps only, no action)."""
-    if plan.err_seen:
-        return
+async def _note_page_error(plan: SolvePlan, log: Callable[[str, str], None]) -> bool:
+    """Observe a new fatal page error; true means the solve is terminal."""
+    if plan.page_error:
+        return True
     scan = getattr(plan.ctrl, "scan_page_errors", None)
     if scan is None:
-        plan.err_seen = True
-        return
+        return False
     try:
         corpus = await scan()
     except Exception:
-        return
-    if plan.err_base is None:  # first poll: baseline, never report
+        return False
+    if plan.err_base is None:  # first call: baseline, never report
         plan.err_base = corpus if isinstance(corpus, str) else ""
-        return
+        return False
     err = match_page_error(corpus if isinstance(corpus, str) else "", plan.err_base)
-    if err:
-        plan.err_seen = True
-        plan.page_error_at = time.monotonic() - plan.start
-        plan.page_error = err
-        log(f"🛡️ page error appeared during solve ({plan.page_error_at:.0f}s in): {err}",
-            "warn")
+    if not err:
+        return False
+    plan.err_seen = True
+    plan.page_error_at = time.monotonic() - plan.start
+    plan.page_error = err
+    log(f"🛡️ page error appeared during solve ({plan.page_error_at:.0f}s in): {err}", "warn")
+    return True
 
 
 def _token_fingerprint(token: str) -> str:
@@ -204,6 +206,21 @@ async def _verify_gone(ctrl: Any, stop: Callable[[], bool]) -> bool:
         return False
 
 
+async def _inject(ctrl: Any, token: str, sitekey: str,
+                 log: Callable[[str, str], None]) -> Dict[str, Any]:
+    """Set response fields and invoke the page callback; never raises."""
+    try:
+        res = await ctrl.cdp.evaluate(build_inject_js(token, sitekey))
+    except Exception as e:
+        log(f"2Captcha inject probe failed: {e}", "warn")
+        return {}
+    try:
+        data = json.loads(res) if isinstance(res, str) else res
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
 class CaptchaSolver:
     """Owns the inflight task map; all methods are small (RULE 18)."""
 
@@ -255,8 +272,11 @@ class CaptchaSolver:
         return await self._inject_and_verify(plan, token, task_id)
 
     async def _inject_and_verify(self, plan: SolvePlan, token: str, task_id: str) -> SolveOutcome:
+        if await _note_page_error(plan, self._log):
+            await _delete_task(plan.client, task_id, self._stats, self._log)
+            return _failed("page_error", plan.page_error, plan)
         await _note_preinject_state(plan, self._log)
-        res = await self._inject(plan.ctrl, token, plan.signal.sitekey)
+        res = await _inject(plan.ctrl, token, plan.signal.sitekey, self._log)
         if not res.get("ok"):
             await _delete_task(plan.client, task_id, self._stats, self._log)
             self._auto_fail(plan, "inject", "response field not found on page")
@@ -264,7 +284,13 @@ class CaptchaSolver:
         plan.inject = f"scope={res.get('scope')} fields={res.get('fields', 1)} cb={_cb_desc(res)}"
         self._log(f"🤖 token injected ({plan.inject})", "info")
         await _click_continue(plan.ctrl)
+        if await _note_page_error(plan, self._log):
+            await _delete_task(plan.client, task_id, self._stats, self._log)
+            return _failed("page_error", plan.page_error, plan)
         if await _verify_gone(plan.ctrl, plan.stop):
+            if await _note_page_error(plan, self._log):
+                await _delete_task(plan.client, task_id, self._stats, self._log)
+                return _failed("page_error", plan.page_error, plan)
             return self._solved(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats, self._log)
         why = _reject_reason(res)
@@ -330,26 +356,15 @@ class CaptchaSolver:
             except ApiError as e:
                 return self._poll_fail(plan, e.reason, str(e))
             status = res.get("status")
+            if await _note_page_error(plan, self._log):
+                return None, "page_error"
             if status == "ready":
                 return str((res.get("solution") or {}).get("gRecaptchaResponse") or ""), ""
             if status == "failed":
                 return self._poll_fail(plan, "task_failed", _failed_detail(res))
             if time.monotonic() - start > timeout_sec:
                 return self._poll_fail(plan, "poll_timeout")
-            await _note_page_error(plan, self._log)
             last_beat = _heartbeat(self._log, plan, task_id, last_beat)
             await asyncio.sleep(POLL_INTERVAL_SEC)
-
-    async def _inject(self, ctrl: Any, token: str, sitekey: str = "") -> Dict[str, Any]:
-        try:
-            res = await ctrl.cdp.evaluate(build_inject_js(token, sitekey))
-        except Exception as e:
-            self._log(f"2Captcha inject probe failed: {e}", "warn")
-            return {}
-        try:
-            data = json.loads(res) if isinstance(res, str) else res
-            return data if isinstance(data, dict) else {}
-        except Exception:
-            return {}
 
 
