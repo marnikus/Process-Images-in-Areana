@@ -9,6 +9,7 @@ const CaptchaPanel = {
     document.getElementById('captchaSaveBtn')?.addEventListener('click', () => this.save());
     document.getElementById('captchaStatsBtn')?.addEventListener('click', () => this.loadStats());
     document.getElementById('captchaResetBtn')?.addEventListener('click', () => this.resetStats());
+    document.getElementById('captchaScanBtn')?.addEventListener('click', () => this.scanNow());
     document.getElementById('captchaKeyShow')?.addEventListener('change', (e) => {
       const k = document.getElementById('captchaApiKey');
       if (k) k.type = e.target.checked ? 'text' : 'password';
@@ -68,6 +69,16 @@ const CaptchaPanel = {
         } catch (e) {}
       });
     }
+  },
+
+  scanNow() {
+    LogConsole.log('🔍 Captcha scan requested — numbered report in the log window (page → dialogs → iframes → verdict → auto-solve)', 'info');
+    if (App.bridge && App.bridge.diagnose_captcha) App.bridge.diagnose_captcha((res) => {
+      try {
+        const r = JSON.parse(res);
+        if (!r.ok) LogConsole.log('Captcha scan failed: ' + (r.error || '?'), 'error');
+      } catch (e) {}
+    });
   },
 
   loadStats() {

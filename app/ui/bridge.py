@@ -2452,6 +2452,44 @@ class Bridge(QObject):
         if outcome.status == "stopped":
             raise RuntimeError(f"{self._stop_reason(tab_id)} during CAPTCHA at {source}")
 
+    def _arm_gen_wait_settler(self, ctrl, tab_id, corr_id):
+        # ideal-size: 12 lines reason=settle captchas DURING the output wait — the bridge
+        # block runner never armed ctrl.security_settler, so the per-poll gate was a silent no-op
+        try:
+            overlay_sec = int(self.config.get_state("watcher_generation_timeout_sec", 600))
+        except Exception:
+            overlay_sec = 600
+
+        async def settle():
+            await self._settle_captcha_at(ctrl, tab_id, corr_id, "gen-wait")
+            try:
+                await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=overlay_sec)
+            except Exception:
+                pass
+        ctrl.security_settler = settle
+
+    @Slot(result=str)
+    def diagnose_captcha(self):
+        # ideal-size: 8 lines reason=on-demand step-by-step captcha scan ("debug it now")
+        if not (self.cdp and self.cdp.is_connected):
+            return json.dumps({"ok": False, "error": "browser not connected"})
+        self._schedule_coro(self._run_captcha_scan())
+        return json.dumps({"ok": True, "scanning": True})
+
+    async def _run_captcha_scan(self):
+        # ideal-size: 13 lines reason=one diagnose probe + 2Captcha status → numbered report
+        from app.browser.cdp_arena import CDPArenaController
+        from app.services.captcha.diagnose import build_scan_report
+        try:
+            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
+            info = await ctrl._security_diagnose()
+            page_url = await self.cdp.evaluate("location.href") or ""
+            status = self._captcha_service().status_payload()
+            for line in build_scan_report(info, page_url, status):
+                self._log(line, "warn" if line.lstrip().startswith(("❌", "⚠️")) else "info")
+        except Exception as e:
+            self._log(f"❌ Captcha scan failed: {e}", "error")
+
     @Slot(str, result=str)
     def reset_page_cooldown(self, tab_id: str):
         try:
@@ -3045,6 +3083,7 @@ class Bridge(QObject):
                             max_wait_cycles = 2  # original + after reload
                             wait_success = False
                             last_wait_error = ""
+                            self._arm_gen_wait_settler(ctrl, primary_tab_id, correlation_id)  # per-poll settle (was a silent no-op)
                             for wait_cycle in range(max_wait_cycles):
                                 if self._run_stop_requested(primary_tab_id):
                                     self._log(f"[{correlation_id}] ❌ Cancelled during wait cycle {wait_cycle+1}", "warn")
@@ -3422,6 +3461,7 @@ class Bridge(QObject):
                                 except Exception:
                                     pass
                             # else already raised (exception will also trigger hide in outer except via finally? we already hid)
+                            ctrl.security_settler = None  # wait section done — disarm the per-poll settle
 
                         elif btype == "DOWNLOAD":
                             await self._settle_boundary_captcha(ctrl, primary_tab_id, correlation_id, "download")
@@ -3465,6 +3505,7 @@ class Bridge(QObject):
                                 max_dl_cycles = 2  # original + after reload
                                 dl_success = False
                                 last_dl_err = ""
+                                self._arm_gen_wait_settler(ctrl, primary_tab_id, correlation_id, int(gen_timeout / 1000))  # settle captchas during the download waits too
                                 for dl_cycle in range(max_dl_cycles):
                                     if self._run_stop_requested(primary_tab_id):
                                         self._log(f"[{correlation_id}] ❌ Cancelled during download cycle {dl_cycle+1}", "warn")
@@ -3621,6 +3662,7 @@ class Bridge(QObject):
                                     self._emit_job_action_status(job_id, block, "success", f"Downloaded {len(file_bytes)} bytes {ctype} (Python direct fallback for R2, with reload retry)")
                                 else:
                                     raise RuntimeError(f"Download failed after {max_dl_cycles} cycles (each {max_attempts} attempts + reload + waiting check) — last error: {last_dl_err} src={new_src[:120]}. Only fails if page finished all tasks and no jobs running, with reload retry for bad cache.")
+                                ctrl.security_settler = None  # download section done — disarm the per-poll settle
 
                         elif btype == "VALIDATE":
                             if not file_bytes:
@@ -5139,4 +5181,6 @@ class Bridge(QObject):
         # compatibility with old app: just emit arena state
         self._emit_arena_state()
         return json.dumps({"ok": True})
+
+
 
