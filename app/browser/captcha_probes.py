@@ -23,6 +23,16 @@ def build_detect_js() -> str:
     return _read("detect.js")
 
 
+def build_diagnose_js() -> str:
+    """Gate verdict + evidence + reason probe (superset of visible.js).
+
+    One eval covers the poll gate (cdp_arena._security_gate) and the
+    on-demand "Scan now" (bridge.diagnose_captcha) — the reason string is
+    what the user reads when "detection is not clear".
+    """
+    return _read("diagnose.js")
+
+
 def build_visible_js() -> str:
     """Gate predicate for is_security_dialog_visible (boolean IIFE).
 

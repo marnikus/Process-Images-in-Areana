@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple, Callable
 
 from .cdp_client import CDPClient
-from .captcha_probes import build_visible_js
+from .captcha_probes import build_diagnose_js, build_visible_js
 from .output_probes import build_baseline_js, build_check_js
 from .output_state import flatten_diagnostics, build_order_check_text
 from .output_wait import wait_for_new_output_loop
@@ -332,16 +332,43 @@ class CDPArenaController:
         except Exception as e:
             return "failed", {"error": str(e)}
 
+    _SEC_BEAT_EVERY = 15  # clear-verdict heartbeat cadence (polls; ~30 s at the 2 s poll interval)
+
+    async def _security_diagnose(self) -> Dict[str, Any]:
+        # ideal-size: 6 lines reason=one probe = verdict + evidence + reason (RULE 9 fail open)
+        try:
+            return await self.cdp.evaluate(build_diagnose_js()) or {}
+        except Exception as e:
+            log.debug(f"security diagnose failed {e}")
+            return {"visible": False, "evidence": {"reason": f"probe error: {e}"}}
+
+    def _log_security_beat(self, info: Dict[str, Any], verdict: str) -> None:
+        # ideal-size: 14 lines reason=verdict changes + ~30 s heartbeat + no-settler warning
+        reason = (info.get("evidence") or {}).get("reason") or "?"
+        self._sec_polls = getattr(self, "_sec_polls", 0) + 1
+        if verdict != getattr(self, "_sec_last_verdict", None):
+            self._sec_last_verdict = verdict
+            mark = "🛡️" if verdict == "challenge" else "✅"
+            self._log(f"{mark} Security scan: {verdict} — {reason}")
+            if verdict == "challenge" and getattr(self, "security_settler", None) is None:
+                self._log("⚠️ Security: challenge visible but no auto-settle armed — solve manually in Chrome", "warn")
+        elif self._sec_polls % self._SEC_BEAT_EVERY == 0:
+            self._log(f"🔎 Security scan: clear — {reason}")
+
     async def _security_gate(self) -> None:
-        # ideal-size: 9 lines reason=settle the security dialog inline during the output wait
+        # ideal-size: 13 lines reason=per-poll settle with an observable verdict (was a silent no-op)
+        info = await self._security_diagnose()
+        verdict = "challenge" if info.get("visible") else "clear"
+        self._log_security_beat(info, verdict)
+        if not info.get("visible"):
+            return
         settler = getattr(self, "security_settler", None)
         if settler is None:
             return
         try:
-            if await self.is_security_dialog_visible():
-                await settler()
+            await settler()
         except Exception as e:
-            log.debug(f"security gate settle failed {e}")
+            self._log(f"Security gate settle failed: {e}", "warn")
 
     async def _python_download(self, src: str) -> Tuple[bool, bytes, str]:
         def sync_fetch(url: str):
