@@ -35,10 +35,11 @@ const CaptchaPanel = {
   renderStatus(r) {
     const line = document.getElementById('captchaStatusLine');
     if (!line) return;
+    const mode = r.enabled ? 'auto-solve: ON (2Captcha will solve visible captchas)' : 'auto-solve: OFF (app waits for your manual solve)';
     const key = r.has_key ? `key: ${r.masked_key || '****'}` : 'key: (not set)';
     const bal = r.balance !== null && r.balance !== undefined ? `balance: $${Number(r.balance).toFixed(2)}${r.balance_at ? ` (checked ${r.balance_at})` : ''}` : 'balance: —';
     const err = r.last_error ? ` · last error: ${r.last_error}` : '';
-    line.textContent = `${key} · ${bal}${err}`;
+    line.textContent = `${mode} · ${key} · ${bal}${err}`;
     if (r.balance !== null && r.balance !== undefined) {
       const b = document.getElementById('capStatBalance');
       if (b) b.textContent = `$${Number(r.balance).toFixed(2)}`;

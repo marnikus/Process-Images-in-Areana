@@ -132,6 +132,7 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     _log(ctx, f"🛡️ Captcha detected ({signal.kind}, sitekey={'set' if signal.sitekey else 'missing'}) via {ctx.source}", "error")
     svc = _service(ctx)
     if svc is not None and svc.auto_enabled() and signal.solvable:
+        _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
         outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
         if outcome.status == "solved":
             _record_penalty(ctx)
@@ -143,6 +144,7 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
 async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal) -> SolveOutcome:
     """Overlay + poll until the dialog clears; penalty once cleared."""
     timeout = _wait_timeout(ctx)
+    _log(ctx, f"🛡️ FLAG CAPTCHA_WAITING — captcha on screen (tab {str(ctx.tab_id)[:12]}, {host_of(signal.page_url)}) — awaiting your solve in Chrome", "error")
     try:
         await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha",
                                             timeout_sec=timeout, elapsed_sec=0)

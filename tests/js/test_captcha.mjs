@@ -26,6 +26,12 @@ class El {
     this.disabled = !!attrs.disabled;
     this._hidden = false;
     this._text = attrs._text || '';
+    this._style = attrs._style || null;
+    this._rect = null;
+  }
+  get parentElement() { return this.parent; }
+  getBoundingClientRect() {
+    return this._rect || { top: 0, left: 0, right: 100, bottom: 100, width: 100, height: 100 };
   }
   append(...els) { els.forEach(e => { e.parent = this; this.children.push(e); }); return this; }
   getAttribute(n) { return this.attrs[n] !== undefined ? String(this.attrs[n]) : null; }
@@ -255,8 +261,13 @@ test('detect: dialog with container only (no standard iframe) + footer text is v
 
 const runVisible = (body) => {
   const document = makeDoc(body);
-  const fn = new Function('document', `return (${probe('visible.js')});`);
-  return fn(document);
+  const window = {
+    innerWidth: 1600,
+    innerHeight: 900,
+    getComputedStyle: (el) => (el && el._style) || { display: 'block', visibility: 'visible' },
+  };
+  const fn = new Function('document', 'window', `return (${probe('visible.js')});`);
+  return fn(document, window);
 };
 
 test('visible: badge widget on screen (normal state) is NOT a challenge', () => {
@@ -293,6 +304,28 @@ test('visible: hidden badge iframe (never rendered) is not a challenge either', 
   const badge = new El('div', { class: 'grecaptcha-badge' });
   badge.append(f);
   assert.equal(runVisible(new El('body').append(badge)), false);
+});
+
+test('visible: off-screen widget (right:-186px past viewport) is NOT on screen', () => {
+  // saved-state badge geometry: laid out (offsetParent set) but off-screen
+  const f = new El('iframe', { title: 'reCAPTCHA', src: 'https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6Lx&size=invisible' });
+  f._rect = { top: 0, left: 2000, right: 2256, bottom: 60, width: 256, height: 60 };
+  assert.equal(runVisible(new El('body').append(f)), false);
+});
+
+test('visible: visibility:hidden ancestor (saved-state badge style) is NOT on screen', () => {
+  // no badge class here — the geometry/visibility walk must catch it alone
+  const wrap = new El('div', { _style: { display: 'block', visibility: 'hidden' } });
+  const f = new El('iframe', { title: 'reCAPTCHA', src: 'https://www.google.com/recaptcha/enterprise/anchor?k=6Lx' });
+  wrap.append(f);
+  assert.equal(runVisible(new El('body').append(wrap)), false);
+});
+
+test('visible: display:none ancestor is NOT on screen', () => {
+  const wrap = new El('div', { _style: { display: 'none', visibility: 'visible' } });
+  const f = new El('iframe', { title: 'reCAPTCHA', src: 'https://www.google.com/recaptcha/enterprise/anchor?k=6Lx' });
+  wrap.append(f);
+  assert.equal(runVisible(new El('body').append(wrap)), false);
 });
 
 /* ——— inject probe ——— */
