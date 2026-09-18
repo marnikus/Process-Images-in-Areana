@@ -40,6 +40,7 @@ class PageInfo:
     cooldown_until: float = 0.0
     cooldown_total: int = 0
     captcha_count: int = 0
+    rate_limit_count: int = 0
     pending_penalty: int = 0
     last_job_at: Optional[str] = None
     cooldown_reason: str = ""
@@ -97,6 +98,7 @@ class PageInfo:
             "cooldown_until": self.cooldown_until,
             "cooldown_total": self.cooldown_total,
             "captcha_count": self.captcha_count,
+            "rate_limit_count": self.rate_limit_count,
             "pending_penalty": self.pending_penalty,
             "last_job_at": self.last_job_at,
             "cooldown_reason": self.cooldown_reason,

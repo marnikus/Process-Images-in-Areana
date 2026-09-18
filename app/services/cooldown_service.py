@@ -19,6 +19,7 @@ from app.browser.page_status import PageInfo, PageStatus, now_iso
 from app.core.cooldown import (
     DEFAULT_MIN_SECONDS,
     DEFAULT_PENALTY_SECONDS,
+    DEFAULT_RATE_LIMIT_PENALTY_SECONDS,
     CooldownConfig,
     clamp_seconds,
     cooldown_total,
@@ -42,6 +43,7 @@ class FinishCtx:
     client: Any
     pending_before: int = 0
     captcha_before: int = 0
+    rate_limit_before: int = 0
 
 
 def _safe_int(get_state, key: str, default: int) -> int:
@@ -61,7 +63,10 @@ def load_config(get_state) -> CooldownConfig:
         enabled = True
     base = _safe_int(get_state, "cooldown_min_seconds", DEFAULT_MIN_SECONDS)
     penalty = _safe_int(get_state, "cooldown_captcha_penalty_seconds", DEFAULT_PENALTY_SECONDS)
-    return CooldownConfig(enabled=enabled, min_seconds=base, captcha_penalty_seconds=penalty)
+    rate_limit = _safe_int(get_state, "cooldown_rate_limit_penalty_seconds",
+                           DEFAULT_RATE_LIMIT_PENALTY_SECONDS)
+    return CooldownConfig(enabled=enabled, min_seconds=base, captcha_penalty_seconds=penalty,
+                          rate_limit_penalty_seconds=rate_limit)
 
 
 def _settle_steady(page) -> bool:
@@ -357,8 +362,8 @@ def _persist_emit(bridge) -> None:
             pass
 
 
-def _captcha_suffix(page, penalty) -> str:
-    """Log tail: live extension or stacked pending."""
+def _cooldown_suffix(page, penalty) -> str:
+    """Log tail: live extension or stacked pending (shared by captcha + rate-limit)."""
     if page is not None and page.status == PageStatus.COOLDOWN and page.is_cooling():
         return f"live cooldown extended to {format_remaining(page.cooldown_total)}"
     pending = page.pending_penalty if page else 0
@@ -379,9 +384,63 @@ def note_captcha_event(pool, tab_id, bridge, source="job") -> int:
         page = pool.get_page(tab_id)
     except Exception:
         page = None
-    _log(bridge, f"\U0001f6e1\ufe0f Captcha +{penalty // 60}m tab {str(tab_id)[:12]} (x{count}) via {source} — {_captcha_suffix(page, penalty)}", "warn")
+    _log(bridge, f"\U0001f6e1\ufe0f Captcha +{penalty // 60}m tab {str(tab_id)[:12]} (x{count}) via {source} — {_cooldown_suffix(page, penalty)}", "warn")
     _persist_emit(bridge)
     return count
+
+
+def _rate_limit_penalty_from(bridge) -> int:
+    """Read the per-rate-limit seconds; default 1800, never below 0."""
+    try:
+        get_state = getattr(getattr(bridge, "config", None), "get_state", None)
+        if get_state:
+            return max(0, int(get_state("cooldown_rate_limit_penalty_seconds",
+                                        DEFAULT_RATE_LIMIT_PENALTY_SECONDS)))
+    except Exception:
+        pass
+    return DEFAULT_RATE_LIMIT_PENALTY_SECONDS
+
+
+def add_rate_limit_penalty(pool, tab_id, penalty_seconds) -> int:
+    """Stack +penalty on this tab only; returns count (-1 unknown)."""
+    extra = clamp_seconds(penalty_seconds, 0)
+    with pool._lock:
+        page = pool._pages.get(tab_id)
+        if page is None:
+            return -1
+        page.rate_limit_count += 1
+        if page.status == PageStatus.COOLDOWN and page.is_cooling():
+            page.cooldown_until += extra
+            page.cooldown_total += extra
+        else:
+            page.pending_penalty += extra
+        return page.rate_limit_count
+
+
+def note_rate_limit_event(pool, tab_id, bridge) -> int:
+    """Stack the configured rate-limit penalty; 0 when disabled, -1 unknown tab."""
+    penalty = _rate_limit_penalty_from(bridge)
+    if penalty <= 0 or pool is None or not tab_id:
+        return 0
+    count = add_rate_limit_penalty(pool, tab_id, penalty)
+    if count < 0:
+        _log(bridge, f"⚠ Rate-limit penalty skipped on tab {str(tab_id)[:12]} (unknown tab)", "warn")
+        return -1
+    try:
+        page = pool.get_page(tab_id)
+    except Exception:
+        page = None
+    _log(bridge, f"⛔ Rate limit +{penalty // 60}m tab {str(tab_id)[:12]} (x{count}) — {_cooldown_suffix(page, penalty)}", "warn")
+    _persist_emit(bridge)
+    return count
+
+
+def maybe_note_rate_limit(pool, tab_id, bridge, error) -> int:
+    """Apply the rate-limit penalty when the job error is a rate/limit signal."""
+    from app.utils.page_errors import is_rate_limit_error
+    if not is_rate_limit_error(error):
+        return 0
+    return note_rate_limit_event(pool, tab_id, bridge)
 
 
 async def wait_captcha_cleared(ctrl, stop, timeout_sec, log) -> bool:
@@ -676,18 +735,23 @@ def _capture_pending(ctx) -> None:
         page = ctx.pool.get_page(ctx.tab_id)
         ctx.pending_before = page.pending_penalty if page else 0
         ctx.captcha_before = page.captcha_count if page else 0
+        ctx.rate_limit_before = page.rate_limit_count if page else 0
     except Exception:
         pass
 
 
 def _finish_detail(ctx) -> str:
-    """' (total 20:00 = base 05:00 + captcha 15:00 x1)' or '' when plain."""
+    """Breakdown: ' (total 20:00 = base 05:00 + captcha 15:00 x1)'; '' when plain."""
     try:
         if ctx.pending_before <= 0:
             return ""
         page = ctx.pool.get_page(ctx.tab_id)
         total = page.cooldown_total if page else 0
         base = max(0, total - ctx.pending_before)
+        if ctx.rate_limit_before > 0:
+            return (f" (total {format_remaining(total)} = base {format_remaining(base)}"
+                    f" + extra {format_remaining(ctx.pending_before)}"
+                    f" (captcha x{ctx.captcha_before}, rate-limit x{ctx.rate_limit_before}))")
         return (f" (total {format_remaining(total)} = base {format_remaining(base)}"
                 f" + captcha {format_remaining(ctx.pending_before)} x{ctx.captcha_before})")
     except Exception:

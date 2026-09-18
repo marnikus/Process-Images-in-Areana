@@ -26,6 +26,19 @@ def test_config_defaults_match_spec():
     assert cfg.enabled is True
     assert cfg.min_seconds == 300  # 5 min per spec 02
     assert cfg.captcha_penalty_seconds == 900  # 15 min per spec 04
+    assert cfg.rate_limit_penalty_seconds == 1800  # 30 min default rate-limit back-off
+
+
+@pytest.mark.unit
+def test_config_rate_limit_from_dict_clamps_and_round_trips():
+    cfg = config_from_dict({"rate_limit_penalty_seconds": 45})
+    assert cfg.rate_limit_penalty_seconds == 45
+    assert config_from_dict({"rate_limit_penalty_seconds": 999999}).rate_limit_penalty_seconds == 86400
+    assert config_from_dict({"rate_limit_penalty_seconds": -5}).rate_limit_penalty_seconds == 0
+    # missing key keeps the 30 min default
+    assert config_from_dict({}).rate_limit_penalty_seconds == 1800
+    back = config_to_dict(config_from_dict(config_to_dict(cfg)))
+    assert back["rate_limit_penalty_seconds"] == 45
 
 
 @pytest.mark.unit
@@ -54,6 +67,15 @@ def test_config_to_dict_exposes_minutes_for_ui():
     d = config_to_dict(CooldownConfig(True, 300, 900))
     assert d["min_minutes"] == 5
     assert d["captcha_penalty_minutes"] == 15
+    assert d["rate_limit_penalty_seconds"] == 1800  # default
+    assert d["rate_limit_penalty_minutes"] == 30
+
+
+@pytest.mark.unit
+def test_config_to_dict_exposes_custom_rate_limit_minutes():
+    d = config_to_dict(CooldownConfig(True, 300, 900, 45))
+    assert d["rate_limit_penalty_seconds"] == 45
+    assert d["rate_limit_penalty_minutes"] == 0  # 45s < 1min
 
 
 @pytest.mark.unit

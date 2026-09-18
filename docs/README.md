@@ -59,6 +59,8 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-18-recaptcha-verification-architecture/design.md` — implementation architecture: probe evidence, terminal page-error/stale-token guards, acceptance candidate vs output success, penalty/report semantics, test matrix
 - `archive/2026-09-18-recaptcha-verification-architecture/implementation-2026-09-18.md` — implementation record: page/document timeOrigin identity + challenge-frame identity compared before token injection
 - `archive/2026-09-18-url-row-tab-ownership/design.md` — "5 links detected but only 4 tabs open" + "checked 1 link but 2 were used": root causes were run-side row re-binding (round-robin `link_tab` steals rows → next scan adds phantom rows) and dispatch ignoring the checkbox (pool dispatch/tab-resolve picked any tab); fix is invariant I-33 — one live tab ↔ one row, auto-connect owns bindings, scan repairs duplicates, and checked rows gate start/single/parallel paths
+- `archive/2026-09-18-recording-toggle-and-day-folders/design.md` — record on/off toggle (default ON, `start()` short-circuits when off) + per-day session folders `YYYY-MM-DD/<session>/` (legacy flat coexists, `drop_empty_day`, analyzer walks all layouts)
+- `archive/2026-09-19-rate-limit-penalty/design.md` — 3rd URL-window cooldown field: user-set **rate-limit penalty** (default 30 min) — when a job fails on a rate/limit/quota banner (`is_rate_limit_error`), the tab stacks that penalty (`maybe_note_rate_limit` at both failure sites) so it cools base+penalty instead of base alone
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

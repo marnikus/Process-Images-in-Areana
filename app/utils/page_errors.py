@@ -40,6 +40,24 @@ ERROR_PATTERNS = (
 
 _COMPILED = [re.compile(p, re.IGNORECASE) for p in ERROR_PATTERNS]
 
+# Strong rate/limit/quota signals only — the subset that justifies a long
+# back-off. Generic failures (something went wrong / generation failed /
+# service unavailable) are deliberately excluded so a transient error does not
+# burn the full rate-limit penalty.
+RATE_LIMIT_PATTERNS = (
+    r"rate\s*-?\s*limit",
+    r"limit\s+reached",
+    r"reached\s+(your|the)\s+limit",
+    r"usage\s+limit",
+    r"daily\s+limit",
+    r"too\s+many\s+requests",
+    r"quota\s+exceeded",
+    r"out\s+of\s+(credits|quota)",
+    r"free\s+(tier|plan)\s+limit",
+)
+
+_RATE_LIMIT_COMPILED = [re.compile(p, re.IGNORECASE) for p in RATE_LIMIT_PATTERNS]
+
 MAX_LINE = 160
 
 
@@ -62,6 +80,13 @@ def match_page_error(corpus: str, baseline: str = "") -> str:
             if rx.search(line):
                 return f"Page error: {line[:MAX_LINE]}"
     return ""
+
+
+def is_rate_limit_error(text: str) -> bool:
+    """True when a job-error string carries a rate/limit/quota signal."""
+    if not text or not isinstance(text, str):
+        return False
+    return any(rx.search(text) for rx in _RATE_LIMIT_COMPILED)
 
 
 def build_error_scan_js() -> str:

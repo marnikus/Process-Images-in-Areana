@@ -2347,11 +2347,14 @@ class Bridge(QObject):
             enabled = bool(data.get("enabled", True))
             min_s = clamp_seconds(data.get("min_seconds", 300), 300)
             pen_s = clamp_seconds(data.get("captcha_penalty_seconds", 900), 900)
+            rl_s = clamp_seconds(data.get("rate_limit_penalty_seconds", 1800), 1800)
             self.config.set_state(cooldown_enabled=enabled, cooldown_min_seconds=min_s,
-                                  cooldown_captcha_penalty_seconds=pen_s)
-            self._log(f"Cooldown set: enabled={enabled} min={min_s // 60}m penalty={pen_s // 60}m per captcha", "success")
+                                  cooldown_captcha_penalty_seconds=pen_s,
+                                  cooldown_rate_limit_penalty_seconds=rl_s)
+            self._log(f"Cooldown set: enabled={enabled} min={min_s // 60}m penalty={pen_s // 60}m per captcha limit={rl_s // 60}m", "success")
             return json.dumps({"ok": True, "config": {"enabled": enabled, "min_seconds": min_s,
-                                                      "captcha_penalty_seconds": pen_s}}, ensure_ascii=False)
+                                                      "captcha_penalty_seconds": pen_s,
+                                                      "rate_limit_penalty_seconds": rl_s}}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
@@ -3701,6 +3704,10 @@ class Bridge(QObject):
 
                 self.state.recalculate_progress()
                 self._save_arena()
+                # Rate-limit failure: stack the longer back-off before the base cooldown
+                if job_failed and job_error:
+                    from app.services.cooldown_service import maybe_note_rate_limit
+                    maybe_note_rate_limit(self._page_pool, primary_tab_id, self, job_error)
                 # Post-generation reset + cooldown (single-page)
                 await self._finish_primary_tab(ctrl, primary_tab_id)
                 if self._cancel_requested:
@@ -4739,6 +4746,7 @@ class Bridge(QObject):
                     "enabled": self.config.get_state("cooldown_enabled", True),
                     "min_seconds": self.config.get_state("cooldown_min_seconds", 300),
                     "captcha_penalty_seconds": self.config.get_state("cooldown_captcha_penalty_seconds", 900),
+                    "rate_limit_penalty_seconds": self.config.get_state("cooldown_rate_limit_penalty_seconds", 1800),
                 },
                 "updated_at": datetime.utcnow().isoformat() + "Z",
                 "app_version": "arena-1.0",
@@ -4807,7 +4815,8 @@ class Bridge(QObject):
                     self.config.set_state(
                         cooldown_enabled=bool(cd.get("enabled", True)),
                         cooldown_min_seconds=clamp_seconds(cd.get("min_seconds", 300), 300),
-                        cooldown_captcha_penalty_seconds=clamp_seconds(cd.get("captcha_penalty_seconds", 900), 900))
+                        cooldown_captcha_penalty_seconds=clamp_seconds(cd.get("captcha_penalty_seconds", 900), 900),
+                        cooldown_rate_limit_penalty_seconds=clamp_seconds(cd.get("rate_limit_penalty_seconds", 1800), 1800))
                     self._log("Restored cooldown settings from preset", "info")
                 except Exception as e:
                     log.warning(f"Failed to restore cooldown from preset: {e}")

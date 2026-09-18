@@ -172,3 +172,64 @@ describe('sticky row-tab binding (F10)', () => {
     assert.equal(sandbox.__U.matchPoolPage('https://arena.ai/same', '').tab_id, 'A');
   });
 });
+
+describe('rate-limit penalty field (3rd cooldown input)', () => {
+  function loadWithDom(elements, bridgeState) {
+    const captured = {};
+    const bridge = {
+      set_cooldown_config: (json, cb) => { captured.saved = JSON.parse(json); cb(JSON.stringify({ ok: true })); },
+      get_cooldown_config: (cb) => { cb(JSON.stringify({ ok: true, config: bridgeState })); },
+    };
+    const sandbox = { console, JSON, Math, Object, Array, Map, Set, Error, URL,
+      document: { getElementById: (id) => elements[id] || null },
+      App: { bridge },
+      LogConsole: { log: () => {} } };
+    sandbox.self = sandbox; sandbox.window = sandbox; sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(panelCode + '\nthis.__U = UrlList;', sandbox, { filename: 'url-list.js' });
+    return { u: sandbox.__U, captured, elements };
+  }
+
+  test('saveCooldownConfig carries rate_limit_penalty_seconds in the payload', () => {
+    const elements = {
+      urlCooldownEnabled: { checked: true },
+      urlCooldownMin: { value: '5' },
+      urlCooldownPenalty: { value: '15' },
+      urlCooldownRateLimit: { value: '30' },
+    };
+    const { u, captured } = loadWithDom(elements, {});
+    u.saveCooldownConfig();
+    assert.equal(captured.saved.enabled, true);
+    assert.equal(captured.saved.min_seconds, 300);
+    assert.equal(captured.saved.captcha_penalty_seconds, 900);
+    assert.equal(captured.saved.rate_limit_penalty_seconds, 1800); // 30m
+  });
+
+  test('saveCooldownConfig falls back to 30m when the input is empty', () => {
+    const elements = {
+      urlCooldownEnabled: { checked: true },
+      urlCooldownMin: { value: '' },
+      urlCooldownPenalty: { value: '' },
+      urlCooldownRateLimit: { value: '' },
+    };
+    const { u, captured } = loadWithDom(elements, {});
+    u.saveCooldownConfig();
+    assert.equal(captured.saved.rate_limit_penalty_seconds, 1800);
+  });
+
+  test('loadCooldownConfig populates the rate-limit input from config', () => {
+    const elements = {
+      urlCooldownEnabled: { checked: false },
+      urlCooldownMin: { value: '' },
+      urlCooldownPenalty: { value: '' },
+      urlCooldownRateLimit: { value: '' },
+    };
+    const state = { enabled: true, min_minutes: 5, captcha_penalty_minutes: 15, rate_limit_penalty_minutes: 30 };
+    const { u } = loadWithDom(elements, state);
+    u.loadCooldownConfig();
+    assert.equal(elements.urlCooldownEnabled.checked, true);
+    assert.equal(elements.urlCooldownMin.value, 5);
+    assert.equal(elements.urlCooldownPenalty.value, 15);
+    assert.equal(elements.urlCooldownRateLimit.value, 30);
+  });
+});

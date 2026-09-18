@@ -15,7 +15,7 @@ from app.core.models import ImageItem, UrlRow
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
 from . import auto_connect as ac
-from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status
+from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status, maybe_note_rate_limit
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
 
 log = logging.getLogger("arena")
@@ -292,6 +292,7 @@ async def run_one_image_on_page(bridge, pool, img, urls):
     try:
         url_row, corr_id, job_id, failed, err = await _run_image_job(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=urls, tab_id=tab_id, ctrl=ctrl, client=client))
         _handle_result(ResultCtx(bridge=bridge, pool=pool, img=img, tab_id=tab_id, corr_id=corr_id, job_id=job_id, failed=failed, err=err))
+        maybe_note_rate_limit(pool, tab_id, bridge, err)
     except asyncio.CancelledError:
         raise
     except Exception as e:

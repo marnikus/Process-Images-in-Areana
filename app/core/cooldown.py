@@ -13,15 +13,17 @@ from dataclasses import dataclass
 DAY_SECONDS = 86400
 DEFAULT_MIN_SECONDS = 300  # spec 02 example: 5 min between jobs
 DEFAULT_PENALTY_SECONDS = 900  # spec 04 example: +15 min per captcha
+DEFAULT_RATE_LIMIT_PENALTY_SECONDS = 1800  # 30 min back-off on a rate-limit banner
 
 
 @dataclass
 class CooldownConfig:
-    """User settings: base pause + per-captcha extra (seconds)."""
+    """User settings: base pause + per-captcha + per-rate-limit extra (seconds)."""
 
     enabled: bool = True
     min_seconds: int = DEFAULT_MIN_SECONDS
     captcha_penalty_seconds: int = DEFAULT_PENALTY_SECONDS
+    rate_limit_penalty_seconds: int = DEFAULT_RATE_LIMIT_PENALTY_SECONDS
 
 
 def clamp_seconds(value, default: int = 0, limit: int = DAY_SECONDS) -> int:
@@ -47,6 +49,9 @@ def config_from_dict(data: dict | None) -> CooldownConfig:
         captcha_penalty_seconds=clamp_seconds(raw.get("captcha_penalty_seconds",
                                                       DEFAULT_PENALTY_SECONDS),
                                               DEFAULT_PENALTY_SECONDS),
+        rate_limit_penalty_seconds=clamp_seconds(raw.get("rate_limit_penalty_seconds",
+                                                          DEFAULT_RATE_LIMIT_PENALTY_SECONDS),
+                                                 DEFAULT_RATE_LIMIT_PENALTY_SECONDS),
     )
 
 
@@ -56,8 +61,10 @@ def config_to_dict(cfg: CooldownConfig) -> dict:
         "enabled": bool(cfg.enabled),
         "min_seconds": int(cfg.min_seconds),
         "captcha_penalty_seconds": int(cfg.captcha_penalty_seconds),
+        "rate_limit_penalty_seconds": int(cfg.rate_limit_penalty_seconds),
         "min_minutes": int(cfg.min_seconds) // 60,
         "captcha_penalty_minutes": int(cfg.captcha_penalty_seconds) // 60,
+        "rate_limit_penalty_minutes": int(cfg.rate_limit_penalty_seconds) // 60,
     }
 
 

@@ -107,3 +107,33 @@ async def test_poll_check_contains_ordinary_errors():
 
     diag, err = await _poll_check(boom, 0.01)
     assert diag is None and err == {"ready": False, "reason": "cdp hiccup"}
+
+
+@pytest.mark.unit
+def test_is_rate_limit_error_true_for_limit_signals():
+    # The exact screenshot banner, plus the other strong limit/quota signals.
+    assert pe.is_rate_limit_error("Page error: You've reached a rate limit. Please try again in a moment.")
+    assert pe.is_rate_limit_error("Rate limit exceeded, try again in 5")
+    assert pe.is_rate_limit_error("Limit Reached")
+    assert pe.is_rate_limit_error("You have reached your daily limit")
+    assert pe.is_rate_limit_error("You've reached the limit")
+    assert pe.is_rate_limit_error("usage limit")
+    assert pe.is_rate_limit_error("Quota exceeded for this model")
+    assert pe.is_rate_limit_error("Too Many Requests")
+    assert pe.is_rate_limit_error("You are out of credits")
+    assert pe.is_rate_limit_error("You're out of quota")
+    assert pe.is_rate_limit_error("Free plan limit reached")
+
+
+@pytest.mark.unit
+def test_is_rate_limit_error_false_for_generic_failures():
+    # Generic/transient failures must NOT trigger the long back-off.
+    assert not pe.is_rate_limit_error("Page error: Something went wrong")
+    assert not pe.is_rate_limit_error("Generation failed, please retry")
+    assert not pe.is_rate_limit_error("Service unavailable")
+    assert not pe.is_rate_limit_error("Failed to generate image")
+    assert not pe.is_rate_limit_error("Internal error")
+    assert not pe.is_rate_limit_error("Try again")
+    assert not pe.is_rate_limit_error("")
+    assert not pe.is_rate_limit_error(None)
+    assert not pe.is_rate_limit_error(123)

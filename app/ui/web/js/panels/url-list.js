@@ -423,6 +423,7 @@ const UrlList = {
           const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
           setVal('urlCooldownMin', c.min_minutes ?? Math.round((c.min_seconds || 300) / 60));
           setVal('urlCooldownPenalty', c.captcha_penalty_minutes ?? Math.round((c.captcha_penalty_seconds || 900) / 60));
+          setVal('urlCooldownRateLimit', c.rate_limit_penalty_minutes ?? Math.round((c.rate_limit_penalty_seconds || 1800) / 60));
         } catch (e) {}
       });
     }
@@ -433,12 +434,13 @@ const UrlList = {
     const getNum = (id, fb) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return isNaN(v) ? fb : v; };
     const minM = Math.max(0, Math.min(1440, getNum('urlCooldownMin', 5)));
     const penM = Math.max(0, Math.min(1440, getNum('urlCooldownPenalty', 15)));
-    const payload = {enabled: en ? en.checked : true, min_seconds: Math.round(minM * 60), captcha_penalty_seconds: Math.round(penM * 60)};
+    const rlM = Math.max(0, Math.min(1440, getNum('urlCooldownRateLimit', 30)));
+    const payload = {enabled: en ? en.checked : true, min_seconds: Math.round(minM * 60), captcha_penalty_seconds: Math.round(penM * 60), rate_limit_penalty_seconds: Math.round(rlM * 60)};
     if (App.bridge && App.bridge.set_cooldown_config) {
       App.bridge.set_cooldown_config(JSON.stringify(payload), (res) => {
         try {
           const r = JSON.parse(res);
-          LogConsole.log(r.ok ? `Cooldown saved: ${en && en.checked ? 'on' : 'off'} pause=${minM}m captcha=+${penM}m` : 'Cooldown save failed: ' + r.error, r.ok ? 'success' : 'error');
+          LogConsole.log(r.ok ? `Cooldown saved: ${en && en.checked ? 'on' : 'off'} pause=${minM}m captcha=+${penM}m limit=+${rlM}m` : 'Cooldown save failed: ' + r.error, r.ok ? 'success' : 'error');
         } catch (e) {}
       });
     }

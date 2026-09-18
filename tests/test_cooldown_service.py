@@ -785,3 +785,170 @@ def test_resolve_allowed_cooling_checked_tab_stays_or_moves_within_allowed():
     pool.add_page(make_info("ready2"))
     # ready allowed tab exists -> move to it instead of waiting on the cooling one
     assert svc.resolve_primary_tab(pool, "checked", allowed={"checked", "ready2"}) == "ready2"
+
+
+# ---- Rate-limit penalty (3rd URL-window field, 2026-09-19) ----
+
+@pytest.mark.unit
+def test_rate_limit_penalty_stacks_and_is_per_tab():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.add_page(make_info("b"))
+    assert svc.add_rate_limit_penalty(pool, "a", 1800) == 1
+    assert svc.add_rate_limit_penalty(pool, "a", 1800) == 2
+    assert svc.add_rate_limit_penalty(pool, "nope", 1800) == -1
+    page_a = pool.get_page("a")
+    assert page_a.pending_penalty == 3600  # stacked while idle
+    assert pool.get_page("b").pending_penalty == 0  # tab B unaffected
+    assert pool.get_page("b").rate_limit_count == 0
+    svc.start_cooldown(pool, "a", 300)
+    assert page_a.cooldown_total == 3900  # 300 base + 2x1800
+    assert page_a.pending_penalty == 0  # consumed
+    # penalty during an active cooldown extends the live timer
+    before = page_a.cooldown_until
+    assert svc.add_rate_limit_penalty(pool, "a", 900) == 3
+    assert page_a.cooldown_until == before + 900
+    assert page_a.cooldown_total == 4800
+
+
+@pytest.mark.unit
+def test_note_rate_limit_event_busy_stacks_and_logs_pending():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    assert svc.note_rate_limit_event(pool, "a", bridge) == 1
+    page = pool.get_page("a")
+    assert page.pending_penalty == 1800
+    assert page.rate_limit_count == 1
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "⛔" in text and "(x1)" in text and "+30m" in text
+    assert "pending 30:00" in text
+    assert ("emit", "") in bridge._logs  # rows re-render live
+
+
+@pytest.mark.unit
+def test_note_rate_limit_event_cooling_extends_live_timer():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    svc.start_cooldown(pool, "a", 300)
+    bridge = make_bridge()
+    assert svc.note_rate_limit_event(pool, "a", bridge) == 1
+    assert pool.get_page("a").cooldown_total == 2100  # 300 base + 1800
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "⛔" in text and "extended to 35:00" in text
+
+
+@pytest.mark.unit
+def test_note_rate_limit_event_zero_penalty_is_noop():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    bridge = make_bridge(session={"cooldown_rate_limit_penalty_seconds": 0})
+    assert svc.note_rate_limit_event(pool, "a", bridge) == 0
+    assert pool.get_page("a").pending_penalty == 0
+    assert pool.get_page("a").rate_limit_count == 0
+    assert not any("⛔" in m for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+def test_note_rate_limit_event_unknown_tab_warns_without_flag():
+    pool = PagePool()
+    bridge = make_bridge()
+    assert svc.note_rate_limit_event(pool, "nope", bridge) == -1
+    assert not any("⛔" in m for m, _ in bridge._logs)
+    assert any(level == "warn" for _, level in bridge._logs)
+
+
+@pytest.mark.unit
+def test_note_rate_limit_event_reads_custom_config():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge(session={"cooldown_rate_limit_penalty_seconds": 600})
+    assert svc.note_rate_limit_event(pool, "a", bridge) == 1
+    assert pool.get_page("a").pending_penalty == 600
+    assert "+10m" in " ".join(m for m, _ in bridge._logs)
+
+
+@pytest.mark.unit
+def test_maybe_note_rate_limit_applies_only_on_rate_error():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    # a generic failure must not stack the penalty
+    assert svc.maybe_note_rate_limit(pool, "a", bridge, "Page error: Something went wrong") == 0
+    assert pool.get_page("a").pending_penalty == 0
+    assert pool.get_page("a").rate_limit_count == 0
+    # the rate-limit banner does
+    assert svc.maybe_note_rate_limit(pool, "a", bridge, "Page error: You've reached a rate limit.") == 1
+    assert pool.get_page("a").pending_penalty == 1800
+    assert pool.get_page("a").rate_limit_count == 1
+
+
+@pytest.mark.unit
+def test_maybe_note_rate_limit_ignores_empty_and_non_string():
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    assert svc.maybe_note_rate_limit(pool, "a", bridge, "") == 0
+    assert svc.maybe_note_rate_limit(pool, "a", bridge, None) == 0
+    assert pool.get_page("a").pending_penalty == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_after_rate_limit_cools_base_plus_penalty(monkeypatch):
+    """The behaviour the user asked for: a rate-limit failure cools base + penalty."""
+    async def fake_reset(ctx):
+        return True, "mock ready"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    svc.maybe_note_rate_limit(pool, "a", bridge, "Page error: You've reached a rate limit.")
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    page = pool.get_page("a")
+    assert page.status == PageStatus.COOLDOWN
+    assert page.cooldown_total == 300 + 1800  # base 5m + rate-limit 30m = 35m
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_after_generic_failure_cools_base_only(monkeypatch):
+    async def fake_reset(ctx):
+        return True, "mock ready"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    svc.maybe_note_rate_limit(pool, "a", bridge, "Page error: Generation failed")
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    assert pool.get_page("a").cooldown_total == 300  # base only, no rate-limit penalty
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_finish_breakdown_log_with_rate_limit(monkeypatch):
+    """When a rate-limit penalty stacks, the breakdown labels it (not 'captcha')."""
+    async def fake_reset(ctx):
+        return True, "ok"
+
+    monkeypatch.setattr(svc, "reset_to_new_chat", fake_reset)
+    pool = PagePool()
+    pool.add_page(make_info("a"))
+    pool.mark_busy("a", "job1")
+    bridge = make_bridge()
+    svc.maybe_note_rate_limit(pool, "a", bridge, "Page error: You've reached a rate limit.")
+    ctx = svc.FinishCtx(pool=pool, bridge=bridge, tab_id="a", ctrl=object(), client=object())
+    assert await svc.finish_page_after_job(ctx) is True
+    text = " ".join(m for m, _ in bridge._logs)
+    assert "35:00" in text and "base 05:00" in text
+    assert "extra 30:00" in text and "rate-limit x1" in text
