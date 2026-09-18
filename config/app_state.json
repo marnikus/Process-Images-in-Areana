@@ -8,7 +8,7 @@
       "last_status": "ready",
       "last_checked": "2026-09-17T10:45:28.112354Z",
       "error": null,
-      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+      "tab_id": "F7F8CD13584B12AE825128CB83F75081"
     },
     {
       "id": "url_550177d7",
@@ -192,11 +192,11 @@
       "size": 84697,
       "mtime": 1789720308.7557886,
       "fingerprint": "1fb4ee73bb10e3d0",
-      "status": "failed",
+      "status": "completed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 1,
-      "output_path": null,
+      "attempt_count": 2,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-contactless-payment_AI_3.png",
       "error": "Wait failed: Timeout after 180000ms",
       "content_hash": null
     },
@@ -213,9 +213,9 @@
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 2,
+      "attempt_count": 4,
       "output_path": null,
-      "error": "Wait failed: Timeout after 180000ms",
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -249,9 +249,9 @@
       "status": "failed",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 1,
+      "attempt_count": 2,
       "output_path": null,
-      "error": "Wait failed: Timeout after 180000ms",
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -282,12 +282,12 @@
       "size": 133256,
       "mtime": 1789721064.2160785,
       "fingerprint": "23c3507b152b0e1d",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
       "content_hash": null
     },
     {
@@ -493,9 +493,9 @@
   "progress": {
     "total": 21,
     "selected": 21,
-    "pending": 13,
+    "pending": 12,
     "processing": 0,
-    "completed": 4,
+    "completed": 5,
     "skipped": 0,
     "failed": 4,
     "needs_review": 0
