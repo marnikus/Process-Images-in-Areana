@@ -8,7 +8,7 @@
       "last_status": "ready",
       "last_checked": "2026-09-17T10:45:28.112354Z",
       "error": null,
-      "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
     },
     {
       "id": "url_550177d7",
@@ -192,12 +192,12 @@
       "size": 84697,
       "mtime": 1789720308.7557886,
       "fingerprint": "1fb4ee73bb10e3d0",
-      "status": "pending",
-      "selected": false,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "status": "failed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Timeout after 180000ms",
       "content_hash": null
     },
     {
@@ -210,12 +210,12 @@
       "size": 55210,
       "mtime": 1789720308.7557886,
       "fingerprint": "a9c5117d03efa8dc",
-      "status": "processing",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": "url_550177d7",
-      "attempt_count": 1,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 2,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Timeout after 180000ms",
       "content_hash": null
     },
     {
@@ -228,12 +228,12 @@
       "size": 205381,
       "mtime": 1789721064.2180808,
       "fingerprint": "c0b47bd265017f06",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Timeout after 180000ms",
       "content_hash": null
     },
     {
@@ -246,12 +246,12 @@
       "size": 111392,
       "mtime": 1789720308.7547874,
       "fingerprint": "a1bff62f1112a4f0",
-      "status": "pending",
+      "status": "failed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
       "output_path": null,
-      "error": null,
+      "error": "Wait failed: Timeout after 180000ms",
       "content_hash": null
     },
     {
@@ -492,12 +492,12 @@
   "jobs": [],
   "progress": {
     "total": 21,
-    "selected": 20,
-    "pending": 15,
-    "processing": 1,
+    "selected": 21,
+    "pending": 13,
+    "processing": 0,
     "completed": 4,
     "skipped": 0,
-    "failed": 0,
+    "failed": 4,
     "needs_review": 0
   },
   "run_state": "idle",

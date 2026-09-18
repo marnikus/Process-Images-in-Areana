@@ -5,10 +5,10 @@
       "schema_version": 1,
       "app_version": "0.1.0",
       "name": "v1",
-      "created_at": "2026-09-18T09:18:31.435Z",
-      "updated_at": "2026-09-18T09:18:31.436830Z",
+      "created_at": "2026-09-18T10:36:09.413Z",
+      "updated_at": "2026-09-18T10:36:09.415047Z",
       "grid": {
-        "payload": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45,25,30]}],\"sizes\":[60,40]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55,45]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30,25,20,25]}],\"sizes\":[45,35,20]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38,40,22]}}",
+        "payload": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[45.0,25.0,30.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]}}",
         "window_count": 14,
         "tree": {
           "t": "split",
@@ -44,8 +44,8 @@
                             }
                           ],
                           "sizes": [
-                            68.93203883495146,
-                            31.06796116504854
+                            55,
+                            45
                           ]
                         },
                         {
@@ -86,8 +86,22 @@
                           "id": "queue"
                         },
                         {
-                          "t": "leaf",
-                          "id": "block_config"
+                          "t": "split",
+                          "dir": "col",
+                          "children": [
+                            {
+                              "t": "leaf",
+                              "id": "action_blocks"
+                            },
+                            {
+                              "t": "leaf",
+                              "id": "block_config"
+                            }
+                          ],
+                          "sizes": [
+                            55,
+                            45
+                          ]
                         },
                         {
                           "t": "split",
@@ -126,8 +140,8 @@
                     }
                   ],
                   "sizes": [
-                    59.63550515980184,
-                    40.36449484019818
+                    48.717948717948715,
+                    51.28205128205128
                   ]
                 },
                 {
@@ -136,19 +150,14 @@
                 }
               ],
               "sizes": [
-                78.21543408360128,
-                21.784565916398712
+                77.2508038585209,
+                22.7491961414791
               ]
-            },
-            {
-              "t": "leaf",
-              "id": "action_blocks"
             }
           ],
           "sizes": [
-            19.999754709576138,
-            62.88878532182104,
-            17.111459968602826
+            20,
+            80
           ]
         },
         "type": "sash-tree",
@@ -161,10 +170,10 @@
           "title": "URL List",
           "state": "open",
           "bounds": {
-            "x": 0.20140380859375,
+            "x": 0.201873779296875,
             "y": 0,
-            "width": 0.37415771484375,
-            "height": 0.3147
+            "width": 0.477471923828125,
+            "height": 0.202075
           }
         },
         {
@@ -172,10 +181,10 @@
           "title": "Folder Picker",
           "state": "open",
           "bounds": {
-            "x": 0.20140380859375,
-            "y": 0.3195,
-            "width": 0.37415771484375,
-            "height": 0.1418375
+            "x": 0.201873779296875,
+            "y": 0.206875,
+            "width": 0.477471923828125,
+            "height": 0.165325
           }
         },
         {
@@ -183,10 +192,10 @@
           "title": "Image Queue",
           "state": "open",
           "bounds": {
-            "x": 0.20140380859375,
-            "y": 0.4661375,
-            "width": 0.431719970703125,
-            "height": 0.3122625
+            "x": 0.201873779296875,
+            "y": 0.377,
+            "width": 0.357049560546875,
+            "height": 0.3918
           }
         },
         {
@@ -194,10 +203,10 @@
           "title": "Prompt Editor",
           "state": "open",
           "bounds": {
-            "x": 0.5779052734375,
+            "x": 0.681689453125,
             "y": 0,
-            "width": 0.2494384765625,
-            "height": 0.2904
+            "width": 0.318310546875,
+            "height": 0.2331
           }
         },
         {
@@ -205,10 +214,10 @@
           "title": "Run Controls",
           "state": "open",
           "bounds": {
-            "x": 0.5779052734375,
-            "y": 0.2952,
-            "width": 0.2494384765625,
-            "height": 0.1613375
+            "x": 0.681689453125,
+            "y": 0.2379,
+            "width": 0.318310546875,
+            "height": 0.1295
           }
         },
         {
@@ -227,10 +236,10 @@
           "title": "Watcher — Generation & Captcha",
           "state": "open",
           "bounds": {
-            "x": 0.635467529296875,
-            "y": 0.4661375,
-            "width": 0.191876220703125,
-            "height": 0.3122625
+            "x": 0.841314697265625,
+            "y": 0.377,
+            "width": 0.158685302734375,
+            "height": 0.3918
           }
         },
         {
@@ -240,7 +249,7 @@
           "bounds": {
             "x": 0,
             "y": 0,
-            "width": 0.19906005859375,
+            "width": 0.199530029296875,
             "height": 1
           }
         },
@@ -260,10 +269,10 @@
           "title": "Captcha — 2Captcha Control",
           "state": "open",
           "bounds": {
-            "x": 0.20140380859375,
-            "y": 0.7832,
-            "width": 0.62593994140625,
-            "height": 0.2168
+            "x": 0.201873779296875,
+            "y": 0.7736,
+            "width": 0.798126220703125,
+            "height": 0.2264
           }
         },
         {
@@ -282,10 +291,10 @@
           "title": "Action Blocks — Stacking Jobs",
           "state": "open",
           "bounds": {
-            "x": 0.8296875,
-            "y": 0,
-            "width": 0.1703125,
-            "height": 1
+            "x": 0.56126708984375,
+            "y": 0.377,
+            "width": 0.277703857421875,
+            "height": 0.387
           }
         },
         {
