@@ -1,8 +1,8 @@
-"""Captcha statistics — local counters + 2Captcha balance.
+"""Captcha statistics — local counters + provider balance.
 
 Persisted atomically to `config/captcha_stats.json`; corrupt file → zeroed
-store (RULE 13). The 2Captcha v2 API exposes no per-task history endpoint,
-so task-level counters are local and the API contributes `getBalance`.
+store (RULE 13). The provider APIs expose no per-task history endpoint, so
+task-level counters are local and the API contributes `getBalance`.
 """
 
 from __future__ import annotations

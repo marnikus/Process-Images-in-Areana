@@ -102,10 +102,12 @@ async def test_enabled_service_auto_solves_and_records(monkeypatch, isolated_con
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
     keys = CaptchaKeyStore(isolated_config_dir)
-    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    keys.save(CaptchaSettings.for_provider("2captcha", enabled=True, api_key="K" * 16,
+                                           solve_timeout_sec=30))
     ctrl = FakeCtrl(visible_seq=[True, True, False])  # start up; verify gone on first check
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="check-security")
-    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    monkeypatch.setattr(solver_mod, "SolverApiClient",
+                        lambda key, spec=None, timeout_sec=30.0: client)
     outcome = await handle_captcha(ctx)
     assert outcome.status == "solved"
     assert outcome.method == "auto"
@@ -149,7 +151,7 @@ async def test_unsolvable_kind_falls_back_to_manual(monkeypatch, isolated_config
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
     keys = CaptchaKeyStore(isolated_config_dir)
-    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16))
+    keys.save(CaptchaSettings.for_provider("2captcha", enabled=True, api_key="K" * 16))
 
     class ImageCtrl(FakeCtrl):
         async def _evaluate(self, js):
@@ -160,7 +162,8 @@ async def test_unsolvable_kind_falls_back_to_manual(monkeypatch, isolated_config
 
     ctrl = ImageCtrl(visible_seq=[True, False])
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1")
-    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    monkeypatch.setattr(solver_mod, "SolverApiClient",
+                        lambda key, spec=None, timeout_sec=30.0: client)
     outcome = await handle_captcha(ctx)
     assert outcome.status == "manual"
     assert client.created == []  # nothing sent to 2Captcha
@@ -214,10 +217,12 @@ async def test_auto_solve_failure_falls_back_to_manual(monkeypatch, isolated_con
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
     keys = CaptchaKeyStore(isolated_config_dir)
-    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    keys.save(CaptchaSettings.for_provider("2captcha", enabled=True, api_key="K" * 16,
+                                           solve_timeout_sec=30))
     ctrl = FakeCtrl(visible_seq=[True, False])  # manual wait clears
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1")
-    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    monkeypatch.setattr(solver_mod, "SolverApiClient",
+                        lambda key, spec=None, timeout_sec=30.0: client)
     outcome = await handle_captcha(ctx)
     assert outcome.status == "manual"
     assert pool.get_page("t1").pending_penalty == 900
@@ -289,7 +294,7 @@ async def test_refresh_balance_paths(isolated_config_dir, monkeypatch):
     assert await svc.refresh_balance() is None  # no key stored
 
     keys = CaptchaKeyStore(isolated_config_dir)
-    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16))
+    keys.save(CaptchaSettings.for_provider("2captcha", enabled=True, api_key="K" * 16))
 
     class BalClient:
         def __init__(self, ok_balance):
@@ -304,11 +309,11 @@ async def test_refresh_balance_paths(isolated_config_dir, monkeypatch):
         async def aclose(self):
             return None
 
-    monkeypatch.setattr(service_mod, "Captcha2Client", lambda key: BalClient(None))
+    monkeypatch.setattr(service_mod, "SolverApiClient", lambda key, spec=None: BalClient(None))
     assert await svc.refresh_balance() is None
     assert svc.stats.last_error == "balance: no_credit"
 
-    monkeypatch.setattr(service_mod, "Captcha2Client", lambda key: BalClient(12.34))
+    monkeypatch.setattr(service_mod, "SolverApiClient", lambda key, spec=None: BalClient(12.34))
     assert await svc.refresh_balance() == 12.34
     assert svc.stats.last_balance == 12.34
     assert svc.stats_payload()["auto_solved"] == 0  # stats_payload reachable
@@ -330,8 +335,8 @@ def test_signal_from_result_string_and_bad_shapes():
 @pytest.mark.unit
 def test_service_apply_settings_masks_key(isolated_config_dir):
     svc = CaptchaService(str(isolated_config_dir))
-    result = svc.apply_settings("abcdef1234567890", True, 240)
-    assert result["ok"] is True
+    result = svc.apply_settings("2captcha", "abcdef1234567890", True, 240)
+    assert result["ok"] is True and result["provider"] == "2captcha"
     assert result["masked_key"] == "abcd****7890"
     assert "abcdef1234567890" not in str(result)  # raw key never in the payload
     assert svc.auto_enabled() is True
@@ -339,6 +344,8 @@ def test_service_apply_settings_masks_key(isolated_config_dir):
     assert "abcdef1234567890" not in str(payload)
     assert payload["masked_key"] == "abcd****7890"
     assert payload["solve_timeout_sec"] == 240
+    assert payload["provider"] == "2captcha"
+    assert payload["providers"]["2captcha"]["masked_key"] == "abcd****7890"
 
 
 def solve_reports(bridge):
@@ -366,7 +373,8 @@ async def test_auto_solve_emits_structured_report(monkeypatch, isolated_config_d
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
     keys = CaptchaKeyStore(isolated_config_dir)
-    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    keys.save(CaptchaSettings.for_provider("2captcha", enabled=True, api_key="K" * 16,
+                                           solve_timeout_sec=30))
 
     class DomCtrl(FakeCtrl):
         async def _evaluate(self, js):
@@ -379,7 +387,8 @@ async def test_auto_solve_emits_structured_report(monkeypatch, isolated_config_d
 
     ctrl = DomCtrl(visible_seq=[True, True, False])  # start up; pre-inject up; verify gone
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="check-security")
-    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    monkeypatch.setattr(solver_mod, "SolverApiClient",
+                        lambda key, spec=None, timeout_sec=30.0: client)
     assert (await handle_captcha(ctx)).status == "solved"
     reps = solve_reports(bridge)
     assert len(reps) == 1
@@ -446,10 +455,12 @@ async def test_dialog_gone_before_task_manual_fallback_is_instant(monkeypatch, i
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
     keys = CaptchaKeyStore(isolated_config_dir)
-    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    keys.save(CaptchaSettings.for_provider("2captcha", enabled=True, api_key="K" * 16,
+                                           solve_timeout_sec=30))
     ctrl = FakeCtrl(visible_seq=[])  # dialog already gone
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1")
-    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    monkeypatch.setattr(solver_mod, "SolverApiClient",
+                        lambda key, spec=None, timeout_sec=30.0: client)
     outcome = await handle_captcha(ctx)
     assert outcome.status == "manual"  # the user's own solve is credited
     assert client.created == []  # nothing billed for a gone challenge
@@ -476,7 +487,8 @@ async def test_token_stale_with_visible_dialog_falls_back_to_manual(monkeypatch,
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
     keys = CaptchaKeyStore(isolated_config_dir)
-    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    keys.save(CaptchaSettings.for_provider("2captcha", enabled=True, api_key="K" * 16,
+                                           solve_timeout_sec=30))
     ctrl = FakeCtrl(visible_seq=[True, False])  # H4 probe: visible; wait: cleared
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1")
     _stub_solver_with_stale(bridge, "page_identity_changed")
@@ -495,10 +507,77 @@ async def test_token_stale_with_gone_dialog_ends_encounter(monkeypatch, isolated
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
     keys = CaptchaKeyStore(isolated_config_dir)
-    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
+    keys.save(CaptchaSettings.for_provider("2captcha", enabled=True, api_key="K" * 16,
+                                           solve_timeout_sec=30))
     ctrl = FakeCtrl(visible_seq=[False])  # H4 probe: already gone
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1")
     _stub_solver_with_stale(bridge, "sitekey_changed")
     outcome = await handle_captcha(ctx)
     assert outcome.status == "token_stale"
     assert ctrl.overlay_calls == []  # nobody can solve a cleared challenge
+
+
+# ---- multi-provider: settings routing + provider-true reports ----
+
+
+def test_apply_settings_routes_per_provider_and_keeps_stored_key(isolated_config_dir):
+    """Empty key on save = keep stored (the UI clears the field after save)."""
+    svc = CaptchaService(str(isolated_config_dir))
+    r2 = svc.apply_settings("2captcha", "two0key1234", True, 240)
+    assert r2["provider"] == "2captcha" and r2["enabled"] is True
+    rc = svc.apply_settings("capmonster", "cap0key1234", True, 240)
+    assert rc["provider"] == "capmonster" and rc["enabled"] is True
+
+    # re-save 2captcha with an EMPTY key field (UI cleared it): key is kept
+    again = svc.apply_settings("2captcha", "", True, 300)
+    assert again["has_key"] is True and again["masked_key"] == "two0****1234"
+
+    s = svc.keys.load()
+    # saving a provider also commits it as the ACTIVE one (dropdown + Save)
+    assert s.provider == "2captcha" and s.api_key == "two0key1234"
+    assert s.creds["capmonster"].api_key == "cap0key1234"  # sibling untouched
+    assert s.solve_timeout_sec == 300                      # timeout is shared
+
+
+def test_auto_enabled_follows_active_provider(isolated_config_dir):
+    """Key+enabled on 2captcha, none on capmonster → switching OFF is safe."""
+    svc = CaptchaService(str(isolated_config_dir))
+    svc.apply_settings("2captcha", "two0key1234", True, 180)
+    assert svc.auto_enabled() is True
+    svc.apply_settings("capmonster", "", False, 180)  # switch provider, no key
+    assert svc.auto_enabled() is False  # capmonster has no key yet
+    payload = svc.status_payload()
+    assert payload["provider"] == "capmonster"
+    assert payload["providers"]["2captcha"]["has_key"] is True
+    assert payload["providers"]["capmonster"]["has_key"] is False
+    assert payload["masked_key"] in ("", None) or "two0key" not in str(payload)
+
+
+def test_unknown_provider_payload_falls_back(isolated_config_dir):
+    svc = CaptchaService(str(isolated_config_dir))
+    r = svc.apply_settings("not-a-provider", "two0key1234", True, 180)
+    assert r["provider"] == "2captcha"  # default provider, never a bogus id
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_capmonster_report_carries_provider_facts(monkeypatch, isolated_config_dir):
+    """CAPTCHA_SOLVE report: provider-true task type + poll cadence + title."""
+    instant_sleep(monkeypatch)
+    from tests.test_captcha_solver import FakeClient, make_env_provider
+
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
+    ])
+    solver, _, _, _ = make_env_provider(monkeypatch, isolated_config_dir, client, "capmonster")
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    ctrl = FakeCtrl(visible_seq=[True, True, False])
+    ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", source="check-security")
+    outcome = await handle_captcha(ctx)
+    assert outcome.status == "solved"
+    rep = solve_reports(bridge)[0]
+    assert rep["task_type"] == "RecaptchaV2EnterpriseTask"  # CapMonster name
+    assert rep["poll_interval_s"] == 3.0
+    assert any("CapMonster Cloud auto-solve started" in m for m, _ in bridge._logs)

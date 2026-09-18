@@ -1,12 +1,14 @@
-"""CaptchaSolver — per-tab 2Captcha solving, non-blocking across pages.
+"""CaptchaSolver — per-tab solver-provider solving, non-blocking across pages.
 
 * one inflight asyncio task per tab_id: two racing checks on the same page
-  share one 2Captcha task (no double billing); different tabs solve in
+  share one provider task (no double billing); different tabs solve in
   parallel (multi-tasking) — a solve on tab A never blocks tab B.
 * never raises: every failure path returns a SolveOutcome with a reason
   (RULE 4) so the caller can fall back to the manual flow.
 * stop honoured inside the poll loop (RULE 7); abandoned tasks are deleted
-  to free credit.
+  when the provider supports refunds (deleteTask).
+* provider differences (task types, poll cadence, titles) come from the
+  SolvePlan's ProviderSpec — this file stays provider-shaped.
 """
 
 from __future__ import annotations
@@ -20,28 +22,25 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from app.browser.captcha_probes import build_continue_js, build_detect_js, build_inject_js
 from app.utils.page_errors import match_page_error
 
-from .api_client import ApiError, Captcha2Client, POLL_INTERVAL_SEC
+from .api_client import ApiError, SolverApiClient
+from .providers import ProviderSpec, provider_for
 from .signals import CaptchaSignal, SolveOutcome, host_of
 
 VERIFY_GRACE_SEC = 20.0  # after injection: how long to watch the dialog close
 HEARTBEAT_SEC = 30.0  # processing polls: log a still-waiting line this often
-MAX_TRANSIENT_POLL_ERRORS = 3  # tolerate short 2Captcha/HTTP response glitches
-MAX_SOLVE_ATTEMPTS = 2  # RULE 20: hard cap on paid 2Captcha tasks per encounter
+MAX_TRANSIENT_POLL_ERRORS = 3  # tolerate short provider/HTTP response glitches
+MAX_SOLVE_ATTEMPTS = 2  # RULE 20: hard cap on paid provider tasks per encounter
 DIALOG_CHECK_EVERY_POLLS = 3  # H3: mid-poll dialog liveness probe cadence
 RETRYABLE_STALE_REASONS = (  # H1: identity drift is a freshness problem (RC-1)
     "page_identity_changed", "challenge_identity_changed", "sitekey_changed")
-
-_TASK_TYPES = {
-    "recaptcha_enterprise": "RecaptchaV2EnterpriseTaskProxyless",
-    "recaptcha_v2": "RecaptchaV2TaskProxyless",
-}
 
 
 @dataclass
 class SolvePlan:
     """Per-solve bundle to keep solver methods ≤4 params (RULE 16)."""
 
-    client: Captcha2Client
+    client: SolverApiClient
+    spec: ProviderSpec
     ctrl: Any
     tab_id: str
     signal: CaptchaSignal
@@ -53,7 +52,7 @@ class SolvePlan:
     err_base: Optional[str] = None  # error-scan corpus at solve start (None = not taken)
     err_seen: bool = False  # a mid-solve page error was already logged
     polls: int = 0  # provider poll rounds (report retry count)
-    attempts: int = 0  # paid 2Captcha tasks used for this encounter (H1)
+    attempts: int = 0  # paid provider tasks used for this encounter (H1)
     token_fp: str = ""  # token fingerprint (shape only)
     dialog_at_token: str = ""  # visible | gone | "" (no token yet)
     inject: str = ""  # "scope=.. fields=.. cb=.." summary
@@ -79,10 +78,6 @@ def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> 
         out.page_error_at_s = plan.page_error_at
         out.page_error = plan.page_error
     return out
-
-
-def task_type_for(kind: str) -> str:
-    return _TASK_TYPES.get(kind, "RecaptchaV2EnterpriseTaskProxyless")
 
 
 def _cb_source(res: Dict[str, Any]) -> str:
@@ -119,7 +114,7 @@ def _heartbeat(log: Callable[[str, str], None], plan: SolvePlan,
     now = time.monotonic()
     if now - last < HEARTBEAT_SEC:
         return last
-    log(f"🤖 2Captcha task #{task_id} still processing ({now - plan.start:.0f}s elapsed)", "info")
+    log(f"🤖 {plan.spec.title} task #{task_id} still processing ({now - plan.start:.0f}s elapsed)", "info")
     return now
 
 
@@ -157,24 +152,26 @@ def _token_fingerprint(token: str) -> str:
     return f"len={len(t)} head={t[:8]} tail={t[-4:]}"
 
 
-def _task_payload(task_type: str, signal: CaptchaSignal) -> Dict[str, Any]:
-    """Docs-exact createTask payload (2captcha.com/api-docs/recaptcha-v2-enterprise)."""
+def _task_payload(task_type: str, signal: CaptchaSignal, spec: ProviderSpec) -> Dict[str, Any]:
+    """Docs-exact createTask payload; isInvisible only where the provider
+    documents it for the enterprise task (2captcha.com/api-docs vs
+    docs.capmonster.cloud recaptcha-v2-enterprise-task)."""
     payload = {"type": task_type,
                "websiteURL": signal.page_url,
                "websiteKey": signal.sitekey}
-    if task_type.startswith("RecaptchaV2Enterprise"):
+    if task_type.startswith("RecaptchaV2Enterprise") and spec.enterprise_invisible:
         payload["isInvisible"] = signal.is_invisible  # true = no visible checkbox
     return payload
 
 
 
-async def _delete_task(client: Captcha2Client, task_id: str, stats: Any,
+async def _delete_task(client: SolverApiClient, task_id: str, stats: Any,
                      log: Callable[[str, str], None]) -> None:
-    """Free credit on an abandoned task; best effort, never raises."""
+    """Refund an abandoned task; no-op providers never log a fake refund."""
     try:
         if await client.delete_task(task_id):
             stats.record("task_deleted")
-            log(f"🤖 2Captcha task #{task_id} deleted (credit freed)", "info")
+            log(f"🤖 {client.spec.title} task #{task_id} deleted (credit freed)", "info")
     except Exception:
         pass
 
@@ -288,7 +285,7 @@ async def _inject(ctrl: Any, token: str, sitekey: str,
     try:
         res = await ctrl.cdp.evaluate(build_inject_js(token, sitekey))
     except Exception as e:
-        log(f"2Captcha inject probe failed: {e}", "warn")
+        log(f"Token inject probe failed: {e}", "warn")
         return {}
     try:
         data = json.loads(res) if isinstance(res, str) else res
@@ -302,7 +299,7 @@ def _auto_fail(plan: SolvePlan, reason: str, detail: str) -> None:
     try:
         plan.stats.record("auto_failed", host_of(plan.signal.page_url))
         plan.stats.set_last_error(detail[:80])
-        plan.logger(f"🤖 2Captcha auto-solve failed: {reason}", "warn")
+        plan.logger(f"🤖 {plan.spec.title} auto-solve failed: {reason}", "warn")
     except Exception:
         pass
 
@@ -322,7 +319,7 @@ def _poll_fail(plan: SolvePlan, why: str, detail: str = "") -> Tuple[None, str]:
     plan.stats.record("auto_failed", host_of(plan.signal.page_url))
     plan.stats.set_last_error(detail or why)
     suffix = f" ({detail})" if detail and detail != why else ""
-    plan.logger(f"2Captcha poll ended: {why}{suffix}", "warn")
+    plan.logger(f"{plan.spec.title} poll ended: {why}{suffix}", "warn")
     return None, why
 
 
@@ -333,9 +330,9 @@ async def _retry_network(plan: SolvePlan, started: float, count: int,
     if count >= MAX_TRANSIENT_POLL_ERRORS or elapsed > timeout_sec:
         return False
     plan.logger(
-        f"2Captcha poll network glitch — retrying "
+        f"{plan.spec.title} poll network glitch — retrying "
         f"({count}/{MAX_TRANSIENT_POLL_ERRORS}, {elapsed:.0f}s elapsed)", "warn")
-    await asyncio.sleep(POLL_INTERVAL_SEC)
+    await asyncio.sleep(plan.spec.poll_interval_sec)
     return True
 
 
@@ -362,7 +359,7 @@ async def _poll_task(plan: SolvePlan, task_id: str,
     transient_errors = 0
     while True:
         if plan.stop():
-            plan.logger("2Captcha polling stopped (user stop)", "info")
+            plan.logger(f"{plan.spec.title} polling stopped (user stop)", "info")
             return None, "stopped"
         plan.polls += 1
         try:
@@ -382,14 +379,14 @@ async def _poll_task(plan: SolvePlan, task_id: str,
         last_beat = _heartbeat(plan.logger, plan, task_id, last_beat)
         if plan.polls % DIALOG_CHECK_EVERY_POLLS == 0 and not await _dialog_visible(plan):
             return _poll_fail(plan, "dialog_gone_during_poll")
-        await asyncio.sleep(POLL_INTERVAL_SEC)
+        await asyncio.sleep(plan.spec.poll_interval_sec)
 
 
 def _solved(plan: SolvePlan, task_id: str) -> SolveOutcome:
     secs = time.monotonic() - plan.start
     tok = plan.token_at - plan.start if plan.token_at else 0.0
     plan.stats.record("auto_solved", host_of(plan.signal.page_url))
-    plan.logger(f"🤖 2Captcha solved tab {str(plan.tab_id)[:12]} in {secs:.0f}s "
+    plan.logger(f"🤖 {plan.spec.title} solved tab {str(plan.tab_id)[:12]} in {secs:.0f}s "
                 f"(token {tok:.0f}s, token accepted)", "success")
     return SolveOutcome(status="solved", method="auto", task_id=task_id,
                         reason="token accepted", elapsed_sec=secs,
@@ -436,10 +433,12 @@ class CaptchaSolver:
                           stop: Callable[[], bool]) -> SolveOutcome:
         settings = self._keys.load()
         if not settings.api_key:
-            return _failed("no_key", "no 2Captcha key stored")
-        client = Captcha2Client(settings.api_key)
+            return _failed("no_key", f"no {provider_for(settings.provider).title} key stored")
+        spec = provider_for(settings.provider)
+        client = SolverApiClient(settings.api_key, spec)
         try:
-            plan = SolvePlan(client=client, ctrl=ctrl, tab_id=tab_id, signal=signal,
+            plan = SolvePlan(client=client, spec=spec, ctrl=ctrl, tab_id=tab_id,
+                             signal=signal,
                              stop=stop, start=time.monotonic(), stats=self._stats,
                              logger=self._log,
                              page_identity=signal.page_identity,
@@ -470,7 +469,7 @@ class CaptchaSolver:
             return _failed(why or "no_token", "no solution token", plan)
         plan.token_at = time.monotonic()
         plan.token_fp = _token_fingerprint(token)
-        self._log(f"🤖 2Captcha task #{task_id} token received in "
+        self._log(f"🤖 {plan.spec.title} task #{task_id} token received in "
                   f"{plan.token_at - plan.start:.0f}s ({plan.token_fp})", "success")
         return await self._inject_and_verify(plan, token, task_id)
 
@@ -525,20 +524,20 @@ class CaptchaSolver:
         return _failed("not_accepted", why, plan)
 
     async def _create_task(self, plan: SolvePlan) -> str:
-        task_type = task_type_for(plan.signal.kind)
-        payload = _task_payload(task_type, plan.signal)
+        task_type = plan.spec.task_type_for(plan.signal.kind)
+        payload = _task_payload(task_type, plan.signal, plan.spec)
         try:
             task_id = await plan.client.create_task(payload)
             self._stats.record("task_created", host_of(plan.signal.page_url))
-            self._log(f"🤖 2Captcha task {task_type} #{task_id} submitted (tab {str(plan.tab_id)[:12]}, "
+            self._log(f"🤖 {plan.spec.title} task {task_type} #{task_id} submitted (tab {str(plan.tab_id)[:12]}, "
                       f"isInvisible={plan.signal.is_invisible}, key=****)", "info")
             return task_id
         except ApiError as e:
             self._stats.record("auto_failed", host_of(plan.signal.page_url))
             self._stats.set_last_error(e.reason)
-            self._log(f"🤖 2Captcha createTask failed: {e.reason}", "warn")
+            self._log(f"🤖 {plan.spec.title} createTask failed: {e.reason}", "warn")
             return ""
         except Exception as e:  # fail-open: solver problems never kill the job
-            self._log(f"2Captcha createTask unexpected error: {e}", "warn")
+            self._log(f"{plan.spec.title} createTask unexpected error: {e}", "warn")
             return ""
 

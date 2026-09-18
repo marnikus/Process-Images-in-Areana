@@ -472,19 +472,24 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
 
 ---
 
-## RULE 20 — CAPTCHA policy (default manual; opt-in owner-authorized 2Captcha), respect ToS, user-authorized URLs only
+## RULE 20 — CAPTCHA policy (default manual; opt-in owner-authorized solver provider: 2Captcha | CapMonster Cloud), respect ToS, user-authorized URLs only
 
 * **Default (OFF): do not bypass/defeat/solve CAPTCHA** — pause with `USER_ACTION_REQUIRED`, let the user solve manually.
-* **Opt-in (owner-authorized):** if the user enables the 2Captcha integration in Settings and stores
-  their own API key, the visible Security-Verification captcha MAY be submitted to 2Captcha
-  (`RecaptchaV2EnterpriseTaskProxyless`). Every solver failure (bad key, no credit, unsolvable,
-  timeout, user stop) falls back to the manual flow — a job is never lost to a solver failure.
-  Auto-solved captchas still stack the cooldown penalty. Amendment 2026-09-17, user-requested;
-  design: `docs/archive/2026-09-17-2captcha-integration/design.md` §4.
-* **Key hygiene (non-negotiable even when opt-in is ON):** the key lives only in
-  `config/2captcha.json` (git-ignored, 0600 best-effort); the WebChannel/UI carries the masked
-  form (`abcd****7890`) only; the raw key never appears in logs, payloads, presets, or error
+* **Opt-in (owner-authorized):** if the user enables auto-solve in the Captcha window for a
+  provider and stores their own API key, the visible Security-Verification captcha MAY be
+  submitted to that provider (2Captcha `RecaptchaV2EnterpriseTaskProxyless`, or CapMonster Cloud
+  `RecaptchaV2EnterpriseTask` — the provider is a drop-down selection; `docs.capmonster.cloud`
+  API). Every solver failure (bad key, no credit, unsolvable, timeout, user stop) falls back to
+  the manual flow — a job is never lost to a solver failure. Auto-solved captchas still stack the
+  cooldown penalty. Amendments 2026-09-17 (2Captcha, `docs/archive/2026-09-17-2captcha-integration/design.md` §4)
+  and 2026-09-18 (CapMonster Cloud as second provider, `docs/archive/2026-09-18-capmonster-solver-provider/design.md`), user-requested.
+* **Key hygiene (non-negotiable even when opt-in is ON):** keys live only in
+  `config/captcha_solvers.json` (per-provider creds, git-ignored, 0600 best-effort; legacy
+  `config/2captcha.json` migrated read-only on load); the WebChannel/UI carries the masked
+  form (`abcd****7890`) only; raw keys never appear in logs, payloads, presets, or error
   text.
+* Tasks are submitted only to the **selected** provider's official endpoint
+  (`api.2captcha.com` or `api.capmonster.cloud`) — never anywhere else.
 * Respect target site terms, permissions, rate limits; only use user-authorized URLs.
 * Credentials out of logs, session in browser profile dir, upload only to user-configured URLs.
 * Same as old app's security rules, adapted to Arena.

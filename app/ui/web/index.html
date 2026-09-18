@@ -398,22 +398,31 @@
 
     <!-- BROWSER PREVIEW -->
     <div class="panel" id="winCaptcha" data-window="captcha">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">verified_user</span> Captcha — 2Captcha <span class="spacer"></span><button id="captchaSaveBtn" class="btn-small btn-primary">Save</button><button id="captchaStatsBtn" class="btn-small" title="Refresh stats + balance">↻ Stats</button></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">verified_user</span> Captcha — Solver <span class="spacer"></span><button id="captchaSaveBtn" class="btn-small btn-primary">Save</button><button id="captchaStatsBtn" class="btn-small" title="Refresh stats + balance">↻ Stats</button></h3>
       <div style="padding:10px; overflow:auto;">
         <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:8px;">
           <input id="captchaEnabled" type="checkbox"> Enable auto-solve (opt-in — off = manual solve in Chrome)
         </label>
         <div class="settings-row">
           <div class="settings-group" style="flex:2;">
-            <label>2Captcha API key — stored locally, masked, never in logs/presets</label>
-            <input id="captchaApiKey" type="password" placeholder="paste API key" autocomplete="off">
-            <label style="font-size:10px; color:var(--text-muted); display:flex; gap:4px; align-items:center; margin-top:2px;">
-              <input id="captchaKeyShow" type="checkbox"> show key
-            </label>
+            <label>Solver provider — tasks go only to this endpoint</label>
+            <select id="captchaProvider" style="background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; color:var(--text-primary); font-size:11px; width:100%;">
+              <option value="2captcha">2Captcha (api.2captcha.com)</option>
+              <option value="capmonster">CapMonster Cloud (api.capmonster.cloud)</option>
+            </select>
           </div>
           <div class="settings-group">
             <label>Solve timeout (minutes)</label>
             <input id="captchaTimeoutMin" type="number" min="0.5" max="10" step="0.5" placeholder="3">
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-group" style="flex:2;">
+            <label>API key — stored locally per provider, masked, never in logs/presets</label>
+            <input id="captchaApiKey" type="password" placeholder="paste API key (empty on save keeps the stored key)" autocomplete="off">
+            <label style="font-size:10px; color:var(--text-muted); display:flex; gap:4px; align-items:center; margin-top:2px;">
+              <input id="captchaKeyShow" type="checkbox"> show key
+            </label>
           </div>
         </div>
         <div id="captchaStatusLine" style="font-size:11px; color:var(--text-muted); margin:6px 0;">key: — · balance: —</div>
@@ -425,7 +434,7 @@
           <div><b id="capStatManual">0</b> manual</div>
           <div><b id="capStatBalance">—</b> balance</div>
         </div>
-        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;">Each page detects and solves its own captcha independently — parallel across pages, never blocks other tabs. If auto-solve fails, the job falls back to manual solve. Solved captchas still stack the cooldown penalty.</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;">Each page detects and solves its own captcha independently — parallel across pages, never blocks other tabs. If auto-solve fails, the job falls back to manual solve. Solved captchas still stack the cooldown penalty. Enable + API key are per provider; the timeout is shared.</div>
       </div>
     </div>
 

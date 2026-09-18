@@ -1,6 +1,6 @@
 """CaptchaSolver — per-tab inflight dedup, poll loop, inject+verify, RULE 7 stop.
 
-RULE 8: real solver against fake CDP + fake 2Captcha client (no network).
+RULE 8: real solver against fake CDP + fake provider client (no network).
 The FakeClock steps time per `monotonic()` read so poll/verify deadlines are
 deterministic without real sleeps.
 """
@@ -13,6 +13,7 @@ import pytest
 
 import app.services.captcha.solver as solver_mod
 from app.services.captcha.key_store import CaptchaKeyStore, CaptchaSettings
+from app.services.captcha.providers import provider_for
 from app.services.captcha.signals import CaptchaSignal
 from app.services.captcha.stats import CaptchaStatsStore
 
@@ -75,6 +76,7 @@ class FakeCtrl:
 class FakeClient:
     def __init__(self, key, timeout_sec=30.0, results=None, exc=None):
         self.key = key
+        self.spec = provider_for("2captcha")
         self.created = []
         self.deleted = []
         self._results = list(results or [])
@@ -98,6 +100,8 @@ class FakeClient:
         return {"errorId": 0, "status": "processing"}
 
     async def delete_task(self, task_id):
+        if not self.spec.can_delete:  # CapMonster: no deleteTask endpoint
+            return False
         self.deleted.append(task_id)
         return True
 
@@ -110,8 +114,10 @@ def make_env(monkeypatch, isolated_config_dir, client, step=0.0):
     keys = CaptchaKeyStore(isolated_config_dir)
     stats = CaptchaStatsStore(isolated_config_dir)
     logs = []
-    keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=30))
-    monkeypatch.setattr(solver_mod, "Captcha2Client", lambda key, timeout_sec=30.0: client)
+    keys.save(CaptchaSettings.for_provider("2captcha", enabled=True, api_key="K" * 16,
+                                           solve_timeout_sec=30))
+    monkeypatch.setattr(solver_mod, "SolverApiClient",
+                        lambda key, spec=None, timeout_sec=30.0: client)
     monkeypatch.setattr(solver_mod.time, "monotonic", FakeClock(step))
 
     async def instant_sleep(_s):
@@ -120,6 +126,23 @@ def make_env(monkeypatch, isolated_config_dir, client, step=0.0):
     monkeypatch.setattr(asyncio, "sleep", instant_sleep)
     solver = solver_mod.CaptchaSolver(keys, stats, lambda m, l="info": logs.append((m, l)))
     return solver, stats, logs, client
+
+
+def make_env_provider(monkeypatch, isolated_config_dir, client, provider):
+    """make_env with the ACTIVE provider switched (CapMonster flows).
+
+    Mirrors real wiring: the solver builds the client with the active
+    provider's spec, so the fake carries the same spec.
+    """
+    env = make_env(monkeypatch, isolated_config_dir, client)
+    solver, stats, logs, _ = env
+    store = CaptchaKeyStore(isolated_config_dir)
+    current = store.load()
+    current.provider = provider
+    current.creds[provider] = current.creds.get("2captcha") or current.creds[current.provider]
+    store.save(current)
+    client.spec = provider_for(provider)
+    return env
 
 
 @pytest.mark.unit
@@ -498,7 +521,8 @@ async def test_heartbeat_on_slow_poll(monkeypatch, isolated_config_dir):
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=20)
-    solver._keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=300))
+    solver._keys.save(CaptchaSettings.for_provider(
+        "2captcha", enabled=True, api_key="K" * 16, solve_timeout_sec=300))
     outcome = await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "t", signal(), lambda: False)
     assert outcome.status == "solved"
     assert any("still processing" in m and "elapsed" in m for m, _ in logs)
@@ -835,3 +859,87 @@ async def test_not_accepted_retries_once_then_gives_up(monkeypatch, isolated_con
     assert outcome.attempts == 2
     assert len(client.created) == 2 and len(client.deleted) == 2
     assert any("retrying with fresh task" in m for m, _ in logs)
+
+
+
+# ---- CapMonster Cloud provider flow (spec-driven payloads + cadence) ----
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_capmonster_task_types_and_no_enterprise_invisible(monkeypatch, isolated_config_dir):
+    """Provider-true payloads: RecaptchaV2EnterpriseTask, no isInvisible there."""
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready, ready])
+    solver, _, _, _ = make_env_provider(monkeypatch, isolated_config_dir, client, "capmonster")
+    ctrl = FakeCtrl(visible_seq=[True, True, False, True, True, False], inject_results=[True, True])
+
+    ent = await solver.solve(ctrl, "t-ent", signal(is_invisible=True), lambda: False)
+    v2 = await solver.solve(ctrl, "t-v2", signal(kind="recaptcha_v2"), lambda: False)
+    assert ent.status == "solved" and v2.status == "solved"
+    t_ent, t_v2 = client.created
+    assert t_ent["type"] == "RecaptchaV2EnterpriseTask"  # CapMonster name (no Proxyless suffix)
+    assert "isInvisible" not in t_ent  # not documented for enterprise there
+    assert t_v2["type"] == "RecaptchaV2Task"
+    assert t_ent["websiteURL"] == URL and t_ent["websiteKey"] == SITEKEY
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_capmonster_logs_use_provider_title(monkeypatch, isolated_config_dir):
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready])
+    solver, _, logs, _ = make_env_provider(monkeypatch, isolated_config_dir, client, "capmonster")
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert any("CapMonster Cloud task" in m and "#101 submitted" in m for m, _ in logs)
+    assert not any("2Captcha" in m for m, _ in logs)  # provider-true logs only
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_capmonster_poll_uses_spec_cadence(monkeypatch, isolated_config_dir):
+    """The poll loop sleeps the provider's interval (3 s), not 2Captcha's 5 s."""
+    sleeps = []
+
+    async def tracking_sleep(sec):
+        sleeps.append(sec)
+
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "processing"},
+        ready,
+    ])
+    solver, _, _, _ = make_env_provider(monkeypatch, isolated_config_dir, client, "capmonster")
+    monkeypatch.setattr(asyncio, "sleep", tracking_sleep)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert sleeps and all(s == provider_for("capmonster").poll_interval_sec for s in sleeps)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_no_key_message_names_provider(monkeypatch, isolated_config_dir):
+    client = FakeClient("K")
+    solver, _, _, _ = make_env_provider(monkeypatch, isolated_config_dir, client, "capmonster")
+    empty_dir = isolated_config_dir / "empty2"
+    empty_dir.mkdir()
+    # provider selected in the window, but no key pasted yet
+    CaptchaKeyStore(empty_dir).save(CaptchaSettings.for_provider("capmonster", enabled=True, api_key=""))
+    solver._keys = CaptchaKeyStore(empty_dir)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"
+    assert "no CapMonster Cloud key" in outcome.reason
+    assert client.created == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_capmonster_failure_never_logs_credit_freed(monkeypatch, isolated_config_dir):
+    """No deleteTask there: abandonment deletes nothing, logs no refund."""
+    client = FakeClient("K", results=[{"errorId": 0, "status": "processing"}])
+    solver, _, logs, _ = make_env_provider(monkeypatch, isolated_config_dir, client, "capmonster")
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True]), "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"  # poll timeout path
+    assert client.deleted == []
+    assert not any("credit freed" in m for m, _ in logs)

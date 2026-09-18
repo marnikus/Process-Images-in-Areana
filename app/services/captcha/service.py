@@ -1,8 +1,9 @@
 """handle_captcha — the ONE choke point every captcha call site routes through.
 
 Flow: visibility (existing predicate) → detect probe (kind + sitekey) →
-stats → auto-solve (opt-in 2Captcha) → manual fallback (overlay + wait) →
-cooldown penalty record (same choke point as the 2026-09-17 fix).
+stats → auto-solve (opt-in provider: 2Captcha or CapMonster Cloud) →
+manual fallback (overlay + wait) → cooldown penalty record (same choke
+point as the 2026-09-17 fix).
 
 RULE 9 fail-open: probe errors, a missing service, or solver failures never
 stall the job — they degrade to the manual flow. RULE 7: stop is honoured
@@ -21,10 +22,11 @@ from app.browser.captcha_probes import build_detect_js
 from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 from app.services.captcha_recording import RecordingManager
 
-from .api_client import POLL_INTERVAL_SEC, ApiError, Captcha2Client
-from .key_store import CaptchaKeyStore, CaptchaSettings, clamp_timeout
+from .api_client import DEFAULT_POLL_INTERVAL_SEC, ApiError, SolverApiClient
+from .key_store import CaptchaKeyStore, CaptchaSettings, ProviderCreds
+from .providers import ProviderSpec, provider_for
 from .signals import CaptchaSignal, SolveOutcome, host_of
-from .solver import CaptchaSolver, task_type_for
+from .solver import CaptchaSolver
 from .stats import CaptchaStatsStore
 
 
@@ -129,7 +131,7 @@ def _new_encounter(ctx: CaptchaCtx, signal: CaptchaSignal) -> Dict[str, Any]:
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "detect_to_solve_s": 0.0, "task_type": "", "task_id": "", "polls": 0,
         "attempts": 1,
-        "poll_interval_s": POLL_INTERVAL_SEC, "token": None, "dialog_at_token": "",
+        "poll_interval_s": DEFAULT_POLL_INTERVAL_SEC, "token": None, "dialog_at_token": "",
         "inject": "", "page_error": None, "status": "", "reason": "", "method": "",
         "penalty_s": 0, "solve_total_s": 0.0, "_detected_mono": time.monotonic(),
     }
@@ -138,12 +140,13 @@ def _new_encounter(ctx: CaptchaCtx, signal: CaptchaSignal) -> Dict[str, Any]:
 
 
 def _finish_auto(rep: Dict[str, Any], outcome: SolveOutcome,
-                 solve_mono: float, task_type: str) -> None:
-    """Fill the 2Captcha-attempt fields (durations relative to detect)."""
+                 solve_mono: float, spec: ProviderSpec) -> None:
+    """Fill the provider-attempt fields (durations relative to detect)."""
     det = rep.get("_detected_mono", solve_mono)
     to_solve = round(solve_mono - det, 1)
     rep["detect_to_solve_s"] = to_solve
-    rep["task_type"] = task_type
+    rep["task_type"] = spec.task_type_for(str(rep.get("kind", "")))
+    rep["poll_interval_s"] = spec.poll_interval_sec
     rep["task_id"] = outcome.task_id
     rep["polls"] = outcome.polls
     rep["attempts"] = outcome.attempts
@@ -273,21 +276,31 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
     if svc is not None and svc.auto_enabled():
         _log(ctx, "⚠️ FLAG CAPTCHA_AUTO skipped — no sitekey in dialog — manual wait", "warn")
         return await _manual_wait(ctx, signal, "auto-solve: no sitekey in dialog", rep)
-    reason = "auto-solve OFF — solve in Chrome (enable 2Captcha in the Captcha window)"
+    reason = (f"auto-solve OFF — solve in Chrome "
+              f"(enable {provider_title(svc)} in the Captcha window)")
     return await _manual_wait(ctx, signal, reason, rep)
+
+
+def provider_title(svc: Optional["CaptchaService"]) -> str:
+    """Active provider's display title for log/overlay text (never the key)."""
+    try:
+        return provider_for(svc.keys.load().provider).title  # type: ignore[union-attr]
+    except Exception:
+        return provider_for(None).title
 
 
 async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
                  rep: Dict[str, Any]) -> SolveOutcome:
-    """One 2Captcha attempt; fills + emits the report when solved."""
-    _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
+    """One auto-solve attempt via the active provider; fills + emits the report."""
+    spec = provider_for(svc.keys.load().provider)
+    _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — {spec.title} auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
     solve_mono = time.monotonic()
     outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
-    _finish_auto(rep, outcome, solve_mono, task_type_for(signal.kind))
+    _finish_auto(rep, outcome, solve_mono, spec)
     if outcome.status != "solved":
         _finish_resolution(rep, outcome)
         _emit_report(ctx, rep)
-        _log(ctx, f"2Captcha auto-solve failed ({outcome.reason}) — "
+        _log(ctx, f"{spec.title} auto-solve failed ({outcome.reason}) — "
                   f"{'preserving page failure' if outcome.status == 'page_error' else 'falling back to manual wait'}", "warn")
         return outcome
     _finish_resolution(rep, outcome)
@@ -340,38 +353,51 @@ class CaptchaService:
         except Exception:
             return False
 
-    def apply_settings(self, api_key: str, enabled: bool, solve_timeout_sec: int) -> Dict[str, Any]:
-        s = CaptchaSettings(enabled=bool(enabled and bool(api_key)),
-                            api_key=(api_key or "").strip(),
-                            solve_timeout_sec=clamp_timeout(solve_timeout_sec))
-        self.keys.save(s)
-        return {"ok": True, "enabled": s.enabled, "has_key": bool(s.api_key),
-                "masked_key": CaptchaKeyStore.mask(s.api_key)}
+    def apply_settings(self, provider: str, api_key: str, enabled: bool,
+                       solve_timeout_sec: int) -> Dict[str, Any]:
+        """Save one provider's fields; empty key keeps the stored one (the UI
+        clears the field after every save — re-saving must not wipe it)."""
+        pid = provider_for(provider).id
+        s = self.keys.load()
+        creds = dict(s.creds)
+        current = creds.get(pid) or ProviderCreds()
+        key = (api_key or "").strip() or current.api_key
+        creds[pid] = ProviderCreds(enabled=bool(enabled and key), api_key=key)
+        self.keys.save(CaptchaSettings(provider=pid, solve_timeout_sec=solve_timeout_sec,
+                                       creds=creds))
+        saved = creds[pid]
+        return {"ok": True, "provider": pid, "enabled": saved.enabled,
+                "has_key": bool(saved.api_key), "masked_key": CaptchaKeyStore.mask(saved.api_key)}
 
     async def refresh_balance(self) -> Optional[float]:
         """One-shot balance fetch (fire-and-forget from slots); never raises."""
         s = self.keys.load()
         if not s.api_key:
             return None
-        client = Captcha2Client(s.api_key)
+        client = SolverApiClient(s.api_key, provider_for(s.provider))
         try:
             balance = await client.get_balance()
         except ApiError as e:
             self.stats.set_last_error(f"balance: {e.reason}")
-            self._log(f"2Captcha balance check failed: {e.reason}", "warn")
+            self._log(f"{provider_for(s.provider).title} balance check failed: {e.reason}", "warn")
             return None
         except Exception as e:
-            self._log(f"2Captcha balance check error: {e}", "warn")
+            self._log(f"{provider_for(s.provider).title} balance check error: {e}", "warn")
             return None
         finally:
             await client.aclose()
         self.stats.set_balance(balance)
-        self._log(f"2Captcha balance ${balance:.2f}", "info")
+        self._log(f"{provider_for(s.provider).title} balance ${balance:.2f}", "info")
         return balance
 
     def status_payload(self) -> Dict[str, Any]:
+        """Active provider status + per-provider masks (raw keys never leave)."""
         s = self.keys.load()
-        return {"enabled": s.enabled, "has_key": bool(s.api_key),
+        providers = {pid: {"enabled": c.enabled, "has_key": bool(c.api_key),
+                           "masked_key": CaptchaKeyStore.mask(c.api_key)}
+                     for pid, c in s.creds.items()}
+        return {"provider": s.provider, "providers": providers,
+                "enabled": s.enabled, "has_key": bool(s.api_key),
                 "masked_key": CaptchaKeyStore.mask(s.api_key),
                 "solve_timeout_sec": s.solve_timeout_sec,
                 "balance": self.stats.last_balance, "balance_at": self.stats.balance_at,

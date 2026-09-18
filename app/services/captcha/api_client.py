@@ -1,7 +1,10 @@
-"""2Captcha API v2 client — https://2captcha.com/api-docs
+"""Solver API client — one shared JSON protocol, two providers.
 
-JSON API: clientKey travels in the POST body (never in a URL, never in a
-log line). Only api.2captcha.com is ever contacted (RULE 20).
+Wire contract per provider docs (2captcha.com/api-docs, docs.capmonster.cloud):
+`clientKey` travels in the POST body (never in a URL, never in a log line);
+only the selected provider's official api host is ever contacted (RULE 20).
+Every per-provider difference (base URL, error classification, refund support)
+comes from the ProviderSpec — this file stays protocol-shaped.
 """
 
 from __future__ import annotations
@@ -11,40 +14,31 @@ from typing import Any, Dict, Optional
 
 import aiohttp
 
-API_BASE = "https://api.2captcha.com"
-POLL_INTERVAL_SEC = 5.0  # docs-recommended getTaskResult cadence
+from .providers import DEFAULT_PROVIDER, ProviderSpec, provider_for
 
-# 2captcha errorId → short reason (https://2captcha.com/api-docs/create-task)
-_ERROR_REASONS = {
-    1: "unavailable",        # CAPTCHA_UNAVAILABLE
-    2: "bad_key",            # KEY_DOESNT_EXIST
-    3: "no_credit",          # NOT_ENOUGH_CREDIT
-    16: "not_found",         # TASK_NOT_FOUND
-}
+DEFAULT_POLL_INTERVAL_SEC = 5.0  # report default before the provider is known
 
 
 class ApiError(Exception):
-    """Classified 2Captcha failure; .reason is a stable short token."""
+    """Classified provider failure; .reason is a stable short token.
+
+    Reasons: unavailable|bad_key|no_credit|not_found|task_error|network and
+    capmonster's `pending` (still solving — converted by get_result).
+    """
 
     def __init__(self, reason: str, error_id: Optional[int] = None, message: str = ""):
         super().__init__(message or reason)
-        self.reason = reason  # unavailable|bad_key|no_credit|not_found|task_error|network
+        self.reason = reason
         self.error_id = error_id
 
 
-def error_reason(error_id: Any) -> str:
-    """Map a 2Captcha errorId to a stable reason token."""
-    try:
-        return _ERROR_REASONS.get(int(error_id), "task_error")
-    except (TypeError, ValueError):
-        return "task_error"
+class SolverApiClient:
+    """Thin async client for one provider spec; one shared session, closed via aclose()."""
 
-
-class Captcha2Client:
-    """Thin async client; one shared session, closed via aclose()."""
-
-    def __init__(self, key: str, timeout_sec: float = 30.0):
+    def __init__(self, key: str, spec: Optional[ProviderSpec] = None,
+                 timeout_sec: float = 30.0):
         self._key = key
+        self.spec = spec or provider_for(DEFAULT_PROVIDER)
         self._timeout = aiohttp.ClientTimeout(total=timeout_sec)
         self._session: Optional[aiohttp.ClientSession] = None
 
@@ -62,7 +56,7 @@ class Captcha2Client:
 
     async def _post(self, method: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         session = await self._ensure_session()
-        url = f"{API_BASE}/{method}"
+        url = f"{self.spec.api_base}/{method}"
         body = {"clientKey": self._key, **payload}
         try:
             async with session.post(url, json=body) as resp:
@@ -73,21 +67,28 @@ class Captcha2Client:
             raise ApiError("network", message="non-JSON response")
         err = data.get("errorId", 0)
         if err != 0:
-            raise ApiError(error_reason(err), error_id=int(err),
-                           message=str(data.get("errorCode", "")))
+            code = data.get("errorCode")
+            raise ApiError(self.spec.error_reason(err, code),
+                           error_id=err if isinstance(err, int) else None,
+                           message=str(code or data.get("errorDescription") or ""))
         return data
 
-    async def create_task(self, task: Dict[str, Any]) -> str:
-        """Submit a solve task; returns the taskId string."""
+    async def create_task(self, task: Dict[str, Any]) -> Any:
+        """Submit a solve task; returns the provider's raw taskId (str or int)."""
         data = await self._post("createTask", {"task": task})
         task_id = data.get("taskId")
-        if not task_id:
+        if task_id is None or task_id == "":
             raise ApiError("task_error", message="createTask returned no taskId")
-        return str(task_id)
+        return task_id  # echoed back untouched — CapMonster ids are integers
 
-    async def get_result(self, task_id: str) -> Dict[str, Any]:
-        """One getTaskResult poll: status processing|ready|failed + solution."""
-        return await self._post("getTaskResult", {"taskId": task_id})
+    async def get_result(self, task_id: Any) -> Dict[str, Any]:
+        """One getTaskResult poll; a provider `pending` error reads as processing."""
+        try:
+            return await self._post("getTaskResult", {"taskId": task_id})
+        except ApiError as e:
+            if e.reason == "pending":
+                return {"status": "processing"}
+            raise
 
     async def get_balance(self) -> float:
         data = await self._post("getBalance", {})
@@ -96,8 +97,10 @@ class Captcha2Client:
         except (TypeError, ValueError):
             return 0.0
 
-    async def delete_task(self, task_id: str) -> bool:
-        """Free credit on an abandoned task; True when it is gone."""
+    async def delete_task(self, task_id: Any) -> bool:
+        """Refund an abandoned task; providers without deleteTask are no-ops."""
+        if not self.spec.can_delete:
+            return False
         try:
             await self._post("deleteTask", {"taskId": task_id})
             return True

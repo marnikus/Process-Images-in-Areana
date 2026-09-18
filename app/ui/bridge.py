@@ -2370,14 +2370,15 @@ class Bridge(QObject):
 
     @Slot(str, result=str)
     def set_captcha_settings(self, payload_json: str):
-        """Save 2Captcha key/enable/timeout; key stays local (masked in reply)."""
+        """Save solver key/enable/timeout per provider; key stays local (masked in reply)."""
         try:
             data = json.loads(payload_json or "{}")
+            provider = str(data.get("provider", "") or "")
             key = str(data.get("api_key", "") or "").strip()
             enabled = bool(data.get("enabled", False))
             timeout = int(data.get("solve_timeout_sec", 180))
-            result = self._captcha_service().apply_settings(key, enabled, timeout)
-            self._log(f"🔐 2Captcha settings saved (key={'set' if key else 'empty'}, enabled={result['enabled']}, timeout={timeout}s)", "success")
+            result = self._captcha_service().apply_settings(provider, key, enabled, timeout)
+            self._log(f"🔐 {result.get('provider', 'solver')} settings saved (key={'set' if key else 'kept'}, enabled={result['enabled']}, timeout={timeout}s)", "success")
             if result["enabled"]:
                 asyncio.create_task(self._captcha_service().refresh_balance())
         except Exception as e:

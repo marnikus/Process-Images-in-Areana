@@ -76,7 +76,7 @@ def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
 
 
 async def check_security(ctx: JobCtx) -> bool:
-    """Captcha gate: auto-solve (2Captcha, opt-in) else wait for user (RULE 20)."""
+    """Captcha gate: auto-solve (solver provider, opt-in) else wait for user (RULE 20)."""
     try:
         visible = await ctx.ctrl.is_security_dialog_visible()
     except Exception:

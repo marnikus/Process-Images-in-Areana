@@ -12,6 +12,7 @@ build/
 config/app_state.json
 config/cooldowns.json
 config/2captcha.json
+config/captcha_solvers.json
 config/captcha_stats.json
 config/presets/
 browser_profile/
