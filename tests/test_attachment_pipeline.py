@@ -1,89 +1,56 @@
-"""Reference-image attachment targets and verifies the active composer."""
+"""Known-working reference-image transport and required-block gating."""
 
 from types import SimpleNamespace
 
 import pytest
 
-from app.browser.attachment_probes import AttachmentEvidence, attach_file, paste_file
-from app.browser.cdp_arena import CDPArenaController
+from app.browser.cdp_arena import CDPArenaController, JS_VERIFY_ATTACHMENT
 from app.browser.cdp_client import CDPClient
 from app.services.single_job_runner import JobCtx, _loop_blocks
 
 
-class AttachmentCDP:
-    def __init__(self, set_ok=True):
-        self.set_ok = set_ok
-        self.evaluated = []
-        self.selected = []
-
-    async def evaluate(self, script):
-        self.evaluated.append(script)
-        if "visible prompt composer not found" in script or "DataTransfer" in script:
-            return {"ok": True, "marker": "marker", "previews": ["blob:old|"],
-                    "prompt": "message"}
-        return {"ok": True, "removed": True}
-
-    async def get_document(self):
-        return {"nodeId": 1}
-
-    async def query_selector(self, root_id, selector):
-        self.selected.append((root_id, selector))
-        return 9
-
-    async def set_file_input_files(self, node_id, files):
-        self.selected.append((node_id, files))
-        return self.set_ok
-
-
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_attach_file_marks_active_input_and_always_cleans_up(tmp_path):
+async def test_attach_image_cdp_uses_working_branch_selector_order(monkeypatch, tmp_path):
     image = tmp_path / "reference.png"
     image.write_bytes(b"png")
-    cdp = AttachmentCDP(set_ok=True)
+    client = CDPClient()
+    seen = []
 
-    evidence = await attach_file(cdp, str(image))
+    async def document():
+        return {"nodeId": 4}
 
-    assert evidence.ok and evidence.previews == ("blob:old|",)
-    assert cdp.selected[0] == (1, '[data-arena-upload-target="marker"]')
-    assert cdp.selected[1] == (9, [str(image)])
-    assert "removeAttribute" in cdp.evaluated[-1]
+    async def query(root, selector):
+        seen.append((root, selector))
+        return 9 if selector == 'input[type="file"][accept*="image"]' else None
 
+    async def set_files(node, files):
+        seen.append((node, files))
+        return True
 
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_paste_file_sends_bounded_image_payload(tmp_path):
-    image = tmp_path / "reference.png"
-    image.write_bytes(b"png")
-    cdp = AttachmentCDP()
+    monkeypatch.setattr(client, "get_document", document)
+    monkeypatch.setattr(client, "query_selector", query)
+    monkeypatch.setattr(client, "set_file_input_files", set_files)
 
-    evidence = await paste_file(cdp, str(image))
+    ok, reason = await client.attach_image_cdp(str(image))
 
-    assert evidence.ok and evidence.previews == ("blob:old|",)
-    assert "cG5n" in cdp.evaluated[0]
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_attach_file_rejects_missing_path_and_protocol_failure(tmp_path):
-    missing = await attach_file(AttachmentCDP(), str(tmp_path / "missing.png"))
-    image = tmp_path / "reference.png"
-    image.write_bytes(b"png")
-    failed = await attach_file(AttachmentCDP(set_ok=False), str(image))
-
-    assert not missing.ok and "not a file" in missing.reason
-    assert not failed.ok and "protocol error" in failed.reason
+    assert ok and "node 9" in reason
+    assert seen == [
+        (4, 'form input[type="file"][accept*="image"]'),
+        (4, 'input[type="file"][accept*="image"]'),
+        (9, [str(image.resolve())]),
+    ]
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_set_file_input_files_rejects_cdp_error(monkeypatch):
+async def test_set_file_input_files_rejects_explicit_cdp_error(monkeypatch):
     client = CDPClient()
 
-    async def send(_method, _params):
-        return {"error": {"code": -32000, "message": "Node is not a file input"}}
+    async def failure(_method, _params):
+        return {"error": {"code": -32000, "message": "not a file input"}}
 
-    monkeypatch.setattr(client, "send", send)
+    monkeypatch.setattr(client, "send", failure)
     assert await client.set_file_input_files(7, ["/tmp/reference.png"]) is False
 
     async def success(_method, _params):
@@ -95,40 +62,22 @@ async def test_set_file_input_files_rejects_cdp_error(monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_controller_requires_active_composer_evidence(monkeypatch, tmp_path):
+async def test_controller_uses_working_attach_then_preview_retry(monkeypatch, tmp_path):
     image = tmp_path / "reference.png"
     image.write_bytes(b"png")
-    cdp = SimpleNamespace(is_connected=True)
+    cdp = SimpleNamespace(is_connected=True, attach_image_cdp=_attached,
+                          evaluate=_evaluate(iter([{"found": False},
+                                                   {"found": True, "matched": "blob"}])))
     controller = CDPArenaController(cdp)
-    monkeypatch.setattr("app.browser.cdp_arena.paste_file", lambda *_: _failed_evidence())
-    monkeypatch.setattr("app.browser.cdp_arena.attach_file", lambda *_: _evidence())
 
     async def no_sleep(_delay):
         return None
-    monkeypatch.setattr("app.browser.cdp_arena.asyncio.sleep", no_sleep)
-    replies = iter([{"found": False}, {"found": True, "matched": "new-active-preview"}])
-    cdp.evaluate = _evaluate(replies)
 
+    monkeypatch.setattr("app.browser.cdp_arena.asyncio.sleep", no_sleep)
     ok, reason = await controller.attach_image(str(image))
 
-    assert ok and "new-active-preview" in reason
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_controller_waits_for_prompt_to_persist(monkeypatch):
-    replies = iter([{"ok": True, "len": 5}, {"ok": False, "actual": ""},
-                    {"ok": True, "actual": "hello"}])
-    cdp = SimpleNamespace(is_connected=True, evaluate=_evaluate(replies))
-    controller = CDPArenaController(cdp)
-
-    async def no_sleep(_delay):
-        return None
-    monkeypatch.setattr("app.browser.cdp_arena.asyncio.sleep", no_sleep)
-
-    ok, reason = await controller.insert_prompt("hello")
-
-    assert ok and "verified" in reason
+    assert ok and reason == "Found via blob"
+    assert "div.flex.flex-wrap.gap-2" in JS_VERIFY_ATTACHMENT
 
 
 @pytest.mark.unit
@@ -139,7 +88,7 @@ async def test_required_attach_failure_stops_before_prompt_and_wait():
     class Ctrl:
         async def attach_image(self, _path):
             calls.append("attach")
-            return False, "active composer input missing"
+            return False, "preview missing"
 
         async def insert_prompt(self, _text):
             calls.append("prompt")
@@ -153,7 +102,9 @@ async def test_required_attach_failure_stops_before_prompt_and_wait():
     blocks = [SimpleNamespace(block_id="ATTACH_IMAGE", enabled=True, required=True,
                               display_name="Attach"),
               SimpleNamespace(block_id="INSERT_PROMPT", enabled=True, required=True,
-                              display_name="Prompt")]
+                              display_name="Prompt"),
+              SimpleNamespace(block_id="WAIT_OUTPUT", enabled=True, required=True,
+                              display_name="Wait")]
 
     failed, error = await _loop_blocks(ctx, blocks)
 
@@ -161,12 +112,8 @@ async def test_required_attach_failure_stops_before_prompt_and_wait():
     assert calls == ["attach"]
 
 
-async def _failed_evidence():
-    return AttachmentEvidence(False, "paste unavailable")
-
-
-async def _evidence():
-    return AttachmentEvidence(True, "set", ("blob:old|",))
+async def _attached(_path):
+    return True, "working transport"
 
 
 def _evaluate(replies):

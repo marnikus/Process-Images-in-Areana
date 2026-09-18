@@ -1,5 +1,7 @@
 # Image-reference paste regression — research and design
 
+> Superseded after two failed live validations by `docs/archive/2026-09-18-working-branch-composer-restoration/design.md`.
+
 Date: 2026-09-18
 
 ## Reported failure

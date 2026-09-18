@@ -68,7 +68,7 @@ All selectors below are **extracted from actual HTML** or verified via CDP. The 
 | **Verification** | Active form input contains the expected filename, or a new visible image fingerprint appears inside that same form relative to the pre-attach baseline |
 | **Evidence** | Confirmed in saved HTML: prompt textarea + hidden image input + Add-files plus control share one form; regression design `docs/archive/2026-09-18-image-reference-paste-regression/design.md` |
 | **Action Blocks** | `HIGHLIGHT_ATTACH`, `ATTACH_IMAGE` |
-| **CDP Method** | Active-textarea `paste` event with bounded `File`/`DataTransfer`, then active-form `DOM.setFileInputFiles` fallback (`DOM.getDocument` → marked input query → protocol call) |
+| **CDP Method** | Proven branch path: `DOM.getDocument` → first matching image input in selector order → `DOM.setFileInputFiles` with absolute path; restored from `befor-merge---working-past-job-to-web-page` commit `032dfc6` |
 
 **Hierarchy (from saved HTML):**
 

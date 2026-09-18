@@ -20,6 +20,7 @@ import urllib.request
 import urllib.error
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, List, Tuple, Optional
 
 try:
@@ -175,6 +176,23 @@ def diagnose_sync(host: str = "127.0.0.1", port: int = 9222) -> dict:
             # Show unique count, not duplicated
             results["summary"] = f"✅ Found {len(all_tabs)} unique tab(s) on {open_hosts}: " + "; ".join(f"{t.title[:40]} — {t.url}" for t in all_tabs[:3])
     return results
+
+_IMAGE_INPUT_SELECTORS = (
+    'form input[type="file"][accept*="image"]',
+    'input[type="file"][accept*="image"]',
+    'input[type="file"]',
+)
+
+
+async def _first_matching_node(client, root_id: int,
+                               selectors: List[str]) -> tuple[Optional[int], str]:
+    """Return the first node in the proven working-branch selector order."""
+    for selector in selectors:
+        node_id = await client.query_selector(root_id, selector)
+        if node_id:
+            return node_id, selector
+    return None, ""
+
 
 class CDPClient(QObject):
     connected = Signal()
@@ -555,11 +573,24 @@ class CDPClient(QObject):
             log.warning(f"setFileInputFiles failed for node {node_id} files {files}: {e}")
             return False
 
-    async def attach_image_cdp(self, image_path: str, selectors: List[str] = None) -> tuple[bool, str]:
-        """Attach to the active composer; retained as the transport facade."""
-        from .attachment_probes import attach_file
-        evidence = await attach_file(self, image_path, selectors)
-        return evidence.ok, evidence.reason
+    async def attach_image_cdp(self, image_path: str,
+                               selectors: List[str] = None) -> tuple[bool, str]:
+        """Attach through the proven first-matching-input CDP path."""
+        choices = list(_IMAGE_INPUT_SELECTORS) if selectors is None else selectors
+        try:
+            document = await self.get_document()
+            root_id = document.get("nodeId") if document else None
+            if not root_id:
+                return False, "Failed to get document root"
+            node_id, used = await _first_matching_node(self, root_id, choices)
+            if not node_id:
+                return False, f"File input not found for selectors {choices}"
+            absolute = str(Path(image_path).resolve())
+            if not await self.set_file_input_files(node_id, [absolute]):
+                return False, f"setFileInputFiles failed for {absolute}"
+            return True, f"Attached {absolute} via {used} node {node_id}"
+        except Exception as exc:
+            return False, f"Exception attach_image_cdp: {exc}"
 
     async def highlight_element(self, selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = ""):
         js = f"""
