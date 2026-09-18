@@ -4,6 +4,9 @@ Round-5 evidence (user log 11:37–11:40): the spinner stays alive through the
 ~60 s enterprise solve, the dialog clears at settle, the spinner stops — and
 the wait then burns ~2 min on a dead request before timing out. A human would
 press Send again; this policy does exactly that, once, under observation.
+Round 6: the death signature (spinner seen, then lost, nothing arrives) is
+identical with or without captcha, so the trigger keys on spinner loss —
+a slow start (spinner never seen yet) can never fire.
 
 Layer: services — the job runner arms the policy on the ctrl and the wait
 loop consults it through the `resume_gate` attribute (same protocol as
@@ -33,6 +36,8 @@ class ResumePolicy:
     max_resubmits: int = MAX_RESUBMITS
     resubmits: int = 0
     settled_at: Optional[float] = None
+    spinner_seen: bool = False
+    dead_since: Optional[float] = None
     cancelled: Optional[Callable[[], bool]] = None
     report: Optional[Callable[[str, str], None]] = None
 
@@ -89,23 +94,25 @@ def _cancelled(policy: ResumePolicy) -> bool:
         return False
 
 
-def _settle_due(policy: ResumePolicy) -> bool:
-    """A settle is armed, budgeted, uncancelled and past its grace."""
-    if policy.settled_at is None:
-        return False
-    if policy.resubmits >= policy.max_resubmits:
-        return False
-    if _cancelled(policy):
-        return False
-    return time.monotonic() - policy.settled_at >= policy.grace_sec
-
-
-def _generation_dead(policy: ResumePolicy, diag: Dict[str, Any]) -> bool:
-    """No spinner and no new pixels; a live generation clears the marker."""
+def _note_activity(policy: ResumePolicy, diag: Dict[str, Any], now: float) -> None:
+    """Live signals stand the triggers down; dead polls start the window."""
+    if diag.get("spinning"):
+        policy.spinner_seen = True
     if diag.get("spinning") or int(diag.get("allNew", 0) or 0) > 0:
+        policy.dead_since = None
         policy.settled_at = None
-        return False
-    return True
+    elif policy.spinner_seen and policy.dead_since is None:
+        policy.dead_since = now
+
+
+def _revive_reason(policy: ResumePolicy, now: float) -> str:
+    """Matured trigger label, or '' when nothing is due yet."""
+    if policy.settled_at is not None and now - policy.settled_at >= policy.grace_sec:
+        return "Captcha settled but the generation died (no spinner, no output)"
+    if (policy.spinner_seen and policy.dead_since is not None
+            and now - policy.dead_since >= policy.grace_sec):
+        return "Generation stalled (spinner lost, no output)"
+    return ""
 
 
 async def maybe_resume(ctrl: Any, diag: Dict[str, Any]) -> Dict[str, Any]:
@@ -120,17 +127,23 @@ async def _maybe_resume(ctrl: Any, diag: Dict[str, Any]) -> Dict[str, Any]:
     policy = getattr(ctrl, "_resume_policy", None)
     if policy is None or diag.get("ready"):
         return diag
-    if not _settle_due(policy) or not _generation_dead(policy, diag):
+    now = time.monotonic()
+    _note_activity(policy, diag, now)
+    if policy.resubmits >= policy.max_resubmits or _cancelled(policy):
+        return diag
+    reason = _revive_reason(policy, now)
+    if not reason:
         return diag
     policy.resubmits += 1
     policy.settled_at = None
-    await _resubmit(ctrl, policy)
+    policy.dead_since = None
+    await _resubmit(ctrl, policy, reason)
     return diag
 
 
-async def _resubmit(ctrl: Any, policy: ResumePolicy) -> None:
+async def _resubmit(ctrl: Any, policy: ResumePolicy, reason: str) -> None:
     """Re-insert the identical prompt, then Send — one attempt, logged."""
-    _report(policy, "🔄 Captcha settled but the generation died (no spinner, no output) — resubmitting once", "warn")
+    _report(policy, f"🔄 {reason} — resubmitting once", "warn")
     try:
         ok, msg = await ctrl.insert_prompt(policy.prompt)
         _report(policy, f"🔄 Resubmit prompt re-insert: {msg} ({'ok' if ok else 'FAILED'})", "info")
