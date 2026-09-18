@@ -8,11 +8,11 @@ import os
 from pathlib import Path
 from typing import Any, Iterable
 
-from .models import VALID_LABELS, new_session_id, utc_now
+from .models import VALID_ACTOR_LABELS, VALID_RESULT_LABELS, new_session_id, utc_now
 from .retention import prune_recordings
 from .sanitize import safe_url
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class RecordingStore:
@@ -64,11 +64,19 @@ class RecordingStore:
         return clean[:max(1, min(int(limit), 1000))]
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
-        if label not in VALID_LABELS:
-            raise ValueError("label must be unknown, bot, or manual")
+        return self.set_labels(session_id, label, None)
+
+    def set_labels(self, session_id: str, actor: str,
+                   result: str | None) -> dict[str, Any]:
+        if actor not in VALID_ACTOR_LABELS:
+            raise ValueError("actor must be unknown, bot, manual, or mixed")
+        if result is not None and result not in VALID_RESULT_LABELS:
+            raise ValueError("result must be unknown, passed, or failed")
         folder = self._folder(session_id)
         manifest = self._read_manifest(folder)
-        manifest["actor_label"] = label
+        manifest["actor_label"] = actor
+        if result is not None:
+            manifest["result_label"] = result
         manifest["label_updated_at"] = utc_now()
         self._write_manifest(folder, manifest)
         return self._summary(folder)
@@ -96,6 +104,7 @@ class RecordingStore:
             "reason": "",
             "method": "",
             "actor_label": "unknown",
+            "result_label": "unknown",
             "elapsed_ms": 0,
             "event_count": 0,
             "mutation_count": 0,
@@ -111,10 +120,13 @@ class RecordingStore:
         keys = (
             "session_id", "eid", "tab", "source", "url", "kind", "started_at",
             "ended_at", "status", "outcome", "reason", "method", "actor_label",
-            "elapsed_ms", "event_count", "mutation_count", "network_count",
+            "result_label", "elapsed_ms", "event_count", "mutation_count", "network_count",
             "snapshot_count", "truncated",
         )
-        return {key: manifest.get(key) for key in keys}
+        summary = {key: manifest.get(key) for key in keys}
+        summary["actor_label"] = summary.get("actor_label") or "unknown"
+        summary["result_label"] = summary.get("result_label") or "unknown"
+        return summary
 
     def _session_folders(self) -> Iterable[Path]:
         if not self.root.exists():

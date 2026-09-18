@@ -13,3 +13,6 @@
 .captcha-compare-pane { min-height:90px; padding:7px; border:1px solid var(--border); border-radius:4px; color:var(--text-secondary); overflow:auto; }
 .captcha-compare-pane > div { margin:3px 0 6px; font-size:9px; overflow-wrap:anywhere; }
 .captcha-compare-pane pre { max-height:180px; margin:5px 0; padding:5px; overflow:auto; white-space:pre-wrap; font-size:9px; color:var(--text-primary); background:var(--bg-input); }
+.captcha-compare-pane select { max-width:100%; background:var(--bg-input); color:var(--text-primary); }
+.captcha-comparison-report { max-height:280px; margin-top:7px; padding:7px; overflow:auto; white-space:pre-wrap; font-size:9px; color:var(--text-primary); background:var(--bg-input); border:1px solid var(--border); }
+.evidence-incomplete { border-color:#d97706 !important; }

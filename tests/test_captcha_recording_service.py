@@ -19,8 +19,8 @@ class RecordingSpy:
             return None
         return "recorder"
 
-    async def finish(self, recorder, outcome):
-        self.calls.append(("finish", recorder, outcome.status))
+    async def finish(self, recorder, outcome, report=None):
+        self.calls.append(("finish", recorder, outcome.status, bool(report)))
 
     async def abort(self, recorder, reason):
         self.calls.append(("abort", recorder, reason))
@@ -46,7 +46,7 @@ async def test_manual_captcha_starts_and_finishes_recording(monkeypatch, isolate
 
     assert outcome.status == "manual"
     assert spy.calls[0][0] == "start"
-    assert spy.calls[-1] == ("finish", "recorder", "manual")
+    assert spy.calls[-1] == ("finish", "recorder", "manual", True)
 
 
 @pytest.mark.unit

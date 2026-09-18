@@ -25,8 +25,9 @@ def test_store_create_finish_list_and_label(tmp_path):
 
     rows = store.list_sessions()
     assert len(rows) == 1 and rows[0]["url"] == "https://arena.ai/c/1"
-    updated = store.set_label(manifest["session_id"], "bot")
-    assert updated["actor_label"] == "bot"
+    updated = store.set_labels(manifest["session_id"], "mixed", "failed")
+    assert updated["actor_label"] == "mixed"
+    assert updated["result_label"] == "failed"
     assert (store.root / manifest["session_id"] / "snapshots/000000.json.gz").exists()
 
 
@@ -36,6 +37,8 @@ def test_store_rejects_bad_label_and_path(tmp_path):
     session_id = store.create(encounter())["session_id"]
     with pytest.raises(ValueError):
         store.set_label(session_id, "robot")
+    with pytest.raises(ValueError):
+        store.set_labels(session_id, "bot", "maybe")
     with pytest.raises(ValueError):
         store.set_label("../escape", "bot")
 
@@ -77,7 +80,9 @@ def test_evidence_reader_returns_bounded_comparison_model(tmp_path):
 
     details = EvidenceReader(store.root).details(session_id)
 
-    assert details["events"][0]["kind"] == "mutation"
+    assert details["events"][0]["payload"]["path"] == "main"
+    assert details["events"][0]["offset_ms"] == 1
+    assert details["snapshots"][0]["offset_ms"] == 2
     assert len(details["latest_snapshot"]["html"]) == 20000
     assert details["latest_snapshot"]["truncated_for_view"] is True
 

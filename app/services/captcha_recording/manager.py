@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from .comparison import RecordingComparison
 from .reader import EvidenceReader
 from .recorder import CaptchaRecorder
 from .store import RecordingStore
@@ -15,6 +16,7 @@ class RecordingManager:
     def __init__(self, config_dir: str, log: Optional[Callable[[str, str], None]] = None):
         self.store = RecordingStore(config_dir)
         self.reader = EvidenceReader(self.store.root)
+        self.comparison = RecordingComparison()
         self.log = log or (lambda message, level="info": None)
         self._active: dict[str, CaptchaRecorder] = {}
 
@@ -33,11 +35,12 @@ class RecordingManager:
             self.log(f"Captcha recording start skipped: {exc}", "warn")
             return None
 
-    async def finish(self, recorder: Optional[CaptchaRecorder], outcome: Any) -> None:
+    async def finish(self, recorder: Optional[CaptchaRecorder], outcome: Any,
+                     report: Optional[dict[str, Any]] = None) -> None:
         if recorder is None:
             return
         try:
-            manifest = await recorder.finish(outcome)
+            manifest = await recorder.finish(outcome, report)
             self.log(f"🎞 Captcha recording {recorder.session_id} finished: "
                      f"{manifest.get('outcome', '?')}", "info")
         except Exception as exc:
@@ -70,8 +73,18 @@ class RecordingManager:
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
         return self.store.set_label(session_id, label)
 
+    def set_labels(self, session_id: str, actor: str, result: str) -> dict[str, Any]:
+        return self.store.set_labels(session_id, actor, result)
+
     def get_session(self, session_id: str) -> dict[str, Any]:
         return self.reader.details(session_id)
+
+    def session_folder(self, session_id: str) -> str:
+        return str(self.reader.folder(session_id))
+
+    def compare_sessions(self, left_id: str, right_id: str) -> dict[str, Any]:
+        left, right = self.reader.details(left_id), self.reader.details(right_id)
+        return self.comparison.compare(left, right)
 
     def _drop(self, recorder: CaptchaRecorder) -> None:
         for tab_id, active in tuple(self._active.items()):

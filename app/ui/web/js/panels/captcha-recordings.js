@@ -37,34 +37,65 @@ const CaptchaRecordingsPanel = {
     this.cell(tr, this.duration(item.elapsed_ms));
     this.cell(tr, `${item.mutation_count || 0}/${item.network_count || 0}/${item.snapshot_count || 0}`);
     const labelCell = document.createElement('td');
-    labelCell.append(this.labelSelect(item), CaptchaRecordingComparison.button(item, 0),
-      CaptchaRecordingComparison.button(item, 1));
+    const actor = this.actorSelect(item);
+    const result = this.resultSelect(item);
+    const save = () => this.setLabels(item.session_id, actor, result);
+    actor.addEventListener('change', save); result.addEventListener('change', save);
+    labelCell.append(actor, result, CaptchaRecordingComparison.button(item, 0),
+      CaptchaRecordingComparison.button(item, 1), this.openButton(item));
     tr.appendChild(labelCell);
     tr.title = item.reason || item.session_id || '';
     return tr;
   },
 
-  labelSelect(item) {
+  openButton(item) {
+    const button = document.createElement('button');
+    button.className = 'captcha-compare-btn';
+    button.textContent = 'Open';
+    button.title = 'Open this recording folder';
+    button.addEventListener('click', () => {
+      const bridge = window.CaptchaRecordingsBridge;
+      if (!bridge?.open_folder) return;
+      bridge.open_folder(item.session_id, (raw) => {
+        try {
+          const result = JSON.parse(raw);
+          if (!result.ok) LogConsole.log('Open recording folder failed: ' + result.error, 'error');
+        } catch (error) { LogConsole.log('Open recording folder reply failed: ' + error, 'error'); }
+      });
+    });
+    return button;
+  },
+
+  actorSelect(item) {
+    return this.select([['unknown', 'Actor?'], ['bot', 'Bot'], ['manual', 'Manual'],
+      ['mixed', 'Bot→Manual']], item.actor_label);
+  },
+
+  resultSelect(item) {
+    return this.select([['unknown', 'Result?'], ['passed', 'Passed'], ['failed', 'Failed']],
+      item.result_label);
+  },
+
+  select(options, selected) {
     const select = document.createElement('select');
     select.className = 'captcha-record-label';
-    [['unknown', 'Unknown'], ['bot', 'Bot passed'], ['manual', 'User passed']].forEach(([value, text]) => {
+    options.forEach(([value, text]) => {
       const option = document.createElement('option');
       option.value = value; option.textContent = text; select.appendChild(option);
     });
-    select.value = item.actor_label || 'unknown';
-    select.addEventListener('change', () => this.setLabel(item.session_id, select));
+    select.value = selected || 'unknown';
     return select;
   },
 
-  setLabel(sessionId, select) {
+  setLabels(sessionId, actor, result) {
     const bridge = window.CaptchaRecordingsBridge;
-    if (!bridge?.set_label) return;
-    select.disabled = true;
-    bridge.set_label(sessionId, select.value, (raw) => {
-      select.disabled = false;
+    if (!bridge?.set_labels) return;
+    actor.disabled = true; result.disabled = true;
+    bridge.set_labels(sessionId, actor.value, result.value, (raw) => {
+      actor.disabled = false; result.disabled = false;
       try {
-        const result = JSON.parse(raw);
-        if (!result.ok) LogConsole.log('Captcha label failed: ' + result.error, 'error');
+        const reply = JSON.parse(raw);
+        if (!reply.ok) LogConsole.log('Captcha labels failed: ' + reply.error, 'error');
       } catch (error) { LogConsole.log('Captcha label reply failed: ' + error, 'error'); }
     });
   },

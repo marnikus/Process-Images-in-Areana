@@ -43,12 +43,25 @@ class CDPEventRouter:
 
 
 def route_cdp_message(client: Any, data: dict) -> None:
-    """Resolve command replies or fan out unsolicited protocol events."""
+    """Resolve command replies on their owner loop or fan out events."""
     message_id = data.get("id")
     if message_id and message_id in client._pending:
         future = client._pending.pop(message_id)
         if not future.done():
-            future.set_result(data)
+            _schedule_reply(future, data)
         return
     if data.get("method"):
         client.events.dispatch(data)
+
+
+def _schedule_reply(future: Any, data: dict) -> None:
+    """Never mutate a qasync/asyncio Future from the websocket thread."""
+    try:
+        future.get_loop().call_soon_threadsafe(_set_reply, future, data)
+    except Exception as exc:
+        log.warning("CDP command reply scheduling failed: %s", exc)
+
+
+def _set_reply(future: Any, data: dict) -> None:
+    if not future.done():
+        future.set_result(data)

@@ -1,6 +1,7 @@
 """CDP command replies and asynchronous event fan-out."""
 
 import asyncio
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -15,8 +16,25 @@ def test_route_resolves_command_reply():
         future = loop.create_future()
         client = SimpleNamespace(_pending={7: future}, events=CDPEventRouter())
         route_cdp_message(client, {"id": 7, "result": {"ok": True}})
-        assert future.result()["result"]["ok"] is True
+        result = loop.run_until_complete(asyncio.wait_for(future, timeout=1))
+        assert result["result"]["ok"] is True
         assert client._pending == {}
+    finally:
+        loop.close()
+
+
+@pytest.mark.unit
+def test_reply_from_worker_thread_uses_future_owner_loop():
+    loop = asyncio.new_event_loop()
+    try:
+        future = loop.create_future()
+        client = SimpleNamespace(_pending={8: future}, events=CDPEventRouter())
+        worker = threading.Thread(target=route_cdp_message,
+                                  args=(client, {"id": 8, "result": {"threaded": True}}))
+        worker.start()
+        worker.join(timeout=1)
+        result = loop.run_until_complete(asyncio.wait_for(future, timeout=1))
+        assert result["result"]["threaded"] is True
     finally:
         loop.close()
 
