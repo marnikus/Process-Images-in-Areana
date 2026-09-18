@@ -36,6 +36,9 @@ class Manager:
     def delete_all_sessions(self):
         return {"deleted": 4, "skipped_active": 1}
 
+    def undo_delete(self):
+        return 4
+
 
 @pytest.mark.unit
 def test_recordings_bridge_lists_and_labels():
@@ -69,10 +72,12 @@ def test_recordings_bridge_removes_one_or_all_sessions():
 
     one = json.loads(bridge.delete_session("s1"))
     all_rows = json.loads(bridge.delete_all_sessions())
+    undone = json.loads(bridge.undo_delete())
     active = json.loads(bridge.delete_session("active"))
 
     assert one == {"ok": True, "deleted": "s1"}
     assert all_rows == {"ok": True, "deleted": 4, "skipped_active": 1}
+    assert undone == {"ok": True, "restored": 4}
     assert active["ok"] is False and "active" in active["error"]
 
 

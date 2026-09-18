@@ -12,7 +12,8 @@ MAX_STORAGE_BYTES = 512 * 1024 * 1024
 def prune_recordings(root: Path, max_sessions: int = MAX_STORED_SESSIONS,
                      max_bytes: int = MAX_STORAGE_BYTES) -> None:
     """Remove oldest session folders until both configured bounds hold."""
-    folders = sorted((path for path in root.iterdir() if path.is_dir()), key=lambda path: path.name)
+    folders = sorted((path for path in root.iterdir()
+                      if path.is_dir() and not path.name.startswith(".")), key=lambda path: path.name)
     sizes = {folder: _folder_size(folder) for folder in folders}
     total = sum(sizes.values())
     while folders and (len(folders) > max_sessions or total > max_bytes):

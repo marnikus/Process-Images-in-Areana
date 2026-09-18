@@ -5,6 +5,7 @@ const CaptchaRecordingsPanel = {
   init() {
     document.getElementById('captchaRecordsRefreshBtn')?.addEventListener('click', () => this.load());
     document.getElementById('captchaRecordsDeleteAllBtn')?.addEventListener('click', () => this.removeAll());
+    document.getElementById('captchaRecordsUndoBtn')?.addEventListener('click', () => this.undoDelete());
     setTimeout(() => this.load(), 1600);
   },
 
@@ -74,21 +75,32 @@ const CaptchaRecordingsPanel = {
     const button = document.createElement('button');
     button.className = 'captcha-delete-btn';
     button.textContent = 'Delete';
-    button.title = 'Permanently remove this recording';
+    button.title = 'Remove this recording (Undo delete restores it)';
     button.addEventListener('click', () => this.remove(item));
     return button;
   },
 
   remove(item) {
-    Dialog.confirm('Delete recording?',
-      `Permanently remove ${item.session_id}? This cannot be undone.`, 'Delete',
-      () => this.deleteRequest('delete_session', item.session_id));
+    this.deleteRequest('delete_session', item.session_id);
   },
 
   removeAll() {
     Dialog.confirm('Delete all recordings?',
-      'Permanently remove every retained recording? Active recordings are kept. This cannot be undone.',
+      'Remove every retained recording? Active recordings are kept. Undo delete restores this group.',
       'Delete all', () => this.deleteRequest('delete_all_sessions'));
+  },
+
+  undoDelete() {
+    const bridge = window.CaptchaRecordingsBridge;
+    if (!bridge?.undo_delete) return;
+    bridge.undo_delete((raw) => {
+      try {
+        const reply = JSON.parse(raw);
+        if (!reply.ok) throw new Error(reply.error);
+        CaptchaRecordingComparison.reset();
+        this.load();
+      } catch (error) { LogConsole.log('Undo recording delete failed: ' + error, 'error'); }
+    });
   },
 
   deleteRequest(slot, sessionId) {
