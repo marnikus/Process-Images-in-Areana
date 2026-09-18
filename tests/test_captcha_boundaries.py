@@ -197,7 +197,9 @@ async def test_dispatch_binds_url_row_to_run_tab():
 
 
 @pytest.mark.unit
-def test_apply_penalty_never_breaks_the_job(monkeypatch):
+@pytest.mark.asyncio
+async def test_penalty_recorder_failure_never_breaks_the_job(monkeypatch):
+    """Choke point: a broken penalty recorder degrades to a warn, job proceeds."""
     import app.services.cooldown_service as svc
 
     def boom(*_a, **_k):
@@ -207,5 +209,7 @@ def test_apply_penalty_never_breaks_the_job(monkeypatch):
     pool = PagePool()
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool)
-    ctrl, _ = make_ctrl([False])
-    sjr._apply_captcha_penalty(make_ctx(pool, bridge, ctrl))  # must not raise
+    ctrl, _ = make_ctrl([True, False])
+    ctx = make_ctx(pool, bridge, ctrl)
+    assert await sjr.check_security(ctx) is True  # must not raise
+    assert any("Captcha penalty skipped" in m for m, _ in bridge._logs)

@@ -142,6 +142,19 @@ def _fresh_chat_ready(ready: bool, reasons) -> bool:
     return all(r in _FRESH_CHAT_OK for r in (reasons or []))
 
 
+async def _check_ready(ctx: ResetCtx) -> tuple[bool, str]:
+    """One readiness probe: (ready, status-note for timeout messages)."""
+    if not await _is_document_complete(ctx.client):
+        return False, "document not complete"
+    try:
+        ready, reasons = await ctx.ctrl.is_page_ready()
+    except Exception as e:
+        return False, f"readiness check failed: {e}"
+    if _fresh_chat_ready(ready, reasons) and await _is_composer_empty(ctx.client):
+        return True, "new chat ready"
+    return False, f"ready={ready} reasons={reasons}"
+
+
 async def _wait_page_loaded(ctx: ResetCtx) -> tuple[bool, str]:
     """Poll until document complete + page ready + composer empty."""
     deadline = time.monotonic() + max(1.0, float(ctx.timeout_sec or 30))
@@ -149,16 +162,9 @@ async def _wait_page_loaded(ctx: ResetCtx) -> tuple[bool, str]:
     while True:
         if _is_cancelled(ctx):
             return False, "cancelled"
-        if await _is_document_complete(ctx.client):
-            try:
-                ready, reasons = await ctx.ctrl.is_page_ready()
-            except Exception as e:
-                return False, f"readiness check failed: {e}"
-            if _fresh_chat_ready(ready, reasons) and await _is_composer_empty(ctx.client):
-                return True, "new chat ready"
-            last = f"ready={ready} reasons={reasons}"
-        else:
-            last = "document not complete"
+        ok, last = await _check_ready(ctx)
+        if ok:
+            return True, last
         if time.monotonic() >= deadline:
             return False, f"timeout waiting for new chat ({last})"
         await asyncio.sleep(min(1.0, max(0.05, deadline - time.monotonic())))

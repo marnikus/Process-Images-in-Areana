@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple, Callable
 
 from .cdp_client import CDPClient
+from .captcha_probes import build_visible_js
 from .output_probes import build_baseline_js, build_check_js
 from .output_state import flatten_diagnostics, build_order_check_text
 from .output_wait import wait_for_new_output_loop
@@ -32,8 +33,17 @@ JS_FIND_TEXTAREA = """
 JS_INSERT_PROMPT = """
 ((promptText) => {
   try {
-    const el=document.querySelector('textarea[name="message"]')||document.querySelector('textarea[placeholder^="Describe"]');
-    if(!el) return {ok:false,error:'textarea not found'};
+    const sels=['textarea[name="message"]','textarea[placeholder^="Describe"]','textarea[rows="1"]'];
+    let el=null;
+    for(const sel of sels){
+      const els=document.querySelectorAll(sel);
+      for(const cand of els){ if(cand.offsetParent!==null){ el=cand; break; } }
+      if(el) break;
+    }
+    if(!el){
+      const any=document.querySelector(sels.join(','));
+      return {ok:false,error:any?'textarea hidden':'textarea not found'};
+    }
     el.focus();
     const setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
     setter.call(el,promptText);
@@ -42,6 +52,22 @@ JS_INSERT_PROMPT = """
     el.value=promptText;
     return {ok:true,len:el.value.length};
   } catch(e){return {ok:false,error:String(e)};}
+})
+"""
+
+JS_SEND_STATE = """
+(() => {
+  try{
+    const els=document.querySelectorAll('button[aria-label="Send message"]');
+    if(!els.length) return {found:false,visible:false,enabled:false};
+    let visible=false, enabled=false;
+    for(const el of els){
+      if(el.offsetParent===null) continue;
+      visible=true;
+      if(!el.disabled){ enabled=true; break; }
+    }
+    return {found:true,visible:visible,enabled:enabled};
+  }catch(e){return {found:false,visible:false,enabled:false};}
 })
 """
 
@@ -161,18 +187,7 @@ JS_PAGE_READY = """
 })()
 """
 
-JS_SECURITY_DIALOG = """
-;(() => {
-  const dialogs=document.querySelectorAll('div[role="dialog"][data-state="open"]');
-  for(const d of dialogs){
-    if(d.innerText&&d.innerText.includes('Security Verification')) return true;
-    if(d.querySelector('iframe[title="reCAPTCHA"]')) return true;
-  }
-  const iframes=document.querySelectorAll('iframe[title="reCAPTCHA"]');
-  for(const f of iframes){ if(f.offsetParent!==null) return true; }
-  return false;
-})()
-"""
+JS_SECURITY_DIALOG = build_visible_js()
 
 JS_IS_GENERATING = """
 ;(() => {
@@ -184,6 +199,17 @@ JS_IS_GENERATING = """
   return {spinning:spinning,spinCount:count,details:details,isGenerating:spinning};
 })()
 """
+
+
+async def _run_resume_gate(ctrl, diag):
+    """Post-captcha revival hook: the services-owned gate rides as an attr."""
+    gate = getattr(ctrl, "resume_gate", None)
+    if gate is None:
+        return diag
+    try:
+        return await gate(diag) or diag
+    except Exception:
+        return diag
 
 
 class CDPArenaController:
@@ -284,6 +310,36 @@ class CDPArenaController:
             return True, "Clicked"
         return False, result.get("error", "Failed")
 
+    async def _poll_send_state(self, timeout_sec: float) -> Dict[str, Any]:
+        # ideal-size: 11 lines reason=bounded send-ready poll
+        js = f";({JS_SEND_STATE})()"
+        deadline = time.monotonic() + max(0.0, timeout_sec)
+        state: Dict[str, Any] = {"found": False, "visible": False, "enabled": False}
+        while True:
+            res = await self.cdp.evaluate(js)
+            if isinstance(res, dict):
+                state = res
+            if state.get("enabled") or time.monotonic() >= deadline:
+                return state
+            await asyncio.sleep(0.5)
+
+    async def submit_when_ready(self, timeout_sec: float = 8.0) -> Tuple[bool, str]:
+        # ideal-size: 11 lines reason=click send once enabled, else terminal state
+        if not await self.ensure_connected():
+            return False, "Not connected"
+        state = await self._poll_send_state(timeout_sec)
+        if not state.get("enabled"):
+            if not state.get("found"):
+                return False, "send not found"
+            if not state.get("visible"):
+                return False, "send hidden"
+            return False, "send disabled"
+        return await self.submit()
+
+    async def scan_page_errors(self) -> str:
+        # ideal-size: 3 lines reason=public corpus for solve watchers
+        return await self._scan_page_errors()
+
     async def _scan_page_errors(self) -> str:
         """Alert/toast/error-region text, else ''. Never raises."""
         try:
@@ -315,13 +371,15 @@ class CDPArenaController:
         return "failed", {"error": f"Timeout after {timeout_ms}ms", "last_baseline": final_baseline, "last_check": result}
 
     async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000, correlation_id: Optional[str] = None, cancel_check=None) -> Tuple[str, Dict[str, Any]]:
-        # ideal-size: 26 lines reason=delegates to wait loop; page-error baseline + fast-fail arming
+        # ideal-size: 27 lines reason=delegates to wait loop; page-error baseline + fast-fail arming + resume gate
         old_srcs = baseline.get("output_srcs", []) or []
         old_outputs = baseline.get("outputs", []) or []
         self._err_base = await self._scan_page_errors()
 
         async def check_fn():
-            return await self._poll_output_diag(old_srcs, correlation_id, old_outputs)
+            await self._security_gate()
+            diag = await self._poll_output_diag(old_srcs, correlation_id, old_outputs)
+            return await _run_resume_gate(self, diag)
 
         def log_cb(msg: str):
             self._log(msg)
@@ -340,6 +398,17 @@ class CDPArenaController:
             return await self._map_wait_result(result, baseline, timeout_ms)
         except Exception as e:
             return "failed", {"error": str(e)}
+
+    async def _security_gate(self) -> None:
+        # ideal-size: 9 lines reason=settle the security dialog inline during the output wait
+        settler = getattr(self, "security_settler", None)
+        if settler is None:
+            return
+        try:
+            if await self.is_security_dialog_visible():
+                await settler()
+        except Exception as e:
+            log.debug(f"security gate settle failed {e}")
 
     async def _python_download(self, src: str) -> Tuple[bool, bytes, str]:
         def sync_fetch(url: str):
@@ -429,11 +498,11 @@ class CDPArenaController:
         except Exception as e:
             log.debug(f"clear failed {e}")
 
-    async def show_watcher_overlay(self, message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, elapsed_sec: int = 0) -> bool:
+    async def show_watcher_overlay(self, message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, sub: str = "") -> bool:
         # ideal-size: 10 lines reason=show watcher overlay with timeout from win settings
         try:
             from .dom_highlight import build_watcher_overlay_js
-            js = build_watcher_overlay_js(message=message, kind=kind, timeout_sec=timeout_sec, elapsed_sec=elapsed_sec)
+            js = build_watcher_overlay_js(message=message, kind=kind, timeout_sec=timeout_sec, sub=sub)
             raw = await self.cdp.evaluate(js)
             if raw:
                 try:

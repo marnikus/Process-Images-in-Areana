@@ -1,18 +1,27 @@
 {
+<<<<<<< HEAD
   "grid_layout": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"prompt\"}],\"sizes\":[46.81316413906943,53.18683586093057]},{\"t\":\"leaf\",\"id\":\"folder\"},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"watcher\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"queue\"}],\"sizes\":[33.09957924263674,66.90042075736325]}],\"sizes\":[49.76798640757292,50.23201359242707]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]},{\"t\":\"leaf\",\"id\":\"browser\"}],\"sizes\":[54.25971877584781,45.74028122415219]}],\"sizes\":[34.55311922771661,7.661165052788839,40.20726601043388,17.57844970906068]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[19.654897119343147,43.885294104987125,26.460091248037678,9.999717527632043]}}",
+=======
+  "grid_layout": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[75.3402286336418,24.659771366358193]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[45.0,35.0,20.0]}],\"sizes\":[51.974707581665015,48.02529241833498]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]}],\"sizes\":[20.0,80.0]},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[80.38585209003215,19.614147909967848]},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[74.74549725920126,25.254502740798745]}}",
+>>>>>>> arena/01a0b4a1-process-images-in-areana
   "window_states": {
     "closed": [
-      "progress",
       "arena_presets",
       "block_config",
       "browser",
+<<<<<<< HEAD
+=======
+      "progress"
+    ],
+    "minimized": [
+>>>>>>> arena/01a0b4a1-process-images-in-areana
       "settings"
     ],
     "minimized": []
   },
   "theme": "dark",
   "last_folder": "",
-  "highlight_duration": 2,
+  "highlight_duration": 3,
   "last_url_preset": "https://arena.ai/c/01a0a5de-5d09-74ce-acc5-0875ac7ed352",
   "cdp_host": "127.0.0.1",
   "cdp_port": 9223,
@@ -463,6 +472,7 @@
   "cooldown_captcha_penalty_seconds": 900,
   "url_pattern": "https://arena.ai/image",
   "watcher_generation_timeout_sec": 180,
+<<<<<<< HEAD
   "watcher_enabled": true,
   "stack_presets": [
     {
@@ -903,4 +913,7 @@
       ]
     }
   ]
+=======
+  "watcher_enabled": true
+>>>>>>> arena/01a0b4a1-process-images-in-areana
 }

@@ -2,16 +2,29 @@
   "version": "1.0.0",
   "urls": [
     {
-      "id": "url_2c2ff2d7",
+      "id": "url_d83dc589",
       "url": "https://arena.ai/image/direct?model_a=max",
-      "enabled": true,
-      "last_status": "ready",
-      "last_checked": "2026-09-17T10:45:28.112354Z",
+      "enabled": false,
+      "last_status": "unchecked",
+      "last_checked": null,
       "error": null,
+<<<<<<< HEAD
       "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+=======
+      "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+>>>>>>> arena/01a0b4a1-process-images-in-areana
     },
     {
-      "id": "url_550177d7",
+      "id": "url_87a738e9",
+      "url": "https://arena.ai/image/direct?model_a=max",
+      "enabled": false,
+      "last_status": "unchecked",
+      "last_checked": null,
+      "error": null,
+      "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+    },
+    {
+      "id": "url_0e630302",
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
@@ -20,9 +33,10 @@
       "tab_id": "6745025141CD2C14CD1EE865E1401A53"
     },
     {
-      "id": "url_b9e9d963",
+      "id": "url_aa52b70a",
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
+<<<<<<< HEAD
       "last_status": "ready",
       "last_checked": "2026-09-17T10:45:34.622273Z",
       "error": null,
@@ -30,12 +44,22 @@
     },
     {
       "id": "url_1b33d9a7",
+=======
+      "last_status": "unchecked",
+      "last_checked": null,
+      "error": null,
+      "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+    },
+    {
+      "id": "url_f816019d",
+>>>>>>> arena/01a0b4a1-process-images-in-areana
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
       "last_checked": null,
       "error": null,
       "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+<<<<<<< HEAD
     },
     {
       "id": "url_0dd04586",
@@ -49,16 +73,20 @@
   ],
   "folder": {
     "root_path": "F:/Creative Cloud Files/Plastika Dolezal/Images for web 2.0/plastika-oblicej",
+=======
+    }
+  ],
+  "folder": {
+    "root_path": "F:/Stocks 2026/icons testing/single",
+>>>>>>> arena/01a0b4a1-process-images-in-areana
     "supported_types": [
       ".png",
-      ".jpg",
-      ".jpeg",
-      ".webp"
+      ".jpg"
     ],
     "ignore_ai_suffix": true
   },
   "prompt": {
-    "user_prompt": "Transform low-resolution, framed reference into high-definition, professional illustrations while strictly preserving the original artistic style, line work, and visual information. Increasing Quality. preserve the format it originally has!\n\n2. Style & Aesthetic Guidelines\nMedium & Art Technique\nStyle: Traditional medical/scientific hand-drawn illustration.\nLinework: Crisp, fine-point black ink outlines with clean, consistent line weights.\nShading: Soft colored pencil and graphite shading, featuring delicate cross-hatching to define depth and contour.\nColor Palette: Warm, muted pencil tones (natural skin/tissue hues, subtle accent colors like red/blue/grey where present in the original).\nPaper Texture: Smooth, clean off-white or neutral paper grain without age stains or background noise.\n3. Quality & Resolution Enhancements\nClarity: Enhance all fuzzy, pixelated, or compressed lines to sharp, high-definition details.\nFidelity: Retain 100% of the original drawing's structure, layout, dashed lines, arrows, and technical markings.\nCleanliness: Remove faint watermarks, digital noise, compression artifacts, and background shadows.\n4. Layout, Borders & Margins\nBorder Removal: Completely strip away all outer black rectangular frames, dark edge lines, and vignetting.\nBackground: Extend the canvas background into a solid, seamless, uniform pure white (#FFFFFF).\nMargins & Padding: Add a small, clean white margin around all four sides of the illustration so the subject breathes comfortably without touching the edges.\n\npreserve the format it originally has!",
+    "user_prompt": "Keep aspect ratio of image exact the same!  Change icon to the illustration with style described below:  Here is a detailed, structured **Style Guide & Description Transfer Framework** based on your reference images.   This guide extracts the visual DNA, art direction, rendering physics, and color rules while remaining completely object-agnostic, allowing you to apply this exact look to **any object, scene, or UI icon**.  ---  # 🎨 Style Guide: \"Soft 3D Claymorphic UI Style\"  ## 1. Core Visual Identity & Concept * **Aesthetic Keywords:** Soft 3D, Claymorphism, Matte Plastic, Modern Tech UI, Friendly, Playful, Minimalist, Tactile, Levitating/Floating. * **Overall Feel:** Clean, approachable, smooth, premium app/web illustration aesthetic. * **Level of Realism:** Stylized & Abstracted 3D (Non-photorealistic, toy-like tactile realism).  ---  ## 2. Geometry & Shape Language * **Edge Treatment:** **Extremely rounded corners and soft bevels.** No sharp 90-degree angles anywhere. Every corner has a thick, smooth radius. * **Volume & Form:** Objects are plump, slightly inflated, thick, and pillow-like (chubby geometry). * **Simplification:** Shapes are reduced to their simplest geometric representation. Complex details are abstracted into smooth, rounded blocks or lines. * **Layering:** Elements are layered on top of each other with distinct depth separation (e.g., floating cards over background shapes).  ---  ## 3. Surface Finish & Materiality * **Material Type:** Smooth matte clay, soft-touch silicone, or unglazed smooth plastic. * **Reflectivity / Gloss:** Very low specular reflection. No harsh shiny highlights, no mirror reflections, and **zero metallic properties**. * **Texture:** Perfectly smooth surfaces with a soft, uniform sheen that gently catches light. * **Transparency:** 100% opaque materials; no glass, refraction, or transparency.  ---  ## 4. Lighting & Shading * **Light Source:** Soft, highly diffused studio lighting coming consistently from the top-front-left. * **Graduation:** Smooth, seamless color gradients across curved surfaces to define volume and subtle depth without harsh lighting breaks. * **Highlights:** Soft, wide light falls across rounded edges; no sharp pin-point highlights. * **Contrasts:** Low to medium lighting contrast. Shadows are soft and light, avoiding deep blacks or harsh shadows.  ---  ## 5. Shadows & Depth * **Drop Shadows:** Long, highly blurred, soft-edged drop shadows cast directly onto the surface below floating elements. * **Ambient Occlusion:** Soft, subtle darkening where two shapes touch or layer over one another to create visual dimension. * **Shadow Color:** Tinted shadows (soft purple, muted blue, or light pink grey) matching the ambient color scheme, never pure black.  * **Levitation / Floating:** The final icon must NEVER sit flat on the surface. It always levitates slightly above the ground plane with a small gap between the object and the surface below. A soft, diffused shadow is cast directly beneath the icon on the surface, reinforcing the floating effect — exactly as shown in the reference example (checklist clipboard floating above pink background with soft shadow underneath).\n---  ## 6. Color Palette & Harmony * **Primary Tones (Backgrounds & Large Surfaces):** White or very light neutral backgrounds only. * **Accent Tones (Interactive / Pop Elements):** Vibrant yet soft pastel accents—mint green, butter/mustard yellow, warm coral, turquoise, and deep purple. * **Neutrals:** Clean white backgrounds for all icons and illustrations. * **Color Relationship:** High pastel saturation with balanced, low-contrast harmony.  ---  ## 7. Composition & Camera Angles * **Framing / Viewpoint:** **3/4 Isometric or slight Perspective view**, angled slightly from above looking down. * **Subject Positioning:** Primary subject floats centrally in mid-air above a flat background plane. * **Background Style:** Clean, flat solid pastel background OR very gentle, seamless pastel gradient (top-to-bottom). * **Secondary Accents:** Optional floating 3D accent particles around the main subject (e.g., soft 4-point star sparkles, floating spheres, or small geometric bubbles).  --- ",
     "preview_with_token": ""
   },
   "settings": {
@@ -85,7 +113,7 @@
     },
     "highlight": {
       "enabled": true,
-      "duration_seconds": 2,
+      "duration_seconds": 3,
       "color": "#FF0000",
       "border_width": 3
     },
@@ -98,14 +126,13 @@
     "concurrency": 1,
     "supported_types": [
       ".png",
-      ".jpg",
-      ".jpeg",
-      ".webp"
+      ".jpg"
     ],
     "ignore_ai_suffix": true
   },
   "images": [
     {
+<<<<<<< HEAD
       "id": "3cb008e21c8c9245",
       "relative_path": "Celo/celo-1.jpg",
       "absolute_path": "F:\\Creative Cloud Files\\Plastika Dolezal\\Images for web 2.0\\plastika-oblicej\\Celo\\celo-1.jpg",
@@ -806,15 +833,401 @@
       "output_path": null,
       "error": null,
       "content_hash": null
+=======
+      "id": "4051213189a01db6",
+      "relative_path": "icon-airplane-landing.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-airplane-landing.png",
+      "filename": "icon-airplane-landing.png",
+      "base_name": "icon-airplane-landing",
+      "extension": ".png",
+      "size": 45682,
+      "mtime": 1789720308.753786,
+      "fingerprint": "4051213189a01db6",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-airplane-landing_AI.png",
+      "error": null,
+      "content_hash": null
+    },
+    {
+      "id": "bda721fb1554463d",
+      "relative_path": "icon-bank-institution.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-bank-institution.png",
+      "filename": "icon-bank-institution.png",
+      "base_name": "icon-bank-institution",
+      "extension": ".png",
+      "size": 78231,
+      "mtime": 1789720308.7487822,
+      "fingerprint": "bda721fb1554463d",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-bank-institution_AI.png",
+      "error": null,
+      "content_hash": null
+    },
+    {
+      "id": "6668674e6c1c503c",
+      "relative_path": "icon-call-accept-reject.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-call-accept-reject.png",
+      "filename": "icon-call-accept-reject.png",
+      "base_name": "icon-call-accept-reject",
+      "extension": ".png",
+      "size": 181079,
+      "mtime": 1789720308.74678,
+      "fingerprint": "6668674e6c1c503c",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-call-accept-reject_AI.png",
+      "error": null,
+      "content_hash": null
+    },
+    {
+      "id": "57a018f19268a185",
+      "relative_path": "icon-color-picker.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-color-picker.png",
+      "filename": "icon-color-picker.png",
+      "base_name": "icon-color-picker",
+      "extension": ".png",
+      "size": 99359,
+      "mtime": 1789720308.7517853,
+      "fingerprint": "57a018f19268a185",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-color-picker_AI.png",
+      "error": null,
+      "content_hash": null
+    },
+    {
+      "id": "1fb4ee73bb10e3d0",
+      "relative_path": "icon-contactless-payment.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-contactless-payment.png",
+      "filename": "icon-contactless-payment.png",
+      "base_name": "icon-contactless-payment",
+      "extension": ".png",
+      "size": 84697,
+      "mtime": 1789720308.7557886,
+      "fingerprint": "1fb4ee73bb10e3d0",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 2,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-contactless-payment_AI_3.png",
+      "error": "Wait failed: Timeout after 180000ms",
+      "content_hash": null
+    },
+    {
+      "id": "a9c5117d03efa8dc",
+      "relative_path": "icon-crosshair-target.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-crosshair-target.png",
+      "filename": "icon-crosshair-target.png",
+      "base_name": "icon-crosshair-target",
+      "extension": ".png",
+      "size": 55210,
+      "mtime": 1789720308.7557886,
+      "fingerprint": "a9c5117d03efa8dc",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 6,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-crosshair-target_AI_3.png",
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+    },
+    {
+      "id": "c0b47bd265017f06",
+      "relative_path": "icon-fire-flame.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-fire-flame.png",
+      "filename": "icon-fire-flame.png",
+      "base_name": "icon-fire-flame",
+      "extension": ".png",
+      "size": 205381,
+      "mtime": 1789721064.2180808,
+      "fingerprint": "c0b47bd265017f06",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 4,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-fire-flame_AI_3.png",
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+    },
+    {
+      "id": "a1bff62f1112a4f0",
+      "relative_path": "icon-herbal-capsule.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-herbal-capsule.png",
+      "filename": "icon-herbal-capsule.png",
+      "base_name": "icon-herbal-capsule",
+      "extension": ".png",
+      "size": 111392,
+      "mtime": 1789720308.7547874,
+      "fingerprint": "a1bff62f1112a4f0",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 6,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-herbal-capsule_AI_3.png",
+      "error": null,
+      "content_hash": null
+    },
+    {
+      "id": "c88f61629afa1f84",
+      "relative_path": "icon-hotdog.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-hotdog.png",
+      "filename": "icon-hotdog.png",
+      "base_name": "icon-hotdog",
+      "extension": ".png",
+      "size": 53619,
+      "mtime": 1789721064.2150776,
+      "fingerprint": "c88f61629afa1f84",
+      "status": "failed",
+      "selected": true,
+      "assigned_url_id": "url_aa52b70a",
+      "attempt_count": 8,
+      "output_path": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+    },
+    {
+      "id": "23c3507b152b0e1d",
+      "relative_path": "icon-lightbulb.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-lightbulb.png",
+      "filename": "icon-lightbulb.png",
+      "base_name": "icon-lightbulb",
+      "extension": ".png",
+      "size": 133256,
+      "mtime": 1789721064.2160785,
+      "fingerprint": "23c3507b152b0e1d",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 5,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-lightbulb_AI.png",
+      "error": "Cancelled by user",
+      "content_hash": null
+    },
+    {
+      "id": "f7db402fae5eb678",
+      "relative_path": "icon-money-plant.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-money-plant.png",
+      "filename": "icon-money-plant.png",
+      "base_name": "icon-money-plant",
+      "extension": ".png",
+      "size": 90071,
+      "mtime": 1789721064.2170794,
+      "fingerprint": "f7db402fae5eb678",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 2,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-money-plant_AI.png",
+      "error": "Cancelled by user",
+      "content_hash": null
+    },
+    {
+      "id": "f598653720b55fa7",
+      "relative_path": "icon-person-at-desk.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-person-at-desk.png",
+      "filename": "icon-person-at-desk.png",
+      "base_name": "icon-person-at-desk",
+      "extension": ".png",
+      "size": 116604,
+      "mtime": 1789720308.7527852,
+      "fingerprint": "f598653720b55fa7",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_2c2ff2d7",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-person-at-desk_AI.png",
+      "error": null,
+      "content_hash": null
+    },
+    {
+      "id": "5676eb9098a06e8b",
+      "relative_path": "icon-process-gears.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-process-gears.png",
+      "filename": "icon-process-gears.png",
+      "base_name": "icon-process-gears",
+      "extension": ".png",
+      "size": 115546,
+      "mtime": 1789720308.7477806,
+      "fingerprint": "5676eb9098a06e8b",
+      "status": "failed",
+      "selected": true,
+      "assigned_url_id": "url_aa52b70a",
+      "attempt_count": 2,
+      "output_path": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+    },
+    {
+      "id": "d347b65be36ac597",
+      "relative_path": "icon-puzzle-pieces.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-puzzle-pieces.png",
+      "filename": "icon-puzzle-pieces.png",
+      "base_name": "icon-puzzle-pieces",
+      "extension": ".png",
+      "size": 62655,
+      "mtime": 1789721064.2190819,
+      "fingerprint": "d347b65be36ac597",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_449d6f1e",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-puzzle-pieces_AI.png",
+      "error": null,
+      "content_hash": null
+    },
+    {
+      "id": "d2ccaea2a13a77a6",
+      "relative_path": "icon-snowflake.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-snowflake.png",
+      "filename": "icon-snowflake.png",
+      "base_name": "icon-snowflake",
+      "extension": ".png",
+      "size": 263308,
+      "mtime": 1789721064.2180808,
+      "fingerprint": "d2ccaea2a13a77a6",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_449d6f1e",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-snowflake_AI_2.png",
+      "error": null,
+      "content_hash": null
+    },
+    {
+      "id": "d2295a1ebf074511",
+      "relative_path": "icon-steering-wheel.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steering-wheel.png",
+      "filename": "icon-steering-wheel.png",
+      "base_name": "icon-steering-wheel",
+      "extension": ".png",
+      "size": 111669,
+      "mtime": 1789720308.7507834,
+      "fingerprint": "d2295a1ebf074511",
+      "status": "completed",
+      "selected": true,
+      "assigned_url_id": "url_449d6f1e",
+      "attempt_count": 2,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steering-wheel_AI_2.png",
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+    },
+    {
+      "id": "b4bc1a7152525d49",
+      "relative_path": "icon-steps-to-goal.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-steps-to-goal.png",
+      "filename": "icon-steps-to-goal.png",
+      "base_name": "icon-steps-to-goal",
+      "extension": ".png",
+      "size": 181121,
+      "mtime": 1789720308.7497826,
+      "fingerprint": "b4bc1a7152525d49",
+      "status": "failed",
+      "selected": true,
+      "assigned_url_id": "url_aa52b70a",
+      "attempt_count": 2,
+      "output_path": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+    },
+    {
+      "id": "94ff1930278decd3",
+      "relative_path": "icon-sync-arrows.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-sync-arrows.png",
+      "filename": "icon-sync-arrows.png",
+      "base_name": "icon-sync-arrows",
+      "extension": ".png",
+      "size": 56508,
+      "mtime": 1789720308.756789,
+      "fingerprint": "94ff1930278decd3",
+      "status": "failed",
+      "selected": true,
+      "assigned_url_id": "url_aa52b70a",
+      "attempt_count": 1,
+      "output_path": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+    },
+    {
+      "id": "a44b1e1e1b67d61e",
+      "relative_path": "icon-trophy-star.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-trophy-star.png",
+      "filename": "icon-trophy-star.png",
+      "base_name": "icon-trophy-star",
+      "extension": ".png",
+      "size": 61178,
+      "mtime": 1789721064.2140768,
+      "fingerprint": "a44b1e1e1b67d61e",
+      "status": "failed",
+      "selected": true,
+      "assigned_url_id": "url_aa52b70a",
+      "attempt_count": 1,
+      "output_path": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+    },
+    {
+      "id": "7ad6f378f976554e",
+      "relative_path": "icon-user-rating-stars.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-user-rating-stars.png",
+      "filename": "icon-user-rating-stars.png",
+      "base_name": "icon-user-rating-stars",
+      "extension": ".png",
+      "size": 96902,
+      "mtime": 1789720308.753786,
+      "fingerprint": "7ad6f378f976554e",
+      "status": "failed",
+      "selected": true,
+      "assigned_url_id": "url_aa52b70a",
+      "attempt_count": 1,
+      "output_path": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+    },
+    {
+      "id": "750ab6f8dd37b6c8",
+      "relative_path": "icon-user-search.png",
+      "absolute_path": "F:\\Stocks 2026\\icons testing\\single\\icon-user-search.png",
+      "filename": "icon-user-search.png",
+      "base_name": "icon-user-search",
+      "extension": ".png",
+      "size": 75779,
+      "mtime": 1789720308.7517853,
+      "fingerprint": "750ab6f8dd37b6c8",
+      "status": "failed",
+      "selected": true,
+      "assigned_url_id": "url_aa52b70a",
+      "attempt_count": 1,
+      "output_path": null,
+      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "content_hash": null
+>>>>>>> arena/01a0b4a1-process-images-in-areana
     }
   ],
   "jobs": [],
   "progress": {
+<<<<<<< HEAD
     "total": 39,
     "selected": 39,
     "pending": 24,
     "processing": 0,
     "completed": 8,
+=======
+    "total": 21,
+    "selected": 21,
+    "pending": 0,
+    "processing": 0,
+    "completed": 14,
+>>>>>>> arena/01a0b4a1-process-images-in-areana
     "skipped": 0,
     "failed": 7,
     "needs_review": 0

@@ -19,12 +19,14 @@ REQUIRED_SLOTS = (
     "add_url", "remove_url", "ensure_primary_connected", "stop_tab_job",
     "drop_ai_suffix", "keep_only_ai_files",
     "get_stack_presets", "save_stack_preset", "delete_stack_preset", "export_action_blocks",
+    "set_captcha_settings", "get_captcha_status", "get_captcha_stats",
 )
 
 # Private helpers that must never capture a @Slot by accident.
 NEVER_SLOTS = (
     "_settle_stuck_primary", "_finish_primary_tab", "_reset_stuck_page",
     "_do_run_batch", "_do_auto_connect_scan", "_do_popup_url_tabs",
+    "_settle_captcha_at", "_captcha_service",
 )
 
 

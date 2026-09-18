@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,30 +62,42 @@ async def capture_baseline(ctrl) -> Dict[str, Any]:
         return {"output_count": 0, "output_srcs": []}
 
 
+def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
+    """Map security outcomes without mistaking manual supersession for failure."""
+    if outcome.status == "stopped":
+        raise RuntimeError("Cancelled during CAPTCHA")
+    if outcome.status == "page_error":
+        raise RuntimeError(outcome.reason or "Page error during CAPTCHA")
+    if outcome.status == "token_stale":
+        try:
+            ctx.bridge._log("⚠️ CAPTCHA API token stale; continuing page flow", "warn")
+        except Exception:
+            pass
+
+
 async def check_security(ctx: JobCtx) -> bool:
-    """Check security, wait for user."""
+    """Captcha gate: auto-solve (2Captcha, opt-in) else wait for user (RULE 20)."""
     try:
         visible = await ctx.ctrl.is_security_dialog_visible()
     except Exception:
         visible = False
     if not visible:
         return False
-    try:
-        ctx.bridge._log(f"[{ctx.corr_id}] Page {ctx.tab_id[:6]} Captcha", "error")
-    except Exception:
-        pass
-    try:
-        await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=300, elapsed_sec=0)
-    except Exception:
-        pass
-    _mark_waiting(ctx, "captcha")
-    await _wait_security_gone(ctx)
-    _apply_captcha_penalty(ctx)
-    _mark_busy(ctx)
-    try:
-        await ctx.ctrl.hide_watcher_overlay()
-    except Exception:
-        pass
+    from app.services.captcha import CaptchaCtx, handle_captcha
+
+    def log(msg, level="info"):
+        try:
+            ctx.bridge._log(f"[{ctx.corr_id}] {msg}", level)
+        except Exception:
+            pass
+
+    def stop():
+        return bool(getattr(ctx.bridge, "_cancel_requested", False)) or _tab_aborted(ctx)
+
+    outcome = await handle_captcha(CaptchaCtx(ctrl=ctx.ctrl, pool=getattr(ctx.bridge, "_page_pool", None),
+                                              bridge=ctx.bridge, tab_id=ctx.tab_id,
+                                              source="check-security", stop=stop, log=log))
+    _handle_captcha_outcome(ctx, outcome)
     return True
 
 
@@ -106,30 +119,6 @@ def _mark_busy(ctx: JobCtx):
         if pool:
             pool.mark_busy(ctx.tab_id, ctx.job_id)
             ctx.bridge._emit_pool_status()
-    except Exception:
-        pass
-
-
-async def _wait_security_gone(ctx: JobCtx):
-    """Wait until security gone."""
-    while True:
-        if ctx.bridge._cancel_requested:
-            raise RuntimeError("Cancelled during CAPTCHA")
-        try:
-            vis = await ctx.ctrl.is_security_dialog_visible()
-            if not vis:
-                break
-        except Exception:
-            break
-        await asyncio.sleep(2)
-
-
-def _apply_captcha_penalty(ctx: JobCtx):
-    """Stack captcha penalty onto this tab's next cooldown."""
-    try:
-        from app.services.cooldown_service import note_captcha_event
-        pool = getattr(ctx.bridge, "_page_pool", None)
-        note_captcha_event(pool, ctx.tab_id, ctx.bridge, source="check-security")
     except Exception:
         pass
 
@@ -178,6 +167,8 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     """Wait output."""
     try:
         await _show_gen_overlay(ctx, timeout_ms)
+        _arm_revival(ctx)  # bounded resubmit if the blocked generation died
+        ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
         status, data = await ctx.ctrl.wait_for_new_output(
             ctx.baseline, timeout_ms=timeout_ms, correlation_id=ctx.corr_id,
             cancel_check=lambda: _is_cancelled(ctx),
@@ -191,6 +182,52 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     except Exception as e:
         await _hide_overlay(ctx)
         return None, None, str(e)
+    finally:
+        try:
+            delattr(ctx.ctrl, "security_settler")
+        except Exception:
+            pass
+        _clear_revival(ctx)
+
+
+async def _settle_and_note(ctx: JobCtx):
+    """Settle a mid-wait dialog, then stamp it for generation revival."""
+    from app.services.captcha.recovery import note_settle
+    settled = await check_security(ctx)
+    if settled:
+        note_settle(ctx.ctrl)
+    return settled
+
+
+def _report_recovery(ctx: JobCtx, msg: str, level: str = "info"):
+    """Revival log with the job correlation prefix (RULE 2)."""
+    try:
+        ctx.bridge._log(f"[{ctx.corr_id}] {msg}", level)
+    except Exception:
+        pass
+
+
+def _arm_revival(ctx: JobCtx):
+    """Arm post-captcha revival for this generation wait (services-owned)."""
+    from app.services.captcha.recovery import arm_resume
+    try:
+        policy = arm_resume(ctx.ctrl, ctx.final_prompt, cancelled=lambda: _is_cancelled(ctx),
+                            report=lambda m, l="info": _report_recovery(ctx, m, l))
+        img = getattr(ctx, "img", None)
+        path = getattr(img, "absolute_path", None) if img is not None else None
+        if path:
+            policy.image_path = str(path)
+    except Exception:
+        pass
+
+
+def _clear_revival(ctx: JobCtx):
+    """Disarm revival at wait end; never raises."""
+    from app.services.captcha.recovery import clear_resume
+    try:
+        clear_resume(ctx.ctrl)
+    except Exception:
+        pass
 
 
 async def _show_gen_overlay(ctx: JobCtx, timeout_ms: int):
@@ -198,7 +235,7 @@ async def _show_gen_overlay(ctx: JobCtx, timeout_ms: int):
     try:
         gen_to = int(ctx.bridge.config.get_state("watcher_generation_timeout_sec", 600))
         eff = max(gen_to, int(timeout_ms / 1000)) if timeout_ms else 600
-        await ctx.ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=eff, elapsed_sec=0)
+        await ctx.ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=eff)
         _mark_waiting(ctx, "generation")
     except Exception:
         pass
@@ -476,8 +513,45 @@ async def _loop_blocks(ctx: JobCtx, blocks: List[Any]) -> tuple[bool, str]:
     return failed, error
 
 
+def _reset_captcha_reports(ctx: JobCtx):
+    """Drop stale encounter stash (a reused ctrl must not leak reports)."""
+    try:
+        ctx.ctrl._captcha_reports = []
+    except Exception:
+        pass
+
+
+def _captcha_job_line(ctx: JobCtx, entry: Dict[str, Any], failed: bool, error: str) -> Dict[str, Any]:
+    """One CAPTCHA_JOB join record for a stashed encounter."""
+    perr = error if "Page error:" in (error or "") else ""
+    return {"v": 1, "eid": entry.get("eid", ""), "corr": ctx.corr_id,
+            "tab": entry.get("tab", ctx.tab_id),
+            "image": getattr(ctx.img, "relative_path", "") or "",
+            "job": "failed" if failed else "completed",
+            "error": str(error or "")[:200], "page_error": perr[:200]}
+
+
+def _emit_captcha_job_lines(ctx: JobCtx, failed: bool, error: str) -> None:
+    """Drain the encounter stash (each eid reported exactly once)."""
+    try:
+        lst = getattr(ctx.ctrl, "_captcha_reports", None)
+        if not isinstance(lst, list) or not lst:
+            return
+        ctx.ctrl._captcha_reports = []
+    except Exception:
+        return
+    for entry in lst:
+        try:
+            line = _captcha_job_line(ctx, entry if isinstance(entry, dict) else {}, failed, error)
+            ctx.bridge._log(f"[{ctx.corr_id}] 🧾 CAPTCHA_JOB {json.dumps(line, ensure_ascii=False)}", "info")
+        except Exception:
+            pass
+
+
 async def run_blocks_for_image(ctx: JobCtx) -> tuple[bool, str, Optional[str], Optional[bytes]]:
     blocks = _get_blocks(ctx)
     _init_old_srcs(ctx)
+    _reset_captcha_reports(ctx)
     failed, error = await _loop_blocks(ctx, blocks)
+    _emit_captcha_job_lines(ctx, failed, error)
     return failed, error, ctx.new_src, ctx.file_bytes

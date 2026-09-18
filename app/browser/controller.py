@@ -119,6 +119,7 @@ class BrowserController:
             # Use JS to check visible dialog containing Security Verification
             js = """
             () => {
+                const inBadge = (el) => !!(el.closest && el.closest('.grecaptcha-badge'));
                 const dialogs = document.querySelectorAll('div[role="dialog"][data-state="open"]');
                 for (const d of dialogs) {
                     if (d.innerText && d.innerText.includes('Security Verification')) return true;
@@ -127,7 +128,10 @@ class BrowserController:
                 const iframes = document.querySelectorAll('iframe[title="reCAPTCHA"]');
                 for (const f of iframes) {
                     const style = window.getComputedStyle(f);
-                    if (style.display !== 'none' && f.offsetParent !== null) return true;
+                    // the always-on .grecaptcha-badge is on screen in layout but
+                    // visibility:hidden / off-screen in the normal state — never counts
+                    if (style.display !== 'none' && style.visibility !== 'hidden'
+                        && f.offsetParent !== null && !inBadge(f)) return true;
                 }
                 return false;
             }

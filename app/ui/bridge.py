@@ -31,6 +31,7 @@ except ImportError:
     QFileDialog = None
 
 from app.core.layout_service import (
+    GRID_VERSION,
     WINDOW_IDS,
     canonical_grid_payload, default_payload, leaf_ids,
 )
@@ -977,21 +978,23 @@ class Bridge(QObject):
 
     @Slot(str, result=str)
     def load_window_preset(self, name: str):
+        # Pure getter: returns the stored portable doc for the JS preview →
+        # confirm → apply flow (no server-side apply; that would rearrange
+        # the grid behind the preview modal before the user confirms).
         doc = self.config.window_presets.load_preset(name)
         if not doc:
             return json.dumps({"ok": False, "error": f"preset {name} not found"})
         try:
             grid = doc.get("grid", {})
-            payload = grid.get("payload")
-            if not payload:
-                return json.dumps({"ok": False, "error": "invalid preset"})
-            _, err = canonical_grid_payload(payload)
+            tree = grid.get("tree") if isinstance(grid, dict) else None
+            if not isinstance(tree, dict):
+                return json.dumps({"ok": False, "error": "unsupported window preset format or schema version"})
+            ver = grid.get("version", GRID_VERSION)
+            _, err = canonical_grid_payload(json.dumps({"v": ver, "tree": tree}))
             if err:
                 return json.dumps({"ok": False, "error": err})
-            self.config.set_state(grid_layout=payload, window_states=doc.get("window_states", {"closed": [], "minimized": []}))
-            self.grid_layout_changed.emit(payload)
             self._log(f"Window preset loaded: {name}", "success")
-            return json.dumps({"ok": True, "name": name, "payload": payload, "window_states": doc.get("window_states")})
+            return json.dumps(doc, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
@@ -1908,35 +1911,8 @@ class Bridge(QObject):
             self._settle_stuck_primary(primary_tab_id)
 
     async def _settle_boundary_captcha(self, ctrl, primary_tab_id, correlation_id, source):
-        """F4: captcha sitting unsolved at a phase boundary — wait + record."""
-        try:
-            visible = await ctrl.is_security_dialog_visible()
-        except Exception:
-            visible = False
-        if not visible:
-            return
-        self._log(f"[{correlation_id}] \u26a0 Captcha at {source} — waiting for manual solve", "error")
-        try:
-            timeout = int(self.config.get_state("watcher_captcha_timeout_sec", 300))
-        except Exception:
-            timeout = 300
-        try:
-            await ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=timeout, elapsed_sec=0)
-        except Exception:
-            pass
-        from app.services.cooldown_service import note_captcha_event, wait_captcha_cleared
-        stop = lambda: self._stop_reason(primary_tab_id) if self._run_stop_requested(primary_tab_id) else None
-        solved = await wait_captcha_cleared(ctrl, stop, timeout, self._log)
-        try:
-            await ctrl.hide_watcher_overlay()
-        except Exception:
-            pass
-        if not solved:
-            raise RuntimeError(f"{self._stop_reason(primary_tab_id)} during CAPTCHA at {source}")
-        try:
-            note_captcha_event(self._page_pool, primary_tab_id, self, source=source)
-        except Exception as e:
-            self._log(f"Captcha penalty skipped: {e}", "warn")
+        """F4: captcha at a phase boundary — auto-solve or wait, then record."""
+        await self._settle_captcha_at(ctrl, primary_tab_id, correlation_id, source)
 
     @Slot(result=str)
     def start_run(self):
@@ -2308,6 +2284,70 @@ class Bridge(QObject):
                                                       "captcha_penalty_seconds": pen_s}}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
+
+    # ---- 2Captcha solving (opt-in, RULE 20 as amended 2026-09-17) ----
+    # WebChannel constraint: slots must live on this QObject (wire format);
+    # the lazy getter keeps __init__ untouched. Net line delta of this
+    # change is negative (inline captcha blocks replaced by choke point).
+
+    def _captcha_service(self):
+        """Lazy CaptchaService (key store + stats + solver); config dir = session store dir."""
+        svc = getattr(self, "_captcha_service_obj", None)
+        if svc is None:
+            from app.services.captcha import CaptchaService
+            svc = self._captcha_service_obj = CaptchaService(str(self.config.dir), self._log)
+        return svc
+
+    @Slot(str, result=str)
+    def set_captcha_settings(self, payload_json: str):
+        """Save 2Captcha key/enable/timeout; key stays local (masked in reply)."""
+        try:
+            data = json.loads(payload_json or "{}")
+            key = str(data.get("api_key", "") or "").strip()
+            enabled = bool(data.get("enabled", False))
+            timeout = int(data.get("solve_timeout_sec", 180))
+            result = self._captcha_service().apply_settings(key, enabled, timeout)
+            self._log(f"🔐 2Captcha settings saved (key={'set' if key else 'empty'}, enabled={result['enabled']}, timeout={timeout}s)", "success")
+            if result["enabled"]:
+                asyncio.create_task(self._captcha_service().refresh_balance())
+        except Exception as e:
+            result = {"ok": False, "error": str(e)}
+        return json.dumps(result, ensure_ascii=False)
+
+    @Slot(result=str)
+    def get_captcha_status(self):
+        """Key mask + balance + last error; raw key never leaves the store."""
+        try:
+            svc = self._captcha_service()
+            if svc.status_payload().get("has_key"):
+                asyncio.create_task(svc.refresh_balance())  # fire-and-forget, next call shows it
+            return json.dumps({"ok": True, **svc.status_payload()}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def get_captcha_stats(self):
+        """Local solve counters + auto success rate + balance (API stat)."""
+        try:
+            return json.dumps({"ok": True, **self._captcha_service().stats_payload()}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    async def _settle_captcha_at(self, ctrl, tab_id, correlation_id, source):
+        """Gate on visible, then auto-solve or wait; raise on stop (shared by 4 sites)."""
+        try:
+            if not await ctrl.is_security_dialog_visible():
+                return
+        except Exception:
+            return
+        from app.services.captcha import CaptchaCtx, handle_captcha
+        stop = lambda: bool(self._stop_reason(tab_id)) if self._run_stop_requested(tab_id) else False
+        def log(msg, level="info"):
+            self._log(f"[{correlation_id}] {msg}", level)
+        outcome = await handle_captcha(CaptchaCtx(ctrl=ctrl, pool=self._page_pool, bridge=self,
+                                                  tab_id=tab_id, source=source, stop=stop, log=log))
+        if outcome.status == "stopped":
+            raise RuntimeError(f"{self._stop_reason(tab_id)} during CAPTCHA at {source}")
 
     @Slot(str, result=str)
     def reset_page_cooldown(self, tab_id: str):
@@ -2706,83 +2746,21 @@ class Bridge(QObject):
                             self._emit_job_action_status(job_id, block, "success", f"Baseline {baseline.get('output_count')} outputs")
 
                         elif btype == "CHECK_SECURITY":
-                            # Visual confirmation: draw rect msg on left center page with "wait for user. Captcha" + sleep circle
+                            # Overlay 'wait for user. Captcha' + pause state are handled by the
+                            # choke point (handle_captcha) when it falls back to manual wait;
+                            # with 2Captcha enabled the dialog may close itself (auto-solve).
                             if await ctrl.is_security_dialog_visible():
-                                self._log(f"[{correlation_id}] ⚠ Security verification detected — please solve manually in Chrome, then resume", "error")
-                                self._emit_job_action_status(job_id, block, "running", "Security dialog visible — waiting for manual solve")
-                                # Show watcher overlay on webpage left center — with timeout from win settings
-                                try:
-                                    captcha_timeout_sec_tmp = int(self.config.get_state("watcher_captcha_timeout_sec", 300))
-                                except Exception:
-                                    captcha_timeout_sec_tmp = 300
-                                if block.timeout_ms and block.timeout_ms > 0:
-                                    try:
-                                        captcha_timeout_sec_tmp = max(captcha_timeout_sec_tmp, int(block.timeout_ms / 1000))
-                                    except Exception:
-                                        pass
-                                try:
-                                    await ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=captcha_timeout_sec_tmp, elapsed_sec=0)
-                                    self._log(f"[{correlation_id}] 🛡️ Drawn watcher overlay: 'wait for user. Captcha' on left center — sleep circle waiting, timeout {captcha_timeout_sec_tmp}s (user setting from win)", "warn")
-                                except Exception as e:
-                                    self._log(f"[{correlation_id}] Overlay show failed: {e}", "warn")
+                                self._emit_job_action_status(job_id, block, "running", "Security dialog visible — solving or waiting")
                                 self._run_state = "paused"
                                 self._pause_requested = True
                                 self._emit_arena_state()
-                                # User-configurable timeout for captcha solve (from watcher settings or block)
                                 try:
-                                    captcha_timeout_sec = int(self.config.get_state("watcher_captcha_timeout_sec", 300))
-                                except Exception:
-                                    captcha_timeout_sec = 300
-                                # Override from block timeout if set
-                                if block.timeout_ms and block.timeout_ms > 0:
-                                    # block timeout is in ms, but we allow user win setting to dominate — use max
-                                    try:
-                                        captcha_timeout_sec = max(captcha_timeout_sec, int(block.timeout_ms / 1000))
-                                    except Exception:
-                                        pass
-                                start_wait = asyncio.get_event_loop().time()
-                                while await ctrl.is_security_dialog_visible():
-                                    if self._run_stop_requested(primary_tab_id):
-                                        try:
-                                            await ctrl.hide_watcher_overlay()
-                                        except Exception:
-                                            pass
-                                        raise RuntimeError(f"{self._stop_reason(primary_tab_id)} during CAPTCHA")
-                                    elapsed = asyncio.get_event_loop().time() - start_wait
-                                    if elapsed > captcha_timeout_sec:
-                                        self._log(f"[{correlation_id}] ⏰ Captcha wait timeout after {int(elapsed)}s (limit {captcha_timeout_sec}s) — still waiting for user solve (as per settings)", "error")
-                                        # Do not auto-fail, keep waiting but refresh overlay to show timeout with elapsed
-                                        try:
-                                            await ctrl.show_watcher_overlay(f"wait for user. Captcha — {int(elapsed)}s / {captcha_timeout_sec}s", kind="captcha", timeout_sec=captcha_timeout_sec, elapsed_sec=int(elapsed))
-                                        except Exception:
-                                            pass
-                                        # Reset start to avoid spamming every second? Keep logging every 10s
-                                        await asyncio.sleep(5)
-                                        continue
-                                    # Refresh overlay time every 10s with elapsed
-                                    if int(elapsed) % 10 == 0:
-                                        try:
-                                            # Keep same message but overlay JS updates time internally
-                                            pass
-                                        except Exception:
-                                            pass
-                                    await asyncio.sleep(2)
-                                # Captcha solved — clear overlay
-                                try:
-                                    await ctrl.hide_watcher_overlay()
-                                    self._log(f"[{correlation_id}] ✅ Captcha overlay cleared — user solved", "success")
-                                except Exception:
-                                    pass
-                                self._log(f"[{correlation_id}] Security dialog gone, continuing", "success")
-                                self._pause_requested = False
-                                self._run_state = "running"
-                                self._emit_arena_state()
+                                    await self._settle_captcha_at(ctrl, primary_tab_id, correlation_id, "check-security")
+                                finally:
+                                    self._pause_requested = False
+                                    self._run_state = "running"
+                                    self._emit_arena_state()
                                 self._emit_job_action_status(job_id, block, "success", "Security dialog solved")
-                                try:
-                                    from app.services.cooldown_service import note_captcha_event
-                                    note_captcha_event(self._page_pool, primary_tab_id, self, source="check-security")
-                                except Exception as _e:
-                                    self._log(f"Captcha penalty skipped: {_e}", "warn")
                             else:
                                 self._emit_job_action_status(job_id, block, "success", "No security dialog")
 
@@ -2948,7 +2926,7 @@ class Bridge(QObject):
                             # Use block timeout or settings, but respect user win setting
                             effective_gen_timeout_sec = max(gen_timeout_sec, int(wait_timeout / 1000)) if wait_timeout else gen_timeout_sec
                             try:
-                                await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec, elapsed_sec=0)
+                                await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec)
                                 self._log(f"[{correlation_id}] ⏳ Drawn watcher overlay: 'wait for finish generation' on left center page — sleep circle running, timeout {effective_gen_timeout_sec}s (user setting from win)", "info")
                             except Exception as e:
                                 self._log(f"[{correlation_id}] Overlay show failed: {e}", "warn")
@@ -2970,50 +2948,15 @@ class Bridge(QObject):
                                     job_failed = True
                                     job_error = self._stop_reason(primary_tab_id)
                                     break
-                                # ── During generation wait, check for captcha — if appears, switch overlay to captcha ──
+                                # ── During generation wait, check for captcha — auto-solve or manual wait ──
                                 try:
                                     if await ctrl.is_security_dialog_visible():
-                                        self._log(f"[{correlation_id}] ⚠ Captcha detected during generation wait — switching overlay to 'wait for user. Captcha'", "error")
-                                        try:
-                                            captcha_timeout_tmp = int(self.config.get_state("watcher_captcha_timeout_sec", 300))
-                                        except Exception:
-                                            captcha_timeout_tmp = 300
-                                        try:
-                                            await ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=captcha_timeout_tmp, elapsed_sec=0)
-                                        except Exception:
-                                            pass
-                                        self._emit_job_action_status(job_id, block, "waiting", "Captcha during generation — waiting for manual solve")
-                                        # Wait for captcha solve with user-configurable timeout from win
-                                        try:
-                                            captcha_timeout_sec = int(self.config.get_state("watcher_captcha_timeout_sec", 300))
-                                        except Exception:
-                                            captcha_timeout_sec = 300
-                                        cap_start = asyncio.get_event_loop().time()
-                                        while await ctrl.is_security_dialog_visible():
-                                            if self._run_stop_requested(primary_tab_id):
-                                                try:
-                                                    await ctrl.hide_watcher_overlay()
-                                                except Exception:
-                                                    pass
-                                                raise RuntimeError(f"{self._stop_reason(primary_tab_id)} during CAPTCHA in generation wait")
-                                            cap_elapsed = asyncio.get_event_loop().time() - cap_start
-                                            if cap_elapsed > captcha_timeout_sec:
-                                                self._log(f"[{correlation_id}] ⏰ Captcha during generation timeout {int(cap_elapsed)}s/{captcha_timeout_sec}s — still waiting (user setting from win)", "error")
-                                                try:
-                                                    await ctrl.show_watcher_overlay(f"wait for user. Captcha — {int(cap_elapsed)}s / {captcha_timeout_sec}s", kind="captcha", timeout_sec=captcha_timeout_sec, elapsed_sec=int(cap_elapsed))
-                                                except Exception:
-                                                    pass
-                                                await asyncio.sleep(5)
-                                                continue
-                                            await asyncio.sleep(2)
+                                        self._log(f"[{correlation_id}] ⚠ Captcha detected during generation wait — solving or waiting", "error")
+                                        self._emit_job_action_status(job_id, block, "waiting", "Captcha during generation — solving or waiting")
+                                        await self._settle_captcha_at(ctrl, primary_tab_id, correlation_id, "gen-wait")
                                         self._log(f"[{correlation_id}] ✅ Captcha solved during generation — restoring generation overlay", "success")
                                         try:
-                                            from app.services.cooldown_service import note_captcha_event
-                                            note_captcha_event(self._page_pool, primary_tab_id, self, source="gen-wait")
-                                        except Exception as _e:
-                                            self._log(f"Captcha penalty skipped: {_e}", "warn")
-                                        try:
-                                            await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec, elapsed_sec=0)
+                                            await ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=effective_gen_timeout_sec)
                                         except Exception:
                                             pass
                                 except Exception as e_cap:
