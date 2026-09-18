@@ -5335,7 +5335,143 @@
         ],
         "minimized": []
       }
+    },
+    {
+      "kind": "urls",
+      "value": [
+        {
+          "id": "url_f3a28221",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+        },
+        {
+          "id": "url_f6a4c98e",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+        },
+        {
+          "id": "url_cce05140",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+        },
+        {
+          "id": "url_784ce72f",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        }
+      ]
+    },
+    {
+      "kind": "urls",
+      "value": [
+        {
+          "id": "url_f3a28221",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+        },
+        {
+          "id": "url_f6a4c98e",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+        },
+        {
+          "id": "url_cce05140",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+        },
+        {
+          "id": "url_784ce72f",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        }
+      ]
+    },
+    {
+      "kind": "urls",
+      "value": [
+        {
+          "id": "url_f3a28221",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": true,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+        },
+        {
+          "id": "url_f6a4c98e",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+        },
+        {
+          "id": "url_cce05140",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "6745025141CD2C14CD1EE865E1401A53"
+        },
+        {
+          "id": "url_784ce72f",
+          "url": "https://arena.ai/image/direct?model_a=max",
+          "enabled": false,
+          "status": "unchecked",
+          "last_error": null,
+          "last_checked": null,
+          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
+        }
+      ]
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "block_config",
+          "action_blocks",
+          "arena_presets",
+          "watcher"
+        ],
+        "minimized": []
+      }
     }
   ],
-  "index": 41
+  "index": 45
 }
