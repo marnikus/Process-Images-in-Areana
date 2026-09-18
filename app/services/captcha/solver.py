@@ -132,10 +132,17 @@ async def _delete_task(client: Captcha2Client, task_id: str, stats: Any) -> None
         pass
 
 
-async def _click_continue(ctrl: Any) -> None:
+async def _click_continue(plan: SolvePlan, log: Callable[[str, str], None]) -> None:
     """Best effort: the site may auto-submit on token receipt instead."""
     try:
-        await ctrl.cdp.evaluate(build_continue_js())
+        res = await plan.ctrl.cdp.evaluate(build_continue_js())
+        data = json.loads(res) if isinstance(res, str) else (res or {})
+        if not isinstance(data, dict):
+            data = {}
+        if data.get("ok"):
+            log(f"🤖 dialog continue clicked (button: {data.get('used') or 'submit'})", "info")
+        else:
+            log(f"🤖 dialog continue: {data.get('reason') or 'no action button'}", "info")
     except Exception:
         pass
 
@@ -193,7 +200,7 @@ class CaptchaSolver:
             self._auto_fail(plan, "inject", "response field not found on page")
             return _failed("inject", "response field not found on page")
         self._log(f"🤖 token injected (scope={res.get('scope')}, cb={_cb_desc(res)})", "info")
-        await _click_continue(plan.ctrl)
+        await _click_continue(plan, self._log)
         if await self._verify_gone(plan.ctrl, plan.stop):
             return self._solved(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats)
