@@ -58,9 +58,22 @@ Verification is scoped to the currently visible textarea's form. It succeeds onl
 
 It must not accept an arbitrary pre-existing page image. `attach_image` captures the baseline before setting the file and polls for bounded upload completion. Prompt insertion follows only after attachment verification, and Submit follows only after both required blocks succeed.
 
+### Paste-compatible fallback and controlled prompt
+
+Initial user validation showed that active-input targeting alone did not restore the site interaction: neither image nor text appeared. Therefore protocol selection is necessary but not sufficient. Arena's composer explicitly supports paste, and its React-controlled textarea may re-render after a synthetic value assignment.
+
+The final interaction uses two bounded attachment strategies against the same active form:
+
+1. dispatch a paste-compatible `File`/`DataTransfer` payload to the active textarea and image input (the behavior the user performs manually);
+2. fall back to `DOM.setFileInputFiles` on the marked node when paste is unavailable or produces no evidence.
+
+Image bytes are bounded before base64 transport and never logged. Each strategy must independently pass active-form verification before proceeding.
+
+Prompt insertion also becomes active-composer scoped. It supports textarea and contenteditable textbox surfaces, emits an `InputEvent` with React value-tracker compatibility, and is re-verified after the framework has had time to render. Immediate DOM assignment alone is not accepted as success.
+
 ### Dispatcher parity
 
-The single-job runner will not open a native file dialog. `DOM.setFileInputFiles` directly targets the already-present hidden input, which is the stable protocol operation and avoids an OS chooser blocking automation. Both legacy and merged dispatcher paths share the corrected controller/client implementation.
+The single-job runner will not open a native file dialog. Both legacy and merged dispatcher paths share the corrected controller/client implementation. Required attachment and prompt evidence gate Submit and `WAIT_OUTPUT`.
 
 ## Test plan
 

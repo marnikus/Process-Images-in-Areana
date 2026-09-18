@@ -20,6 +20,26 @@ function composerPage() {
   return dom;
 }
 
+test('image paste dispatches a real File to the active prompt', () => {
+  const dom = composerPage();
+  class Transfer {
+    constructor() {
+      this.files = [];
+      this.items = {add: (file) => this.files.push(file)};
+    }
+  }
+  dom.window.DataTransfer = Transfer;
+  let pasted = null;
+  dom.window.document.querySelector('#active textarea').addEventListener('paste',
+    (event) => { pasted = event.clipboardData.files[0]; });
+
+  const result = dom.window.eval(`${probe('paste.js')}('reference.png', 'image/png', 'cG5n')`);
+
+  assert.equal(result.ok, true);
+  assert.equal(pasted.name, 'reference.png');
+  assert.equal(pasted.type, 'image/png');
+});
+
 test('attachment target belongs to the visible active prompt form', () => {
   const dom = composerPage();
   const result = dom.window.eval(`${probe('target.js')}('mark-1', [])`);

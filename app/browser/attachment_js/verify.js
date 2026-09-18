@@ -8,7 +8,7 @@
         rect.width > 0 && rect.height > 0;
     };
     const prompts = document.querySelectorAll(
-      'textarea[name="message"],textarea[placeholder*="Describe" i],textarea[rows]');
+      'textarea[name="message"],textarea[placeholder*="Describe" i],textarea[rows],[contenteditable="true"][role="textbox"]');
     const prompt = Array.from(prompts).find(visible);
     const form = prompt?.closest('form');
     if (!form) return {found: false, error: 'active prompt form not found'};

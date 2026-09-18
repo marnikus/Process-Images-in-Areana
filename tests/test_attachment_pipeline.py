@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.browser.attachment_probes import AttachmentEvidence, attach_file
+from app.browser.attachment_probes import AttachmentEvidence, attach_file, paste_file
 from app.browser.cdp_arena import CDPArenaController
 from app.browser.cdp_client import CDPClient
 from app.services.single_job_runner import JobCtx, _loop_blocks
@@ -18,7 +18,7 @@ class AttachmentCDP:
 
     async def evaluate(self, script):
         self.evaluated.append(script)
-        if "visible prompt composer not found" in script:
+        if "visible prompt composer not found" in script or "DataTransfer" in script:
             return {"ok": True, "marker": "marker", "previews": ["blob:old|"],
                     "prompt": "message"}
         return {"ok": True, "removed": True}
@@ -48,6 +48,19 @@ async def test_attach_file_marks_active_input_and_always_cleans_up(tmp_path):
     assert cdp.selected[0] == (1, '[data-arena-upload-target="marker"]')
     assert cdp.selected[1] == (9, [str(image)])
     assert "removeAttribute" in cdp.evaluated[-1]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_paste_file_sends_bounded_image_payload(tmp_path):
+    image = tmp_path / "reference.png"
+    image.write_bytes(b"png")
+    cdp = AttachmentCDP()
+
+    evidence = await paste_file(cdp, str(image))
+
+    assert evidence.ok and evidence.previews == ("blob:old|",)
+    assert "cG5n" in cdp.evaluated[0]
 
 
 @pytest.mark.unit
@@ -87,6 +100,7 @@ async def test_controller_requires_active_composer_evidence(monkeypatch, tmp_pat
     image.write_bytes(b"png")
     cdp = SimpleNamespace(is_connected=True)
     controller = CDPArenaController(cdp)
+    monkeypatch.setattr("app.browser.cdp_arena.paste_file", lambda *_: _failed_evidence())
     monkeypatch.setattr("app.browser.cdp_arena.attach_file", lambda *_: _evidence())
 
     async def no_sleep(_delay):
@@ -98,6 +112,23 @@ async def test_controller_requires_active_composer_evidence(monkeypatch, tmp_pat
     ok, reason = await controller.attach_image(str(image))
 
     assert ok and "new-active-preview" in reason
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_controller_waits_for_prompt_to_persist(monkeypatch):
+    replies = iter([{"ok": True, "len": 5}, {"ok": False, "actual": ""},
+                    {"ok": True, "actual": "hello"}])
+    cdp = SimpleNamespace(is_connected=True, evaluate=_evaluate(replies))
+    controller = CDPArenaController(cdp)
+
+    async def no_sleep(_delay):
+        return None
+    monkeypatch.setattr("app.browser.cdp_arena.asyncio.sleep", no_sleep)
+
+    ok, reason = await controller.insert_prompt("hello")
+
+    assert ok and "verified" in reason
 
 
 @pytest.mark.unit
@@ -128,6 +159,10 @@ async def test_required_attach_failure_stops_before_prompt_and_wait():
 
     assert failed and "Attach failed" in error
     assert calls == ["attach"]
+
+
+async def _failed_evidence():
+    return AttachmentEvidence(False, "paste unavailable")
 
 
 async def _evidence():

@@ -11,6 +11,7 @@
       'textarea[name="message"]',
       'textarea[placeholder*="Describe" i]',
       'textarea[rows]',
+      '[contenteditable="true"][role="textbox"]',
     ];
     let prompt = null;
     for (const selector of promptSelectors) {

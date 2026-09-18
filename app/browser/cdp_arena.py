@@ -14,8 +14,9 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple, Callable
 
 from .cdp_client import CDPClient
-from .attachment_probes import attach_file, build_verify_js
+from .attachment_probes import attach_file, build_verify_js, paste_file
 from .captcha_probes import build_visible_js
+from .composer_probes import build_insert_prompt_js, build_verify_prompt_js
 from .output_probes import build_baseline_js, build_check_js
 from .output_state import flatten_diagnostics, build_order_check_text
 from .output_wait import wait_for_new_output_loop
@@ -23,39 +24,6 @@ from ..utils.page_errors import (PageErrorAbort, build_error_scan_js,
                                  match_dead_generation, match_page_error)
 
 log = logging.getLogger("arena")
-
-JS_FIND_TEXTAREA = """
-(() => {
-  const sels = ['textarea[name="message"]','textarea[placeholder^="Describe"]','textarea[rows="1"]'];
-  for (const sel of sels) { const el=document.querySelector(sel); if(el&&el.offsetParent!==null) return sel; }
-  return null;
-})
-"""
-
-JS_INSERT_PROMPT = """
-((promptText) => {
-  try {
-    const sels=['textarea[name="message"]','textarea[placeholder^="Describe"]','textarea[rows="1"]'];
-    let el=null;
-    for(const sel of sels){
-      const els=document.querySelectorAll(sel);
-      for(const cand of els){ if(cand.offsetParent!==null){ el=cand; break; } }
-      if(el) break;
-    }
-    if(!el){
-      const any=document.querySelector(sels.join(','));
-      return {ok:false,error:any?'textarea hidden':'textarea not found'};
-    }
-    el.focus();
-    const setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
-    setter.call(el,promptText);
-    el.dispatchEvent(new Event('input',{bubbles:true}));
-    el.dispatchEvent(new Event('change',{bubbles:true}));
-    el.value=promptText;
-    return {ok:true,len:el.value.length};
-  } catch(e){return {ok:false,error:String(e)};}
-})
-"""
 
 JS_SEND_STATE = """
 (() => {
@@ -70,16 +38,6 @@ JS_SEND_STATE = """
     }
     return {found:true,visible:visible,enabled:enabled};
   }catch(e){return {found:false,visible:false,enabled:false};}
-})
-"""
-
-JS_VERIFY_PROMPT = """
-((expected)=>{
-  try{
-    const el=document.querySelector('textarea[name="message"]');
-    if(!el) return {ok:false,error:'not found'};
-    return {ok:el.value===expected,actual:el.value};
-  }catch(e){return {ok:false,error:String(e)};}
 })
 """
 
@@ -254,22 +212,23 @@ class CDPArenaController:
         return result
 
     async def attach_image(self, image_path: str) -> Tuple[bool, str]:
-        """Attach one reference image to the active composer and prove it."""
+        """Paste or attach one image, requiring active-composer evidence."""
         if not await self.ensure_connected():
             return False, "Not connected"
-        evidence = await attach_file(self.cdp, image_path)
-        if not evidence.ok:
-            self._log(f"Attach failed: {evidence.reason}", "warn")
-            return False, evidence.reason
         expected = Path(image_path).name
         last_reason = "attachment preview did not appear"
-        for delay in (0.25, 0.5, 1.0, 2.0):
-            await asyncio.sleep(delay)
-            verified, last_reason = await self.verify_attachment(expected, evidence.previews)
-            if verified:
-                self._log(f"Attached {image_path}: {last_reason}")
-                return True, last_reason
-        self._log(f"Attach verification failed: {last_reason}", "warn")
+        for strategy in (paste_file, attach_file):
+            evidence = await strategy(self.cdp, image_path)
+            if not evidence.ok:
+                last_reason = evidence.reason
+                continue
+            for delay in (0.25, 0.5, 1.0, 2.0):
+                await asyncio.sleep(delay)
+                verified, last_reason = await self.verify_attachment(expected, evidence.previews)
+                if verified:
+                    self._log(f"Attached {image_path}: {last_reason}")
+                    return True, last_reason
+        self._log(f"Attach failed: {last_reason}", "warn")
         return False, last_reason
 
     async def verify_attachment(self, expected_filename: str,
@@ -283,30 +242,28 @@ class CDPArenaController:
         return False, f"Not found in active composer: {result}"
 
     async def insert_prompt(self, prompt_text: str) -> Tuple[bool, str]:
-        # ideal-size: 9 lines reason=insert with highlight
+        """Insert text into the active controlled composer and prove it persists."""
         if not await self.ensure_connected():
             return False, "Not connected"
-        try:
-            await self.highlight_selector('textarea[name="message"]', color="#00AAFF", duration_ms=1000, caption="Prompt")
-        except Exception:
-            pass
-        js = f";({JS_INSERT_PROMPT})({json.dumps(prompt_text)})"
-        result = await self.cdp.evaluate(js)
-        if not result:
-            return False, "No result"
-        if result.get("ok"):
-            return True, f"Inserted len {result.get('len')}"
-        return False, result.get("error", "Unknown")
+        result = await self.cdp.evaluate(build_insert_prompt_js(prompt_text))
+        if not isinstance(result, dict) or not result.get("ok"):
+            error = result.get("error") if isinstance(result, dict) else "no result"
+            return False, f"Prompt insertion failed: {error}"
+        last_reason = "prompt did not persist"
+        for delay in (0.05, 0.2, 0.5):
+            await asyncio.sleep(delay)
+            verified, last_reason = await self.verify_prompt(prompt_text)
+            if verified:
+                return True, f"Inserted and verified len {len(prompt_text)}"
+        return False, last_reason
 
     async def verify_prompt(self, expected: str) -> Tuple[bool, str]:
-        # ideal-size: 6 lines reason=verify exact match
-        js = f";({JS_VERIFY_PROMPT})({json.dumps(expected)})"
-        result = await self.cdp.evaluate(js)
-        if not result:
-            return False, "No result"
+        result = await self.cdp.evaluate(build_verify_prompt_js(expected))
+        if not isinstance(result, dict):
+            return False, "No prompt evidence"
         if result.get("ok"):
-            return True, "Exact match"
-        return False, f"Mismatch: {result}"
+            return True, "Exact active-composer match"
+        return False, f"Prompt mismatch: {result}"
 
     async def submit(self) -> Tuple[bool, str]:
         # ideal-size: 9 lines reason=click send with highlight

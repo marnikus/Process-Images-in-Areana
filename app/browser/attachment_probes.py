@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import secrets
 from dataclasses import dataclass
 from functools import lru_cache
@@ -10,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 _JS_DIR = Path(__file__).with_name("attachment_js")
+MAX_PASTE_BYTES = 20 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -19,7 +22,7 @@ class AttachmentEvidence:
     previews: tuple[str, ...] = ()
 
 
-@lru_cache(maxsize=3)
+@lru_cache(maxsize=4)
 def _probe(name: str) -> str:
     return (_JS_DIR / name).read_text(encoding="utf-8")
 
@@ -68,6 +71,25 @@ async def _cleanup_target(cdp: Any, marker: str) -> None:
         await cdp.evaluate(_cleanup_js(marker))
     except Exception:
         pass
+
+
+async def paste_file(cdp: Any, image_path: str) -> AttachmentEvidence:
+    """Dispatch a bounded browser paste carrying one reference-image file."""
+    try:
+        source = _valid_source(image_path)
+        if source.stat().st_size > MAX_PASTE_BYTES:
+            return AttachmentEvidence(False, "Reference image exceeds paste limit")
+        encoded = base64.b64encode(source.read_bytes()).decode("ascii")
+        mime = mimetypes.guess_type(source.name)[0] or "application/octet-stream"
+        script = f";({_probe('paste.js')})({json.dumps(source.name)},{json.dumps(mime)},{json.dumps(encoded)})"
+        result = await cdp.evaluate(script)
+        if not isinstance(result, dict) or not result.get("ok"):
+            error = result.get("error") if isinstance(result, dict) else "no paste result"
+            return AttachmentEvidence(False, f"Image paste failed: {error}")
+        return AttachmentEvidence(True, "Pasted image into active composer",
+                                  tuple(result.get("previews") or ()))
+    except Exception as exc:
+        return AttachmentEvidence(False, str(exc))
 
 
 async def attach_file(cdp: Any, image_path: str,

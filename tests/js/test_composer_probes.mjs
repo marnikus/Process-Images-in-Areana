@@ -1,9 +1,8 @@
 /* Tier A — composer probes (Node.js, no browser).
-   RULE 8: extracts the REAL JS_INSERT_PROMPT / JS_SEND_STATE consts from
+   RULE 8: extracts the real JS_SEND_STATE const from
    app/browser/cdp_arena.py (regex on the triple-quoted strings — the file
    under test, not a copy) and runs them against a stub document.
-   Regression: the error-state DOM offers a hidden first-match textarea;
-   insert must fill the VISIBLE composer or Send stays disabled forever. */
+   Prompt insertion moved to composer_js and is tested by test_composer_prompt.mjs. */
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,33 +34,8 @@ function docStub(lists) {
   };
 }
 
-function textareaStub(visible) {
-  return {
-    offsetParent: visible ? {} : null,
-    value: '',
-    events: 0,
-    focus() {},
-    dispatchEvent() { this.events++; },
-  };
-}
-
 function plain(value) {
   return JSON.parse(JSON.stringify(value)); // vm-realm objects fail deepEqual
-}
-
-function runInsert(lists, text) {
-  const sandbox = {
-    document: docStub(lists),
-    Event: function (t) { this.type = t; },
-    window: { HTMLTextAreaElement: { prototype: {} } },
-  };
-  Object.defineProperty(sandbox.window.HTMLTextAreaElement.prototype, 'value', {
-    set(v) { this._reactValue = v; }, configurable: true,
-  });
-  vm.createContext(sandbox);
-  const fn = vm.runInContext(extract('JS_INSERT_PROMPT'), sandbox,
-    { filename: 'JS_INSERT_PROMPT' });
-  return fn(text);
 }
 
 function runSendState(buttons) {
@@ -74,31 +48,7 @@ function runSendState(buttons) {
   return fn();
 }
 
-const SEL_MSG = 'textarea[name="message"]';
-const SEL_DESC = 'textarea[placeholder^="Describe"]';
-
-describe('composer probes — Tier A (no browser)', () => {
-  test('insert fills the VISIBLE composer, skips hidden first match', () => {
-    const hidden = textareaStub(false);
-    const visible = textareaStub(true);
-    const text = 'x'.repeat(4213);
-    const res = runInsert({ [SEL_MSG]: [hidden], [SEL_DESC]: [visible] }, text);
-    assert.deepEqual(plain(res), { ok: true, len: 4213 });
-    assert.equal(visible.value, text);
-    assert.equal(visible._reactValue, text);
-    assert.ok(visible.events >= 2); // input + change dispatched
-    assert.equal(hidden.value, '');
-    assert.equal(hidden._reactValue, undefined);
-    assert.equal(hidden.events, 0);
-  });
-
-  test('insert reports hidden vs missing distinctly', () => {
-    const resHidden = runInsert({ [SEL_MSG]: [textareaStub(false)] }, 'hi');
-    assert.deepEqual(plain(resHidden), { ok: false, error: 'textarea hidden' });
-    const resMissing = runInsert({}, 'hi');
-    assert.deepEqual(plain(resMissing), { ok: false, error: 'textarea not found' });
-  });
-
+describe('send-state probe — Tier A (no browser)', () => {
   test('send-state maps missing / hidden / disabled / enabled', () => {
     assert.deepEqual(plain(runSendState([])),
       { found: false, visible: false, enabled: false });

@@ -8,7 +8,8 @@ tests/js/test_composer_probes.mjs against the real const strings.
 
 import pytest
 
-from app.browser.cdp_arena import CDPArenaController, JS_INSERT_PROMPT
+from app.browser.cdp_arena import CDPArenaController
+from app.browser.composer_probes import build_insert_prompt_js
 
 ENABLED = {"found": True, "visible": True, "enabled": True}
 DISABLED = {"found": True, "visible": True, "enabled": False}
@@ -92,7 +93,8 @@ async def test_scan_page_errors_returns_corpus():
 
 
 @pytest.mark.unit
-def test_insert_probe_targets_visible_textarea():
-    # Behavioural proof is the node test; here the real string carries the pick.
-    assert "offsetParent" in JS_INSERT_PROMPT
-    assert "textarea hidden" in JS_INSERT_PROMPT
+def test_insert_probe_targets_visible_composer():
+    # DOM behavior is exercised in tests/js/test_composer_prompt.mjs.
+    probe = build_insert_prompt_js("hello")
+    assert "visible prompt composer" in probe
+    assert "_valueTracker" in probe
