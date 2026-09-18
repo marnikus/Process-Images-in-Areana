@@ -8,7 +8,7 @@
       "last_status": "ready",
       "last_checked": "2026-09-17T10:45:28.112354Z",
       "error": null,
-      "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
+      "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
     },
     {
       "id": "url_550177d7",
@@ -258,9 +258,9 @@
       "status": "processing",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 3,
+      "attempt_count": 4,
       "output_path": null,
-      "error": "Wait failed: Timeout after 180000ms",
+      "error": "Cancelled by user",
       "content_hash": null
     },
     {
@@ -273,10 +273,10 @@
       "size": 133256,
       "mtime": 1789721064.2160785,
       "fingerprint": "23c3507b152b0e1d",
-      "status": "failed",
+      "status": "processing",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 2,
+      "attempt_count": 3,
       "output_path": null,
       "error": "Wait failed: Timeout after 180000ms",
       "content_hash": null
@@ -291,10 +291,10 @@
       "size": 90071,
       "mtime": 1789721064.2170794,
       "fingerprint": "f7db402fae5eb678",
-      "status": "failed",
+      "status": "processing",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 2,
+      "attempt_count": 3,
       "output_path": null,
       "error": "Wait failed: Timeout after 180000ms",
       "content_hash": null
@@ -309,10 +309,10 @@
       "size": 116604,
       "mtime": 1789720308.7527852,
       "fingerprint": "f598653720b55fa7",
-      "status": "failed",
+      "status": "processing",
       "selected": true,
       "assigned_url_id": "url_2c2ff2d7",
-      "attempt_count": 2,
+      "attempt_count": 3,
       "output_path": null,
       "error": "Wait failed: Timeout after 180000ms",
       "content_hash": null
@@ -485,10 +485,10 @@
     "total": 21,
     "selected": 21,
     "pending": 5,
-    "processing": 1,
+    "processing": 4,
     "completed": 8,
     "skipped": 0,
-    "failed": 7,
+    "failed": 4,
     "needs_review": 0
   },
   "run_state": "idle",
