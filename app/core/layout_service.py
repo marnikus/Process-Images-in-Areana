@@ -9,7 +9,7 @@ from typing import Any
 
 log = logging.getLogger("arena")
 
-WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log", "settings", "browser", "action_blocks", "block_config", "arena_presets"]
+WINDOW_IDS = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log", "settings", "captcha", "browser", "action_blocks", "block_config", "arena_presets"]
 WINDOWS = [
     {"id": "url_list", "title": "URL List"},
     {"id": "folder", "title": "Folder Picker"},
@@ -20,6 +20,7 @@ WINDOWS = [
     {"id": "watcher", "title": "Watcher — Generation & Captcha"},
     {"id": "log", "title": "Activity Log"},
     {"id": "settings", "title": "Settings"},
+    {"id": "captcha", "title": "Captcha — 2Captcha Control"},
     {"id": "browser", "title": "Browser Preview"},
     {"id": "action_blocks", "title": "Action Blocks — Stacking Jobs"},
     {"id": "block_config", "title": "Block Config — Security Check"},
@@ -35,7 +36,7 @@ def default_grid_tree() -> dict:
     return split("col", [
         split("row", [
             split("col", [leaf("url_list"), leaf("folder")], [55,45]),
-            split("col", [leaf("prompt"), leaf("run"), leaf("settings")], [45,25,30]),
+            split("col", [leaf("prompt"), leaf("run"), leaf("settings"), leaf("captcha")], [40,22,26,12]),
         ], [60,40]),
         split("row", [
             leaf("queue"),
@@ -156,12 +157,13 @@ def canonical_grid_payload(raw: str):
                     m_tree, m_err = parse_grid_payload(json.dumps({"v": GRID_VERSION, "tree": migrated}))
                     if not m_err:
                         return json.dumps({"v": GRID_VERSION, "tree": m_tree}, ensure_ascii=False, separators=(",",":")), None
-                    # If still error, fall back to default
-                    log.warning(f"Migration still failed after window mismatch: {m_err}, returning default")
-                    return default_payload(), None
+                    # Unfixable: REJECT, keep the stored layout (RULE 13) — never
+                    # silently substitute default (that discards the user's grid).
+                    log.warning(f"Migration still failed after window mismatch: {m_err}, rejecting")
+                    return None, m_err or err
             except Exception as e:
-                log.warning(f"Failed to migrate grid after mismatch {err}: {e}, returning default")
-                return default_payload(), None
+                log.warning(f"Failed to migrate grid after mismatch {err}: {e}, rejecting")
+                return None, err
         return None, err
     return json.dumps({"v": GRID_VERSION, "tree": tree}, ensure_ascii=False, separators=(",",":")), None
 

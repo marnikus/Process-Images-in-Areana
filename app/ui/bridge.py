@@ -31,6 +31,7 @@ except ImportError:
     QFileDialog = None
 
 from app.core.layout_service import (
+    GRID_VERSION,
     WINDOW_IDS,
     canonical_grid_payload, default_payload, leaf_ids,
 )
@@ -977,21 +978,23 @@ class Bridge(QObject):
 
     @Slot(str, result=str)
     def load_window_preset(self, name: str):
+        # Pure getter: returns the stored portable doc for the JS preview →
+        # confirm → apply flow (no server-side apply; that would rearrange
+        # the grid behind the preview modal before the user confirms).
         doc = self.config.window_presets.load_preset(name)
         if not doc:
             return json.dumps({"ok": False, "error": f"preset {name} not found"})
         try:
             grid = doc.get("grid", {})
-            payload = grid.get("payload")
-            if not payload:
-                return json.dumps({"ok": False, "error": "invalid preset"})
-            _, err = canonical_grid_payload(payload)
+            tree = grid.get("tree") if isinstance(grid, dict) else None
+            if not isinstance(tree, dict):
+                return json.dumps({"ok": False, "error": "unsupported window preset format or schema version"})
+            ver = grid.get("version", GRID_VERSION)
+            _, err = canonical_grid_payload(json.dumps({"v": ver, "tree": tree}))
             if err:
                 return json.dumps({"ok": False, "error": err})
-            self.config.set_state(grid_layout=payload, window_states=doc.get("window_states", {"closed": [], "minimized": []}))
-            self.grid_layout_changed.emit(payload)
             self._log(f"Window preset loaded: {name}", "success")
-            return json.dumps({"ok": True, "name": name, "payload": payload, "window_states": doc.get("window_states")})
+            return json.dumps(doc, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
