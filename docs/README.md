@@ -57,6 +57,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-18-recaptcha-page-mechanics/research-design.md` — research/design: Enterprise bootstrap, anchor/challenge frames, response field, callback, backend acceptance, stale tokens, page-error state machine
 - `archive/2026-09-18-recaptcha-verification-architecture/design.md` — implementation architecture: probe evidence, terminal page-error/stale-token guards, acceptance candidate vs output success, penalty/report semantics, test matrix
 - `archive/2026-09-18-recaptcha-verification-architecture/implementation-2026-09-18.md` — implementation record: page/document timeOrigin identity + challenge-frame identity compared before token injection
+- `archive/2026-09-18-url-row-tab-ownership/design.md` — "5 links detected but only 4 tabs open" + "checked 1 link but 2 were used": root causes were run-side row re-binding (round-robin `link_tab` steals rows → next scan adds phantom rows) and dispatch ignoring the checkbox (pool dispatch/tab-resolve picked any tab); fix is invariant I-33 — one live tab ↔ one row, auto-connect owns bindings, scan repairs duplicates, and checked rows gate start/single/parallel paths
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

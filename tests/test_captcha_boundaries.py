@@ -166,7 +166,9 @@ def test_url_row_link_tab():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_dispatch_binds_url_row_to_run_tab():
+async def test_dispatch_records_owner_row_without_relinking():
+    """I-33: dispatch records the tab's OWN checked row; ownership belongs
+    to auto-connect, so runs never re-bind a row to a foreign tab."""
     pool = PagePool()
     pool.add_page(make_info("t9"))
     saved = []
@@ -182,18 +184,19 @@ async def test_dispatch_binds_url_row_to_run_tab():
     img = SimpleNamespace(status="pending", error="", output_path="",
                           relative_path="pic.png", absolute_path="/tmp/pic.png",
                           assigned_url_id=None, attempt_count=0)
-    url_row = UrlRow.create("https://arena.ai")
+    owner = UrlRow.create("https://arena.ai", tab_id="t9")
+    foreign = UrlRow.create("https://arena.ai/other", tab_id="t1")
 
     async def fake_baseline():
         return {}
 
     ctrl = SimpleNamespace(capture_baseline=fake_baseline)
-    ctx = PageJobCtx(bridge=bridge, pool=pool, img=img, urls=[url_row],
+    ctx = PageJobCtx(bridge=bridge, pool=pool, img=img, urls=[foreign, owner],
                      tab_id="t9", ctrl=ctrl, client=None)
     row, _corr, _job, failed, _err = await _run_image_job(ctx)
     assert failed is False
-    assert row.tab_id == "t9"  # sticky row timer follows the run tab
-    assert saved  # bind persisted to the UI payload
+    assert row is owner and img.assigned_url_id == owner.id  # owner recorded
+    assert foreign.tab_id == "t1"  # foreign row untouched, never re-linked
 
 
 @pytest.mark.unit
