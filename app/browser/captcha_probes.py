@@ -44,3 +44,12 @@ def build_inject_js(token: str, sitekey: str = "") -> str:
 def build_continue_js() -> str:
     """Dialog action-button click probe (best effort, IIFE)."""
     return _read("continue_click.js")
+
+
+def build_fields_js() -> str:
+    """Response-field observation probe — counts and lengths only (IIFE).
+
+    Gives the manual path the same comparable evidence the automatic path
+    reports from inject.js, without letting field content leave the page.
+    """
+    return _read("fields.js")

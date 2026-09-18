@@ -435,7 +435,7 @@
         <div class="captcha-record-note">Shows every recording still retained locally. Recordings start at visible captcha detection and stop at resolution; bounded retention may prune the oldest evidence. DOM and textual network data are redacted in <code>config/captcha_recordings</code>. Review before sharing.</div>
         <div id="captchaRecordsEmpty" class="captcha-record-empty">No captcha sessions recorded yet.</div>
         <table class="captcha-record-table">
-          <thead><tr><th>Started</th><th>Page</th><th>Method</th><th>Outcome</th><th>Time</th><th title="Mutations / network events / snapshots">M/N/S</th><th>Ground truth / Compare</th></tr></thead>
+          <thead><tr><th>Started</th><th>Page</th><th>Method</th><th>Outcome</th><th title="Solve-edge acceptance, then the image-job verdict">Verdict</th><th>Time</th><th title="Mutations / network events / snapshots">M/N/S</th><th title="Named milestone edges">Edges</th><th>Ground truth / Compare</th></tr></thead>
           <tbody id="captchaRecordsBody"></tbody>
         </table>
         <div class="captcha-compare-title">Side-by-side evidence — use A/B on labeled manual and bot rows</div>

@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from app.browser.captcha_probes import build_continue_js, build_detect_js, build_inject_js
@@ -59,6 +59,11 @@ class SolvePlan:
     inject: str = ""  # "scope=.. fields=.. cb=.." summary
     page_error_at: float = 0.0  # solve-start-relative seconds of a mid-solve error
     page_error: str = ""
+    dialog_cleared_at: float = 0.0  # solve-start-relative seconds the dialog closed
+    continue_result: Dict[str, Any] = field(default_factory=dict)  # continue/verify click
+    preinject: Dict[str, Any] = field(default_factory=dict)  # fields/scope + identity at token
+    postinject: Dict[str, Any] = field(default_factory=dict)  # scope/fields/len/callback chain
+    fresh_signal: Any = None  # last fresh page probe (identity/field evidence)
     stale_reason: str = ""
     page_identity: str = ""
     challenge_identity: str = ""
@@ -78,6 +83,10 @@ def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> 
         out.inject = plan.inject
         out.page_error_at_s = plan.page_error_at
         out.page_error = plan.page_error
+        out.dialog_cleared_at_s = plan.dialog_cleared_at
+        out.continue_result = dict(plan.continue_result)
+        out.preinject = dict(plan.preinject)
+        out.postinject = dict(plan.postinject)
     return out
 
 
@@ -194,24 +203,68 @@ async def _delete_task(client: Captcha2Client, task_id: str, stats: Any,
         pass
 
 
-async def _click_continue(ctrl: Any) -> None:
+async def _click_continue(ctrl: Any) -> Dict[str, Any]:
     """Best effort: the site may auto-submit on token receipt instead."""
     try:
-        await ctrl.cdp.evaluate(build_continue_js())
+        raw = await ctrl.cdp.evaluate(build_continue_js())
     except Exception:
-        pass
+        return {}
+    data = raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return {}
+    if not isinstance(data, dict):
+        return {}
+    return {"ok": bool(data.get("ok")), "used": str(data.get("used", ""))[:40],
+            "reason": str(data.get("reason", data.get("error", "")))[:80]}
 
 
 async def _note_preinject_state(plan: SolvePlan, log: Callable[[str, str], None]) -> None:
-    """Log + stamp whether the dialog is still up when the token arrives."""
+    """Stamp dialog state and fresh field/identity evidence at token arrival.
+
+    The pre-injection probe is what separates hypotheses H1/H2/H6 (stale token,
+    wrong field scope, wrong sitekey) from each other, so the evidence travels
+    with the outcome into the recording instead of living only in the log.
+    """
     try:
         visible = await plan.ctrl.is_security_dialog_visible()
     except Exception:
-        return
-    plan.dialog_at_token = "visible" if visible else "gone"
-    log("🤖 token arrived, dialog still visible — injecting" if visible else
-        "🤖 token arrived but the dialog is already gone (page moved on?) — injecting anyway",
-        "info")
+        visible = None
+    if visible is not None:
+        plan.dialog_at_token = "visible" if visible else "gone"
+        log("🤖 token arrived, dialog still visible — injecting" if visible else
+            "🤖 token arrived but the dialog is already gone (page moved on?) — injecting anyway",
+            "info")
+    if plan.fresh_signal is None:
+        plan.fresh_signal = await _current_signal(plan.ctrl)
+    plan.preinject = _preinject_evidence(plan, visible)
+
+
+def _preinject_evidence(plan: SolvePlan, visible: Optional[bool]) -> Dict[str, Any]:
+    """Bounded, token-free page facts observed at the token edge."""
+    current = plan.fresh_signal
+    data: Dict[str, Any] = {"dialog_visible": visible}
+    if current is None:
+        data["identity_match"] = None
+        return data
+    data.update({"response_fields": current.response_fields,
+                 "response_scope": current.response_scope,
+                 "challenge_identity": current.challenge_identity,
+                 "page_identity": current.page_identity,
+                 "challenge_active": current.challenge_active,
+                 "identity_match": not _identity_reason(plan, current)})
+    return data
+
+
+def _postinject_evidence(res: Dict[str, Any]) -> Dict[str, Any]:
+    """What the injection actually did: scope, counts, callback chain result."""
+    return {"scope": str(res.get("scope", ""))[:20], "fields_set": int(res.get("fields") or 0),
+            "len": int(res.get("len") or 0), "cb": str(res.get("cb") or "")[:60],
+            "cb_source": _cb_source(res), "cb_called": bool(res.get("cbCalled")),
+            "cb_error": str(res.get("cbError") or "")[:120],
+            "clients_seen": int(res.get("clientsSeen") or 0)}
 
 
 async def _verify_gone(ctrl: Any, stop: Callable[[], bool]) -> bool:
@@ -260,6 +313,7 @@ def _sitekey_changed(plan: SolvePlan, current: CaptchaSignal) -> bool:
 async def _stale_reason(plan: SolvePlan) -> str:
     """Return a mismatch reason; empty means the page is still the same."""
     current = await _current_signal(plan.ctrl)
+    plan.fresh_signal = current
     if current is None:
         return ""
     return _identity_reason(plan, current) or ("sitekey_changed" if _sitekey_changed(plan, current) else "")
@@ -394,11 +448,15 @@ def _solved(plan: SolvePlan, task_id: str) -> SolveOutcome:
     tok = plan.token_at - plan.start if plan.token_at else 0.0
     plan.stats.record("auto_solved", host_of(plan.signal.page_url))
     plan.logger(f"🤖 2Captcha solved tab {str(plan.tab_id)[:12]} in {secs:.0f}s "
-                f"(token {tok:.0f}s, token accepted)", "success")
+                f"(token {tok:.0f}s, closure = acceptance candidate)", "success")
     return SolveOutcome(status="solved", method="auto", task_id=task_id,
-                        reason="token accepted", elapsed_sec=secs,
+                        reason="accepted candidate: dialog cleared after token delivery",
+                        elapsed_sec=secs,
                         polls=plan.polls, token_sec=tok, token_fp=plan.token_fp,
                         dialog_at_token=plan.dialog_at_token, inject=plan.inject,
+                        dialog_cleared_at_s=plan.dialog_cleared_at,
+                        continue_result=dict(plan.continue_result),
+                        preinject=dict(plan.preinject), postinject=dict(plan.postinject),
                         page_error_at_s=plan.page_error_at, page_error=plan.page_error)
 
 
@@ -483,12 +541,14 @@ class CaptchaSolver:
         if not res.get("ok"):
             return await _inject_failure(plan, task_id)
         plan.inject = f"scope={res.get('scope')} fields={res.get('fields', 1)} cb={_cb_desc(res)}"
+        plan.postinject = _postinject_evidence(res)
         self._log(f"🤖 token injected ({plan.inject})", "info")
-        await _click_continue(plan.ctrl)
+        plan.continue_result = await _click_continue(plan.ctrl)
         error = await _page_error_outcome(plan, task_id, self._stats, self._log)
         if error is not None:
             return error
         if await _verify_gone(plan.ctrl, plan.stop):
+            plan.dialog_cleared_at = time.monotonic() - plan.start
             return await _accepted_after_close(plan, task_id)
         await _delete_task(plan.client, task_id, self._stats, self._log)
         why = _reject_reason(res)

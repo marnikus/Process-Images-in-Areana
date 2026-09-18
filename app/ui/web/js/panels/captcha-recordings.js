@@ -39,8 +39,10 @@ const CaptchaRecordingsPanel = {
     this.cell(tr, this.route(item.url));
     this.cell(tr, item.method || '—');
     this.cell(tr, item.outcome || item.status || '—');
+    this.cell(tr, this.verdict(item));
     this.cell(tr, this.duration(item.elapsed_ms));
     this.cell(tr, `${item.mutation_count || 0}/${item.network_count || 0}/${item.snapshot_count || 0}`);
+    this.cell(tr, String(item.milestone_count || 0));
     const labelCell = document.createElement('td');
     const actor = this.actorSelect(item);
     const result = this.resultSelect(item);
@@ -151,6 +153,18 @@ const CaptchaRecordingsPanel = {
     });
   },
 
+  verdict(item) {
+    const acceptance = item.acceptance || 'none';
+    if (item.verified === true) return 'verified ✓';
+    if (item.verified === false) return 'refuted ✗';
+    return acceptance === 'accepted_candidate' ? 'candidate …' : acceptance;
+  },
+  verdictText(manifest) {
+    const acceptance = manifest.acceptance || 'none';
+    if (manifest.verified === true) return `Acceptance: ${acceptance} → job completed (verified)`;
+    if (manifest.verified === false) return `Acceptance: ${acceptance} → job ${manifest.job || 'failed'} (candidate refuted)`;
+    return `Acceptance: ${acceptance} — image job has not confirmed this session yet`;
+  },
   cell(row, text) {
     const td = document.createElement('td');
     td.textContent = String(text == null ? '' : text); row.appendChild(td);

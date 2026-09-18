@@ -55,8 +55,8 @@ class MainWindow(QMainWindow):
 
         # Bridge
         self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, cdp_client=self.cdp_client, parent=self)
-        manager = self.bridge._captcha_service().recordings
-        self.recordings_bridge = CaptchaRecordingsBridge(manager, self)
+        catalog = self.bridge._captcha_service().recordings.catalog
+        self.recordings_bridge = CaptchaRecordingsBridge(catalog, self)
 
         self._attach_web_channel()
 

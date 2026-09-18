@@ -531,6 +531,21 @@ def _captcha_job_line(ctx: JobCtx, entry: Dict[str, Any], failed: bool, error: s
             "error": str(error or "")[:200], "page_error": perr[:200]}
 
 
+def _join_recording(ctx: JobCtx, line: Dict[str, Any]) -> None:
+    """Hand the image-job verdict to the recording that owns this encounter.
+
+    This is the only place the whole-job truth exists, so it is what resolves a
+    captcha acceptance candidate into verified/refuted (RULE 4 join, fail-open).
+    """
+    eid = str(line.get("eid", ""))
+    if not eid:
+        return
+    try:
+        ctx.bridge._captcha_service().recordings.join_job(eid, line)
+    except Exception:
+        pass
+
+
 def _emit_captcha_job_lines(ctx: JobCtx, failed: bool, error: str) -> None:
     """Drain the encounter stash (each eid reported exactly once)."""
     try:
@@ -544,6 +559,7 @@ def _emit_captcha_job_lines(ctx: JobCtx, failed: bool, error: str) -> None:
         try:
             line = _captcha_job_line(ctx, entry if isinstance(entry, dict) else {}, failed, error)
             ctx.bridge._log(f"[{ctx.corr_id}] 🧾 CAPTCHA_JOB {json.dumps(line, ensure_ascii=False)}", "info")
+            _join_recording(ctx, line)
         except Exception:
             pass
 

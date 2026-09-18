@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 
 BRIDGE = Path(__file__).parent.parent / "app" / "ui" / "bridge.py"
+RECORDINGS_ADAPTER = (Path(__file__).parent.parent / "app" / "ui" / "services"
+                      / "captcha_recordings_bridge.py")
 
 # Methods the web UI calls that must stay slots (extend with new slots).
 REQUIRED_SLOTS = (
@@ -20,9 +22,14 @@ REQUIRED_SLOTS = (
     "drop_ai_suffix", "keep_only_ai_files",
     "get_stack_presets", "save_stack_preset", "delete_stack_preset", "export_action_blocks",
     "set_captcha_settings", "get_captcha_status", "get_captcha_stats",
-    "get_recordings_list", "get_recording_detail", "get_recording_snapshot",
-    "get_recording_diff", "set_recording_label", "delete_recording",
-    "set_recording_settings", "get_recording_settings",
+)
+
+# The Recordings window has its own QWebChannel adapter; every method there is
+# called from JS and must keep @Slot or the panel silently stops updating.
+REQUIRED_ADAPTER_SLOTS = (
+    "list_sessions", "list_all_sessions", "delete_session", "delete_all_sessions",
+    "undo_delete", "set_label", "set_labels", "get_session", "compare_sessions",
+    "open_folder",
 )
 
 # Private helpers that must never capture a @Slot by accident.
@@ -52,6 +59,13 @@ def test_required_slots_registered():
     names = _slot_names(BRIDGE)
     missing = [s for s in REQUIRED_SLOTS if s not in names]
     assert not missing, f"lost @Slot decorator: {missing}"
+
+
+@pytest.mark.unit
+def test_recordings_adapter_slots_registered():
+    names = _slot_names(RECORDINGS_ADAPTER)
+    missing = [s for s in REQUIRED_ADAPTER_SLOTS if s not in names]
+    assert not missing, f"recordings adapter lost @Slot decorator: {missing}"
 
 
 @pytest.mark.unit

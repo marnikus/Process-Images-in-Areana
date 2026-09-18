@@ -1,4 +1,4 @@
-"""Recording history removal keeps active writers safe."""
+"""Recording history removal keeps active writers safe (catalog surface)."""
 
 from types import SimpleNamespace
 
@@ -13,40 +13,40 @@ def encounter(tab):
 
 
 @pytest.mark.unit
-def test_manager_refuses_active_recording_removal(tmp_path):
-    manager = RecordingManager(tmp_path)
+def test_catalog_refuses_active_recording_removal(tmp_path):
+    manager = RecordingManager(str(tmp_path))
     manifest = manager.store.create(encounter("active-tab"))
     manager._active["active-tab"] = SimpleNamespace(session_id=manifest["session_id"])
 
     with pytest.raises(RuntimeError, match="active"):
-        manager.delete_session(manifest["session_id"])
+        manager.catalog.delete_session(manifest["session_id"])
 
     assert manager.store.list_sessions(limit=None)[0]["session_id"] == manifest["session_id"]
-    assert manager.undo_delete() == 0
+    assert manager.catalog.undo_delete() == 0
 
 
 @pytest.mark.unit
-def test_manager_removes_and_restores_one_recording(tmp_path):
-    manager = RecordingManager(tmp_path)
+def test_catalog_removes_and_restores_one_recording(tmp_path):
+    manager = RecordingManager(str(tmp_path))
     session_id = manager.store.create(encounter("done"))["session_id"]
 
-    assert manager.delete_session(session_id) == session_id
-    assert manager.list_sessions(None) == []
-    assert manager.undo_delete() == 1
-    assert manager.list_sessions(None)[0]["session_id"] == session_id
+    assert manager.catalog.delete_session(session_id) == session_id
+    assert manager.catalog.list_sessions(None) == []
+    assert manager.catalog.undo_delete() == 1
+    assert manager.catalog.list_sessions(None)[0]["session_id"] == session_id
 
 
 @pytest.mark.unit
-def test_manager_removes_all_inactive_and_reports_active_skip(tmp_path):
-    manager = RecordingManager(tmp_path)
+def test_catalog_removes_all_inactive_and_reports_active_skip(tmp_path):
+    manager = RecordingManager(str(tmp_path))
     active = manager.store.create(encounter("active-tab"))["session_id"]
     manager.store.create(encounter("done-1"))
     manager.store.create(encounter("done-2"))
     manager._active["active-tab"] = SimpleNamespace(session_id=active)
 
-    result = manager.delete_all_sessions()
+    result = manager.catalog.delete_all_sessions()
 
     assert result == {"deleted": 2, "skipped_active": 1}
-    assert [row["session_id"] for row in manager.list_sessions(limit=None)] == [active]
-    assert manager.undo_delete() == 2
-    assert len(manager.list_sessions(limit=None)) == 3
+    assert [row["session_id"] for row in manager.catalog.list_sessions(limit=None)] == [active]
+    assert manager.catalog.undo_delete() == 2
+    assert len(manager.catalog.list_sessions(limit=None)) == 3

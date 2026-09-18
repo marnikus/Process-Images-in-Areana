@@ -14,6 +14,12 @@ EventSink = Callable[[str, dict[str, Any], bool], Awaitable[None]]
 MAX_QUEUED_EVENTS = 5_000
 
 
+#: Only captcha traffic carries evidence a comparison needs; page bodies are
+#: private content and the main noise source of a diff (RULE 20 / P8).
+BODY_CATEGORIES = frozenset({"captcha", "verification"})
+MAX_TRACKED_RESPONSES = 200
+
+
 class NetworkCollector:
     """Queue CDP events and retrieve eligible bodies outside receive loop."""
 
@@ -28,6 +34,9 @@ class NetworkCollector:
         self.dropped = 0
         self._reported_dropped = 0
         self.responses: dict[str, dict[str, Any]] = {}
+        self.bodies_captured = 0
+        self.bodies_skipped = 0
+        self.responses_evicted = 0
 
     def on_event(self, message: dict[str, Any]) -> None:
         if str(message.get("method", "")).startswith("Network."):
@@ -77,8 +86,16 @@ class NetworkCollector:
                    "status": response.get("status"), "mime": response.get("mimeType", ""),
                    "resource_type": params.get("type", ""),
                    "from_cache": bool(response.get("fromDiskCache"))}
-        self.responses[request_id] = payload
+        self._track(request_id, payload)
         await self.sink("network_response", payload, True)
+
+    def _track(self, request_id: str, payload: dict[str, Any]) -> None:
+        """Keep the response map bounded; the oldest entry is the least useful."""
+        if len(self.responses) >= MAX_TRACKED_RESPONSES:
+            for key in list(self.responses)[:1]:
+                self.responses.pop(key, None)
+                self.responses_evicted += 1
+        self.responses[request_id] = payload
 
     async def _failure(self, request_id: str, params: dict[str, Any]) -> None:
         payload = {"request_id": request_id,
@@ -87,9 +104,17 @@ class NetworkCollector:
                    "resource_type": params.get("type", "")}
         await self.sink("network_failure", payload, True)
 
+    def summary(self) -> dict[str, int]:
+        """Bounded counters for the finish update (evidence-loss accounting)."""
+        return {"queued_dropped": self.dropped, "bodies_captured": self.bodies_captured,
+                "bodies_skipped": self.bodies_skipped, "responses_evicted": self.responses_evicted}
+
     async def _body(self, request_id: str, _params: dict[str, Any]) -> None:
         meta = self.responses.pop(request_id, None)
         if not meta or not textual_mime(meta.get("mime", "")):
+            return
+        if meta.get("category") not in BODY_CATEGORIES:
+            self.bodies_skipped += 1
             return
         try:
             reply = await self.cdp.send("Network.getResponseBody", {"requestId": request_id}, timeout=5)
@@ -100,8 +125,9 @@ class NetworkCollector:
             clipped = len(body) > self.body_limit
             if clipped:
                 self.mark_truncated("response_bodies")
+            self.bodies_captured += 1
             payload = {"request_id": request_id, "body": redact_text(body, self.body_limit),
-                       "truncated": clipped}
+                       "truncated": clipped, "category": meta.get("category", "")}
             await self.sink("response_body", payload, False)
         except Exception as exc:
             message = f"response body unavailable: {type(exc).__name__}"

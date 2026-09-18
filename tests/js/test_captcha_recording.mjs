@@ -52,8 +52,19 @@ test('records UI loads two bounded evidence panes side by side', () => {
     get_session(_id, callback) { callback(JSON.stringify({ok: true, details})); },
     open_folder(id, callback) { opened = id; callback(JSON.stringify({ok: true})); },
     compare_sessions(_a, _b, callback) { callback(JSON.stringify({ok: true, comparison: {
-      evidence_complete: true, warnings: [], first_divergence: {operation: 'replace', left: ['accepted'], right: ['failed']},
-      common: ['detected'], left_only: ['accepted'], right_only: ['failed'], dom_diff: ['-accepted', '+failed'],
+      verdict: {comparable: true, reason: 'manual vs bot with independent result labels'},
+      evidence_complete: true, warnings: [],
+      alignment: [{phase: 'detected', a_ms: 0, b_ms: 0, status: 'both', structural: false},
+        {phase: 'token_ready', a_ms: 12500, b_ms: 9000, status: 'offset', structural: true},
+        {phase: 'page_error', a_ms: null, b_ms: 11000, status: 'b_only', structural: false}],
+      first_divergence: {phase: 'page_error', status: 'b_only', a_ms: null, b_ms: 11000,
+        why: 'present in B, absent in A'},
+      timing_gaps: [{phase: 'token_ready', delta_ms: -3500}],
+      sequence_divergence: {operation: 'replace', a_index: 1, b_index: 1,
+        a: ['state|accepted'], b: ['state|page_error']},
+      network: {left: [{class: 'captcha', count: 2}], right: [{class: 'captcha', count: 1}],
+        a_only: [], b_only: ['generation']},
+      dom_diff: ['-accepted', '+failed'],
     }})); },
   };
   for (const name of ['captcha-recordings.js', 'captcha-recording-comparison.js']) {
@@ -67,8 +78,11 @@ test('records UI loads two bounded evidence panes side by side', () => {
   assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /mutation/);
   assert.match(dom.window.document.getElementById('captchaCompareA').textContent, /<main>safe<\/main>/);
   dom.window.CaptchaRecordingComparison.load('s2', 1);
-  assert.match(dom.window.document.getElementById('captchaComparisonReport').textContent, /First divergence: replace/);
-  assert.match(dom.window.document.getElementById('captchaComparisonReport').textContent, /DOM diff/);
+  const reportText = dom.window.document.getElementById('captchaComparisonReport').textContent;
+  assert.match(reportText, /Comparable: YES/);
+  assert.match(reportText, /First divergence: page_error \(b_only\)/);
+  assert.match(reportText, /Milestone alignment/);
+  assert.match(reportText, /DOM diff/);
   dom.window.CaptchaRecordingsPanel.openButton({session_id: 's1'}).click();
   assert.equal(opened, 's1');
 });

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 SOLVABLE_KINDS = ("recaptcha_v2", "recaptcha_enterprise")
@@ -92,9 +92,23 @@ def host_of(url: str) -> str:
         return ""
 
 
+_ACCEPTANCE_STATES = {
+    "solved": "accepted_candidate",
+    "manual": "accepted_candidate",
+    "page_error": "page_error",
+    "token_stale": "stale",
+    "auto_failed": "not_accepted",
+}
+
+
 @dataclass
 class SolveOutcome:
-    """Result of one handle_captcha flow (RULE 4: reason distinguishes broken)."""
+    """Result of one handle_captcha flow (RULE 4: reason distinguishes broken).
+
+    The acceptance fields never claim server acceptance: `acceptance_state` is
+    the observed verdict at the solve edge and the image job later confirms or
+    refutes it (recording join).
+    """
 
     status: str = "none"
     reason: str = ""
@@ -108,3 +122,17 @@ class SolveOutcome:
     inject: str = ""
     page_error_at_s: float = 0.0
     page_error: str = ""
+    dialog_cleared_at_s: float = 0.0  # solve-relative moment the dialog closed
+    continue_result: Dict[str, Any] = field(default_factory=dict)  # continue/verify click
+    preinject: Dict[str, Any] = field(default_factory=dict)  # fields/scope + identity at token
+    postinject: Dict[str, Any] = field(default_factory=dict)  # scope/fields/len/callback chain
+
+    @property
+    def acceptance_state(self) -> str:
+        """Observed edge verdict: candidate / not_accepted / page_error / stale / none."""
+        return _ACCEPTANCE_STATES.get(self.status, "none")
+
+    @property
+    def verifier(self) -> str:
+        """Evidence behind a candidate: the site callback plus closure, or closure alone."""
+        return "callback+closure" if "cb=called" in (self.inject or "") else "closure"

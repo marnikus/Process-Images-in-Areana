@@ -142,7 +142,7 @@ async def test_success_path_records_solved(monkeypatch, isolated_config_dir):
     assert client.deleted == []
     d = stats.to_dict()
     assert d["auto_solved"] == 1 and d["tasks_created"] == 1
-    assert any("token accepted" in m for m, _ in logs)
+    assert any("closure = acceptance candidate" in m for m, _ in logs)
     assert client.closed  # session hygiene
 
 
@@ -569,7 +569,8 @@ async def test_solved_line_splits_token_time(monkeypatch, isolated_config_dir):
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
     ctrl = FakeCtrl(visible_seq=[True, True, False])
     assert (await solver.solve(ctrl, "t", signal(), lambda: False)).status == "solved"
-    assert any(re.search(r"in \d+s \(token \d+s, token accepted\)", m) for m, _ in logs)
+    assert any(re.search(r"in \d+s \(token \d+s, closure = acceptance candidate\)", m)
+               for m, _ in logs)
 
 
 @pytest.mark.unit

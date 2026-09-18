@@ -50,12 +50,13 @@ async def test_recorder_captures_diff_network_body_and_finish(tmp_path):
 
     request = {"method": "Network.requestWillBeSent", "params": {
         "requestId": "1", "type": "Fetch", "request": {
-            "url": "https://arena.ai/api/x?q=secret", "method": "POST"}}}
+            "url": "https://www.google.com/recaptcha/api2/reload?k=secret", "method": "POST"}}}
     worker = threading.Thread(target=cdp.events.dispatch, args=(request,))
     worker.start()
     worker.join(timeout=1)
     cdp.events.dispatch({"method": "Network.responseReceived", "params": {
-        "requestId": "1", "type": "Fetch", "response": {"url": "https://arena.ai/api/x?q=secret",
+        "requestId": "1", "type": "Fetch", "response": {
+        "url": "https://www.google.com/recaptcha/api2/reload?k=secret",
         "status": 200, "mimeType": "application/json"}}})
     cdp.events.dispatch({"method": "Network.loadingFinished", "params": {"requestId": "1"}})
     await asyncio.sleep(0.03)
@@ -74,7 +75,7 @@ async def test_recorder_captures_diff_network_body_and_finish(tmp_path):
     assert solve_report["solution_ready_at_s"] == 12.5
     assert solve_report["field_evidence"]["count"] == 2
     assert "secret-token-shape" not in json.dumps(events)
-    assert "?q=" not in json.dumps(events)
+    assert "k=secret" not in json.dumps(events)  # RULE 20: query strings never persisted
     assert "A" * 100 not in json.dumps(events)
     assert cdp.sent[0][0] == "Network.getResponseBody"
     assert result["snapshot_count"] >= 1 and result["network_count"] == 2

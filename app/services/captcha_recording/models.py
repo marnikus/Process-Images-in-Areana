@@ -14,6 +14,16 @@ FINAL_OUTCOMES = frozenset({
     "stopped", "interrupted",
 })
 
+#: Observed verdict at the solve edge — never a claim of server acceptance.
+ACCEPTANCE_STATES = frozenset({
+    "none", "accepted_candidate", "not_accepted", "page_error", "stale",
+})
+
+#: Terminal evidence is reserved so a long encounter can never lose its edges.
+RESERVED_EVENTS = 50
+RESERVED_SNAPSHOTS = 2
+PROTECTED_EVENT_KINDS = frozenset({"state", "milestone", "solve_report", "warning"})
+
 
 @dataclass(frozen=True)
 class RecordingLimits:
@@ -21,8 +31,8 @@ class RecordingLimits:
     checkpoint_interval_sec: float = 2.0
     max_events: int = 2_000
     max_snapshots: int = 25
-    max_snapshot_chars: int = 2_000_000
-    max_body_chars: int = 65_536
+    max_snapshot_chars: int = 512_000
+    max_body_chars: int = 16_384
 
 
 def utc_now() -> str:

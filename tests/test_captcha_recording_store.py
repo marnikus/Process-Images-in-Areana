@@ -46,11 +46,11 @@ def test_store_rejects_bad_label_and_path(tmp_path):
     store = RecordingStore(tmp_path)
     session_id = store.create(encounter())["session_id"]
     with pytest.raises(ValueError):
-        store.set_label(session_id, "robot")
+        store.set_labels(session_id, "robot", "passed")
     with pytest.raises(ValueError):
         store.set_labels(session_id, "bot", "maybe")
     with pytest.raises(ValueError):
-        store.set_label("../escape", "bot")
+        store.set_labels("../escape", "bot", "passed")
 
 
 @pytest.mark.unit
