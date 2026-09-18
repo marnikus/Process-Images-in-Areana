@@ -13,6 +13,19 @@ by reading **arena's own production bundle source** (the saved webpage's
 `_files/*.js.download` chunks — same build as the live chat page) and tracing
 every captcha/anti-bot mechanism from its code, not from symptoms.
 
+Research artifacts now in the repo: the saved captcha-on page lives at
+`arena webpages/captcha on/(12) Directly Chat with Frontier Image Generation
+AI -captcha Models.html` (+ `_files/`: loader stub `enterprise.js.download`,
+framework chunk `1798-42faed5e41cbb308.js.download`, the reCAPTCHA anchor
+iframes). Corroboration from it: the dialog widget's DIALOG sitekey is
+**absent from the saved DOM** — the only key on screen is the badge/execute
+key `6LeTGMcs…`; `6Le3_cYs…` exists only in the bundle, passed to
+`grecaptcha.enterprise.render()` at runtime. That is exactly why the render
+hook captures `opts.sitekey` from the call itself (§2.4). The dialog
+mechanism's code chunk (`13w27x7e30p8h.js.download`, module `980034`) loads
+on demand on the chat page and was read from the earlier full-build save
+(`Process Images in Areana/Old App/Restore/From Webpage Code saved/`).
+
 ## 2. Research — the full real-user-detection stack (from bundle source)
 
 Sources: `13w27x7e30p8h.js.download` (module `980034` — the captcha module,
