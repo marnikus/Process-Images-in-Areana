@@ -13,9 +13,10 @@ from .api_client import SolverApiClient, ApiError
 from .providers import DEFAULT_PROVIDER, PROVIDERS, ProviderSpec, provider_for
 from .solver import CaptchaSolver
 from .service import CaptchaCtx, CaptchaService, handle_captcha
+from .monitor import PAGE_CHECK_INTERVAL_SEC, PageMonitor, SettleGuard, start_page_monitor, stop_page_monitor
 from .recovery import (
     InlineWaitGates, ResumePolicy, arm_resume, arm_wait_gates, clear_resume,
-    disarm_wait_gates, maybe_resume, note_settle, wait_with_gates,
+    disarm_wait_gates, maybe_resume, note_settle, stamped_settle, wait_with_gates,
 )
 
 __all__ = [
@@ -43,5 +44,11 @@ __all__ = [
     "disarm_wait_gates",
     "maybe_resume",
     "note_settle",
+    "stamped_settle",
     "wait_with_gates",
+    "PAGE_CHECK_INTERVAL_SEC",
+    "PageMonitor",
+    "SettleGuard",
+    "start_page_monitor",
+    "stop_page_monitor",
 ]

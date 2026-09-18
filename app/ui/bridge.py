@@ -2405,7 +2405,20 @@ class Bridge(QObject):
             return json.dumps({"ok": False, "error": str(e)})
 
     async def _settle_captcha_at(self, ctrl, tab_id, correlation_id, source):
-        """Gate on visible, then auto-solve or wait; True when settled, raise on stop."""
+        """Gate on visible, then auto-solve or wait; True when settled, raise on stop.
+
+        Guarded per ctrl: the boundary checks, the wait-loop settler and the
+        per-page monitor all funnel here — one encounter is handled once."""
+        from app.services.captcha.monitor import SettleGuard
+        guard = getattr(ctrl, "_settle_guard", None)
+        if guard is None:
+            guard = ctrl._settle_guard = SettleGuard()
+        if guard.busy:
+            return False
+        async with guard:
+            return await self._settle_captcha_locked(ctrl, tab_id, correlation_id, source)
+
+    async def _settle_captcha_locked(self, ctrl, tab_id, correlation_id, source):
         try:
             if not await ctrl.is_security_dialog_visible():
                 return False
@@ -2652,13 +2665,20 @@ class Bridge(QObject):
                 # DURING the wait is detected and settled within ~2 s instead of
                 # staying invisible for the whole generation timeout. Settle
                 # routes through the same choke point as every other site.
-                from app.services.captcha.recovery import InlineWaitGates, wait_with_gates
+                from app.services.captcha.monitor import start_page_monitor, stop_page_monitor
+                from app.services.captcha.recovery import InlineWaitGates, stamped_settle, wait_with_gates
                 wait_gates = InlineWaitGates(
                     prompt=final_prompt or "",
                     image_path=str(getattr(img, "absolute_path", "") or ""),
                     cancelled=lambda: self._run_stop_requested(primary_tab_id),
                     report=lambda m, l="info": self._log(f"[{correlation_id}] {m}", l),
                     settle=lambda: self._settle_captcha_at(ctrl, primary_tab_id, correlation_id, "gen-wait"))
+                # Passive per-page recheck (the watcher principle, 2026-09-18):
+                # every ~500 ms this page is probed for a captcha; on detection
+                # the solver provider is called via the same guarded settle.
+                stop_page_monitor(ctrl)
+                start_page_monitor(ctrl, stamped_settle(wait_gates, ctrl),
+                                   report=lambda m, l="info": self._log(f"[{correlation_id}] {m}", l))
 
                 self._log(f"[{correlation_id}] Starting {img.relative_path} with URL {url_row.url if url_row else 'N/A'}", "info")
                 try:
@@ -3709,10 +3729,12 @@ class Bridge(QObject):
                 self._save_arena()
                 # Post-generation reset + cooldown (single-page)
                 await self._finish_primary_tab(ctrl, primary_tab_id)
+                await stop_page_monitor(ctrl)
                 if self._cancel_requested:
                     break
                 await asyncio.sleep(1)
 
+            await stop_page_monitor(ctrl)
             if self._cancel_requested:
                 self._log("🏁 Batch cancelled by user", "warn")
             else:
@@ -3721,6 +3743,10 @@ class Bridge(QObject):
             self._emit_arena_state()
 
         except asyncio.CancelledError:
+            try:
+                await stop_page_monitor(ctrl)
+            except Exception:
+                pass
             self._log("🏁 Batch cancelled", "warn")
             self._run_state = "idle"
             try:
@@ -3736,6 +3762,10 @@ class Bridge(QObject):
                 self._log(f"Batch runner crashed: {e}", "error")
             import traceback
             traceback.print_exc()
+            try:
+                await stop_page_monitor(ctrl)
+            except Exception:
+                pass
             self._run_state = "idle"
             self._emit_arena_state()
 

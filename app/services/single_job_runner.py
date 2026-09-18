@@ -76,13 +76,28 @@ def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
 
 
 async def check_security(ctx: JobCtx) -> bool:
-    """Captcha gate: auto-solve (solver provider, opt-in) else wait for user (RULE 20)."""
+    """Captcha gate: auto-solve (solver provider, opt-in) else wait for user (RULE 20).
+
+    Guarded per ctrl — boundary checks, the wait settler and the per-page
+    monitor all route here; one encounter is handled once (SettleGuard)."""
+    from app.services.captcha.monitor import SettleGuard
+    guard = getattr(ctx.ctrl, "_settle_guard", None)
+    if guard is None:
+        guard = ctx.ctrl._settle_guard = SettleGuard()
+    if guard.busy:
+        return False
     try:
         visible = await ctx.ctrl.is_security_dialog_visible()
     except Exception:
         visible = False
     if not visible:
         return False
+    async with guard:
+        return await _handle_security_dialog(ctx)
+
+
+async def _handle_security_dialog(ctx: JobCtx) -> bool:
+    """The visible-dialog path: run the ONE captcha choke point."""
     from app.services.captcha import CaptchaCtx, handle_captcha
 
     def log(msg, level="info"):

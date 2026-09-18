@@ -384,24 +384,40 @@ def note_captcha_event(pool, tab_id, bridge, source="job") -> int:
     return count
 
 
+CLEAR_CONFIRM_PROBES = 2      # consecutive clear probes before "cleared" (flicker guard)
+MAX_CLEAR_PROBE_ERRORS = 10   # persistent dead probes → fail open (page gone)
+
+
 async def wait_captcha_cleared(ctrl, stop, timeout_sec, log) -> bool:
-    """Poll until the dialog clears; False only on stop (never gives up)."""
+    """Poll until the dialog STAYS clear; False only on stop (never gives up).
+
+    Hardened 2026-09-18 (flicker/glitch guard, the solver's watcher principle):
+    cleared means CLEAR_CONFIRM_PROBES consecutive not-visible probes; probe
+    errors never count as clear and fail open only after a full error burst.
+    """
     start = time.monotonic()
     warned = 0.0
-    while True:
+    clear_streak = 0
+    errors = 0
+    while not stop():
         try:
             visible = await ctrl.is_security_dialog_visible()
+            errors = 0
         except Exception:
-            return True
-        if not visible:
-            return True
-        if stop():
-            return False
+            errors += 1
+            if errors >= MAX_CLEAR_PROBE_ERRORS:
+                return True  # dead page/CDP must not hang the job
+            clear_streak = 0
+        else:
+            clear_streak = 0 if visible else clear_streak + 1
+            if clear_streak >= CLEAR_CONFIRM_PROBES:
+                return True
         now = time.monotonic()
         if now - start > timeout_sec and now - warned >= 5:
-            warned = now
-            log(f"\u23f0 Captcha wait {int(now - start)}s/{timeout_sec}s — still waiting", "error")
+            warned = now  # one long-wait line per ~5 s; the wait itself never gives up
+            log(f"⏰ Captcha wait {int(now - start)}s/{timeout_sec}s — still waiting", "error")
         await asyncio.sleep(_POLL_SEC)
+    return False
 
 
 def reset_cooldown(pool, tab_id) -> bool:

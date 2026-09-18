@@ -31,8 +31,11 @@ HEARTBEAT_SEC = 30.0  # processing polls: log a still-waiting line this often
 MAX_TRANSIENT_POLL_ERRORS = 3  # tolerate short provider/HTTP response glitches
 MAX_SOLVE_ATTEMPTS = 2  # RULE 20: hard cap on paid provider tasks per encounter
 DIALOG_CHECK_EVERY_POLLS = 3  # H3: mid-poll dialog liveness probe cadence
-RETRYABLE_STALE_REASONS = (  # H1: identity drift is a freshness problem (RC-1)
-    "page_identity_changed", "challenge_identity_changed", "sitekey_changed")
+DIALOG_GONE_CONFIRM_CHECKS = 2  # confirmed absences before aborting a paid task
+RETRYABLE_STALE_REASONS = (  # H1: identity drift / closed-window rotation is a
+    # freshness problem (RC-1) — a live dialog is verified before re-spending
+    "page_identity_changed", "challenge_identity_changed", "sitekey_changed",
+    "dialog_gone_before_token_injection")
 
 
 @dataclass
@@ -52,6 +55,7 @@ class SolvePlan:
     err_base: Optional[str] = None  # error-scan corpus at solve start (None = not taken)
     err_seen: bool = False  # a mid-solve page error was already logged
     polls: int = 0  # provider poll rounds (report retry count)
+    dialog_gone_streak: int = 0  # consecutive confirmed dialog absences (H3)
     attempts: int = 0  # paid provider tasks used for this encounter (H1)
     token_fp: str = ""  # token fingerprint (shape only)
     dialog_at_token: str = ""  # visible | gone | "" (no token yet)
@@ -248,17 +252,54 @@ async def _stale_reason(plan: SolvePlan) -> str:
 
 
 async def _dialog_visible(plan: SolvePlan) -> bool:
-    """H2/H3: is the challenge dialog still on screen (fail closed on error)."""
+    """H2/H3 pre-checks: is the dialog on screen (fail closed — False is the
+    SAFE reading before spending/retiring a task)."""
     try:
         return bool(await plan.ctrl.is_security_dialog_visible())
     except Exception:
         return False
 
 
+async def _dialog_state(plan: SolvePlan) -> Optional[bool]:
+    """Tri-state mid-poll probe: True/False, None on probe error.
+
+    The watcher principle: one bad probe is 'unknown', never 'gone' — an
+    error must not abort a paid in-flight task."""
+    try:
+        return bool(await plan.ctrl.is_security_dialog_visible())
+    except Exception:
+        return None
+
+
+async def _dialog_liveness(plan: SolvePlan) -> bool:
+    """H3 hardened: keep polling unless the dialog stays confirmed-gone.
+
+    Checks every DIALOG_CHECK_EVERY_POLLS-th poll, then every poll once a
+    streak starts. DIALOG_GONE_CONFIRM_CHECKS consecutive absences (a real
+    close/manual solve) abort; a flicker or a probe error keeps the task."""
+    if plan.polls % DIALOG_CHECK_EVERY_POLLS and not plan.dialog_gone_streak:
+        return True  # not a liveness tick
+    state = await _dialog_state(plan)
+    if state is not False:
+        if plan.dialog_gone_streak:
+            plan.logger(f"🤖 {plan.spec.title}: dialog back — continuing the same task", "info")
+        plan.dialog_gone_streak = 0
+        return True
+    plan.dialog_gone_streak += 1
+    if plan.dialog_gone_streak < DIALOG_GONE_CONFIRM_CHECKS:
+        plan.logger(f"🤖 {plan.spec.title}: dialog not visible mid-poll — confirming "
+                    f"before abort ({plan.dialog_gone_streak}/{DIALOG_GONE_CONFIRM_CHECKS})", "warn")
+        return True
+    return False
+
+
 def _retryable(outcome: SolveOutcome, plan: SolvePlan) -> bool:
-    """H1: only identity drift / a rejected token justify a paid re-attempt."""
+    """H1: identity drift, a rejected token, or a closed-window rotation justify
+    a paid re-attempt (_retry_with still verifies a live dialog first)."""
     if outcome.status == "token_stale":
         return plan.stale_reason in RETRYABLE_STALE_REASONS
+    if outcome.status == "auto_failed" and outcome.reason.startswith("dialog_gone_during_poll"):
+        return True
     return (outcome.status == "auto_failed"
             and outcome.reason.startswith("not_accepted"))
 
@@ -377,7 +418,7 @@ async def _poll_task(plan: SolvePlan, task_id: str,
         if time.monotonic() - start > timeout_sec:
             return _poll_fail(plan, "poll_timeout")
         last_beat = _heartbeat(plan.logger, plan, task_id, last_beat)
-        if plan.polls % DIALOG_CHECK_EVERY_POLLS == 0 and not await _dialog_visible(plan):
+        if not await _dialog_liveness(plan):
             return _poll_fail(plan, "dialog_gone_during_poll")
         await asyncio.sleep(plan.spec.poll_interval_sec)
 
@@ -506,6 +547,7 @@ class CaptchaSolver:
         await _note_preinject_state(plan, self._log)
         if plan.dialog_at_token == "gone":
             await _delete_task(plan.client, task_id, self._stats, self._log)
+            plan.stale_reason = "dialog_gone_before_token_injection"  # rotation: retryable
             return _failed("token_stale", "dialog_gone_before_token_injection", plan)
         res = await _inject(plan.ctrl, token, plan.signal.sitekey, self._log)
         if not res.get("ok"):

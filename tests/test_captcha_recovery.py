@@ -447,3 +447,28 @@ async def test_disarm_removes_everything_and_never_raises():
     assert not hasattr(ctrl, "security_settler")
     disarm_wait_gates(ctrl)  # idempotent
     assert getattr(ctrl, "_resume_policy", None) is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stamped_settle_marks_policy_and_passes_result_through():
+    ctrl = FakeCtrl()
+    g, settle_calls = gates()
+    settled_fn = recovery_mod.stamped_settle(g, ctrl)
+    from app.services.captcha.recovery import arm_resume
+    policy = arm_resume(ctrl, PROMPT)
+    assert policy.settled_at is None
+    assert await settled_fn() is True           # result passes through
+    assert settle_calls == [1]
+    assert policy.settled_at is not None        # revival stamped
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stamped_settle_no_stamp_when_not_settled():
+    ctrl = FakeCtrl()
+    g, _ = gates(settled=False)
+    from app.services.captcha.recovery import arm_resume
+    policy = arm_resume(ctrl, PROMPT)
+    assert await recovery_mod.stamped_settle(g, ctrl)() is False
+    assert policy.settled_at is None

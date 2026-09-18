@@ -193,7 +193,17 @@ async def _run_image_job(ctx: PageJobCtx):
         pass
     baseline = await capture_baseline(ctx.ctrl)
     job_ctx = JobCtx(bridge=ctx.bridge, ctrl=ctx.ctrl, client=ctx.client, tab_id=ctx.tab_id, img=ctx.img, urls=ctx.urls, job_id=job_id, corr_id=corr_id, final_prompt=final_prompt, baseline=baseline)
-    failed, err, _, _ = await run_blocks_for_image(job_ctx)
+    # Passive per-page recheck (the watcher principle, 2026-09-18): every
+    # ~500 ms THIS page is probed for a captcha (individual per page); on
+    # detection the solver provider is called via the runner's guarded settle.
+    from app.services.captcha.monitor import start_page_monitor, stop_page_monitor
+    monitor = start_page_monitor(
+        ctx.ctrl, lambda: _settle_and_note(job_ctx),
+        report=lambda m, l="info": ctx.bridge._log(f"[{corr_id}] [Page {ctx.tab_id[:6]}] {m}", l))
+    try:
+        failed, err, _, _ = await run_blocks_for_image(job_ctx)
+    finally:
+        await stop_page_monitor(monitor)
     return url_row, corr_id, job_id, failed, err
 
 

@@ -293,3 +293,20 @@ async def test_bridge_gate_settle_false_when_no_dialog():
 
     gates, _ = build_loop_gates(bridge, ClearCtrl(), None)
     assert await gates.settle() is False           # no dialog → no revival stamp
+
+
+@pytest.mark.unit
+def test_bridge_and_dispatcher_arm_the_page_monitor():
+    """Wiring tripwire: the run loops start/stop the per-page monitor (RULE 8
+    coverage of the wiring itself; behaviour lives in test_captcha_monitor)."""
+    from pathlib import Path
+    bridge_src = Path(__file__).parents[1].joinpath("app", "ui", "bridge.py").read_text(encoding="utf-8")
+    assert "start_page_monitor(ctrl, stamped_settle(wait_gates, ctrl)" in bridge_src
+    assert bridge_src.count("await stop_page_monitor(ctrl)") >= 3  # normal + break + handlers
+    assert "_settle_guard" in bridge_src  # boundary settles are guarded
+
+    dispatcher_src = Path(__file__).parents[1].joinpath("app", "services", "multi_page_dispatcher.py").read_text(encoding="utf-8")
+    assert "start_page_monitor(" in dispatcher_src and "stop_page_monitor(monitor)" in dispatcher_src
+
+    runner_src = Path(__file__).parents[1].joinpath("app", "services", "single_job_runner.py").read_text(encoding="utf-8")
+    assert "_settle_guard" in runner_src  # runner settle is guarded too

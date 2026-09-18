@@ -697,7 +697,12 @@ def test_note_captcha_event_raising_emit_still_records():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_wait_captcha_cleared_ctrl_error_means_clear():
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_persistent_errors_fail_open(monkeypatch):
+    """Dead probes no longer mean instant clear — fail open only after a burst."""
+    monkeypatch.setattr(svc, "_POLL_SEC", 0)
+
     async def boom():
         raise RuntimeError("cdp gone")
 
@@ -705,7 +710,54 @@ async def test_wait_captcha_cleared_ctrl_error_means_clear():
     ok = await svc.wait_captcha_cleared(
         ctrl, stop=lambda: None, timeout_sec=300,
         log=lambda m, l="info": None)
+    assert ok is True  # dead page/CDP must not hang the job
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_brief_errors_keep_waiting(monkeypatch):
+    """A short probe glitch is NOT 'cleared' — the wait continues (flicker guard)."""
+    monkeypatch.setattr(svc, "_POLL_SEC", 0)
+    state = {"calls": 0}
+
+    async def flaky():
+        state["calls"] += 1
+        if state["calls"] <= 3:  # 3 errors (< MAX_CLEAR_PROBE_ERRORS)...
+            raise RuntimeError("hiccup")
+        return False  # ...then genuinely clear
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=flaky)
+    ok = await svc.wait_captcha_cleared(
+        ctrl, stop=lambda: None, timeout_sec=300,
+        log=lambda m, l="info": None)
     assert ok is True
+    # 3 tolerated errors + CLEAR_CONFIRM_PROBES clear probes (old code: True at probe 1)
+    assert state["calls"] == 3 + svc.CLEAR_CONFIRM_PROBES
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_captcha_cleared_single_flicker_is_not_solved(monkeypatch):
+    """One not-visible probe between visible ones must not end the wait."""
+    monkeypatch.setattr(svc, "_POLL_SEC", 0)
+    seq = [True, False, True, True, False]  # flicker at probe 2
+
+    async def fake_visible():
+        return seq.pop(0) if seq else False
+
+    ctrl = SimpleNamespace(is_security_dialog_visible=fake_visible)
+    calls = {"n": 0}
+
+    async def counting():
+        calls["n"] += 1
+        return await fake_visible()
+
+    ok = await svc.wait_captcha_cleared(
+        SimpleNamespace(is_security_dialog_visible=counting),
+        stop=lambda: None, timeout_sec=300,
+        log=lambda m, l="info": None)
+    assert ok is True
+    assert calls["n"] >= 5  # the wait survived the flicker (old code: 2 probes)
 
 
 @pytest.mark.unit

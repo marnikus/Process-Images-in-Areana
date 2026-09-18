@@ -784,11 +784,12 @@ async def test_dialog_gone_during_poll_aborts_and_frees_credit(monkeypatch, isol
     """H3: every 3rd poll re-checks the dialog; gone → abort + delete task."""
     client = FakeClient("K")  # processing forever
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = FakeCtrl(visible_seq=[True, False])  # start up; 3rd poll: gone
+    # start up; poll3 False (streak 1 = confirming); poll4 False (streak 2 = confirmed)
+    ctrl = FakeCtrl(visible_seq=[True, False, False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "dialog_gone_during_poll" in outcome.reason
-    assert outcome.polls == 3  # poll count stays small
+    assert outcome.polls == 4  # confirmation costs one extra poll, not the task
     assert len(client.created) == 1 and len(client.deleted) == 1
     assert any("dialog_gone_during_poll" in m for m, _ in logs)
 
@@ -943,3 +944,125 @@ async def test_capmonster_failure_never_logs_credit_freed(monkeypatch, isolated_
     assert outcome.status == "auto_failed"  # poll timeout path
     assert client.deleted == []
     assert not any("credit freed" in m for m, _ in logs)
+
+
+# ---- poll liveness hardening (fix 2026-09-18: provider never delivers) ----
+#
+# Regression: one dialog probe glitch / one closed window at poll 21 aborted a
+# paid in-flight task (dialog_gone_during_poll) and the token never arrived.
+# Now: tri-state probe (errors never count), 2-check confirmation before abort,
+# and rotation retries when the dialog returns.
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_single_dialog_absence_keeps_polling(monkeypatch, isolated_config_dir):
+    """One not-visible probe must NOT abort the task (confirmation window)."""
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "processing"},   # poll 1
+        {"errorId": 0, "status": "processing"},   # poll 2
+        {"errorId": 0, "status": "processing"},   # poll 3 — liveness: False (streak 1)
+        ready,                                    # poll 4 — liveness check (streak): dialog back
+    ])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    # pre-check True; poll3 False; poll4 True; pre-inject True; verify: True, False
+    ctrl = FakeCtrl(visible_seq=[True, False, True, True, True, False], inject_results=[True])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert len(client.created) == 1               # same task survived the flicker
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_confirmed_dialog_absence_aborts(monkeypatch, isolated_config_dir):
+    client = FakeClient("K", results=[{"errorId": 0, "status": "processing"}])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
+    # pre-check True; poll3 False (streak 1); poll4 False (streak 2 → abort)
+    ctrl = FakeCtrl(visible_seq=[True, False, False])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"
+    assert "dialog_gone_during_poll" in outcome.reason
+    assert any("confirming" in m for m, _ in logs)  # the confirmation was logged
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_probe_error_never_aborts(monkeypatch, isolated_config_dir):
+    """Tri-state: a raising probe is 'unknown' — keep polling (watcher principle)."""
+
+    class FlakyCtrl(FakeCtrl):
+        def __init__(self, visible_seq):
+            super().__init__(visible_seq=visible_seq)
+            self._probe_calls = 0
+
+        async def is_security_dialog_visible(self):
+            self._probe_calls += 1
+            if self._probe_calls in (2, 3):       # the two liveness probes raise
+                raise RuntimeError("cdp evaluate failed")
+            return await super().is_security_dialog_visible()
+
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "processing"},
+        {"errorId": 0, "status": "processing"},
+        {"errorId": 0, "status": "processing"},
+        ready,
+    ])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    ctrl = FlakyCtrl([True, True, True, False])   # pre-check; pre-inject; verify ×2
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"             # errors never counted as "gone"
+    assert len(client.created) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_rotation_after_confirmed_absence_retries_and_solves(monkeypatch, isolated_config_dir):
+    """Dialog really closed then the site rotated a fresh one → fresh task solves."""
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[
+        {"errorId": 0, "status": "processing"},   # task 1, poll 1
+        {"errorId": 0, "status": "processing"},   # poll 2
+        {"errorId": 0, "status": "processing"},   # poll 3 — liveness False (streak 1)
+        {"errorId": 0, "status": "processing"},   # poll 4 — liveness False (streak 2 → abort)
+        ready,                                    # task 2 (retry) — ready at poll 1
+    ])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
+    # t1: pre-check; p3 False; p4 False → abort; retry: dialog True;
+    # t2: pre-check True; ready → pre-inject True; verify gone False
+    ctrl = FakeCtrl(visible_seq=[True, False, False, True, True, True, False], inject_results=[True])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert len(client.created) == 2               # fresh task after rotation
+    assert any("retrying with fresh task" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_token_during_closed_window_retries_when_dialog_returns(monkeypatch, isolated_config_dir):
+    """Token arrived while the dialog was closed → stale; dialog back → retry."""
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready, ready])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    # task1: pre True; poll1 ready; pre-inject False (closed window) → token_stale;
+    # retry: dialog True; task2: pre True; ready; pre-inject True; verify gone False
+    ctrl = FakeCtrl(visible_seq=[True, False, True, True, True, True, False], inject_results=[True, True])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"
+    assert len(client.created) == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_token_during_closed_window_manual_when_dialog_stays_gone(monkeypatch, isolated_config_dir):
+    """User solved manually while the provider polled → no retry, manual fallback."""
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    # pre True; poll1 ready; pre-inject False (user solved) → stale; retry decision: dialog False → no retry
+    ctrl = FakeCtrl(visible_seq=[True, False, False])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "token_stale"
+    assert "dialog_gone_before_token_injection" in outcome.reason
+    assert len(client.created) == 1               # no second paid task

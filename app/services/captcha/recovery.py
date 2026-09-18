@@ -115,6 +115,19 @@ def arm_wait_gates(ctrl: Any, gates: InlineWaitGates) -> bool:
         return False
 
 
+def stamped_settle(gates: "InlineWaitGates", ctrl: Any) -> Callable[[], Any]:
+    """Settle + stamp the revival policy on success (safe no-op when unarmed).
+
+    Used by the wait-loop settler AND the per-page monitor so a captcha
+    handled by either still revives a generation the dialog block killed."""
+    async def _run() -> bool:
+        settled = await gates.settle() if gates.settle is not None else True
+        if settled:
+            note_settle(ctrl)
+        return settled
+    return _run
+
+
 def disarm_wait_gates(ctrl: Any) -> None:
     """Remove the settler + revival at wait end; never raises."""
     clear_resume(ctrl)
