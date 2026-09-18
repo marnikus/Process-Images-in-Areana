@@ -82,7 +82,15 @@ const WindowPresetsActions = {
     if (!bridge || !bridge.load_window_preset) { callback(local || null); return; }
     bridge.load_window_preset(name, (raw) => {
       if (!raw || raw === 'null') { callback(null); return; }
-      try { callback(typeof raw === 'string' ? JSON.parse(raw) : raw); }
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (parsed && parsed.ok === false) {
+          this._message('Preset “' + name + '” could not be loaded.' + (parsed.error ? ' ' + parsed.error : ''), 'error');
+          callback(null);
+          return;
+        }
+        callback(parsed);
+      }
       catch (e) { this._message('Preset “' + name + '” is not valid JSON.', 'error'); callback(null); }
     });
   },
