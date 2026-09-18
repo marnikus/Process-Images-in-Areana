@@ -130,7 +130,7 @@ async def test_success_path_records_solved(monkeypatch, isolated_config_dir):
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
-    ctrl = FakeCtrl(visible_seq=[True, True, False])  # pre-inject up; verify: up, then gone
+    ctrl = FakeCtrl(visible_seq=[True, True, True, False])  # start up; pre-inject up; verify: up, then gone
     outcome = await solver.solve(ctrl, "tabA", signal(), lambda: False)
     assert outcome.status == "solved"
     assert outcome.method == "auto"
@@ -153,7 +153,7 @@ async def test_v2_kind_maps_to_v2_task_type(monkeypatch, isolated_config_dir):
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = FakeCtrl(visible_seq=[True, False])  # verify loop sees it gone on first check
+    ctrl = FakeCtrl(visible_seq=[True, True, False])  # start up; verify loop sees it gone on first check
     outcome = await solver.solve(ctrl, "t", signal(kind="recaptcha_v2", sitekey="6Lv2key"),
                                  lambda: False)
     assert outcome.status == "solved"
@@ -200,7 +200,7 @@ async def test_dialog_close_is_acceptance_not_post_solve_sitekey_staleness(monke
 
     class BadgeAfterCloseCtrl(FakeCtrl):
         def __init__(self):
-            super().__init__(visible_seq=[True, False])
+            super().__init__(visible_seq=[True, True, False])
             self.detects = 0
 
         async def _evaluate(self, js):
@@ -229,7 +229,7 @@ async def test_transient_network_poll_error_retries_same_task(monkeypatch, isola
     ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
     client = FakeClient("K", results=[ApiError("network", message="empty response"), ready])
     solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=1)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[True, False]), "tab-net", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "tab-net", signal(), lambda: False)
 
     assert outcome.status == "solved"
     assert len(client.created) == 1
@@ -246,7 +246,7 @@ async def test_repeated_network_poll_errors_eventually_fail(monkeypatch, isolate
     errors = [ApiError("network", message="empty response") for _ in range(3)]
     client = FakeClient("K", results=errors)
     solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=1)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "tab-net", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True]), "tab-net", signal(), lambda: False)
 
     assert outcome.status == "auto_failed"
     assert "network" in outcome.reason
@@ -261,7 +261,7 @@ async def test_api_error_falls_back_and_deletes_task(monkeypatch, isolated_confi
     from app.services.captcha.api_client import ApiError
     client = FakeClient("K", exc=ApiError("no_credit", error_id=3))
     solver, stats, _, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = FakeCtrl(visible_seq=[])
+    ctrl = FakeCtrl(visible_seq=[True])
     outcome = await solver.solve(ctrl, "tabB", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "no_credit" in outcome.reason
@@ -275,7 +275,7 @@ async def test_api_error_falls_back_and_deletes_task(monkeypatch, isolated_confi
 async def test_stop_mid_poll_returns_failed_and_deletes(monkeypatch, isolated_config_dir):
     client = FakeClient("K", results=[{"errorId": 0, "status": "processing"}])
     solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = FakeCtrl(visible_seq=[])
+    ctrl = FakeCtrl(visible_seq=[True])
 
     def stop():
         return True
@@ -285,6 +285,7 @@ async def test_stop_mid_poll_returns_failed_and_deletes(monkeypatch, isolated_co
     assert "stopped" in outcome.reason
     assert client.deleted  # credit freed on stop
     assert stats.to_dict()["auto_failed"] == 0  # stop is not a solve failure
+    assert outcome.attempts == 1  # stop is never retried (H1)
     assert any("stopped" in m for m, _ in logs)
 
 
@@ -293,7 +294,7 @@ async def test_stop_mid_poll_returns_failed_and_deletes(monkeypatch, isolated_co
 async def test_timeout_returns_failed(monkeypatch, isolated_config_dir):
     client = FakeClient("K", results=[{"errorId": 0, "status": "processing"}])
     solver, stats, _, _ = make_env(monkeypatch, isolated_config_dir, client, step=31)
-    ctrl = FakeCtrl(visible_seq=[])
+    ctrl = FakeCtrl(visible_seq=[True])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert stats.last_error == "poll_timeout"
@@ -307,7 +308,7 @@ async def test_inject_failure_falls_back(monkeypatch, isolated_config_dir):
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, stats, _, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = FakeCtrl(visible_seq=[True], inject_results=[False])
+    ctrl = FakeCtrl(visible_seq=[True, True], inject_results=[False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "inject" in outcome.reason
@@ -322,7 +323,7 @@ async def test_token_not_accepted_falls_back(monkeypatch, isolated_config_dir):
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, stats, _, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
-    ctrl = FakeCtrl(visible_seq=[True, True])  # pre-inject up; dialog never closes after
+    ctrl = FakeCtrl(visible_seq=[True, True, True])  # start up; pre-inject up; dialog never closes after
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "not_accepted" in outcome.reason
@@ -348,7 +349,7 @@ async def test_token_not_accepted_callback_called(monkeypatch, isolated_config_d
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
-    ctrl = CbCtrl(visible_seq=[True, True])
+    ctrl = CbCtrl(visible_seq=[True, True, True])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "callback called via anchor-cb:abc123" in outcome.reason
@@ -373,7 +374,7 @@ async def test_token_not_accepted_data_callback_source(monkeypatch, isolated_con
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=21)
-    ctrl = DcCtrl(visible_seq=[True, True])
+    ctrl = DcCtrl(visible_seq=[True, True, True])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "callback called via data-callback:onArenaSolve" in outcome.reason
@@ -388,7 +389,7 @@ async def test_inject_probe_receives_sitekey(monkeypatch, isolated_config_dir):
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = FakeCtrl(visible_seq=[True, False])
+    ctrl = FakeCtrl(visible_seq=[True, True, False])
     outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
     assert outcome.status == "solved"
     inject_js = [p for p in ctrl.probes if "(token, sitekey)" in p]
@@ -404,7 +405,7 @@ async def test_inflight_dedup_same_tab_single_task(monkeypatch, isolated_config_
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
-    ctrl = FakeCtrl(visible_seq=[True, True, False])
+    ctrl = FakeCtrl(visible_seq=[True, True, True, False])
     a, b = await asyncio.gather(
         solver.solve(ctrl, "same-tab", signal(), lambda: False),
         solver.solve(ctrl, "same-tab", signal(), lambda: False),
@@ -421,8 +422,8 @@ async def test_different_tabs_solve_in_parallel(monkeypatch, isolated_config_dir
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "T2"}},
     ])
     solver, stats, _, _ = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl_a = FakeCtrl(visible_seq=[True, False])
-    ctrl_b = FakeCtrl(visible_seq=[True, False])
+    ctrl_a = FakeCtrl(visible_seq=[True, True, False])
+    ctrl_b = FakeCtrl(visible_seq=[True, True, False])
     a, b = await asyncio.gather(
         solver.solve(ctrl_a, "tabA", signal(), lambda: False),
         solver.solve(ctrl_b, "tabB", signal(), lambda: False),
@@ -451,7 +452,7 @@ async def test_payload_exact_format_and_isinvisible_only_enterprise(monkeypatch,
     ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
     client = FakeClient("K", results=[ready, ready])
     solver, _, _, client = make_env(monkeypatch, isolated_config_dir, client)
-    ctrl = FakeCtrl(visible_seq=[True, False, True, False], inject_results=[True, True])
+    ctrl = FakeCtrl(visible_seq=[True, True, False, True, True, False], inject_results=[True, True])
 
     ent = await solver.solve(ctrl, "t-ent", signal(is_invisible=True), lambda: False)
     v2 = await solver.solve(ctrl, "t-v2", signal(kind="recaptcha_v2"), lambda: False)
@@ -480,7 +481,7 @@ async def test_submit_logs_task_id_and_token_evidence(monkeypatch, isolated_conf
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": token}},
     ])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[True, False]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "t", signal(), lambda: False)
     assert outcome.status == "solved"
     assert any("#101 submitted" in m for m, _ in logs)
     assert any("token received in " in m and "len=512" in m for m, _ in logs)
@@ -498,7 +499,7 @@ async def test_heartbeat_on_slow_poll(monkeypatch, isolated_config_dir):
     ])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=20)
     solver._keys.save(CaptchaSettings(enabled=True, api_key="K" * 16, solve_timeout_sec=300))
-    outcome = await solver.solve(FakeCtrl(visible_seq=[True, False]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "t", signal(), lambda: False)
     assert outcome.status == "solved"
     assert any("still processing" in m and "elapsed" in m for m, _ in logs)
 
@@ -509,10 +510,10 @@ async def test_preinject_states_logged(monkeypatch, isolated_config_dir):
     ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
     client = FakeClient("K", results=[ready, ready])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
-    ctrl = FakeCtrl(visible_seq=[True, True, False], inject_results=[True, True])
+    ctrl = FakeCtrl(visible_seq=[True, True, True, False], inject_results=[True, True])
     assert (await solver.solve(ctrl, "t1", signal(), lambda: False)).status == "solved"
     assert any("dialog still visible — injecting" in m for m, _ in logs)
-    ctrl2 = FakeCtrl(visible_seq=[False])
+    ctrl2 = FakeCtrl(visible_seq=[True, False])  # up at start, gone by pre-inject
     assert (await solver.solve(ctrl2, "t2", signal(), lambda: False)).status == "token_stale"
     assert any("already gone" in m for m, _ in logs)
 
@@ -525,7 +526,7 @@ async def test_failed_status_surfaces_provider_detail(monkeypatch, isolated_conf
          "errorDescription": "Task property is missing"},
     ])
     solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True]), "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert outcome.reason.startswith("task_failed")  # prefix stable
     assert stats.last_error == "ERROR_TASK_ABSENT"
@@ -538,7 +539,7 @@ async def test_failed_status_surfaces_provider_detail(monkeypatch, isolated_conf
 async def test_failed_status_without_detail_keeps_bare_reason(monkeypatch, isolated_config_dir):
     client = FakeClient("K", results=[{"errorId": 0, "status": "failed"}])
     solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True]), "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert outcome.reason.startswith("task_failed")
     assert stats.last_error == "task_failed"
@@ -551,7 +552,7 @@ async def test_api_error_surfaces_provider_code(monkeypatch, isolated_config_dir
     from app.services.captcha.api_client import ApiError
     client = FakeClient("K", exc=ApiError("task_error", message="ERROR_ZERO_BALANCE"))
     solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True]), "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert "task_error" in outcome.reason
     assert stats.last_error == "ERROR_ZERO_BALANCE"
@@ -567,7 +568,7 @@ async def test_solved_line_splits_token_time(monkeypatch, isolated_config_dir):
         {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}},
     ])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
-    ctrl = FakeCtrl(visible_seq=[True, True, False])
+    ctrl = FakeCtrl(visible_seq=[True, True, True, False])
     assert (await solver.solve(ctrl, "t", signal(), lambda: False)).status == "solved"
     assert any(re.search(r"in \d+s \(token \d+s, token accepted\)", m) for m, _ in logs)
 
@@ -577,7 +578,7 @@ async def test_solved_line_splits_token_time(monkeypatch, isolated_config_dir):
 async def test_abandoned_task_deletion_logged(monkeypatch, isolated_config_dir):
     client = FakeClient("K", results=[{"errorId": 0, "status": "processing"}])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=31)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True]), "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert any("#101 deleted (credit freed)" in m for m, _ in logs)
 
@@ -601,8 +602,8 @@ async def test_submit_logs_isinvisible_flag(monkeypatch, isolated_config_dir):
     ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
     client = FakeClient("K", results=[ready, ready])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
-    await solver.solve(FakeCtrl(visible_seq=[True, False]), "t1", signal(is_invisible=True), lambda: False)
-    await solver.solve(FakeCtrl(visible_seq=[True, False]), "t2", signal(is_invisible=False), lambda: False)
+    await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "t1", signal(is_invisible=True), lambda: False)
+    await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "t2", signal(is_invisible=False), lambda: False)
     assert any("isInvisible=True" in m for m, _ in logs)
     assert any("isInvisible=False" in m for m, _ in logs)
 
@@ -631,7 +632,7 @@ async def test_preexisting_page_error_stays_silent(monkeypatch, isolated_config_
     client = FakeClient("K", results=[processing, processing, ready])
     solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
     banner = "Something went wrong while generating the response. Trace ID: 1"
-    ctrl = WatchCtrl(corpora=[banner, banner], visible_seq=[True, False])
+    ctrl = WatchCtrl(corpora=[banner, banner], visible_seq=[True, True, False])
     assert (await solver.solve(ctrl, "t", signal(), lambda: False)).status == "solved"
     assert not any("appeared during solve" in m for m, _ in logs)  # stale at solve start
 
@@ -644,8 +645,9 @@ async def test_outcome_carries_report_lifecycle(monkeypatch, isolated_config_dir
     ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": token}}
     client = FakeClient("K", results=[processing, processing, ready])
     solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[True, True, False]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True, True, True, False]), "t", signal(), lambda: False)
     assert outcome.status == "solved"
+    assert outcome.attempts == 1
     assert outcome.polls == 3
     assert outcome.token_fp == "len=512 head=03AGdB25 tail=xQ12"
     assert outcome.token_sec > 0
@@ -659,7 +661,7 @@ async def test_outcome_carries_report_lifecycle(monkeypatch, isolated_config_dir
 async def test_failed_outcome_carries_attempt_evidence(monkeypatch, isolated_config_dir):
     client = FakeClient("K", results=[{"errorId": 0, "status": "processing"}])
     solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client, step=31)
-    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[True]), "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert outcome.polls >= 1  # retry count survives the failure
     assert outcome.token_fp == "" and outcome.dialog_at_token == ""
@@ -677,4 +679,159 @@ async def test_outcome_carries_mid_solve_page_error(monkeypatch, isolated_config
     assert outcome.status == "page_error"
     assert "Something went wrong" in outcome.page_error
     assert outcome.page_error_at_s >= 0.0
+    assert outcome.attempts == 1  # page errors are never retried (H1)
     assert client.deleted  # late token is never injected after page failure
+
+# --- H1–H3 hardening (design: docs/archive/2026-09-18-captcha-solve-hardening) ---
+
+
+class AlwaysUpCtrl(FakeCtrl):
+    """The dialog never closes — for the not_accepted retry budget."""
+
+    async def is_security_dialog_visible(self):
+        return True
+
+
+class RotatedChallengeCtrl(FakeCtrl):
+    """First detect sees a rotated challenge; later detects see the settled page."""
+
+    def __init__(self, visible_seq):
+        super().__init__(visible_seq)
+        self.detects = 0
+
+    async def _evaluate(self, js):
+        if "Security Verification" in js:
+            self.detects += 1
+            if self.detects == 1:
+                result = detect_result()
+                result["challengeIdentity"] = "rotated"
+                return json.dumps(result)
+        return await super()._evaluate(js)
+
+
+class SpinningChallengeCtrl(FakeCtrl):
+    """Every detect sees a new challenge identity — always stale."""
+
+    def __init__(self, visible_seq):
+        super().__init__(visible_seq)
+        self.detects = 0
+
+    async def _evaluate(self, js):
+        if "Security Verification" in js:
+            self.detects += 1
+            result = detect_result()
+            result["challengeIdentity"] = f"rotated-{self.detects}"
+            return json.dumps(result)
+        return await super()._evaluate(js)
+
+
+class NavigatedAfterCtrl(FakeCtrl):
+    """Baseline page at detect #1; every later detect reports a navigated page."""
+
+    def __init__(self, visible_seq):
+        super().__init__(visible_seq)
+        self.detects = 0
+
+    async def _evaluate(self, js):
+        if "Security Verification" in js:
+            self.detects += 1
+            result = detect_result()
+            result["pageIdentity"] = "page-after"  # the page rotated before the solver looked
+            return json.dumps(result)
+        return await super()._evaluate(js)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dialog_gone_before_task_never_charges(monkeypatch, isolated_config_dir):
+    """H2: challenge cleared before we pay — probe first, create nothing."""
+    client = FakeClient("K")
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"
+    assert "dialog_gone_before_task" in outcome.reason
+    assert client.created == [] and client.deleted == []
+    assert any("nothing to solve" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dialog_gone_during_poll_aborts_and_frees_credit(monkeypatch, isolated_config_dir):
+    """H3: every 3rd poll re-checks the dialog; gone → abort + delete task."""
+    client = FakeClient("K")  # processing forever
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
+    ctrl = FakeCtrl(visible_seq=[True, False])  # start up; 3rd poll: gone
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"
+    assert "dialog_gone_during_poll" in outcome.reason
+    assert outcome.polls == 3  # poll count stays small
+    assert len(client.created) == 1 and len(client.deleted) == 1
+    assert any("dialog_gone_during_poll" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stale_rotation_retries_with_fresh_task_and_solves(monkeypatch, isolated_config_dir):
+    """H1: challenge rotated under us → free the stale task, rebaseline, solve."""
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready, ready])
+    solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
+    sig = signal()
+    sig.challenge_identity = "original"
+    # start, retry decision, start, pre-inject, verify up, verify gone
+    ctrl = RotatedChallengeCtrl(visible_seq=[True, True, True, True, True, False])
+    outcome = await solver.solve(ctrl, "t", sig, lambda: False)
+    assert outcome.status == "solved"
+    assert outcome.attempts == 2
+    assert len(client.created) == 2 and len(client.deleted) == 1  # stale task freed
+    assert stats.to_dict()["auto_solved"] == 1  # single acceptance
+    assert any("retrying with fresh task" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_retry_budget_stops_at_two_paid_tasks(monkeypatch, isolated_config_dir):
+    """H1/RULE 20: at most two paid tasks per encounter, then token_stale stands."""
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready, ready])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    sig = signal()
+    sig.challenge_identity = "original"
+    ctrl = SpinningChallengeCtrl(visible_seq=[True, True, True])  # start, decision, start
+    outcome = await solver.solve(ctrl, "t", sig, lambda: False)
+    assert outcome.status == "token_stale"
+    assert outcome.attempts == 2
+    assert len(client.created) == 2 and len(client.deleted) == 2  # never bills a 3rd
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_retry_skipped_when_dialog_gone_at_decision(monkeypatch, isolated_config_dir):
+    """H1: page rotated away and the dialog is gone → no second paid task."""
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    sig = signal()
+    sig.page_identity = "page-before"
+    ctrl = NavigatedAfterCtrl(visible_seq=[True, False])  # start up; decision: gone
+    outcome = await solver.solve(ctrl, "t", sig, lambda: False)
+    assert outcome.status == "token_stale"
+    assert "page_identity_changed" in outcome.reason
+    assert outcome.attempts == 1
+    assert len(client.created) == 1 and len(client.deleted) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_not_accepted_retries_once_then_gives_up(monkeypatch, isolated_config_dir):
+    """H1: site never accepts the token → one fresh task, then stop paying."""
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready, ready])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=1)
+    ctrl = AlwaysUpCtrl(visible_seq=[], inject_results=[True, True])  # dialog never closes
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"
+    assert outcome.reason.startswith("not_accepted")
+    assert outcome.attempts == 2
+    assert len(client.created) == 2 and len(client.deleted) == 2
+    assert any("retrying with fresh task" in m for m, _ in logs)

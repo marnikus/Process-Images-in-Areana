@@ -100,6 +100,7 @@ class SolveOutcome:
     task_id: str = ""
     elapsed_sec: float = 0.0
     polls: int = 0
+    attempts: int = 1  # paid 2Captcha tasks used (H1: bounded at 2)
     token_sec: float = 0.0
     token_fp: str = ""
     dialog_at_token: str = ""

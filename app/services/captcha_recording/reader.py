@@ -63,5 +63,5 @@ class EvidenceReader:
         if not isinstance(value, dict):
             return {}
         html = str(value.get("html", ""))
-        return {"at_ms": value.get("at_ms", 0), "html": html[:20000],
+        return {"at": value.get("at", ""), "html": html[:20000],
                 "truncated_for_view": len(html) > 20000}

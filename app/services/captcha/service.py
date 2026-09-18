@@ -128,6 +128,7 @@ def _new_encounter(ctx: CaptchaCtx, signal: CaptchaSignal) -> Dict[str, Any]:
         "sitekey": signal.sitekey, "invisible": signal.is_invisible,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "detect_to_solve_s": 0.0, "task_type": "", "task_id": "", "polls": 0,
+        "attempts": 1,
         "poll_interval_s": POLL_INTERVAL_SEC, "token": None, "dialog_at_token": "",
         "inject": "", "page_error": None, "status": "", "reason": "", "method": "",
         "penalty_s": 0, "solve_total_s": 0.0, "_detected_mono": time.monotonic(),
@@ -145,6 +146,7 @@ def _finish_auto(rep: Dict[str, Any], outcome: SolveOutcome,
     rep["task_type"] = task_type
     rep["task_id"] = outcome.task_id
     rep["polls"] = outcome.polls
+    rep["attempts"] = outcome.attempts
     rep["token"] = ({"at_s": round(to_solve + outcome.token_sec, 1),
                      "fp": outcome.token_fp} if outcome.token_fp else None)
     rep["dialog_at_token"] = outcome.dialog_at_token
@@ -245,6 +247,14 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     return outcome
 
 
+async def _dialog_still_visible(ctx: CaptchaCtx) -> bool:
+    """H4: can a human still solve this challenge right now? (fail closed)."""
+    try:
+        return bool(await ctx.ctrl.is_security_dialog_visible())
+    except Exception:
+        return False
+
+
 async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
                            svc: Optional["CaptchaService"], rep: Dict[str, Any]) -> SolveOutcome:
     """Choose automatic or manual policy while recording stays orthogonal."""
@@ -254,7 +264,10 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
         if outcome.status == "solved":
             _record_penalty(ctx)
             return outcome
-        if outcome.status in ("page_error", "token_stale"):
+        if outcome.status == "page_error":
+            return outcome
+        if outcome.status == "token_stale" and not await _dialog_still_visible(ctx):
+            _log(ctx, "challenge dialog already cleared — token_stale stands, no manual wait", "info")
             return outcome
         return await _manual_wait(ctx, signal, f"auto-solve failed: {outcome.reason}", rep)
     if svc is not None and svc.auto_enabled():
@@ -275,7 +288,7 @@ async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
         _finish_resolution(rep, outcome)
         _emit_report(ctx, rep)
         _log(ctx, f"2Captcha auto-solve failed ({outcome.reason}) — "
-                  f"{'preserving page failure' if outcome.status in ('page_error', 'token_stale') else 'falling back to manual wait'}", "warn")
+                  f"{'preserving page failure' if outcome.status == 'page_error' else 'falling back to manual wait'}", "warn")
         return outcome
     _finish_resolution(rep, outcome)
     _emit_report(ctx, rep)

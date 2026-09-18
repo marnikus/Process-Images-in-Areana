@@ -5,14 +5,22 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import shutil
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .models import VALID_LABELS, new_session_id, utc_now
 from .retention import prune_recordings
 from .sanitize import safe_url
 
 SCHEMA_VERSION = 1
+
+
+def session_folders(root: Path) -> list[Path]:
+    """Session folders on disk, oldest first (session ids are time-prefixed)."""
+    if not root.exists():
+        return []
+    return sorted((path for path in root.iterdir() if path.is_dir()), key=lambda path: path.name)
 
 
 class RecordingStore:
@@ -57,11 +65,19 @@ class RecordingStore:
         prune_recordings(self.root)
         return manifest
 
-    def list_sessions(self, limit: int = 200) -> list[dict[str, Any]]:
-        rows = [self._summary(folder) for folder in self._session_folders()]
+    def list_sessions(self, limit: int = 1000) -> list[dict[str, Any]]:
+        rows = [self._summary(folder) for folder in session_folders(self.root)]
         clean = [row for row in rows if row]
         clean.sort(key=lambda row: row.get("started_at", ""), reverse=True)
         return clean[:max(1, min(int(limit), 1000))]
+
+    def count_sessions(self) -> int:
+        return len(session_folders(self.root))
+
+    def delete_session(self, session_id: str) -> dict[str, Any]:
+        folder = self._folder(session_id)
+        shutil.rmtree(folder, ignore_errors=True)
+        return {"session_id": session_id, "deleted": True}
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
         if label not in VALID_LABELS:
@@ -74,7 +90,7 @@ class RecordingStore:
         return self._summary(folder)
 
     def recover_interrupted(self) -> None:
-        for folder in self._session_folders():
+        for folder in session_folders(self.root):
             manifest = self._read_manifest(folder, tolerate=True)
             if manifest and manifest.get("status") == "recording":
                 manifest.update({"status": "interrupted", "outcome": "interrupted", "ended_at": utc_now()})
@@ -115,11 +131,6 @@ class RecordingStore:
             "snapshot_count", "truncated",
         )
         return {key: manifest.get(key) for key in keys}
-
-    def _session_folders(self) -> Iterable[Path]:
-        if not self.root.exists():
-            return []
-        return (path for path in self.root.iterdir() if path.is_dir())
 
     def _folder(self, session_id: str) -> Path:
         if not session_id or Path(session_id).name != session_id:

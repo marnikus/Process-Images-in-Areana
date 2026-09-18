@@ -28,7 +28,7 @@ const CaptchaRecordingComparison = {
     if (!pane) return;
     const manifest = details.manifest || {};
     const events = (details.events || []).map((event) =>
-      `${event.at_ms || 0}ms  ${event.kind || '?'}  ${this.eventText(event.payload)}`).join('\n');
+      `${event.offset_ms ?? 0}ms  ${event.kind || '?'}  ${this.eventText(event)}`).join('\n');
     const snapshot = details.latest_snapshot || {};
     pane.replaceChildren();
     const heading = document.createElement('b');
@@ -39,12 +39,16 @@ const CaptchaRecordingComparison = {
     timeline.textContent = events || 'No events';
     const dom = document.createElement('pre');
     dom.textContent = snapshot.html || 'No DOM checkpoint';
-    pane.append(heading, meta, timeline, dom);
+    const stamp = document.createElement('div');
+    stamp.textContent = snapshot.at ? `checkpoint: ${CaptchaRecordingsPanel.when(snapshot.at)}` : '';
+    pane.append(heading, meta, timeline, dom, stamp);
   },
 
-  eventText(payload) {
-    if (payload == null) return '';
-    const text = JSON.stringify(payload);
+  eventText(event) {
+    if (event == null) return '';
+    const fields = Object.fromEntries(Object.entries(event)
+      .filter(([key]) => !['seq', 'at', 'offset_ms', 'kind'].includes(key)));
+    const text = JSON.stringify(fields);
     return text.length > 500 ? text.slice(0, 500) + '…' : text;
   },
 };

@@ -1,9 +1,16 @@
-"""Sanitized CDP Network event collection for one captcha recording."""
+"""Sanitized CDP Network event collection for one captcha recording.
+
+H5/P9: CDP events arrive on the websocket thread while the recorder drains
+on the Qt/asyncio loop — the handoff is a lock-protected unbounded deque
+(appended under the lock, popped under the lock, recorded outside it), so
+no event can be dropped by a cross-loop queue race.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import base64
+import threading
+from collections import deque
 from typing import Any, Awaitable, Callable
 
 from .sanitize import redact_text, safe_url, textual_mime
@@ -12,7 +19,7 @@ EventSink = Callable[[str, dict[str, Any], bool], Awaitable[None]]
 
 
 class NetworkCollector:
-    """Queue CDP events and retrieve eligible bodies outside receive loop."""
+    """Collect CDP events and retrieve eligible bodies outside receive loop."""
 
     def __init__(self, cdp: Any, sink: EventSink, body_limit: int,
                  mark_truncated: Callable[[str], None]):
@@ -20,16 +27,22 @@ class NetworkCollector:
         self.sink = sink
         self.body_limit = body_limit
         self.mark_truncated = mark_truncated
-        self.queue: asyncio.Queue = asyncio.Queue()
+        self._events: deque[dict[str, Any]] = deque()
+        self._lock = threading.Lock()
         self.responses: dict[str, dict[str, Any]] = {}
 
     def on_event(self, message: dict[str, Any]) -> None:
         if str(message.get("method", "")).startswith("Network."):
-            self.queue.put_nowait(message)
+            with self._lock:
+                self._events.append(message)
 
     async def drain(self) -> None:
-        while not self.queue.empty():
-            await self._record(self.queue.get_nowait())
+        while True:
+            with self._lock:
+                if not self._events:
+                    return
+                message = self._events.popleft()
+            await self._record(message)
 
     async def _record(self, message: dict[str, Any]) -> None:
         method = message.get("method", "")

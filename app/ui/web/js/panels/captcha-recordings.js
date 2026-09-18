@@ -10,20 +10,24 @@ const CaptchaRecordingsPanel = {
   load() {
     const bridge = window.CaptchaRecordingsBridge;
     if (!bridge?.list_sessions) return;
-    bridge.list_sessions(200, (raw) => {
+    bridge.list_sessions(1000, (raw) => {
       try {
         const result = JSON.parse(raw);
-        if (result.ok) this.render(result.sessions || []);
+        if (result.ok) this.render(result.sessions || [], result.total);
       } catch (error) { LogConsole.log('Captcha records parse failed: ' + error, 'warn'); }
     });
   },
 
-  render(rows) {
+  render(rows, total) {
     const body = document.getElementById('captchaRecordsBody');
     if (!body) return;
     body.replaceChildren(...rows.map((row) => this.row(row)));
     const summary = document.getElementById('captchaRecordsSummary');
-    if (summary) summary.textContent = `${rows.length} local session${rows.length === 1 ? '' : 's'}`;
+    if (summary) {
+      summary.textContent = (total > rows.length)
+        ? `showing last ${rows.length} of ${total} local sessions`
+        : `${rows.length} local session${rows.length === 1 ? '' : 's'}`;
+    }
     const empty = document.getElementById('captchaRecordsEmpty');
     if (empty) empty.style.display = rows.length ? 'none' : 'block';
   },
@@ -38,10 +42,30 @@ const CaptchaRecordingsPanel = {
     this.cell(tr, `${item.mutation_count || 0}/${item.network_count || 0}/${item.snapshot_count || 0}`);
     const labelCell = document.createElement('td');
     labelCell.append(this.labelSelect(item), CaptchaRecordingComparison.button(item, 0),
-      CaptchaRecordingComparison.button(item, 1), this.openButton(item));
+      CaptchaRecordingComparison.button(item, 1), this.openButton(item), this.deleteButton(item));
     tr.appendChild(labelCell);
     tr.title = item.reason || item.session_id || '';
     return tr;
+  },
+
+  deleteButton(item) {
+    const button = document.createElement('button');
+    button.className = 'captcha-compare-btn';
+    button.textContent = '🗑';
+    button.title = 'Delete this recording — cannot be undone';
+    button.addEventListener('click', () => {
+      if (!confirm(`Delete recording ${item.session_id}? This cannot be undone.`)) return;
+      const bridge = window.CaptchaRecordingsBridge;
+      if (!bridge?.delete_session) return;
+      bridge.delete_session(item.session_id, (raw) => {
+        try {
+          const result = JSON.parse(raw);
+          if (result.ok) { LogConsole.log(`🗑 Recording ${item.session_id} deleted`, 'warn'); this.load(); }
+          else LogConsole.log('Delete recording failed: ' + result.error, 'error');
+        } catch (error) { LogConsole.log('Delete recording reply failed: ' + error, 'error'); }
+      });
+    });
+    return button;
   },
 
   openButton(item) {
