@@ -62,29 +62,29 @@ async def capture_baseline(ctrl) -> Dict[str, Any]:
 
 
 async def check_security(ctx: JobCtx) -> bool:
-    """Check security, wait for user."""
+    """Captcha gate: auto-solve (2Captcha, opt-in) else wait for user (RULE 20)."""
     try:
         visible = await ctx.ctrl.is_security_dialog_visible()
     except Exception:
         visible = False
     if not visible:
         return False
-    try:
-        ctx.bridge._log(f"[{ctx.corr_id}] Page {ctx.tab_id[:6]} Captcha", "error")
-    except Exception:
-        pass
-    try:
-        await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=300, elapsed_sec=0)
-    except Exception:
-        pass
-    _mark_waiting(ctx, "captcha")
-    await _wait_security_gone(ctx)
-    _apply_captcha_penalty(ctx)
-    _mark_busy(ctx)
-    try:
-        await ctx.ctrl.hide_watcher_overlay()
-    except Exception:
-        pass
+    from app.services.captcha import CaptchaCtx, handle_captcha
+
+    def log(msg, level="info"):
+        try:
+            ctx.bridge._log(f"[{ctx.corr_id}] {msg}", level)
+        except Exception:
+            pass
+
+    def stop():
+        return bool(getattr(ctx.bridge, "_cancel_requested", False)) or _tab_aborted(ctx)
+
+    outcome = await handle_captcha(CaptchaCtx(ctrl=ctx.ctrl, pool=getattr(ctx.bridge, "_page_pool", None),
+                                              bridge=ctx.bridge, tab_id=ctx.tab_id,
+                                              source="check-security", stop=stop, log=log))
+    if outcome.status == "stopped":
+        raise RuntimeError("Cancelled during CAPTCHA")
     return True
 
 
@@ -106,30 +106,6 @@ def _mark_busy(ctx: JobCtx):
         if pool:
             pool.mark_busy(ctx.tab_id, ctx.job_id)
             ctx.bridge._emit_pool_status()
-    except Exception:
-        pass
-
-
-async def _wait_security_gone(ctx: JobCtx):
-    """Wait until security gone."""
-    while True:
-        if ctx.bridge._cancel_requested:
-            raise RuntimeError("Cancelled during CAPTCHA")
-        try:
-            vis = await ctx.ctrl.is_security_dialog_visible()
-            if not vis:
-                break
-        except Exception:
-            break
-        await asyncio.sleep(2)
-
-
-def _apply_captcha_penalty(ctx: JobCtx):
-    """Stack captcha penalty onto this tab's next cooldown."""
-    try:
-        from app.services.cooldown_service import note_captcha_event
-        pool = getattr(ctx.bridge, "_page_pool", None)
-        note_captcha_event(pool, ctx.tab_id, ctx.bridge, source="check-security")
     except Exception:
         pass
 

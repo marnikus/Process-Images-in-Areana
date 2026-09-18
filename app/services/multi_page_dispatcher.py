@@ -139,26 +139,36 @@ def _get_clients(pool, tab_id) -> Tuple[object, object]:
         return None, None
 
 
+async def _acquire_via_fallback(pool, bridge, wait_timeout: float, job_id: str):
+    """Legacy pools: poll acquire_free_page until free, cancelled, or timeout."""
+    if not hasattr(pool, "acquire_free_page"):
+        return None
+    loop = asyncio.get_event_loop()
+    start = loop.time()
+    while True:
+        if bridge._cancel_requested:
+            return None
+        try:
+            page = await pool.acquire_free_page(job_id)
+        except Exception:
+            return None
+        if page:
+            return page
+        if loop.time() - start > wait_timeout:
+            return None
+        await asyncio.sleep(0.5)
+
+
 async def _acquire_page(pool, bridge, job_id: str):
     wait_timeout = cooldown_aware_timeout(pool)
+    cancel = lambda: bridge._cancel_requested
     try:
-        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested, job_id=job_id)
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=cancel, job_id=job_id)
     except TypeError:
-        try:
-            if hasattr(pool, "acquire_free_page"):
-                start = asyncio.get_event_loop().time()
-                while True:
-                    if bridge._cancel_requested:
-                        return None
-                    p = await pool.acquire_free_page(job_id)
-                    if p:
-                        return p
-                    if asyncio.get_event_loop().time() - start > wait_timeout:
-                        return None
-                    await asyncio.sleep(0.5)
-        except Exception:
-            pass
-        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=lambda: bridge._cancel_requested)
+        page = await _acquire_via_fallback(pool, bridge, wait_timeout, job_id)
+        if page is not None:
+            return page
+        return await pool.wait_for_free_page(timeout_sec=wait_timeout, cancel_check=cancel)
 
 
 async def prepare_image_for_job(bridge, img, urls):
