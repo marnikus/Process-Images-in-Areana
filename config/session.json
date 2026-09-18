@@ -5,15 +5,14 @@
       "progress",
       "arena_presets",
       "block_config",
-      "browser"
-    ],
-    "minimized": [
+      "browser",
       "settings"
-    ]
+    ],
+    "minimized": []
   },
   "theme": "dark",
   "last_folder": "",
-  "highlight_duration": 2,
+  "highlight_duration": 3,
   "last_url_preset": "https://arena.ai/c/01a0a5de-5d09-74ce-acc5-0875ac7ed352",
   "cdp_host": "127.0.0.1",
   "cdp_port": 9223,
@@ -462,5 +461,6 @@
   "cooldown_enabled": true,
   "cooldown_min_seconds": 300,
   "cooldown_captcha_penalty_seconds": 900,
-  "url_pattern": "https://arena.ai/image"
+  "url_pattern": "https://arena.ai/image",
+  "watcher_generation_timeout_sec": 180
 }

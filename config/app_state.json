@@ -51,9 +51,7 @@
     "root_path": "F:/Stocks 2026/icons testing/single",
     "supported_types": [
       ".png",
-      ".jpg",
-      ".jpeg",
-      ".webp"
+      ".jpg"
     ],
     "ignore_ai_suffix": true
   },
@@ -85,7 +83,7 @@
     },
     "highlight": {
       "enabled": true,
-      "duration_seconds": 2,
+      "duration_seconds": 3,
       "color": "#FF0000",
       "border_width": 3
     },
@@ -98,9 +96,7 @@
     "concurrency": 1,
     "supported_types": [
       ".png",
-      ".jpg",
-      ".jpeg",
-      ".webp"
+      ".jpg"
     ],
     "ignore_ai_suffix": true
   },
