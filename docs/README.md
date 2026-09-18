@@ -61,6 +61,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-18-url-row-tab-ownership/design.md` — one live tab ↔ one row ownership and checked-row dispatch gate
 - `archive/2026-09-18-dead-generation-toast-revival/design.md` — dead generation toast classification and bounded one-resubmit revival
 - `archive/2026-09-18-captcha-recording-cdp-research/design.md` — alternate recording architecture research and CDP/DOMSnapshot findings
+- `archive/2026-09-18-recording-history-removal/design.md` — show every locally retained recording and permanently remove one or all with active-session protection
 
 Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
 

@@ -41,6 +41,30 @@ class CaptchaRecordingsBridge(QObject):
         except Exception as exc:
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
+    @Slot(result=str)
+    def list_all_sessions(self) -> str:
+        try:
+            rows = self.manager.list_sessions(None)
+            return json.dumps({"ok": True, "sessions": rows}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def delete_session(self, session_id: str) -> str:
+        try:
+            deleted = self.manager.delete_session(session_id)
+            return json.dumps({"ok": True, "deleted": deleted}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+    @Slot(result=str)
+    def delete_all_sessions(self) -> str:
+        try:
+            result = self.manager.delete_all_sessions()
+            return json.dumps({"ok": True, **result}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
     @Slot(str, str, result=str)
     def set_label(self, session_id: str, label: str) -> str:
         try:

@@ -4,18 +4,22 @@
 const CaptchaRecordingsPanel = {
   init() {
     document.getElementById('captchaRecordsRefreshBtn')?.addEventListener('click', () => this.load());
+    document.getElementById('captchaRecordsDeleteAllBtn')?.addEventListener('click', () => this.removeAll());
     setTimeout(() => this.load(), 1600);
   },
 
   load() {
     const bridge = window.CaptchaRecordingsBridge;
-    if (!bridge?.list_sessions) return;
-    bridge.list_sessions(200, (raw) => {
-      try {
-        const result = JSON.parse(raw);
-        if (result.ok) this.render(result.sessions || []);
-      } catch (error) { LogConsole.log('Captcha records parse failed: ' + error, 'warn'); }
-    });
+    if (bridge?.list_all_sessions) bridge.list_all_sessions((raw) => this.receive(raw));
+    else if (bridge?.list_sessions) bridge.list_sessions(1000, (raw) => this.receive(raw));
+  },
+
+  receive(raw) {
+    try {
+      const result = JSON.parse(raw);
+      if (result.ok) this.render(result.sessions || []);
+      else LogConsole.log('Captcha records failed: ' + result.error, 'error');
+    } catch (error) { LogConsole.log('Captcha records parse failed: ' + error, 'warn'); }
   },
 
   render(rows) {
@@ -23,7 +27,7 @@ const CaptchaRecordingsPanel = {
     if (!body) return;
     body.replaceChildren(...rows.map((row) => this.row(row)));
     const summary = document.getElementById('captchaRecordsSummary');
-    if (summary) summary.textContent = `${rows.length} local session${rows.length === 1 ? '' : 's'}`;
+    if (summary) summary.textContent = `All ${rows.length} retained session${rows.length === 1 ? '' : 's'}`;
     const empty = document.getElementById('captchaRecordsEmpty');
     if (empty) empty.style.display = rows.length ? 'none' : 'block';
   },
@@ -42,7 +46,7 @@ const CaptchaRecordingsPanel = {
     const save = () => this.setLabels(item.session_id, actor, result);
     actor.addEventListener('change', save); result.addEventListener('change', save);
     labelCell.append(actor, result, CaptchaRecordingComparison.button(item, 0),
-      CaptchaRecordingComparison.button(item, 1), this.openButton(item));
+      CaptchaRecordingComparison.button(item, 1), this.openButton(item), this.deleteButton(item));
     tr.appendChild(labelCell);
     tr.title = item.reason || item.session_id || '';
     return tr;
@@ -64,6 +68,41 @@ const CaptchaRecordingsPanel = {
       });
     });
     return button;
+  },
+
+  deleteButton(item) {
+    const button = document.createElement('button');
+    button.className = 'captcha-delete-btn';
+    button.textContent = 'Delete';
+    button.title = 'Permanently remove this recording';
+    button.addEventListener('click', () => this.remove(item));
+    return button;
+  },
+
+  remove(item) {
+    Dialog.confirm('Delete recording?',
+      `Permanently remove ${item.session_id}? This cannot be undone.`, 'Delete',
+      () => this.deleteRequest('delete_session', item.session_id));
+  },
+
+  removeAll() {
+    Dialog.confirm('Delete all recordings?',
+      'Permanently remove every retained recording? Active recordings are kept. This cannot be undone.',
+      'Delete all', () => this.deleteRequest('delete_all_sessions'));
+  },
+
+  deleteRequest(slot, sessionId) {
+    const bridge = window.CaptchaRecordingsBridge;
+    const done = (raw) => {
+      try {
+        const reply = JSON.parse(raw);
+        if (!reply.ok) throw new Error(reply.error);
+        CaptchaRecordingComparison.reset();
+        this.load();
+      } catch (error) { LogConsole.log('Delete recording failed: ' + error, 'error'); }
+    };
+    if (sessionId) bridge?.[slot]?.(sessionId, done);
+    else bridge?.[slot]?.(done);
   },
 
   actorSelect(item) {

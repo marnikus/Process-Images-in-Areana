@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -29,7 +30,7 @@ class RecordingStore:
         folder = self.root / session_id
         (folder / "snapshots").mkdir(parents=True, exist_ok=False)
         manifest = self._new_manifest(session_id, encounter)
-        self._write_manifest(folder, manifest)
+        _write_manifest(folder, manifest)
         return manifest
 
     def append_event(self, session_id: str, event: dict[str, Any]) -> None:
@@ -53,15 +54,22 @@ class RecordingStore:
         manifest = self._read_manifest(folder)
         manifest.update(updates)
         manifest["ended_at"] = manifest.get("ended_at") or utc_now()
-        self._write_manifest(folder, manifest)
+        _write_manifest(folder, manifest)
         prune_recordings(self.root)
         return manifest
 
-    def list_sessions(self, limit: int = 200) -> list[dict[str, Any]]:
+    def list_sessions(self, limit: int | None = 200) -> list[dict[str, Any]]:
         rows = [self._summary(folder) for folder in self._session_folders()]
         clean = [row for row in rows if row]
         clean.sort(key=lambda row: row.get("started_at", ""), reverse=True)
-        return clean[:max(1, min(int(limit), 1000))]
+        if limit is None or int(limit) <= 0:
+            return clean
+        return clean[:min(int(limit), 1000)]
+
+    def delete_session(self, session_id: str) -> str:
+        folder = self._folder(session_id)
+        shutil.rmtree(folder)
+        return session_id
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
         return self.set_labels(session_id, label, None)
@@ -78,7 +86,7 @@ class RecordingStore:
         if result is not None:
             manifest["result_label"] = result
         manifest["label_updated_at"] = utc_now()
-        self._write_manifest(folder, manifest)
+        _write_manifest(folder, manifest)
         return self._summary(folder)
 
     def recover_interrupted(self) -> None:
@@ -86,7 +94,7 @@ class RecordingStore:
             manifest = self._read_manifest(folder, tolerate=True)
             if manifest and manifest.get("status") == "recording":
                 manifest.update({"status": "interrupted", "outcome": "interrupted", "ended_at": utc_now()})
-                self._write_manifest(folder, manifest)
+                _write_manifest(folder, manifest)
 
     def _new_manifest(self, session_id: str, encounter: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -153,10 +161,12 @@ class RecordingStore:
                 return {}
             raise
 
-    @staticmethod
-    def _write_manifest(folder: Path, manifest: dict[str, Any]) -> None:
-        target = folder / "manifest.json"
-        temp = target.with_suffix(".json.tmp")
-        text = json.dumps(manifest, ensure_ascii=False, indent=2)
-        temp.write_text(text, encoding="utf-8")
-        os.replace(temp, target)
+
+
+def _write_manifest(folder: Path, manifest: dict[str, Any]) -> None:
+    """Atomically replace one session manifest."""
+    target = folder / "manifest.json"
+    temp = target.with_suffix(".json.tmp")
+    text = json.dumps(manifest, ensure_ascii=False, indent=2)
+    temp.write_text(text, encoding="utf-8")
+    os.replace(temp, target)

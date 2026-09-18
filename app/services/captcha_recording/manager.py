@@ -67,8 +67,24 @@ class RecordingManager:
         finally:
             self._drop(recorder)
 
-    def list_sessions(self, limit: int = 200) -> list[dict[str, Any]]:
+    def list_sessions(self, limit: int | None = 200) -> list[dict[str, Any]]:
         return self.store.list_sessions(limit)
+
+    def delete_session(self, session_id: str) -> str:
+        if session_id in self._active_session_ids():
+            raise RuntimeError("active recording cannot be removed")
+        return self.store.delete_session(session_id)
+
+    def delete_all_sessions(self) -> dict[str, int]:
+        active = self._active_session_ids()
+        session_ids = [row["session_id"] for row in self.store.list_sessions(None)]
+        removable = [session_id for session_id in session_ids if session_id not in active]
+        for session_id in removable:
+            self.store.delete_session(session_id)
+        return {"deleted": len(removable), "skipped_active": len(session_ids) - len(removable)}
+
+    def _active_session_ids(self) -> set[str]:
+        return {str(recorder.session_id) for recorder in self._active.values()}
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
         return self.store.set_label(session_id, label)

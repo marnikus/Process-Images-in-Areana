@@ -3,6 +3,15 @@
 
 const CaptchaRecordingComparison = {
   ids: [null, null],
+  reset() {
+    this.ids = [null, null];
+    const a = document.getElementById('captchaCompareA');
+    const b = document.getElementById('captchaCompareB');
+    const report = document.getElementById('captchaComparisonReport');
+    if (a) a.textContent = 'Select comparison A';
+    if (b) b.textContent = 'Select comparison B';
+    if (report) report.textContent = 'Select both A and B to calculate common evidence and the first divergence.';
+  },
   button(item, slot) {
     const button = document.createElement('button');
     button.className = 'captcha-compare-btn';

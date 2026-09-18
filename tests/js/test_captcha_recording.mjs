@@ -72,3 +72,32 @@ test('records UI loads two bounded evidence panes side by side', () => {
   dom.window.CaptchaRecordingsPanel.openButton({session_id: 's1'}).click();
   assert.equal(opened, 's1');
 });
+
+test('records UI loads every retained session and confirms removal', () => {
+  const dom = new JSDOM('<button id="captchaRecordsDeleteAllBtn"></button><span id="captchaRecordsSummary"></span><div id="captchaRecordsEmpty"></div><table><tbody id="captchaRecordsBody"></tbody></table>',
+    {url: 'https://app.local', runScripts: 'outside-only'});
+  const scripts = path.resolve(ROOT, '../../../ui/web/js/panels');
+  const calls = [];
+  dom.window.LogConsole = {log() {}};
+  dom.window.Dialog = {confirm(_title, _text, _label, yes) { calls.push('confirm'); yes(); }};
+  dom.window.CaptchaRecordingComparison = {
+    button() { return dom.window.document.createElement('button'); }, reset() { calls.push('reset'); },
+  };
+  dom.window.CaptchaRecordingsBridge = {
+    list_all_sessions(callback) { calls.push('all'); callback(JSON.stringify({ok: true, sessions: []})); },
+    delete_session(id, callback) { calls.push(`delete:${id}`); callback(JSON.stringify({ok: true})); },
+    delete_all_sessions(callback) { calls.push('delete:all'); callback(JSON.stringify({ok: true, deleted: 3, skipped_active: 0})); },
+  };
+  let source = fs.readFileSync(path.join(scripts, 'captcha-recordings.js'), 'utf8');
+  source = source.replace('const CaptchaRecordingsPanel =', 'globalThis.CaptchaRecordingsPanel =');
+  dom.window.eval(source);
+
+  dom.window.CaptchaRecordingsPanel.load();
+  dom.window.CaptchaRecordingsPanel.remove({session_id: 's1'});
+  dom.window.CaptchaRecordingsPanel.removeAll();
+
+  assert.deepEqual(calls.filter((call) => call === 'all'), ['all', 'all', 'all']);
+  assert.ok(calls.includes('delete:s1') && calls.includes('delete:all'));
+  assert.equal(dom.window.document.getElementById('captchaRecordsSummary').textContent,
+    'All 0 retained sessions');
+});

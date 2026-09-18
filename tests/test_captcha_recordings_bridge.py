@@ -28,16 +28,26 @@ class Manager:
     def session_folder(self, session_id):
         return f"/records/{session_id}"
 
+    def delete_session(self, session_id):
+        if session_id == "active":
+            raise RuntimeError("recording is active")
+        return session_id
+
+    def delete_all_sessions(self):
+        return {"deleted": 4, "skipped_active": 1}
+
 
 @pytest.mark.unit
 def test_recordings_bridge_lists_and_labels():
     bridge = CaptchaRecordingsBridge(Manager())
     listed = json.loads(bridge.list_sessions(25))
+    all_sessions = json.loads(bridge.list_all_sessions())
     changed = json.loads(bridge.set_label("s1", "manual"))
     labels = json.loads(bridge.set_labels("s1", "mixed", "passed"))
     details = json.loads(bridge.get_session("s1"))
     comparison = json.loads(bridge.compare_sessions("s1", "s2"))
     assert listed == {"ok": True, "sessions": [{"session_id": "s1", "actor_label": "unknown", "limit": 25}]}
+    assert all_sessions["sessions"][0]["limit"] is None
     assert changed["ok"] and changed["session"]["actor_label"] == "manual"
     assert labels["session"]["result_label"] == "passed"
     assert comparison["comparison"]["right"] == "s2"
@@ -51,6 +61,19 @@ def test_recordings_bridge_opens_selected_session_folder():
     result = json.loads(bridge.open_folder("s1"))
     assert result == {"ok": True, "path": "/records/s1"}
     assert opened == ["/records/s1"]
+
+
+@pytest.mark.unit
+def test_recordings_bridge_removes_one_or_all_sessions():
+    bridge = CaptchaRecordingsBridge(Manager())
+
+    one = json.loads(bridge.delete_session("s1"))
+    all_rows = json.loads(bridge.delete_all_sessions())
+    active = json.loads(bridge.delete_session("active"))
+
+    assert one == {"ok": True, "deleted": "s1"}
+    assert all_rows == {"ok": True, "deleted": 4, "skipped_active": 1}
+    assert active["ok"] is False and "active" in active["error"]
 
 
 @pytest.mark.unit
