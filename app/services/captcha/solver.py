@@ -46,6 +46,7 @@ class SolvePlan:
     signal: CaptchaSignal
     stop: Callable[[], bool]
     start: float
+    task_id: str = ""  # provider task (traceability on failure paths, RULE 22)
     token_at: float = 0.0  # monotonic() when the provider token arrived
     err_base: Optional[str] = None  # error-scan corpus at solve start (None = not taken)
     err_seen: bool = False  # a mid-solve page error was already logged
@@ -64,6 +65,7 @@ def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> 
     out = SolveOutcome(status=status, reason=f"{reason}: {detail}".strip(": "), method="auto")
     if plan is not None:
         out.polls = plan.polls
+        out.task_id = plan.task_id
         if plan.token_at:
             out.token_sec = plan.token_at - plan.start
             out.token_fp = plan.token_fp
@@ -292,6 +294,7 @@ class CaptchaSolver:
         task_id = await self._create_task(plan)
         if not task_id:
             return _failed("task_create", "createTask failed", plan)
+        plan.task_id = task_id  # traceability on poll-failure paths (RULE 22)
         token, why = await self._poll_task(plan, task_id, timeout_sec)
         if not token:
             await _delete_task(plan.client, task_id, self._stats, self._log)

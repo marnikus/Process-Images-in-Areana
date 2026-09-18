@@ -640,3 +640,30 @@ async def test_no_escalation_line_when_challenge_inactive(monkeypatch, isolated_
     ctrl = FakeCtrl(visible_seq=[True, False])
     assert (await solver.solve(ctrl, "t", signal(), lambda: False)).status == "solved"
     assert not any("image-challenge escalation" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_poll_failure_keeps_task_id_for_traceability(monkeypatch, isolated_config_dir):
+    """Observed live: page_error during poll reported task_id='' with polls=13.
+    The provider task id must survive every failure path (RULE 22 spirit)."""
+    from app.services.captcha.api_client import ApiError
+    client = FakeClient("K", exc=ApiError("no_credit", error_id=3))
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
+    assert outcome.status == "auto_failed"
+    assert outcome.task_id == "101"  # created task is traceable in the report
+    assert outcome.polls >= 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_page_error_during_poll_keeps_task_id(monkeypatch, isolated_config_dir):
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    processing = {"errorId": 0, "status": "processing"}
+    client = FakeClient("K", results=[processing, processing, ready])
+    solver, _, _, _ = make_env(monkeypatch, isolated_config_dir, client)
+    ctrl = WatchCtrl(corpora=["", "Something went wrong. Trace ID: 7"], visible_seq=[False])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "page_error"
+    assert outcome.task_id == "101"
