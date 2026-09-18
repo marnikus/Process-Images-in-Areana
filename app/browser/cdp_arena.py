@@ -336,6 +336,10 @@ class CDPArenaController:
             return False, "send disabled"
         return await self.submit()
 
+    async def scan_page_errors(self) -> str:
+        # ideal-size: 3 lines reason=public corpus for solve watchers
+        return await self._scan_page_errors()
+
     async def _scan_page_errors(self) -> str:
         """Alert/toast/error-region text, else ''. Never raises."""
         try:

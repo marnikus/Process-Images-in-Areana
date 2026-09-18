@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from app.browser.captcha_probes import build_continue_js, build_inject_js
+from app.utils.page_errors import match_page_error
 
 from .api_client import ApiError, Captcha2Client, POLL_INTERVAL_SEC
 from .signals import CaptchaSignal, SolveOutcome, host_of
@@ -42,6 +43,8 @@ class SolvePlan:
     stop: Callable[[], bool]
     start: float
     token_at: float = 0.0  # monotonic() when the provider token arrived
+    err_base: Optional[str] = None  # error-scan corpus at solve start (None = not taken)
+    err_seen: bool = False  # a mid-solve page error was already logged
 
 
 def _failed(reason: str, detail: str = "") -> SolveOutcome:
@@ -89,6 +92,28 @@ def _heartbeat(log: Callable[[str, str], None], plan: SolvePlan,
         return last
     log(f"🤖 2Captcha task #{task_id} still processing ({now - plan.start:.0f}s elapsed)", "info")
     return now
+
+
+async def _note_page_error(plan: SolvePlan, log: Callable[[str, str], None]) -> None:
+    """Log when a page error appears mid-solve (timestamps only, no action)."""
+    if plan.err_seen:
+        return
+    scan = getattr(plan.ctrl, "scan_page_errors", None)
+    if scan is None:
+        plan.err_seen = True
+        return
+    try:
+        corpus = await scan()
+    except Exception:
+        return
+    if plan.err_base is None:  # first poll: baseline, never report
+        plan.err_base = corpus if isinstance(corpus, str) else ""
+        return
+    err = match_page_error(corpus if isinstance(corpus, str) else "", plan.err_base)
+    if err:
+        plan.err_seen = True
+        log(f"🛡️ page error appeared during solve ({time.monotonic() - plan.start:.0f}s in): {err}",
+            "warn")
 
 
 def _token_fingerprint(token: str) -> str:
@@ -247,7 +272,8 @@ class CaptchaSolver:
         payload = _task_payload(task_type, plan.signal)
         try:
             task_id = await plan.client.create_task(payload)
-            self._log(f"🤖 2Captcha task {task_type} #{task_id} submitted (tab {str(plan.tab_id)[:12]}, key=****)", "info")
+            self._log(f"🤖 2Captcha task {task_type} #{task_id} submitted (tab {str(plan.tab_id)[:12]}, "
+                      f"isInvisible={plan.signal.is_invisible}, key=****)", "info")
             return task_id
         except ApiError as e:
             self._stats.record("auto_failed", host_of(plan.signal.page_url))
@@ -285,6 +311,7 @@ class CaptchaSolver:
                 return self._poll_fail(plan, "task_failed", _failed_detail(res))
             if time.monotonic() - start > timeout_sec:
                 return self._poll_fail(plan, "poll_timeout")
+            await _note_page_error(plan, self._log)
             last_beat = _heartbeat(self._log, plan, task_id, last_beat)
             await asyncio.sleep(POLL_INTERVAL_SEC)
 

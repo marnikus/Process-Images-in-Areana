@@ -19,13 +19,16 @@ MISSING = {"found": False, "visible": False, "enabled": False}
 class FakeCdp:
     """Scripted CDP: canned send-states, records clicks."""
 
-    def __init__(self, states, connected=True):
+    def __init__(self, states, connected=True, corpus=""):
         self.is_connected = connected
         self._states = list(states)
         self.clicks = 0
         self.state_polls = 0
+        self._corpus = corpus
 
     async def evaluate(self, js):
+        if 'role="alert"' in js:  # error-scan probe
+            return self._corpus
         if "if(!els.length)" in js:  # JS_SEND_STATE probe
             self.state_polls += 1
             if len(self._states) > 1:
@@ -78,6 +81,14 @@ async def test_not_connected_short_circuits():
     ctrl = ctrl_for([ENABLED], connected=False)
     assert await ctrl.submit_when_ready(timeout_sec=5) == (False, "Not connected")
     assert ctrl.cdp.state_polls == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_scan_page_errors_returns_corpus():
+    ctrl = CDPArenaController(FakeCdp([ENABLED], corpus="Something went wrong. Trace ID: 9"))
+    assert await ctrl.scan_page_errors() == "Something went wrong. Trace ID: 9"
+    assert await ctrl_for([ENABLED]).scan_page_errors() == ""
 
 
 @pytest.mark.unit

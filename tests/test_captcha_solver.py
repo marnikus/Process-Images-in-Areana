@@ -482,3 +482,55 @@ async def test_abandoned_task_deletion_logged(monkeypatch, isolated_config_dir):
     outcome = await solver.solve(FakeCtrl(visible_seq=[]), "t", signal(), lambda: False)
     assert outcome.status == "auto_failed"
     assert any("#101 deleted (credit freed)" in m for m, _ in logs)
+
+
+class WatchCtrl(FakeCtrl):
+    """FakeCtrl + scripted page-error corpora per poll."""
+
+    def __init__(self, corpora, **kw):
+        super().__init__(**kw)
+        self._corpora = list(corpora)
+
+    async def scan_page_errors(self):
+        if len(self._corpora) > 1:
+            return self._corpora.pop(0)
+        return self._corpora[0] if self._corpora else ""
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_submit_logs_isinvisible_flag(monkeypatch, isolated_config_dir):
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[ready, ready])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
+    await solver.solve(FakeCtrl(visible_seq=[False]), "t1", signal(is_invisible=True), lambda: False)
+    await solver.solve(FakeCtrl(visible_seq=[False]), "t2", signal(is_invisible=False), lambda: False)
+    assert any("isInvisible=True" in m for m, _ in logs)
+    assert any("isInvisible=False" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_mid_solve_page_error_timestamped(monkeypatch, isolated_config_dir):
+    processing = {"errorId": 0, "status": "processing"}
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[processing, processing, processing, ready])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
+    ctrl = WatchCtrl(corpora=["", "", "Something went wrong while generating the response. Trace ID: 1"],
+                     visible_seq=[False])
+    outcome = await solver.solve(ctrl, "t", signal(), lambda: False)
+    assert outcome.status == "solved"  # watch-only: the solve is unaffected
+    assert any("appeared during solve (" in m and "Something went wrong" in m for m, _ in logs)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_preexisting_page_error_stays_silent(monkeypatch, isolated_config_dir):
+    processing = {"errorId": 0, "status": "processing"}
+    ready = {"errorId": 0, "status": "ready", "solution": {"gRecaptchaResponse": "TOK"}}
+    client = FakeClient("K", results=[processing, processing, ready])
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client)
+    banner = "Something went wrong while generating the response. Trace ID: 1"
+    ctrl = WatchCtrl(corpora=[banner, banner], visible_seq=[False])
+    assert (await solver.solve(ctrl, "t", signal(), lambda: False)).status == "solved"
+    assert not any("appeared during solve" in m for m, _ in logs)  # stale at solve start
