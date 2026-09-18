@@ -63,6 +63,9 @@ const SashGrid = {
     // localStorage tree (and vice versa) — "grid lost after restart" fix.
     this._restorePending = true;
     this._saveQueued = false;
+    this._gridRestoreSeen = false;
+    this._gridRestoreApplied = false;
+    this._restorePushBound = false;
     this._loadFromBackend();
     setTimeout(() => this._finishRestore(), 3000);
     this.gridEl.addEventListener('pointerdown', this._onDown = this._pointerDown.bind(this));

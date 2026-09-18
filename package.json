@@ -4,7 +4,7 @@
   "description": "JS logic tests for sash-core — Tier A, no browser, ~50ms",
   "type": "module",
   "scripts": {
-    "test:js": "node --test tests/js/test_sash_core.mjs tests/js/test_sash_grid_tree.mjs tests/js/test_url_cooldown.mjs tests/js/test_url_jobs.mjs tests/js/test_sash_bugfixes.mjs tests/js/test_action_blocks.mjs tests/js/test_captcha.mjs",
+    "test:js": "node --test tests/js/test_sash_core.mjs tests/js/test_sash_grid_tree.mjs tests/js/test_url_cooldown.mjs tests/js/test_url_jobs.mjs tests/js/test_sash_bugfixes.mjs tests/js/test_action_blocks.mjs tests/js/test_captcha.mjs tests/js/test_sash_restore.mjs",
     "test:js:watch": "node --watch --test tests/js/test_sash_core.mjs"
   },
   "dependencies": {
