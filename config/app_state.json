@@ -27,6 +27,15 @@
       "last_checked": "2026-09-17T10:45:34.622273Z",
       "error": null,
       "tab_id": "F7F8CD13584B12AE825128CB83F75081"
+    },
+    {
+      "id": "url_636996a6",
+      "url": "https://arena.ai/image/direct?model_a=max",
+      "enabled": true,
+      "last_status": "unchecked",
+      "last_checked": null,
+      "error": null,
+      "tab_id": "59FA0C0D7FBC074F23535FE02B95B54D"
     }
   ],
   "folder": {

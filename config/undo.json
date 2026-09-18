@@ -15,75 +15,6 @@
         {
           "id": "url_2c2ff2d7",
           "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_8af56fdc",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": false,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "4965ADCBDA3CADB16E3F2989964A5C22"
-        },
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_8af56fdc",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "4965ADCBDA3CADB16E3F2989964A5C22"
-        },
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "154FBF467AF2AA56AB96A7936E39D4C1"
-        }
-      ]
-    },
-    {
-      "kind": "urls",
-      "value": [
-        {
-          "id": "url_8af56fdc",
-          "url": "https://arena.ai/image/direct?model_a=max",
-          "enabled": true,
-          "status": "unchecked",
-          "last_error": null,
-          "last_checked": null,
-          "tab_id": "4965ADCBDA3CADB16E3F2989964A5C22"
-        },
-        {
-          "id": "url_2c2ff2d7",
-          "url": "https://arena.ai/image/direct?model_a=max",
           "enabled": false,
           "status": "unchecked",
           "last_error": null,
@@ -19983,6 +19914,28 @@
     {
       "kind": "grid",
       "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[42.10526315789473,57.89473684210527]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[53.76344086021505,46.236559139784944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "progress",
+          "arena_presets",
+          "block_config",
+          "browser"
+        ],
+        "minimized": [
+          "settings"
+        ]
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[64.6677471636953,35.332252836304704]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[53.76344086021505,46.236559139784944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28571428571429,35.714285714285715]}],\"sizes\":[75.12155591572123,24.878444084278765]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"}],\"sizes\":[58.333333333333336,41.66666666666667]}],\"sizes\":[80.87887464210132,19.12112535789867]}],\"sizes\":[73.20061255742726,26.79938744257274]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[33.33333333333333,22.78481012658228,43.881856540084385]}],\"sizes\":[53.76344086021505,46.236559139784944]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[23.512129273727282,32.39448922157982,33.43454956726987,10.658831937423034]}}"
     }
   ],
   "index": 99
