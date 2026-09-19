@@ -180,7 +180,14 @@ describe('B — _fitTitleBars(): single pure writer', () => {
   test('fit holds across resize drags on the user layout (controls never hidden)', () => {
     const h = createSashGrid();
     resetGrid(h, h.SashCore.clone(USER_TREE), USER_CLOSED, USER_MINIMIZED);
-    for (const id of ALL_WINDOW_IDS) {
+    // USER_TREE is the user's real saved 13-window layout — it predates the
+    // captcha windows, and production skips windows absent from a saved tree
+    // (sash-grid-windows.js: panel missing → warn + continue). So the invariant
+    // is asserted over the RENDERED windows, with a guard so this can't pass
+    // vacuously if the layout ever renders nothing.
+    const ids = [...h.gridEl.querySelectorAll('.sash-window')].map((el) => el.dataset.win);
+    assert.ok(ids.length >= 10, `user layout must render its windows (got ${ids.length})`);
+    for (const id of ids) {
       const title = titleOf(h, id);
       // simulate a tight bar per window with its own secondaries
       title._rect.width = 96;
@@ -190,7 +197,7 @@ describe('B — _fitTitleBars(): single pure writer', () => {
     const sashes = h.gridEl.querySelectorAll('.sash');
     for (const s of sashes) if (s.offsetWidth > 0 && s.offsetHeight > 0) dragSash(h, s, 40);
     h.SashGrid._fitTitleBars();
-    for (const id of ALL_WINDOW_IDS) {
+    for (const id of ids) {
       const ctrls = titleOf(h, id).querySelector(':scope > .win-controls');
       assert.ok(ctrls && !ctrls.classList.contains('fit-hidden'),
         id + ': controls must never be fit-hidden');

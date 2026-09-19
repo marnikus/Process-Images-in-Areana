@@ -96,13 +96,14 @@ SELECTORS: Dict[str, SelectorObject] = {
     'output_region': SelectorObject(
         name='output_region',
         primary='div.no-scrollbar',
+        fallbacks=['main'],
         scope=None,
         mustBeVisible=True,
         mustBeEnabled=False,
         expectedCount=1,
         textCondition=None,
         textConditionType='equals',
-        verification='output observation container exists',
+        verification='output observation container (or app shell) exists — readiness sanity check, the other four checks are the real gates',
         evidence='arena_page_ready',
         lastVerified='2026-09-19',
         tier='class-fragment',
@@ -476,7 +477,6 @@ SELECTORS: Dict[str, SelectorObject] = {
     ),
 }
 # <<< generated:SELECTORS end
-
 
 def get_selector(name: str) -> SelectorObject:
     if name not in SELECTORS:

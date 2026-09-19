@@ -46,7 +46,7 @@ EXCLUDES = {
 
 RE_ARRAY = re.compile(r"const\s+sels\s*=\s*\[(.+?)\];", re.S)
 RE_QUERY = re.compile(r"""querySelector(?:All)?\(\s*(?:'([^']*)'|"([^"]*)")\s*\)""")
-RE_CHECKS = re.compile(r"\{sel:\s*'([^']*)'\s*,\s*name:\s*'([^']*)'")
+RE_CHECKS = re.compile(r"\{sels:\s*\[(.*?)\]\s*,\s*name:\s*'([^']*)'", re.S)
 RE_CLOSEST = re.compile(r"""closest\(\s*(?:'([^']*)'|"([^"]*)")\s*\)""")
 
 
@@ -64,7 +64,11 @@ def extract_pairs(region: str, kind: str) -> list[tuple[str, str]]:
     if kind == "query":
         return [(str(i), m.group(1) or m.group(2)) for i, m in enumerate(RE_QUERY.finditer(region))]
     if kind == "checks":
-        return [(name, sel) for sel, name in RE_CHECKS.findall(region)]
+        pairs = []
+        for chain, name in RE_CHECKS.findall(region):
+            for i, sel in enumerate(_split_array(chain)):
+                pairs.append((f"{name}:{i}", sel))
+        return pairs
     if kind == "closest":
         return [(str(i), m.group(1) or m.group(2)) for i, m in enumerate(RE_CLOSEST.finditer(region))]
     if kind.startswith("const:"):
@@ -254,14 +258,14 @@ META_DEFAULT = dict(scope=None, mustBeVisible=True, mustBeEnabled=False, expecte
 ENTRIES: list[tuple[str, list[tuple[str, str]], dict]] = [
     ("prompt_textarea", [("arena_find", "0"), ("arena_find", "1"), ("arena_find", "2"),
                          ("arena_insert", "0"), ("arena_insert", "1"), ("arena_insert", "2"),
-                         ("arena_verify_prompt", "0"), ("arena_page_ready", "prompt"),
+                         ("arena_verify_prompt", "0"), ("arena_page_ready", "prompt:0"),
                          ("newchat_queries", "0"), ("newchat_queries", "1"),
                          ("block_defaults", "HIGHLIGHT_PROMPT:default_selector"),
                          ("block_defaults", "INSERT_PROMPT:default_selector"),
                          ("block_defaults", "VERIFY_PROMPT:default_selector")],
      dict(scope="form", mustBeEnabled=True, expectedCount=1,
           verification="after insertion, textarea.value equals expected prompt exactly (RULE 22 read-back)")),
-    ("send_button", [("arena_send_state", "0"), ("arena_page_ready", "send"),
+    ("send_button", [("arena_send_state", "0"), ("arena_page_ready", "send:0"),
                      ("block_defaults", "HIGHLIGHT_SUBMIT:default_selector")],
      dict(scope="form", mustBeEnabled=True, expectedCount=1,
           verification="wait for disabled->enabled transition before click; state probe checks .disabled itself")),
@@ -269,7 +273,7 @@ ENTRIES: list[tuple[str, list[tuple[str, str]], dict]] = [
                            ("block_defaults", "SUBMIT:default_selector")],
      dict(scope="form", mustBeEnabled=True, expectedCount=1,
           verification="click once; JS loop additionally requires visible + not disabled")),
-    ("file_input", [("arena_page_ready", "file"), ("attach_defaults", "2"),
+    ("file_input", [("arena_page_ready", "file:0"), ("attach_defaults", "2"),
                     ("block_defaults", "HIGHLIGHT_ATTACH:default_selector"),
                     ("block_defaults", "ATTACH_IMAGE:default_selector")],
      dict(scope="form", mustBeVisible=False, mustBeEnabled=True, expectedCount=1,
@@ -277,15 +281,16 @@ ENTRIES: list[tuple[str, list[tuple[str, str]], dict]] = [
     ("file_input_cdp", [("attach_defaults", "0"), ("attach_defaults", "1")],
      dict(scope="form", mustBeVisible=False, mustBeEnabled=True, expectedCount=1,
           verification="attach_image_cdp scope-first chain (form-scoped, accept-constrained)")),
-    ("output_region", [("arena_page_ready", "output")],
-     dict(expectedCount=1, verification="output observation container exists")),
+    ("output_region", [("arena_page_ready", "output:0"), ("arena_page_ready", "output:1")],
+     dict(expectedCount=1, verification="output observation container (or app shell) exists — readiness sanity check, the other four checks are the real gates")),
     ("security_dialog", [("arena_page_ready_dialog", "0"), ("detect_query", "0"),
                          ("visible_query", "0"), ("continue_click_query", "0"),
                          ("inject_query", "0")],
      dict(expectedCount=0, textCondition="Security Verification",
           verification="if visible → USER_ACTION_REQUIRED, pause, show page to user (RULE 20)")),
     ("processing_spinner", [("arena_generating", "0"), ("out_queries", "0"), ("out_queries", "1")],
-     dict(verification="spinner visible near model label = generating; wait for it to disappear")),
+     dict(verification="spinner visible near model label = generating; wait for it to disappear",
+          tierNote="state detector — a fallback that false-positives (bare tag/aria-busy) extends waits; safe alternative needs live verification (RULE 22); animate-spin is a core Tailwind utility")),
     ("attachment_preview_image", [("arena_verify_attach", "0"), ("arena_verify_attach", "1"),
                                   ("arena_verify_attach", "2")],
      dict(scope="form", expectedCount=1,
@@ -297,20 +302,26 @@ ENTRIES: list[tuple[str, list[tuple[str, str]], dict]] = [
                       ("block_defaults", "OBSERVE_BASELINE:default_selector")],
      dict(verification="capture all srcs before submit; new output must be new vs baseline (RULE 15)")),
     ("wait_output_default", [("block_defaults", "WAIT_OUTPUT:default_selector")],
-     dict(verification="WAIT_OUTPUT block default selector list (user-configurable, RULE 3)")),
+     dict(verification="WAIT_OUTPUT block default selector list (user-configurable, RULE 3)",
+          tierNote="user-configurable block default; a broad structural part (bare main img) risks false output detection (e.g. attachment previews)")),
     ("spinner_check_default", [("block_defaults", "AWAIT_PROCESSING_IMAGE:default_selector")],
      dict(verification="AWAIT_PROCESSING_IMAGE block default (Playwright :has-text parts)")),
     ("model_label", [("out_queries", "2")],
      dict(scope="div.flex.min-w-0.flex-1.items-center.gap-2",
-          verification="model/answer label span next to the spinner")),
+          verification="model/answer label span next to the spinner",
+          tierNote="informational only — a miss degrades to label 'unknown' (pre-existing miss path, no behaviour at risk)")),
     ("model_label_scope", [("out_closest", "0")],
-     dict(verification="closest() scope for reading the model label")),
+     dict(verification="closest() scope for reading the model label",
+          tierNote="closest() takes one selector list — a broad comma part matches the nearest div and inverts the scope; a JS-level fallback is not representable in the map model")),
     ("message_list_reverse", [("out_queries", "3"), ("out_queries", "10")],
-     dict(verification="ol with flex-col-reverse → newest message renders first")),
+     dict(verification="ol with flex-col-reverse → newest message renders first",
+          tierNote="a false positive flips the layout direction (output correlation inverts); generic `ol` is too broad")),
     ("message_container", [("out_closest", "1")],
-     dict(verification="message bubble container holding the output image")),
+     dict(verification="message bubble container holding the output image",
+          tierNote="closest() list already carries the structural `div[data-message-id]` part (tier = primary part only)")),
     ("message_container_plain", [("out_closest", "3"), ("out_closest", "4")],
-     dict(verification="message container fallback without data-message-id")),
+     dict(verification="message container fallback without data-message-id",
+          tierNote="closest() to the job bubble; on drift the detection degrades gracefully via the structural output_image chains (src patterns, main scope)")),
     ("new_chat_button", [("newchat_candidates", "0"), ("newchat_candidates", "1"),
                          ("newchat_candidates", "2")],
      dict(scope="li[data-sidebar=\"menu-item\"]", mustBeEnabled=True, expectedCount=1,
@@ -324,7 +335,8 @@ ENTRIES: list[tuple[str, list[tuple[str, str]], dict]] = [
     ("recaptcha_response_field_inject", [("inject_consts", "SEL")],
      dict(mustBeVisible=False, verification="token fields written by the inject probe (every field)")),
     ("grecaptcha_badge", [("detect_closest", "0"), ("visible_closest", "0")],
-     dict(mustBeVisible=False, verification="badge identity exclusion — never a visible challenge")),
+     dict(mustBeVisible=False, verification="badge identity exclusion — never a visible challenge",
+          tierNote="Google-owned stable class; a false negative prompts a manual solve (visible, recoverable) — no semantic equivalent exists")),
     ("captcha_integration_script", [("detect_query", "2")],
      dict(mustBeVisible=False, verification="enterprise vs unknown integration detection")),
     ("captcha_image", [("detect_query", "3")],
@@ -335,7 +347,8 @@ ENTRIES: list[tuple[str, list[tuple[str, str]], dict]] = [
      dict(scope="form", mustBeEnabled=True, expectedCount=1,
           verification="click triggers file chooser (ATTACH_IMAGE click_selector)")),
     ("attachment_preview_block", [("block_defaults", "VERIFY_ATTACHMENT:default_selector")],
-     dict(scope="form", expectedCount=1, verification="VERIFY_ATTACHMENT block default")),
+     dict(scope="form", expectedCount=1, verification="VERIFY_ATTACHMENT block default",
+          tierNote="user-configurable block default (RULE 3); `form img` can't be live-verified — risks a false 'verified'")),
     ("security_check_default", [("block_defaults", "CHECK_SECURITY:default_selector")],
      dict(verification="CHECK_SECURITY block default (Playwright :has-text parts, user-configurable)")),
     ("recaptcha_dialog_scope", [("inject_closest", "0")],
@@ -457,14 +470,16 @@ def date_str() -> str:
 
 def report(ctx: dict[str, list[tuple[str, str]]]) -> int:
     chains, errors = build_chains(ctx)
-    for name, _refs, _meta in ENTRIES:
+    for name, _refs, meta in ENTRIES:
         chain = chains[name]
         t = tier_of(chain[0])
         flag = ""
         if t == "class-fragment" and len(chain) == 1:
-            flag = "  ⚠ sole class-fragment (RULE 21: add a semantic/structural fallback)"
+            note = meta.get("tierNote")
+            flag = (f"  · sole class-fragment — accepted: {note}" if note
+                    else "  ⚠ sole class-fragment (RULE 21: add a semantic/structural fallback)")
         elif t == "class-fragment":
-            flag = "  ⚠ class-fragment primary"
+            flag = "  · class-fragment primary (fallbacks reach better tiers)"
         print(f"  {t:15s} {name:32s} {len(chain):2d} sel{flag}")
     if errors:
         print("\n" + "\n".join(f"  ✗ {e}" for e in errors))

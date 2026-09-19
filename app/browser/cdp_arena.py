@@ -176,9 +176,10 @@ async (src) => {
 JS_PAGE_READY = """
 ;(() => {
   const reasons=[];
-  const checks=[{sel:'textarea[name="message"]',name:'prompt'},{sel:'button[aria-label="Send message"]',name:'send'},{sel:'input[type="file"]',name:'file'},{sel:'div.no-scrollbar',name:'output'}];
+  const checks=[{sels:['textarea[name="message"]'],name:'prompt'},{sels:['button[aria-label="Send message"]'],name:'send'},{sels:['input[type="file"]'],name:'file'},{sels:['div.no-scrollbar','main'],name:'output'}];
   for(const c of checks){
-    const el=document.querySelector(c.sel);
+    let el=null;
+    for(const s of c.sels){ el=document.querySelector(s); if(el) break; }
     if(!el) reasons.push(c.name+' not found');
     else if(el.offsetParent===null) reasons.push(c.name+' not visible');
   }
