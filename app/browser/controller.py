@@ -42,7 +42,6 @@ class BrowserController:
             args=["--disable-blink-features=AutomationControlled"],
             viewport={"width": 1280, "height": 800},
         )
-        # Use existing page or create new
         if len(self.context.pages) > 0:
             self.page = self.context.pages[0]
         else:
@@ -61,75 +60,70 @@ class BrowserController:
             raise RuntimeError("Browser not launched")
         try:
             await self.page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-            # Wait a bit for hydration
             await self.page.wait_for_timeout(2000)
             return True
         except Exception as e:
             self._log(f"Navigate failed for {url}: {e}")
             return False
 
+    def _validate_syntax(self, url_row: UrlRow) -> bool:
+        from urllib.parse import urlparse
+        parsed = urlparse(url_row.url)
+        if parsed.scheme and parsed.netloc:
+            return True
+        url_row.last_status = UrlStatus.ERROR.value
+        url_row.error = "Invalid URL syntax"
+        return False
+
+    async def _check_security_and_auth(self, url_row: UrlRow) -> Optional[UrlStatus]:
+        if await self.is_security_dialog_visible():
+            url_row.last_status = UrlStatus.CAPTCHA_REQUIRED.value
+            url_row.error = "Security verification required"
+            return UrlStatus.CAPTCHA_REQUIRED
+        if await self.is_sign_in_page():
+            url_row.last_status = UrlStatus.AUTH_REQUIRED.value
+            url_row.error = "Authentication required"
+            return UrlStatus.AUTH_REQUIRED
+        return None
+
     async def check_url_status(self, url_row: UrlRow, timeout: int = 30000) -> UrlStatus:
         """Validate and open URL, detect readiness."""
         url_row.last_checked = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        # Validate syntax
-        from urllib.parse import urlparse
-        parsed = urlparse(url_row.url)
-        if not parsed.scheme or not parsed.netloc:
-            url_row.last_status = UrlStatus.ERROR.value
-            url_row.error = "Invalid URL syntax"
+        if not self._validate_syntax(url_row):
             return UrlStatus.ERROR
-
-        # Navigate
         ok = await self.navigate(url_row.url, timeout=timeout)
         if not ok:
             url_row.last_status = UrlStatus.UNAVAILABLE.value
             url_row.error = "Failed to navigate"
             return UrlStatus.UNAVAILABLE
-
-        # Check for security dialog
-        if await self.is_security_dialog_visible():
-            url_row.last_status = UrlStatus.CAPTCHA_REQUIRED.value
-            url_row.error = "Security verification required"
-            return UrlStatus.CAPTCHA_REQUIRED
-
-        # Check for sign-in
-        if await self.is_sign_in_page():
-            url_row.last_status = UrlStatus.AUTH_REQUIRED.value
-            url_row.error = "Authentication required"
-            return UrlStatus.AUTH_REQUIRED
-
-        # Check readiness
+        sec = await self._check_security_and_auth(url_row)
+        if sec:
+            return sec
         ready, reasons = await self.is_page_ready()
         if ready:
             url_row.last_status = UrlStatus.READY.value
             url_row.error = None
             return UrlStatus.READY
-        else:
-            # Determine if unsupported or error
-            url_row.last_status = UrlStatus.UNSUPPORTED.value
-            url_row.error = f"Not ready: {', '.join(reasons)}"
-            return UrlStatus.UNSUPPORTED
+        url_row.last_status = UrlStatus.UNSUPPORTED.value
+        url_row.error = f"Not ready: {', '.join(reasons)}"
+        return UrlStatus.UNSUPPORTED
 
     async def is_security_dialog_visible(self) -> bool:
         if not self.page:
             return False
-        # Check dialog
         try:
             dialog_selector = get_selector("security_dialog")
-            # Use JS to check visible dialog containing Security Verification
             js = """
             () => {
                 const inBadge = (el) => !!(el.closest && el.closest('.grecaptcha-badge'));
-                const dialogs = document.querySelectorAll('div[role="dialog"][data-state="open"]');
+                const dialogs = document.querySelectorAll('div[role=\"dialog\"][data-state=\"open\"]');
                 for (const d of dialogs) {
                     if (d.innerText && d.innerText.includes('Security Verification')) return true;
-                    if (d.querySelector('iframe[title="reCAPTCHA"]')) return true;
+                    if (d.querySelector('iframe[title=\"reCAPTCHA\"]')) return true;
                 }
-                const iframes = document.querySelectorAll('iframe[title="reCAPTCHA"]');
+                const iframes = document.querySelectorAll('iframe[title=\"reCAPTCHA\"]');
                 for (const f of iframes) {
                     const style = window.getComputedStyle(f);
-                    // the always-on .grecaptcha-badge is on screen in layout but
-                    // visibility:hidden / off-screen in the normal state — never counts
                     if (style.display !== 'none' && style.visibility !== 'hidden'
                         && f.offsetParent !== null && !inBadge(f)) return true;
                 }
@@ -165,68 +159,65 @@ class BrowserController:
         if not self.page:
             return False, ["Browser not launched"]
         reasons = []
-        # Check each required selector
         for name in get_readiness_requirements():
             sel = get_selector(name)
             found = await self.find_element(sel, timeout=5000)
             if not found:
                 reasons.append(f"{name} not found")
-        # Check security dialog not visible
         if await self.is_security_dialog_visible():
             reasons.append("Security dialog visible")
-        # Check sign-in
         if await self.is_sign_in_page():
             reasons.append("Sign-in page detected")
-
         ready = len(reasons) == 0
         return ready, reasons
+
+    async def _wait_for_locator(self, loc, selector_obj, timeout: int):
+        if selector_obj.mustBeVisible:
+            await loc.wait_for(state="visible", timeout=timeout)
+        else:
+            await loc.wait_for(state="attached", timeout=timeout)
+
+    async def _check_enabled(self, loc, selector_obj) -> bool:
+        if not selector_obj.mustBeEnabled:
+            return True
+        return await loc.is_enabled()
+
+    async def _check_text_condition(self, loc, selector_obj) -> bool:
+        if not selector_obj.textCondition:
+            return True
+        text = await loc.inner_text()
+        if selector_obj.textConditionType == "equals":
+            return text.strip() == selector_obj.textCondition
+        if selector_obj.textConditionType == "contains":
+            return selector_obj.textCondition in text
+        return True
+
+    async def _try_single_selector(self, sel: str, selector_obj, timeout: int):
+        try:
+            loc = self.page.locator(sel).first
+            await self._wait_for_locator(loc, selector_obj, timeout)
+            if not await self._check_enabled(loc, selector_obj):
+                return None
+            if not await self._check_text_condition(loc, selector_obj):
+                return None
+            return loc
+        except PlaywrightTimeoutError:
+            return None
+        except Exception:
+            return None
 
     async def find_element(self, selector_obj, timeout: int = 5000):
         """Find element using primary + fallbacks, with visibility/enabled checks."""
         if not self.page:
             return None
-        # Try each selector with playwright locators
         for sel in selector_obj.all_selectors():
-            try:
-                loc = self.page.locator(sel).first
-                # Wait for visible if required
-                if selector_obj.mustBeVisible:
-                    await loc.wait_for(state="visible", timeout=timeout)
-                else:
-                    await loc.wait_for(state="attached", timeout=timeout)
-                # Check enabled if required
-                if selector_obj.mustBeEnabled:
-                    # Playwright is_enabled check
-                    if not await loc.is_enabled():
-                        continue
-                # Text condition
-                if selector_obj.textCondition:
-                    text = await loc.inner_text()
-                    if selector_obj.textConditionType == "equals":
-                        if text.strip() != selector_obj.textCondition:
-                            continue
-                    elif selector_obj.textConditionType == "contains":
-                        if selector_obj.textCondition not in text:
-                            continue
+            loc = await self._try_single_selector(sel, selector_obj, timeout)
+            if loc:
                 return loc
-            except PlaywrightTimeoutError:
-                continue
-            except Exception as e:
-                # self._log(f"find_element error for {sel}: {e}")
-                continue
         return None
 
-    async def highlight_element(self, locator, duration_seconds: float = 2, color: str = "#FF0000", border_width: int = 3):
-        """Draw rect above element that is clicking now for several sec (set by user)."""
-        if not locator:
-            return
-        try:
-            # Get bounding box
-            box = await locator.bounding_box()
-            if not box:
-                return
-            # Inject overlay div
-            js = """
+    def _highlight_js(self):
+        return """
             ([x, y, width, height, color, borderWidth, duration]) => {
                 const id = 'arena-highlight-' + Date.now();
                 const div = document.createElement('div');
@@ -243,7 +234,6 @@ class BrowserController:
                 div.style.boxShadow = '0 0 10px ' + color;
                 div.style.backgroundColor = color + '20';
                 document.body.appendChild(div);
-                // Also scroll into view
                 div.scrollIntoView({behavior: 'smooth', block: 'center'});
                 setTimeout(() => {
                     const el = document.getElementById(id);
@@ -252,28 +242,32 @@ class BrowserController:
                 return id;
             }
             """
-            await self.page.evaluate(js, [box["x"], box["y"], box["width"], box["height"], color, border_width, duration_seconds])
-            # Wait for duration
+
+    async def highlight_element(self, locator, duration_seconds: float = 2, color: str = "#FF0000", border_width: int = 3):
+        """Draw rect above element that is clicking now for several sec."""
+        if not locator:
+            return
+        try:
+            box = await locator.bounding_box()
+            if not box:
+                return
+            await self.page.evaluate(self._highlight_js(), [box["x"], box["y"], box["width"], box["height"], color, border_width, duration_seconds])
             await self.page.wait_for_timeout(int(duration_seconds * 1000))
         except Exception as e:
             self._log(f"Highlight failed: {e}")
 
-    async def capture_baseline(self) -> Dict[str, Any]:
-        """Capture pre-submission baseline: output elements, message order, timestamp, spinner state."""
-        if not self.page:
-            return {}
-        try:
-            js = """
+    def _baseline_js(self):
+        return """
             () => {
                 const outputs = [];
                 const selectors = [
-                    'div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',
-                    'div.no-scrollbar img[src*="messages-prod."]',
-                    'div.no-scrollbar img[loading="lazy"].aspect-square',
+                    'div.no-scrollbar img[src*=\".r2.cloudflarestorage.com/\"]',
+                    'div.no-scrollbar img[src*=\"messages-prod.\"]',
+                    'div.no-scrollbar img[loading=\"lazy\"].aspect-square',
                     'img.aspect-square.cursor-pointer',
-                    'div.flex img[src*=".r2.cloudflarestorage.com/"]',
-                    'main img[src*=".r2.cloudflarestorage.com/"]',
-                    'img[src*=".r2.cloudflarestorage.com/"]'
+                    'div.flex img[src*=\".r2.cloudflarestorage.com/\"]',
+                    'main img[src*=\".r2.cloudflarestorage.com/\"]',
+                    'img[src*=\".r2.cloudflarestorage.com/\"]'
                 ];
                 for (const sel of selectors) {
                     const els = document.querySelectorAll(sel);
@@ -309,7 +303,13 @@ class BrowserController:
                 };
             }
             """
-            baseline = await self.page.evaluate(js)
+
+    async def capture_baseline(self) -> Dict[str, Any]:
+        """Capture pre-submission baseline."""
+        if not self.page:
+            return {}
+        try:
+            baseline = await self.page.evaluate(self._baseline_js())
             return baseline
         except Exception as e:
             self._log(f"Baseline capture failed: {e}")
@@ -325,32 +325,20 @@ class BrowserController:
             self._log("File input not found")
             return False
         try:
-            # Playwright set_input_files works even for hidden
             await loc.set_input_files(image_path)
             self._log(f"Attached image {image_path}")
-            # Wait for preview
             await self.page.wait_for_timeout(1000)
             return True
         except Exception as e:
             self._log(f"Attach failed: {e}")
             return False
 
-    async def verify_attachment(self, expected_filename: str, timeout: int = 10000) -> tuple[bool, str]:
-        """Verify correct attachment preview appears."""
-        if not self.page:
-            return False, "No page"
-        # Check preview container
-        sel_container = get_selector("attachment_preview_container")
-        container = await self.find_element(sel_container, timeout=2000)
-        # Even if container not found, try image directly
-        sel_image = get_selector("attachment_preview_image")
-        # For filename matching, we need to evaluate JS
-        try:
-            js = """
+    def _verify_attachment_js(self):
+        return """
             (expectedFilename) => {
                 const selectors = [
                     'div.flex.flex-wrap.gap-2 img[alt]',
-                    'div.flex.flex-wrap.gap-2 img[src^="blob:"]',
+                    'div.flex.flex-wrap.gap-2 img[src^=\"blob:\"]',
                     'div.group.relative.overflow-hidden.rounded-lg.h-16.w-16 img'
                 ];
                 for (const sel of selectors) {
@@ -360,11 +348,9 @@ class BrowserController:
                         const src = el.getAttribute('src') || '';
                         const visible = el.offsetParent !== null;
                         if (!visible) continue;
-                        // Check filename match if alt present
                         if (expectedFilename && alt && alt.includes(expectedFilename)) {
                             return {found: true, alt: alt, src: src, matched: 'filename'};
                         }
-                        // If blob, consider found
                         if (src.startsWith('blob:')) {
                             return {found: true, alt: alt, src: src, matched: 'blob'};
                         }
@@ -376,11 +362,16 @@ class BrowserController:
                 return {found: false};
             }
             """
-            result = await self.page.evaluate(js, expected_filename)
+
+    async def verify_attachment(self, expected_filename: str, timeout: int = 10000) -> tuple[bool, str]:
+        """Verify correct attachment preview appears."""
+        if not self.page:
+            return False, "No page"
+        try:
+            result = await self.page.evaluate(self._verify_attachment_js(), expected_filename)
             if result.get("found"):
                 return True, f"Found preview matched via {result.get('matched')}: alt={result.get('alt')}"
-            else:
-                return False, "Preview not found"
+            return False, "Preview not found"
         except Exception as e:
             return False, f"Verification error: {e}"
 
@@ -394,11 +385,8 @@ class BrowserController:
             self._log("Textarea not found")
             return False
         try:
-            # Highlight
             await self.highlight_element(loc, duration_seconds=1)
-            # Fill
             await loc.fill(prompt_text)
-            # Dispatch events? fill should handle
             await self.page.wait_for_timeout(500)
             return True
         except Exception as e:
@@ -412,7 +400,7 @@ class BrowserController:
         try:
             js = """
             () => {
-                const el = document.querySelector('textarea[name="message"]');
+                const el = document.querySelector('textarea[name=\"message\"]');
                 if (!el) return null;
                 return el.value;
             }
@@ -422,64 +410,44 @@ class BrowserController:
                 return False, "Textarea not found on verify"
             if actual == expected_prompt:
                 return True, "Exact match"
-            else:
-                # Provide diff snippet
-                return False, f"Mismatch: expected len {len(expected_prompt)}, actual len {len(actual)}"
+            return False, f"Mismatch: expected len {len(expected_prompt)}, actual len {len(actual)}"
         except Exception as e:
             return False, f"Verify error: {e}"
+
+    async def _try_submit_once(self, timeout: int) -> tuple[bool, str]:
+        sel = get_selector("send_button")
+        loc = await self.find_element(sel, timeout=2000)
+        if not loc:
+            return False, "Send button not found"
+        try:
+            is_enabled = await loc.is_enabled()
+            is_visible = await loc.is_visible()
+            if is_enabled and is_visible:
+                await self.highlight_element(loc, duration_seconds=1)
+                await loc.click()
+                self._log("Clicked send button once")
+                await self.page.wait_for_timeout(1000)
+                return True, "Clicked"
+            return False, f"Button found but enabled={is_enabled} visible={is_visible}"
+        except Exception as e:
+            return False, str(e)
 
     async def submit(self, timeout: int = 10000) -> tuple[bool, str]:
         """Find send button and submit once — waits for enabled after prompt."""
         if not self.page:
             return False, "No page"
-        # Wait for button to become enabled (after prompt insertion, React may take time)
         start = time.time()
         last_err = ""
         while (time.time() - start) * 1000 < timeout:
-            sel = get_selector("send_button")
-            loc = await self.find_element(sel, timeout=2000)
-            if loc:
-                try:
-                    # Check if enabled and visible
-                    is_enabled = await loc.is_enabled()
-                    is_visible = await loc.is_visible()
-                    if is_enabled and is_visible:
-                        await self.highlight_element(loc, duration_seconds=1)
-                        await loc.click()
-                        self._log("Clicked send button once")
-                        await self.page.wait_for_timeout(1000)
-                        return True, "Clicked"
-                    else:
-                        last_err = f"Button found but enabled={is_enabled} visible={is_visible}"
-                except Exception as e:
-                    last_err = str(e)
-            else:
-                last_err = "Send button not found"
-            # Wait a bit and retry
+            ok, msg = await self._try_submit_once(timeout)
+            if ok:
+                return True, msg
+            last_err = msg
             await self.page.wait_for_timeout(500)
         return False, f"Send button not found or disabled after {timeout}ms: {last_err}"
 
-    async def wait_for_generation(self, baseline: Dict[str, Any], timeout: int = 180000) -> tuple[str, Dict[str, Any]]:
-        """
-        Wait for generation to finish while handling loading, timeouts, errors, required user actions.
-        Understands spinner (Response A/B) as generating indicator — user provided HTML:
-        <div class="flex min-w-0 flex-1 items-center gap-2"><div class="h-5 w-5 flex-shrink-0 animate-spin"><canvas></canvas></div><span>Response A</span></div>
-        Returns (status, data) where status is completed, needs_review, failed, paused_user_action
-        """
-        if not self.page:
-            return "failed", {"error": "No page"}
-        start = time.time()
-        poll_interval = 2
-        seen_spinning = False
-
-        while (time.time() - start) * 1000 < timeout:
-            if await self.is_security_dialog_visible():
-                return "paused_user_action", {"reason": "Security verification detected"}
-            if await self.is_sign_in_page():
-                return "paused_user_action", {"reason": "Authentication required"}
-
-            # Check spinner + new output in one JS call
-            js_check = """
+    def _generation_check_js(self):
+        return """
             (oldSrcs) => {
               try {
                 let spinning = false;
@@ -498,13 +466,13 @@ class BrowserController:
                   }
                 } catch(e) {}
                 const selectors = [
-                  'div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',
-                  'div.no-scrollbar img[src*="messages-prod."]',
-                  'div.no-scrollbar img[loading="lazy"].aspect-square',
+                  'div.no-scrollbar img[src*=\".r2.cloudflarestorage.com/\"]',
+                  'div.no-scrollbar img[src*=\"messages-prod.\"]',
+                  'div.no-scrollbar img[loading=\"lazy\"].aspect-square',
                   'img.aspect-square.cursor-pointer',
-                  'div.flex img[src*=".r2.cloudflarestorage.com/"]',
-                  'main img[src*=".r2.cloudflarestorage.com/"]',
-                  'img[src*=".r2.cloudflarestorage.com/"]'
+                  'div.flex img[src*=\".r2.cloudflarestorage.com/\"]',
+                  'main img[src*=\".r2.cloudflarestorage.com/\"]',
+                  'img[src*=\".r2.cloudflarestorage.com/\"]'
                 ];
                 let newCandidates = [];
                 for (const sel of selectors) {
@@ -535,19 +503,31 @@ class BrowserController:
               } catch(e) { return {ready:false, reason:String(e), spinning:false}; }
             }
             """
+
+    async def wait_for_generation(self, baseline: Dict[str, Any], timeout: int = 180000) -> tuple[str, Dict[str, Any]]:
+        """Wait for generation to finish while handling loading, timeouts, errors."""
+        if not self.page:
+            return "failed", {"error": "No page"}
+        start = time.time()
+        poll_interval = 2
+        seen_spinning = False
+        js_check = self._generation_check_js()
+        while (time.time() - start) * 1000 < timeout:
+            if await self.is_security_dialog_visible():
+                return "paused_user_action", {"reason": "Security verification detected"}
+            if await self.is_sign_in_page():
+                return "paused_user_action", {"reason": "Authentication required"}
             try:
                 old_srcs = baseline.get("output_srcs", [])
                 check_result = await self.page.evaluate(js_check, old_srcs)
                 if check_result.get("spinning") and not seen_spinning:
-                    self._log(f"⏳ Generation started — spinner visible {check_result.get('spinDetails')} (Response A/B processing)")
+                    self._log(f"⏳ Generation started — spinner visible {check_result.get('spinDetails')}")
                     seen_spinning = True
                 if check_result.get("ready"):
                     return "completed", {"new_src": check_result.get("src"), "baseline": await self.capture_baseline(), "check": check_result}
             except Exception as e:
                 self._log(f"Check new output error: {e}")
-
             await self.page.wait_for_timeout(poll_interval * 1000)
-
         return "failed", {"error": f"Generation timeout after {timeout}ms, spinning seen={seen_spinning}", "last_baseline": await self.capture_baseline()}
 
     async def detect_new_output(self, baseline: Dict[str, Any]) -> tuple[bool, Dict[str, Any]]:
@@ -557,23 +537,13 @@ class BrowserController:
         new_outputs = [o for o in current.get("outputs", []) if o.get("src") not in old_srcs]
         if not new_outputs:
             return False, {"reason": "No new src", "current": current}
-        # Check if appears after current job (we use timestamp and count)
-        # For MVP, if new output exists and is loaded, consider valid
         for out in new_outputs:
             if out.get("complete") and out.get("naturalWidth", 0) > 0:
                 return True, {"new_output": out, "current": current}
         return False, {"reason": "New outputs not loaded", "new_outputs": new_outputs, "current": current}
 
-    async def download_image(self, image_src: str, timeout: int = 30000) -> tuple[bool, bytes, str]:
-        """
-        Download highest-quality available output through permitted mechanism.
-        Tries fetch + canvas fallback (handles CORS, blob, r2).
-        Returns (success, bytes, error)
-        """
-        if not self.page:
-            return False, b"", "No page"
-        try:
-            js = """
+    def _download_js(self):
+        return """
             async (src) => {
               const tryFetch = async (url) => {
                 try {
@@ -591,7 +561,7 @@ class BrowserController:
                   let imgEl = null;
                   const all = document.querySelectorAll('img');
                   for (const im of all) { if (im.src === url || im.src.includes(url) || url.includes(im.src)) { imgEl = im; break; } }
-                  if (!imgEl) imgEl = document.querySelector(`img[src="${url}"]`) || document.querySelector(`img[src*="${url.slice(-30)}"]`);
+                  if (!imgEl) imgEl = document.querySelector(`img[src=\"${url}\"]`) || document.querySelector(`img[src*=\"${url.slice(-30)}\"]`);
                   if (!imgEl) return {ok:false, error:'img element not found for canvas', method:'canvas'};
                   if (!imgEl.complete || imgEl.naturalWidth === 0) {
                     await new Promise((res, rej) => {
@@ -623,7 +593,13 @@ class BrowserController:
               return {ok:false, error: `Fetch ${JSON.stringify(r)}; Canvas ${JSON.stringify(c)}`, src: src};
             }
             """
-            result = await self.page.evaluate(js, image_src)
+
+    async def download_image(self, image_src: str, timeout: int = 30000) -> tuple[bool, bytes, str]:
+        """Download highest-quality available output."""
+        if not self.page:
+            return False, b"", "No page"
+        try:
+            result = await self.page.evaluate(self._download_js(), image_src)
             if not result.get("ok"):
                 return False, b"", f"Fetch failed: {result}"
             byte_list = result.get("bytes", [])

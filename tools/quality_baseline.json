@@ -289,14 +289,14 @@
   },
   "app/browser/controller.py": {
     "coverage": 0.0,
-    "file_lines": 643,
-    "func_count": 22,
-    "max_cc": 13,
-    "max_class_loc": 629,
-    "max_cog": 28,
-    "max_func_loc": 90,
-    "max_methods": 22,
-    "max_nest": 5,
+    "file_lines": 619,
+    "func_count": 34,
+    "max_cc": 9,
+    "max_class_loc": 605,
+    "max_cog": 13,
+    "max_func_loc": 57,
+    "max_methods": 34,
+    "max_nest": 2,
     "max_params": 4
   },
   "app/browser/dom_highlight.py": {
