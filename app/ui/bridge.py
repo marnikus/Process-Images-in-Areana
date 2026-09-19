@@ -36,6 +36,7 @@ from app.ui.panels.url_queue import UrlQueueMixin
 from app.ui.panels.queue_scan import QueueScanMixin
 from app.ui.panels.app_settings import AppSettingsMixin
 from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
+from app.ui.panels.watcher_solver import WatcherSolverMixin
 from app.ui.panels.page_pool import PagePoolMixin
 from app.ui.panels.recording_sessions import RecordingSessionsMixin
 from app.ui.panels.browser_tabs import BrowserTabsMixin
@@ -54,7 +55,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, WatcherSolverMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -76,6 +77,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     job_finished = Signal(str, str)  # jobId, resultJson
     watcher_status = Signal(str)  # JSON status
     watcher_log = Signal(str, str)  # msg, level
+    captcha_watcher_status = Signal(str)  # JSON: Captcha Watcher (SDK solver) counters
     page_pool_updated = Signal(str)  # JSON snapshot steady/busy
     thumbnail_ready = Signal(str, str)  # img_id, payload_json — non-blocking thumb
 

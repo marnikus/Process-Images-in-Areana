@@ -1,114 +1,134 @@
-/* captcha.js — standalone Captcha window: 2Captcha auto-solve control.
-   Key stays local (config/2captcha.json, git-ignored); the UI only ever
-   receives the masked form (RULE 20). The raw key is cleared from the
-   field after a successful save and is never kept in a page preset. */
+/* captcha.js — standalone Captcha window: Captcha Watcher (SDK solver) control.
+   Isolation contract (2026-10-02): jobs never solve; the Watcher is the only
+   solver. This panel owns: key save (masked reply, RULE 20), Watcher ON/OFF
+   (same switch as the Watcher window), live solver counters, balance, and
+   the pipeline's detected/cleared counters. The raw key is cleared from the
+   field after a successful save and never kept in a page preset. */
 'use strict';
 
 const CaptchaPanel = {
+  _status: null,
+
   init() {
-    document.getElementById('captchaSaveBtn')?.addEventListener('click', () => this.save());
-    document.getElementById('captchaStatsBtn')?.addEventListener('click', () => this.loadStats());
+    const on = (id, fn) => document.getElementById(id)?.addEventListener('click', fn);
+    on('captchaSaveBtn', () => this.saveKey());
+    on('captchaBalanceBtn', () => this.balance());
+    on('captchaWatcherStartBtn', () => this.watcherOn());
+    on('captchaWatcherStopBtn', () => this.watcherOff());
+    on('captchaStatsBtn', () => this.refresh());
     document.getElementById('captchaKeyShow')?.addEventListener('change', (e) => {
       const k = document.getElementById('captchaApiKey');
       if (k) k.type = e.target.checked ? 'text' : 'password';
     });
-    setTimeout(() => this.loadStatus(), 1200);
-    setTimeout(() => this.loadStats(), 1400);
+    setTimeout(() => this.refresh(), 1200);
   },
 
-  _applyStatusValues(r) {
-    const en = document.getElementById('captchaEnabled');
-    if (en) en.checked = r.enabled !== false;
-    const setVal = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; };
-    setVal('captchaTimeoutMin', Math.round(((r.solve_timeout_sec || 180) / 60) * 10) / 10);
+  _log(msg, level) {
+    if (typeof LogConsole !== 'undefined') LogConsole.log(msg, level || 'info');
+  },
+
+  _call(name, args, cb) {
+    const fn = App.bridge?.[name];
+    if (!fn) return false;
+    const onRes = (res) => { try { cb(JSON.parse(res)); } catch (e) { /* malformed reply */ } };
+    if (args.length) fn(...args, onRes); else fn(onRes);
+    return true;
+  },
+
+  refresh() {
+    this.loadStatus();
+    this.loadStats();
   },
 
   loadStatus() {
-    if (!App.bridge?.get_captcha_status) return;
-    App.bridge.get_captcha_status((res) => {
-      try {
-        const r = JSON.parse(res);
-        if (!r.ok) return;
-        this._applyStatusValues(r);
-        this.renderStatus(r);
-      } catch (e) {}
+    this._call('watcher_status', [], (r) => { if (r.ok) this.renderStatus(r); });
+  },
+
+  loadStats() {
+    this._call('get_captcha_stats', [], (r) => { if (r.ok) this.renderStats(r); });
+  },
+
+  saveKey() {
+    const key = (document.getElementById('captchaApiKey')?.value || '').trim();
+    this._call('set_captcha_api_key', [key], (r) => {
+      if (!r.ok) { this._log('2Captcha key save failed: ' + (r.error || '?'), 'error'); return; }
+      this._log(`2Captcha key ${r.has_key ? 'saved: ' + r.masked_key : 'cleared'}`, 'success');
+      const k = document.getElementById('captchaApiKey');
+      if (k) k.value = '';
+      this.refresh();
     });
   },
 
-  _modeText(enabled) {
-    return enabled ? 'auto-solve: ON (2Captcha will solve visible captchas)' : 'auto-solve: OFF (app waits for your manual solve)';
+  balance() {
+    this._call('captcha_balance', [], (r) => {
+      if (!r.ok) { this._log('Balance check failed: ' + (r.error || '?'), 'warn'); return; }
+      setTimeout(() => this.loadStatus(), 2500);
+    });
+  },
+
+  watcherOn() {
+    this._call('start_watcher', [], (r) => {
+      if (!r.ok) { this._log('Watcher start failed: ' + (r.error || '?'), 'error'); return; }
+      const s = r.solver || {};
+      if (s.ok === false) this._log('Watcher ON, but solving is disabled: ' + (s.error || '?'), 'warn');
+      if (typeof WatcherPanel !== 'undefined') WatcherPanel.loadConfig();
+      setTimeout(() => this.loadStatus(), 600);
+    });
+  },
+
+  watcherOff() {
+    this._call('stop_watcher', [], (r) => {
+      if (!r.ok) { this._log('Watcher stop failed: ' + (r.error || '?'), 'error'); return; }
+      if (typeof WatcherPanel !== 'undefined') WatcherPanel.loadConfig();
+      setTimeout(() => this.loadStatus(), 600);
+    });
+  },
+
+  onStatusUpdate(payload) {
+    try {
+      const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
+      if (data) this.renderStatus(data);
+    } catch (e) { /* ignore malformed pushes */ }
   },
 
   _balanceText(r) {
     if (r.balance === null || r.balance === undefined) return 'balance: —';
-    const suffix = r.balance_at ? ` (checked ${r.balance_at})` : '';
-    return `balance: $${Number(r.balance).toFixed(2)}${suffix}`;
+    return `balance: $${Number(r.balance).toFixed(2)}`;
+  },
+
+  _solverText(r) {
+    if (r.running) return r.solving_tab ? `solver: ON (solving ${r.solving_tab.slice(0, 8)}…)` : 'solver: ON';
+    if (!r.sdk_available) return 'solver: off (SDK missing — pip install 2captcha-python)';
+    return r.has_key ? 'solver: off (turn the Watcher ON)' : 'solver: off (no key)';
+  },
+
+  _renderBadge(r) {
+    const badge = document.getElementById('captchaWatcherBadge');
+    if (!badge) return;
+    badge.textContent = r.running ? 'solver: on' : 'solver: off';
+    badge.style.background = r.running ? 'var(--bg-success, #1a3a1a)' : 'var(--bg-input)';
+    badge.style.color = r.running ? '#4ade80' : 'var(--text-muted)';
   },
 
   renderStatus(r) {
+    this._status = r;
+    this._renderBadge(r);
     const line = document.getElementById('captchaStatusLine');
-    if (!line) return;
-    const mode = this._modeText(r.enabled);
-    const key = r.has_key ? `key: ${r.masked_key || '****'}` : 'key: (not set)';
-    const bal = this._balanceText(r);
-    const err = r.last_error ? ` · last error: ${r.last_error}` : '';
-    line.textContent = `${mode} · ${key} · ${bal}${err}`;
-    if (r.balance !== null && r.balance !== undefined) {
-      const b = document.getElementById('capStatBalance');
-      if (b) b.textContent = `$${Number(r.balance).toFixed(2)}`;
+    if (line) {
+      const key = r.has_key ? 'key: set' : 'key: (not set)';
+      const err = r.last_error ? ` · last error: ${r.last_error}` : '';
+      line.textContent = `${this._solverText(r)} · ${key} · ${this._balanceText(r)}${err}`;
     }
-  },
-
-  _buildPayload() {
-    const en = document.getElementById('captchaEnabled');
-    const key = (document.getElementById('captchaApiKey')?.value || '').trim();
-    const min = parseFloat(document.getElementById('captchaTimeoutMin')?.value);
-    const timeoutSec = Math.round((isNaN(min) ? 3 : min) * 60);
-    return {enabled: en ? en.checked : false, api_key: key, solve_timeout_sec: timeoutSec};
-  },
-
-  _onSaveRes(res) {
-    try {
-      const r = JSON.parse(res);
-      if (r.ok) {
-        LogConsole.log(`2Captcha saved: ${r.enabled ? 'enabled' : 'disabled'}, key=${r.masked_key || '(empty)'}`, 'success');
-        const k = document.getElementById('captchaApiKey');
-        if (k) k.value = '';
-        this.loadStatus();
-        this.loadStats();
-      } else {
-        LogConsole.log('2Captcha save failed: ' + (r.error || '?'), 'error');
-      }
-    } catch (e) {}
-  },
-
-  save() {
-    if (!App.bridge?.set_captcha_settings) return;
-    const payload = this._buildPayload();
-    App.bridge.set_captcha_settings(JSON.stringify(payload), (res) => this._onSaveRes(res));
-  },
-
-  loadStats() {
-    if (!App.bridge?.get_captcha_stats) return;
-    App.bridge.get_captcha_stats((res) => {
-      try {
-        const r = JSON.parse(res);
-        if (!r.ok) return;
-        this.renderStats(r);
-      } catch (e) {}
-    });
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('capStatAuto', r.solved_total ?? 0);
+    set('capStatFailed', r.failed_total ?? 0);
+    set('capStatTabs', r.tabs_seen ?? 0);
+    if (r.balance !== null && r.balance !== undefined) set('capStatBalance', `$${Number(r.balance).toFixed(2)}`);
   },
 
   renderStats(r) {
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     set('capStatDetected', r.detected_total ?? 0);
-    set('capStatAuto', r.auto_solved ?? 0);
-    set('capStatFailed', r.auto_failed ?? 0);
-    const denom = (r.auto_solved ?? 0) + (r.auto_failed ?? 0);
-    set('capStatRate', denom ? `${Math.round((r.auto_solved / denom) * 100)}% (${r.auto_solved}/${denom})` : '—');
     set('capStatManual', r.manual_solved ?? 0);
-    if (r.last_balance !== null && r.last_balance !== undefined) {
-      set('capStatBalance', `$${Number(r.last_balance).toFixed(2)}`);
-    }
   },
 };

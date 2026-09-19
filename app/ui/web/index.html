@@ -399,34 +399,31 @@
 
     <!-- BROWSER PREVIEW -->
     <div class="panel" id="winCaptcha" data-window="captcha">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">verified_user</span> Captcha — 2Captcha <span class="spacer"></span><button id="captchaSaveBtn" class="btn-small btn-primary">Save</button><button id="captchaStatsBtn" class="btn-small" title="Refresh stats + balance">↻ Stats</button></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">verified_user</span> Captcha — Watcher solver (2Captcha SDK) <span class="spacer"></span><span id="captchaWatcherBadge" class="status-badge" style="font-size:10px; padding:2px 8px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">solver: off</span><button id="captchaWatcherStartBtn" class="btn-small btn-primary" title="Turn the Watcher ON — the app solves visible reCAPTCHA challenges on its own pages">Watcher ON</button><button id="captchaWatcherStopBtn" class="btn-small" title="Turn the Watcher OFF — the app never solves captchas">OFF</button><button id="captchaStatsBtn" class="btn-small" title="Refresh status, stats + balance">↻</button></h3>
       <div style="padding:10px; overflow:auto;">
-        <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:8px;">
-          <input id="captchaEnabled" type="checkbox"> Enable auto-solve (opt-in — off = manual solve in Chrome)
-        </label>
         <div class="settings-row">
           <div class="settings-group" style="flex:2;">
-            <label>2Captcha API key — stored locally, masked, never in logs/presets</label>
-            <input id="captchaApiKey" type="password" placeholder="paste API key" autocomplete="off">
+            <label>2Captcha API key — stored locally (config/2captcha.json, 0600), masked, never in logs/presets</label>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <input id="captchaApiKey" type="password" placeholder="paste API key" autocomplete="off" style="flex:1;">
+              <button id="captchaSaveBtn" class="btn-small btn-primary">Save key</button>
+              <button id="captchaBalanceBtn" class="btn-small" title="Check account balance via the SDK">Balance</button>
+            </div>
             <label style="font-size:10px; color:var(--text-muted); display:flex; gap:4px; align-items:center; margin-top:2px;">
               <input id="captchaKeyShow" type="checkbox"> show key
             </label>
           </div>
-          <div class="settings-group">
-            <label>Solve timeout (minutes)</label>
-            <input id="captchaTimeoutMin" type="number" min="0.5" max="10" step="0.5" placeholder="3">
-          </div>
         </div>
-        <div id="captchaStatusLine" style="font-size:11px; color:var(--text-muted); margin:6px 0;">key: — · balance: —</div>
+        <div id="captchaStatusLine" style="font-size:11px; color:var(--text-muted); margin:6px 0;">solver: off · key: — · balance: —</div>
         <div id="captchaStatsGrid" style="display:flex; gap:10px; flex-wrap:wrap; font-size:11px;">
-          <div><b id="capStatDetected">0</b> detected</div>
-          <div><b id="capStatAuto">0</b> auto-solved</div>
-          <div><b id="capStatFailed">0</b> auto-failed</div>
-          <div><b id="capStatRate">—</b> auto success</div>
-          <div><b id="capStatManual">0</b> manual</div>
+          <div><b id="capStatDetected">0</b> detected (jobs)</div>
+          <div><b id="capStatManual">0</b> cleared while waiting</div>
+          <div><b id="capStatAuto">0</b> solved by Watcher</div>
+          <div><b id="capStatFailed">0</b> Watcher failed</div>
+          <div><b id="capStatTabs">0</b> pages scanned</div>
           <div><b id="capStatBalance">—</b> balance</div>
         </div>
-        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;">Each page detects and solves its own captcha independently — parallel across pages, never blocks other tabs. If auto-solve fails, the job falls back to manual solve. Solved captchas still stack the cooldown penalty.</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;"><b>Isolation contract:</b> jobs never solve a captcha — they pause until the dialog clears. Watcher ON = the Watcher scans the app's own pages every few seconds and solves visible reCAPTCHA challenges through the official 2Captcha SDK (max 2 paid attempts per challenge). Watcher OFF = the app only processes images; solve captchas yourself in Chrome. Cleared captchas still stack the cooldown penalty.</div>
       </div>
     </div>
 

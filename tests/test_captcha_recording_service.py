@@ -6,8 +6,7 @@ import pytest
 
 from app.browser.page_pool import PagePool
 from app.services.captcha.service import CaptchaCtx, CaptchaService, handle_captcha
-from tests.test_captcha_service import instant_sleep, make_bridge, make_info
-from tests.test_captcha_solver import FakeCtrl
+from tests.test_captcha_service import FakeCtrl, instant_sleep, make_bridge, make_info
 
 
 class RecordingSpy:

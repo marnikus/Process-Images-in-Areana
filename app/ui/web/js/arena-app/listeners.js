@@ -108,6 +108,10 @@ window.ArenaAppListeners = {
     if (typeof LogConsole !== 'undefined') LogConsole.log(msg, level);
   },
 
+  _handleCaptchaWatcherStatus(payload) {
+    if (typeof CaptchaPanel !== 'undefined' && CaptchaPanel.onStatusUpdate) CaptchaPanel.onStatusUpdate(payload);
+  },
+
   _handlePagePool(payload) {
     if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.onUpdate(payload);
     if (typeof UrlList !== 'undefined' && UrlList.onPoolUpdate) UrlList.onPoolUpdate(payload);
@@ -138,6 +142,7 @@ window.ArenaAppListeners = {
       job_finished: (j, r) => this._handleJobFinished(j, r),
       watcher_status: (p) => this._handleWatcherStatus(p),
       watcher_log: (m, l) => this._handleWatcherLog(m, l),
+      captcha_watcher_status: (p) => this._handleCaptchaWatcherStatus(p),
       page_pool_updated: (p) => this._handlePagePool(p),
       thumbnail_ready: (id, p) => this._handleThumbnail(id, p),
     };
