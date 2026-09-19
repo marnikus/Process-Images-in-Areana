@@ -18,16 +18,31 @@ try:
     from PySide6.QtCore import QObject, Signal, Slot
     from PySide6.QtWidgets import QFileDialog
 except ImportError:
+
     class QObject:
-        def __init__(self, *a, **kw): pass
-    def Signal(*a, **kw):
+        def __init__(self, *args, **kwargs):
+            _ = (args, kwargs)
+
+    def Signal(*args, **kwargs):
+        _ = (args, kwargs)
+
         class _Sig:
-            def emit(self, *a, **kw): pass
-            def connect(self, *a, **kw): pass
+            def emit(self, *a, **kw):
+                _ = (a, kw)
+
+            def connect(self, *a, **kw):
+                _ = (a, kw)
+
         return _Sig()
-    def Slot(*a, **kw):
-        def deco(fn): return fn
+
+    def Slot(*args, **kwargs):
+        _ = (args, kwargs)
+
+        def deco(fn):
+            return fn
+
         return deco
+
     QFileDialog = None
 
 from app.core.layout_service import (

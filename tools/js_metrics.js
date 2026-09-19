@@ -125,16 +125,13 @@ for (const file of files) {
         results.push({ file: path.relative(ROOT, file), line: node.loc.start.line, name, loc, params, depth, cc });
       },
       ArrowFunctionExpression(node, ancestors) {
-        // Only count if body is block (not concise)
-        if (node.body && node.body.type === 'BlockStatement') {
-          const parent = ancestors[ancestors.length - 2];
-          const name = getFuncName(node, parent);
-          const loc = (node.loc.end.line - node.loc.start.line + 1);
-          const params = node.params ? node.params.length : 0;
-          const depth = computeNesting(node);
-          const cc = computeCC(node);
-          results.push({ file: path.relative(ROOT, file), line: node.loc.start.line, name, loc, params, depth, cc });
-        }
+        const parent = ancestors[ancestors.length - 2];
+        const name = getFuncName(node, parent);
+        const loc = (node.loc.end.line - node.loc.start.line + 1);
+        const params = node.params ? node.params.length : 0;
+        const depth = computeNesting(node);
+        const cc = computeCC(node);
+        results.push({ file: path.relative(ROOT, file), line: node.loc.start.line, name, loc, params, depth, cc });
       }
     });
   } catch (e) {

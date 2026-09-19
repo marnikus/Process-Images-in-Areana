@@ -176,15 +176,48 @@ def lcom4():
         res.append((path, clsname, len(names), len(comps), sorted(comps.values(), reverse=True)[:3]))
     return res
 
+def vulture_metrics():
+    def run_vul(conf):
+        try:
+            out = subprocess.check_output(["python", "-m", "vulture", "app", "--min-confidence", str(conf)], text=True, timeout=10, stderr=subprocess.STDOUT)
+            return out
+        except subprocess.CalledProcessError as e:
+            # vulture exits 3 when finds dead code, still has output
+            return e.output
+        except Exception:
+            return ""
+    out90 = run_vul(90)
+    out60 = run_vul(60)
+    l90 = [l for l in out90.splitlines() if l.strip()]
+    l60 = [l for l in out60.splitlines() if l.strip()]
+    return {"90": len(l90), "60": len(l60), "sample90": l90[:5]}
+
+def jscpd_metrics():
+    try:
+        out_dir = Path("/tmp/jscpd-out")
+        out_dir.mkdir(exist_ok=True)
+        subprocess.check_output(["npx", "jscpd", "app", "--min-tokens", "60", "--reporters", "json", "--output", str(out_dir), "--silent"], text=True, timeout=20)
+        rep = out_dir / "jscpd-report.json"
+        if rep.exists():
+            d = json.loads(rep.read_text(encoding="utf-8"))
+            total = d.get("statistics", {}).get("total", {})
+            return {"pct": total.get("percentage", 0), "clones": len(d.get("duplicates", [])), "lines": total.get("duplicatedLines", 0)}
+    except Exception:
+        pass
+    return {"pct": -1, "clones": -1}
+
 def js_metrics():
     try:
         tool = ROOT / "tools" / "js_metrics.js"
         if tool.exists():
-            out = subprocess.check_output(["node", str(tool), str(WEB)], text=True, timeout=10)
-            # js_metrics.js without --json prints human summary but also writes /tmp/js_metrics.json
-            # Try json mode
             out2 = subprocess.check_output(["node", str(tool), str(WEB), "--json"], text=True, timeout=10)
-            return json.loads(out2)
+            data = json.loads(out2)
+            funcs = [e for e in data if not e.get("isFile") and not e.get("error")]
+            files = [e for e in data if e.get("isFile")]
+            over30 = sum(1 for f in funcs if f.get("loc", 0) > 30)
+            over4 = sum(1 for f in funcs if f.get("depth", 0) > 4)
+            over_cc = sum(1 for f in funcs if f.get("cc", 0) > 10)
+            return {"total_funcs": len(funcs), "total_files": len(files), "over30": over30, "nest_over4": over4, "cc_over10": over_cc, "raw": data[:3]}
     except Exception:
         pass
     return {}
@@ -203,8 +236,9 @@ def main():
     coup = coupling()
     lcom = lcom4()
     jsd = js_metrics()
+    vul = vulture_metrics()
+    jsc = jscpd_metrics()
 
-    locs_s = sorted(locs)
     mean_loc = statistics.mean(locs) if locs else 0
     median_loc = statistics.median(locs) if locs else 0
     over30 = sum(1 for l in locs if l > 30)
@@ -221,7 +255,8 @@ def main():
     report = {
         "python": {"files": total_files, "lines": total_lines, "funcs": len(locs), "mean": mean_loc, "median": median_loc, "max": max(locs) if locs else 0, "over30": over30, "band_4_20": band, "under4": under4, "classes": len(classes), "c_over150": c_over150, "c_over300": c_over300, "f_over300": over300, "f_over500": over500, "f_ideal": ideal, "cc_max": cc_blocks[0][0] if cc_blocks else 0, "cc_over10": len(cc_over), "cog_max": max([c[0] for c in cog_over]) if cog_over else 0, "cog_over15": len(cog_over), "nest_max": max([n[0] for n in nest_over]) if nest_over else 0, "nest_over4": len(nest_over), "params_over4": len(par_over)},
         "mi": {"mean": statistics.mean(mi_vals) if mi_vals else 0, "min": min(mi_vals) if mi_vals else 0, "under20": sum(1 for v in mi_vals if v < 20), "under40": sum(1 for v in mi_vals if v < 40)},
-        "coupling": coup, "lcom4": lcom, "coverage": cov["totals"] if cov and "totals" in cov else None, "js": len(jsd) if isinstance(jsd, list) else 0,
+        "coupling": coup, "lcom4": lcom, "coverage": cov["totals"] if cov and "totals" in cov else None,
+        "js": jsd, "vulture": vul, "jscpd": jsc,
     }
 
     if args.json or args.out:
@@ -240,6 +275,14 @@ def main():
         t = cov["totals"]
         bp = t["covered_branches"] / t["num_branches"] * 100 if t["num_branches"] else 0
         print(f"Coverage line {t['percent_covered']:.1f}% stmts {t['percent_statements_covered']:.1f}% branch {bp:.1f}%")
+    print(f"Vulture @90 {vul.get('90')} @60 {vul.get('60')} Duplication {jsc.get('pct')}% {jsc.get('clones')} groups {jsc.get('lines')} lines")
+    print(f"JS files {jsd.get('total_files',0)} funcs {jsd.get('total_funcs',0)} >30 {jsd.get('over30',0)} nest>4 {jsd.get('nest_over4',0)} CC>10 {jsd.get('cc_over10',0)}")
+    print("Coupling:")
+    for k, (ca, ce, inst) in sorted(coup.items()):
+        print(f"  {k} Ca={ca} Ce={ce} I={inst:.2f}")
+    print("LCOM4:")
+    for r in lcom:
+        print(f"  {r[0]}::{r[1]} methods={r[2]} LCOM4={r[3]}")
 
 if __name__ == "__main__":
     main()

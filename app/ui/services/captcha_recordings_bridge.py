@@ -11,11 +11,13 @@ try:
 except ImportError:
     QDesktopServices = None
     QUrl = None
+
     class QObject:
         def __init__(self, *args, **kwargs):
-            pass
+            _ = (args, kwargs)
 
     def Slot(*args, **kwargs):
+        _ = (args, kwargs)
         return lambda function: function
 
 
