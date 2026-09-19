@@ -20,11 +20,15 @@ except ImportError:
         _ = (args, kwargs)
 
         class _Sig:
-            def emit(self, *a, **kw):
-                _ = (a, kw)
+            def __init__(self):
+                self._slots = []
 
-            def connect(self, *a, **kw):
-                _ = (a, kw)
+            def emit(self, *a, **kw):
+                for slot in tuple(self._slots):
+                    slot(*a, **kw)
+
+            def connect(self, slot):
+                self._slots.append(slot)
 
         return _Sig()
 

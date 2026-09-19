@@ -20,7 +20,6 @@ class WatcherService:
         self._logger = logger or (lambda msg, level="info": log.info(msg))
         self._cdp_probe = WatcherCDP(cdp_controller_getter, self._logger)
         self._job_ctrl = WatcherJobCtrl(self.config, job_runner_getter)
-        # use deps objects to keep params ≤4
         h_deps = HandlerDeps(config=self.config, state=self.state, cdp_probe=self._cdp_probe, job_ctrl=self._job_ctrl, logger=self._logger, notifier=self._notify_proxy)
         self._handlers = WatcherHandlers(h_deps)
         l_deps = LoopDeps(config=self.config, state=self.state, cdp_probe=self._cdp_probe, handlers=self._handlers, notifier=self._notify_proxy, logger=self._logger)
@@ -79,8 +78,8 @@ class WatcherService:
         return await self._loop.check_once()
 
     async def force_clear(self):
-        cdp = self._cdp_probe.get()
-        if cdp:
+        pages = self._cdp_probe.get_pages()
+        for _page_id, cdp in pages:
             try:
                 await cdp.hide_watcher_overlay()
             except Exception:

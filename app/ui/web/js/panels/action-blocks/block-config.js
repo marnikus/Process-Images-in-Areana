@@ -88,7 +88,7 @@ window.ActionBlocksConfig = {
   },
 
   buildForm(root, block) {
-    const form = root.querySelector('#ab-config-form');
+    const form = root.querySelector('#ab-config-form, #blockConfigForm');
     if (!form) return;
     form.innerHTML = '';
     if (!block) {
@@ -108,7 +108,7 @@ window.ActionBlocksConfig = {
   },
 
   bindFormEvents(root, getSelectedBlock, onSave) {
-    const form = root.querySelector('#ab-config-form');
+    const form = root.querySelector('#ab-config-form, #blockConfigForm');
     if (!form) return;
     form.addEventListener('input', (e) => this._onFieldInput(e, getSelectedBlock, onSave));
     form.addEventListener('change', (e) => this._onFieldInput(e, getSelectedBlock, onSave));
@@ -121,7 +121,7 @@ window.ActionBlocksConfig = {
   },
 
   readFormValues(root) {
-    const form = root.querySelector('#ab-config-form');
+    const form = root.querySelector('#ab-config-form, #blockConfigForm');
     if (!form) return {};
     const values = {};
     form.querySelectorAll('[data-field-key]').forEach(input => {
@@ -145,7 +145,7 @@ window.ActionBlocksConfig = {
     this._saveTimer = null;
     const block = getSelectedBlock();
     if (!block) return;
-    const root = document.getElementById('panel-action-blocks');
+    const root = document.getElementById('winBlockConfig') || document;
     Object.assign(block, this.readFormValues(root));
     onSave();
   },

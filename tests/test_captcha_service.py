@@ -502,3 +502,26 @@ async def test_token_stale_with_gone_dialog_ends_encounter(monkeypatch, isolated
     outcome = await handle_captcha(ctx)
     assert outcome.status == "token_stale"
     assert ctrl.overlay_calls == []  # nobody can solve a cleared challenge
+
+@pytest.mark.unit
+def test_service_logging_and_penalty_helpers_fail_open(monkeypatch):
+    from app.services.captcha.service import _log, _record_penalty
+    import app.services.cooldown_service as cooldown
+    calls = []
+    bridge = SimpleNamespace(_log=lambda msg, level: calls.append((msg, level)))
+    ctx = CaptchaCtx(ctrl=SimpleNamespace(), pool=None, bridge=bridge, tab_id="t1", log=lambda m, l: calls.append((m, l)))
+    _log(ctx, "direct")
+    ctx.log = lambda m, l: (_ for _ in ()).throw(RuntimeError("bad logger"))
+    _log(ctx, "fallback")
+    monkeypatch.setattr(cooldown, "note_captcha_event", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("broken")))
+    _record_penalty(ctx)
+    assert len(calls) >= 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_service_dialog_visibility_failure_is_closed():
+    from app.services.captcha.service import _dialog_still_visible
+    ctrl = SimpleNamespace(is_security_dialog_visible=lambda: (_ for _ in ()).throw(RuntimeError("gone")))
+    ctx = CaptchaCtx(ctrl=ctrl, pool=None, bridge=SimpleNamespace(), tab_id="t1")
+    assert await _dialog_still_visible(ctx) is False

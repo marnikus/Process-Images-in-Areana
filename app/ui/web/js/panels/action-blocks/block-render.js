@@ -86,7 +86,7 @@ window.ActionBlocksRender = {
   },
 
   renderStackChips(root, presets, onLoad, onDelete) {
-    const container = root.querySelector('#ab-stack-presets');
+    const container = root.querySelector('#stackPresetChips');
     if (!container) return;
     container.innerHTML = '';
     presets.forEach(p => {
@@ -98,7 +98,7 @@ window.ActionBlocksRender = {
   },
 
   renderCustomChips(root, customs, onAdd, onDelete) {
-    const container = root.querySelector('#ab-custom-chips');
+    const container = root.querySelector('#customBlockChips');
     if (!container) return;
     container.innerHTML = '';
     customs.forEach(entry => {
@@ -139,7 +139,7 @@ window.ActionBlocksRender = {
   },
 
   renderBlockList(root, blocks, storeState, handlers) {
-    const list = root.querySelector('#ab-block-list');
+    const list = root.querySelector('#actionBlocksStack');
     if (!list) return;
     list.innerHTML = '';
     blocks.forEach((block, idx) => {
@@ -151,7 +151,7 @@ window.ActionBlocksRender = {
 
   renderJobStack(spec) {
     const { root, jobId, blocks, statuses, onBlockClick } = spec;
-    const container = root.querySelector('#ab-job-stack');
+    const container = root.querySelector('#jobActionStack');
     if (!container) return;
     container.innerHTML = '';
     const jobStatus = statuses[jobId] || {};
@@ -168,7 +168,7 @@ window.ActionBlocksRender = {
 
   renderAllJobs(spec) {
     const { root, jobOrder, currentJobId, jobStatuses, onSelectJob } = spec;
-    const container = root.querySelector('#ab-all-jobs');
+    const container = root.querySelector('#allJobsStack');
     if (!container) return;
     container.innerHTML = '';
     jobOrder.forEach(jid => {

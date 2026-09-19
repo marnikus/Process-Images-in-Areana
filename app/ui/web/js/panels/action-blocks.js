@@ -160,7 +160,7 @@ const ActionBlocksPanel = {
   },
   deselect() { this.selectedIdx=-1; this.showConfig(null); this.render(); },
   showConfig(idx) {
-    const root = document.getElementById('panel-action-blocks') || document;
+    const root = document.getElementById('winBlockConfig') || document;
     this._config.showConfig(root, idx, this.blocks);
     if (idx!==null) this._config.bindFormEvents(root, ()=>this.blocks[this.selectedIdx], ()=>this.save());
   },

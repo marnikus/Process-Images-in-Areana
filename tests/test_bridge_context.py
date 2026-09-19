@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from app.persistence.config_manager import ConfigManager
 from app.ui import bridge_context as ctx
 from app.ui.bridge import Bridge
+from app.ui.panels import watcher_captcha
 from tests.characterization.fakes import FakeCDP
 
 
@@ -61,6 +62,21 @@ def test_construction_attr_snapshot(tmp_path):
     assert b._watcher is not None and b._watcher.config.enabled is False
     assert b._page_pool is not None
     assert (b._page_pool._host, b._page_pool._port) == ("127.0.0.1", 9222)
+
+
+def test_watcher_controller_pool_pages(tmp_path):
+    b, _ = make_bridge(tmp_path)
+    controller = object()
+
+    class Pool:
+        def status_snapshot(self):
+            return {"pages": [{"tab_id": "tab-a"}, {"tab_id": "tab-b"}]}
+
+        def get_clients(self, tab_id):
+            return (None, controller if tab_id == "tab-a" else None)
+
+    b._page_pool = Pool()
+    assert watcher_captcha.get_watcher_cdp_controllers(b) == [("tab-a", controller)]
 
 
 def test_pool_endpoint_honored(tmp_path):

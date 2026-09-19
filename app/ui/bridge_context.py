@@ -10,8 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.undo_service import UndoService
-from app.ui.panels.watcher_captcha import (
-    get_watcher_cdp_controller, on_watcher_state)
+from app.ui.panels.watcher_captcha import create_watcher_service, on_watcher_state
 
 
 @dataclass
@@ -132,13 +131,8 @@ def _activate_watcher(bridge, watcher) -> None:
 def wire_watcher(bridge):
     """Watcher service (autostarted when enabled); None on failure."""
     try:
-        from app.services.watcher import WatcherService
-        watcher = WatcherService(
-            config=_watcher_config(bridge),
-            cdp_controller_getter=lambda: get_watcher_cdp_controller(bridge),
-            job_runner_getter=lambda: bridge,
-            logger=lambda msg, level="info": bridge._log(f"[Watcher] {msg}", level),
-        )
+        values = _watcher_config(bridge)
+        watcher = create_watcher_service(bridge, values)
         _activate_watcher(bridge, watcher)
         return watcher
     except Exception as e:

@@ -20,7 +20,7 @@ window.ActionBlocksUI = {
     try {
       panel._dragSrc = null;
       const cont = document.getElementById('actionBlocksStack');
-      if (cont) cont.querySelectorAll('.action-block').forEach(el => el.classList.remove('dragging', 'drag-over'));
+      if (cont) cont.querySelectorAll('.ab-block').forEach(el => el.classList.remove('dragging', 'drag-over'));
       document.body.classList.remove('sash-dragging', 'sash-resizing-row', 'sash-resizing-col');
       document.querySelectorAll('.sash-active').forEach(el => el.classList.remove('sash-active'));
       document.querySelectorAll('.sash-drag-clone, .sash-drag-ghost').forEach(el => { if (el.parentNode) el.parentNode.removeChild(el); });

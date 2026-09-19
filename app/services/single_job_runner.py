@@ -72,49 +72,16 @@ async def capture_baseline(ctrl) -> Dict[str, Any]:
         return {"output_count": 0, "output_srcs": []}
 
 
-def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
-    """Map security outcomes without mistaking manual supersession for failure."""
-    if outcome.status == "stopped":
-        raise RuntimeError("Cancelled during CAPTCHA")
-    if outcome.status == "page_error":
-        raise RuntimeError(outcome.reason or "Page error during CAPTCHA")
-    if outcome.status == "token_stale":
-        try:
-            ctx.bridge._log("⚠️ CAPTCHA API token stale; continuing page flow", "warn")
-        except Exception:
-            pass
-
-
-async def _run_security_captcha(ctx: JobCtx) -> None:
-    """Solve/handle the visible security dialog (closures + outcome)."""
-    from app.services.captcha import CaptchaCtx, handle_captcha
-
-    def log(msg, level="info"):
-        try:
-            ctx.bridge._log(f"[{ctx.corr_id}] {msg}", level)
-        except Exception:
-            pass
-
-    def stop():
-        return bool(getattr(ctx.bridge, "_cancel_requested", False)) or _tab_aborted(ctx)
-
-    outcome = await handle_captcha(CaptchaCtx(ctrl=ctx.ctrl, pool=getattr(ctx.bridge, "_page_pool", None),
-                                              bridge=ctx.bridge, tab_id=ctx.tab_id,
-                                              source="check-security", stop=stop, log=log))
-    _handle_captcha_outcome(ctx, outcome)
-
-
 async def check_security(ctx: JobCtx) -> bool:
-    """Captcha gate: auto-solve (2Captcha, opt-in) else wait for user (RULE 20)."""
+    """Compatibility hook: CAPTCHA ownership belongs to the enabled Watcher."""
     try:
-        visible = await ctx.ctrl.is_security_dialog_visible()
+        ctx.bridge._log(
+            f"[{ctx.corr_id}] CAPTCHA check delegated to Watcher; image pipeline continues",
+            "info",
+        )
     except Exception:
-        visible = False
-    if not visible:
-        return False
-    await _run_security_captcha(ctx)
-    return True
-
+        pass
+    return False
 
 def _mark_waiting(ctx: JobCtx, kind: str):
     """Mark waiting (pool attr; the old _ensure_page_pool call never existed)."""
@@ -245,8 +212,6 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     """Wait output."""
     try:
         await _show_gen_overlay(ctx, timeout_ms)
-        _arm_revival(ctx)  # bounded resubmit if the blocked generation died
-        ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
         status, data, src = await _poll_generation(ctx, timeout_ms)
         if status == "completed" and src:
             return await _verify_download(ctx, src)
@@ -254,50 +219,12 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     except Exception as e:
         await _hide_overlay(ctx)
         return None, None, str(e)
-    finally:
-        try:
-            delattr(ctx.ctrl, "security_settler")
-        except Exception:
-            pass
-        _clear_revival(ctx)
-
-
-async def _settle_and_note(ctx: JobCtx):
-    """Settle a mid-wait dialog, then stamp it for generation revival."""
-    from app.services.captcha.recovery import note_settle
-    settled = await check_security(ctx)
-    if settled:
-        note_settle(ctx.ctrl)
-    return settled
 
 
 def _report_recovery(ctx: JobCtx, msg: str, level: str = "info"):
-    """Revival log with the job correlation prefix (RULE 2)."""
+    """Report an image-job step without implying CAPTCHA ownership."""
     try:
         ctx.bridge._log(f"[{ctx.corr_id}] {msg}", level)
-    except Exception:
-        pass
-
-
-def _arm_revival(ctx: JobCtx):
-    """Arm post-captcha revival for this generation wait (services-owned)."""
-    from app.services.captcha.recovery import arm_resume
-    try:
-        policy = arm_resume(ctx.ctrl, ctx.final_prompt, cancelled=lambda: _is_cancelled(ctx),
-                            report=lambda m, l="info": _report_recovery(ctx, m, l))
-        img = getattr(ctx, "img", None)
-        path = getattr(img, "absolute_path", None) if img is not None else None
-        if path:
-            policy.image_path = str(path)
-    except Exception:
-        pass
-
-
-def _clear_revival(ctx: JobCtx):
-    """Disarm revival at wait end; never raises."""
-    from app.services.captcha.recovery import clear_resume
-    try:
-        clear_resume(ctx.ctrl)
     except Exception:
         pass
 
@@ -400,15 +327,8 @@ async def _handle_baseline(ctx: JobCtx, block: Any):
 
 
 async def _handle_security(ctx: JobCtx, block: Any):
-    """Handle security (announce while solving, like the legacy loop)."""
-    try:
-        visible = await ctx.ctrl.is_security_dialog_visible()
-    except Exception:
-        visible = False
-    if visible:
-        _emit_action(ctx, block, "running", "Security dialog visible — solving or waiting")
-    await check_security(ctx)
-    _emit_action(ctx, block, "success", "Security done")
+    """Report that CAPTCHA is Watcher-owned; never probe or solve here."""
+    _emit_action(ctx, block, "success", "CAPTCHA delegated to Watcher")
 
 
 async def _attach_open_dialog(ctx: JobCtx, block: Any):
@@ -462,7 +382,6 @@ async def _handle_submit(ctx: JobCtx, block: Any):
     if not ok:
         raise RuntimeError(reason)
     _emit_action(ctx, block, "success", reason)
-    await check_security(ctx)  # F4: captcha often pops at submit time
 
 
 async def _handle_wait(ctx: JobCtx, block: Any):
@@ -486,7 +405,6 @@ async def _handle_wait(ctx: JobCtx, block: Any):
 
 async def _handle_download(ctx: JobCtx, block: Any):
     """Handle download."""
-    await check_security(ctx)  # F4: catch a captcha before pulling bytes
     if ctx.file_bytes and len(ctx.file_bytes) > 100:
         _emit_action(ctx, block, "success", f"Already {len(ctx.file_bytes)}")
         return
@@ -831,7 +749,7 @@ async def _loop_blocks(ctx: JobCtx, blocks: List[Any]) -> tuple[bool, str]:
     return failed, error
 
 
-def _reset_captcha_reports(ctx: JobCtx):
+def _reset_captcha_reports(ctx):
     """Drop stale encounter stash (a reused ctrl must not leak reports)."""
     try:
         ctx.ctrl._captcha_reports = []
@@ -869,7 +787,5 @@ def _emit_captcha_job_lines(ctx: JobCtx, failed: bool, error: str) -> None:
 async def run_blocks_for_image(ctx: JobCtx) -> tuple[bool, str, Optional[str], Optional[bytes]]:
     blocks = _get_blocks(ctx)
     _init_old_srcs(ctx)
-    _reset_captcha_reports(ctx)
     failed, error = await _loop_blocks(ctx, blocks)
-    _emit_captcha_job_lines(ctx, failed, error)
     return failed, error, ctx.new_src, ctx.file_bytes

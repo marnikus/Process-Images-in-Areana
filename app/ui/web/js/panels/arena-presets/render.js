@@ -7,18 +7,18 @@ window.ArenaPresetsRender = {
   renderPromptPresets(payload) {
     try {
       const arr = this._store().setPromptPresets(payload);
-      const sel = document.getElementById('promptPresetSelect');
-      if (!sel) return;
-      sel.innerHTML = '';
-      arr.forEach(item => {
-        const name = typeof item === 'string' ? item : (item.name || item.id || '');
-        if (!name) return;
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        sel.appendChild(opt);
-      });
+      const list = document.getElementById('promptPresetsList');
+      if (!list) return;
+      list.innerHTML = arr.length ? arr.map(this._promptRow.bind(this)).join('')
+        : 'No saved prompt presets.';
     } catch (e) { console.warn('renderPromptPresets failed', e); }
+  },
+
+  _promptRow(item) {
+    const name = typeof item === 'string' ? item : (item.name || item.id || '');
+    if (!name) return '';
+    const safe = this._store().esc(name);
+    return `<div class="prompt-preset-row"><span>${safe}</span><span><button class="btn-small" data-prompt-load="${safe}">Load</button><button class="btn-small" data-prompt-remove="${safe}">Remove</button></span></div>`;
   },
 
   renderArenaPresets(payload) {
@@ -76,7 +76,7 @@ window.ArenaPresetsRender = {
   },
 
   _renderList(names) {
-    const listEl = document.getElementById('arenaPresetList');
+    const listEl = document.getElementById('arenaPresetsList') || document.getElementById('arenaPresetList');
     if (!listEl) return;
     listEl.innerHTML = '';
     if (names.length === 0) {

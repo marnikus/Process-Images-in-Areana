@@ -124,7 +124,7 @@ async def test_captcha_pause_resume(tmp_path, monkeypatch):
     await _run(env)
     trace = _trace(env, patched)
     check_golden("captcha", trace)
-    assert patched.captcha.calls == ["check-security"]
+    assert patched.captcha.calls == []  # image pipeline never owns CAPTCHA
     assert trace["images"][0]["status"] == "completed"
 
 

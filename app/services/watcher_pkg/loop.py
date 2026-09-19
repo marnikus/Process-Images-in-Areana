@@ -1,12 +1,15 @@
-"""Watcher loop — check_once orchestration ≤20 LOC, loop ≤30 LOC, params ≤4 via deps."""
+"""Watcher loop — passive per-page checks with a hard disabled gate."""
+
 from __future__ import annotations
+
 import asyncio
-import time
 import logging
+import time
 from dataclasses import dataclass
-from typing import Dict, Any, Callable
+from typing import Any, Callable, Dict
 
 log = logging.getLogger("watcher")
+
 
 @dataclass
 class LoopDeps:
@@ -17,7 +20,46 @@ class LoopDeps:
     notifier: Callable
     logger: Callable
 
+
+def probe_pages(probe) -> list:
+    """Get normalized pages while retaining lightweight test probes."""
+    if hasattr(probe, "get_pages"):
+        return probe.get_pages()
+    cdp = probe.get()
+    return [("primary", cdp)] if cdp else []
+
+
+async def detect_page(probe, cdp):
+    """Use structured detection, retaining the old fake-probe seam."""
+    if hasattr(probe, "detect_captcha"):
+        return await probe.detect_captcha(cdp)
+    return await probe.check_captcha(cdp)
+
+
+async def inspect_pages(loop, pages) -> None:
+    """Run independent CAPTCHA and generation decisions for every page."""
+    for page_id, cdp in pages:
+        loop.handlers._current_page_id = page_id
+        signal = await detect_page(loop.cdp_probe, cdp)
+        if await loop.handlers.handle_captcha(cdp, signal):
+            continue
+        is_gen, details = await loop.cdp_probe.check_generation(cdp)
+        if await loop.handlers.handle_generation(cdp, is_gen, details):
+            continue
+        await loop.handlers.handle_clear(cdp, signal, is_gen)
+
+
+async def publish_watching(loop) -> Dict[str, Any]:
+    """Publish passive state unless a page remains in a waiting state."""
+    if not loop.state.waiting_kind:
+        loop.state.status = "watching"
+    await loop._notify()
+    return loop.state.to_dict()
+
+
 class WatcherLoop:
+    """Run passive checks only while explicitly enabled."""
+
     def __init__(self, deps: LoopDeps):
         self.config = deps.config
         self.state = deps.state
@@ -34,13 +76,11 @@ class WatcherLoop:
 
     async def notify(self):
         state = self.state.to_dict()
-        cfg = {
-            "enabled": self.config.enabled,
-            "check_interval_ms": self.config.check_interval_ms,
-            "captcha_timeout_sec": self.config.captcha_timeout_sec,
-            "generation_timeout_sec": self.config.generation_timeout_sec,
-            "auto_pause_jobs": self.config.auto_pause_jobs,
-        }
+        cfg = {"enabled": self.config.enabled,
+               "check_interval_ms": self.config.check_interval_ms,
+               "captcha_timeout_sec": self.config.captcha_timeout_sec,
+               "generation_timeout_sec": self.config.generation_timeout_sec,
+               "auto_pause_jobs": self.config.auto_pause_jobs}
         payload = {**state, "config": cfg}
         for cb in self._callbacks:
             try:
@@ -48,27 +88,22 @@ class WatcherLoop:
                     await cb(payload)
                 else:
                     cb(payload)
-            except Exception as e:
-                log.debug(f"Watcher callback failed: {e}")
+            except Exception as exc:
+                log.debug(f"Watcher callback failed: {exc}")
 
     async def check_once(self) -> Dict[str, Any]:
-        self.state.checks_count += 1
-        self.state.last_check = time.time()
-        cdp = self.cdp_probe.get()
-        if not cdp:
-            self.state.status = "watching"
+        """Passively inspect every connected page; disabled means no probe."""
+        if not self.config.enabled:
+            self.state.status = "idle"
             await self._notify()
             return self.state.to_dict()
-        is_captcha = await self.cdp_probe.check_captcha(cdp)
-        if await self.handlers.handle_captcha(cdp, is_captcha):
-            return self.state.to_dict()
-        is_gen, gen_details = await self.cdp_probe.check_generation(cdp)
-        if await self.handlers.handle_generation(cdp, is_gen, gen_details):
-            return self.state.to_dict()
-        await self.handlers.handle_clear(cdp, is_captcha, is_gen)
-        self.state.status = "watching"
-        await self._notify()
-        return self.state.to_dict()
+        self.state.checks_count += 1
+        self.state.last_check = time.time()
+        pages = probe_pages(self.cdp_probe)
+        if not pages:
+            return await publish_watching(self)
+        await inspect_pages(self, pages)
+        return await publish_watching(self)
 
     def start(self):
         if self._running:
@@ -112,8 +147,8 @@ class WatcherLoop:
                     await self.check_once()
                 except asyncio.CancelledError:
                     break
-                except Exception as e:
-                    self._logger(f"Watcher check failed: {e}", "error")
+                except Exception as exc:
+                    self._logger(f"Watcher check failed: {exc}", "error")
                     log.exception("Watcher loop error")
                 await asyncio.sleep(self.config.check_interval_ms / 1000.0)
         except asyncio.CancelledError:

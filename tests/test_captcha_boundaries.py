@@ -98,7 +98,7 @@ async def test_check_security_noop_when_clear():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_check_security_visible_records_penalty(monkeypatch):
+async def test_check_security_visible_is_watcher_owned(monkeypatch):
     instant_sleep(monkeypatch)
     pool = PagePool()
     pool.add_page(make_info("t1"))
@@ -106,9 +106,9 @@ async def test_check_security_visible_records_penalty(monkeypatch):
     bridge = make_bridge(pool)
     ctrl, _ = make_ctrl([True, False])
     ctx = make_ctx(pool, bridge, ctrl)
-    assert await sjr.check_security(ctx) is True
-    assert pool.get_page("t1").pending_penalty == 900
-    assert any("🛡️" in m for m, _ in bridge._logs)
+    assert await sjr.check_security(ctx) is False
+    assert pool.get_page("t1").pending_penalty == 0
+    assert not any("🛡️" in m for m, _ in bridge._logs)
 
 
 @pytest.mark.unit
@@ -126,7 +126,7 @@ async def test_submit_boundary_clear_no_penalty():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_submit_boundary_visible_records(monkeypatch):
+async def test_submit_boundary_does_not_probe_captcha(monkeypatch):
     instant_sleep(monkeypatch)
     pool = PagePool()
     pool.add_page(make_info("t1"))
@@ -135,12 +135,12 @@ async def test_submit_boundary_visible_records(monkeypatch):
     ctrl, _ = make_ctrl([True, False])
     ctx = make_ctx(pool, bridge, ctrl)
     await sjr._handle_submit(ctx, SimpleNamespace())
-    assert pool.get_page("t1").pending_penalty == 900
+    assert pool.get_page("t1").pending_penalty == 0
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_download_boundary_visible_records(monkeypatch):
+async def test_download_boundary_does_not_probe_captcha(monkeypatch):
     instant_sleep(monkeypatch)
     pool = PagePool()
     pool.add_page(make_info("t1"))
@@ -150,7 +150,7 @@ async def test_download_boundary_visible_records(monkeypatch):
     ctx = make_ctx(pool, bridge, ctrl)
     ctx.new_src = "https://cdn/x.png"
     await sjr._handle_download(ctx, SimpleNamespace())
-    assert pool.get_page("t1").pending_penalty == 900
+    assert pool.get_page("t1").pending_penalty == 0
     assert len(ctx.file_bytes) == 200
 
 
@@ -201,8 +201,8 @@ async def test_dispatch_records_owner_row_without_relinking():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_penalty_recorder_failure_never_breaks_the_job(monkeypatch):
-    """Choke point: a broken penalty recorder degrades to a warn, job proceeds."""
+async def test_watcher_owned_security_never_uses_penalty_recorder(monkeypatch):
+    """Image processing does not call the CAPTCHA penalty recorder."""
     import app.services.cooldown_service as svc
 
     def boom(*_a, **_k):
@@ -214,5 +214,5 @@ async def test_penalty_recorder_failure_never_breaks_the_job(monkeypatch):
     bridge = make_bridge(pool)
     ctrl, _ = make_ctrl([True, False])
     ctx = make_ctx(pool, bridge, ctrl)
-    assert await sjr.check_security(ctx) is True  # must not raise
-    assert any("Captcha penalty skipped" in m for m, _ in bridge._logs)
+    assert await sjr.check_security(ctx) is False
+    assert pool.get_page("t1").pending_penalty == 0

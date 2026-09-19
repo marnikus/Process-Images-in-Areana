@@ -31,6 +31,13 @@ except ImportError:  # headless/test: duck-type dummies
 
     QFileDialog = None
 
+# Widgets are independent from the Core shim in headless and test environments.
+try:
+    from PySide6.QtWidgets import QFileDialog as _QFileDialog
+    QFileDialog = _QFileDialog
+except Exception:
+    pass
+
 
 def get_clipboard():
     """Qt clipboard via QApplication, else QGuiApplication (None when absent)."""

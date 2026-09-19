@@ -16,8 +16,39 @@ from app.ui.qt_compat import Slot
 from app.services.run_state import schedule_coro
 
 
+def _watcher_captcha_service(bridge):
+    """Build the Watcher-owned provider facade for a new Watcher instance."""
+    from app.services.watcher_captcha import WatcherCaptchaService
+    return WatcherCaptchaService(str(bridge.config.dir), bridge._log)
+
+
+
+def _pool_watcher_controllers(pool):
+    pages = pool.status_snapshot().get("pages", [])
+    pairs = []
+    for page in pages:
+        tab_id = page.get("tab_id", "")
+        _, controller = pool.get_clients(tab_id)
+        if controller:
+            pairs.append((tab_id, controller))
+    return pairs
+
+
+def get_watcher_cdp_controllers(bridge):
+    """Return every connected pool page as ``(tab_id, controller)`` pairs."""
+    pool = getattr(bridge, "_page_pool", None)
+    try:
+        pairs = _pool_watcher_controllers(pool) if pool else []
+    except Exception:
+        pairs = []
+    if pairs:
+        return pairs
+    controller = get_watcher_cdp_controller(bridge)
+    return [("primary", controller)] if controller else []
+
+
 def get_watcher_cdp_controller(bridge):
-    """CDP controller for the watcher (None when unconnected/failing)."""
+    """Compatibility accessor for the first connected page."""
     try:
         if not bridge.cdp or not getattr(bridge.cdp, "is_connected", False):
             return None
@@ -73,12 +104,15 @@ def parse_watcher_config(data: dict) -> dict:
 def create_watcher_service(bridge, values: dict):
     """Build + wire a WatcherService (caller decides when to start)."""
     from app.services.watcher import WatcherService, WatcherConfig
+    captcha = _watcher_captcha_service(bridge)
+    config = values if isinstance(values, WatcherConfig) else WatcherConfig(**values)
     watcher = WatcherService(
-        config=WatcherConfig(**values),
-        cdp_controller_getter=lambda: get_watcher_cdp_controller(bridge),
+        config=config,
+        cdp_controller_getter=lambda: get_watcher_cdp_controllers(bridge),
         job_runner_getter=lambda: bridge,
-        logger=lambda msg, level="info": bridge._log(f"[Watcher] {msg}", level)
+        logger=lambda msg, level="info": bridge._log(f"[Watcher] {msg}", level),
     )
+    watcher._handlers._captcha_solver = captcha.solver
     watcher.add_callback(lambda p: on_watcher_state(bridge, p))
     return watcher
 
@@ -95,11 +129,12 @@ def persist_watcher_config(config, values: dict) -> None:
 
 
 def captcha_service(bridge):
-    """Lazy CaptchaService (key store + stats + solver)."""
+    """Lazy Watcher-only provider service; no image pipeline dependency."""
     svc = getattr(bridge, "_captcha_service_obj", None)
     if svc is None:
-        from app.services.captcha import CaptchaService
-        svc = bridge._captcha_service_obj = CaptchaService(str(bridge.config.dir), bridge._log)
+        from app.services.watcher_captcha import WatcherCaptchaService
+        svc = bridge._captcha_service_obj = WatcherCaptchaService(
+            str(bridge.config.dir), bridge._log)
     return svc
 
 

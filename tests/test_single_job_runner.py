@@ -382,24 +382,18 @@ async def test_wait_announces_watching_state(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_security_announces_while_solving(tmp_path, monkeypatch):
+async def test_security_block_reports_watcher_ownership(tmp_path, monkeypatch):
     instant_sleep(monkeypatch)
     import app.services.captcha as cap_mod
 
-    async def _never_visible():
-        return True
+    async def unexpected_solver(_ctx):
+        raise AssertionError("image pipeline must not solve CAPTCHA")
 
-    async def _solved(ctx):
-        from types import SimpleNamespace as NS
-        return NS(status="solved", reason="")
-
-    monkeypatch.setattr(cap_mod, "handle_captcha", _solved)
+    monkeypatch.setattr(cap_mod, "handle_captcha", unexpected_solver)
     bridge = make_bridge()
-    ctrl = make_ctrl(is_security_dialog_visible=_never_visible)
-    ctx = make_ctx(bridge, ctrl, make_client(), make_img(tmp_path))
+    ctx = make_ctx(bridge, make_ctrl(), make_client(), make_img(tmp_path))
     await sjr._handle_security(ctx, make_block("CHECK_SECURITY"))
-    statuses = [s for _b, s, _m in bridge._events]
-    assert statuses[0] == "running" and statuses[-1] == "success"
+    assert bridge._events == [("CHECK_SECURITY", "success", "CAPTCHA delegated to Watcher")]
 
 
 @pytest.mark.asyncio
@@ -426,40 +420,29 @@ async def test_wait_for_output_timeout_and_unfinished_paths(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_settle_and_note_stamps_policy(tmp_path, monkeypatch):
+async def test_security_does_not_settle_or_mutate_captcha_policy(tmp_path, monkeypatch):
     import app.services.captcha as cap_mod
-    seen = []
 
-    async def fake_handle(cctx):
-        seen.append(cctx)
-        return SimpleNamespace(status="solved", reason="")
-    monkeypatch.setattr(cap_mod, "handle_captcha", fake_handle)
+    async def unexpected_solver(_ctx):
+        raise AssertionError("image pipeline must not solve CAPTCHA")
 
-    async def _visible():
-        return True
-    ctrl = make_ctrl(is_security_dialog_visible=_visible)
+    monkeypatch.setattr(cap_mod, "handle_captcha", unexpected_solver)
+    ctrl = make_ctrl()
     ctrl._resume_policy = SimpleNamespace(settled_at=None)
     ctx = make_ctx(make_bridge(), ctrl, make_client(), make_img(tmp_path))
-    assert await sjr._settle_and_note(ctx) is True
-    assert seen and seen[0].source == "check-security"
-    assert ctrl._resume_policy.settled_at is not None
+    assert await sjr.check_security(ctx) is False
+    assert ctrl._resume_policy.settled_at is None
 
 
 @pytest.mark.asyncio
-async def test_security_stop_closure_honours_cancel(tmp_path, monkeypatch):
+async def test_security_does_not_create_solver_stop_closure(tmp_path, monkeypatch):
     import app.services.captcha as cap_mod
-    stops = []
 
-    async def fake_handle(cctx):
-        stops.append(cctx.stop())
-        return SimpleNamespace(status="solved", reason="")
-    monkeypatch.setattr(cap_mod, "handle_captcha", fake_handle)
+    async def unexpected_solver(_ctx):
+        raise AssertionError("image pipeline must not solve CAPTCHA")
 
-    async def _visible():
-        return True
-    for cancel, want in [(False, False), (True, True)]:
-        ctx = make_ctx(make_bridge(cancel=cancel),
-                       make_ctrl(is_security_dialog_visible=_visible),
+    monkeypatch.setattr(cap_mod, "handle_captcha", unexpected_solver)
+    for cancel in (False, True):
+        ctx = make_ctx(make_bridge(cancel=cancel), make_ctrl(),
                        make_client(), make_img(tmp_path))
-        assert await sjr.check_security(ctx) is True
-    assert stops == [want for _, want in [(False, False), (True, True)]]
+        assert await sjr.check_security(ctx) is False

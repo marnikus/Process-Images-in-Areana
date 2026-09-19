@@ -26,17 +26,20 @@ from app.ui.services import undo_entries
 log = logging.getLogger("arena")
 
 
+def _stored_stack(raw):
+    """Repair an empty or corrupt stored stack to the canonical default."""
+    if isinstance(raw, list):
+        stack = load_stack_from_dicts(raw)
+        return stack or default_stack()
+    if isinstance(raw, str):
+        return parse_stack_json(raw) or default_stack()
+    return default_stack()
+
+
 def get_action_blocks(bridge):
     """Load action blocks from session or default."""
     try:
-        raw = bridge.config.get_state("action_blocks", None)
-        if raw is None:
-            return default_stack()
-        if isinstance(raw, list):
-            return load_stack_from_dicts(raw)
-        if isinstance(raw, str):
-            return parse_stack_json(raw)
-        return default_stack()
+        return _stored_stack(bridge.config.get_state("action_blocks", None))
     except Exception as e:
         log.warning(f"Failed to load action blocks: {e}")
         return default_stack()
@@ -63,7 +66,7 @@ def _remove_block(bridge, block_id: str):
     """Remove by id, else legacy block_id fallback; returns (stack, found)."""
     stack = get_action_blocks(bridge)
     before = len(stack)
-    kept = [b for b in stack if b.id != block_id]
+    kept = [b for b in stack if b.id != block_id or b.required]
     if len(kept) != before:
         return kept, True
     kept = [b for b in get_action_blocks(bridge) if b.block_id != block_id or b.required]

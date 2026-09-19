@@ -57,7 +57,7 @@ async def test_loop_notify_callbacks():
 
 @pytest.mark.asyncio
 async def test_loop_check_once_generation_and_clear():
-    cfg = WatcherConfig()
+    cfg = WatcherConfig(enabled=True)
     state = WatcherState()
     cdp = FakeCDP(captcha=False, gen=True)
     probe = WatcherCDP(lambda: cdp, lambda m,l: None)
@@ -185,3 +185,52 @@ async def test_watcher_service_force_clear_and_check():
         async def hide_watcher_overlay(self): raise RuntimeError("fail")
     svc2 = WatcherService(config=cfg, cdp_controller_getter=lambda: BadCDP(), job_runner_getter=lambda: None, logger=lambda m,l="info": None)
     await svc2.force_clear()
+
+@pytest.mark.asyncio
+async def test_loop_legacy_probe_compatibility():
+    """Old fakes still work without widening the production page boundary."""
+    cfg = WatcherConfig(enabled=True)
+    state = WatcherState()
+    cdp = FakeCDP(captcha=False, gen=False)
+
+    class LegacyProbe:
+        def get(self):
+            return cdp
+
+        async def check_captcha(self, _cdp):
+            return False
+
+        async def check_generation(self, _cdp):
+            return False, {}
+
+    async def notify():
+        pass
+    handlers = _make_handlers(cfg, state, LegacyProbe(), WatcherJobCtrl(cfg, None),
+                               lambda m, l: None, notify)
+    loop = _make_loop(cfg, state, handlers.cdp_probe, handlers, notify,
+                      lambda m, l: None)
+    assert (await loop.check_once())["status"] == "watching"
+
+@pytest.mark.asyncio
+async def test_loop_ensure_running_and_inner_cancel_paths():
+    cfg = WatcherConfig(enabled=True, check_interval_ms=5)
+    state = WatcherState()
+    probe = WatcherCDP(lambda: None, lambda m, l: None)
+    async def notify():
+        pass
+    handlers = _make_handlers(cfg, state, probe, WatcherJobCtrl(cfg, None),
+                               lambda m, l: None, notify)
+    loop = _make_loop(cfg, state, probe, handlers, notify, lambda m, l: None)
+    loop._running = True
+    loop.ensure_task()
+    await asyncio.sleep(0)
+    loop.stop()
+
+    async def blocked_check():
+        await asyncio.sleep(10)
+    loop.check_once = blocked_check
+    loop._running = True
+    task = asyncio.create_task(loop._run())
+    await asyncio.sleep(0)
+    task.cancel()
+    await task
