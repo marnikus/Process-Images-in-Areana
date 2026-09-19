@@ -132,6 +132,9 @@ export function createSashGrid() {
   load('sash-grid-drag-core.js');
   load('sash-grid-drag-spec.js');
   load('sash-grid-drag-resize.js');
+  load('sash-grid-windows/store.js');
+  load('sash-grid-windows/windows.js');
+  load('sash-grid-windows/menus.js');
   load('sash-grid-windows.js');
   load('sash-grid-presets.js');
   const SashGrid = vm.runInContext(read('sash-grid.js') + '\n;SashGrid', sandbox, { filename: 'sash-grid.js' });
