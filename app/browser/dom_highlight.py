@@ -428,12 +428,14 @@ def interpret_click_target(result) -> tuple[str, str]:
 
 
 # ── backward compat simple wrappers (used by bridge.highlight_selector) ──
-def build_highlight_js(selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = "", clear_first: bool = True) -> str:
+def build_highlight_js(selector: str, opts: dict = None) -> str:
+    """Highlight JS for selector; opts: color, caption, highlight_ms, clear_first."""
+    o = opts or {}
     spec = HighlightSpec(
-        color=color,
-        caption=caption or selector[:40],
-        highlight_ms=duration_ms,
-        clear_first=clear_first,
+        color=o.get("color", "#FF0000"),
+        caption=o.get("caption") or selector[:40],
+        highlight_ms=o.get("highlight_ms", 2000),
+        clear_first=o.get("clear_first", True),
     )
     return ";" + build_highlight_probe(selector, spec).lstrip()
 
@@ -445,31 +447,21 @@ def build_clear_js() -> str:
 # ── watcher overlay ────────────────────────────────────────────────
 WATCHER_ATTR = "data-arena-watcher-overlay"
 
-def build_watcher_overlay_js(message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, sub: str = "") -> str:
-    """Build JS for a small draggable popup at top-center of the page.
-    kind: 'generation' -> blue, 'captcha' -> red
-    - Default: top-center (left 50% + translateX), compact (max 380px)
-    - Draggable by mouse anywhere; position kept across re-shows
-    - Spinner + elapsed/timeout counter from win settings
-    - sub: optional amber reason line (why the app is not solving, captcha)
-    - Persists until cleared
-    """
-    msg_json = json.dumps(message or "wait")
-    kind_json = json.dumps(kind or "generation")
-    timeout_json = json.dumps(int(timeout_sec or 600))
-    sub_json = json.dumps(sub or "")
-    return f"""
-;(function(){{
-  try {{
-    var ATTR = "{WATCHER_ATTR}";
-    var msg = {msg_json};
-    var kind = {kind_json};
-    var timeoutSec = {timeout_json};
-    var subText = {sub_json};
+# Watcher overlay JS — template constant (data, not code); the builder only
+# JSON-encodes inputs and fills __TOKEN__ placeholders (W3: was a 198-LOC
+# f-string function; JS text is byte-identical, see tests/test_watcher_overlay.py).
+_WATCHER_OVERLAY_JS = """
+;(function(){
+  try {
+    var ATTR = "__ATTR__";
+    var msg = __MSG__;
+    var kind = __KIND__;
+    var timeoutSec = __TIMEOUT__;
+    var subText = __SUB__;
     var startTime = Date.now();
     // Remove existing watcher overlays
     var olds = document.querySelectorAll('['+ATTR+']');
-    for (var i=0;i<olds.length;i++) {{ if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]); }}
+    for (var i=0;i<olds.length;i++) { if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]); }
 
     var isCaptcha = (kind === 'captcha' || msg.toLowerCase().indexOf('captcha') >=0);
     var bg = isCaptcha ? 'rgba(180, 20, 20, 0.96)' : 'rgba(20, 80, 180, 0.96)';
@@ -504,35 +496,35 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
     ].join(';');
 
     // Restore dragged position from previous shows on this page
-    try {{
+    try {
       var sp = window.__arenaWatcherPos;
-      if (sp && typeof sp.left === 'number' && typeof sp.top === 'number') {{
+      if (sp && typeof sp.left === 'number' && typeof sp.top === 'number') {
         overlay.style.left = sp.left + 'px';
         overlay.style.top = sp.top + 'px';
         overlay.style.transform = 'none';
-      }}
-    }} catch(e) {{}}
+      }
+    } catch(e) {}
 
     // Keyframes v2: pulse without transform so it never fights dragging
-    if (!document.getElementById('arena-watcher-style-v2')) {{
+    if (!document.getElementById('arena-watcher-style-v2')) {
       var st = document.createElement('style');
       st.id = 'arena-watcher-style-v2';
       st.textContent = `
-        @keyframes arenaWatcherPulse2 {{
-          0%, 100% {{ box-shadow: 0 8px 24px rgba(0,0,0,0.6); opacity: 0.97; }}
-          50% {{ box-shadow: 0 8px 32px rgba(0,0,0,0.75); opacity: 1; }}
-        }}
-        @keyframes arenaWatcherSpin {{
-          0% {{ transform: rotate(0deg); }}
-          100% {{ transform: rotate(360deg); }}
-        }}
-        @keyframes arenaWatcherGlow {{
-          0%, 100% {{ opacity: 0.8; }}
-          50% {{ opacity: 1; }}
-        }}
+        @keyframes arenaWatcherPulse2 {
+          0%, 100% { box-shadow: 0 8px 24px rgba(0,0,0,0.6); opacity: 0.97; }
+          50% { box-shadow: 0 8px 32px rgba(0,0,0,0.75); opacity: 1; }
+        }
+        @keyframes arenaWatcherSpin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes arenaWatcherGlow {
+          0%, 100% { opacity: 0.8; }
+          50% { opacity: 1; }
+        }
       `;
       document.head.appendChild(st);
-    }}
+    }
 
     var headRow = document.createElement('div');
     headRow.style.cssText = 'display:flex; align-items:center; gap:8px;';
@@ -573,76 +565,107 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
     timeoutEl.id = 'arena-watcher-timeout';
     timeoutEl.style.cssText = 'font-size:10px; opacity:0.75; margin-top:4px; font-family:monospace;';
 
-    function updateTime() {{
+    function updateTime() {
       var elapsed = Math.floor((Date.now() - startTime)/1000);
       var remaining = Math.max(0, timeoutSec - elapsed);
       var te = document.getElementById('arena-watcher-time');
       var to = document.getElementById('arena-watcher-timeout');
-      if (te) {{
+      if (te) {
         te.textContent = '\u23f1 ' + elapsed + 's elapsed \u2014 ' + new Date().toLocaleTimeString();
-      }}
-      if (to) {{
+      }
+      if (to) {
         to.textContent = 'Timeout: ' + timeoutSec + 's (win setting) \u2014 ' + remaining + 's left';
-      }}
-    }}
+      }
+    }
 
     overlay.appendChild(headRow);
     overlay.appendChild(subEl);
-    if (subText) {{
+    if (subText) {
       var reasonEl = document.createElement('div');
       reasonEl.textContent = subText;
       reasonEl.style.cssText = 'font-size:11px; font-weight:700; color:#ffd28a; margin-top:5px; text-align:center;';
       overlay.appendChild(reasonEl);
-    }}
+    }
     overlay.appendChild(spinnerWrap);
     overlay.appendChild(timeEl);
     overlay.appendChild(timeoutEl);
 
     // Drag by mouse anywhere on the popup; clamped to viewport
     var drag = null;
-    overlay.addEventListener('mousedown', function(e) {{
-      try {{
+    overlay.addEventListener('mousedown', function(e) {
+      try {
         var r = overlay.getBoundingClientRect();
-        drag = {{ x: e.clientX - r.left, y: e.clientY - r.top }};
+        drag = { x: e.clientX - r.left, y: e.clientY - r.top };
         overlay.style.cursor = 'grabbing';
         e.preventDefault();
-      }} catch(err) {{}}
-    }});
-    document.addEventListener('mousemove', function(e) {{
-      if (!drag || !overlay.isConnected) {{ drag = null; return; }}
-      try {{
+      } catch(err) {}
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!drag || !overlay.isConnected) { drag = null; return; }
+      try {
         var nx = Math.max(0, Math.min(window.innerWidth - overlay.offsetWidth, e.clientX - drag.x));
         var ny = Math.max(0, Math.min(window.innerHeight - overlay.offsetHeight, e.clientY - drag.y));
         overlay.style.transform = 'none';
         overlay.style.left = nx + 'px';
         overlay.style.top = ny + 'px';
-        window.__arenaWatcherPos = {{ left: nx, top: ny }};
-      }} catch(err) {{}}
-    }});
-    document.addEventListener('mouseup', function() {{
+        window.__arenaWatcherPos = { left: nx, top: ny };
+      } catch(err) {}
+    });
+    document.addEventListener('mouseup', function() {
       drag = null;
-      try {{ overlay.style.cursor = 'grab'; }} catch(err) {{}}
-    }});
+      try { overlay.style.cursor = 'grab'; } catch(err) {}
+    });
 
     (document.body || document.documentElement).appendChild(overlay);
 
     updateTime();
     // Update time every second
-    var interval = setInterval(function(){{
+    var interval = setInterval(function(){
       var te = document.getElementById('arena-watcher-time');
-      if (!te) {{ clearInterval(interval); return; }}
+      if (!te) { clearInterval(interval); return; }
       updateTime();
-    }}, 1000);
+    }, 1000);
 
     // Store interval id for cleanup
-    try {{ overlay.setAttribute('data-interval', interval); }} catch(e) {{}}
+    try { overlay.setAttribute('data-interval', interval); } catch(e) {}
 
-    return JSON.stringify({{shown: true, kind: kind, message: msg, timeout: timeoutSec}});
-  }} catch(e) {{
-    return JSON.stringify({{shown: false, error: String(e && e.message || e)}});
-  }}
-}})()
+    return JSON.stringify({shown: true, kind: kind, message: msg, timeout: timeoutSec});
+  } catch(e) {
+    return JSON.stringify({shown: false, error: String(e && e.message || e)});
+  }
+})()
 """
+
+
+def _watcher_js_values(message: str, kind: str, timeout_sec: int, sub: str) -> dict:
+    """JSON-encoded substitution values for the watcher overlay template."""
+    return {
+        "ATTR": WATCHER_ATTR,
+        "MSG": json.dumps(message or "wait"),
+        "KIND": json.dumps(kind or "generation"),
+        "TIMEOUT": json.dumps(int(timeout_sec or 600)),
+        "SUB": json.dumps(sub or ""),
+    }
+
+
+def _fill_js_template(template: str, values: dict) -> str:
+    """Replace __KEY__ tokens in a JS template with prepared values."""
+    out = template
+    for key, val in values.items():
+        out = out.replace(f"__{key}__", str(val))
+    return out
+
+
+def build_watcher_overlay_js(message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, sub: str = "") -> str:
+    """Build JS for a small draggable popup at top-center of the page.
+    kind: 'generation' -> blue, 'captcha' -> red
+    - Default: top-center (left 50% + translateX), compact (max 380px)
+    - Draggable by mouse anywhere; position kept across re-shows
+    - Spinner + elapsed/timeout counter from win settings
+    - sub: optional amber reason line (why the app is not solving, captcha)
+    - Persists until cleared
+    """
+    return _fill_js_template(_WATCHER_OVERLAY_JS, _watcher_js_values(message, kind, timeout_sec, sub))
 
 
 def build_watcher_clear_js() -> str:

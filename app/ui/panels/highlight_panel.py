@@ -54,7 +54,7 @@ class HighlightPanel:
     async def _do_highlight(self, selector: str, color: str, duration_ms: int, caption: str):
         try:
             spec = (selector, color, duration_ms, caption)
-            js = build_highlight_js(selector, color or "#FF0000", duration_ms or 2000, caption or selector, clear_first=True)
+            js = build_highlight_js(selector, {"color": color or "#FF0000", "highlight_ms": duration_ms or 2000, "caption": caption or selector, "clear_first": True})
             result_json = await self.cdp.evaluate(js)
             if result_json:
                 data = json.loads(result_json) if isinstance(result_json, str) else result_json

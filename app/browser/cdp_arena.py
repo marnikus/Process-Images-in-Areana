@@ -228,32 +228,32 @@ async def _run_resume_gate(ctrl, diag):
         return diag
 
 
-class CDPArenaController:
-    def __init__(self, cdp_client: CDPClient, log_callback=None):
-        self.cdp = cdp_client
-        self._log_callback = log_callback
+def _sync_fetch_url(url: str):
+    """Blocking image fetch (SSL first, plain retry) — runs in executor."""
+    import urllib.request, ssl
+    hdr = {"User-Agent": "Mozilla/5.0 Chrome/120", "Accept": "image/*,*/*;q=0.8"}
+    req = urllib.request.Request(url, headers=hdr)
+    ctx = ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(req, timeout=45, context=ctx) as r:
+            return r.read(), r.headers.get("Content-Type", "") or "", 200
+    except Exception:
+        with urllib.request.urlopen(req, timeout=45) as r2:
+            return r2.read(), getattr(r2.headers, 'get', lambda k, d="": d)("Content-Type", "") or "", 200
 
-    def _log(self, msg: str, level: str = "info"):
-        log.info(msg)
-        if self._log_callback:
-            try:
-                self._log_callback(msg)
-            except Exception:
-                pass
 
-    async def ensure_connected(self) -> bool:
-        if self.cdp.is_connected:
-            return True
-        self._log("CDP not connected", "warn")
-        return False
+def _validate_download_payload(data: bytes) -> str:
+    """'' when payload looks like an image; else the rejection reason."""
+    if not data or len(data) < 100:
+        return f"Too small {len(data)}"
+    low = data[:200].lower()
+    if b"<html" in low or b"<!doctype" in low:
+        return f"HTML page: {data[:500].decode(errors='ignore')[:200]}"
+    return ""
 
-    async def capture_baseline(self) -> Dict[str, Any]:
-        # ideal-size: 6 lines reason=delegates to probe
-        js = build_baseline_js()
-        result = await self.cdp.evaluate(js)
-        if not result:
-            return {"output_count": 0, "output_srcs": [], "timestamp": int(time.time()*1000)}
-        return result
+
+class CdpActionMixin:
+    """Upload/prompt/submit actions (W3 split of CDPArenaController)."""
 
     async def attach_image(self, image_path: str) -> Tuple[bool, str]:
         # ideal-size: 12 lines reason=attach via CDP then verify
@@ -361,6 +361,18 @@ class CDPArenaController:
         except Exception:
             return ""
 
+
+class CdpWaitMixin:
+    """Baseline capture + output wait + page-state probes (W3 split)."""
+
+    async def capture_baseline(self) -> Dict[str, Any]:
+        # ideal-size: 6 lines reason=delegates to probe
+        js = build_baseline_js()
+        result = await self.cdp.evaluate(js)
+        if not result:
+            return {"output_count": 0, "output_srcs": [], "timestamp": int(time.time()*1000)}
+        return result
+
     async def _poll_output_diag(self, old_srcs, correlation_id, old_outputs):
         """One output poll, aborting on fresh page errors."""
         js = build_check_js(old_srcs, correlation_id, old_outputs)
@@ -422,113 +434,6 @@ class CDPArenaController:
         except Exception as e:
             log.debug(f"security gate settle failed {e}")
 
-    async def _python_download(self, src: str) -> Tuple[bool, bytes, str]:
-        def sync_fetch(url: str):
-            import urllib.request, ssl
-            hdr = {"User-Agent": "Mozilla/5.0 Chrome/120", "Accept": "image/*,*/*;q=0.8"}
-            req = urllib.request.Request(url, headers=hdr)
-            ctx = ssl.create_default_context()
-            try:
-                with urllib.request.urlopen(req, timeout=45, context=ctx) as r:
-                    return r.read(), r.headers.get("Content-Type", "") or "", 200
-            except Exception:
-                with urllib.request.urlopen(req, timeout=45) as r2:
-                    return r2.read(), getattr(r2.headers, 'get', lambda k,d="": d)("Content-Type", "") or "", 200
-        loop = asyncio.get_event_loop()
-        try:
-            data, ctype, _ = await loop.run_in_executor(None, lambda: sync_fetch(src))
-            if not data or len(data) < 100:
-                return False, b"", f"Too small {len(data)}"
-            low = data[:200].lower()
-            if b"<html" in low or b"<!doctype" in low:
-                return False, b"", f"HTML page: {data[:500].decode(errors='ignore')[:200]}"
-            self._log(f"Python download {len(data)} bytes {ctype} {src[:60]}...", "success")
-            return True, data, ctype
-        except Exception as e:
-            return False, b"", f"Python download failed: {e}"
-
-    async def download_image(self, src: str) -> Tuple[bool, bytes, str]:
-        # ideal-size: 20 lines reason=JS fetch then Python fallback
-        js = f";({JS_DOWNLOAD_IMAGE})({json.dumps(src)})"
-        try:
-            result = await self.cdp.evaluate(js)
-            if result and result.get("ok"):
-                data = bytes(result.get("bytes", []))
-                if len(data) > 100 and b"<html" not in data[:100].lower():
-                    return True, data, result.get("contentType", "")
-                self._log(f"JS returned HTML/small {len(data)}, trying Python", "warn")
-            else:
-                err = result.get("error") if result else "No result"
-                self._log(f"JS download failed {str(err)[:120]} trying Python", "warn")
-        except Exception as e:
-            self._log(f"JS download exc {e} trying Python", "warn")
-
-        ok, data, ctype = await self._python_download(src)
-        if ok:
-            return True, data, ctype
-
-        return False, b"", f"All methods failed for {src[:120]}"
-
-    def report(self, message: str, level: str = "info"):
-        self._log(message, level)
-
-    async def highlight_selector(self, selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = "") -> dict | None:
-        # ideal-size: 14 lines reason=highlight via dom_highlight probe
-        try:
-            from .dom_highlight import build_highlight_probe, build_highlight_js, build_clear_js
-            from .probe_requests import HighlightSpec
-            spec = HighlightSpec(color=color, caption=caption or selector[:40], highlight_ms=duration_ms, clear_first=True)
-            js = build_highlight_probe(selector, spec)
-            raw = await self.cdp.evaluate(js)
-            if raw:
-                try:
-                    data = json.loads(raw) if isinstance(raw, str) else raw
-                    if isinstance(data, dict) and data.get("rect"):
-                        return data.get("rect")
-                except Exception:
-                    pass
-            js2 = build_highlight_js(selector, color, duration_ms, caption, clear_first=True)
-            raw2 = await self.cdp.evaluate(js2)
-            if raw2:
-                try:
-                    data2 = json.loads(raw2) if isinstance(raw2, str) else raw2
-                    if isinstance(data2, dict) and data2.get("rect"):
-                        return data2.get("rect")
-                except Exception:
-                    pass
-            return {"x": 100, "y": 100, "width": 200, "height": 100}
-        except Exception as e:
-            log.debug(f"highlight failed {e}")
-            return None
-
-    async def show_watcher_overlay(self, message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, sub: str = "") -> bool:
-        # ideal-size: 10 lines reason=show watcher overlay with timeout from win settings
-        try:
-            from .dom_highlight import build_watcher_overlay_js
-            js = build_watcher_overlay_js(message=message, kind=kind, timeout_sec=timeout_sec, sub=sub)
-            raw = await self.cdp.evaluate(js)
-            if raw:
-                try:
-                    data = json.loads(raw) if isinstance(raw, str) else raw
-                    return bool(data.get("shown")) if isinstance(data, dict) else True
-                except Exception:
-                    return True
-            return False
-        except Exception as e:
-            log.debug(f"watcher overlay failed {e}")
-            return False
-
-    async def hide_watcher_overlay(self) -> bool:
-        # ideal-size: 5 lines reason=hide overlay
-        try:
-            from .dom_highlight import build_watcher_clear_js
-            js = build_watcher_clear_js()
-            await self.cdp.evaluate(js)
-            return True
-        except Exception as e:
-            log.debug(f"hide watcher failed {e}")
-            return False
-
     async def is_page_ready(self) -> Tuple[bool, List[str]]:
         # ideal-size: 5 lines reason=readiness check
         result = await self.cdp.evaluate(JS_PAGE_READY)
@@ -561,6 +466,134 @@ class CDPArenaController:
             return result or {}
         except Exception as e:
             return {"error": str(e), "spinning": False}
+
+
+class CdpMediaMixin:
+    """Image download / highlight / watcher overlay (W3 split)."""
+
+    async def _python_download(self, src: str) -> Tuple[bool, bytes, str]:
+        loop = asyncio.get_event_loop()
+        try:
+            data, ctype, _ = await loop.run_in_executor(None, lambda: _sync_fetch_url(src))
+            err = _validate_download_payload(data)
+            if err:
+                return False, b"", err
+            self._log(f"Python download {len(data)} bytes {ctype} {src[:60]}...", "success")
+            return True, data, ctype
+        except Exception as e:
+            return False, b"", f"Python download failed: {e}"
+
+    async def download_image(self, src: str) -> Tuple[bool, bytes, str]:
+        # ideal-size: 20 lines reason=JS fetch then Python fallback
+        js = f";({JS_DOWNLOAD_IMAGE})({json.dumps(src)})"
+        try:
+            result = await self.cdp.evaluate(js)
+            if result and result.get("ok"):
+                data = bytes(result.get("bytes", []))
+                if len(data) > 100 and b"<html" not in data[:100].lower():
+                    return True, data, result.get("contentType", "")
+                self._log(f"JS returned HTML/small {len(data)}, trying Python", "warn")
+            else:
+                err = result.get("error") if result else "No result"
+                self._log(f"JS download failed {str(err)[:120]} trying Python", "warn")
+        except Exception as e:
+            self._log(f"JS download exc {e} trying Python", "warn")
+
+        ok, data, ctype = await self._python_download(src)
+        if ok:
+            return True, data, ctype
+
+        return False, b"", f"All methods failed for {src[:120]}"
+
+    async def highlight_selector(self, selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = "") -> dict | None:
+        # ideal-size: 14 lines reason=highlight via dom_highlight probe
+        try:
+            rect = await self._rect_from_probe(selector, color, duration_ms, caption)
+            if rect is None:
+                rect = await self._rect_from_fallback_js(selector, color, duration_ms, caption)
+            return rect or {"x": 100, "y": 100, "width": 200, "height": 100}
+        except Exception as e:
+            log.debug(f"highlight failed {e}")
+            return None
+
+    async def _rect_from_probe(self, selector: str, color: str, duration_ms: int, caption: str) -> dict | None:
+        """Primary highlight path: dom_highlight probe -> rect."""
+        from .dom_highlight import build_highlight_probe
+        from .probe_requests import HighlightSpec
+        spec = HighlightSpec(color=color, caption=caption or selector[:40], highlight_ms=duration_ms, clear_first=True)
+        return await self._rect_from_js(build_highlight_probe(selector, spec))
+
+    async def _rect_from_fallback_js(self, selector: str, color: str, duration_ms: int, caption: str) -> dict | None:
+        """Fallback highlight path: legacy build_highlight_js -> rect."""
+        from .dom_highlight import build_highlight_js
+        js2 = build_highlight_js(selector, {"color": color, "caption": caption, "highlight_ms": duration_ms, "clear_first": True})
+        return await self._rect_from_js(js2)
+
+    async def _rect_from_js(self, js: str) -> dict | None:
+        """Evaluate a highlight JS probe and return its rect, else None."""
+        raw = await self.cdp.evaluate(js)
+        if not raw:
+            return None
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(data, dict) and data.get("rect"):
+                return data.get("rect")
+        except Exception:
+            pass
+        return None
+
+    async def show_watcher_overlay(self, message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, sub: str = "") -> bool:
+        # ideal-size: 10 lines reason=show watcher overlay with timeout from win settings
+        try:
+            from .dom_highlight import build_watcher_overlay_js
+            js = build_watcher_overlay_js(message=message, kind=kind, timeout_sec=timeout_sec, sub=sub)
+            raw = await self.cdp.evaluate(js)
+            if raw:
+                try:
+                    data = json.loads(raw) if isinstance(raw, str) else raw
+                    return bool(data.get("shown")) if isinstance(data, dict) else True
+                except Exception:
+                    return True
+            return False
+        except Exception as e:
+            log.debug(f"watcher overlay failed {e}")
+            return False
+
+    async def hide_watcher_overlay(self) -> bool:
+        # ideal-size: 5 lines reason=hide overlay
+        try:
+            from .dom_highlight import build_watcher_clear_js
+            js = build_watcher_clear_js()
+            await self.cdp.evaluate(js)
+            return True
+        except Exception as e:
+            log.debug(f"hide watcher failed {e}")
+            return False
+
+
+class CDPArenaController(CdpActionMixin, CdpWaitMixin, CdpMediaMixin):
+    """Arena page automation over CDP (composition of the mixins above)."""
+
+    def __init__(self, cdp_client: CDPClient, log_callback=None):
+        self.cdp = cdp_client
+        self._log_callback = log_callback
+
+    def _log(self, msg: str, level: str = "info"):
+        log.info(msg)
+        if self._log_callback:
+            try:
+                self._log_callback(msg)
+            except Exception:
+                pass
+
+    async def ensure_connected(self) -> bool:
+        if self.cdp.is_connected:
+            return True
+        self._log("CDP not connected", "warn")
+        return False
+
+    def report(self, message: str, level: str = "info"):
+        self._log(message, level)
 
     async def reload_page(self) -> Tuple[bool, str]:
         # ideal-size: 14 lines reason=reload via CDP then JS fallback

@@ -13,22 +13,9 @@ DEFAULTS = {
     "arena_presets": {},
 }
 
-class PresetStore:
-    def __init__(self, path: Path):
-        self.path = Path(path)
-        self._data = _load_json(self.path, DEFAULTS)
-        for k in DEFAULTS:
-            if k not in self._data:
-                self._data[k] = copy.deepcopy(DEFAULTS[k])
 
-    def load(self):
-        self._data = _load_json(self.path, DEFAULTS)
-        for k in DEFAULTS:
-            if k not in self._data:
-                self._data[k] = copy.deepcopy(DEFAULTS[k])
-
-    def save(self):
-        _atomic_write(self.path, self._data)
+class UrlPresetMixin:
+    """URL presets (plain list). (W3 split of PresetStore)."""
 
     # URL presets (list of URLs)
     def get_url_presets(self):
@@ -59,6 +46,10 @@ class PresetStore:
         self.save()
         return True
 
+
+class PromptPresetMixin:
+    """Prompt template presets. (W3 split of PresetStore)."""
+
     # Prompt presets - returns list of names for JS compatibility
     def list_prompt_presets(self):
         data = self._data.get("prompt_presets", {})
@@ -84,6 +75,10 @@ class PresetStore:
             return True
         return False
 
+
+class SettingsPresetMixin:
+    """Settings presets. (W3 split of PresetStore)."""
+
     # Settings presets
     def list_settings_presets(self):
         data = self._data.get("settings_presets", {})
@@ -104,6 +99,10 @@ class PresetStore:
             self.save()
             return True
         return False
+
+
+class ArenaPresetMixin:
+    """Full-snapshot arena presets (sorted by updated_at). (W3 split of PresetStore)."""
 
     # Arena presets (full snapshot) - list returns names sorted by updated_at desc
     def list_arena_presets(self):
@@ -145,6 +144,26 @@ class PresetStore:
             self.save()
             return True
         return False
+
+
+class PresetStore(UrlPresetMixin, PromptPresetMixin, SettingsPresetMixin, ArenaPresetMixin):
+    """Persisted preset store (config/arena_presets.json)."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self._data = _load_json(self.path, DEFAULTS)
+        for k in DEFAULTS:
+            if k not in self._data:
+                self._data[k] = copy.deepcopy(DEFAULTS[k])
+
+    def load(self):
+        self._data = _load_json(self.path, DEFAULTS)
+        for k in DEFAULTS:
+            if k not in self._data:
+                self._data[k] = copy.deepcopy(DEFAULTS[k])
+
+    def save(self):
+        _atomic_write(self.path, self._data)
 
     def all_data(self):
         return copy.deepcopy(self._data)

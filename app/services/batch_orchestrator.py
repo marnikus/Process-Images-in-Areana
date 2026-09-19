@@ -1437,10 +1437,8 @@ async def _block_save(run: BatchRun, job: JobState, block: Any) -> None:
     job.output_path = get_output_path(
         source_path,
         suffix=run.suffix,
-        preserve_format=run.preserve_format,
-        overwrite=run.overwrite,
-        downloaded_ext=job.ext,
-        unique_template=run.unique_tpl
+        opts={"preserve_format": run.preserve_format, "overwrite": run.overwrite,
+              "downloaded_ext": job.ext, "unique_template": run.unique_tpl}
     )
     atomic_write_bytes(source_path.parent, job.output_path, job.file_bytes)
     job.img.output_path = str(job.output_path)

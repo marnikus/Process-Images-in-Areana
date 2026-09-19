@@ -6,14 +6,14 @@ from app.core.naming import get_output_path, atomic_write_bytes, is_ai_generated
 @pytest.mark.unit
 def test_output_path_basic():
     src = Path("/tmp/images/photo.jpg")
-    out = get_output_path(src, suffix="_AI", preserve_format=True, overwrite=False, downloaded_ext=None)
+    out = get_output_path(src, suffix="_AI", opts={"preserve_format": True, "overwrite": False, "downloaded_ext": None})
     assert out.name == "photo_AI.jpg"
     assert out.parent == src.parent
 
 @pytest.mark.unit
 def test_output_path_preserve_downloaded_format():
     src = Path("/tmp/images/photo.jpg")
-    out = get_output_path(src, suffix="_AI", preserve_format=True, overwrite=False, downloaded_ext=".png")
+    out = get_output_path(src, suffix="_AI", opts={"preserve_format": True, "overwrite": False, "downloaded_ext": ".png"})
     assert out.suffix == ".png"
     assert out.name == "photo_AI.png"
 
@@ -26,11 +26,11 @@ def test_output_path_unique_suffix():
         # Create existing output
         existing = root / "image_AI.png"
         existing.write_bytes(b"existing")
-        out = get_output_path(src, suffix="_AI", overwrite=False)
+        out = get_output_path(src, suffix="_AI", opts={"overwrite": False})
         assert out.name == "image_AI_2.png"
         # Create second existing
         (root / "image_AI_2.png").write_bytes(b"existing2")
-        out2 = get_output_path(src, suffix="_AI", overwrite=False)
+        out2 = get_output_path(src, suffix="_AI", opts={"overwrite": False})
         assert out2.name == "image_AI_3.png"
 
 @pytest.mark.unit
@@ -41,7 +41,7 @@ def test_output_path_overwrite():
         src.write_bytes(b"src")
         existing = root / "image_AI.png"
         existing.write_bytes(b"existing")
-        out = get_output_path(src, suffix="_AI", overwrite=True)
+        out = get_output_path(src, suffix="_AI", opts={"overwrite": True})
         assert out.name == "image_AI.png"
 
 @pytest.mark.unit

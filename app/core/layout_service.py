@@ -75,40 +75,68 @@ def _normalize_sizes(sizes):
     return scaled
 
 def normalize_grid_tree(node, depth=0):
+    err = _grid_shape_error(node, depth)
+    if err:
+        return None, err
+    if node.get("t", node.get("type")) == "leaf":
+        return {"t": "leaf", "id": node["id"]}, None
+    sizes = _grid_clean_sizes(node.get("sizes"))
+    if isinstance(sizes, str):
+        return None, sizes
+    clean_kids = []
+    for kid in node["children"]:
+        c, kerr = normalize_grid_tree(kid, depth + 1)
+        if kerr:
+            return None, kerr
+        clean_kids.append(c)
+    return {"t": "split", "dir": node["dir"], "children": clean_kids, "sizes": sizes}, None
+
+
+def _grid_shape_error(node, depth: int):
+    """Structural rejection reason for a grid node, or None."""
     if depth > 12:
-        return None, "tree too deep"
+        return "tree too deep"
     if not isinstance(node, dict):
-        return None, "node must be object"
+        return "node must be object"
     t = node.get("t", node.get("type"))
     if t == "leaf":
-        lid = node.get("id")
-        if not isinstance(lid, str) or not lid:
-            return None, "leaf without id"
-        return {"t": "leaf", "id": lid}, None
+        return _grid_leaf_error(node)
     if t != "split":
-        return None, "unknown node type"
-    if node.get("dir") not in ("row","col"):
-        return None, "bad dir"
+        return "unknown node type"
+    return _grid_split_error(node)
+
+
+def _grid_leaf_error(node) -> str | None:
+    """Leaf validation: id must be a non-empty string."""
+    lid = node.get("id")
+    if not isinstance(lid, str) or not lid:
+        return "leaf without id"
+    return None
+
+
+def _grid_split_error(node) -> str | None:
+    """Split validation: dir + children list + sizes list shape."""
+    if node.get("dir") not in ("row", "col"):
+        return "bad dir"
     kids = node.get("children")
-    sizes = node.get("sizes")
     if not isinstance(kids, list) or len(kids) < 2:
-        return None, "split needs >=2 children"
-    if not isinstance(sizes, list) or len(sizes) != len(kids):
-        return None, "sizes must match children"
-    clean_sizes = []
-    for s in sizes:
-        if isinstance(s, bool) or not isinstance(s, (int,float)) or s < MIN_GRID_SIZE:
-            return None, "bad size value"
-        clean_sizes.append(float(s))
-    if not 99.5 <= sum(clean_sizes) <= 100.5:
-        return None, "sizes must sum to 100"
-    clean_kids = []
-    for kid in kids:
-        c, err = normalize_grid_tree(kid, depth+1)
-        if err:
-            return None, err
-        clean_kids.append(c)
-    return {"t":"split","dir":node["dir"],"children":clean_kids,"sizes":clean_sizes}, None
+        return "split needs >=2 children"
+    if not isinstance(node.get("sizes"), list) or len(node["sizes"]) != len(kids):
+        return "sizes must match children"
+    return None
+
+
+def _grid_clean_sizes(sizes):
+    """Validated float sizes summing to 100, or the rejection reason."""
+    clean = []
+    for sv in sizes:
+        if isinstance(sv, bool) or not isinstance(sv, (int, float)) or sv < MIN_GRID_SIZE:
+            return "bad size value"
+        clean.append(float(sv))
+    if not 99.5 <= sum(clean) <= 100.5:
+        return "sizes must sum to 100"
+    return clean
+
 
 def leaf_ids(node, out=None):
     if out is None: out = []

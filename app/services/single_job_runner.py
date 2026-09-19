@@ -295,7 +295,7 @@ async def save_image(ctx: JobCtx, file_bytes: bytes) -> Optional[Path]:
         tpl = settings.output.get("unique_suffix_template", "{base}_AI_{n}{ext}")
         ext = ".png"
         src_path = Path(ctx.img.absolute_path)
-        out_path = get_output_path(src_path, suffix=suffix, preserve_format=preserve, overwrite=overwrite, downloaded_ext=ext, unique_template=tpl)
+        out_path = get_output_path(src_path, suffix=suffix, opts={"preserve_format": preserve, "overwrite": overwrite, "downloaded_ext": ext, "unique_template": tpl})
         atomic_write_bytes(src_path.parent, out_path, file_bytes)
         return out_path
     except Exception as e:

@@ -77,38 +77,47 @@ class VerificationService:
         """
         if not data or len(data) == 0:
             return False, "Empty file", {}
-        # Check HTML
-        lower_start = data[:200].lower()
-        if b"<html" in lower_start or b"<!doctype" in lower_start:
+        if _looks_like_html(data):
             return False, "Downloaded file is HTML, not image", {}
-
-        # Check magic bytes for png, jpg, webp
         metadata = {"size": len(data)}
-        if data.startswith(b"\x89PNG"):
-            metadata["format"] = "png"
+        fmt = _sniff_image_format(data)
+        if fmt:
+            metadata["format"] = fmt
             return True, "", metadata
-        elif data.startswith(b"\xff\xd8\xff"):
-            metadata["format"] = "jpg"
+        return _validate_with_pil(data, content_type, metadata)
+
+def _looks_like_html(data: bytes) -> bool:
+    """True when the payload starts with an HTML/doctype marker."""
+    lower_start = data[:200].lower()
+    return b"<html" in lower_start or b"<!doctype" in lower_start
+
+
+def _sniff_image_format(data: bytes) -> str:
+    """Image format from magic bytes ('' when unknown)."""
+    if data.startswith(b"\x89PNG"):
+        return "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if data.startswith(b"RIFF") and b"WEBP" in data[:12]:
+        return "webp"
+    if data[:2] == b"BM":
+        return "bmp"
+    return ""
+
+
+def _validate_with_pil(data: bytes, content_type: str, metadata: Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]:
+    """PIL verification for non-magic-byte payloads; content-type last resort."""
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(data))
+        img.verify()
+        metadata["format"] = img.format.lower() if img.format else "unknown"
+        metadata["width"], metadata["height"] = img.size if hasattr(img, 'size') else (0, 0)
+        return True, "", metadata
+    except Exception as e:
+        # If content-type says image, allow?
+        if "image" in content_type.lower():
+            metadata["format"] = content_type.split("/")[-1]
             return True, "", metadata
-        elif data.startswith(b"RIFF") and b"WEBP" in data[:12]:
-            metadata["format"] = "webp"
-            return True, "", metadata
-        elif data[:2] == b"BM":
-            metadata["format"] = "bmp"
-            return True, "", metadata
-        else:
-            # Try PIL to validate
-            try:
-                from PIL import Image
-                import io
-                img = Image.open(io.BytesIO(data))
-                img.verify()
-                metadata["format"] = img.format.lower() if img.format else "unknown"
-                metadata["width"], metadata["height"] = img.size if hasattr(img, 'size') else (0,0)
-                return True, "", metadata
-            except Exception as e:
-                # If content-type says image, allow?
-                if "image" in content_type.lower():
-                    metadata["format"] = content_type.split("/")[-1]
-                    return True, "", metadata
-                return False, f"Invalid image format: {e}", metadata
+        return False, f"Invalid image format: {e}", metadata

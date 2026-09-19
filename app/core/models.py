@@ -100,28 +100,6 @@ class JobRecord:
     needs_review: bool = False
     logs: List[Dict[str, Any]] = field(default_factory=list)
 
-    @staticmethod
-    def create(image: ImageItem, url: UrlRow, correlation_id: str, prompt: str, attempt: int = 1) -> "JobRecord":
-        return JobRecord(
-            job_id=correlation_id,  # use correlation as job_id for simplicity
-            image_id=image.id,
-            image_path=image.absolute_path,
-            url_id=url.id,
-            url=url.url,
-            correlation_id=correlation_id,
-            attempt=attempt,
-            status=JobStatus.CREATED.value,
-            created_at=now_iso(),
-            baseline={},
-            prompt=prompt,
-            submitted_at=None,
-            output_src=None,
-            output_metadata={},
-            saved_path=None,
-            error=None,
-            needs_review=False,
-            logs=[],
-        )
 
 @dataclass
 class AppSettings:
@@ -188,27 +166,16 @@ class AppState:
     last_run: Optional[str] = None
 
     def recalculate_progress(self):
-        total = len(self.images)
-        selected = sum(1 for img in self.images if img.selected)
-        pending = sum(1 for img in self.images if img.status == ImageStatus.PENDING.value and img.selected)
-        # Also count selected that are pending status? Let's treat SELECTED as pending if not processed
-        # For simplicity, pending includes both PENDING and SELECTED
-        pending_selected = sum(1 for img in self.images if img.selected and img.status in [ImageStatus.PENDING.value, ImageStatus.SELECTED.value])
-        processing = sum(1 for img in self.images if img.status == ImageStatus.PROCESSING.value)
-        completed = sum(1 for img in self.images if img.status == ImageStatus.COMPLETED.value)
-        skipped = sum(1 for img in self.images if img.status == ImageStatus.SKIPPED.value)
-        failed = sum(1 for img in self.images if img.status == ImageStatus.FAILED.value)
-        needs_review = sum(1 for img in self.images if img.status == ImageStatus.NEEDS_REVIEW.value)
-
+        counts = _image_status_counts(self.images)
         self.progress = {
-            "total": total,
-            "selected": selected,
-            "pending": pending_selected,
-            "processing": processing,
-            "completed": completed,
-            "skipped": skipped,
-            "failed": failed,
-            "needs_review": needs_review,
+            "total": len(self.images),
+            "selected": sum(1 for img in self.images if img.selected),
+            "pending": counts["pending"],
+            "processing": counts["processing"],
+            "completed": counts["completed"],
+            "skipped": counts["skipped"],
+            "failed": counts["failed"],
+            "needs_review": counts["needs_review"],
         }
 
     def to_dict(self) -> dict:
@@ -254,3 +221,26 @@ class AppState:
             run_state=d.get("run_state", RunState.IDLE.value),
             last_run=d.get("last_run"),
         )
+
+
+# status value -> progress counter key (pending handled separately)
+_STATUS_COUNT_KEYS = {
+    ImageStatus.PROCESSING.value: "processing",
+    ImageStatus.COMPLETED.value: "completed",
+    ImageStatus.SKIPPED.value: "skipped",
+    ImageStatus.FAILED.value: "failed",
+    ImageStatus.NEEDS_REVIEW.value: "needs_review",
+}
+
+
+def _image_status_counts(images: list) -> dict:
+    """Per-status image counts; pending includes SELECTED (selected only)."""
+    counts = {"pending": 0, "processing": 0, "completed": 0, "skipped": 0, "failed": 0, "needs_review": 0}
+    for img in images:
+        if img.selected and img.status in [ImageStatus.PENDING.value, ImageStatus.SELECTED.value]:
+            counts["pending"] += 1
+            continue
+        key = _STATUS_COUNT_KEYS.get(img.status)
+        if key:
+            counts[key] += 1
+    return counts

@@ -31,18 +31,25 @@ class UndoService:
         if idx == 0:
             # undo first entry -> go to -1, return empty marker with undone info
             # This allows clearing or reverting to default for that kind
-            entry = hist[0] if hist else None
-            if entry:
-                self.store.set(hist, -1)
-                return {
-                    "kind": entry["kind"],
-                    "value": None,
-                    "index": -1,
-                    "undone": entry,
-                    "empty": True,
-                }
+            return self._undo_to_start(hist)
+        return self._undo_step(hist, idx)
+
+    def _undo_to_start(self, hist):
+        """Undo past the first entry: pointer to -1, empty marker result."""
+        entry = hist[0] if hist else None
+        if not entry:
             return None
-        # idx > 0
+        self.store.set(hist, -1)
+        return {
+            "kind": entry["kind"],
+            "value": None,
+            "index": -1,
+            "undone": entry,
+            "empty": True,
+        }
+
+    def _undo_step(self, hist, idx):
+        """Step one entry back; target state + what was undone."""
         new_idx = idx - 1
         self.store.set(hist, new_idx)
         target = hist[new_idx] if 0 <= new_idx < len(hist) else None
@@ -85,28 +92,35 @@ class UndoService:
     def kind_projection(self, kind: str):
         hist, idx = self.store.get()
         filtered = [e for e in hist if e.get("kind") == kind]
-        # find last index of that kind <= current idx
-        # simplified: return filtered and its index
         if not filtered:
             return [], -1
-        # find position of current pointer's kind
         # if current entry is of this kind, index is its position in filtered
-        # else, find last filtered before idx
         current = hist[idx] if 0 <= idx < len(hist) else None
         if current and current.get("kind") == kind:
-            # find its position in filtered
-            for i, e in enumerate(filtered):
-                if e == current:
-                    return filtered, i
+            pos = _entry_position(filtered, current)
+            if pos >= 0:
+                return filtered, pos
         # otherwise last filtered before idx
-        last = -1
-        for i, e in enumerate(hist[: idx + 1]):
-            if e.get("kind") == kind:
-                # find its position in filtered
-                for j, fe in enumerate(filtered):
-                    if fe == e:
-                        last = j
-        return filtered, last
+        return filtered, _last_position_before(hist, filtered, kind, idx)
 
     def push_stack(self, blocks):
         return self.push("arena", blocks)
+
+
+def _entry_position(filtered: list, entry) -> int:
+    """Position of entry in filtered (-1 when absent)."""
+    for i, e in enumerate(filtered):
+        if e == entry:
+            return i
+    return -1
+
+
+def _last_position_before(hist: list, filtered: list, kind: str, idx: int) -> int:
+    """Position in filtered of the last kind-entry at or before idx."""
+    last = -1
+    for e in hist[: idx + 1]:
+        if e.get("kind") == kind:
+            j = _entry_position(filtered, e)
+            if j >= 0:
+                last = j
+    return last

@@ -522,56 +522,8 @@ class ActionBlock:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ActionBlock":
-        for rk in RETIRED_KEYS:
-            data.pop(rk, None)
-        if "highlight_duration_ms" in data and "highlight_ms" not in data:
-            data["highlight_ms"] = data.get("highlight_duration_ms", 2000)
-        bid = data.get("block_id", "")
-        defn = BLOCK_DEFINITIONS.get(bid, {})
-        data.setdefault("label_selector", defn.get("default_label_selector", ""))
-        data.setdefault("match_text", defn.get("default_match_text", ""))
-        data.setdefault("match_mode", defn.get("default_match_mode", "contains"))
-        data.setdefault("click_enabled", defn.get("default_click_enabled", True))
-        data.setdefault("click_selector", defn.get("default_click_selector", ""))
-        data.setdefault("fallback_selector", defn.get("default_fallback_selector", ""))
-        data.setdefault("fallback_text", defn.get("default_fallback_text", ""))
-        data.setdefault("highlight_enabled", defn.get("default_highlight_enabled", True))
-        data.setdefault("color", defn.get("default_color", defn.get("color", "#FF0000")))
-        data.setdefault("timeout_ms", defn.get("default_timeout_ms", 10000))
-        data.setdefault("pre_delay_ms", defn.get("default_pre_delay_ms", 200))
-        data.setdefault("highlight_ms", defn.get("default_highlight_ms", 2000))
-        data.setdefault("confirm_pause_ms", defn.get("default_confirm_pause_ms", 700))
-        data.setdefault("highlight_duration_ms", data.get("highlight_ms", 2000))
-        data.setdefault("extra", {})
-        if not data.get("id"):
-            data["id"] = f"{bid.lower()}_{uuid.uuid4().hex[:8]}"
-        return cls(
-            id=data.get("id", str(uuid.uuid4())),
-            block_id=data.get("block_id", ""),
-            name=data.get("name", defn.get("name", "")),
-            description=data.get("description", defn.get("description", "")),
-            icon=data.get("icon", defn.get("icon", "")),
-            enabled=data.get("enabled", True),
-            selector=data.get("selector", ""),
-            label_selector=data.get("label_selector", ""),
-            match_text=data.get("match_text", ""),
-            match_mode=data.get("match_mode", "contains"),
-            click_enabled=data.get("click_enabled", True),
-            click_selector=data.get("click_selector", ""),
-            fallback_selector=data.get("fallback_selector", ""),
-            fallback_text=data.get("fallback_text", ""),
-            highlight_enabled=data.get("highlight_enabled", True),
-            color=data.get("color", "#FF0000"),
-            timeout_ms=data.get("timeout_ms", 10000),
-            required=data.get("required", defn.get("required", False)),
-            category=data.get("category", defn.get("category", "action")),
-            custom_name=data.get("custom_name", ""),
-            pre_delay_ms=data.get("pre_delay_ms", 200),
-            highlight_ms=data.get("highlight_ms", 2000),
-            confirm_pause_ms=data.get("confirm_pause_ms", 700),
-            highlight_duration_ms=data.get("highlight_duration_ms", data.get("highlight_ms", 2000)),
-            extra=data.get("extra", {}),
-        )
+        data = _migrate_block_dict(data)
+        return cls(**_block_kwargs(data))
 
     @property
     def display_name(self) -> str:
@@ -635,28 +587,44 @@ def default_stack() -> List[ActionBlock]:
 
 
 def load_stack_from_dicts(dicts: List[Dict[str, Any]]) -> List[ActionBlock]:
+    blocks = _blocks_from_dicts(dicts)
+    _ensure_required_blocks(blocks)
+    return blocks
+
+
+def _blocks_from_dicts(dicts: List[Dict[str, Any]]) -> List[ActionBlock]:
+    """Valid persisted dicts -> ActionBlocks (invalid entries skipped)."""
     blocks: List[ActionBlock] = []
     for d in dicts:
         try:
-            if not isinstance(d, dict):
-                continue
-            for rk in RETIRED_KEYS:
-                d.pop(rk, None)
-            if "block_id" in d:
-                blocks.append(ActionBlock.from_dict(d))
-            else:
-                bt = d.get("id") or d.get("block_id") or ""
-                if bt in BLOCK_DEFINITIONS:
-                    blocks.append(create_default_block(bt, custom_id=d.get("id")))
-                else:
-                    blocks.append(ActionBlock.from_dict(d))
+            block = _block_from_persisted(d)
+            if block is not None:
+                blocks.append(block)
         except Exception:
             continue
+    return blocks
+
+
+def _block_from_persisted(d: Any) -> "ActionBlock | None":
+    """One persisted entry -> block (None for non-dicts)."""
+    if not isinstance(d, dict):
+        return None
+    for rk in RETIRED_KEYS:
+        d.pop(rk, None)
+    if "block_id" in d:
+        return ActionBlock.from_dict(d)
+    bt = d.get("id") or d.get("block_id") or ""
+    if bt in BLOCK_DEFINITIONS:
+        return create_default_block(bt, custom_id=d.get("id"))
+    return ActionBlock.from_dict(d)
+
+
+def _ensure_required_blocks(blocks: List[ActionBlock]) -> None:
+    """Append missing required blocks (in-place)."""
     existing_types = {b.block_id for b in blocks}
     for req_type, defn in BLOCK_DEFINITIONS.items():
         if defn.get("required") and req_type not in existing_types:
             blocks.append(create_default_block(req_type))
-    return blocks
 
 
 def stack_to_dicts(stack: List[ActionBlock]) -> List[Dict[str, Any]]:
@@ -714,3 +682,81 @@ def remove_stack_preset(presets, name: str) -> tuple:
     kept = [p for p in (presets or []) if not (isinstance(p, dict) and p.get("name") == name)]
     before = len(presets) if isinstance(presets, list) else 0
     return kept, len(kept) != before
+
+
+
+def _migrate_block_dict(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a persisted block dict: retired keys, defaults, legacy rename."""
+    for rk in RETIRED_KEYS:
+        data.pop(rk, None)
+    if "highlight_duration_ms" in data and "highlight_ms" not in data:
+        data["highlight_ms"] = data.get("highlight_duration_ms", 2000)
+    bid = data.get("block_id", "")
+    defn = BLOCK_DEFINITIONS.get(bid, {})
+    for key, def_key, default in _BLOCK_DEFAULT_FIELDS:
+        data.setdefault(key, defn.get(def_key, default))
+    data.setdefault("color", BLOCK_DEFINITIONS.get(data.get("block_id", ""), {}).get(
+        "default_color", BLOCK_DEFINITIONS.get(data.get("block_id", ""), {}).get("color", "#FF0000")))
+    data.setdefault("highlight_duration_ms", data.get("highlight_ms", 2000))
+    data.setdefault("extra", {})
+    if not data.get("id"):
+        data["id"] = f"{bid.lower()}_{uuid.uuid4().hex[:8]}"
+    return data
+
+
+# (field, definition key, fallback default) — mirrors pre-W3 from_dict defaults
+_BLOCK_DEFAULT_FIELDS = [
+    ("label_selector", "default_label_selector", ""),
+    ("match_text", "default_match_text", ""),
+    ("match_mode", "default_match_mode", "contains"),
+    ("click_enabled", "default_click_enabled", True),
+    ("click_selector", "default_click_selector", ""),
+    ("fallback_selector", "default_fallback_selector", ""),
+    ("fallback_text", "default_fallback_text", ""),
+    ("highlight_enabled", "default_highlight_enabled", True),
+    ("timeout_ms", "default_timeout_ms", 10000),
+    ("pre_delay_ms", "default_pre_delay_ms", 200),
+    ("highlight_ms", "default_highlight_ms", 2000),
+    ("confirm_pause_ms", "default_confirm_pause_ms", 700),
+]
+
+
+def _block_kwargs(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Constructor kwargs for ActionBlock from a migrated dict."""
+    bid = data.get("block_id", "")
+    defn = BLOCK_DEFINITIONS.get(bid, {})
+    kwargs = dict(
+        id=data.get("id", str(uuid.uuid4())),
+        block_id=data.get("block_id", ""),
+        name=data.get("name", defn.get("name", "")),
+        description=data.get("description", defn.get("description", "")),
+        icon=data.get("icon", defn.get("icon", "")),
+        enabled=data.get("enabled", True),
+        selector=data.get("selector", ""),
+        extra=data.get("extra", {}),
+    )
+    kwargs.update(_block_behavior_kwargs(data, defn))
+    return kwargs
+
+
+def _block_behavior_kwargs(data: Dict[str, Any], defn: Dict[str, Any]) -> Dict[str, Any]:
+    """Behavior/definition-backed kwargs (matching, fallbacks, timings)."""
+    return dict(
+        label_selector=data.get("label_selector", ""),
+        match_text=data.get("match_text", ""),
+        match_mode=data.get("match_mode", "contains"),
+        click_enabled=data.get("click_enabled", True),
+        click_selector=data.get("click_selector", ""),
+        fallback_selector=data.get("fallback_selector", ""),
+        fallback_text=data.get("fallback_text", ""),
+        highlight_enabled=data.get("highlight_enabled", True),
+        color=data.get("color", "#FF0000"),
+        timeout_ms=data.get("timeout_ms", 10000),
+        required=data.get("required", defn.get("required", False)),
+        category=data.get("category", defn.get("category", "action")),
+        custom_name=data.get("custom_name", ""),
+        pre_delay_ms=data.get("pre_delay_ms", 200),
+        highlight_ms=data.get("highlight_ms", 2000),
+        confirm_pause_ms=data.get("confirm_pause_ms", 700),
+        highlight_duration_ms=data.get("highlight_duration_ms", data.get("highlight_ms", 2000)),
+    )
