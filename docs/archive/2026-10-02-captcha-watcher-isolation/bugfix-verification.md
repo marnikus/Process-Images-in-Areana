@@ -164,6 +164,43 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
   `test_url_list_listeners.mjs`, `test_arena_presets_actions.mjs` (added on
   2026-10-02 but never wired into the script) and the two new files.
 
+## B7 — URL row disappears ~1 s after Add (`url-list/actions.js`, `undo_entries.py`)
+
+* **Saw:** typing a URL and pressing Add/Enter showed the row for about a
+  second, then the table re-rendered without it; `arena.json` did not keep
+  it either. (Latent before B6: `_onAdd`'s deferred callback threw on the
+  undefined `window.App`, so pre-B6 nothing was rendered at all.)
+* **Did:** `add_url` (Python) appends the row and runs `commit_urls()` — the
+  single write path: `_save_arena()` emits `arena_state_updated` and
+  `push_urls_undo()` records the global undo entry. The JS side applies
+  `arena_state_updated` after a **250 ms debounce**
+  (`arena-app/listeners.js::_handleArenaState`). `_onAdd` (and `_applyEdit`)
+  additionally scheduled, **100 ms** after the ok reply,
+  `ArenaHistory.recordGlobal('urls', window.App.state.urls)` — a snapshot
+  taken *before* the debounced apply, i.e. the list **without** the new row.
+  `recordGlobal` calls `bridge.push_global_history('urls', …)` →
+  `undo_entries._remember_urls` **replaces** `bridge.state.urls` with that
+  stale list, saves, and emits `arena_state_updated` again → 250 ms later the
+  table renders the old list. The push was redundant anyway (Python already
+  recorded the undo entry; `history_changed` → `_syncGlobalHistory()` pulls
+  it into the client timeline) and, when the timing happened to be right, it
+  would have created a duplicate entry. Side finding: `url_rows_from_js` /
+  `arena_url_rows_from_js` dropped `tab_id`, so every urls undo/redo/push
+  silently unlinked the rows from their tabs.
+* **Change:** removed both deferred `recordGlobal('urls', …)` push-backs —
+  the client never echoes URL rows to Python; `url_rows_from_js` and
+  `arena_url_rows_from_js` keep `tab_id`.
+* **Pinned by:** `tests/js/test_url_list_add_persists.mjs` (real
+  `arena-history.js` + `url-list/actions.js`; the bridge fake commits rows
+  like the slots and applies `push_global_history('urls')` like
+  `_remember_urls`: Add and Edit leave the committed row in place with **zero**
+  push-backs, failed Add keeps the typed text, a *regression replay* shows the
+  old push-back erased the row, and a static guard rejects any
+  `recordGlobal('urls'` / `push_global_history('urls'` under
+  `panels/url-list/`); on the pre-fix file 3 of the 5 cases fail.
+  `tests/test_undo_history.py::test_url_rows_from_js_keep_tab_link`,
+  `::test_remember_and_apply_urls_keep_tab_link`.
+
 ## B8 — Image generated + downloaded, then every page probe answered nothing (`cdp/transport.py`, `page_recovery.py`, `visual_click.py`, `single_job_runner.py`)
 
 * **Saw:** the generation finished and the app pulled the image
@@ -258,12 +295,12 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 | `--changed --base origin/main --allow-legacy --coverage-ratchet` | 20 NO-GROWTH `file_lines` fails (+3 lines per panel export) → reviewed `--record-baseline`, then PASSED; coverage 85.65 % line / 81.33 % branch (floor 85.64 / 81.32 kept) |
 | `compileall` / pyflakes undefined names / vulture @90 | clean |
 
-## Gate evidence (2026-10-04, B8)
+## Gate evidence (2026-10-04, B7 + B8)
 
 | Gate | Result |
 |---|---|
 | `pytest -q` (CI-like, no PySide6) | 1,433 passed, 1 skipped, same 2 pre-existing environmental failures (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message); characterization goldens unchanged |
-| `npm run test:js` | 169 pass / 0 fail (no JS change) |
+| `npm run test:js` | 174 pass / 0 fail (169 + `test_url_list_add_persists.mjs`, wired into `test:js`) |
 | `tools/verify_quality.py --js` | PASSED — 0 fails (new symbols: `page_recovery.py` max CC 8 / nest 2 / func ≤21 LOC; `transport` class 120 LOC, 9 methods) |
 | `--changed --base origin/<branch> --allow-legacy --coverage-ratchet --js` | 2 in-limit growth deltas (`transport` class 116→120, `visual_click` nest 1→2) → reviewed `--record-baseline` (`docs/current/QUALITY_RECHECK.md`), then PASSED; coverage 86.09 % line / 82.01 % branch (floor raised from 85.65 / 81.33) |
 | `compileall` / pyflakes on touched files / vulture | clean |

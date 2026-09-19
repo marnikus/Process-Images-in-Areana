@@ -19,7 +19,11 @@ window.UrlListActions = {
       else {
         input.value = '';
         LogConsole.log('URL added: ' + val, 'success');
-        if (typeof ArenaHistory !== 'undefined') setTimeout(()=>ArenaHistory.recordGlobal('urls', window.App.state.urls), 100);
+        // B7: never push `App.state.urls` back to Python here. Python's
+        // commit_urls() already saved + recorded the undo entry, and this
+        // snapshot is STALE (arena_state_updated is applied after a 250 ms
+        // debounce) — pushing it made _remember_urls overwrite the rows
+        // without the new one, so the row vanished ~1 s after it appeared.
       }
     } catch {}
   },
@@ -63,7 +67,7 @@ window.UrlListActions = {
         const r = JSON.parse(res);
         if (!r.ok) { LogConsole.log('Edit failed: ' + r.error, 'error'); return; }
         LogConsole.log('URL updated: ' + (r.url || newUrl), 'success');
-        if (typeof ArenaHistory !== 'undefined') setTimeout(() => ArenaHistory.recordGlobal('urls', window.App.state.urls), 100);
+        // B7: no stale snapshot push-back (see _onAdd) — edit_url committed already.
       } catch {}
     });
   },
