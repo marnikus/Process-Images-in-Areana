@@ -10,7 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from .models import VALID_LABELS, VALID_RESULT_LABELS, day_folder_for, new_session_id, utc_now
-from .retention import drop_empty_day, find_session_folder, prune_recordings, session_folders
+from .retention import (
+    drop_empty_day,
+    find_session_folder,
+    is_valid_session_id,
+    prune_recordings,
+    session_folders,
+)
 from .sanitize import safe_url
 
 SCHEMA_VERSION = 1
@@ -110,7 +116,7 @@ class RecordingStore:
         return manifest
 
     def session_folder(self, session_id: str) -> Path:
-        if not session_id or Path(session_id).name != session_id:
+        if not is_valid_session_id(session_id):
             raise ValueError("invalid session id")
         folder = find_session_folder(self.root, session_id)
         if folder is None:

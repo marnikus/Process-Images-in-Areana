@@ -1,0 +1,4 @@
+{
+ "duplicated_lines_percent": 0.9388565467577482,
+ "note": "jscpd app/ (D6 lane); regenerate via tools/pre_push_check.sh after intentional dedup"
+}

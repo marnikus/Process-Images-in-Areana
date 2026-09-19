@@ -331,7 +331,7 @@ def test_layout_state_presets_and_state_payloads(cfg):
 
 # ── blocks_stack ──
 
-def test_blocks_stack_save_add_delete_and_history(cfg):
+def test_blocks_stack_save_add_delete_and_history(cfg, tmp_path, monkeypatch):
     host, _ = make_host((BlocksStackMixin,), config=cfg,
                         undo_service=make_undo(), action_blocks_updated=Signal(str))
     stack = json.loads(host.get_action_blocks())
@@ -355,6 +355,9 @@ def test_blocks_stack_save_add_delete_and_history(cfg):
     assert any("sp1" in str(p) for p in json.loads(host.get_stack_presets()))
     assert json.loads(host.delete_stack_preset("sp1"))["ok"] is True
     assert json.loads(host.delete_stack_preset("sp1"))["ok"] is False
+    # headless export falls back to CWD-relative config/ — isolate it so the
+    # suite never rewrites the repo's real preset file (D5/D6 hygiene)
+    monkeypatch.chdir(tmp_path)
     assert json.loads(host.export_action_blocks(json.dumps(current)))["ok"] in (True, False)
 
 

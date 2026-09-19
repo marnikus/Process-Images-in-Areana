@@ -2,34 +2,50 @@
 """
 RULE 16 gate — size and complexity limits for Arena Image Processor.
 
-Adapted from Old App tools/metrics/rule16_gate.py but simplified for Arena,
-preserving thresholds, invariants pattern, and override format.
+Two check modes:
+  full tree (default): every app file must respect the hard limits.
+      --allow-legacy demotes breaches in baseline-listed files to warnings.
+  --changed (the push gate): only files changed vs origin/main (plus the
+      uncommitted worktree) are checked, and for files that exist in the
+      baseline v2 a RATCHET applies:
+        * symbol new-to-baseline breaching a hard limit        -> FAIL
+        * symbol in baseline that regressed on any metric      -> FAIL
+        * symbol in baseline within baseline but over hard     -> WARN (legacy)
+        * file coverage below its baseline value               -> FAIL
+
+Baseline format v2 (tools/quality_baseline.json):
+  {"version": 2,
+   "files": {"app/x.py": {"functions": {name: {loc, params, cc, cognitive, nesting}},
+                          "classes": {name: {loc, methods}},
+                          "coverage": 43.2}},
+   "js": {"app/ui/web/js/y.js": {"functions": {name: {loc, params, nesting, cc}},
+                                 "file_lines": 210}}}
+Regenerate with:  python tools/baseline_update.py
 
 Usage:
-    python tools/verify_quality.py              # report, exit 1 on breach
-    python tools/verify_quality.py --json       # machine-readable
-    python tools/verify_quality.py --changed    # only files changed vs main
+    python tools/verify_quality.py               # full tree
+    python tools/verify_quality.py --changed --allow-legacy   # push gate
+    python tools/verify_quality.py --json        # machine-readable
+    python tools/verify_quality.py --root DIR    # test harnesses
+    python tools/verify_quality.py --changed-files a.py b.py  # explicit change set
 
 Thresholds (from docs/current/AGENT_RULES.md RULE 16):
     Function LOC: prefer ≤20, fail >30
     Class LOC: prefer ≤120, fail >150
     Params: prefer ≤3, fail >4
     Methods per class: prefer ≤10, fail >15
-    CC: prefer ≤7, fail >10 (radon cc -s if available, else AST approx)
-    Cognitive: prefer ≤10, fail >15 (cognitive-complexity if available)
+    CC: prefer ≤7, fail >10
+    Cognitive: prefer ≤10, fail >15
     Nesting: prefer ≤3, fail >4
-    Coverage: line ≥80%, branch ≥75%, never decrease vs baseline
+    Coverage: line ≥80%, branch ≥75%, per-file never below baseline
 
 Override format (strict):
     # quality-override: metric=value reason=<≥20 chars>
-    metric ∈ loc, class-loc, params, methods, cc, cognitive, nesting, coverage, vulture, dup
-    One override per metric per symbol.
+    metric ∈ loc, class-loc, params, methods, cc, cognitive, nesting
 
 Anti-gaming checks:
     - no foo_part1/part2 split to game LOC
     - no **kwargs dodge for params
-    - no dummy helpers
-    - no lambda dispatch hiding if
 """
 
 from __future__ import annotations
@@ -37,15 +53,12 @@ from __future__ import annotations
 import argparse
 import ast
 import json
-import os
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-ROOT = Path(__file__).resolve().parent.parent
-APP_DIR = ROOT / "app"
-TESTS_DIR = ROOT / "tests"
+DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 
 # Fail thresholds (from AGENT_RULES.md)
 LIMITS = {
@@ -74,8 +87,9 @@ OUT_OF_SCOPE_PATTERNS = [
     r"^docs/",
     r"/__pycache__/",
     r"\.pyc$",
-    r"config/",
-    r"research/",
+    r"^config/",
+    r"^research/",
+    r"^mutants/",
 ]
 
 OVERRIDE_RE = re.compile(
@@ -85,93 +99,113 @@ OVERRIDE_RE = re.compile(
     re.IGNORECASE,
 )
 
-def is_out_of_scope(path: Path) -> bool:
-    rel = str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
-    for pat in OUT_OF_SCOPE_PATTERNS:
-        if re.search(pat, rel):
-            return True
-    return False
+METRIC_TO_OVERRIDE = {
+    "loc": "loc", "params": "params", "cc": "cc", "cognitive": "cognitive",
+    "nesting": "nesting", "class-loc": "class-loc", "methods": "methods",
+}
 
-def find_py_files(changed_only: bool = False) -> List[Path]:
-    if changed_only:
-        try:
-            import subprocess
-            out = subprocess.check_output(
-                ["git", "diff", "--name-only", "origin/main...HEAD"],
-                cwd=str(ROOT),
-                text=True,
-            )
-            files = []
-            for line in out.splitlines():
-                p = ROOT / line.strip()
-                # Only app files are gated for quality (tests/tools out of scope)
-                if not str(p).startswith(str(APP_DIR)):
-                    continue
-                if p.suffix == ".py" and p.exists() and not is_out_of_scope(p):
-                    files.append(p)
-            if files:
-                return sorted(files)
-        except Exception:
-            pass
+
+def is_out_of_scope(root: Path, path: Path) -> bool:
+    try:
+        rel = str(path.relative_to(root))
+    except ValueError:
+        rel = str(path)
+    return any(re.search(pat, rel) for pat in OUT_OF_SCOPE_PATTERNS)
+
+
+def _git(root: Path, *args: str) -> Optional[str]:
+    import subprocess
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(root), *args], text=True, stderr=subprocess.DEVNULL)
+    except Exception:
+        return None
+
+
+def changed_py_files(root: Path, explicit: Optional[List[str]] = None) -> Tuple[List[Path], str]:
+    """Changed app/*.py files. Returns (files, note).
+
+    Changed = committed diff vs merge-base(origin/main, HEAD) + staged +
+    unstaged + untracked (worktree-safe: uncommitted work is gated too).
+    """
+    if explicit:
+        files = []
+        for rel in explicit:
+            p = root / rel
+            if p.suffix == ".py" and p.exists() and not is_out_of_scope(root, p):
+                files.append(p)
+        return sorted(files), "explicit"
+
+    names: set[str] = set()
+    base = _git(root, "merge-base", "origin/main", "HEAD")
+    note = ""
+    if base:
+        out = _git(root, "diff", "--name-only", f"{base.strip()}...HEAD") or ""
+        names.update(out.split())
+    else:
+        # no merge base (e.g. re-rooted sandbox history): gate the whole tree
+        note = "no merge base with origin/main — checking whole tree"
+        return find_py_files(root), note
+    for args in (("diff", "--name-only", "HEAD"),
+                 ("diff", "--cached", "--name-only"),
+                 ("ls-files", "--others", "--exclude-standard")):
+        out = _git(root, *args) or ""
+        names.update(out.split())
+
     files = []
-    for p in APP_DIR.rglob("*.py"):
-        if not is_out_of_scope(p):
+    for rel in sorted(names):
+        p = root / rel
+        if p.suffix == ".py" and p.exists() and not is_out_of_scope(root, p):
             files.append(p)
-    return sorted(files)
+    return files, note
+
+
+def find_py_files(root: Path) -> List[Path]:
+    app_dir = root / "app"
+    return sorted(p for p in app_dir.rglob("*.py") if not is_out_of_scope(root, p))
+
 
 def get_override_comment(node: ast.AST, source_lines: List[str]) -> Dict[str, Tuple[str, str]]:
     """Parse quality-override comments for a node. Returns metric -> (value, reason)."""
-    overrides = {}
-    # Check node's own line and previous line for comment
+    overrides: Dict[str, Tuple[str, str]] = {}
     try:
         lineno = getattr(node, "lineno", 1)
-        # Look at line itself and up to 2 lines before
         for i in range(max(0, lineno - 3), min(len(source_lines), lineno + 1)):
-            line = source_lines[i]
-            m = OVERRIDE_RE.search(line)
+            m = OVERRIDE_RE.search(source_lines[i])
             if m:
-                metric = m.group("metric").lower()
-                value = m.group("value")
-                reason = m.group("reason").strip()
-                overrides[metric] = (value, reason)
+                overrides[m.group("metric").lower()] = (m.group("value"), m.group("reason").strip())
     except Exception:
         pass
     return overrides
 
+
 def count_params(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    """Count params, excluding self/cls for methods, excluding **kwargs if it's dodge?"""
     args = func_node.args
-    # Count posonly + args + kwonly, but exclude self/cls if first arg named self/cls and function is method
-    # We need to know if it's inside class — caller will adjust
-    count = len(args.posonlyargs) + len(args.args) + len(args.kwonlyargs)
-    # Check for **kwargs dodge: if function has **kwargs and count==1 and kwargs name is kwargs, it's suspicious
-    # But per anti-gaming, **kwargs to hide params is not allowed — we still count it as 1 but flag?
-    # For simplicity, count it.
-    return count
+    return len(args.posonlyargs) + len(args.args) + len(args.kwonlyargs)
 
-def is_method_inside_class(stack) -> bool:
-    for n in reversed(stack):
-        if isinstance(n, ast.ClassDef):
-            return True
-    return False
 
-def get_nesting_depth(node: ast.AST, current_depth: int = 0, max_depth: int = 0, stack=None) -> int:
-    """Compute max nesting depth of branching constructs."""
-    if stack is None:
-        stack = []
-    # Branching nodes that increase nesting
-    nesting_nodes = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.Try)
-    # Actually Try itself doesn't cost per RULE 16, but its handlers do? For nesting, count if/for/while/with/try?
-    # Per AGENT_RULES.md: nesting counts if/for/while/with/try etc? Let's count If, For, While, With
-    # We'll count If, For, While, With, Try as nesting increasers
+def method_param_count(node: ast.FunctionDef | ast.AsyncFunctionDef, in_class: bool) -> int:
+    n = count_params(node)
+    if in_class:
+        try:
+            first = (node.args.posonlyargs or node.args.args)
+            if first and first[0].arg in ("self", "cls"):
+                n = max(0, n - 1)
+        except Exception:
+            pass
+    return n
+
+
+def get_nesting_depth(node: ast.AST, current_depth: int = 0, max_depth: int = 0) -> int:
+    """Max nesting depth of branching constructs (If/For/While/With/Try)."""
     new_depth = current_depth
-    if isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With)):
+    if isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.Try)):
         new_depth = current_depth + 1
         max_depth = max(max_depth, new_depth)
-    # Recurse
     for child in ast.iter_child_nodes(node):
-        max_depth = get_nesting_depth(child, new_depth, max_depth, stack + [node])
+        max_depth = get_nesting_depth(child, new_depth, max_depth)
     return max_depth
+
 
 def compute_cc_simple(node: ast.AST) -> int:
     """Simple cyclomatic complexity approximation: base 1 + branching."""
@@ -179,12 +213,9 @@ def compute_cc_simple(node: ast.AST) -> int:
     for n in ast.walk(node):
         if isinstance(n, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.With)):
             cc += 1
-        elif isinstance(n, ast.BoolOp):
-            # +1 per and/or beyond first
-            if isinstance(n.op, (ast.And, ast.Or)):
-                cc += len(n.values) - 1
+        elif isinstance(n, ast.BoolOp) and isinstance(n.op, (ast.And, ast.Or)):
+            cc += len(n.values) - 1
         elif isinstance(n, ast.comprehension):
-            # +1 per if in comprehension
             cc += len(n.ifs)
         elif isinstance(n, ast.IfExp):
             cc += 1
@@ -192,403 +223,433 @@ def compute_cc_simple(node: ast.AST) -> int:
             cc += 1
     return cc
 
-def try_radon_cc(file_path: Path) -> Optional[Dict[str, int]]:
-    """Try to use radon if installed, return func_name -> cc."""
-    try:
-        import subprocess
-        out = subprocess.check_output(
-            ["python", "-m", "radon", "cc", "-s", "-j", str(file_path)],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=10,
-        )
-        data = json.loads(out)
-        # data is {filepath: [ {name, lineno, col_offset, endline, cc, ...}, ... ]}
-        result = {}
-        for fp, entries in data.items():
-            for e in entries:
-                result[e["name"]] = e["complexity"]
-        return result
-    except Exception:
-        return None
 
-def try_cognitive(file_path: Path) -> Optional[Dict[str, int]]:
-    """Try cognitive-complexity lib."""
+def _try_cognitive_map(file_path: Path) -> Dict[str, int]:
     try:
-        # Try import
         from cognitive_complexity.api import get_cognitive_complexity  # type: ignore
-        import ast as _ast
-        source = file_path.read_text(encoding="utf-8")
-        tree = _ast.parse(source)
-        result = {}
+        tree = ast.parse(file_path.read_text(encoding="utf-8"))
+        result: Dict[str, int] = {}
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 try:
-                    cc = get_cognitive_complexity(node)
-                    result[node.name] = cc
+                    result[node.name] = get_cognitive_complexity(node)
                 except Exception:
                     pass
         return result
     except Exception:
-        return None
+        return {}
 
-def check_file(file_path: Path) -> List[Dict]:
-    breaches = []
-    try:
-        source = file_path.read_text(encoding="utf-8")
-    except Exception as e:
-        return [{"file": str(file_path), "error": f"read failed: {e}", "fail": True}]
-    source_lines = source.splitlines()
-    try:
-        tree = ast.parse(source, filename=str(file_path))
-    except SyntaxError as e:
-        return [{"file": str(file_path), "error": f"syntax error: {e}", "fail": True}]
 
-    # Try radon and cognitive if available
-    radon_cc = try_radon_cc(file_path)
-    cog_map = try_cognitive(file_path)
+def node_loc(node: ast.AST) -> int:
+    end = getattr(node, "end_lineno", None) or node.lineno
+    return end - node.lineno + 1
 
-    # Walk for functions and classes
-    # Keep stack for method detection
-    def walk(node, stack=None, depth=0):
-        if stack is None:
-            stack = []
-        # Function
+
+def analyze_file(file_path: Path) -> Dict[str, Any]:
+    """Per-symbol metrics table for one Python file.
+
+    functions: {qualified_name: {loc, params, cc, cognitive, nesting}}
+      module-level: "name"; methods: "ClassName.name"
+    classes: {name: {loc, methods}}
+    """
+    source = file_path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(file_path))
+    cog_map = _try_cognitive_map(file_path)
+
+    functions: Dict[str, Dict[str, int]] = {}
+    classes: Dict[str, Dict[str, int]] = {}
+    seen: set[str] = set()
+
+    def unique_name(base: str) -> str:
+        name, i = base, 2
+        while name in seen:
+            name = f"{base}#{i}"
+            i += 1
+        seen.add(name)
+        return name
+
+    def walk(node: ast.AST, class_stack: List[str]) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            func_name = node.name
-            # Skip if name suggests part split gaming
-            if re.search(r"_part\d+$", func_name):
-                breaches.append({
-                    "file": str(file_path.relative_to(ROOT)),
-                    "type": "function",
-                    "name": func_name,
-                    "lineno": getattr(node, "lineno", 0),
-                    "metric": "anti-gaming",
-                    "value": func_name,
-                    "limit": "no _partN split",
-                    "fail": True,
-                    "message": f"Function {func_name} looks like gaming split foo_part1/part2 (RULE 16 anti-gaming)",
-                })
-            # LOC
-            try:
-                end_lineno = getattr(node, "end_lineno", None) or node.lineno
-                loc = end_lineno - node.lineno + 1
-            except Exception:
-                loc = 0
-            # Check override
-            overrides = get_override_comment(node, source_lines)
-            # func_loc
-            if loc > LIMITS["func_loc"]:
-                if "loc" not in overrides:
-                    breaches.append({
-                        "file": str(file_path.relative_to(ROOT)),
-                        "type": "function",
-                        "name": func_name,
-                        "lineno": node.lineno,
-                        "metric": "loc",
-                        "value": loc,
-                        "limit": LIMITS["func_loc"],
-                        "prefer": PREFER["func_loc"],
-                        "fail": True,
-                        "message": f"Function {func_name} LOC {loc} > {LIMITS['func_loc']} (prefer ≤{PREFER['func_loc']}) at {file_path}:{node.lineno}",
-                    })
-                else:
-                    val, reason = overrides["loc"]
-                    if len(reason.strip()) < 20:
-                        breaches.append({
-                            "file": str(file_path.relative_to(ROOT)),
-                            "type": "function",
-                            "name": func_name,
-                            "lineno": node.lineno,
-                            "metric": "loc-override-reason",
-                            "value": reason,
-                            "fail": True,
-                            "message": f"Override reason too short (<20 chars) for {func_name} loc override: {reason}",
-                        })
-            # Params
-            param_count = count_params(node)
-            # Exclude self/cls for methods
-            if is_method_inside_class(stack):
-                # If first arg is self or cls, subtract 1
-                try:
-                    first_arg = None
-                    if node.args.posonlyargs:
-                        first_arg = node.args.posonlyargs[0].arg
-                    elif node.args.args:
-                        first_arg = node.args.args[0].arg
-                    if first_arg in ("self", "cls"):
-                        param_count = max(0, param_count - 1)
-                except Exception:
-                    pass
-            if param_count > LIMITS["params"]:
-                # Check for **kwargs dodge
-                has_kwargs = node.args.kwarg is not None
-                if has_kwargs and param_count <= 1:
-                    breaches.append({
-                        "file": str(file_path.relative_to(ROOT)),
-                        "type": "function",
-                        "name": func_name,
-                        "lineno": node.lineno,
-                        "metric": "anti-gaming",
-                        "value": param_count,
-                        "fail": True,
-                        "message": f"Function {func_name} uses **kwargs to dodge params count (RULE 16 anti-gaming)",
-                    })
-                if "params" not in overrides:
-                    breaches.append({
-                        "file": str(file_path.relative_to(ROOT)),
-                        "type": "function",
-                        "name": func_name,
-                        "lineno": node.lineno,
-                        "metric": "params",
-                        "value": param_count,
-                        "limit": LIMITS["params"],
-                        "prefer": PREFER["params"],
-                        "fail": True,
-                        "message": f"Function {func_name} params {param_count} > {LIMITS['params']} (prefer ≤{PREFER['params']})",
-                    })
-            # CC
-            if radon_cc and func_name in radon_cc:
-                cc_val = radon_cc[func_name]
-            else:
-                cc_val = compute_cc_simple(node)
-            if cc_val > LIMITS["cc"]:
-                if "cc" not in overrides:
-                    breaches.append({
-                        "file": str(file_path.relative_to(ROOT)),
-                        "type": "function",
-                        "name": func_name,
-                        "lineno": node.lineno,
-                        "metric": "cc",
-                        "value": cc_val,
-                        "limit": LIMITS["cc"],
-                        "prefer": PREFER["cc"],
-                        "fail": True,
-                        "message": f"Function {func_name} CC {cc_val} > {LIMITS['cc']} (prefer ≤{PREFER['cc']})",
-                    })
-            # Cognitive
-            cog_val = None
-            if cog_map and func_name in cog_map:
-                cog_val = cog_map[func_name]
-            # If cognitive lib not available, skip cognitive check (or use CC as proxy)
-            if cog_val is not None and cog_val > LIMITS["cognitive"]:
-                if "cognitive" not in overrides:
-                    breaches.append({
-                        "file": str(file_path.relative_to(ROOT)),
-                        "type": "function",
-                        "name": func_name,
-                        "lineno": node.lineno,
-                        "metric": "cognitive",
-                        "value": cog_val,
-                        "limit": LIMITS["cognitive"],
-                        "prefer": PREFER["cognitive"],
-                        "fail": True,
-                        "message": f"Function {func_name} cognitive {cog_val} > {LIMITS['cognitive']} (prefer ≤{PREFER['cognitive']})",
-                    })
-            # Nesting
-            nesting = get_nesting_depth(node)
-            if nesting > LIMITS["nesting"]:
-                if "nesting" not in overrides:
-                    breaches.append({
-                        "file": str(file_path.relative_to(ROOT)),
-                        "type": "function",
-                        "name": func_name,
-                        "lineno": node.lineno,
-                        "metric": "nesting",
-                        "value": nesting,
-                        "limit": LIMITS["nesting"],
-                        "prefer": PREFER["nesting"],
-                        "fail": True,
-                        "message": f"Function {func_name} nesting {nesting} > {LIMITS['nesting']} (prefer ≤{PREFER['nesting']})",
-                    })
-        # Class
+            qual = ".".join(class_stack + [node.name]) if class_stack else node.name
+            name = unique_name(qual)
+            in_class = bool(class_stack)
+            functions[name] = {
+                "loc": node_loc(node),
+                "params": method_param_count(node, in_class),
+                "cc": compute_cc_simple(node),
+                "cognitive": cog_map.get(node.name, 0),
+                "nesting": get_nesting_depth(node),
+            }
         if isinstance(node, ast.ClassDef):
-            class_name = node.name
-            try:
-                end_lineno = getattr(node, "end_lineno", None) or node.lineno
-                loc = end_lineno - node.lineno + 1
-            except Exception:
-                loc = 0
-            overrides = get_override_comment(node, source_lines)
-            if loc > LIMITS["class_loc"]:
-                if "class-loc" not in overrides and "loc" not in overrides:
-                    breaches.append({
-                        "file": str(file_path.relative_to(ROOT)),
-                        "type": "class",
-                        "name": class_name,
-                        "lineno": node.lineno,
-                        "metric": "class-loc",
-                        "value": loc,
-                        "limit": LIMITS["class_loc"],
-                        "prefer": PREFER["class_loc"],
-                        "fail": True,
-                        "message": f"Class {class_name} LOC {loc} > {LIMITS['class_loc']} (prefer ≤{PREFER['class_loc']})",
-                    })
-            # Methods count
-            methods = [n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-            mcount = len(methods)
-            if mcount > LIMITS["methods"]:
-                if "methods" not in overrides:
-                    breaches.append({
-                        "file": str(file_path.relative_to(ROOT)),
-                        "type": "class",
-                        "name": class_name,
-                        "lineno": node.lineno,
-                        "metric": "methods",
-                        "value": mcount,
-                        "limit": LIMITS["methods"],
-                        "prefer": PREFER["methods"],
-                        "fail": True,
-                        "message": f"Class {class_name} methods {mcount} > {LIMITS['methods']} (prefer ≤{PREFER['methods']})",
-                    })
-
+            methods = [n for n in node.body
+                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            classes[node.name] = {"loc": node_loc(node), "methods": len(methods)}
+            for child in ast.iter_child_nodes(node):
+                walk(child, class_stack + [node.name])
+            return
         for child in ast.iter_child_nodes(node):
-            walk(child, stack + [node], depth + 1)
+            walk(child, class_stack)
 
-    walk(tree)
+    walk(tree, [])
+    return {"functions": functions, "classes": classes}
+
+
+def syntax_error(file_path: Path, err: Exception) -> Dict[str, Any]:
+    return {"file": str(file_path), "error": f"syntax error: {err}", "fail": True}
+
+
+def check_hard_limits(rel: str, table: Dict[str, Any], source: str) -> List[Dict]:
+    """Original hard-limit checks on one file (full-tree mode + new symbols)."""
+    breaches: List[Dict] = []
+    source_lines = source.splitlines()
+
+    def add(btype: str, name: str, lineno: int, metric: str, value: int,
+            limit: int, prefer: int, anti_gaming: bool = False, message: str = "") -> None:
+        breaches.append({
+            "file": rel, "type": btype, "name": name, "lineno": lineno,
+            "metric": "anti-gaming" if anti_gaming else metric,
+            "value": value, "limit": limit, "prefer": prefer,
+            "fail": True, "message": message,
+        })
+
+    tree = ast.parse(source)
+    _walk_for_limits(tree, rel, source_lines, breaches, add)
     return breaches
 
-def check_coverage() -> List[Dict]:
-    breaches = []
-    # Try to run pytest --cov if coverage available
-    # We don't run coverage here by default to keep gate fast; instead check existing coverage.json if present
-    cov_path = ROOT / "coverage.json"
+
+def _walk_for_limits(tree: ast.AST, rel: str, source_lines: List[str],
+                     breaches: List[Dict], add) -> None:
+    def walk(node: ast.AST, class_stack: List[str]) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            in_class = bool(class_stack)
+            name = ".".join(class_stack + [node.name]) if class_stack else node.name
+            overrides = get_override_comment(node, source_lines)
+            if re.search(r"_part\d+$", node.name):
+                add("function", name, node.lineno, "anti-gaming", 0, 0, 0, True,
+                    f"Function {name} looks like gaming split foo_part1/part2 (RULE 16 anti-gaming)")
+
+            def fail(metric: str, value: int, limit: int, prefer: int, message: str) -> None:
+                om = METRIC_TO_OVERRIDE.get(metric)
+                if om and om in overrides:
+                    reason = overrides[om][1]
+                    if len(reason) < 20:
+                        breaches.append({
+                            "file": rel, "type": "function", "name": name,
+                            "lineno": node.lineno, "metric": f"{om}-override-reason",
+                            "fail": True,
+                            "message": f"Override reason too short (<20 chars) for {name}: {reason}",
+                        })
+                    return
+                add("function", name, node.lineno, metric, value, limit, prefer, False, message)
+
+            if node_loc(node) > LIMITS["func_loc"]:
+                fail("loc", node_loc(node), LIMITS["func_loc"], PREFER["func_loc"],
+                     f"Function {name} LOC {node_loc(node)} > {LIMITS['func_loc']} "
+                     f"(prefer ≤{PREFER['func_loc']}) at {rel}:{node.lineno}")
+            params = method_param_count(node, in_class)
+            if params > LIMITS["params"]:
+                if node.args.kwarg is not None and params <= 1:
+                    add("function", name, node.lineno, "anti-gaming", params, 4, 3, True,
+                        f"Function {name} uses **kwargs to dodge params count (RULE 16 anti-gaming)")
+                fail("params", params, LIMITS["params"], PREFER["params"],
+                     f"Function {name} params {params} > {LIMITS['params']} (prefer ≤{PREFER['params']})")
+            cc = compute_cc_simple(node)
+            if cc > LIMITS["cc"]:
+                fail("cc", cc, LIMITS["cc"], PREFER["cc"],
+                     f"Function {name} CC {cc} > {LIMITS['cc']} (prefer ≤{PREFER['cc']})")
+            cog = node_cognitive(node)
+            if cog > LIMITS["cognitive"]:
+                fail("cognitive", cog, LIMITS["cognitive"], PREFER["cognitive"],
+                     f"Function {name} cognitive {cog} > {LIMITS['cognitive']}")
+            nest = get_nesting_depth(node)
+            if nest > LIMITS["nesting"]:
+                fail("nesting", nest, LIMITS["nesting"], PREFER["nesting"],
+                     f"Function {name} nesting {nest} > {LIMITS['nesting']}")
+            for child in ast.iter_child_nodes(node):
+                walk(child, class_stack)
+            return
+        if isinstance(node, ast.ClassDef):
+            overrides = get_override_comment(node, source_lines)
+            loc = node_loc(node)
+            if loc > LIMITS["class_loc"] and "class-loc" not in overrides and "loc" not in overrides:
+                add("class", node.name, node.lineno, "class-loc", loc,
+                    LIMITS["class_loc"], PREFER["class_loc"], False,
+                    f"Class {node.name} LOC {loc} > {LIMITS['class_loc']} (prefer ≤{PREFER['class_loc']})")
+            methods = [n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            if len(methods) > LIMITS["methods"] and "methods" not in overrides:
+                add("class", node.name, node.lineno, "methods", len(methods),
+                    LIMITS["methods"], PREFER["methods"], False,
+                    f"Class {node.name} methods {len(methods)} > {LIMITS['methods']}")
+            for child in ast.iter_child_nodes(node):
+                walk(child, class_stack + [node.name])
+            return
+        for child in ast.iter_child_nodes(node):
+            walk(child, class_stack)
+
+    walk(tree, [])
+
+
+def node_cognitive(node: ast.AST) -> int:
+    try:
+        from cognitive_complexity.api import get_cognitive_complexity  # type: ignore
+        return get_cognitive_complexity(node)
+    except Exception:
+        return 0
+
+
+RATCHET_FN_KEYS = {"loc": "loc", "params": "params", "cc": "cc", "cognitive": "cognitive",
+                   "nesting": "nesting"}
+RATCHET_CLS_KEYS = {"class-loc": "loc", "methods": "methods"}
+RATCHET_METRIC_KEY = {**RATCHET_FN_KEYS, **RATCHET_CLS_KEYS}
+
+
+def apply_ratchet(rel: str, breaches: List[Dict], table: Dict[str, Any],
+                  base_entry: Dict[str, Any], allow_legacy: bool) -> List[Dict]:
+    """Baseline v2 ratchet for a changed file that exists in the baseline.
+
+    * every symbol regressing on any metric (above its baseline value) -> FAIL,
+      even when still below the hard limit
+    * new-to-baseline symbol breaching a hard limit                    -> FAIL
+    * pre-existing breach within the baseline                          -> WARN
+      with --allow-legacy (grandfathered), FAIL in strict mode
+    Anti-gaming breaches never demote.
+    """
+    base_fns = base_entry.get("functions") or {}
+    base_cls = base_entry.get("classes") or {}
+    cur_fns = table.get("functions") or {}
+    cur_cls = table.get("classes") or {}
+
+    regressed: set[Tuple[str, str, str]] = set()  # (btype, name, metric)
+    for btype, base_map, cur_map, keys in (
+            ("function", base_fns, cur_fns, RATCHET_FN_KEYS),
+            ("class", base_cls, cur_cls, RATCHET_CLS_KEYS)):
+        for name, cur in cur_map.items():
+            base_sym = base_map.get(name)
+            if not base_sym:
+                continue
+            for metric, key in keys.items():
+                if cur.get(key, 0) > base_sym.get(key, 0):
+                    regressed.add((btype, name, metric))
+
+    reported = {(b.get("name"), b.get("metric")) for b in breaches}
+    regressed_pairs = {(name, metric) for _, name, metric in regressed}
+    for b in breaches:
+        if b.get("metric") == "anti-gaming":
+            continue
+        if (b.get("name"), b.get("metric")) in regressed_pairs:
+            sym = base_fns.get(b.get("name", "")) or base_cls.get(b.get("name", "")) or {}
+            key = RATCHET_METRIC_KEY.get(b.get("metric", ""), b.get("metric"))
+            b["message"] = (f"{b.get('message')} — regressed vs baseline "
+                            f"{sym.get(key)} -> {b.get('value')} (ratchet: no growth)")
+            continue
+        sym = base_fns.get(b.get("name", "")) or base_cls.get(b.get("name", ""))
+        if sym is None:
+            continue  # new symbol: hard-limit breach stays a fail
+        key = RATCHET_METRIC_KEY.get(b.get("metric", ""), b.get("metric"))
+        base_v = sym.get(key)
+        if base_v is None or b.get("value", 0) > base_v:
+            continue  # regression: stays a fail
+        b["fail"] = not allow_legacy
+        b["message"] = (f"[LEGACY] {b.get('message')} (within baseline {base_v}; "
+                        f"pre-existing, not a regression)")
+
+    # regressions that never breached a hard limit are not in `breaches` yet
+    for btype, base_map, cur_map, keys in (
+            ("function", base_fns, cur_fns, RATCHET_FN_KEYS),
+            ("class", base_cls, cur_cls, RATCHET_CLS_KEYS)):
+        for rb, name, metric in sorted(regressed):
+            if rb != btype or (name, metric) in reported:
+                continue
+            key = keys[metric]
+            base_v = base_map[name].get(key, 0)
+            cur_v = cur_map[name].get(key, 0)
+            breaches.append({
+                "file": rel, "type": btype, "name": name, "metric": metric,
+                "value": cur_v, "limit": base_v, "fail": True,
+                "message": f"{btype.capitalize()} {name} {metric} regressed "
+                           f"{base_v} -> {cur_v} (baseline ratchet: no growth)",
+            })
+    return breaches
+
+
+def load_baseline(root: Path, path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def baseline_file_entry(baseline: Dict[str, Any], rel: str) -> Optional[Dict[str, Any]]:
+    if baseline.get("version") == 2:
+        return (baseline.get("files") or {}).get(rel)
+    # v1 compat: flat {rel: {max_func_loc, max_class_loc, func_count}}
+    entry = baseline.get(rel)
+    return entry
+
+
+def check_coverage(root: Path, changed_files: Optional[List[Path]],
+                   baseline: Dict[str, Any]) -> List[Dict]:
+    breaches: List[Dict] = []
+    cov_path = root / "coverage.json"
+    data: Dict[str, Any] = {}
     if cov_path.exists():
         try:
             data = json.loads(cov_path.read_text(encoding="utf-8"))
-            totals = data.get("totals", {})
-            line_pct = totals.get("percent_covered", 0)
-            # branch coverage: covered_branches / num_branches
-            covered_branches = totals.get("covered_branches", 0)
-            num_branches = totals.get("num_branches", 0)
-            branch_pct = (covered_branches / num_branches * 100) if num_branches else 0
-            if line_pct < 80:
-                breaches.append({
-                    "file": "coverage.json",
-                    "type": "coverage",
-                    "metric": "line",
-                    "value": line_pct,
-                    "limit": 80,
-                    "fail": True,
-                    "message": f"Line coverage {line_pct:.1f}% < 80%",
-                })
-            if branch_pct < 75 and num_branches > 0:
-                breaches.append({
-                    "file": "coverage.json",
-                    "type": "coverage",
-                    "metric": "branch",
-                    "value": branch_pct,
-                    "limit": 75,
-                    "fail": True,
-                    "message": f"Branch coverage {branch_pct:.1f}% < 75%",
-                })
         except Exception as e:
-            breaches.append({
-                "file": "coverage.json",
-                "type": "coverage",
-                "error": str(e),
-                "fail": False,
-                "message": f"Failed to parse coverage.json: {e}",
-            })
+            breaches.append({"file": "coverage.json", "type": "coverage", "fail": False,
+                             "message": f"Failed to parse coverage.json: {e}"})
+            return breaches
     else:
-        # No coverage file, warn but not fail
         breaches.append({
-            "file": "coverage.json",
-            "type": "coverage",
-            "metric": "missing",
-            "fail": False,
-            "message": "coverage.json not found — run: QT_QPA_PLATFORM=offscreen python -m coverage run --branch --source=app -m pytest tests -q && python -m coverage json -o coverage.json",
+            "file": "coverage.json", "type": "coverage", "metric": "missing", "fail": False,
+            "message": "coverage.json not found — run: "
+                       "python -m coverage run --branch --source=app -m pytest tests -q "
+                       "&& python -m coverage json -o coverage.json",
         })
+        return breaches
+
+    totals = data.get("totals", {})
+    line_pct = totals.get("percent_covered", 0)
+    covered_branches = totals.get("covered_branches", 0)
+    num_branches = totals.get("num_branches", 0)
+    branch_pct = (covered_branches / num_branches * 100) if num_branches else 0
+    if line_pct < 80:
+        breaches.append({"file": "coverage.json", "type": "coverage", "metric": "line",
+                         "value": line_pct, "limit": 80, "fail": True,
+                         "message": f"Line coverage {line_pct:.1f}% < 80%"})
+    if branch_pct < 75 and num_branches > 0:
+        breaches.append({"file": "coverage.json", "type": "coverage", "metric": "branch",
+                         "value": branch_pct, "limit": 75, "fail": True,
+                         "message": f"Branch coverage {branch_pct:.1f}% < 75%"})
+
+    # per-file ratchet (baseline v2) for changed files
+    if baseline.get("version") == 2 and changed_files:
+        files = data.get("files") or {}
+        for p in changed_files:
+            try:
+                rel = str(p.relative_to(root))
+            except ValueError:
+                continue
+            base_cov = (baseline.get("files") or {}).get(rel, {}).get("coverage")
+            if base_cov is None:
+                continue
+            fdata = files.get(rel)
+            if not fdata:
+                continue
+            cur_cov = fdata.get("summary", {}).get("percent_covered", 0)
+            # 0.05pp epsilon: covers double-rounding noise between coverage.json
+            # (full precision) and the baseline (stored at 2dp); real drops >=0.1pp fail
+            if cur_cov + 0.05 < base_cov:
+                breaches.append({
+                    "file": rel, "type": "coverage", "metric": "per-file",
+                    "value": round(cur_cov, 2), "limit": base_cov, "fail": True,
+                    "message": f"Per-file line coverage {cur_cov:.1f}% below baseline {base_cov:.1f}% (ratchet)",
+                })
     return breaches
 
-def main():
+
+def main() -> None:
     parser = argparse.ArgumentParser(description="RULE 16 quality gate for Arena")
     parser.add_argument("--json", action="store_true", help="machine-readable JSON output")
-    parser.add_argument("--changed", action="store_true", help="only check files changed vs origin/main")
-    parser.add_argument("--allow-legacy", action="store_true", help="allow legacy files that are in baseline to exceed limits if not increased")
-    parser.add_argument("--baseline", type=str, default="tools/quality_baseline.json", help="baseline file for legacy")
+    parser.add_argument("--changed", action="store_true",
+                        help="only check files changed vs origin/main (plus worktree)")
+    parser.add_argument("--allow-legacy", action="store_true",
+                        help="baseline v2: grandfather pre-existing breaches as warnings")
+    parser.add_argument("--root", type=str, default=None, help="repo root (test harnesses)")
+    parser.add_argument("--changed-files", nargs="*", default=None,
+                        help="explicit changed files (overrides git detection)")
+    parser.add_argument("--baseline", type=str, default="tools/quality_baseline.json",
+                        help="baseline file for legacy/ratchet")
     args = parser.parse_args()
 
-    baseline_data = {}
-    if args.allow_legacy:
-        try:
-            baseline_path = Path(args.baseline)
-            if baseline_path.exists():
-                baseline_data = json.loads(baseline_path.read_text(encoding="utf-8"))
-        except Exception:
-            baseline_data = {}
+    root = Path(args.root).resolve() if args.root else DEFAULT_ROOT
+    baseline_path = Path(args.baseline)
+    if not baseline_path.is_absolute():
+        baseline_path = root / baseline_path
+    baseline_data = load_baseline(root, baseline_path)
+    changed_mode = bool(args.changed or args.changed_files)
 
-    files = find_py_files(changed_only=args.changed)
-    all_breaches = []
+    if changed_mode:
+        files, note = changed_py_files(root, args.changed_files)
+    else:
+        files, note = find_py_files(root), ""
+
+    all_breaches: List[Dict] = []
     for f in files:
-        breaches = check_file(f)
-        if args.allow_legacy:
-            rel = str(f.relative_to(ROOT)) if f.is_relative_to(ROOT) else str(f)
-            base = baseline_data.get(rel) or baseline_data.get(str(f))
-            if base:
-                filtered = []
-                for b in breaches:
-                    if b.get("metric") == "anti-gaming":
-                        filtered.append(b)
-                    else:
-                        # Legacy file: downgrade all to warn (not fail) to avoid blocking push on old code
-                        # New code should be in files not in baseline, or should not increase beyond baseline drastically
-                        b["fail"] = False
-                        b["message"] = f"[LEGACY] {b['message']} (baseline max_func {base.get('max_func_loc')}, max_class {base.get('max_class_loc')})"
-                        filtered.append(b)
-                breaches = filtered
-        all_breaches.extend(breaches)
+        try:
+            rel = str(f.relative_to(root))
+        except ValueError:
+            rel = str(f)
+        try:
+            source = f.read_text(encoding="utf-8")
+            ast.parse(source)
+        except Exception as e:
+            all_breaches.append(syntax_error(f, e))
+            continue
+        table = analyze_file(f)
+        hard = check_hard_limits(rel, table, source)
+        base_entry = baseline_file_entry(baseline_data, rel)
+        if changed_mode and baseline_data.get("version") == 2 and base_entry is not None:
+            # push-gate ratchet: regressions/new-symbol breaches fail, pre-existing
+            # within-baseline breaches grandfathered (warn with --allow-legacy)
+            hard = apply_ratchet(rel, hard, table, base_entry, args.allow_legacy)
+        elif args.allow_legacy and base_entry is not None:
+            # full-tree legacy mode (v1 compat): demote all in-baseline breaches
+            for b in hard:
+                if b.get("metric") != "anti-gaming":
+                    b["fail"] = False
+                    b["message"] = f"[LEGACY] {b['message']}"
+        all_breaches.extend(hard)
 
-    cov_breaches = check_coverage()
-    all_breaches.extend(cov_breaches)
+    all_breaches.extend(check_coverage(root, files if changed_mode else None, baseline_data))
 
-    # Filter fail vs warn
     fails = [b for b in all_breaches if b.get("fail")]
     warns = [b for b in all_breaches if not b.get("fail")]
 
     if args.json:
-        print(json.dumps({"breaches": all_breaches, "fails": fails, "warns": warns, "files_checked": len(files)}, indent=2, ensure_ascii=False))
-    else:
-        print(f"Checked {len(files)} files in app/")
-        print(f"Found {len(fails)} fail(s), {len(warns)} warn(s)")
-        print("")
-        if fails:
-            print("=== FAILS (must fix before push) ===")
-            for b in fails:
-                print(f"{b.get('file')}:{b.get('lineno','')} [{b.get('metric')}] {b.get('message')}")
-            print("")
-        if warns:
-            print("=== WARNS (should fix, not blocking) ===")
-            for b in warns:
-                print(f"{b.get('file')} [{b.get('metric','')}] {b.get('message')}")
-            print("")
-        if not fails:
-            print("✅ Quality gate PASSED — no fails")
-            print("")
-            print("Preferences (not failing, but aim):")
-            print(f"  Function LOC prefer ≤{PREFER['func_loc']}, fail >{LIMITS['func_loc']}")
-            print(f"  Class LOC prefer ≤{PREFER['class_loc']}, fail >{LIMITS['class_loc']}")
-            print(f"  Params prefer ≤{PREFER['params']}, fail >{LIMITS['params']}")
-            print(f"  Methods per class prefer ≤{PREFER['methods']}, fail >{LIMITS['methods']}")
-            print(f"  CC prefer ≤{PREFER['cc']}, fail >{LIMITS['cc']} (radon cc -s)")
-            print(f"  Cognitive prefer ≤{PREFER['cognitive']}, fail >{LIMITS['cognitive']}")
-            print(f"  Nesting prefer ≤{PREFER['nesting']}, fail >{LIMITS['nesting']}")
-            print(f"  Coverage line ≥80%, branch ≥75%")
-            print("")
-            print("Run before every push:")
-            print("  python tools/verify_quality.py")
-            print("  QT_QPA_PLATFORM=offscreen python -m coverage run --branch --source=app -m pytest tests -q")
-            print("  python -m coverage json -o coverage.json")
-        else:
-            print("❌ Quality gate FAILED — fix fails before push (RULE 16)")
-            print("")
-            print("Remediation order (RULE 19): nesting → CC → cognitive → size")
-            print("  1. Nesting >4 → extract guard, early return, flatten")
-            print("  2. CC >10 → split decision, not just code (no foo_part1)")
-            print("  3. Cognitive >15 → name predicates, simplify boolean")
-            print("  4. LOC >30 → extract helper with real responsibility name")
+        print(json.dumps({"breaches": all_breaches, "fails": fails, "warns": warns,
+                          "files_checked": len(files), "note": note},
+                         indent=2, ensure_ascii=False))
+        sys.exit(1 if fails else 0)
 
+    print(f"Checked {len(files)} files" + (f" ({note})" if note else ""))
+    print(f"Found {len(fails)} fail(s), {len(warns)} warn(s)")
+    print("")
+    if fails:
+        print("=== FAILS (must fix before push) ===")
+        for b in fails:
+            print(f"{b.get('file')}:{b.get('lineno', '')} [{b.get('metric')}] {b.get('message')}")
+        print("")
+    if warns:
+        print("=== WARNS (should fix, not blocking) ===")
+        for b in warns:
+            print(f"{b.get('file')} [{b.get('metric', '')}] {b.get('message')}")
+        print("")
+    if not fails:
+        print("✅ Quality gate PASSED — no fails")
+        print("")
+        print("Preferences (not failing, but aim):")
+        print(f"  Function LOC prefer ≤{PREFER['func_loc']}, fail >{LIMITS['func_loc']}")
+        print(f"  Class LOC prefer ≤{PREFER['class_loc']}, fail >{LIMITS['class_loc']}")
+        print(f"  Params prefer ≤{PREFER['params']}, fail >{LIMITS['params']}")
+        print(f"  Methods per class prefer ≤{PREFER['methods']}, fail >{LIMITS['methods']}")
+        print(f"  CC prefer ≤{PREFER['cc']}, fail >{LIMITS['cc']}")
+        print(f"  Cognitive prefer ≤{PREFER['cognitive']}, fail >{LIMITS['cognitive']}")
+        print(f"  Nesting prefer ≤{PREFER['nesting']}, fail >{LIMITS['nesting']}")
+        print("  Coverage line ≥80%, branch ≥75%, per-file never below baseline")
+    else:
+        print("❌ Quality gate FAILED — fix fails before push (RULE 16)")
+        print("")
+        print("Remediation order (RULE 19): nesting → CC → cognitive → size")
+        print("  1. Nesting >4 → extract guard, early return, flatten")
+        print("  2. CC >10 → split decision, not just code (no foo_part1)")
+        print("  3. Cognitive >15 → name predicates, simplify boolean")
+        print("  4. LOC >30 → extract helper with real responsibility name")
+        print("  Regressed vs baseline → restore the previous shape; ratchets never grow.")
     sys.exit(1 if fails else 0)
+
 
 if __name__ == "__main__":
     main()

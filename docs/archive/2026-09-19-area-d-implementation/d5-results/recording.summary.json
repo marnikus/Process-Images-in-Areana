@@ -1,0 +1,1844 @@
+{
+ "scope": "recording",
+ "total": 1811,
+ "status": {
+  "killed": 1356,
+  "survived": 455
+ },
+ "mutants_per_file": {
+  "app/services/captcha_recording/cohort.py": 136,
+  "app/services/captcha_recording/manager.py": 75,
+  "app/services/captcha_recording/milestones.py": 46,
+  "app/services/captcha_recording/models.py": 28,
+  "app/services/captcha_recording/network.py": 264,
+  "app/services/captcha_recording/probes.py": 16,
+  "app/services/captcha_recording/reader.py": 118,
+  "app/services/captcha_recording/recorder.py": 530,
+  "app/services/captcha_recording/retention.py": 63,
+  "app/services/captcha_recording/sanitize.py": 94,
+  "app/services/captcha_recording/store.py": 441
+ },
+ "kill_rate": 0.7488,
+ "survivors": [
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__label__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__label__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__label__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__label__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__result__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__result__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__result__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__result__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__tally__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x__tally__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/cohort.py::app.services.captcha_recording.cohort.x_cohort__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1__init____mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1__init____mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1__init____mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1__init____mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1__init____mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1start__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1abort__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1abort__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1list_sessions__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1is_enabled__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1set_enabled__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1set_enabled__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1_drop__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1_drop__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/manager.py::app.services.captcha_recording.manager.x\u01c1RecordingManager\u01c1_drop__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/milestones.py::app.services.captcha_recording.milestones.x_assert_token_free__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/milestones.py::app.services.captcha_recording.milestones.x_assert_token_free__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/milestones.py::app.services.captcha_recording.milestones.x_assert_token_free__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/milestones.py::app.services.captcha_recording.milestones.x_assert_token_free__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/milestones.py::app.services.captcha_recording.milestones.x_assert_token_free__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/milestones.py::app.services.captcha_recording.milestones.x_assert_token_free__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/milestones.py::app.services.captcha_recording.milestones.x_assert_token_free__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/milestones.py::app.services.captcha_recording.milestones.x_assert_token_free__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/milestones.py::app.services.captcha_recording.milestones.x_build_milestone__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/models.py::app.services.captcha_recording.models.x_new_session_id__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/models.py::app.services.captcha_recording.models.x_new_session_id__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/models.py::app.services.captcha_recording.models.x_new_session_id__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/models.py::app.services.captcha_recording.models.x_day_folder_for__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/models.py::app.services.captcha_recording.models.x_day_folder_for__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1__init____mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1__init____mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1on_event__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1on_event__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1on_event__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1close__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1close__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_record__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_request__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_49",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_57",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_response__mutmut_58",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_50",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_52",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_53",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_54",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_56",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_57",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_58",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_59",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_62",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_65",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_69",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_70",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_71",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_73",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_76",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_77",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_78",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_79",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_80",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/network.py::app.services.captcha_recording.network.x\u01c1NetworkCollector\u01c1_body__mutmut_81",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/probes.py::app.services.captcha_recording.probes.x__read__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/probes.py::app.services.captcha_recording.probes.x__read__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1details__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1details__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1details__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1folder__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_json__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_json__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_events__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_events__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_events__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_milestones__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_milestones__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/reader.py::app.services.captcha_recording.reader.x\u01c1EvidenceReader\u01c1_snapshot__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1__init____mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1__init____mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1__init____mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1__init____mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1__init____mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1__init____mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1__init____mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1start__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1finish__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1note_outcome__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1note_outcome__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1note_outcome__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1note_outcome__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1note_outcome__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1note_outcome__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1note_outcome__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1note_outcome__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1note_outcome__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_offset_ms__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_offset_ms__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_offset_ms__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_milestone_event__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_milestone_event__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1abort__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1abort__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_join_worker__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_join_worker__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_join_worker__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_drain_mutations__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_checkpoint__mutmut_57",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_event__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_event__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_event__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_event__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_event__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_event__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_event__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_event__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_event__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_detach_listener__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_detach_listener__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_detach_listener__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_detach_listener__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_detach_listener__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_outcome_payload__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_outcome_payload__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x\u01c1CaptchaRecorder\u01c1_outcome_payload__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_49",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_55",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_95",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_96",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_finish_updates__mutmut_97",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/recorder.py::app.services.captcha_recording.recorder.x_as_dict__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_day_dirs__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_day_dirs__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_day_dirs__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_day_dirs__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_session_folders__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_session_folders__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_session_folders__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_prune_recordings__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_prune_recordings__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_prune_recordings__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_prune_recordings__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_prune_recordings__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_drop_empty_day__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_drop_empty_day__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_drop_empty_day__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x_drop_empty_day__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/retention.py::app.services.captcha_recording.retention.x__folder_size__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/sanitize.py::app.services.captcha_recording.sanitize.x_redact_text__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/sanitize.py::app.services.captcha_recording.sanitize.x_clean_mapping__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/sanitize.py::app.services.captcha_recording.sanitize.x_clean_mapping__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/sanitize.py::app.services.captcha_recording.sanitize.x_textual_mime__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/sanitize.py::app.services.captcha_recording.sanitize.x_textual_mime__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/sanitize.py::app.services.captcha_recording.sanitize.x_textual_mime__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/sanitize.py::app.services.captcha_recording.sanitize.x_contains_tokenish__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_recording_enabled__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_recording_enabled__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_recording_enabled__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_recording_enabled__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_recording_enabled__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_save_recording_enabled__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_save_recording_enabled__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_save_recording_enabled__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_read_manifest__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_read_manifest__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_read_manifest__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_read_manifest__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_read_manifest__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x_write_manifest__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1__init____mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1__init____mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1create__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1create__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1create__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1session_folder__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1session_folder__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1session_folder__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1session_folder__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1session_folder__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1session_folder__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1session_folder__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1append_event__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1append_event__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1append_event__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1append_event__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1append_event__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1append_event__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1write_snapshot__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1write_snapshot__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1write_snapshot__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1write_snapshot__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1write_snapshot__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1write_snapshot__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1write_snapshot__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1write_snapshot__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1list_sessions__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1list_sessions__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1list_sessions__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1delete_session__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1delete_session__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1delete_session__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1delete_session__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1set_label__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1set_label__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1set_label__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1set_result_label__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1_note_label_history__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1recover_interrupted__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1recover_interrupted__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1recover_interrupted__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1recover_interrupted__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1recover_interrupted__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1recover_interrupted__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/captcha_recording/store.py::app.services.captcha_recording.store.x\u01c1RecordingStore\u01c1recover_interrupted__mutmut_25",
+   "exit": 0
+  }
+ ]
+}

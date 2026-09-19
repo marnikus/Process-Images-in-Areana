@@ -1,0 +1,11 @@
+[mutmut]
+source_paths = app/services
+               app/core
+               app/browser
+mutate_only_covered_lines = true
+timeout_multiplier = 12
+timeout_constant = 10
+also_copy = app
+            tests
+            tools
+            pytest.ini

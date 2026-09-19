@@ -1,0 +1,1691 @@
+{
+ "scope": "services-cooldown",
+ "total": 1129,
+ "status": {
+  "survived": 419,
+  "killed": 709,
+  "timeout": 1
+ },
+ "mutants_per_file": {
+  "cooldown_service.py": 1129
+ },
+ "kill_rate": 0.628,
+ "survivors": [
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__safe_int__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__safe_int__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__safe_int__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__safe_int__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__safe_int__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__safe_int__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__safe_int__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_load_config__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__settle_steady__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__settle_steady__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__settle_steady__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__settle_steady__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__settle_steady__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__settle_steady__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__settle_steady__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__settle_steady__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__settle_steady__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__abort_set__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__abort_set__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__abort_set__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__abort_set__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__abort_set__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__abort_set__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_request_tab_abort__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_is_tab_aborted__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_is_tab_aborted__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_clear_tab_abort__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_clear_tab_abort__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_tab_has_live_job__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_tab_has_live_job__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__snapshot_free__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_ready_id__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__first_connected_id__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__resolve_allowed_tab__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__resolve_allowed_tab__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__resolve_allowed_tab__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__resolve_allowed_tab__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__resolve_allowed_tab__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__resolve_allowed_tab__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_resolve_primary_tab__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_resolve_primary_tab__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_resolve_primary_tab__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_resolve_primary_tab__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_resolve_primary_tab__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_resolve_primary_tab__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_resolve_primary_tab__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_resolve_primary_tab__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_pending__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__now_or__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_cooldown_allowed__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_cooldown_allowed__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_cooldown_allowed__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_cooldown_allowed__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__apply_restored_cooldown__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_worthwhile__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__restore_worthwhile__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_restore_cooldown_entry__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_restore_cooldown_entry__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_restore_cooldown_entry__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_restore_cooldown_entry__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_restore_cooldown_entry__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_restore_cooldown_entry__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_restore_cooldown_entry__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_restore_cooldown_entry__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_restore_cooldown_entry__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_start_cooldown__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_start_cooldown__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_start_cooldown__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_start_cooldown__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_start_cooldown__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_start_cooldown__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_start_cooldown__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_add_captcha_penalty__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_add_captcha_penalty__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_add_captcha_penalty__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_add_captcha_penalty__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__penalty_from__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__persist_emit__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__persist_emit__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__persist_emit__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__cooldown_suffix__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_50",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_53",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_56",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_captcha_event__mutmut_57",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__rate_limit_penalty_from__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__rate_limit_penalty_from__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__rate_limit_penalty_from__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__rate_limit_penalty_from__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_add_rate_limit_penalty__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_add_rate_limit_penalty__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_add_rate_limit_penalty__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_add_rate_limit_penalty__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_note_rate_limit_event__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_maybe_note_rate_limit__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_captcha_cleared__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_force_reset_page__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_force_reset_page__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_force_reset_page__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_force_reset_page__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_force_reset_page__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_force_reset_page__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_edit_cooldown__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_edit_cooldown__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_edit_cooldown__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_edit_cooldown__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_edit_cooldown__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_refresh_expired__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_refresh_expired__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_longest_remaining__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_longest_remaining__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_longest_remaining__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_remaining_for__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_cancelled__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_cancelled__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_cancelled__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_paused__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_paused__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_paused__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_paused__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_paused__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_paused__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_paused__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__honour_pause__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_tab_ready__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_cooling_now__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_cooling_now__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_cooling_now__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__is_cooling_now__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_wait_for_batch_ready__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__best_effort_reset__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x_register_job_done__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__stats_count__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__stats_count__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__stats_count__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__stats_count__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__stats_count__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__stats_count__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__stats_count__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__stats_count__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_cancelled__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__reason_for__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__capture_pending__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__capture_pending__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__capture_pending__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__capture_pending__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__capture_pending__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__capture_pending__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_detail__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_detail__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_detail__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_detail__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_detail__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__log_finish__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_49",
+   "exit": 0
+  },
+  {
+   "mutant": "cooldown_service.py::app.services.cooldown_service.x__finish_normal__mutmut_50",
+   "exit": 0
+  }
+ ]
+}

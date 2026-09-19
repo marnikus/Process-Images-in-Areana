@@ -16,7 +16,7 @@ from typing import Optional, List, Dict, Any, Tuple, Callable
 from .cdp_client import CDPClient
 from .captcha_probes import build_visible_js
 from .output_probes import build_baseline_js, build_check_js
-from .output_state import flatten_diagnostics, build_order_check_text
+from .output_state import flatten_diagnostics
 from .output_wait import wait_for_new_output_loop
 from ..utils.page_errors import PageErrorAbort, build_error_scan_js, match_page_error
 

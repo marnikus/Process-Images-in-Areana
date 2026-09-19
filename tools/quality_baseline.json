@@ -1,197 +1,10441 @@
 {
+ "version": 2,
+ "generated_from": "/home/user/Process-Images-in-Areana",
+ "files": {
   "app/__init__.py": {
-    "max_func_loc": 0,
-    "max_class_loc": 0,
-    "func_count": 0
-  },
-  "app/main.py": {
-    "max_func_loc": 16,
-    "max_class_loc": 0,
-    "func_count": 1
-  },
-  "app/core/__init__.py": {
-    "max_func_loc": 0,
-    "max_class_loc": 0,
-    "func_count": 0
-  },
-  "app/core/enums.py": {
-    "max_func_loc": 0,
-    "max_class_loc": 18,
-    "func_count": 0
-  },
-  "app/core/naming.py": {
-    "max_func_loc": 43,
-    "max_class_loc": 0,
-    "func_count": 3
-  },
-  "app/core/scanner.py": {
-    "max_func_loc": 66,
-    "max_class_loc": 0,
-    "func_count": 2
-  },
-  "app/core/models.py": {
-    "max_func_loc": 28,
-    "max_class_loc": 95,
-    "func_count": 8
-  },
-  "app/core/persistence.py": {
-    "max_func_loc": 101,
-    "max_class_loc": 0,
-    "func_count": 5
-  },
-  "app/core/state_machine.py": {
-    "max_func_loc": 3,
-    "max_class_loc": 0,
-    "func_count": 4
-  },
-  "app/core/layout_service.py": {
-    "max_func_loc": 35,
-    "max_class_loc": 0,
-    "func_count": 12
-  },
-  "app/core/undo_service.py": {
-    "max_func_loc": 38,
-    "max_class_loc": 102,
-    "func_count": 10
-  },
-  "app/core/action_blocks.py": {
-    "max_func_loc": 51,
-    "max_class_loc": 109,
-    "func_count": 12
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
   },
   "app/browser/__init__.py": {
-    "max_func_loc": 0,
-    "max_class_loc": 0,
-    "func_count": 0
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
   },
-  "app/browser/selector.py": {
-    "max_func_loc": 15,
-    "max_class_loc": 32,
-    "func_count": 2
-  },
-  "app/browser/site_adapter.py": {
-    "max_func_loc": 37,
-    "max_class_loc": 0,
-    "func_count": 4
-  },
-  "app/browser/controller.py": {
-    "max_func_loc": 90,
-    "max_class_loc": 625,
-    "func_count": 22
-  },
-  "app/browser/cdp_client.py": {
-    "max_func_loc": 106,
-    "max_class_loc": 472,
-    "func_count": 34
-  },
-  "app/browser/tab_matcher.py": {
-    "max_func_loc": 19,
-    "max_class_loc": 0,
-    "func_count": 10
-  },
-  "app/browser/dom_highlight.py": {
-    "max_func_loc": 19,
-    "max_class_loc": 0,
-    "func_count": 17
+  "app/browser/captcha_probes.py": {
+   "functions": {
+    "_read": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_detect_js": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_visible_js": {
+     "loc": 7,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_inject_js": {
+     "loc": 7,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_continue_js": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 7,
+   "max_class_loc": 0,
+   "func_count": 5,
+   "coverage": 100.0
   },
   "app/browser/cdp_arena.py": {
-    "max_func_loc": 30,
-    "max_class_loc": 302,
-    "func_count": 26
+   "functions": {
+    "_run_resume_gate": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.__init__": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPArenaController.set_log_callback": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPArenaController._log": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPArenaController.ensure_connected": {
+     "loc": 5,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.capture_baseline": {
+     "loc": 7,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.attach_image": {
+     "loc": 15,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.verify_attachment": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.insert_prompt": {
+     "loc": 15,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.verify_prompt": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.submit": {
+     "loc": 15,
+     "params": 0,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController._poll_send_state": {
+     "loc": 12,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPArenaController.submit_when_ready": {
+     "loc": 12,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPArenaController.scan_page_errors": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPArenaController._scan_page_errors": {
+     "loc": 7,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController._poll_output_diag": {
+     "loc": 11,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController._map_wait_result": {
+     "loc": 9,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.wait_for_new_output": {
+     "loc": 28,
+     "params": 4,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPArenaController.check_fn": {
+     "loc": 4,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPArenaController.log_cb": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPArenaController._security_gate": {
+     "loc": 10,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPArenaController._python_download": {
+     "loc": 24,
+     "params": 1,
+     "cc": 11,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPArenaController.sync_fetch": {
+     "loc": 11,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPArenaController.download_image": {
+     "loc": 21,
+     "params": 1,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "CDPArenaController.report": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPArenaController.highlight_selector": {
+     "loc": 28,
+     "params": 4,
+     "cc": 13,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "CDPArenaController.clear_highlights": {
+     "loc": 8,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.show_watcher_overlay": {
+     "loc": 16,
+     "params": 4,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "CDPArenaController.hide_watcher_overlay": {
+     "loc": 10,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.is_page_ready": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.is_security_dialog_visible": {
+     "loc": 4,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPArenaController.is_generating": {
+     "loc": 11,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPArenaController.get_generation_state": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPArenaController.reload_page": {
+     "loc": 24,
+     "params": 0,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 3
+    }
+   },
+   "classes": {
+    "CDPArenaController": {
+     "loc": 371,
+     "methods": 30
+    }
+   },
+   "max_func_loc": 28,
+   "max_class_loc": 371,
+   "func_count": 34,
+   "coverage": 80.75
   },
-  "app/browser/probe_requests.py": {
-    "max_func_loc": 0,
-    "max_class_loc": 9,
-    "func_count": 0
+  "app/browser/cdp_client.py": {
+   "functions": {
+    "QObject.__init__": {
+     "loc": 1,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Signal": {
+     "loc": 5,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_Sig.emit": {
+     "loc": 1,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_Sig.connect": {
+     "loc": 1,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_is_port_open": {
+     "loc": 6,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_fetch_json_sync": {
+     "loc": 16,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_normalize_ws_url": {
+     "loc": 2,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_is_devtools_url": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_parse_tabs": {
+     "loc": 3,
+     "params": 4,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_filter_real_tabs": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "fetch_tabs_sync": {
+     "loc": 36,
+     "params": 3,
+     "cc": 15,
+     "cognitive": 0,
+     "nesting": 5
+    },
+    "diagnose_sync": {
+     "loc": 39,
+     "params": 2,
+     "cc": 12,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "CDPClient.__init__": {
+     "loc": 14,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPClient.base_url": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPClient.is_connected": {
+     "loc": 2,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPClient.set_host_port": {
+     "loc": 10,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "CDPClient.get_host_port": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPClient.fetch_tabs_sync": {
+     "loc": 8,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPClient.diagnose_sync": {
+     "loc": 4,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPClient.fetch_tabs": {
+     "loc": 39,
+     "params": 0,
+     "cc": 15,
+     "cognitive": 0,
+     "nesting": 5
+    },
+    "CDPClient._get_connect_lock": {
+     "loc": 29,
+     "params": 0,
+     "cc": 13,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "CDPClient.connect": {
+     "loc": 31,
+     "params": 1,
+     "cc": 13,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "CDPClient._connect_inner": {
+     "loc": 106,
+     "params": 1,
+     "cc": 27,
+     "cognitive": 0,
+     "nesting": 5
+    },
+    "CDPClient.disconnect": {
+     "loc": 17,
+     "params": 0,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPClient.send": {
+     "loc": 14,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPClient._receive_loop": {
+     "loc": 29,
+     "params": 0,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "CDPClient.evaluate": {
+     "loc": 12,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPClient.get_document": {
+     "loc": 7,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPClient.query_selector": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPClient.query_selector_all": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPClient.set_file_input_files": {
+     "loc": 13,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CDPClient.attach_image_cdp": {
+     "loc": 35,
+     "params": 2,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "CDPClient.highlight_element": {
+     "loc": 39,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPClient.clear_highlights": {
+     "loc": 12,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "QObject": {
+     "loc": 2,
+     "methods": 1
+    },
+    "_Sig": {
+     "loc": 3,
+     "methods": 2
+    },
+    "TabInfo": {
+     "loc": 6,
+     "methods": 0
+    },
+    "CDPClient": {
+     "loc": 469,
+     "methods": 22
+    }
+   },
+   "max_func_loc": 106,
+   "max_class_loc": 469,
+   "func_count": 34,
+   "coverage": 77.97
   },
-  "app/browser/visual_click.py": {
-    "max_func_loc": 25,
-    "max_class_loc": 56,
-    "func_count": 15
+  "app/browser/cdp_events.py": {
+   "functions": {
+    "CDPEventRouter.__init__": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPEventRouter.add": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPEventRouter.remove": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CDPEventRouter.dispatch": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CDPEventRouter._call": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "route_cdp_message": {
+     "loc": 10,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_schedule_reply": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_set_reply": {
+     "loc": 3,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "CDPEventRouter": {
+     "loc": 24,
+     "methods": 5
+    }
+   },
+   "max_func_loc": 10,
+   "max_class_loc": 24,
+   "func_count": 8,
+   "coverage": 90.74
   },
-  "app/services/__init__.py": {
-    "max_func_loc": 0,
-    "max_class_loc": 0,
-    "func_count": 0
+  "app/browser/cdp_protocol.py": {
+   "functions": {
+    "is_devtools_url": {
+     "loc": 12,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "normalize_ws_url": {
+     "loc": 12,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_is_valid_tab_item": {
+     "loc": 13,
+     "params": 2,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_item_to_tab": {
+     "loc": 11,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "parse_tabs": {
+     "loc": 13,
+     "params": 4,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "filter_real_tabs": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "deduplicate_tabs_by_id": {
+     "loc": 16,
+     "params": 2,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 4
+    }
+   },
+   "classes": {
+    "TabInfo": {
+     "loc": 7,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 16,
+   "max_class_loc": 7,
+   "func_count": 7,
+   "coverage": 86.79
   },
-  "app/services/verification.py": {
-    "max_func_loc": 42,
-    "max_class_loc": 108,
-    "func_count": 6
+  "app/browser/dom_highlight.py": {
+   "functions": {
+    "_js_str": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_base_out_js": {
+     "loc": 9,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_probe": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_splice": {
+     "loc": 4,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "build_find_probe": {
+     "loc": 13,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_click_probe": {
+     "loc": 10,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_highlight_probe": {
+     "loc": 11,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_clear_probe": {
+     "loc": 12,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_candidate_lines": {
+     "loc": 11,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "interpret_find": {
+     "loc": 14,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_found_state": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_outline_suffix": {
+     "loc": 11,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "interpret_click": {
+     "loc": 19,
+     "params": 2,
+     "cc": 10,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "interpret_click_target": {
+     "loc": 10,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "build_highlight_js": {
+     "loc": 8,
+     "params": 5,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_clear_js": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_highlight_rect_js": {
+     "loc": 15,
+     "params": 7,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_watcher_overlay_js": {
+     "loc": 198,
+     "params": 4,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_watcher_clear_js": {
+     "loc": 15,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 198,
+   "max_class_loc": 0,
+   "func_count": 19,
+   "coverage": 51.35
   },
-  "app/services/job_runner.py": {
-    "max_func_loc": 207,
-    "max_class_loc": 316,
-    "func_count": 9
-  },
-  "app/ui/__init__.py": {
-    "max_func_loc": 0,
-    "max_class_loc": 0,
-    "func_count": 0
-  },
-  "app/ui/main_window.py": {
-    "max_func_loc": 39,
-    "max_class_loc": 58,
-    "func_count": 2
-  },
-  "app/ui/bridge.py": {
-    "max_func_loc": 1030,
-    "max_class_loc": 3593,
-    "func_count": 146
-  },
-  "app/utils/__init__.py": {
-    "max_func_loc": 0,
-    "max_class_loc": 0,
-    "func_count": 0
-  },
-  "app/utils/correlation.py": {
-    "max_func_loc": 7,
-    "max_class_loc": 0,
-    "func_count": 3
-  },
-  "app/utils/hashing.py": {
-    "max_func_loc": 9,
-    "max_class_loc": 0,
-    "func_count": 2
-  },
-  "app/utils/logging.py": {
-    "max_func_loc": 18,
-    "max_class_loc": 0,
-    "func_count": 2
-  },
-  "app/persistence/config_manager.py": {
-    "max_func_loc": 13,
-    "max_class_loc": 44,
-    "func_count": 19
-  },
-  "app/persistence/undo_store.py": {
-    "max_func_loc": 22,
-    "max_class_loc": 79,
-    "func_count": 11
-  },
-  "app/persistence/preset_store.py": {
-    "max_func_loc": 14,
-    "max_class_loc": 135,
-    "func_count": 25
-  },
-  "app/services/watcher.py": {
-    "max_func_loc": 124,
-    "max_class_loc": 269,
-    "func_count": 15
+  "app/browser/new_chat.py": {
+   "functions": {
+    "build_page_loaded_js": {
+     "loc": 10,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_composer_empty_js": {
+     "loc": 9,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_report": {
+     "loc": 10,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_as_dict": {
+     "loc": 11,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_is_document_complete": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_is_composer_empty": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_click_new_chat": {
+     "loc": 13,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_is_cancelled": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_fresh_chat_ready": {
+     "loc": 7,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_check_ready": {
+     "loc": 11,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_wait_page_loaded": {
+     "loc": 13,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "reset_to_new_chat": {
+     "loc": 12,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "ResetCtx": {
+     "loc": 8,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 13,
+   "max_class_loc": 8,
+   "func_count": 12,
+   "coverage": 81.62
   },
   "app/browser/output_probes.py": {
-    "max_func_loc": 3,
-    "max_class_loc": 0,
-    "func_count": 4
+   "functions": {
+    "build_baseline_js": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_check_js": {
+     "loc": 2,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "is_layout_reverse_js": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "get_selectors": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 2,
+   "max_class_loc": 0,
+   "func_count": 4,
+   "coverage": 84.62
   },
   "app/browser/output_state.py": {
-    "max_func_loc": 19,
-    "max_class_loc": 0,
-    "func_count": 5
+   "functions": {
+    "flatten_diagnostics": {
+     "loc": 25,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "build_order_check_text": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "should_use_below_pool": {
+     "loc": 2,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "extract_rect": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "extract_src": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "is_job_id_match": {
+     "loc": 9,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "is_mismatch_error": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 25,
+   "max_class_loc": 0,
+   "func_count": 7,
+   "coverage": 100.0
   },
   "app/browser/output_wait.py": {
-    "max_func_loc": 25,
-    "max_class_loc": 0,
-    "func_count": 14
+   "functions": {
+    "should_continue_after_spinner": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "is_ready_result": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "is_cancelled": {
+     "loc": 7,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "should_fallback": {
+     "loc": 18,
+     "params": 2,
+     "cc": 14,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "is_mismatch_reason": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "handle_spinner_visible": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "handle_spinner_gone": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "handle_ready_result": {
+     "loc": 11,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "handle_no_exact_below": {
+     "loc": 11,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "handle_mismatch": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_timeout_fallback": {
+     "loc": 18,
+     "params": 3,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_poll_check": {
+     "loc": 9,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_reraise_abort": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_process_ready": {
+     "loc": 22,
+     "params": 3,
+     "cc": 11,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_process_spinner": {
+     "loc": 11,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_process_fallback": {
+     "loc": 20,
+     "params": 3,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "wait_for_new_output_loop": {
+     "loc": 40,
+     "params": 5,
+     "cc": 16,
+     "cognitive": 0,
+     "nesting": 3
+    }
+   },
+   "classes": {},
+   "max_func_loc": 40,
+   "max_class_loc": 0,
+   "func_count": 17,
+   "coverage": 71.7
+  },
+  "app/browser/page_pool.py": {
+   "functions": {
+    "_sleep_or_notify": {
+     "loc": 12,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_expire_all": {
+     "loc": 7,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_pick_lowest_count": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_snapshot_entry": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PagePool.__init__": {
+     "loc": 9,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PagePool.add_page": {
+     "loc": 23,
+     "params": 1,
+     "cc": 10,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "PagePool.remove_page": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePool.get_page": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PagePool.get_counts": {
+     "loc": 4,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PagePool.mark_busy": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePool.mark_steady": {
+     "loc": 11,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePool.mark_waiting": {
+     "loc": 7,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePool.mark_error": {
+     "loc": 9,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePool.get_free_page": {
+     "loc": 5,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePool.acquire_free_page": {
+     "loc": 12,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePool.wait_for_free_page": {
+     "loc": 12,
+     "params": 4,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePool.status_snapshot": {
+     "loc": 8,
+     "params": 0,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PagePool.register_client": {
+     "loc": 4,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PagePool.get_clients": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "PageWaitOpts": {
+     "loc": 3,
+     "methods": 0
+    },
+    "PagePool": {
+     "loc": 143,
+     "methods": 15
+    }
+   },
+   "max_func_loc": 23,
+   "max_class_loc": 143,
+   "func_count": 19,
+   "coverage": 88.78
+  },
+  "app/browser/page_status.py": {
+   "functions": {
+    "now_iso": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PageInfo.is_free": {
+     "loc": 2,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PageInfo.is_busy": {
+     "loc": 6,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PageInfo.remaining_seconds": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PageInfo.is_cooling": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PageInfo.try_expire": {
+     "loc": 15,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PageInfo.to_dict": {
+     "loc": 22,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "PageStatus": {
+     "loc": 8,
+     "methods": 0
+    },
+    "PageInfo": {
+     "loc": 79,
+     "methods": 6
+    }
+   },
+   "max_func_loc": 22,
+   "max_class_loc": 79,
+   "func_count": 7,
+   "coverage": 100.0
+  },
+  "app/browser/probe_requests.py": {
+   "functions": {},
+   "classes": {
+    "FindProbeSpec": {
+     "loc": 9,
+     "methods": 0
+    },
+    "ClickProbeSpec": {
+     "loc": 6,
+     "methods": 0
+    },
+    "HighlightSpec": {
+     "loc": 8,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 0,
+   "max_class_loc": 9,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/browser/selector.py": {
+   "functions": {
+    "SelectorObject.all_selectors": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "SelectorObject.to_dict": {
+     "loc": 15,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "SelectorObject": {
+     "loc": 32,
+     "methods": 2
+    }
+   },
+   "max_func_loc": 15,
+   "max_class_loc": 32,
+   "func_count": 2,
+   "coverage": 95.0
+  },
+  "app/browser/site_adapter.py": {
+   "functions": {
+    "get_readiness_requirements": {
+     "loc": 8,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "get_selector": {
+     "loc": 4,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "list_selectors": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_js_find": {
+     "loc": 37,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 37,
+   "max_class_loc": 0,
+   "func_count": 4,
+   "coverage": 61.11
+  },
+  "app/browser/tab_matcher.py": {
+   "functions": {
+    "_extract_url": {
+     "loc": 19,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_normalize_url": {
+     "loc": 16,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_parse": {
+     "loc": 14,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_site_key": {
+     "loc": 6,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_parsed_target": {
+     "loc": 6,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_score_url_like": {
+     "loc": 12,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_score_keyword": {
+     "loc": 4,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "score_tab": {
+     "loc": 15,
+     "params": 3,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_tab_url": {
+     "loc": 2,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "best_matches": {
+     "loc": 14,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {},
+   "max_func_loc": 19,
+   "max_class_loc": 0,
+   "func_count": 10,
+   "coverage": 84.42
+  },
+  "app/browser/visual_click.py": {
+   "functions": {
+    "_report": {
+     "loc": 12,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_parse": {
+     "loc": 6,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "ClickRequest.from_kwargs": {
+     "loc": 3,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ClickRequest.find_probe": {
+     "loc": 11,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ClickRequest.staged_probe": {
+     "loc": 9,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ClickRequest.click_probe": {
+     "loc": 5,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ClickRequest.holds_confirmation": {
+     "loc": 2,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ClickRequest.click_target_description": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "find_phase": {
+     "loc": 20,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "click_phase": {
+     "loc": 25,
+     "params": 4,
+     "cc": 10,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_stage": {
+     "loc": 19,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_dispatch": {
+     "loc": 10,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "run_click": {
+     "loc": 12,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "find_and_click": {
+     "loc": 2,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "find_and_click_exact": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "ClickRequest": {
+     "loc": 56,
+     "methods": 6
+    }
+   },
+   "max_func_loc": 25,
+   "max_class_loc": 56,
+   "func_count": 15,
+   "coverage": 48.59
+  },
+  "app/core/__init__.py": {
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/core/action_blocks.py": {
+   "functions": {
+    "ActionBlock.to_dict": {
+     "loc": 4,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ActionBlock.from_dict": {
+     "loc": 51,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "ActionBlock.display_name": {
+     "loc": 2,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ActionBlock.config_schema": {
+     "loc": 20,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "create_default_block": {
+     "loc": 29,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "default_stack": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "load_stack_from_dicts": {
+     "loc": 23,
+     "params": 1,
+     "cc": 12,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "stack_to_dicts": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "validate_stack": {
+     "loc": 11,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "get_default_stack_json": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "parse_stack_json": {
+     "loc": 8,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "get_builtin_blocks_json": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_is_other_preset": {
+     "loc": 3,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "upsert_stack_preset": {
+     "loc": 10,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "remove_stack_preset": {
+     "loc": 5,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "ActionBlock": {
+     "loc": 109,
+     "methods": 4
+    }
+   },
+   "max_func_loc": 51,
+   "max_class_loc": 109,
+   "func_count": 15,
+   "coverage": 79.56
+  },
+  "app/core/cooldown.py": {
+   "functions": {
+    "clamp_seconds": {
+     "loc": 11,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "config_from_dict": {
+     "loc": 14,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "config_to_dict": {
+     "loc": 11,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "remaining_seconds": {
+     "loc": 5,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "is_cooling": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "cooldown_total": {
+     "loc": 5,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "format_remaining": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "CooldownConfig": {
+     "loc": 7,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 14,
+   "max_class_loc": 7,
+   "func_count": 7,
+   "coverage": 100.0
+  },
+  "app/core/enums.py": {
+   "functions": {},
+   "classes": {
+    "UrlStatus": {
+     "loc": 9,
+     "methods": 0
+    },
+    "ImageStatus": {
+     "loc": 9,
+     "methods": 0
+    },
+    "JobStatus": {
+     "loc": 18,
+     "methods": 0
+    },
+    "RunState": {
+     "loc": 8,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 0,
+   "max_class_loc": 18,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/core/folder_ai.py": {
+   "functions": {
+    "strip_ai_name": {
+     "loc": 7,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_image_files": {
+     "loc": 8,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "strip_ai_suffixes": {
+     "loc": 18,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "delete_non_ai_images": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {},
+   "max_func_loc": 18,
+   "max_class_loc": 0,
+   "func_count": 4,
+   "coverage": 94.03
+  },
+  "app/core/layout_service.py": {
+   "functions": {
+    "default_grid_tree": {
+     "loc": 15,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "leaf": {
+     "loc": 1,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "split": {
+     "loc": 1,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "default_payload": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_normalize_sizes": {
+     "loc": 23,
+     "params": 1,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "normalize_grid_tree": {
+     "loc": 35,
+     "params": 2,
+     "cc": 19,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "leaf_ids": {
+     "loc": 10,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "validate_grid_tree": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "parse_grid_payload": {
+     "loc": 18,
+     "params": 1,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "canonical_grid_payload": {
+     "loc": 23,
+     "params": 1,
+     "cc": 10,
+     "cognitive": 0,
+     "nesting": 5
+    },
+    "migrate_grid_tree": {
+     "loc": 14,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "node_type": {
+     "loc": 2,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 35,
+   "max_class_loc": 0,
+   "func_count": 12,
+   "coverage": 70.71
+  },
+  "app/core/models.py": {
+   "functions": {
+    "now_iso": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UrlRow.create": {
+     "loc": 10,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UrlRow.link_tab": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "ImageItem.to_dict": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ImageItem.from_scan_dict": {
+     "loc": 19,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "JobRecord.create": {
+     "loc": 21,
+     "params": 5,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "AppState.recalculate_progress": {
+     "loc": 23,
+     "params": 0,
+     "cc": 11,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "AppState.to_dict": {
+     "loc": 13,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "AppState.from_dict": {
+     "loc": 28,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "UrlRow": {
+     "loc": 27,
+     "methods": 2
+    },
+    "ImageItem": {
+     "loc": 41,
+     "methods": 2
+    },
+    "JobRecord": {
+     "loc": 42,
+     "methods": 1
+    },
+    "AppSettings": {
+     "loc": 33,
+     "methods": 0
+    },
+    "AppState": {
+     "loc": 95,
+     "methods": 3
+    }
+   },
+   "max_func_loc": 28,
+   "max_class_loc": 95,
+   "func_count": 9,
+   "coverage": 98.28
+  },
+  "app/core/naming.py": {
+   "functions": {
+    "get_output_path": {
+     "loc": 43,
+     "params": 6,
+     "cc": 10,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "atomic_write_bytes": {
+     "loc": 29,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "is_ai_generated_filename": {
+     "loc": 12,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {},
+   "max_func_loc": 43,
+   "max_class_loc": 0,
+   "func_count": 3,
+   "coverage": 83.58
+  },
+  "app/core/persistence.py": {
+   "functions": {
+    "load_state": {
+     "loc": 11,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "save_state": {
+     "loc": 17,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "save_preset": {
+     "loc": 23,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "load_preset": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "reconcile_with_filesystem": {
+     "loc": 101,
+     "params": 2,
+     "cc": 18,
+     "cognitive": 0,
+     "nesting": 4
+    }
+   },
+   "classes": {},
+   "max_func_loc": 101,
+   "max_class_loc": 0,
+   "func_count": 5,
+   "coverage": 54.05
+  },
+  "app/core/scanner.py": {
+   "functions": {
+    "scan_folder": {
+     "loc": 66,
+     "params": 4,
+     "cc": 13,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "detect_changes": {
+     "loc": 34,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 3
+    }
+   },
+   "classes": {},
+   "max_func_loc": 66,
+   "max_class_loc": 0,
+   "func_count": 2,
+   "coverage": 89.89
+  },
+  "app/core/state_machine.py": {
+   "functions": {
+    "can_transition": {
+     "loc": 3,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "validate_image_transition": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "validate_job_transition": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "validate_run_transition": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 3,
+   "max_class_loc": 0,
+   "func_count": 4,
+   "coverage": 100.0
+  },
+  "app/core/undo_service.py": {
+   "functions": {
+    "UndoService.__init__": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoService.history": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoService.set_history": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoService.push": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UndoService.undo": {
+     "loc": 38,
+     "params": 0,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "UndoService.redo": {
+     "loc": 10,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UndoService.stack_projection": {
+     "loc": 4,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoService.set_stack_projection": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoService.kind_projection": {
+     "loc": 25,
+     "params": 1,
+     "cc": 12,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "UndoService.push_stack": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "UndoService": {
+     "loc": 102,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 38,
+   "max_class_loc": 102,
+   "func_count": 10,
+   "coverage": 54.64
+  },
+  "app/main.py": {
+   "functions": {
+    "main": {
+     "loc": 16,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {},
+   "max_func_loc": 16,
+   "max_class_loc": 0,
+   "func_count": 1,
+   "coverage": 0.0
+  },
+  "app/persistence/config_manager.py": {
+   "functions": {
+    "_atomic_write": {
+     "loc": 11,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_load_json": {
+     "loc": 11,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "SessionStore.__init__": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "SessionStore.load": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "SessionStore.save": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "SessionStore.get": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "SessionStore.set": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "SessionStore.data": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WindowPresetStore.__init__": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "WindowPresetStore.load": {
+     "loc": 4,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "WindowPresetStore.save": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WindowPresetStore.list_presets": {
+     "loc": 13,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WindowPresetStore.save_preset": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WindowPresetStore.load_preset": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WindowPresetStore.delete_preset": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "ConfigManager.__init__": {
+     "loc": 11,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ConfigManager.get_state": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ConfigManager.set_state": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "ConfigManager.get_session_data": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "SessionStore": {
+     "loc": 20,
+     "methods": 6
+    },
+    "WindowPresetStore": {
+     "loc": 44,
+     "methods": 7
+    },
+    "ConfigManager": {
+     "loc": 21,
+     "methods": 4
+    }
+   },
+   "max_func_loc": 13,
+   "max_class_loc": 44,
+   "func_count": 19,
+   "coverage": 87.61
+  },
+  "app/persistence/cooldown_store.py": {
+   "functions": {
+    "_is_idle_expired": {
+     "loc": 8,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "load_entries": {
+     "loc": 9,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_entry_sort_key": {
+     "loc": 9,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_write_doc": {
+     "loc": 5,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "save_entries": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "describe_cooldown_file": {
+     "loc": 9,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_saved_jobs": {
+     "loc": 8,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "load_stats": {
+     "loc": 17,
+     "params": 1,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_persistable": {
+     "loc": 5,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_entry_from_page": {
+     "loc": 13,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_merge_page_entry": {
+     "loc": 7,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_merge_page_stats": {
+     "loc": 7,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "save_pool_snapshot": {
+     "loc": 14,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "normalize_url": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_owned_by_other": {
+     "loc": 4,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "consume_entry_for": {
+     "loc": 16,
+     "params": 4,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 3
+    }
+   },
+   "classes": {},
+   "max_func_loc": 17,
+   "max_class_loc": 0,
+   "func_count": 16,
+   "coverage": 86.5
+  },
+  "app/persistence/preset_store.py": {
+   "functions": {
+    "_atomic_write": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_load_json": {
+     "loc": 11,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PresetStore.__init__": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PresetStore.load": {
+     "loc": 5,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PresetStore.save": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.get_url_presets": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.set_url_presets": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.add_url_preset": {
+     "loc": 11,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PresetStore.remove_url_preset": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PresetStore.list_prompt_presets": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.list_prompt_presets_detailed": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.save_prompt_preset": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PresetStore.load_prompt_preset": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.delete_prompt_preset": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PresetStore.list_settings_presets": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.save_settings_preset": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PresetStore.load_settings_preset": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.delete_settings_preset": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PresetStore.list_arena_presets": {
+     "loc": 8,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore._updated": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.list_arena_presets_detailed": {
+     "loc": 14,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PresetStore.save_arena_preset": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PresetStore.load_arena_preset": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "PresetStore.delete_arena_preset": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PresetStore.all_data": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "PresetStore": {
+     "loc": 135,
+     "methods": 22
+    }
+   },
+   "max_func_loc": 14,
+   "max_class_loc": 135,
+   "func_count": 25,
+   "coverage": 91.23
+  },
+  "app/persistence/undo_store.py": {
+   "functions": {
+    "_atomic_write": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_load_json": {
+     "loc": 11,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "UndoStore.__init__": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoStore._clamp": {
+     "loc": 22,
+     "params": 0,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "UndoStore.load": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoStore.save": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UndoStore.history": {
+     "loc": 3,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoStore.index": {
+     "loc": 3,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoStore.get": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoStore.set": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoStore.push": {
+     "loc": 20,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 3
+    }
+   },
+   "classes": {
+    "UndoStore": {
+     "loc": 79,
+     "methods": 9
+    }
+   },
+   "max_func_loc": 22,
+   "max_class_loc": 79,
+   "func_count": 11,
+   "coverage": 74.6
+  },
+  "app/services/__init__.py": {
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/services/auto_connect.py": {
+   "functions": {
+    "matches_pattern": {
+     "loc": 8,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_tab_key": {
+     "loc": 6,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_live_tabs": {
+     "loc": 13,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_row_index": {
+     "loc": 9,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_row_action": {
+     "loc": 8,
+     "params": 4,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_apply_row_action": {
+     "loc": 8,
+     "params": 4,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "live_tab_keys": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "pick_primary_ws": {
+     "loc": 7,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "prunable_row_ids": {
+     "loc": 9,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "plan_auto_connect": {
+     "loc": 15,
+     "params": 4,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "sync_pool_presence": {
+     "loc": 19,
+     "params": 2,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "_wins_over": {
+     "loc": 3,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_best_per_tab": {
+     "loc": 10,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "dedupe_linked_rows": {
+     "loc": 18,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "enabled_tab_ids": {
+     "loc": 7,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "row_for_tab": {
+     "loc": 8,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "pick_url_for_tab": {
+     "loc": 11,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "counts_in": {
+     "loc": 10,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_claimable_tid": {
+     "loc": 7,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_claim_matches": {
+     "loc": 4,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "claim_unlinked_from_pool": {
+     "loc": 16,
+     "params": 2,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_first_claimable_tid": {
+     "loc": 7,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "AutoConnectPlan": {
+     "loc": 9,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 19,
+   "max_class_loc": 9,
+   "func_count": 22,
+   "coverage": 99.64
+  },
+  "app/services/batch_orchestrator.py": {
+   "functions": {
+    "_pool_of": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_pool_summary": {
+     "loc": 14,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_log_stay_reason": {
+     "loc": 12,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_pool_ws": {
+     "loc": 4,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_move_to_tab": {
+     "loc": 12,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "resolve_and_claim_tab": {
+     "loc": 12,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "should_continue": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "await_pause_or_abort": {
+     "loc": 12,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_claim_tab": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "await_cooldown_if_pooled": {
+     "loc": 12,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_start_tab_image": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "mark_processing": {
+     "loc": 10,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_job_ids": {
+     "loc": 11,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_execute_image": {
+     "loc": 8,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_emit_job_finished": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_fail_cancelled": {
+     "loc": 7,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_fail_job": {
+     "loc": 6,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_complete_job": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_settle_image": {
+     "loc": 6,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_finish_primary_tab": {
+     "loc": 17,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_settle_stuck": {
+     "loc": 11,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "finish_image": {
+     "loc": 11,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_run_one_image": {
+     "loc": 16,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_finish_batch": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_run_sequential": {
+     "loc": 10,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_abort_no_tab": {
+     "loc": 5,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_warn_unready": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_selected_images": {
+     "loc": 4,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_load_run_settings": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_announce_stack": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "prepare_batch": {
+     "loc": 15,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_log_parallel_fallback": {
+     "loc": 6,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_try_parallel": {
+     "loc": 16,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_await_batch_gate": {
+     "loc": 14,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_run_guarded": {
+     "loc": 10,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_cancel_batch": {
+     "loc": 5,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_crash_batch": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "run_batch": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "BatchCtx": {
+     "loc": 10,
+     "methods": 0
+    },
+    "ImageResult": {
+     "loc": 8,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 17,
+   "max_class_loc": 10,
+   "func_count": 38,
+   "coverage": 92.51
+  },
+  "app/services/captcha/__init__.py": {
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/services/captcha/api_client.py": {
+   "functions": {
+    "ApiError.__init__": {
+     "loc": 4,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "error_reason": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "Captcha2Client.__init__": {
+     "loc": 4,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Captcha2Client._ensure_session": {
+     "loc": 4,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "Captcha2Client.aclose": {
+     "loc": 6,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "Captcha2Client._post": {
+     "loc": 16,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "Captcha2Client.create_task": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "Captcha2Client.get_result": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Captcha2Client.get_balance": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "Captcha2Client.delete_task": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "ApiError": {
+     "loc": 7,
+     "methods": 1
+    },
+    "Captcha2Client": {
+     "loc": 63,
+     "methods": 8
+    }
+   },
+   "max_func_loc": 16,
+   "max_class_loc": 63,
+   "func_count": 10,
+   "coverage": 98.68
+  },
+  "app/services/captcha/key_store.py": {
+   "functions": {
+    "clamp_timeout": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaKeyStore.__init__": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaKeyStore.load": {
+     "loc": 8,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaKeyStore._from_dict": {
+     "loc": 7,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaKeyStore.save": {
+     "loc": 11,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CaptchaKeyStore._to_dict": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaKeyStore._cleanup_tmp": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaKeyStore._lock_mode": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaKeyStore.mask": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "CaptchaSettings": {
+     "loc": 4,
+     "methods": 0
+    },
+    "CaptchaKeyStore": {
+     "loc": 66,
+     "methods": 8
+    }
+   },
+   "max_func_loc": 11,
+   "max_class_loc": 66,
+   "func_count": 9,
+   "coverage": 94.2
+  },
+  "app/services/captcha/recovery.py": {
+   "functions": {
+    "arm_resume": {
+     "loc": 10,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "clear_resume": {
+     "loc": 8,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "note_settle": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_report": {
+     "loc": 11,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_cancelled": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_note_activity": {
+     "loc": 9,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_revive_reason": {
+     "loc": 8,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "maybe_resume": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_maybe_resume": {
+     "loc": 16,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_attachment_missing": {
+     "loc": 4,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_attach_outcome": {
+     "loc": 7,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_reattach": {
+     "loc": 5,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_ensure_attachment": {
+     "loc": 12,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_resubmit": {
+     "loc": 15,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "ResumePolicy": {
+     "loc": 13,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 16,
+   "max_class_loc": 13,
+   "func_count": 14,
+   "coverage": 90.06
+  },
+  "app/services/captcha/service.py": {
+   "functions": {
+    "_log": {
+     "loc": 11,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_stop_pred": {
+     "loc": 2,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_service": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_record_stats": {
+     "loc": 7,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_record_penalty": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_mark_waiting": {
+     "loc": 7,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_page_url": {
+     "loc": 6,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_signal_evidence": {
+     "loc": 15,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_new_encounter": {
+     "loc": 15,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_finish_auto": {
+     "loc": 24,
+     "params": 4,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_finish_resolution": {
+     "loc": 7,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_penalty_seconds": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_stash_encounter": {
+     "loc": 12,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_emit_report": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_wait_timeout": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "detect_signal": {
+     "loc": 11,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "handle_captcha": {
+     "loc": 20,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_dialog_still_visible": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_resolve_captcha": {
+     "loc": 20,
+     "params": 4,
+     "cc": 10,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_try_auto": {
+     "loc": 16,
+     "params": 4,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_manual_wait": {
+     "loc": 26,
+     "params": 4,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaService.__init__": {
+     "loc": 8,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaService._on_milestone": {
+     "loc": 2,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaService.auto_enabled": {
+     "loc": 6,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaService.apply_settings": {
+     "loc": 7,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaService.refresh_balance": {
+     "loc": 20,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaService.status_payload": {
+     "loc": 7,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaService.stats_payload": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "CaptchaCtx": {
+     "loc": 10,
+     "methods": 0
+    },
+    "CaptchaService": {
+     "loc": 61,
+     "methods": 7
+    }
+   },
+   "max_func_loc": 26,
+   "max_class_loc": 61,
+   "func_count": 28,
+   "coverage": 91.13
+  },
+  "app/services/captcha/signals.py": {
+   "functions": {
+    "_safe_count": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_evidence_kwargs": {
+     "loc": 16,
+     "params": 1,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaSignal.solvable": {
+     "loc": 3,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaSignal.from_result": {
+     "loc": 16,
+     "params": 1,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "host_of": {
+     "loc": 7,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "CaptchaSignal": {
+     "loc": 44,
+     "methods": 2
+    },
+    "SolveOutcome": {
+     "loc": 22,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 16,
+   "max_class_loc": 44,
+   "func_count": 5,
+   "coverage": 94.67
+  },
+  "app/services/captcha/solver.py": {
+   "functions": {
+    "_failed": {
+     "loc": 16,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_copy_evidence": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "task_type_for": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_cb_source": {
+     "loc": 3,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_cb_desc": {
+     "loc": 7,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_reject_reason": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_failed_detail": {
+     "loc": 3,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_no_token_detail": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_heartbeat": {
+     "loc": 8,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_note_page_error": {
+     "loc": 22,
+     "params": 2,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_token_fingerprint": {
+     "loc": 8,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_task_payload": {
+     "loc": 8,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_delete_task": {
+     "loc": 9,
+     "params": 4,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_click_continue": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_note_preinject_state": {
+     "loc": 10,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_verify_gone": {
+     "loc": 16,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_current_signal": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_identity_reason": {
+     "loc": 7,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_sitekey_changed": {
+     "loc": 5,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_stale_reason": {
+     "loc": 6,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_dialog_visible": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_retryable": {
+     "loc": 6,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_inject_failure": {
+     "loc": 5,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_page_error_outcome": {
+     "loc": 7,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_inject": {
+     "loc": 13,
+     "params": 4,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_auto_fail": {
+     "loc": 8,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_stale_outcome": {
+     "loc": 9,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_poll_fail": {
+     "loc": 6,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_retry_network": {
+     "loc": 11,
+     "params": 4,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_provider_result": {
+     "loc": 13,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_poll_task": {
+     "loc": 29,
+     "params": 3,
+     "cc": 10,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_solved": {
+     "loc": 14,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_accepted_after_close": {
+     "loc": 9,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "evidence_outcome": {
+     "loc": 10,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_reject_outcome": {
+     "loc": 6,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaSolver.__init__": {
+     "loc": 7,
+     "params": 4,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaSolver._emit": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaSolver.solve": {
+     "loc": 12,
+     "params": 4,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaSolver._solve_once": {
+     "loc": 15,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaSolver._run_task": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CaptchaSolver._attempt": {
+     "loc": 19,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaSolver._retry_with": {
+     "loc": 9,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaSolver._rebaseline": {
+     "loc": 12,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaSolver._inject_and_verify": {
+     "loc": 28,
+     "params": 3,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaSolver._create_task": {
+     "loc": 19,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "SolvePlan": {
+     "loc": 28,
+     "methods": 0
+    },
+    "CaptchaSolver": {
+     "loc": 148,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 29,
+   "max_class_loc": 148,
+   "func_count": 45,
+   "coverage": 89.61
+  },
+  "app/services/captcha/stats.py": {
+   "functions": {
+    "CaptchaStatsStore.__init__": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaStatsStore._blank": {
+     "loc": 13,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaStatsStore._valid_type": {
+     "loc": 10,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaStatsStore._load": {
+     "loc": 14,
+     "params": 0,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CaptchaStatsStore._save": {
+     "loc": 9,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CaptchaStatsStore._bump": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaStatsStore.record": {
+     "loc": 14,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CaptchaStatsStore.set_balance": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaStatsStore.set_last_error": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaStatsStore.success_rate": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaStatsStore.last_balance": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaStatsStore.balance_at": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaStatsStore.last_error": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaStatsStore.to_dict": {
+     "loc": 4,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "CaptchaStatsStore": {
+     "loc": 111,
+     "methods": 14
+    }
+   },
+   "max_func_loc": 14,
+   "max_class_loc": 111,
+   "func_count": 14,
+   "coverage": 96.36
+  },
+  "app/services/captcha_recording/__init__.py": {
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/services/captcha_recording/cohort.py": {
+   "functions": {
+    "_label": {
+     "loc": 3,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_result": {
+     "loc": 3,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_tally": {
+     "loc": 17,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "cohort": {
+     "loc": 19,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {},
+   "max_func_loc": 19,
+   "max_class_loc": 0,
+   "func_count": 4,
+   "coverage": 100.0
+  },
+  "app/services/captcha_recording/manager.py": {
+   "functions": {
+    "RecordingManager.__init__": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager.start": {
+     "loc": 16,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingManager.finish": {
+     "loc": 11,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingManager.note": {
+     "loc": 8,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingManager.abort": {
+     "loc": 9,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingManager.list_sessions": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager.count_sessions": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager.delete_session": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager.set_label": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager.set_result_label": {
+     "loc": 2,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager.get_session": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager.session_folder": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager.is_enabled": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager.set_enabled": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingManager._drop": {
+     "loc": 4,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "RecordingManager": {
+     "loc": 89,
+     "methods": 15
+    }
+   },
+   "max_func_loc": 16,
+   "max_class_loc": 89,
+   "func_count": 15,
+   "coverage": 74.16
+  },
+  "app/services/captcha_recording/milestones.py": {
+   "functions": {
+    "assert_token_free": {
+     "loc": 4,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_bounded": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "build_milestone": {
+     "loc": 17,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 3
+    }
+   },
+   "classes": {},
+   "max_func_loc": 17,
+   "max_class_loc": 0,
+   "func_count": 3,
+   "coverage": 87.5
+  },
+  "app/services/captcha_recording/models.py": {
+   "functions": {
+    "utc_now": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "new_session_id": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "day_folder_for": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "RecordingLimits": {
+     "loc": 7,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 4,
+   "max_class_loc": 7,
+   "func_count": 3,
+   "coverage": 100.0
+  },
+  "app/services/captcha_recording/network.py": {
+   "functions": {
+    "NetworkCollector.__init__": {
+     "loc": 11,
+     "params": 4,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "NetworkCollector.dropped_events": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "NetworkCollector.on_event": {
+     "loc": 8,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "NetworkCollector.close": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "NetworkCollector.drain": {
+     "loc": 7,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "NetworkCollector._record": {
+     "loc": 11,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "NetworkCollector._request": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "NetworkCollector._response": {
+     "loc": 8,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "NetworkCollector._failure": {
+     "loc": 6,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "NetworkCollector._body": {
+     "loc": 19,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "NetworkCollector": {
+     "loc": 97,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 19,
+   "max_class_loc": 97,
+   "func_count": 10,
+   "coverage": 86.96
+  },
+  "app/services/captcha_recording/probes.py": {
+   "functions": {
+    "_read": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "install_probe": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "drain_probe": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "snapshot_probe": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "stop_probe": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 2,
+   "max_class_loc": 0,
+   "func_count": 5,
+   "coverage": 100.0
+  },
+  "app/services/captcha_recording/reader.py": {
+   "functions": {
+    "EvidenceReader.__init__": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "EvidenceReader.details": {
+     "loc": 9,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "EvidenceReader.folder": {
+     "loc": 7,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "EvidenceReader._json": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "EvidenceReader._events": {
+     "loc": 13,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "EvidenceReader._milestones": {
+     "loc": 13,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "EvidenceReader._snapshot": {
+     "loc": 11,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "EvidenceReader": {
+     "loc": 73,
+     "methods": 7
+    }
+   },
+   "max_func_loc": 13,
+   "max_class_loc": 73,
+   "func_count": 7,
+   "coverage": 77.91
+  },
+  "app/services/captcha_recording/recorder.py": {
+   "functions": {
+    "CaptchaRecorder.__init__": {
+     "loc": 16,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaRecorder.start": {
+     "loc": 9,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecorder.finish": {
+     "loc": 13,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecorder.note_outcome": {
+     "loc": 7,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaRecorder._offset_ms": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaRecorder._milestone_event": {
+     "loc": 12,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecorder.abort": {
+     "loc": 8,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaRecorder.Interrupted.__init__": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaRecorder._run": {
+     "loc": 5,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecorder._join_worker": {
+     "loc": 5,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecorder._drain_mutations": {
+     "loc": 11,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecorder._checkpoint": {
+     "loc": 18,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecorder._event": {
+     "loc": 11,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecorder._detach_listener": {
+     "loc": 4,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecorder._outcome_payload": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "finish_updates": {
+     "loc": 17,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "as_dict": {
+     "loc": 9,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_milestone_phase_for": {
+     "loc": 7,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "CaptchaRecorder": {
+     "loc": 142,
+     "methods": 14
+    },
+    "Interrupted": {
+     "loc": 6,
+     "methods": 1
+    }
+   },
+   "max_func_loc": 18,
+   "max_class_loc": 142,
+   "func_count": 18,
+   "coverage": 85.88
+  },
+  "app/services/captcha_recording/retention.py": {
+   "functions": {
+    "day_dirs": {
+     "loc": 6,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "session_folders": {
+     "loc": 13,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "find_session_folder": {
+     "loc": 10,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "prune_recordings": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "drop_empty_day": {
+     "loc": 5,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_folder_size": {
+     "loc": 9,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    }
+   },
+   "classes": {},
+   "max_func_loc": 13,
+   "max_class_loc": 0,
+   "func_count": 6,
+   "coverage": 92.21
+  },
+  "app/services/captcha_recording/sanitize.py": {
+   "functions": {
+    "safe_url": {
+     "loc": 10,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "redact_text": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "clean_mapping": {
+     "loc": 9,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_looks_like_credential": {
+     "loc": 10,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_clean_item": {
+     "loc": 4,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "textual_mime": {
+     "loc": 3,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "contains_tokenish": {
+     "loc": 4,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 10,
+   "max_class_loc": 0,
+   "func_count": 7,
+   "coverage": 96.55
+  },
+  "app/services/captcha_recording/store.py": {
+   "functions": {
+    "recording_enabled": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "save_recording_enabled": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "new_manifest": {
+     "loc": 26,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "read_manifest": {
+     "loc": 10,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "write_manifest": {
+     "loc": 6,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "summary": {
+     "loc": 11,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingStore.__init__": {
+     "loc": 5,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingStore.create": {
+     "loc": 7,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingStore.session_folder": {
+     "loc": 7,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingStore.append_event": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingStore.write_snapshot": {
+     "loc": 8,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingStore.finish": {
+     "loc": 8,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingStore.list_sessions": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingStore.count_sessions": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingStore.delete_session": {
+     "loc": 5,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RecordingStore.set_label": {
+     "loc": 9,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingStore.set_result_label": {
+     "loc": 10,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingStore._note_label_history": {
+     "loc": 8,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RecordingStore.recover_interrupted": {
+     "loc": 6,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "RecordingStore": {
+     "loc": 102,
+     "methods": 13
+    }
+   },
+   "max_func_loc": 26,
+   "max_class_loc": 102,
+   "func_count": 19,
+   "coverage": 97.33
+  },
+  "app/services/cooldown_service.py": {
+   "functions": {
+    "_safe_int": {
+     "loc": 7,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "load_config": {
+     "loc": 12,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_settle_steady": {
+     "loc": 10,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_fill_missing": {
+     "loc": 9,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "ensure_pool_page": {
+     "loc": 17,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_abort_set": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "request_tab_abort": {
+     "loc": 11,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "is_tab_aborted": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "clear_tab_abort": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "set_tab_image": {
+     "loc": 9,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "tab_has_live_job": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_snapshot_free": {
+     "loc": 6,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_best_ready_id": {
+     "loc": 8,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_first_connected_id": {
+     "loc": 6,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_resolve_allowed_tab": {
+     "loc": 10,
+     "params": 3,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "resolve_primary_tab": {
+     "loc": 21,
+     "params": 3,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_restore_pending": {
+     "loc": 8,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_now_or": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_restore_cooldown_allowed": {
+     "loc": 5,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_apply_restored_cooldown": {
+     "loc": 7,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_restore_worthwhile": {
+     "loc": 3,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_steady_page": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "restore_cooldown_entry": {
+     "loc": 20,
+     "params": 4,
+     "cc": 10,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "start_cooldown": {
+     "loc": 17,
+     "params": 4,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "add_captcha_penalty": {
+     "loc": 14,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_penalty_from": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_persist_emit": {
+     "loc": 9,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_cooldown_suffix": {
+     "loc": 6,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "note_captcha_event": {
+     "loc": 17,
+     "params": 4,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_rate_limit_penalty_from": {
+     "loc": 10,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "add_rate_limit_penalty": {
+     "loc": 14,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "note_rate_limit_event": {
+     "loc": 16,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "maybe_note_rate_limit": {
+     "loc": 6,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "wait_captcha_cleared": {
+     "loc": 18,
+     "params": 4,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "reset_cooldown": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "is_stuck_status": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "force_reset_page": {
+     "loc": 19,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "edit_cooldown": {
+     "loc": 14,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "refresh_expired": {
+     "loc": 11,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "longest_remaining": {
+     "loc": 12,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "cooldown_aware_timeout": {
+     "loc": 7,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "remaining_for": {
+     "loc": 9,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_is_cancelled": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_is_paused": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_log": {
+     "loc": 5,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_honour_pause": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "wait_for_tab_ready": {
+     "loc": 22,
+     "params": 3,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_is_cooling_now": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "wait_for_batch_ready": {
+     "loc": 10,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "finish_page_after_job": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_settle_pool_steady": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_emit_status": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_best_effort_reset": {
+     "loc": 9,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "register_job_done": {
+     "loc": 12,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_stats_count": {
+     "loc": 11,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "restore_page_stats": {
+     "loc": 11,
+     "params": 4,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_finish_cancelled": {
+     "loc": 8,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_reason_for": {
+     "loc": 11,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_capture_pending": {
+     "loc": 9,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_finish_detail": {
+     "loc": 16,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_log_finish": {
+     "loc": 8,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_finish_normal": {
+     "loc": 17,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "FinishCtx": {
+     "loc": 11,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 22,
+   "max_class_loc": 11,
+   "func_count": 62,
+   "coverage": 93.64
+  },
+  "app/services/multi_page_dispatcher.py": {
+   "functions": {
+    "_recalc_save": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_mark_steady_emit": {
+     "loc": 7,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_settle_stuck_emit": {
+     "loc": 11,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_wait_pause": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_acquire_free_in": {
+     "loc": 18,
+     "params": 3,
+     "cc": 8,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_wait_free_in": {
+     "loc": 13,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_acquire_page": {
+     "loc": 6,
+     "params": 4,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_get_clients": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "prepare_image_for_job": {
+     "loc": 11,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_run_image_job": {
+     "loc": 11,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_result": {
+     "loc": 17,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_emit_finished": {
+     "loc": 6,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_log_result": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_emit_status_safe": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_start_tab_image": {
+     "loc": 9,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_clear_tab_image": {
+     "loc": 7,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_finish_page_safely": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "run_one_image_on_page": {
+     "loc": 29,
+     "params": 4,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_log_no_free": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_log_no_ctrl": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_log_assign": {
+     "loc": 6,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_exception": {
+     "loc": 11,
+     "params": 4,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "dispatch_parallel": {
+     "loc": 16,
+     "params": 4,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_create_tasks": {
+     "loc": 14,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_run_with_sem": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_await_tasks": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_finalize_batch": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "DispatchCtx": {
+     "loc": 6,
+     "methods": 0
+    },
+    "PageJobCtx": {
+     "loc": 8,
+     "methods": 0
+    },
+    "ResultCtx": {
+     "loc": 9,
+     "methods": 0
+    },
+    "FinishInfo": {
+     "loc": 5,
+     "methods": 0
+    },
+    "LogInfo": {
+     "loc": 6,
+     "methods": 0
+    },
+    "FreeWaitSpec": {
+     "loc": 8,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 29,
+   "max_class_loc": 9,
+   "func_count": 27,
+   "coverage": 88.47
+  },
+  "app/services/run_state.py": {
+   "functions": {
+    "_bg_primitives": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_running_loop": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_run_loop_forever": {
+     "loc": 14,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_spawn_bg_loop": {
+     "loc": 13,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "ensure_bg_loop": {
+     "loc": 16,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_track_batch_future": {
+     "loc": 7,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_clear_batch_future": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_failure_note": {
+     "loc": 9,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_on_coro_done": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_submit_tracked": {
+     "loc": 6,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_run_detached": {
+     "loc": 15,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_run": {
+     "loc": 9,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "schedule_coro": {
+     "loc": 14,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_cdp_attrs": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_fetch_tabs_safe": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_tab_attr": {
+     "loc": 6,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_match_tab": {
+     "loc": 8,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "resolve_tab_info": {
+     "loc": 7,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_pool_needs_page": {
+     "loc": 9,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_cdp_attr": {
+     "loc": 3,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_page_identity": {
+     "loc": 11,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "ensure_pool_page": {
+     "loc": 12,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "cooldowns_path": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "persist_cooldowns": {
+     "loc": 13,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "pooled_ids": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_restore_job_counter": {
+     "loc": 7,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_log_file_note": {
+     "loc": 11,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_log_tab_miss": {
+     "loc": 7,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_announce_restore": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_page_url_of": {
+     "loc": 4,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_log_restore_miss": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_saved_entry_or_note": {
+     "loc": 13,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "restore_page_state": {
+     "loc": 18,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "RestoreNote": {
+     "loc": 7,
+     "methods": 0
+    },
+    "JobAction": {
+     "loc": 7,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 18,
+   "max_class_loc": 7,
+   "func_count": 33,
+   "coverage": 82.09
+  },
+  "app/services/single_job_runner.py": {
+   "functions": {
+    "_emit_action": {
+     "loc": 6,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_get_blocks": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "capture_baseline": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_captcha_outcome": {
+     "loc": 11,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_run_security_captcha": {
+     "loc": 17,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "log": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "stop": {
+     "loc": 2,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "check_security": {
+     "loc": 10,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_mark_waiting": {
+     "loc": 9,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_mark_busy": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "attach_image": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "insert_prompt": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_display": {
+     "loc": 9,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_click_req": {
+     "loc": 14,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_fallback_list": {
+     "loc": 4,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_try_click": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_submit_visual": {
+     "loc": 4,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_submit_fallbacks": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "submit_job": {
+     "loc": 15,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_poll_generation": {
+     "loc": 10,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "wait_for_output": {
+     "loc": 19,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_settle_and_note": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_report_recovery": {
+     "loc": 6,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_arm_revival": {
+     "loc": 12,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_clear_revival": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_show_gen_overlay": {
+     "loc": 9,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_verify_download": {
+     "loc": 14,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_hide_and_result": {
+     "loc": 8,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_hide_overlay": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "download_image": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "save_image": {
+     "loc": 17,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_emit_saved_rect": {
+     "loc": 9,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_baseline": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_security": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_attach_open_dialog": {
+     "loc": 11,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_attach_emit": {
+     "loc": 11,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_attach": {
+     "loc": 8,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_prompt": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_submit": {
+     "loc": 8,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_wait": {
+     "loc": 17,
+     "params": 2,
+     "cc": 9,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_download": {
+     "loc": 15,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_pil_format": {
+     "loc": 11,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_src_suffix": {
+     "loc": 6,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_infer_ext": {
+     "loc": 8,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_validate": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_save": {
+     "loc": 9,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_advance": {
+     "loc": 4,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_custom_ok_emit": {
+     "loc": 9,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_custom_fallbacks": {
+     "loc": 10,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_handle_custom": {
+     "loc": 15,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_str": {
+     "loc": 4,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_highlight_spec": {
+     "loc": 11,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_handle_highlight": {
+     "loc": 12,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_pause": {
+     "loc": 7,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_type_highlight": {
+     "loc": 9,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_type_prompt": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_marker_selector": {
+     "loc": 10,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_marker_highlight": {
+     "loc": 10,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_verify_attachment": {
+     "loc": 12,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_handle_verify_prompt": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_handler_map": {
+     "loc": 26,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_handle_one_block": {
+     "loc": 10,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_init_old_srcs": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_maybe_delay": {
+     "loc": 4,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_tab_aborted": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_is_cancelled": {
+     "loc": 2,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_block_skip_reason": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_run_one_checked": {
+     "loc": 20,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_loop_blocks": {
+     "loc": 13,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_reset_captcha_reports": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_captcha_job_line": {
+     "loc": 8,
+     "params": 4,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_emit_captcha_job_lines": {
+     "loc": 15,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "run_blocks_for_image": {
+     "loc": 7,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "JobCtx": {
+     "loc": 18,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 26,
+   "max_class_loc": 18,
+   "func_count": 73,
+   "coverage": 82.58
+  },
+  "app/services/verification.py": {
+   "functions": {
+    "VerificationService.__init__": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "VerificationService.verify_attachment_success": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "VerificationService.verify_prompt_text": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "VerificationService.verify_submission_started": {
+     "loc": 26,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "VerificationService.verify_output_new_and_correlated": {
+     "loc": 26,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "VerificationService.validate_downloaded_file": {
+     "loc": 42,
+     "params": 2,
+     "cc": 14,
+     "cognitive": 0,
+     "nesting": 6
+    }
+   },
+   "classes": {
+    "VerificationService": {
+     "loc": 108,
+     "methods": 6
+    }
+   },
+   "max_func_loc": 42,
+   "max_class_loc": 108,
+   "func_count": 6,
+   "coverage": 38.75
+  },
+  "app/services/watcher.py": {
+   "functions": {
+    "WatcherService.__init__": {
+     "loc": 9,
+     "params": 4,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WatcherService.set_cdp_getter": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WatcherService.set_job_runner_getter": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WatcherService.set_logger": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WatcherService.update_config": {
+     "loc": 11,
+     "params": 0,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WatcherService.get_config": {
+     "loc": 8,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WatcherService.get_state": {
+     "loc": 14,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WatcherService.add_callback": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "WatcherService._notify": {
+     "loc": 12,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "WatcherService.start": {
+     "loc": 13,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "WatcherService.ensure_task": {
+     "loc": 15,
+     "params": 0,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WatcherService.stop": {
+     "loc": 7,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "WatcherService._loop": {
+     "loc": 17,
+     "params": 0,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "WatcherService.check_once": {
+     "loc": 124,
+     "params": 0,
+     "cc": 34,
+     "cognitive": 0,
+     "nesting": 5
+    },
+    "WatcherService.force_clear": {
+     "loc": 13,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "WatcherConfig": {
+     "loc": 6,
+     "methods": 0
+    },
+    "WatcherState": {
+     "loc": 10,
+     "methods": 0
+    },
+    "WatcherService": {
+     "loc": 269,
+     "methods": 15
+    }
+   },
+   "max_func_loc": 124,
+   "max_class_loc": 269,
+   "func_count": 15,
+   "coverage": 82.96
+  },
+  "app/ui/__init__.py": {
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/ui/bridge.py": {
+   "functions": {
+    "Bridge.__init__": {
+     "loc": 15,
+     "params": 4,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Bridge._emit_pool_status": {
+     "loc": 9,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "Bridge._persist_cooldowns": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Bridge._get_action_blocks": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Bridge._emit_action_blocks": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Bridge._emit_job_action_status": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Bridge._save_arena": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Bridge._emit_arena_state": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Bridge._log": {
+     "loc": 13,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "Bridge._captcha_service": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "Bridge": {
+     "loc": 94,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 15,
+   "max_class_loc": 94,
+   "func_count": 10,
+   "coverage": 93.81
+  },
+  "app/ui/bridge_context.py": {
+   "functions": {
+    "init_run_state": {
+     "loc": 8,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "init_tracking_state": {
+     "loc": 19,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "wire_cdp": {
+     "loc": 12,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "on_cdp_error": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "log_build_version": {
+     "loc": 12,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_log_quiet": {
+     "loc": 6,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_watcher_config": {
+     "loc": 10,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_activate_watcher": {
+     "loc": 12,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "wire_watcher": {
+     "loc": 15,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_pool_endpoint": {
+     "loc": 9,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "wire_page_pool": {
+     "loc": 12,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "wire_thumb": {
+     "loc": 9,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "build_context": {
+     "loc": 12,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "BridgeContext": {
+     "loc": 7,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 19,
+   "max_class_loc": 7,
+   "func_count": 13,
+   "coverage": 84.09
+  },
+  "app/ui/main_window.py": {
+   "functions": {
+    "_is_valid_geometry": {
+     "loc": 10,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "MainWindow.__init__": {
+     "loc": 31,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "MainWindow._init_cdp_client": {
+     "loc": 10,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "MainWindow._configure_web_settings": {
+     "loc": 11,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "MainWindow._attach_web_channel": {
+     "loc": 6,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "MainWindow._load_index": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "MainWindow._restore_window_geometry": {
+     "loc": 18,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "MainWindow._save_window_geometry": {
+     "loc": 15,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "MainWindow.closeEvent": {
+     "loc": 26,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "MainWindow": {
+     "loc": 131,
+     "methods": 8
+    }
+   },
+   "max_func_loc": 31,
+   "max_class_loc": 131,
+   "func_count": 9,
+   "coverage": 0.0
+  },
+  "app/ui/panels/__init__.py": {
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/ui/panels/app_settings.py": {
+   "functions": {
+    "push_prompt_undo": {
+     "loc": 7,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "push_settings_undo": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "apply_simple_key": {
+     "loc": 6,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "apply_generation_timeout": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "apply_supported_types": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "apply_highlight_duration": {
+     "loc": 5,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "apply_watcher_timeouts": {
+     "loc": 12,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 4
+    },
+    "apply_preset_settings": {
+     "loc": 12,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "build_cdp_snapshot": {
+     "loc": 8,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "read_action_blocks_snapshot": {
+     "loc": 11,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "build_cooldown_snapshot": {
+     "loc": 8,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_arena_preset_doc": {
+     "loc": 15,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "restore_import_sections": {
+     "loc": 8,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "restore_preset_urls": {
+     "loc": 10,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "restore_preset_folder_prompt": {
+     "loc": 7,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "restore_preset_cdp": {
+     "loc": 15,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "restore_preset_action_blocks": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "restore_preset_cooldown": {
+     "loc": 14,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "AppSettingsMixin.set_theme": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "AppSettingsMixin.set_prompt": {
+     "loc": 5,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "AppSettingsMixin.save_settings": {
+     "loc": 16,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "AppSettingsMixin.export_preset": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "AppSettingsMixin.import_preset": {
+     "loc": 16,
+     "params": 0,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "AppSettingsMixin.list_arena_presets": {
+     "loc": 8,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "AppSettingsMixin.save_arena_preset": {
+     "loc": 10,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "AppSettingsMixin.load_arena_preset": {
+     "loc": 18,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "AppSettingsMixin.delete_arena_preset": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "AppSettingsMixin.refresh_users": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "AppSettingsMixin": {
+     "loc": 118,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 18,
+   "max_class_loc": 118,
+   "func_count": 28,
+   "coverage": 72.43
+  },
+  "app/ui/panels/blocks_library.py": {
+   "functions": {
+    "custom_entry": {
+     "loc": 6,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_custom_block_list": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "BlocksLibraryMixin.get_builtin_blocks": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "BlocksLibraryMixin.get_custom_blocks": {
+     "loc": 8,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksLibraryMixin.save_custom_block": {
+     "loc": 14,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksLibraryMixin.delete_custom_block": {
+     "loc": 12,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksLibraryMixin.export_custom_block": {
+     "loc": 16,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "BlocksLibraryMixin.list_prompt_presets": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "BlocksLibraryMixin.save_prompt_preset": {
+     "loc": 7,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "BlocksLibraryMixin.load_prompt_preset": {
+     "loc": 11,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksLibraryMixin.delete_prompt_preset": {
+     "loc": 7,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "BlocksLibraryMixin": {
+     "loc": 107,
+     "methods": 9
+    }
+   },
+   "max_func_loc": 16,
+   "max_class_loc": 107,
+   "func_count": 11,
+   "coverage": 79.84
+  },
+  "app/ui/panels/blocks_stack.py": {
+   "functions": {
+    "get_action_blocks": {
+     "loc": 14,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "save_action_blocks": {
+     "loc": 15,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_remove_block": {
+     "loc": 9,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "emit_action_blocks": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "export_stack_file": {
+     "loc": 19,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "BlocksStackMixin.get_action_blocks": {
+     "loc": 8,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "BlocksStackMixin.save_action_blocks": {
+     "loc": 15,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksStackMixin.add_action_block": {
+     "loc": 14,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksStackMixin.reset_action_blocks": {
+     "loc": 9,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksStackMixin.delete_action_block": {
+     "loc": 14,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksStackMixin.get_stack_presets": {
+     "loc": 8,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksStackMixin.save_stack_preset": {
+     "loc": 15,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksStackMixin.delete_stack_preset": {
+     "loc": 11,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksStackMixin.export_action_blocks": {
+     "loc": 8,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BlocksStackMixin.save_stack_history": {
+     "loc": 11,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "BlocksStackMixin": {
+     "loc": 140,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 19,
+   "max_class_loc": 140,
+   "func_count": 15,
+   "coverage": 75.97
+  },
+  "app/ui/panels/browser_tabs.py": {
+   "functions": {
+    "claim_connect_slot": {
+     "loc": 15,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "connect_reused": {
+     "loc": 12,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "cached_tab_identity": {
+     "loc": 7,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "pool_tab_identity": {
+     "loc": 8,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "announce_tab_connected": {
+     "loc": 5,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "reuse_pool_page": {
+     "loc": 7,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "add_dedicated_pool_page": {
+     "loc": 20,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "add_fallback_pool_page": {
+     "loc": 11,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "attach_connected_tab": {
+     "loc": 18,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "do_connect_tab": {
+     "loc": 19,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "find_dupe_recent": {
+     "loc": 3,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "claim_find_slot": {
+     "loc": 16,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "report_no_tabs": {
+     "loc": 10,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "report_tab_matches": {
+     "loc": 12,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "match_live_tabs": {
+     "loc": 7,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "do_find_tab": {
+     "loc": 16,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "do_fetch_tabs": {
+     "loc": 15,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "report_diag_checks": {
+     "loc": 10,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "do_diagnose_chrome": {
+     "loc": 15,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "prune_auto_rows": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "claim_auto_rows": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "apply_auto_plan": {
+     "loc": 12,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "plan_has_changes": {
+     "loc": 3,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "report_auto_plan": {
+     "loc": 12,
+     "params": 4,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "join_new_tabs": {
+     "loc": 5,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "auto_prune_allowed": {
+     "loc": 5,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "plan_auto_sync": {
+     "loc": 6,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "auto_scan_pass": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "do_auto_connect_scan": {
+     "loc": 11,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "popup_row_title": {
+     "loc": 9,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "popup_targets": {
+     "loc": 15,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "do_popup_url_tabs": {
+     "loc": 11,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "primary_ws": {
+     "loc": 7,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "do_ensure_primary": {
+     "loc": 15,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "BrowserTabsMixin.get_tabs": {
+     "loc": 9,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "BrowserTabsMixin.diagnose_chrome": {
+     "loc": 9,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "BrowserTabsMixin.auto_connect_scan": {
+     "loc": 8,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "BrowserTabsMixin.popup_url_tabs": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "BrowserTabsMixin.ensure_primary_connected": {
+     "loc": 11,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "BrowserTabsMixin.connect_tab": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "BrowserTabsMixin.find_tab_by_url": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "BrowserTabsMixin": {
+     "loc": 76,
+     "methods": 7
+    }
+   },
+   "max_func_loc": 20,
+   "max_class_loc": 76,
+   "func_count": 41,
+   "coverage": 89.13
+  },
+  "app/ui/panels/cdp_tools.py": {
+   "functions": {
+    "emit_highlight_demo": {
+     "loc": 12,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "do_highlight_demo_cdp": {
+     "loc": 11,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "report_highlight_result": {
+     "loc": 19,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "do_highlight": {
+     "loc": 10,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "do_clear_highlights": {
+     "loc": 9,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "read_cdp_config": {
+     "loc": 9,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "cdp_config_payload": {
+     "loc": 16,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "first_present": {
+     "loc": 7,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "parse_cdp_port": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "parse_cdp_config": {
+     "loc": 12,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "apply_cdp_config": {
+     "loc": 16,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "build_chrome_commands": {
+     "loc": 10,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "test_image_match": {
+     "loc": 3,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "find_test_image": {
+     "loc": 7,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "do_cdp_attach_test": {
+     "loc": 12,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "do_cdp_prompt_test": {
+     "loc": 14,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "run_flow_prompt": {
+     "loc": 8,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "do_cdp_full_flow_test": {
+     "loc": 17,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "CdpToolsMixin.highlight_image": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CdpToolsMixin.highlight_selector": {
+     "loc": 14,
+     "params": 4,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CdpToolsMixin.clear_highlights": {
+     "loc": 5,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CdpToolsMixin.get_cdp_config": {
+     "loc": 5,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CdpToolsMixin.set_cdp_config": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CdpToolsMixin.get_chrome_launch_command": {
+     "loc": 18,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CdpToolsMixin.cdp_attach_image_test": {
+     "loc": 9,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CdpToolsMixin.cdp_insert_prompt_test": {
+     "loc": 7,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CdpToolsMixin.cdp_test_full_flow": {
+     "loc": 12,
+     "params": 0,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "CdpToolsMixin": {
+     "loc": 104,
+     "methods": 9
+    }
+   },
+   "max_func_loc": 19,
+   "max_class_loc": 104,
+   "func_count": 27,
+   "coverage": 52.19
+  },
+  "app/ui/panels/layout_state.py": {
+   "functions": {
+    "save_arena_state": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "emit_arena_state": {
+     "loc": 10,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_write_preset_doc": {
+     "loc": 4,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_read_preset_doc": {
+     "loc": 4,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "export_preset_file": {
+     "loc": 19,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_preset_grid_error": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "import_preset_file": {
+     "loc": 19,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_known_ids": {
+     "loc": 3,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_window_filter": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "read_grid_payload": {
+     "loc": 7,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "LayoutStateMixin.get_grid_layout": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "LayoutStateMixin.save_grid_layout": {
+     "loc": 15,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "LayoutStateMixin.reset_grid_layout": {
+     "loc": 13,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "LayoutStateMixin.get_window_states": {
+     "loc": 5,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "LayoutStateMixin.save_window_states": {
+     "loc": 15,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "LayoutStateMixin.list_window_presets": {
+     "loc": 5,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "LayoutStateMixin.save_window_preset": {
+     "loc": 16,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "LayoutStateMixin.load_window_preset": {
+     "loc": 10,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "LayoutStateMixin.delete_window_preset": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "LayoutStateMixin.export_window_preset": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "LayoutStateMixin.import_window_preset": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "LayoutStateMixin.show_window_preset_in_folder": {
+     "loc": 4,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "LayoutStateMixin.get_app_state": {
+     "loc": 15,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "LayoutStateMixin.get_arena_state": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "LayoutStateMixin": {
+     "loc": 149,
+     "methods": 14
+    }
+   },
+   "max_func_loc": 19,
+   "max_class_loc": 149,
+   "func_count": 24,
+   "coverage": 85.53
+  },
+  "app/ui/panels/page_pool.py": {
+   "functions": {
+    "reset_pool_dicts": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "reset_stuck_page": {
+     "loc": 11,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "connect_pool_client": {
+     "loc": 10,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "finish_pool_join": {
+     "loc": 10,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "do_connect_page_pool": {
+     "loc": 16,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePoolMixin.get_page_pool_status": {
+     "loc": 15,
+     "params": 0,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "PagePoolMixin.clear_page_pool": {
+     "loc": 16,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePoolMixin.connect_page_pool": {
+     "loc": 11,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePoolMixin.disconnect_page_pool": {
+     "loc": 12,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePoolMixin.get_cooldown_config": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PagePoolMixin.set_cooldown_config": {
+     "loc": 16,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "PagePoolMixin.reset_page_cooldown": {
+     "loc": 16,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePoolMixin.stop_tab_job": {
+     "loc": 10,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "PagePoolMixin.set_page_cooldown": {
+     "loc": 12,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "PagePoolMixin": {
+     "loc": 139,
+     "methods": 9
+    }
+   },
+   "max_func_loc": 16,
+   "max_class_loc": 139,
+   "func_count": 14,
+   "coverage": 82.24
+  },
+  "app/ui/panels/queue_scan.py": {
+   "functions": {
+    "selected_images": {
+     "loc": 4,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "find_image": {
+     "loc": 6,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "apply_bulk_selection": {
+     "loc": 8,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "resolve_scan_root": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "resolve_pick_start": {
+     "loc": 7,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "run_off_ui_thread": {
+     "loc": 9,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "push_queue_undo": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "push_folder_undo": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "clear_queue_images": {
+     "loc": 9,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "run_scan_merge": {
+     "loc": 14,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "run_scan_new_batch": {
+     "loc": 16,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "run_folder_ai_request": {
+     "loc": 19,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "copy_path_text": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "generate_thumb_result": {
+     "loc": 5,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "thumb_job_done": {
+     "loc": 14,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "start_thumb_job": {
+     "loc": 19,
+     "params": 3,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "request_thumbnail": {
+     "loc": 19,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "QueueScanMixin.get_image_thumbnail": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "QueueScanMixin.reveal_in_explorer": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "QueueScanMixin.copy_path_to_clipboard": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "QueueScanMixin.pick_folder": {
+     "loc": 11,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "QueueScanMixin.set_folder_path": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "QueueScanMixin.scan_folder": {
+     "loc": 15,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "QueueScanMixin.scan_folder_new_batch": {
+     "loc": 14,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "QueueScanMixin.set_image_selected": {
+     "loc": 11,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "QueueScanMixin.bulk_select": {
+     "loc": 6,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "QueueScanMixin.clear_images": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "QueueScanMixin.drop_ai_suffix": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "QueueScanMixin.keep_only_ai_files": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "QueueScanMixin": {
+     "loc": 109,
+     "methods": 12
+    }
+   },
+   "max_func_loc": 19,
+   "max_class_loc": 109,
+   "func_count": 29,
+   "coverage": 57.0
+  },
+  "app/ui/panels/run_control.py": {
+   "functions": {
+    "revive_failed_images": {
+     "loc": 10,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "clear_image_state": {
+     "loc": 8,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "reset_image_state": {
+     "loc": 8,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "check_start_inputs": {
+     "loc": 15,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "check_start_ready": {
+     "loc": 9,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "cancel_batch_future": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "fail_processing_images": {
+     "loc": 13,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "describe_action_block": {
+     "loc": 9,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "emit_action_highlight": {
+     "loc": 18,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "emit_job_action_status": {
+     "loc": 19,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RunControlMixin.retry_failed": {
+     "loc": 6,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RunControlMixin.clear_queue": {
+     "loc": 13,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "RunControlMixin.reset_all": {
+     "loc": 8,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RunControlMixin.retry_image": {
+     "loc": 11,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "RunControlMixin.reset_image": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "RunControlMixin.start_run": {
+     "loc": 17,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "RunControlMixin.pause_run": {
+     "loc": 6,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RunControlMixin.resume_run": {
+     "loc": 6,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RunControlMixin.stop_after_current": {
+     "loc": 6,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "RunControlMixin.cancel_current": {
+     "loc": 11,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "RunControlMixin": {
+     "loc": 115,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 19,
+   "max_class_loc": 115,
+   "func_count": 20,
+   "coverage": 82.77
+  },
+  "app/ui/panels/undo_history.py": {
+   "functions": {
+    "project_stack_result": {
+     "loc": 10,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "project_grid_result": {
+     "loc": 9,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "UndoHistoryMixin.get_undo_history": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoHistoryMixin.push_global_history": {
+     "loc": 18,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "UndoHistoryMixin.undo": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoHistoryMixin.redo": {
+     "loc": 10,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UndoHistoryMixin.get_stack_history": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoHistoryMixin.push_stack_history": {
+     "loc": 8,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UndoHistoryMixin.undo_stack": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoHistoryMixin.redo_stack": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoHistoryMixin.undo_grid_layout": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "UndoHistoryMixin.redo_grid_layout": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "UndoHistoryMixin": {
+     "loc": 74,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 18,
+   "max_class_loc": 74,
+   "func_count": 12,
+   "coverage": 85.71
+  },
+  "app/ui/panels/url_queue.py": {
+   "functions": {
+    "enabled_urls": {
+     "loc": 3,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_checked_tabs_ready": {
+     "loc": 10,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_urls_gate_error": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_dedupe_state_rows": {
+     "loc": 10,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_tab_already_owned": {
+     "loc": 6,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_add_missing_rows": {
+     "loc": 9,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "push_urls_undo": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_valid_new_url": {
+     "loc": 8,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_find_url": {
+     "loc": 6,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "UrlQueueMixin.add_url": {
+     "loc": 12,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "UrlQueueMixin.remove_url": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UrlQueueMixin.toggle_url": {
+     "loc": 8,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UrlQueueMixin.edit_url": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UrlQueueMixin.test_url": {
+     "loc": 13,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UrlQueueMixin.get_url_presets": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "UrlQueueMixin.add_url_preset": {
+     "loc": 15,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "UrlQueueMixin.remove_url_preset": {
+     "loc": 9,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "UrlQueueMixin.set_last_url_preset": {
+     "loc": 6,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "UrlQueueMixin": {
+     "loc": 110,
+     "methods": 9
+    }
+   },
+   "max_func_loc": 15,
+   "max_class_loc": 110,
+   "func_count": 18,
+   "coverage": 89.67
+  },
+  "app/ui/panels/watcher_captcha.py": {
+   "functions": {
+    "get_watcher_cdp_controller": {
+     "loc": 9,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "on_watcher_state": {
+     "loc": 16,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "watcher_config_values": {
+     "loc": 12,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "parse_watcher_config": {
+     "loc": 9,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "create_watcher_service": {
+     "loc": 11,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "persist_watcher_config": {
+     "loc": 9,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "captcha_service": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "WatcherCaptchaMixin.get_watcher_config": {
+     "loc": 13,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "WatcherCaptchaMixin.set_watcher_config": {
+     "loc": 16,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "WatcherCaptchaMixin.start_watcher": {
+     "loc": 10,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WatcherCaptchaMixin.stop_watcher": {
+     "loc": 9,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WatcherCaptchaMixin.get_watcher_state": {
+     "loc": 9,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WatcherCaptchaMixin.clear_watcher_overlay": {
+     "loc": 10,
+     "params": 0,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WatcherCaptchaMixin.check_watcher_now": {
+     "loc": 8,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WatcherCaptchaMixin.set_captcha_settings": {
+     "loc": 15,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WatcherCaptchaMixin.get_captcha_status": {
+     "loc": 9,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "WatcherCaptchaMixin.get_captcha_stats": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {
+    "WatcherCaptchaMixin": {
+     "loc": 132,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 16,
+   "max_class_loc": 132,
+   "func_count": 17,
+   "coverage": 50.27
+  },
+  "app/ui/qt_compat.py": {
+   "functions": {
+    "QObject.__init__": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Signal": {
+     "loc": 9,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_Sig.emit": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_Sig.connect": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Slot": {
+     "loc": 5,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "deco": {
+     "loc": 2,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "get_clipboard": {
+     "loc": 17,
+     "params": 0,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "clipboard_copy": {
+     "loc": 15,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "QObject": {
+     "loc": 3,
+     "methods": 1
+    },
+    "_Sig": {
+     "loc": 6,
+     "methods": 2
+    }
+   },
+   "max_func_loc": 17,
+   "max_class_loc": 6,
+   "func_count": 8,
+   "coverage": 35.71
+  },
+  "app/ui/services/__init__.py": {
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/ui/services/arena_serialize.py": {
+   "functions": {
+    "urls_to_js": {
+     "loc": 14,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "images_to_js": {
+     "loc": 18,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "prompt_to_js": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "settings_to_js": {
+     "loc": 23,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "arena_to_js": {
+     "loc": 14,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 23,
+   "max_class_loc": 0,
+   "func_count": 5,
+   "coverage": 100.0
+  },
+  "app/ui/services/captcha_recordings_bridge.py": {
+   "functions": {
+    "QObject.__init__": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "Slot": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_open_local_folder": {
+     "loc": 4,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecordingsBridge.__init__": {
+     "loc": 4,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "CaptchaRecordingsBridge.list_sessions": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecordingsBridge.recording_enabled": {
+     "loc": 6,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecordingsBridge.set_recording_enabled": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecordingsBridge.delete_session": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecordingsBridge.set_label": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecordingsBridge.set_result_label": {
+     "loc": 7,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecordingsBridge.cohort": {
+     "loc": 7,
+     "params": 0,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecordingsBridge.get_session": {
+     "loc": 6,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "CaptchaRecordingsBridge.open_folder": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {
+    "QObject": {
+     "loc": 3,
+     "methods": 1
+    },
+    "CaptchaRecordingsBridge": {
+     "loc": 84,
+     "methods": 10
+    }
+   },
+   "max_func_loc": 8,
+   "max_class_loc": 84,
+   "func_count": 13,
+   "coverage": 78.02
+  },
+  "app/ui/services/file_service.py": {
+   "functions": {
+    "_resolve_reveal_target": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_reveal_windows": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_reveal_mac": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_reveal_linux": {
+     "loc": 5,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_reveal_on_system": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "reveal_path": {
+     "loc": 15,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_copy_windows": {
+     "loc": 18,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "_copy_mac": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_copy_linux": {
+     "loc": 15,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "copy_text_to_clipboard": {
+     "loc": 8,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {},
+   "max_func_loc": 18,
+   "max_class_loc": 0,
+   "func_count": 10,
+   "coverage": 95.83
+  },
+  "app/ui/services/folder_ai_service.py": {
+   "functions": {
+    "drop_missing_queue_images": {
+     "loc": 7,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "rename_queue_images": {
+     "loc": 15,
+     "params": 3,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "folder_ai_worker": {
+     "loc": 19,
+     "params": 4,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "submit_folder_ai": {
+     "loc": 8,
+     "params": 4,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {},
+   "max_func_loc": 19,
+   "max_class_loc": 0,
+   "func_count": 4,
+   "coverage": 85.71
+  },
+  "app/ui/services/scan_service.py": {
+   "functions": {
+    "scan_folder_pure": {
+     "loc": 15,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "merge_scan_results": {
+     "loc": 18,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "merge_scanned": {
+     "loc": 18,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "should_ignore_file": {
+     "loc": 12,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {},
+   "max_func_loc": 18,
+   "max_class_loc": 0,
+   "func_count": 4,
+   "coverage": 92.65
+  },
+  "app/ui/services/thumbnail_service.py": {
+   "functions": {
+    "_guess_mime": {
+     "loc": 10,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_normalize_format": {
+     "loc": 7,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_save_pil_to_buffer": {
+     "loc": 16,
+     "params": 3,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_pil_thumbnail": {
+     "loc": 9,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_fallback_read": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "generate_thumbnail_data_url": {
+     "loc": 9,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "is_cache_hit": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "get_cached_thumbnail": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 16,
+   "max_class_loc": 0,
+   "func_count": 8,
+   "coverage": 54.05
+  },
+  "app/ui/services/undo_entries.py": {
+   "functions": {
+    "url_rows_from_js": {
+     "loc": 10,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "arena_url_rows_from_js": {
+     "loc": 6,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "emit_undo_state": {
+     "loc": 15,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "coerce_push_value": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_remember_grid": {
+     "loc": 4,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_remember_window_states": {
+     "loc": 3,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_remember_urls": {
+     "loc": 4,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_remember_folder": {
+     "loc": 4,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_remember_queue": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_remember_prompt": {
+     "loc": 8,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_remember_settings": {
+     "loc": 9,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_remember_action_blocks": {
+     "loc": 9,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_remember_arena_urls": {
+     "loc": 6,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_remember_arena_rest": {
+     "loc": 8,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_remember_arena": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "remember_global_edit": {
+     "loc": 8,
+     "params": 3,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_apply_grid": {
+     "loc": 6,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_apply_window_states": {
+     "loc": 4,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_apply_urls": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_apply_folder": {
+     "loc": 5,
+     "params": 2,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_apply_queue": {
+     "loc": 12,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_apply_prompt": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_apply_settings": {
+     "loc": 14,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_apply_action_blocks": {
+     "loc": 9,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_apply_arena": {
+     "loc": 17,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "apply_undo_entry": {
+     "loc": 16,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_empty_folder": {
+     "loc": 3,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_empty_grid": {
+     "loc": 6,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_empty_window_states": {
+     "loc": 3,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_empty_urls": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_empty_folder_state": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_empty_prompt": {
+     "loc": 4,
+     "params": 1,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "undo_to_empty": {
+     "loc": 10,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_undone_kind": {
+     "loc": 6,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "undo_step": {
+     "loc": 15,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {},
+   "max_func_loc": 17,
+   "max_class_loc": 0,
+   "func_count": 35,
+   "coverage": 67.85
+  },
+  "app/ui/services/window_preset_service.py": {
+   "functions": {
+    "extract_tree_from_grid": {
+     "loc": 11,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "extract_payload_from_grid": {
+     "loc": 9,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "extract_from_portable": {
+     "loc": 18,
+     "params": 1,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "parse_preset_input": {
+     "loc": 14,
+     "params": 1,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_raw_tree_result": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_preset_ws": {
+     "loc": 10,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_wrap_incoming": {
+     "loc": 14,
+     "params": 3,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "build_preset_doc": {
+     "loc": 13,
+     "params": 3,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "save_preset_doc": {
+     "loc": 14,
+     "params": 4,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "load_preset_doc": {
+     "loc": 19,
+     "params": 2,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 2
+    }
+   },
+   "classes": {},
+   "max_func_loc": 19,
+   "max_class_loc": 0,
+   "func_count": 10,
+   "coverage": 87.34
+  },
+  "app/utils/__init__.py": {
+   "functions": {},
+   "classes": {},
+   "max_func_loc": 0,
+   "max_class_loc": 0,
+   "func_count": 0,
+   "coverage": 100.0
+  },
+  "app/utils/correlation.py": {
+   "functions": {
+    "generate_correlation_id": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "build_final_prompt": {
+     "loc": 3,
+     "params": 2,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "extract_job_id_from_prompt": {
+     "loc": 7,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {},
+   "max_func_loc": 7,
+   "max_class_loc": 0,
+   "func_count": 3,
+   "coverage": 100.0
+  },
+  "app/utils/hashing.py": {
+   "functions": {
+    "file_sha256": {
+     "loc": 9,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "fingerprint_from_path_stat": {
+     "loc": 4,
+     "params": 3,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 9,
+   "max_class_loc": 0,
+   "func_count": 2,
+   "coverage": 37.5
+  },
+  "app/utils/logging.py": {
+   "functions": {
+    "setup_logger": {
+     "loc": 18,
+     "params": 1,
+     "cc": 2,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "get_logger": {
+     "loc": 2,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {},
+   "max_func_loc": 18,
+   "max_class_loc": 0,
+   "func_count": 2,
+   "coverage": 0.0
+  },
+  "app/utils/page_errors.py": {
+   "functions": {
+    "_fresh_lines": {
+     "loc": 6,
+     "params": 2,
+     "cc": 7,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "match_page_error": {
+     "loc": 7,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 3
+    },
+    "is_rate_limit_error": {
+     "loc": 5,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "build_error_scan_js": {
+     "loc": 22,
+     "params": 0,
+     "cc": 1,
+     "cognitive": 0,
+     "nesting": 0
+    }
+   },
+   "classes": {
+    "PageErrorAbort": {
+     "loc": 2,
+     "methods": 0
+    }
+   },
+   "max_func_loc": 22,
+   "max_class_loc": 2,
+   "func_count": 4,
+   "coverage": 100.0
+  },
+  "app/utils/win_popup.py": {
+   "functions": {
+    "normalize_title": {
+     "loc": 8,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_title_matches": {
+     "loc": 3,
+     "params": 2,
+     "cc": 5,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_wanted_titles": {
+     "loc": 3,
+     "params": 1,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 0
+    },
+    "_collect_match": {
+     "loc": 6,
+     "params": 4,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "pick_windows": {
+     "loc": 8,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_window_title": {
+     "loc": 13,
+     "params": 2,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_enum_callback": {
+     "loc": 15,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_cb": {
+     "loc": 7,
+     "params": 2,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "_enum_visible_windows": {
+     "loc": 12,
+     "params": 0,
+     "cc": 3,
+     "cognitive": 0,
+     "nesting": 1
+    },
+    "_raise_handles": {
+     "loc": 14,
+     "params": 1,
+     "cc": 4,
+     "cognitive": 0,
+     "nesting": 2
+    },
+    "raise_window_titles": {
+     "loc": 9,
+     "params": 1,
+     "cc": 6,
+     "cognitive": 0,
+     "nesting": 1
+    }
+   },
+   "classes": {},
+   "max_func_loc": 15,
+   "max_class_loc": 0,
+   "func_count": 11,
+   "coverage": 48.0
   }
+ },
+ "js": {
+  "app/ui/web/js/arena-app.js": {
+   "fileLines": 333,
+   "functions": {
+    "initApp": {
+     "loc": 27,
+     "params": 0,
+     "nesting": 1,
+     "cc": 19
+    },
+    "setupHeader": {
+     "loc": 35,
+     "params": 0,
+     "nesting": 3,
+     "cc": 20
+    },
+    "initWithBridge": {
+     "loc": 53,
+     "params": 0,
+     "nesting": 3,
+     "cc": 27
+    },
+    "restoreSession": {
+     "loc": 13,
+     "params": 1,
+     "nesting": 1,
+     "cc": 4
+    },
+    "setupBridgeListeners": {
+     "loc": 164,
+     "params": 0,
+     "nesting": 4,
+     "cc": 70
+    }
+   }
+  },
+  "app/ui/web/js/arena-history.js": {
+   "fileLines": 251,
+   "functions": {}
+  },
+  "app/ui/web/js/core/bridge-ready.js": {
+   "fileLines": 75,
+   "functions": {
+    "flush": {
+     "loc": 9,
+     "params": 0,
+     "nesting": 3,
+     "cc": 4
+    },
+    "onChannel": {
+     "loc": 19,
+     "params": 1,
+     "nesting": 1,
+     "cc": 4
+    }
+   }
+  },
+  "app/ui/web/js/core/dialog.js": {
+   "fileLines": 70,
+   "functions": {}
+  },
+  "app/ui/web/js/core/ui-helpers.js": {
+   "fileLines": 105,
+   "functions": {}
+  },
+  "app/ui/web/js/log-console.js": {
+   "fileLines": 62,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/action-blocks.js": {
+   "fileLines": 837,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/arena-presets.js": {
+   "fileLines": 358,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/browser-preview.js": {
+   "fileLines": 63,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/captcha-recording-comparison.js": {
+   "fileLines": 59,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/captcha-recordings.js": {
+   "fileLines": 174,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/captcha.js": {
+   "fileLines": 97,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/cdp.js": {
+   "fileLines": 549,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/folder-picker.js": {
+   "fileLines": 119,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/highlight.js": {
+   "fileLines": 60,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/image-queue.js": {
+   "fileLines": 396,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/page-pool.js": {
+   "fileLines": 241,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/progress.js": {
+   "fileLines": 35,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/prompt-editor.js": {
+   "fileLines": 46,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/run-controls.js": {
+   "fileLines": 68,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/settings.js": {
+   "fileLines": 217,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/url-list.js": {
+   "fileLines": 449,
+   "functions": {}
+  },
+  "app/ui/web/js/panels/watcher.js": {
+   "fileLines": 273,
+   "functions": {}
+  },
+  "app/ui/web/js/sash-core.js": {
+   "fileLines": 528,
+   "functions": {
+    "split": {
+     "loc": 8,
+     "params": 3,
+     "nesting": 1,
+     "cc": 7
+    },
+    "defaultTree": {
+     "loc": 14,
+     "params": 0,
+     "nesting": 0,
+     "cc": 1
+    },
+    "layoutA": {
+     "loc": 8,
+     "params": 0,
+     "nesting": 0,
+     "cc": 1
+    },
+    "layoutB": {
+     "loc": 7,
+     "params": 0,
+     "nesting": 0,
+     "cc": 1
+    },
+    "layoutC": {
+     "loc": 13,
+     "params": 0,
+     "nesting": 0,
+     "cc": 1
+    },
+    "normalizeSizes": {
+     "loc": 18,
+     "params": 1,
+     "nesting": 1,
+     "cc": 11
+    },
+    "isLeaf": {
+     "loc": 1,
+     "params": 1,
+     "nesting": 0,
+     "cc": 2
+    },
+    "isSplit": {
+     "loc": 1,
+     "params": 1,
+     "nesting": 0,
+     "cc": 2
+    },
+    "firstLeafId": {
+     "loc": 4,
+     "params": 1,
+     "nesting": 1,
+     "cc": 2
+    },
+    "forEachLeaf": {
+     "loc": 7,
+     "params": 2,
+     "nesting": 2,
+     "cc": 4
+    },
+    "findNode": {
+     "loc": 8,
+     "params": 2,
+     "nesting": 1,
+     "cc": 2
+    },
+    "splitLeaf": {
+     "loc": 10,
+     "params": 5,
+     "nesting": 1,
+     "cc": 4
+    },
+    "insertAtSplitIndex": {
+     "loc": 25,
+     "params": 5,
+     "nesting": 2,
+     "cc": 13
+    },
+    "insertSibling": {
+     "loc": 8,
+     "params": 4,
+     "nesting": 1,
+     "cc": 4
+    },
+    "insertBetween": {
+     "loc": 10,
+     "params": 3,
+     "nesting": 1,
+     "cc": 4
+    },
+    "setSplitSizes": {
+     "loc": 8,
+     "params": 3,
+     "nesting": 1,
+     "cc": 4
+    },
+    "normalizePath": {
+     "loc": 4,
+     "params": 1,
+     "nesting": 1,
+     "cc": 3
+    },
+    "nodeAtPath": {
+     "loc": 8,
+     "params": 2,
+     "nesting": 2,
+     "cc": 5
+    },
+    "insertAtSplitPath": {
+     "loc": 17,
+     "params": 5,
+     "nesting": 1,
+     "cc": 12
+    },
+    "setSplitSizesByPath": {
+     "loc": 9,
+     "params": 3,
+     "nesting": 1,
+     "cc": 5
+    },
+    "parentPath": {
+     "loc": 10,
+     "params": 2,
+     "nesting": 2,
+     "cc": 5
+    },
+    "leafPaths": {
+     "loc": 9,
+     "params": 1,
+     "nesting": 1,
+     "cc": 2
+    },
+    "removeNode": {
+     "loc": 21,
+     "params": 2,
+     "nesting": 3,
+     "cc": 7
+    },
+    "removeLeaf": {
+     "loc": 5,
+     "params": 2,
+     "nesting": 1,
+     "cc": 2
+    },
+    "insertOuter": {
+     "loc": 23,
+     "params": 3,
+     "nesting": 1,
+     "cc": 13
+    },
+    "moveWindow": {
+     "loc": 49,
+     "params": 3,
+     "nesting": 4,
+     "cc": 20
+    },
+    "validate": {
+     "loc": 33,
+     "params": 2,
+     "nesting": 2,
+     "cc": 24
+    },
+    "pruneTree": {
+     "loc": 23,
+     "params": 3,
+     "nesting": 2,
+     "cc": 16
+    },
+    "evenSizes": {
+     "loc": 6,
+     "params": 1,
+     "nesting": 0,
+     "cc": 1
+    },
+    "migrate": {
+     "loc": 15,
+     "params": 1,
+     "nesting": 1,
+     "cc": 7
+    },
+    "deserialize": {
+     "loc": 37,
+     "params": 2,
+     "nesting": 4,
+     "cc": 19
+    }
+   }
+  },
+  "app/ui/web/js/sash-grid-drag-core.js": {
+   "fileLines": 229,
+   "functions": {}
+  },
+  "app/ui/web/js/sash-grid-drag-resize.js": {
+   "fileLines": 163,
+   "functions": {}
+  },
+  "app/ui/web/js/sash-grid-drag-spec.js": {
+   "fileLines": 165,
+   "functions": {}
+  },
+  "app/ui/web/js/sash-grid-drag.js": {
+   "fileLines": 6,
+   "functions": {}
+  },
+  "app/ui/web/js/sash-grid-presets.js": {
+   "fileLines": 159,
+   "functions": {}
+  },
+  "app/ui/web/js/sash-grid-tree.js": {
+   "fileLines": 288,
+   "functions": {}
+  },
+  "app/ui/web/js/sash-grid-windows.js": {
+   "fileLines": 500,
+   "functions": {}
+  },
+  "app/ui/web/js/sash-grid.js": {
+   "fileLines": 120,
+   "functions": {}
+  },
+  "app/ui/web/js/window-presets-actions.js": {
+   "fileLines": 172,
+   "functions": {}
+  },
+  "app/ui/web/js/window-presets-core.js": {
+   "fileLines": 111,
+   "functions": {}
+  },
+  "app/ui/web/js/window-presets-preview.js": {
+   "fileLines": 82,
+   "functions": {
+    "documentById": {
+     "loc": 1,
+     "params": 1,
+     "nesting": 0,
+     "cc": 1
+    }
+   }
+  },
+  "app/ui/web/js/window-presets.js": {
+   "fileLines": 16,
+   "functions": {}
+  }
+ }
 }

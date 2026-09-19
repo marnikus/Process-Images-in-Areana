@@ -1,0 +1,3091 @@
+{
+ "scope": "cdp",
+ "total": 1606,
+ "status": {
+  "survived": 768,
+  "killed": 834,
+  "timeout": 2,
+  "no_tests": 2
+ },
+ "mutants_per_file": {
+  "cdp_arena.py": 685,
+  "cdp_client.py": 726,
+  "cdp_events.py": 44,
+  "cdp_protocol.py": 151
+ },
+ "kill_rate": 0.5193,
+ "survivors": [
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x__run_resume_gate__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x__run_resume_gate__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x__run_resume_gate__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x__run_resume_gate__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x__run_resume_gate__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1__init____mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_log__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_log__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_log__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1ensure_connected__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1ensure_connected__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1ensure_connected__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1ensure_connected__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1ensure_connected__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1ensure_connected__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1ensure_connected__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1ensure_connected__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1ensure_connected__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1capture_baseline__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1capture_baseline__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1attach_image__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1attach_image__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1attach_image__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1attach_image__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1attach_image__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1attach_image__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1attach_image__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1attach_image__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1attach_image__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1verify_attachment__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1insert_prompt__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1verify_prompt__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_send_state__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1submit_when_ready__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_poll_output_diag__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_map_wait_result__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_49",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_50",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1wait_for_new_output__mutmut_53",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_security_gate__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_52",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_54",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_57",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_58",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_59",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_60",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_62",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_63",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_66",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_68",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_69",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_70",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_71",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_73",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_74",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_75",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_76",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_77",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_78",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1_python_download__mutmut_81",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_49",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_50",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_55",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_57",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_58",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_59",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_60",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_62",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1download_image__mutmut_63",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1report__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1report__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1report__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1report__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1highlight_selector__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1clear_highlights__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1clear_highlights__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1show_watcher_overlay__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1hide_watcher_overlay__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1hide_watcher_overlay__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_page_ready__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_page_ready__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_generating__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_generating__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_generating__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_generating__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_generating__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_generating__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_generating__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1is_generating__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1get_generation_state__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1get_generation_state__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1get_generation_state__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_arena.py::app.browser.cdp_arena.x\u01c1CDPArenaController\u01c1reload_page__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_port_open__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_port_open__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_port_open__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_port_open__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_port_open__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_port_open__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_devtools_url__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_devtools_url__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_devtools_url__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_devtools_url__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__is_devtools_url__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__parse_tabs__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__parse_tabs__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__parse_tabs__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__parse_tabs__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__parse_tabs__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__parse_tabs__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__parse_tabs__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__parse_tabs__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x__filter_real_tabs__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_52",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_fetch_tabs_sync__mutmut_53",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_53",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_54",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_55",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_56",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_57",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_58",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_59",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_60",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_64",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_66",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_67",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_68",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_69",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_70",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_73",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_74",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_76",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_77",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_78",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_79",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_80",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_81",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_82",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_83",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_84",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_85",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_86",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_87",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_88",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_89",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_90",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_91",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_94",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_105",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_106",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_107",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_108",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_109",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_110",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_111",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_112",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_133",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_134",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x_diagnose_sync__mutmut_135",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1__init____mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_host_port__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_host_port__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_host_port__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_host_port__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1fetch_tabs__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_get_connect_lock__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1connect__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_49",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_50",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_52",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_53",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_54",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_61",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_64",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_69",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_74",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_75",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_76",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_78",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_79",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_80",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_81",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_82",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_83",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_84",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_85",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_86",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_87",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_88",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_89",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_107",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_109",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_110",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_111",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_112",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_114",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_115",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_116",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_119",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_120",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_121",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_124",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_connect_inner__mutmut_125",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1disconnect__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1disconnect__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1disconnect__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1disconnect__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1send__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1_receive_loop__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1evaluate__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1get_document__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1get_document__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1get_document__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1get_document__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1get_document__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1get_document__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1get_document__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1get_document__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1query_selector_all__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_file_input_files__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_file_input_files__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_file_input_files__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_file_input_files__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_file_input_files__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_file_input_files__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1set_file_input_files__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1attach_image_cdp__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1highlight_element__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1highlight_element__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1highlight_element__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1highlight_element__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1highlight_element__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1highlight_element__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_client.py::app.browser.cdp_client.x\u01c1CDPClient\u01c1highlight_element__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_events.py::app.browser.cdp_events.x\u01c1CDPEventRouter\u01c1_call__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_events.py::app.browser.cdp_events.x\u01c1CDPEventRouter\u01c1_call__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_events.py::app.browser.cdp_events.x\u01c1CDPEventRouter\u01c1_call__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_events.py::app.browser.cdp_events.x\u01c1CDPEventRouter\u01c1_call__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_events.py::app.browser.cdp_events.x\u01c1CDPEventRouter\u01c1_call__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_events.py::app.browser.cdp_events.x_route_cdp_message__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_is_devtools_url__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__is_valid_tab_item__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_49",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_50",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_52",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_53",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x__item_to_tab__mutmut_54",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_parse_tabs__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_parse_tabs__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_parse_tabs__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_parse_tabs__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_filter_real_tabs__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_filter_real_tabs__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "cdp_protocol.py::app.browser.cdp_protocol.x_filter_real_tabs__mutmut_5",
+   "exit": 0
+  }
+ ]
+}

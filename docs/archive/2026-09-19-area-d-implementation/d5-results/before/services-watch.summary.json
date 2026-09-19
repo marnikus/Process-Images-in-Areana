@@ -1,0 +1,614 @@
+{
+ "scope": "services-watch",
+ "total": 333,
+ "status": {
+  "killed": 183,
+  "survived": 150
+ },
+ "mutants_per_file": {
+  "watcher.py": 333
+ },
+ "kill_rate": 0.5495,
+ "survivors": [
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_34",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_state__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1_notify__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1start__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1start__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1start__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1start__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1start__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1start__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1start__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1start__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1start__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1ensure_task__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1ensure_task__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1stop__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1_loop__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1_loop__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1_loop__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_38",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_40",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_54",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_55",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_63",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_64",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_65",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_66",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_67",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_68",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_69",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_71",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_72",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_74",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_82",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_83",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_84",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_88",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_94",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_95",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_96",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_98",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_99",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_100",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_102",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_103",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_104",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_105",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_106",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_107",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_109",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_110",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_111",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_112",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_114",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_115",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_116",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_117",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_118",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_131",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_132",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_140",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_141",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_142",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_143",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_144",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_145",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_146",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_148",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_149",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_155",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_156",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_158",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_159",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_160",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_161",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_162",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_163",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_164",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_165",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_168",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_169",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1check_once__mutmut_176",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_17",
+   "exit": 0
+  }
+ ]
+}

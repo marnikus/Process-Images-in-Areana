@@ -42,6 +42,17 @@ def session_folders(root: Path) -> list[Path]:
     return sorted(found, key=lambda p: p.name)
 
 
+def is_valid_session_id(session_id: str) -> bool:
+    """Session ids are single path segments; '.'/'..' are traversal (D5).
+
+    Path("..").name == "..", so the name check alone would let dot-segments
+    resolve to the recordings' parent directory.
+    """
+    return (bool(session_id)
+            and Path(session_id).name == session_id
+            and session_id not in (".", ".."))
+
+
 def find_session_folder(root: Path, session_id: str) -> Optional[Path]:
     """Locate one session in the legacy-flat or per-day layout; None when absent."""
     legacy = root / session_id

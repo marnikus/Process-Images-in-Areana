@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .retention import find_session_folder
+from .retention import find_session_folder, is_valid_session_id
 
 
 class EvidenceReader:
@@ -27,7 +27,7 @@ class EvidenceReader:
         }
 
     def folder(self, session_id: str) -> Path:
-        if not session_id or Path(session_id).name != session_id:
+        if not is_valid_session_id(session_id):
             raise ValueError("invalid session id")
         folder = find_session_folder(self.root, session_id)
         if folder is None:
