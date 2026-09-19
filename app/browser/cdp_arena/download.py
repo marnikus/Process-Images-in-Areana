@@ -45,6 +45,11 @@ async def _python_download(cdp, src: str, log_cb) -> Tuple[bool, bytes, str]:
         return False, b"", f"Python download failed: {e}"
 
 
+def _no_result(cdp) -> str:
+    """B8: name why the page answered nothing (transport record, else generic)."""
+    return f"No result ({evaluate_failure(cdp) or 'empty answer'})"
+
+
 async def _js_download(cdp, src: str) -> Tuple[bool, bytes, str, str]:
     js = f";({JS_DOWNLOAD_IMAGE})({json.dumps(src)})"
     try:
@@ -54,7 +59,7 @@ async def _js_download(cdp, src: str) -> Tuple[bool, bytes, str, str]:
             if len(data) > 100 and b"<html" not in data[:100].lower():
                 return True, data, result.get("contentType", ""), ""
             return False, b"", "", f"JS returned HTML/small {len(data)}"
-        err = result.get("error") if result else f"No result ({evaluate_failure(cdp) or 'empty answer'})"
+        err = result.get("error") if result else _no_result(cdp)
         return False, b"", "", f"JS download failed {str(err)[:120]}"
     except Exception as e:
         return False, b"", "", f"JS download exc {e}"

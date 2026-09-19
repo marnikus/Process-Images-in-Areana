@@ -50,11 +50,8 @@ class CDPTransport(QObject):
         self._connected = False
         self._current_ws_url = ""
         self._current_tab_id = ""
-        # B8: why the last evaluate() came back empty ("" after a success).
-        # kind ∈ "" | "js" (page threw) | "protocol" (Chrome refused, e.g.
-        # "Execution context was destroyed") | "transport" (socket/timeout).
-        self.last_error = ""
-        self.last_error_kind = ""
+        self.last_error = ""       # B8: why the last evaluate() answered None
+        self.last_error_kind = ""  # "" | "js" | "protocol" | "transport"
 
     @property
     def base_url(self) -> str:
@@ -140,12 +137,6 @@ class CDPTransport(QObject):
             except Exception:
                 pass
 
-    def _note_eval_error(self, kind: str, text: str) -> None:
-        """Remember + log why evaluate() returns None (callers only see None)."""
-        self.last_error_kind = kind
-        self.last_error = text[:300]
-        log.warning(f"evaluate {kind} error: {self.last_error}")
-
     async def evaluate(self, expression: str, await_promise: bool = True):
         try:
             r = await self.send(
@@ -153,22 +144,38 @@ class CDPTransport(QObject):
                 {"expression": expression, "returnByValue": True, "awaitPromise": await_promise},
             )
         except Exception as e:
-            self._note_eval_error("transport", _exc_text(e))
+            _note_eval_error(self, "transport", _exc_text(e))
             return None
-        reply = r if isinstance(r, dict) else {}
-        err = reply.get("error")
-        if err:
-            # Chrome answered {"error": {...}} — never "result"; the old
-            # code read result={} and returned None without a trace (B8).
-            self._note_eval_error("protocol", _protocol_text(err))
-            return None
-        res = reply.get("result", {}) or {}
-        if res.get("exceptionDetails"):
-            self._note_eval_error("js", _exception_text(res.get("exceptionDetails")))
+        kind, text, value = _decode_reply(r)
+        if kind:
+            _note_eval_error(self, kind, text)
             return None
         self.last_error = ""
         self.last_error_kind = ""
-        return res.get("result", {}).get("value")
+        return value
+
+
+def _note_eval_error(transport, kind: str, text: str) -> None:
+    """Remember + log why evaluate() returns None (callers only see None)."""
+    transport.last_error_kind = kind
+    transport.last_error = text[:300]
+    log.warning(f"evaluate {kind} error: {transport.last_error}")
+
+
+def _decode_reply(r) -> tuple:
+    """Runtime.evaluate reply → (error_kind, error_text, value); kind '' = ok.
+
+    Chrome answers a protocol failure as {"error": {...}} with no "result"
+    at all — the old reader took result={} and returned None silently (B8).
+    """
+    reply = r if isinstance(r, dict) else {}
+    err = reply.get("error")
+    if err:
+        return "protocol", _protocol_text(err), None
+    res = reply.get("result", {}) or {}
+    if res.get("exceptionDetails"):
+        return "js", _exception_text(res.get("exceptionDetails")), None
+    return "", "", res.get("result", {}).get("value")
 
 
 def _exc_text(exc: BaseException) -> str:

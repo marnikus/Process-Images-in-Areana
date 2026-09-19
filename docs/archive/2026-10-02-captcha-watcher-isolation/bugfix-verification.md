@@ -257,3 +257,13 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 | `tools/verify_quality.py --js` | PASSED — 0 fails (no new symbol over any hard limit) |
 | `--changed --base origin/main --allow-legacy --coverage-ratchet` | 20 NO-GROWTH `file_lines` fails (+3 lines per panel export) → reviewed `--record-baseline`, then PASSED; coverage 85.65 % line / 81.33 % branch (floor 85.64 / 81.32 kept) |
 | `compileall` / pyflakes undefined names / vulture @90 | clean |
+
+## Gate evidence (2026-10-04, B8)
+
+| Gate | Result |
+|---|---|
+| `pytest -q` (CI-like, no PySide6) | 1,433 passed, 1 skipped, same 2 pre-existing environmental failures (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message); characterization goldens unchanged |
+| `npm run test:js` | 169 pass / 0 fail (no JS change) |
+| `tools/verify_quality.py --js` | PASSED — 0 fails (new symbols: `page_recovery.py` max CC 8 / nest 2 / func ≤21 LOC; `transport` class 120 LOC, 9 methods) |
+| `--changed --base origin/<branch> --allow-legacy --coverage-ratchet --js` | 2 in-limit growth deltas (`transport` class 116→120, `visual_click` nest 1→2) → reviewed `--record-baseline` (`docs/current/QUALITY_RECHECK.md`), then PASSED; coverage 86.09 % line / 82.01 % branch (floor raised from 85.65 / 81.33) |
+| `compileall` / pyflakes on touched files / vulture | clean |
