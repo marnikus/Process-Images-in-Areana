@@ -35,13 +35,13 @@ const CDPPanel = {
   },
 
   bindUI() {
-    const refreshBtn = document.getElementById('refreshTabsBtn');
-    const connectBtn = document.getElementById('connectBtn');
-    const tabSelect = document.getElementById('tabSelect');
-    const bookmarkInput = document.getElementById('urlBookmarkInput');
-    const bookmarkConnectBtn = document.getElementById('urlBookmarkConnectBtn');
-    const addBookmarkBtn = document.getElementById('addUrlBookmarkBtn');
+    this._bindDiagnoseButton();
+    this._bindTabButtons();
+    this._bindBookmarkInputs();
+  },
 
+  _bindDiagnoseButton() {
+    const connectBtn = document.getElementById('connectBtn');
     if (connectBtn && !document.getElementById('diagnoseChromeBtn')) {
       const diagBtn = document.createElement('button');
       diagBtn.id = 'diagnoseChromeBtn';
@@ -54,15 +54,25 @@ const CDPPanel = {
       this._diagnoseBtn = document.getElementById('diagnoseChromeBtn');
       if (this._diagnoseBtn) this._diagnoseBtn.addEventListener('click', () => this.diagnose());
     }
-
     const helpBtn = document.getElementById('chromeHelpBtn');
     if (helpBtn) helpBtn.addEventListener('click', () => this.showHelp());
+  },
 
-    if (refreshBtn) refreshBtn.addEventListener('click', () => this.fetchTabs());
+  _bindTabButtons() {
+    const refreshBtn = document.getElementById('refreshTabsBtn');
+    const connectBtn = document.getElementById('connectBtn');
+    const tabSelect = document.getElementById('tabSelect');
     const reparseBtn = document.getElementById('reparseTabsBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => this.fetchTabs());
     if (reparseBtn) reparseBtn.addEventListener('click', () => this.manualReparse());
     if (connectBtn) connectBtn.addEventListener('click', () => this.connectSelected());
     if (tabSelect) tabSelect.addEventListener('change', (e) => { this.selectedWs = e.target.value; });
+  },
+
+  _bindBookmarkInputs() {
+    const bookmarkInput = document.getElementById('urlBookmarkInput');
+    const bookmarkConnectBtn = document.getElementById('urlBookmarkConnectBtn');
+    const addBookmarkBtn = document.getElementById('addUrlBookmarkBtn');
     if (bookmarkInput) bookmarkInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.autoConnectBookmark(); });
     if (bookmarkConnectBtn) bookmarkConnectBtn.addEventListener('click', () => this.autoConnectBookmark());
     if (addBookmarkBtn) addBookmarkBtn.addEventListener('click', () => this.addBookmark());

@@ -1,6 +1,5 @@
 {
   "app/__init__.py": {
-    "coverage": 100.0,
     "file_lines": 2,
     "func_count": 0,
     "max_cc": 0,
@@ -12,7 +11,6 @@
     "max_params": 0
   },
   "app/browser/__init__.py": {
-    "coverage": 100.0,
     "file_lines": 1,
     "func_count": 0,
     "max_cc": 0,
@@ -24,7 +22,6 @@
     "max_params": 0
   },
   "app/browser/captcha_probes.py": {
-    "coverage": 100.0,
     "file_lines": 46,
     "func_count": 5,
     "max_cc": 1,
@@ -113,7 +110,6 @@
     "max_params": 3
   },
   "app/browser/cdp_arena.py": {
-    "coverage": 29.41176470588235,
     "file_lines": 28,
     "func_count": 0,
     "max_cc": 0,
@@ -235,7 +231,6 @@
     "max_params": 3
   },
   "app/browser/cdp_client.py": {
-    "coverage": 9.369951534733442,
     "file_lines": 6,
     "func_count": 0,
     "max_cc": 0,
@@ -247,7 +242,6 @@
     "max_params": 0
   },
   "app/browser/cdp_events.py": {
-    "coverage": 83.33333333333333,
     "file_lines": 67,
     "func_count": 8,
     "max_cc": 5,
@@ -259,7 +253,6 @@
     "max_params": 2
   },
   "app/browser/cdp_protocol.py": {
-    "coverage": 86.79245283018868,
     "file_lines": 126,
     "func_count": 7,
     "max_cc": 9,
@@ -271,7 +264,6 @@
     "max_params": 4
   },
   "app/browser/controller.py": {
-    "coverage": 0.0,
     "file_lines": 643,
     "func_count": 22,
     "max_cc": 13,
@@ -283,7 +275,6 @@
     "max_params": 4
   },
   "app/browser/dom_highlight.py": {
-    "coverage": 35.13513513513514,
     "file_lines": 478,
     "func_count": 25,
     "max_cc": 10,
@@ -295,7 +286,6 @@
     "max_params": 7
   },
   "app/browser/new_chat.py": {
-    "coverage": 81.61764705882354,
     "file_lines": 184,
     "func_count": 12,
     "max_cc": 6,
@@ -307,7 +297,6 @@
     "max_params": 3
   },
   "app/browser/output_detector.py": {
-    "coverage": 67.37588652482269,
     "file_lines": 155,
     "func_count": 14,
     "max_cc": 9,
@@ -319,7 +308,6 @@
     "max_params": 2
   },
   "app/browser/output_probes.py": {
-    "coverage": 69.23076923076923,
     "file_lines": 771,
     "func_count": 4,
     "max_cc": 2,
@@ -331,7 +319,6 @@
     "max_params": 3
   },
   "app/browser/output_state.py": {
-    "coverage": 10.447761194029852,
     "file_lines": 75,
     "func_count": 7,
     "max_cc": 4,
@@ -343,7 +330,6 @@
     "max_params": 1
   },
   "app/browser/output_wait.py": {
-    "coverage": 11.69811320754717,
     "file_lines": 312,
     "func_count": 27,
     "max_cc": 9,
@@ -355,7 +341,6 @@
     "max_params": 5
   },
   "app/browser/page_pool.py": {
-    "coverage": 85.36585365853658,
     "file_lines": 207,
     "func_count": 19,
     "max_cc": 9,
@@ -367,7 +352,6 @@
     "max_params": 4
   },
   "app/browser/page_status.py": {
-    "coverage": 100.0,
     "file_lines": 107,
     "func_count": 7,
     "max_cc": 3,
@@ -379,7 +363,6 @@
     "max_params": 1
   },
   "app/browser/probe_requests.py": {
-    "coverage": 100.0,
     "file_lines": 46,
     "func_count": 0,
     "max_cc": 0,
@@ -391,7 +374,6 @@
     "max_params": 0
   },
   "app/browser/selector.py": {
-    "coverage": 95.0,
     "file_lines": 36,
     "func_count": 2,
     "max_cc": 1,
@@ -403,7 +385,6 @@
     "max_params": 0
   },
   "app/browser/site_adapter.py": {
-    "coverage": 61.111111111111114,
     "file_lines": 316,
     "func_count": 4,
     "max_cc": 2,
@@ -415,7 +396,6 @@
     "max_params": 1
   },
   "app/browser/tab_matcher.py": {
-    "coverage": 60.38961038961039,
     "file_lines": 125,
     "func_count": 10,
     "max_cc": 9,
@@ -427,7 +407,6 @@
     "max_params": 3
   },
   "app/browser/visual_click.py": {
-    "coverage": 21.468926553672315,
     "file_lines": 229,
     "func_count": 15,
     "max_cc": 10,
@@ -439,7 +418,6 @@
     "max_params": 4
   },
   "app/core/__init__.py": {
-    "coverage": 100.0,
     "file_lines": 1,
     "func_count": 0,
     "max_cc": 0,
@@ -451,7 +429,6 @@
     "max_params": 0
   },
   "app/core/action_blocks.py": {
-    "coverage": 40.331491712707184,
     "file_lines": 716,
     "func_count": 15,
     "max_cc": 13,
@@ -463,7 +440,6 @@
     "max_params": 3
   },
   "app/core/cooldown.py": {
-    "coverage": 100.0,
     "file_lines": 97,
     "func_count": 7,
     "max_cc": 4,
@@ -475,7 +451,6 @@
     "max_params": 3
   },
   "app/core/enums.py": {
-    "coverage": 100.0,
     "file_lines": 49,
     "func_count": 0,
     "max_cc": 0,
@@ -487,7 +462,6 @@
     "max_params": 0
   },
   "app/core/folder_ai.py": {
-    "coverage": 94.02985074626865,
     "file_lines": 71,
     "func_count": 4,
     "max_cc": 6,
@@ -499,7 +473,6 @@
     "max_params": 2
   },
   "app/core/layout_service.py": {
-    "coverage": 69.1919191919192,
     "file_lines": 279,
     "func_count": 23,
     "max_cc": 10,
@@ -511,7 +484,6 @@
     "max_params": 3
   },
   "app/core/models.py": {
-    "coverage": 97.41379310344827,
     "file_lines": 271,
     "func_count": 13,
     "max_cc": 4,
@@ -523,7 +495,6 @@
     "max_params": 5
   },
   "app/core/naming.py": {
-    "coverage": 83.58208955223881,
     "file_lines": 122,
     "func_count": 8,
     "max_cc": 4,
@@ -535,7 +506,6 @@
     "max_params": 6
   },
   "app/core/persistence.py": {
-    "coverage": 54.054054054054056,
     "file_lines": 195,
     "func_count": 12,
     "max_cc": 6,
@@ -547,7 +517,6 @@
     "max_params": 2
   },
   "app/core/scanner.py": {
-    "coverage": 89.88764044943821,
     "file_lines": 134,
     "func_count": 7,
     "max_cc": 9,
@@ -559,7 +528,6 @@
     "max_params": 4
   },
   "app/core/state_machine.py": {
-    "coverage": 100.0,
     "file_lines": 59,
     "func_count": 4,
     "max_cc": 1,
@@ -571,7 +539,6 @@
     "max_params": 3
   },
   "app/core/undo_service.py": {
-    "coverage": 43.29896907216495,
     "file_lines": 112,
     "func_count": 13,
     "max_cc": 9,
@@ -583,7 +550,6 @@
     "max_params": 4
   },
   "app/main.py": {
-    "coverage": 0.0,
     "file_lines": 30,
     "func_count": 1,
     "max_cc": 1,
@@ -595,7 +561,6 @@
     "max_params": 0
   },
   "app/persistence/config_manager.py": {
-    "coverage": 82.30088495575221,
     "file_lines": 149,
     "func_count": 19,
     "max_cc": 4,
@@ -607,7 +572,6 @@
     "max_params": 2
   },
   "app/persistence/cooldown_store.py": {
-    "coverage": 82.82208588957056,
     "file_lines": 190,
     "func_count": 16,
     "max_cc": 9,
@@ -619,7 +583,6 @@
     "max_params": 4
   },
   "app/persistence/preset_store.py": {
-    "coverage": 28.07017543859649,
     "file_lines": 198,
     "func_count": 25,
     "max_cc": 4,
@@ -631,7 +594,6 @@
     "max_params": 2
   },
   "app/persistence/undo_store.py": {
-    "coverage": 74.60317460317461,
     "file_lines": 117,
     "func_count": 11,
     "max_cc": 8,
@@ -643,7 +605,6 @@
     "max_params": 2
   },
   "app/services/__init__.py": {
-    "coverage": 100.0,
     "file_lines": 1,
     "func_count": 0,
     "max_cc": 0,
@@ -655,7 +616,6 @@
     "max_params": 0
   },
   "app/services/auto_connect.py": {
-    "coverage": 99.63636363636364,
     "file_lines": 286,
     "func_count": 22,
     "max_cc": 9,
@@ -667,7 +627,6 @@
     "max_params": 4
   },
   "app/services/captcha/__init__.py": {
-    "coverage": 100.0,
     "file_lines": 33,
     "func_count": 0,
     "max_cc": 0,
@@ -679,7 +638,6 @@
     "max_params": 0
   },
   "app/services/captcha/api_client.py": {
-    "coverage": 98.6842105263158,
     "file_lines": 105,
     "func_count": 10,
     "max_cc": 4,
@@ -691,7 +649,6 @@
     "max_params": 3
   },
   "app/services/captcha/key_store.py": {
-    "coverage": 94.20289855072464,
     "file_lines": 105,
     "func_count": 9,
     "max_cc": 4,
@@ -703,7 +660,6 @@
     "max_params": 1
   },
   "app/services/captcha/recovery.py": {
-    "coverage": 90.06211180124224,
     "file_lines": 196,
     "func_count": 14,
     "max_cc": 7,
@@ -715,7 +671,6 @@
     "max_params": 4
   },
   "app/services/captcha/service.py": {
-    "coverage": 91.06529209621993,
     "file_lines": 381,
     "func_count": 27,
     "max_cc": 10,
@@ -727,7 +682,6 @@
     "max_params": 4
   },
   "app/services/captcha/signals.py": {
-    "coverage": 94.28571428571429,
     "file_lines": 109,
     "func_count": 5,
     "max_cc": 8,
@@ -739,7 +693,6 @@
     "max_params": 1
   },
   "app/services/captcha/solver.py": {
-    "coverage": 89.12579957356077,
     "file_lines": 549,
     "func_count": 41,
     "max_cc": 10,
@@ -751,7 +704,6 @@
     "max_params": 4
   },
   "app/services/captcha/stats.py": {
-    "coverage": 96.36363636363636,
     "file_lines": 142,
     "func_count": 14,
     "max_cc": 7,
@@ -763,7 +715,6 @@
     "max_params": 2
   },
   "app/services/captcha_recording/__init__.py": {
-    "coverage": 100.0,
     "file_lines": 7,
     "func_count": 0,
     "max_cc": 0,
@@ -775,7 +726,6 @@
     "max_params": 0
   },
   "app/services/captcha_recording/manager.py": {
-    "coverage": 73.5632183908046,
     "file_lines": 97,
     "func_count": 14,
     "max_cc": 5,
@@ -787,7 +737,6 @@
     "max_params": 3
   },
   "app/services/captcha_recording/models.py": {
-    "coverage": 100.0,
     "file_lines": 38,
     "func_count": 3,
     "max_cc": 1,
@@ -799,7 +748,6 @@
     "max_params": 1
   },
   "app/services/captcha_recording/network.py": {
-    "coverage": 83.11688311688312,
     "file_lines": 99,
     "func_count": 8,
     "max_cc": 7,
@@ -811,7 +759,6 @@
     "max_params": 4
   },
   "app/services/captcha_recording/probes.py": {
-    "coverage": 100.0,
     "file_lines": 25,
     "func_count": 5,
     "max_cc": 1,
@@ -823,7 +770,6 @@
     "max_params": 1
   },
   "app/services/captcha_recording/reader.py": {
-    "coverage": 77.61194029850746,
     "file_lines": 69,
     "func_count": 6,
     "max_cc": 5,
@@ -835,7 +781,6 @@
     "max_params": 1
   },
   "app/services/captcha_recording/recorder.py": {
-    "coverage": 83.89261744966443,
     "file_lines": 165,
     "func_count": 15,
     "max_cc": 7,
@@ -847,7 +792,6 @@
     "max_params": 4
   },
   "app/services/captcha_recording/retention.py": {
-    "coverage": 92.20779220779221,
     "file_lines": 84,
     "func_count": 6,
     "max_cc": 7,
@@ -859,7 +803,6 @@
     "max_params": 2
   },
   "app/services/captcha_recording/sanitize.py": {
-    "coverage": 96.36363636363636,
     "file_lines": 66,
     "func_count": 6,
     "max_cc": 6,
@@ -871,7 +814,6 @@
     "max_params": 2
   },
   "app/services/captcha_recording/store.py": {
-    "coverage": 96.94656488549619,
     "file_lines": 170,
     "func_count": 17,
     "max_cc": 5,
@@ -883,7 +825,6 @@
     "max_params": 3
   },
   "app/services/cooldown_service.py": {
-    "coverage": 88.93499308437067,
     "file_lines": 787,
     "func_count": 62,
     "max_cc": 9,
@@ -895,7 +836,6 @@
     "max_params": 4
   },
   "app/services/job_runner.py": {
-    "coverage": 0.0,
     "file_lines": 332,
     "func_count": 9,
     "max_cc": 24,
@@ -907,7 +847,6 @@
     "max_params": 4
   },
   "app/services/job_state_machine.py": {
-    "coverage": 96.49122807017544,
     "file_lines": 109,
     "func_count": 7,
     "max_cc": 5,
@@ -919,7 +858,6 @@
     "max_params": 3
   },
   "app/services/multi_page_dispatcher.py": {
-    "coverage": 41.4985590778098,
     "file_lines": 397,
     "func_count": 27,
     "max_cc": 8,
@@ -931,7 +869,6 @@
     "max_params": 4
   },
   "app/services/single_job_runner.py": {
-    "coverage": 33.92070484581498,
     "file_lines": 560,
     "func_count": 47,
     "max_cc": 9,
@@ -943,7 +880,6 @@
     "max_params": 4
   },
   "app/services/verification.py": {
-    "coverage": 38.75,
     "file_lines": 146,
     "func_count": 13,
     "max_cc": 6,
@@ -955,7 +891,6 @@
     "max_params": 2
   },
   "app/services/watcher.py": {
-    "coverage": 27.40740740740741,
     "file_lines": 325,
     "func_count": 25,
     "max_cc": 7,
@@ -978,7 +913,6 @@
     "max_params": 3
   },
   "app/ui/__init__.py": {
-    "coverage": 100.0,
     "file_lines": 1,
     "func_count": 0,
     "max_cc": 0,
@@ -990,7 +924,6 @@
     "max_params": 0
   },
   "app/ui/bridge.py": {
-    "coverage": 10.630073444143797,
     "file_lines": 5142,
     "func_count": 221,
     "max_cc": 356,
@@ -1002,7 +935,6 @@
     "max_params": 5
   },
   "app/ui/main_window.py": {
-    "coverage": 0.0,
     "file_lines": 154,
     "func_count": 11,
     "max_cc": 6,
@@ -1014,7 +946,6 @@
     "max_params": 1
   },
   "app/ui/services/__init__.py": {
-    "coverage": 100.0,
     "file_lines": 1,
     "func_count": 0,
     "max_cc": 0,
@@ -1026,7 +957,6 @@
     "max_params": 0
   },
   "app/ui/services/captcha_recordings_bridge.py": {
-    "coverage": 77.92207792207792,
     "file_lines": 95,
     "func_count": 11,
     "max_cc": 3,
@@ -1038,7 +968,6 @@
     "max_params": 3
   },
   "app/ui/services/scan_service.py": {
-    "coverage": 90.0,
     "file_lines": 65,
     "func_count": 3,
     "max_cc": 5,
@@ -1050,7 +979,6 @@
     "max_params": 3
   },
   "app/ui/services/thumbnail_service.py": {
-    "coverage": 54.054054054054056,
     "file_lines": 98,
     "func_count": 8,
     "max_cc": 5,
@@ -1206,11 +1134,11 @@
     "max_params": 2
   },
   "app/ui/web/js/panels/cdp.js": {
-    "file_lines": 125,
-    "func_count": 52,
+    "file_lines": 135,
+    "func_count": 55,
     "js": true,
-    "max_cc": 13,
-    "max_func_loc": 33,
+    "max_cc": 5,
+    "max_func_loc": 17,
     "max_nest": 2,
     "max_params": 2
   },
@@ -1495,7 +1423,6 @@
     "js": true
   },
   "app/utils/__init__.py": {
-    "coverage": 100.0,
     "file_lines": 1,
     "func_count": 0,
     "max_cc": 0,
@@ -1507,7 +1434,6 @@
     "max_params": 0
   },
   "app/utils/correlation.py": {
-    "coverage": 100.0,
     "file_lines": 23,
     "func_count": 3,
     "max_cc": 2,
@@ -1519,7 +1445,6 @@
     "max_params": 2
   },
   "app/utils/hashing.py": {
-    "coverage": 37.5,
     "file_lines": 17,
     "func_count": 2,
     "max_cc": 3,
@@ -1531,7 +1456,6 @@
     "max_params": 3
   },
   "app/utils/logging.py": {
-    "coverage": 0.0,
     "file_lines": 25,
     "func_count": 2,
     "max_cc": 2,
@@ -1543,7 +1467,6 @@
     "max_params": 1
   },
   "app/utils/page_errors.py": {
-    "coverage": 100.0,
     "file_lines": 113,
     "func_count": 4,
     "max_cc": 9,
@@ -1555,7 +1478,6 @@
     "max_params": 2
   },
   "app/utils/win_popup.py": {
-    "coverage": 48.0,
     "file_lines": 124,
     "func_count": 11,
     "max_cc": 7,
