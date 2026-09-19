@@ -12,7 +12,8 @@ from typing import Any, Dict, List, Optional
 
 from app.core.enums import ImageStatus
 from app.core.naming import atomic_write_bytes, get_output_path
-from app.browser.probe_selectors import send_presence_selector
+from app.browser.probe_selectors import send_presence_selector, textarea_primary
+from app.browser.site_adapter import get_selector
 from app.browser.visual_click import ClickRequest, find_and_click
 
 log = logging.getLogger("arena")
@@ -401,6 +402,80 @@ async def _handle_advance(ctx: JobCtx, block: Any):
     _emit_action(ctx, block, "success", "Completed")
 
 
+async def _handle_highlight(ctx: JobCtx, block: Any):
+    """Handle HIGHLIGHT_ATTACH / HIGHLIGHT_PROMPT / HIGHLIGHT_SUBMIT."""
+    btype = getattr(block, "block_id", "")
+    sel = block.selector or (get_selector("file_input").presenceSelector if "ATTACH" in btype
+                             else textarea_primary() if "PROMPT" in btype
+                             else send_presence_selector())
+    try:
+        rect = await ctx.ctrl.highlight_selector(
+            sel, color=block.color, duration_ms=block.highlight_ms or block.highlight_duration_ms,
+            caption=block.display_name)
+        _emit_action(ctx, block, "success", f"Highlighted {sel}")
+    except Exception as e:
+        _emit_action(ctx, block, "success", f"Highlight skipped: {e}")
+
+
+async def _handle_verify_attachment(ctx: JobCtx, block: Any):
+    """Handle VERIFY_ATTACHMENT: probe the preview image exists."""
+    sel = block.selector or (get_selector("attachment_preview_container").primary + " img")
+    try:
+        from app.browser.dom_highlight import build_find_probe
+        from app.browser.probe_requests import FindProbeSpec
+        js = build_find_probe(sel, FindProbeSpec(
+            highlight=block.highlight_enabled,
+            highlight_ms=block.highlight_ms or 1500, color=block.color))
+        raw = await ctx.client.evaluate(js)
+        res = json.loads(raw) if raw else {}
+        if not res.get("found"):
+            raise RuntimeError(f"Attachment preview not found: {sel}")
+        _emit_action(ctx, block, "success", f"Attachment preview found {sel}")
+    except Exception as e:
+        raise RuntimeError(f"Verify attachment failed: {e}")
+
+
+async def _handle_verify_prompt(ctx: JobCtx, block: Any):
+    """Handle VERIFY_PROMPT: verify, re-insert once, then fail hard."""
+    verified, vreason = await ctx.ctrl.verify_prompt(ctx.final_prompt)
+    if not verified:
+        ok, reason = await ctx.ctrl.insert_prompt(ctx.final_prompt)
+        verified, vreason = await ctx.ctrl.verify_prompt(ctx.final_prompt)
+        if not verified:
+            raise RuntimeError(f"Prompt verification failed: {vreason}")
+    _emit_action(ctx, block, "success", f"Verified {vreason}")
+
+
+async def _handle_pause(ctx: JobCtx, block: Any):
+    """Handle PAUSE: sleep for extra.duration_ms / timeout_ms."""
+    extra = getattr(block, "extra", None)
+    dur = 1000
+    if isinstance(extra, dict) and "duration_ms" in extra:
+        dur = extra["duration_ms"]
+    elif getattr(block, "timeout_ms", None):
+        dur = block.timeout_ms
+    log.info(f"[{ctx.corr_id}] Pausing {dur}ms")
+    await asyncio.sleep(dur / 1000.0)
+    _emit_action(ctx, block, "success", f"Paused {dur}ms")
+
+
+async def _handle_type_prompt(ctx: JobCtx, block: Any):
+    """Handle TYPE_PROMPT: highlight, then insert with typing-speed note."""
+    extra = getattr(block, "extra", None)
+    typing_speed = extra.get("typing_speed_ms", 10) if isinstance(extra, dict) else 10
+    if block.highlight_enabled:
+        try:
+            await ctx.ctrl.highlight_selector(
+                block.selector or textarea_primary(), color=block.color,
+                duration_ms=block.highlight_ms, caption=block.display_name)
+        except Exception:
+            pass
+    ok, reason = await ctx.ctrl.insert_prompt(ctx.final_prompt)
+    if not ok:
+        raise RuntimeError(f"Type prompt failed: {reason}")
+    _emit_action(ctx, block, "success", reason)
+
+
 async def _handle_custom(ctx: JobCtx, block: Any):
     """Handle custom find."""
     try:
@@ -436,6 +511,13 @@ def _handler_map():
         "SAVE": _handle_save,
         "ADVANCE": _handle_advance,
         "CUSTOM_FIND": _handle_custom,
+        "HIGHLIGHT_ATTACH": _handle_highlight,
+        "HIGHLIGHT_PROMPT": _handle_highlight,
+        "HIGHLIGHT_SUBMIT": _handle_highlight,
+        "VERIFY_ATTACHMENT": _handle_verify_attachment,
+        "VERIFY_PROMPT": _handle_verify_prompt,
+        "PAUSE": _handle_pause,
+        "TYPE_PROMPT": _handle_type_prompt,
     }
 
 

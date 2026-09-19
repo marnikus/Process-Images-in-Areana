@@ -183,6 +183,10 @@ class RecordingBridge:
     async def _ensure_pool_page(self, tab_id):
         return None
 
+    def _ensure_page_pool(self):
+        # sync pool accessor used by single_job_runner; None = no pool
+        return self._page_pool
+
     async def _settle_boundary_captcha(self, *a, **kw):
         return None
 
