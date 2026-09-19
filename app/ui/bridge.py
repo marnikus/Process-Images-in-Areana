@@ -14,13 +14,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from app.ui.qt_compat import QObject, QFileDialog, Signal, Slot
+from app.ui.qt_compat import QObject, Signal, Slot
 
 from app.core.layout_service import (
     canonical_grid_payload, default_payload,
 )
-from app.core.models import AppState, UrlRow
-from app.core.persistence import load_state, save_preset, load_preset
+from app.core.models import AppState
+from app.core.persistence import load_state
 from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
@@ -45,6 +45,7 @@ from app.ui.panels.blocks_stack import BlocksStackMixin
 from app.ui.panels.undo_history import UndoHistoryMixin
 from app.ui.panels.url_queue import UrlQueueMixin
 from app.ui.panels.queue_scan import QueueScanMixin
+from app.ui.panels.app_settings import AppSettingsMixin
 from app.ui.services import arena_serialize, undo_entries
 from app.core.action_blocks import (
     default_stack,
@@ -63,7 +64,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -419,12 +420,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
         except Exception:
             pass
 
-    @Slot(str, result=bool)
-    def set_theme(self, theme: str):
-        self.config.set_state(theme=theme)
-        self._log(f"Theme set to {theme}", "info")
-        return True
-
 
 
     def _push_queue_undo(self):
@@ -507,124 +502,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
                 self._push_queue_undo()
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
-
-    def _push_prompt_undo(self, tmpl: str):
-        try:
-            self.undo_service.push("prompt", tmpl)
-            undo_entries.emit_undo_state(self)
-        except Exception:
-            pass
-
-    @Slot(str, result=str)
-    def set_prompt(self, template: str):
-        self.state.prompt["user_prompt"] = template
-        self._save_arena()
-        self._push_prompt_undo(template)
-        return json.dumps({"ok": True})
-
-    @Slot(str, result=str)
-    def save_settings(self, settings_json: str):
-        try:
-            data = json.loads(settings_json)
-            # Map to AppSettings structure
-            if "timeout_seconds" in data:
-                self.state.settings.timeouts["page_load"] = int(data["timeout_seconds"])
-            if "generation_timeout" in data:
-                # User-configurable waiting max time — up to 2 min+ as requested
-                gt = int(data["generation_timeout"])
-                # Clamp 30-3600 seconds (user wants to set timeout in win settings, allow up to 1h)
-                gt = max(30, min(3600, gt))
-                self.state.settings.timeouts["generation"] = gt
-                self._log(f"Generation timeout set to {gt}s (waiting max time)", "info")
-                # Also sync to watcher win settings — generation timeout
-                try:
-                    self.config.set_state(watcher_generation_timeout_sec=gt)
-                    if self._watcher:
-                        self._watcher.update_config(generation_timeout_sec=gt)
-                except Exception:
-                    pass
-            if "max_retries" in data:
-                self.state.settings.retries["max_attempts"] = int(data["max_retries"])
-            if "naming_suffix" in data:
-                self.state.settings.output["suffix"] = data["naming_suffix"]
-            if "supported_types" in data:
-                self.state.folder["supported_types"] = data["supported_types"]
-                self.state.settings.supported_types = data["supported_types"]
-            if "overwrite" in data:
-                self.state.settings.output["overwrite"] = bool(data["overwrite"])
-            if "highlight_duration" in data:
-                self.state.settings.highlight["duration_seconds"] = int(data["highlight_duration"])
-                self.config.set_state(highlight_duration=int(data["highlight_duration"]))
-            # Also allow watcher timeouts from settings win if provided (user wants timeout in win settings)
-            if "watcher_captcha_timeout_sec" in data:
-                try:
-                    ct = max(10, min(3600, int(data["watcher_captcha_timeout_sec"])))
-                    self.config.set_state(watcher_captcha_timeout_sec=ct)
-                    if self._watcher:
-                        self._watcher.update_config(captcha_timeout_sec=ct)
-                    self._log(f"Watcher captcha timeout set to {ct}s (user win setting)", "info")
-                except Exception:
-                    pass
-            if "watcher_generation_timeout_sec" in data:
-                try:
-                    gt2 = max(30, min(3600, int(data["watcher_generation_timeout_sec"])))
-                    self.config.set_state(watcher_generation_timeout_sec=gt2)
-                    if self._watcher:
-                        self._watcher.update_config(generation_timeout_sec=gt2)
-                    self._log(f"Watcher generation timeout set to {gt2}s (user win setting)", "info")
-                except Exception:
-                    pass
-            self._save_arena()
-            try:
-                self.undo_service.push("settings", arena_serialize.arena_to_js(self.state)["settings"])
-                undo_entries.emit_undo_state(self)
-            except Exception:
-                pass
-            return json.dumps({"ok": True})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(str, result=str)
-    def export_preset(self, name: str):
-        try:
-            preset_path = Path("config") / f"{name}.json"
-            save_preset(self.state, preset_path)
-            return json.dumps({"ok": True, "path": str(preset_path)})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(result=str)
-    def import_preset(self):
-        try:
-            if QFileDialog is None:
-                return json.dumps({"ok": False, "error": "No file dialog"})
-            file_path, _ = QFileDialog.getOpenFileName(None, "Import preset JSON", "config", "JSON (*.json)")
-            if not file_path:
-                return json.dumps({"ok": False, "cancelled": True})
-            data = load_preset(Path(file_path))
-            if "urls" in data:
-                self.state.urls = [UrlRow(**u) for u in data["urls"]]
-            if "folder" in data:
-                self.state.folder.update(data["folder"])
-            if "prompt" in data:
-                self.state.prompt.update(data["prompt"])
-            if "settings" in data:
-                # settings dict from preset is already AppSettings as dict
-                s = data["settings"]
-                # handle both old and new formats
-                if isinstance(s, dict):
-                    # if it has timeouts etc, update
-                    if "timeouts" in s:
-                        self.state.settings.timeouts.update(s["timeouts"])
-                    if "output" in s:
-                        self.state.settings.output.update(s["output"])
-                    if "highlight" in s:
-                        self.state.settings.highlight.update(s["highlight"])
-            self.state.recalculate_progress()
-            self._save_arena()
-            return json.dumps({"ok": True})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
 
     # ---- run controls — real implementation via CDP ----
     def _get_selected_images(self):
@@ -1710,139 +1587,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
 
     # URL bookmarks (from old app, now using arena_presets)
     # Arena presets (full)
-    @Slot(result=str)
-    def list_arena_presets(self):
-        try:
-            presets = self.config.presets.list_arena_presets()
-            payload = json.dumps(presets, ensure_ascii=False)
-            self.presets_changed.emit("arena", payload)
-            return payload
-        except Exception as e:
-            return json.dumps([], ensure_ascii=False)
-
-    @Slot(str, result=str)
-    def save_arena_preset(self, name: str):
-        try:
-            js_state = arena_serialize.arena_to_js(self.state)
-            cdp_cfg = {
-                "host": self.config.get_state("cdp_host", "127.0.0.1"),
-                "port": self.config.get_state("cdp_port", 9222),
-                "user_data_dir": self.config.get_state("cdp_user_data_dir", "C:\\arena-images-chrome"),
-                "extra_args": self.config.get_state("cdp_extra_args", ""),
-            }
-            # Include action blocks in preset
-            try:
-                action_blocks = self.config.get_state("action_blocks", None)
-                if action_blocks is None:
-                    from app.core.action_blocks import default_stack, stack_to_dicts
-                    action_blocks = stack_to_dicts(default_stack())
-            except Exception:
-                action_blocks = []
-            doc = {
-                "name": name,
-                "urls": js_state.get("urls", []),
-                "folder": js_state.get("folder", {}),
-                "prompt": js_state.get("prompt", {}),
-                "settings": js_state.get("settings", {}),
-                "images": js_state.get("images", []),
-                "cdp": cdp_cfg,
-                "action_blocks": action_blocks,
-                "cooldown": {
-                    "enabled": self.config.get_state("cooldown_enabled", True),
-                    "min_seconds": self.config.get_state("cooldown_min_seconds", 300),
-                    "captcha_penalty_seconds": self.config.get_state("cooldown_captcha_penalty_seconds", 900),
-                    "rate_limit_penalty_seconds": self.config.get_state("cooldown_rate_limit_penalty_seconds", 1800),
-                },
-                "updated_at": datetime.utcnow().isoformat() + "Z",
-                "app_version": "arena-1.0",
-            }
-            self.config.presets.save_arena_preset(name, doc)
-            self.list_arena_presets()
-            self._log(f"Arena preset saved: {name}", "success")
-            return json.dumps({"ok": True, "name": name})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(str, result=str)
-    def load_arena_preset(self, name: str):
-        try:
-            doc = self.config.presets.load_arena_preset(name)
-            if not doc:
-                return json.dumps({"ok": False, "error": "not found"})
-            # restore
-            if "urls" in doc:
-                self.state.urls = [UrlRow(
-                    id=u.get("id", f"url_{i}"),
-                    url=u.get("url",""),
-                    enabled=u.get("enabled",True),
-                    last_status=u.get("status","unchecked"),
-                    error=u.get("last_error")
-                ) for i, u in enumerate(doc.get("urls", []))]
-            if "folder" in doc:
-                self.state.folder.update(doc["folder"])
-            if "prompt" in doc:
-                tmpl = doc["prompt"].get("template") if isinstance(doc["prompt"], dict) else str(doc["prompt"])
-                self.state.prompt["user_prompt"] = tmpl
-            if "settings" in doc:
-                s = doc["settings"]
-                if isinstance(s, dict):
-                    if "timeouts" in s:
-                        self.state.settings.timeouts.update(s["timeouts"])
-                    if "output" in s:
-                        self.state.settings.output.update(s["output"])
-                    if "highlight" in s:
-                        self.state.settings.highlight.update(s["highlight"])
-                    if "supported_types" in s:
-                        self.state.folder["supported_types"] = s["supported_types"]
-            if "cdp" in doc and isinstance(doc["cdp"], dict):
-                c = doc["cdp"]
-                host = c.get("host", "127.0.0.1")
-                port = c.get("port", 9222)
-                user_data_dir = c.get("user_data_dir", "C:\\arena-images-chrome")
-                extra = c.get("extra_args", "")
-                self.config.set_state(cdp_host=host, cdp_port=int(port), cdp_user_data_dir=user_data_dir, cdp_extra_args=extra)
-                if self.cdp:
-                    try:
-                        self.cdp.set_host_port(host, int(port))
-                    except Exception:
-                        pass
-            if "action_blocks" in doc and isinstance(doc["action_blocks"], list):
-                try:
-                    self.config.set_state(action_blocks=doc["action_blocks"])
-                    self.action_blocks_updated.emit(json.dumps(doc["action_blocks"], ensure_ascii=False))
-                    self._log(f"Restored {len(doc['action_blocks'])} action blocks from preset", "info")
-                except Exception as e:
-                    log.warning(f"Failed to restore action blocks from preset: {e}")
-            if "cooldown" in doc and isinstance(doc["cooldown"], dict):
-                try:
-                    from app.core.cooldown import clamp_seconds
-                    cd = doc["cooldown"]
-                    self.config.set_state(
-                        cooldown_enabled=bool(cd.get("enabled", True)),
-                        cooldown_min_seconds=clamp_seconds(cd.get("min_seconds", 300), 300),
-                        cooldown_captcha_penalty_seconds=clamp_seconds(cd.get("captcha_penalty_seconds", 900), 900),
-                        cooldown_rate_limit_penalty_seconds=clamp_seconds(cd.get("rate_limit_penalty_seconds", 1800), 1800))
-                    self._log("Restored cooldown settings from preset", "info")
-                except Exception as e:
-                    log.warning(f"Failed to restore cooldown from preset: {e}")
-            self.state.recalculate_progress()
-            self._save_arena()
-            self._log(f"Arena preset loaded: {name}", "success")
-            return json.dumps({"ok": True, "name": name})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(str, result=str)
-    def delete_arena_preset(self, name: str):
-        try:
-            if self.config.presets.delete_arena_preset(name):
-                self.list_arena_presets()
-                self._log(f"Arena preset deleted: {name}", "info")
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "not found"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
     # Prompt presets
     # Highlight via CDP
     @Slot(str, str, int, str, result=str)
@@ -2084,10 +1828,4 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
             self._log(f"Submit: {ok} {reason}", "success" if ok else "error")
         except Exception as e:
             self._log(f"Full flow test exception: {e}", "error")
-
-    @Slot(str, result=str)
-    def refresh_users(self):
-        # compatibility with old app: just emit arena state
-        self._emit_arena_state()
-        return json.dumps({"ok": True})
 

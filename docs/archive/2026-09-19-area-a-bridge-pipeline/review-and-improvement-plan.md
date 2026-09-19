@@ -99,10 +99,19 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   merge-loop equivalence + in-place drop refactor, both behavior-equal).
   Also repaired 3 R2 plan-doc edits lost to a parallel-edit race (re-baseline
   header, R10 kills, end-state 62) — same-file edits now done serially.
-- **R4 — `app_settings` (10).** Move prompt/settings/import-export/arena
-  presets/theme/refresh; dispatch-split `save_settings` (per-section),
-  `import_preset`, `save_arena_preset`, `load_arena_preset` (per-section).
-  Kills 7 fails.
+- **R4 — `app_settings` (10).** ✅ done. 10 slots moved (theme, prompt,
+  settings, export/import, 4 arena presets, refresh shim); dispatch-split
+  `save_settings` (scalar-key specs + generation/watcher appliers in exact
+  original section order), `import_preset` (shared `apply_preset_settings`
+  + `restore_import_sections`), `save_arena_preset` (`build_*_snapshot` +
+  `build_arena_preset_doc`), `load_arena_preset` (per-section
+  `restore_preset_*`; JS-vs-state wire formats kept distinct).
+  `action_blocks`/`clamp_seconds` imports stay lazy (load-bearing fault
+  tolerance: failure degrades, must not break panel import). Orphaned
+  `UrlRow`/`save_preset`/`load_preset`/`QFileDialog` imports dropped.
+  Verified: 119/119 slots, mixin 123 LOC, all funcs ≤20/CC ≤7, 551
+  green, gate 90→83 (bridge 28→21, exactly the planned 7), Bridge
+  methods 106→95. Deliberate changes: none.
 - **R5 — `watcher_captcha` (10).** Move watcher+captcha slots; split
   `set_watcher_config` (per-key); `_get_watcher_cdp_controller` /
   `_on_watcher_state` → module funcs + `__init__` lambda edits. Kills 1.
