@@ -31,12 +31,26 @@ class NetworkCollector:
         self.mark_truncated = mark_truncated
         self._events: deque[dict[str, Any]] = deque()
         self._lock = threading.Lock()
+        self._closed = False
+        # P9: events lost after close are counted here, never dropped silently
+        self.dropped_events = 0
         self.responses: dict[str, dict[str, Any]] = {}
 
     def on_event(self, message: dict[str, Any]) -> None:
-        if str(message.get("method", "")).startswith("Network."):
-            with self._lock:
+        if not str(message.get("method", "")).startswith("Network."):
+            return
+        with self._lock:
+            if self._closed:
+                self.dropped_events += 1
+            else:
                 self._events.append(message)
+
+    def close(self) -> None:
+        """Stop collecting; count undrained events as dropped, never lose them silently."""
+        with self._lock:
+            self._closed = True
+            self.dropped_events += len(self._events)
+            self._events.clear()
 
     async def drain(self) -> None:
         while True:

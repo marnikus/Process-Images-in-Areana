@@ -1,7 +1,7 @@
 {
   "coverage": {
-    "line": 68.44,
-    "branch": 61.02
+    "line": 84.46,
+    "branch": 80.27
   },
   "app/__init__.py": {
     "max_func_loc": 0,
@@ -88,7 +88,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 131,
-    "coverage": 57.58
+    "coverage": 75.76
   },
   "app/browser/cdp/connect.py": {
     "max_func_loc": 23,
@@ -124,7 +124,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 275,
-    "coverage": 66.07
+    "coverage": 70.0
   },
   "app/browser/cdp/dom.py": {
     "max_func_loc": 20,
@@ -134,7 +134,7 @@
       "get_document": 7,
       "query_selector": 7,
       "query_selector_all": 7,
-      "set_file_input_files": 9,
+      "set_file_input_files": 11,
       "_find_file_input": 6,
       "_resolve_image_path": 2,
       "attach_image_cdp": 20,
@@ -147,8 +147,8 @@
     "max_cog": 6,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 174,
-    "coverage": 70.75
+    "file_lines": 176,
+    "coverage": 96.26
   },
   "app/browser/cdp/probe.py": {
     "max_func_loc": 26,
@@ -167,7 +167,7 @@
     "max_nest": 3,
     "max_params": 4,
     "file_lines": 96,
-    "coverage": 11.27
+    "coverage": 100.0
   },
   "app/browser/cdp/tabs.py": {
     "max_func_loc": 17,
@@ -191,7 +191,7 @@
     "max_nest": 4,
     "max_params": 4,
     "file_lines": 129,
-    "coverage": 72.07
+    "coverage": 86.49
   },
   "app/browser/cdp/transport.py": {
     "max_func_loc": 28,
@@ -217,7 +217,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 151,
-    "coverage": 61.7
+    "coverage": 80.85
   },
   "app/browser/cdp_arena/__init__.py": {
     "max_func_loc": 0,
@@ -246,7 +246,7 @@
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 41,
-    "coverage": 0.0
+    "coverage": 87.5
   },
   "app/browser/cdp_arena/controller.py": {
     "max_func_loc": 2,
@@ -271,15 +271,15 @@
       "_sync_fetch": 13,
       "_python_download": 13,
       "_js_download": 13,
-      "download_image": 10
+      "download_image": 11
     },
     "max_methods": 0,
     "max_cc": 7,
     "max_cog": 7,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 71,
-    "coverage": 0.0
+    "file_lines": 72,
+    "coverage": 90.14
   },
   "app/browser/cdp_arena/highlight.py": {
     "max_func_loc": 18,
@@ -300,7 +300,7 @@
     "max_nest": 1,
     "max_params": 3,
     "file_lines": 119,
-    "coverage": 22.86
+    "coverage": 73.33
   },
   "app/browser/cdp_arena/js_snippets.py": {
     "max_func_loc": 5,
@@ -353,7 +353,7 @@
     "max_nest": 1,
     "max_params": 5,
     "file_lines": 139,
-    "coverage": 54.64
+    "coverage": 100.0
   },
   "app/browser/cdp_arena/output.py": {
     "max_func_loc": 23,
@@ -375,7 +375,7 @@
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 115,
-    "coverage": 0.0
+    "coverage": 89.0
   },
   "app/browser/cdp_arena/state.py": {
     "max_func_loc": 23,
@@ -396,7 +396,7 @@
     "max_nest": 2,
     "max_params": 2,
     "file_lines": 91,
-    "coverage": 23.75
+    "coverage": 68.75
   },
   "app/browser/cdp_arena/submit.py": {
     "max_func_loc": 15,
@@ -415,7 +415,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 84,
-    "coverage": 60.64
+    "coverage": 90.43
   },
   "app/browser/cdp_arena.py": {
     "max_func_loc": 0,
@@ -463,7 +463,7 @@
     "max_nest": 2,
     "max_params": 2,
     "file_lines": 67,
-    "coverage": 83.33
+    "coverage": 90.74
   },
   "app/browser/cdp_protocol.py": {
     "max_func_loc": 16,
@@ -484,7 +484,7 @@
     "max_nest": 4,
     "max_params": 4,
     "file_lines": 126,
-    "coverage": 86.79
+    "coverage": 98.11
   },
   "app/browser/dom_highlight.py": {
     "max_func_loc": 50,
@@ -577,7 +577,7 @@
     "max_nest": 0,
     "max_params": 3,
     "file_lines": 739,
-    "coverage": 81.82
+    "coverage": 100.0
   },
   "app/browser/output_state.py": {
     "max_func_loc": 25,
@@ -598,7 +598,7 @@
     "max_nest": 1,
     "max_params": 1,
     "file_lines": 75,
-    "coverage": 49.25
+    "coverage": 100.0
   },
   "app/browser/output_wait.py": {
     "max_func_loc": 23,
@@ -629,7 +629,7 @@
     "max_nest": 3,
     "max_params": 4,
     "file_lines": 211,
-    "coverage": 93.94
+    "coverage": 94.95
   },
   "app/browser/output_wait_fallback.py": {
     "max_func_loc": 17,
@@ -651,7 +651,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 106,
-    "coverage": 76.67
+    "coverage": 86.67
   },
   "app/browser/page_pool.py": {
     "max_func_loc": 23,
@@ -684,7 +684,7 @@
     "max_nest": 3,
     "max_params": 5,
     "file_lines": 207,
-    "coverage": 85.37
+    "coverage": 88.78
   },
   "app/browser/page_status.py": {
     "max_func_loc": 22,
@@ -801,7 +801,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 125,
-    "coverage": 60.39
+    "coverage": 85.71
   },
   "app/browser/visual_click.py": {
     "max_func_loc": 25,
@@ -876,7 +876,7 @@
     "max_nest": 3,
     "max_params": 3,
     "file_lines": 755,
-    "coverage": 80.31
+    "coverage": 96.37
   },
   "app/core/cooldown.py": {
     "max_func_loc": 14,
@@ -967,7 +967,7 @@
     "max_nest": 4,
     "max_params": 3,
     "file_lines": 294,
-    "coverage": 70.59
+    "coverage": 94.49
   },
   "app/core/models.py": {
     "max_func_loc": 28,
@@ -992,7 +992,7 @@
     "max_nest": 1,
     "max_params": 3,
     "file_lines": 281,
-    "coverage": 97.69
+    "coverage": 100.0
   },
   "app/core/naming.py": {
     "max_func_loc": 21,
@@ -1013,7 +1013,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 104,
-    "coverage": 86.17
+    "coverage": 95.74
   },
   "app/core/persistence.py": {
     "max_func_loc": 25,
@@ -1179,7 +1179,7 @@
     "max_nest": 3,
     "max_params": 4,
     "file_lines": 190,
-    "coverage": 93.25
+    "coverage": 93.87
   },
   "app/persistence/json_store.py": {
     "max_func_loc": 15,
@@ -1232,7 +1232,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 169,
-    "coverage": 91.33
+    "coverage": 94.67
   },
   "app/persistence/undo_store.py": {
     "max_func_loc": 22,
@@ -1304,7 +1304,7 @@
     "max_nest": 4,
     "max_params": 4,
     "file_lines": 286,
-    "coverage": 99.64
+    "coverage": 100.0
   },
   "app/services/batch_orchestrator.py": {
     "max_func_loc": 17,
@@ -1447,8 +1447,8 @@
   },
   "app/services/captcha/service.py": {
     "max_func_loc": 26,
-    "max_class_loc": 56,
-    "func_count": 27,
+    "max_class_loc": 61,
+    "func_count": 28,
     "funcs": {
       "_log": 11,
       "_stop_pred": 2,
@@ -1471,20 +1471,21 @@
       "_resolve_captcha": 20,
       "_try_auto": 16,
       "_manual_wait": 26,
-      "__init__": 6,
+      "__init__": 8,
+      "_on_milestone": 2,
       "auto_enabled": 6,
       "apply_settings": 7,
       "refresh_balance": 20,
       "status_payload": 7,
       "stats_payload": 2
     },
-    "max_methods": 6,
+    "max_methods": 7,
     "max_cc": 10,
     "max_cog": 11,
     "max_nest": 2,
     "max_params": 4,
-    "file_lines": 381,
-    "coverage": 91.07
+    "file_lines": 386,
+    "coverage": 91.13
   },
   "app/services/captcha/signals.py": {
     "max_func_loc": 16,
@@ -1502,15 +1503,16 @@
     "max_cog": 8,
     "max_nest": 1,
     "max_params": 2,
-    "file_lines": 109,
-    "coverage": 94.29
+    "file_lines": 115,
+    "coverage": 97.33
   },
   "app/services/captcha/solver.py": {
     "max_func_loc": 28,
-    "max_class_loc": 131,
-    "func_count": 42,
+    "max_class_loc": 148,
+    "func_count": 46,
     "funcs": {
-      "_failed": 15,
+      "_failed": 16,
+      "_copy_evidence": 7,
       "task_type_for": 2,
       "_cb_source": 3,
       "_cb_desc": 7,
@@ -1522,7 +1524,7 @@
       "_token_fingerprint": 8,
       "_task_payload": 8,
       "_delete_task": 9,
-      "_click_continue": 6,
+      "_click_continue": 7,
       "_note_preinject_state": 10,
       "_verify_gone": 16,
       "_current_signal": 7,
@@ -1541,25 +1543,28 @@
       "_provider_result": 13,
       "_poll_retryable": 6,
       "_poll_task": 28,
-      "_solved": 12,
+      "_solved": 14,
       "_accepted_after_close": 9,
-      "__init__": 5,
+      "evidence_outcome": 10,
+      "_reject_outcome": 6,
+      "__init__": 7,
+      "_emit": 8,
       "solve": 12,
       "_solve_once": 15,
       "_run_task": 7,
-      "_attempt": 17,
+      "_attempt": 19,
       "_retry_with": 9,
       "_rebaseline": 12,
-      "_inject_and_verify": 26,
-      "_create_task": 17
+      "_inject_and_verify": 28,
+      "_create_task": 19
     },
-    "max_methods": 9,
+    "max_methods": 10,
     "max_cc": 9,
     "max_cog": 15,
     "max_nest": 2,
     "max_params": 5,
-    "file_lines": 559,
-    "coverage": 89.29
+    "file_lines": 613,
+    "coverage": 89.75
   },
   "app/services/captcha/stats.py": {
     "max_func_loc": 14,
@@ -1587,7 +1592,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 142,
-    "coverage": 96.36
+    "coverage": 98.18
   },
   "app/services/captcha_recording/__init__.py": {
     "max_func_loc": 0,
@@ -1602,10 +1607,28 @@
     "file_lines": 7,
     "coverage": 100.0
   },
+  "app/services/captcha_recording/cohort.py": {
+    "max_func_loc": 19,
+    "max_class_loc": 0,
+    "func_count": 4,
+    "funcs": {
+      "_label": 3,
+      "_result": 3,
+      "_tally": 17,
+      "cohort": 19
+    },
+    "max_methods": 0,
+    "max_cc": 6,
+    "max_cog": 7,
+    "max_nest": 4,
+    "max_params": 2,
+    "file_lines": 63,
+    "coverage": 100.0
+  },
   "app/services/captcha_recording/manager.py": {
     "max_func_loc": 16,
-    "max_class_loc": 86,
-    "func_count": 14,
+    "max_class_loc": 89,
+    "func_count": 15,
     "funcs": {
       "__init__": 5,
       "start": 16,
@@ -1616,19 +1639,37 @@
       "count_sessions": 2,
       "delete_session": 2,
       "set_label": 2,
+      "set_result_label": 2,
       "get_session": 2,
       "session_folder": 2,
       "is_enabled": 2,
       "set_enabled": 3,
       "_drop": 4
     },
-    "max_methods": 14,
+    "max_methods": 15,
     "max_cc": 5,
     "max_cog": 4,
     "max_nest": 2,
     "max_params": 4,
-    "file_lines": 97,
-    "coverage": 73.56
+    "file_lines": 100,
+    "coverage": 97.75
+  },
+  "app/services/captcha_recording/milestones.py": {
+    "max_func_loc": 17,
+    "max_class_loc": 0,
+    "func_count": 3,
+    "funcs": {
+      "assert_token_free": 4,
+      "_bounded": 6,
+      "build_milestone": 17
+    },
+    "max_methods": 0,
+    "max_cc": 7,
+    "max_cog": 9,
+    "max_nest": 3,
+    "max_params": 3,
+    "file_lines": 75,
+    "coverage": 87.5
   },
   "app/services/captcha_recording/models.py": {
     "max_func_loc": 4,
@@ -1644,16 +1685,18 @@
     "max_cog": 0,
     "max_nest": 0,
     "max_params": 1,
-    "file_lines": 38,
+    "file_lines": 42,
     "coverage": 100.0
   },
   "app/services/captcha_recording/network.py": {
     "max_func_loc": 19,
-    "max_class_loc": 79,
-    "func_count": 8,
+    "max_class_loc": 97,
+    "func_count": 10,
     "funcs": {
-      "__init__": 9,
-      "on_event": 4,
+      "__init__": 11,
+      "dropped_events": 3,
+      "on_event": 8,
+      "close": 6,
       "drain": 7,
       "_record": 11,
       "_request": 5,
@@ -1661,13 +1704,13 @@
       "_failure": 6,
       "_body": 19
     },
-    "max_methods": 8,
+    "max_methods": 10,
     "max_cc": 7,
     "max_cog": 6,
     "max_nest": 3,
     "max_params": 5,
-    "file_lines": 99,
-    "coverage": 83.12
+    "file_lines": 117,
+    "coverage": 100.0
   },
   "app/services/captcha_recording/probes.py": {
     "max_func_loc": 2,
@@ -1690,33 +1733,39 @@
   },
   "app/services/captcha_recording/reader.py": {
     "max_func_loc": 13,
-    "max_class_loc": 57,
-    "func_count": 6,
+    "max_class_loc": 73,
+    "func_count": 7,
     "funcs": {
       "__init__": 2,
-      "details": 8,
+      "details": 9,
       "folder": 7,
       "_json": 5,
       "_events": 13,
+      "_milestones": 13,
       "_snapshot": 11
     },
-    "max_methods": 6,
-    "max_cc": 5,
-    "max_cog": 6,
+    "max_methods": 7,
+    "max_cc": 6,
+    "max_cog": 7,
     "max_nest": 2,
     "max_params": 2,
-    "file_lines": 69,
-    "coverage": 77.61
+    "file_lines": 85,
+    "coverage": 97.67
   },
   "app/services/captcha_recording/recorder.py": {
     "max_func_loc": 18,
-    "max_class_loc": 148,
-    "func_count": 15,
+    "max_class_loc": 142,
+    "func_count": 18,
     "funcs": {
+      "finish_updates": 17,
+      "as_dict": 9,
+      "_milestone_phase_for": 7,
       "__init__": 16,
       "start": 9,
-      "finish": 11,
-      "note_outcome": 6,
+      "finish": 13,
+      "note_outcome": 7,
+      "_offset_ms": 2,
+      "_milestone_event": 12,
       "abort": 8,
       "_run": 5,
       "_join_worker": 5,
@@ -1724,25 +1773,24 @@
       "_checkpoint": 18,
       "_event": 11,
       "_detach_listener": 4,
-      "_finish_updates": 14,
-      "_outcome_payload": 4,
-      "_as_dict": 8
+      "_outcome_payload": 4
     },
     "max_methods": 14,
     "max_cc": 7,
     "max_cog": 6,
     "max_nest": 1,
     "max_params": 5,
-    "file_lines": 165,
-    "coverage": 83.89
+    "file_lines": 199,
+    "coverage": 98.87
   },
   "app/services/captcha_recording/retention.py": {
     "max_func_loc": 13,
     "max_class_loc": 0,
-    "func_count": 6,
+    "func_count": 7,
     "funcs": {
       "day_dirs": 6,
       "session_folders": 13,
+      "is_valid_session_id": 9,
       "find_session_folder": 10,
       "prune_recordings": 10,
       "drop_empty_day": 5,
@@ -1753,36 +1801,41 @@
     "max_cog": 7,
     "max_nest": 2,
     "max_params": 2,
-    "file_lines": 84,
-    "coverage": 92.21
+    "file_lines": 95,
+    "coverage": 94.94
   },
   "app/services/captcha_recording/sanitize.py": {
     "max_func_loc": 10,
     "max_class_loc": 0,
-    "func_count": 6,
+    "func_count": 7,
     "funcs": {
       "safe_url": 10,
       "redact_text": 5,
       "clean_mapping": 9,
       "_looks_like_credential": 10,
       "_clean_item": 4,
-      "textual_mime": 3
+      "textual_mime": 3,
+      "contains_tokenish": 4
     },
     "max_methods": 0,
     "max_cc": 6,
     "max_cog": 5,
     "max_nest": 1,
     "max_params": 2,
-    "file_lines": 66,
-    "coverage": 96.36
+    "file_lines": 72,
+    "coverage": 100.0
   },
   "app/services/captcha_recording/store.py": {
-    "max_func_loc": 23,
-    "max_class_loc": 137,
-    "func_count": 17,
+    "max_func_loc": 26,
+    "max_class_loc": 102,
+    "func_count": 19,
     "funcs": {
       "recording_enabled": 7,
       "save_recording_enabled": 3,
+      "new_manifest": 26,
+      "read_manifest": 10,
+      "write_manifest": 6,
+      "summary": 11,
       "__init__": 5,
       "create": 7,
       "session_folder": 7,
@@ -1793,19 +1846,17 @@
       "count_sessions": 2,
       "delete_session": 5,
       "set_label": 9,
-      "recover_interrupted": 6,
-      "_new_manifest": 23,
-      "_summary": 11,
-      "_read_manifest": 10,
-      "_write_manifest": 6
+      "set_result_label": 10,
+      "_note_label_history": 8,
+      "recover_interrupted": 6
     },
-    "max_methods": 15,
+    "max_methods": 13,
     "max_cc": 4,
     "max_cog": 4,
     "max_nest": 2,
     "max_params": 4,
-    "file_lines": 170,
-    "coverage": 96.95
+    "file_lines": 202,
+    "coverage": 100.0
   },
   "app/services/cooldown_service.py": {
     "max_func_loc": 22,
@@ -1881,7 +1932,7 @@
     "max_nest": 3,
     "max_params": 4,
     "file_lines": 787,
-    "coverage": 89.63
+    "coverage": 93.64
   },
   "app/services/multi_page_dispatcher.py": {
     "max_func_loc": 29,
@@ -1922,7 +1973,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 397,
-    "coverage": 41.5
+    "coverage": 88.47
   },
   "app/services/run_state.py": {
     "max_func_loc": 18,
@@ -1969,7 +2020,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 417,
-    "coverage": 81.49
+    "coverage": 82.09
   },
   "app/services/single_job_runner.py": {
     "max_func_loc": 26,
@@ -2084,7 +2135,7 @@
     "max_nest": 1,
     "max_params": 3,
     "file_lines": 146,
-    "coverage": 46.1
+    "coverage": 85.82
   },
   "app/services/watcher.py": {
     "max_func_loc": 12,
@@ -2112,7 +2163,7 @@
     "max_nest": 2,
     "max_params": 5,
     "file_lines": 92,
-    "coverage": 94.74
+    "coverage": 98.68
   },
   "app/services/watcher_config.py": {
     "max_func_loc": 14,
@@ -2165,7 +2216,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 55,
-    "coverage": 83.72
+    "coverage": 93.02
   },
   "app/services/watcher_pkg/__init__.py": {
     "max_func_loc": 0,
@@ -2198,7 +2249,7 @@
     "max_nest": 0,
     "max_params": 5,
     "file_lines": 36,
-    "coverage": 68.97
+    "coverage": 86.21
   },
   "app/services/watcher_pkg/handlers.py": {
     "max_func_loc": 20,
@@ -2216,7 +2267,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 80,
-    "coverage": 83.72
+    "coverage": 97.67
   },
   "app/services/watcher_pkg/jobs_ctrl.py": {
     "max_func_loc": 3,
@@ -2256,7 +2307,7 @@
     "max_nest": 2,
     "max_params": 2,
     "file_lines": 122,
-    "coverage": 96.0
+    "coverage": 98.4
   },
   "app/ui/__init__.py": {
     "max_func_loc": 0,
@@ -2400,7 +2451,7 @@
     "max_nest": 3,
     "max_params": 3,
     "file_lines": 359,
-    "coverage": 25.25
+    "coverage": 72.43
   },
   "app/ui/panels/blocks_library.py": {
     "max_func_loc": 16,
@@ -2452,7 +2503,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 243,
-    "coverage": 68.67
+    "coverage": 75.97
   },
   "app/ui/panels/browser_tabs.py": {
     "max_func_loc": 20,
@@ -2507,7 +2558,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 544,
-    "coverage": 12.27
+    "coverage": 89.13
   },
   "app/ui/panels/cdp_tools.py": {
     "max_func_loc": 19,
@@ -2548,12 +2599,12 @@
     "max_nest": 2,
     "max_params": 5,
     "file_lines": 362,
-    "coverage": 15.64
+    "coverage": 52.36
   },
   "app/ui/panels/layout_state.py": {
     "max_func_loc": 19,
-    "max_class_loc": 140,
-    "func_count": 24,
+    "max_class_loc": 136,
+    "func_count": 25,
     "funcs": {
       "save_arena_state": 8,
       "emit_arena_state": 10,
@@ -2565,7 +2616,8 @@
       "_known_ids": 3,
       "_window_filter": 5,
       "app_state_payload": 11,
-      "get_grid_layout": 6,
+      "read_grid_payload": 7,
+      "get_grid_layout": 2,
       "save_grid_layout": 15,
       "reset_grid_layout": 13,
       "get_window_states": 5,
@@ -2585,8 +2637,8 @@
     "max_cog": 6,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 278,
-    "coverage": 73.48
+    "file_lines": 281,
+    "coverage": 85.34
   },
   "app/ui/panels/page_pool.py": {
     "max_func_loc": 16,
@@ -2614,7 +2666,7 @@
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 234,
-    "coverage": 14.49
+    "coverage": 82.24
   },
   "app/ui/panels/queue_scan.py": {
     "max_func_loc": 19,
@@ -2657,7 +2709,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 353,
-    "coverage": 24.1
+    "coverage": 57.0
   },
   "app/ui/panels/run_control.py": {
     "max_func_loc": 19,
@@ -2691,7 +2743,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 275,
-    "coverage": 25.21
+    "coverage": 82.77
   },
   "app/ui/panels/undo_history.py": {
     "max_func_loc": 18,
@@ -2749,7 +2801,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 223,
-    "coverage": 38.03
+    "coverage": 89.67
   },
   "app/ui/panels/watcher_captcha.py": {
     "max_func_loc": 16,
@@ -2780,7 +2832,7 @@
     "max_nest": 2,
     "max_params": 2,
     "file_lines": 237,
-    "coverage": 20.54
+    "coverage": 50.27
   },
   "app/ui/qt_compat.py": {
     "max_func_loc": 17,
@@ -2838,8 +2890,8 @@
   },
   "app/ui/services/captcha_recordings_bridge.py": {
     "max_func_loc": 8,
-    "max_class_loc": 66,
-    "func_count": 11,
+    "max_class_loc": 84,
+    "func_count": 13,
     "funcs": {
       "_open_local_folder": 4,
       "__init__": 4,
@@ -2848,17 +2900,19 @@
       "set_recording_enabled": 6,
       "delete_session": 6,
       "set_label": 6,
+      "set_result_label": 7,
+      "cohort": 7,
       "get_session": 6,
       "open_folder": 8,
       "Slot": 3
     },
-    "max_methods": 8,
+    "max_methods": 10,
     "max_cc": 3,
     "max_cog": 2,
     "max_nest": 1,
     "max_params": 4,
-    "file_lines": 95,
-    "coverage": 77.92
+    "file_lines": 113,
+    "coverage": 79.35
   },
   "app/ui/services/file_service.py": {
     "max_func_loc": 18,
@@ -3302,20 +3356,20 @@
   },
   "app/ui/web/js/panels/captcha-recording-comparison.js": {
     "max_func_loc": 15,
-    "max_cc": 5,
+    "max_cc": 6,
     "max_nest": 1,
     "max_params": 2,
-    "file_lines": 86,
-    "func_count": 14,
+    "file_lines": 91,
+    "func_count": 15,
     "js": true
   },
   "app/ui/web/js/panels/captcha-recordings.js": {
     "max_func_loc": 19,
     "max_cc": 9,
     "max_nest": 1,
-    "max_params": 2,
-    "file_lines": 153,
-    "func_count": 27,
+    "max_params": 3,
+    "file_lines": 174,
+    "func_count": 31,
     "js": true
   },
   "app/ui/web/js/panels/captcha.js": {

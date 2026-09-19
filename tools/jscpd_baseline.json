@@ -1,0 +1,4 @@
+{
+ "duplicated_lines_percent": 1.24,
+ "note": "jscpd app/ (D6 lane). Re-based 2026-09-19 on the integrated cycle branch (A+B+C+D), which is a larger tree than Area D's branch (0.939%). Regenerate deliberately after intentional dedup; the lane fails on any growth."
+}

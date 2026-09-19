@@ -16,8 +16,10 @@ RULE 16: no function >30 LOC, CC ≤10, nesting ≤4.
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Generator
 
 import pytest
@@ -159,3 +161,110 @@ def fake_preset_store(tmp_path, worker_id):
     except Exception:
         store = PresetStore()
     return store, store_path
+
+
+# ── D4.4 shared fake-CDP harness (used by test_cdp_client / test_cdp_arena) ──
+
+class FakeWS:
+    def __init__(self, server):
+        self._server = server
+        self._q = asyncio.Queue()
+        self.closed = False
+
+    async def send(self, raw):
+        self._server.handle(self, raw)
+
+    def push(self, raw):
+        self._q.put_nowait(raw)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        item = await self._q.get()
+        if item is None:
+            raise StopAsyncIteration
+        return item
+
+    async def close(self):
+        self.closed = True
+        self._q.put_nowait(None)
+
+
+class FakeCDPServer:
+    def __init__(self, responder=None, fail_urls=(), reject=False):
+        self.responder = responder or (lambda m, p, s: ({"ok": True}, None))
+        self.fail_urls = set(fail_urls)
+        self.reject = reject
+        self.sent = []
+        self.connects = []
+        self.last_ws = None
+
+    async def connect(self, url, **kwargs):
+        self.connects.append(url)
+        if self.reject:
+            raise OSError("connection refused")
+        if url in self.fail_urls:
+            raise OSError(f"fake connect failed: {url}")
+        ws = FakeWS(self)
+        self.last_ws = ws
+        return ws
+
+    def handle(self, ws, raw):
+        data = json.loads(raw)
+        self.sent.append(data)
+        if "id" not in data:
+            return
+        method = data.get("method", "")
+        result, error = self.responder(method, data.get("params") or {}, self)
+        if result == "NO_REPLY":
+            return
+        msg = {"id": data["id"]}
+        if error is not None:
+            msg["error"] = error
+        else:
+            msg["result"] = result if result is not None else {}
+        ws.push(json.dumps(msg))
+
+    def event(self, method, params=None, ws=None):
+        (ws or self.last_ws).push(json.dumps({"method": method, "params": params or {}}))
+
+    def methods(self):
+        return [m["method"] for m in self.sent if "method" in m]
+
+
+@pytest.fixture
+def cdp_server(monkeypatch):
+    server = FakeCDPServer()
+    fake_mod = ModuleType("websockets")
+    fake_mod.connect = server.connect
+    monkeypatch.setitem(sys.modules, "websockets", fake_mod)
+    return server
+
+
+def make_client(server=None, host="127.0.0.1", port=9222):
+    from app.browser.cdp_client import CDPClient
+    client = CDPClient(host=host, port=port)
+
+    class Rec:
+        def __init__(self):
+            self.calls = []
+
+        def emit(self, *args):
+            self.calls.append(args)
+
+        def connect(self, *args, **kwargs):
+            pass
+    client.connected = Rec()
+    client.disconnected = Rec()
+    client.error = Rec()
+    return client
+
+
+RAW_TABS = [
+    {"id": "t1", "title": "Arena", "url": "https://arena.ai/c",
+     "webSocketDebuggerUrl": "ws://10.0.0.9:9222/devtools/page/t1", "type": "page"},
+    {"id": "t2", "title": "New Tab", "url": "chrome://newtab/", "type": "page"},
+]
+
+

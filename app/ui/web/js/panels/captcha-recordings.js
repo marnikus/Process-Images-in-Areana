@@ -1,6 +1,9 @@
 /* Captcha recording summaries + user-owned ground-truth labels. */
 'use strict';
 
+const ACTOR_OPTIONS = [['unknown', 'Actor?'], ['bot', 'Bot'], ['manual', 'Manual'], ['mixed', 'Bot→Manual']];
+const RESULT_OPTIONS = [['unknown', 'Result?'], ['passed', 'Passed'], ['failed', 'Failed']];
+
 const CaptchaRecordingsPanel = {
   init() {
     document.getElementById('captchaRecordsRefreshBtn')?.addEventListener('click', () => this.load());
@@ -61,8 +64,10 @@ const CaptchaRecordingsPanel = {
     this.cell(tr, item.outcome || item.status || '—');
     this.cell(tr, this.duration(item.elapsed_ms));
     this.cell(tr, `${item.mutation_count || 0}/${item.network_count || 0}/${item.snapshot_count || 0}`);
+    // D3: actor (who solved) and result (what happened) are independent columns
+    this.labelCells(tr, item);
     const labelCell = document.createElement('td');
-    labelCell.append(this.labelSelect(item), CaptchaRecordingComparison.button(item, 0),
+    labelCell.append(CaptchaRecordingComparison.button(item, 0),
       CaptchaRecordingComparison.button(item, 1), this.openButton(item), this.deleteButton(item));
     tr.appendChild(labelCell);
     tr.title = item.reason || item.session_id || '';
@@ -107,14 +112,17 @@ const CaptchaRecordingsPanel = {
     return button;
   },
 
-  actorSelect(item) {
-    return this.select([['unknown', 'Actor?'], ['bot', 'Bot'], ['manual', 'Manual'],
-      ['mixed', 'Bot→Manual']], item.actor_label);
-  },
-
-  resultSelect(item) {
-    return this.select([['unknown', 'Result?'], ['passed', 'Passed'], ['failed', 'Failed']],
-      item.result_label);
+  // Both axes are edited together: changing either select persists actor+result
+  // as one pair (the bridge slot takes them as a pair), so a half-written
+  // manifest is impossible.
+  labelCells(tr, item) {
+    const actor = this.select(ACTOR_OPTIONS, item.actor_label);
+    const result = this.select(RESULT_OPTIONS, item.result_label);
+    const changed = () => this.setLabels(item.session_id, actor, result);
+    actor.addEventListener('change', changed);
+    result.addEventListener('change', changed);
+    this.selectCell(tr, actor);
+    this.selectCell(tr, result);
   },
 
   select(options, selected) {
@@ -144,6 +152,10 @@ const CaptchaRecordingsPanel = {
   cell(row, text) {
     const td = document.createElement('td');
     td.textContent = String(text == null ? '' : text); row.appendChild(td);
+  },
+  selectCell(row, select) {
+    const td = document.createElement('td');
+    td.appendChild(select); row.appendChild(td);
   },
   when(value) {
     if (!value) return '—';

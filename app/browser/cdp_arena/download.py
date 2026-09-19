@@ -68,4 +68,5 @@ async def download_image(cdp, src: str, log_cb) -> Tuple[bool, bytes, str]:
     ok2, data2, ctype2 = await _python_download(cdp, src, log_cb)
     if ok2:
         return True, data2, ctype2
+    log_cb(f"Python download rejected: {ctype2[:120]}", "warn")
     return False, b"", f"All methods failed for {src[:120]}"

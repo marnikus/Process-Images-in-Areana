@@ -13,6 +13,7 @@ from app.ui.panels.browser_tabs import BrowserTabsMixin
 from app.ui.panels.cdp_tools import CdpToolsMixin
 from app.ui.panels.layout_state import LayoutStateMixin
 from app.ui.panels.page_pool import PagePoolMixin
+from app.ui.panels.recording_sessions import RecordingSessionsMixin
 from app.ui.panels.queue_scan import QueueScanMixin
 from app.ui.panels.run_control import RunControlMixin
 from app.ui.panels.undo_history import UndoHistoryMixin
@@ -28,6 +29,7 @@ __all__ = [
     "LayoutStateMixin",
     "PagePoolMixin",
     "QueueScanMixin",
+    "RecordingSessionsMixin",
     "RunControlMixin",
     "UndoHistoryMixin",
     "UrlQueueMixin",

@@ -137,3 +137,21 @@ def test_is_rate_limit_error_false_for_generic_failures():
     assert not pe.is_rate_limit_error("")
     assert not pe.is_rate_limit_error(None)
     assert not pe.is_rate_limit_error(123)
+
+
+class TestMatchDeadGeneration:
+    """The revival's trigger: the site's dead-request toast, and nothing else."""
+
+    def test_matches_the_toast_case_insensitively(self):
+        line = "Page error: Something went wrong while generating the response."
+        assert pe.match_dead_generation(line) == line
+
+    def test_clean_and_terminal_text_do_not_match(self):
+        assert pe.match_dead_generation("Page error: you've hit the limit") == ""
+        assert pe.match_dead_generation("Page error: 500 trace_id abc") == ""
+        assert pe.match_dead_generation("") == ""
+        assert pe.match_dead_generation(None) == ""
+
+    def test_match_is_truncated_to_one_bounded_line(self):
+        line = "Page error: something went wrong while generating " + "x" * 400
+        assert pe.match_dead_generation(line) == line[:pe.MAX_LINE]

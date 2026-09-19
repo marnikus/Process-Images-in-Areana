@@ -1,5 +1,6 @@
 """CDP Arena package facade (C3) — re-exports controller + JS snippets for compat."""
 from .controller import CDPArenaController
+from .output import _convert_dead_generation, _poll_diag_or_revive
 from .js_snippets import (
     JS_INSERT_PROMPT,
     JS_SEND_STATE,
@@ -15,6 +16,8 @@ from .js_snippets import (
 
 __all__ = [
     "CDPArenaController",
+    "_convert_dead_generation",
+    "_poll_diag_or_revive",
     "JS_INSERT_PROMPT",
     "JS_SEND_STATE",
     "JS_CLICK_SEND",

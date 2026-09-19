@@ -27,14 +27,19 @@ const CaptchaRecordingComparison = {
   },
 
   _formatEvents(details) {
-    const evts = details.events || [];
-    return evts.map((event) =>
-      `${event.offset_ms ?? 0}ms  ${event.kind || '?'}  ${this.eventText(event)}`).join('\n');
+    const line = (event) =>
+      `${event.offset_ms ?? 0}ms  ${event.kind || '?'}  ${this.eventText(event)}`;
+    // D2: milestones always surface, even when the 200-event tail cut them off
+    const milestones = (details.milestones || []).map(line).join('\n');
+    const events = (details.events || [])
+      .filter((e) => e.kind !== 'milestone').map(line).join('\n');
+    return [milestones, events].filter(Boolean).join('\n');
   },
 
   _makeHeading(manifest) {
     const heading = document.createElement('b');
-    heading.textContent = `${manifest.actor_label || 'unknown'} · ${manifest.method || '—'} · ${manifest.outcome || manifest.status || '—'}`;
+    // D3: actor (who) and result (what) shown side by side, never conflated
+    heading.textContent = `${manifest.actor_label || 'unknown'} · ${manifest.result_label || 'unknown'} · ${manifest.method || '—'} · ${manifest.outcome || manifest.status || '—'}`;
     return heading;
   },
 
@@ -60,15 +65,12 @@ const CaptchaRecordingComparison = {
     const pane = document.getElementById(`captchaCompare${slot ? 'B' : 'A'}`);
     if (!pane) return;
     const manifest = details.manifest || {};
-    const eventsStr = this._formatEvents(details);
     const snapshot = details.latest_snapshot || {};
     pane.replaceChildren();
     pane.append(
-      this._makeHeading(manifest),
-      this._makeMeta(manifest),
-      this._makeTimeline(eventsStr),
-      this._makeDom(snapshot),
-      this._makeStamp(snapshot)
+      this._makeHeading(manifest), this._makeMeta(manifest),
+      this._makeTimeline(this._formatEvents(details)),
+      this._makeDom(snapshot), this._makeStamp(snapshot)
     );
   },
 

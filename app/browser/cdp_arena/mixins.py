@@ -129,6 +129,13 @@ class StateMixin:
 
 
 class OutputMixin:
+    async def _poll_output_diag(self, old_srcs, correlation_id, old_outputs):
+        """Single poll (revival-aware wrapper consults this first)."""
+        from .output import PollContext, _poll_output_diag as mod
+        ctx = PollContext(old_srcs=old_srcs or [], old_outputs=old_outputs or [],
+                          correlation_id=correlation_id, err_base=getattr(self, "_err_base", ""))
+        return await mod(self.cdp, ctx, self)
+
     async def wait_for_new_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000,
                                   correlation_id: Optional[str] = None,
                                   cancel_check=None) -> Tuple[str, Dict[str, Any]]:

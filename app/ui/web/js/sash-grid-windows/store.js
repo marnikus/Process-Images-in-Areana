@@ -5,7 +5,7 @@ window.SashGridWindowStore = {
     const winElIds = {
       url_list: 'winUrlList', folder: 'winFolder', queue: 'winQueue', prompt: 'winPrompt',
       run: 'winRun', progress: 'winProgress', watcher: 'winWatcher', log: 'winLog',
-      settings: 'winSettings', captcha: 'winCaptcha', captcha_records: 'winCaptchaRecords',
+      settings: 'winSettings', captcha: 'winCaptcha', recordings: 'winCaptchaRecords',
       browser: 'winBrowser', action_blocks: 'winActionBlocks', block_config: 'winBlockConfig',
       arena_presets: 'winArenaPresets',
     };

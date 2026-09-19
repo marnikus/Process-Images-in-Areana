@@ -1,0 +1,1 @@
+Error: Option '--all' requires an argument.

@@ -51,8 +51,10 @@ async def query_selector_all(transport, node_id: int, selector: str) -> List[int
 async def set_file_input_files(transport, node_id: int, files: List[str]) -> bool:
     try:
         r = await transport.send("DOM.setFileInputFiles", {"nodeId": node_id, "files": files})
-        if r.get("result") is not None:
-            return True
+        # CDP error reply → failure; an empty result is a valid success
+        if "error" in r:
+            log.warning(f"setFileInputFiles error reply for node {node_id}: {r['error']}")
+            return False
         return True
     except Exception as e:
         log.warning(f"setFileInputFiles failed node {node_id} files {files}: {e}")

@@ -58,6 +58,15 @@ RATE_LIMIT_PATTERNS = (
 
 _RATE_LIMIT_COMPILED = [re.compile(p, re.IGNORECASE) for p in RATE_LIMIT_PATTERNS]
 
+# Dead-request signature only (see match_dead_generation): the generation died
+# because a captcha modal held the request open — the site says "try again" and
+# one bounded resubmit is the honest remedy. Kept narrow on purpose.
+DEAD_GENERATION_PATTERNS = (
+    r"something\s+went\s+wrong\s+while\s+generating",
+)
+
+_DEAD_GENERATION_COMPILED = [re.compile(p, re.IGNORECASE) for p in DEAD_GENERATION_PATTERNS]
+
 MAX_LINE = 160
 
 
@@ -87,6 +96,23 @@ def is_rate_limit_error(text: str) -> bool:
     if not text or not isinstance(text, str):
         return False
     return any(rx.search(text) for rx in _RATE_LIMIT_COMPILED)
+
+
+def match_dead_generation(text: str) -> str:
+    """Non-empty when a `Page error: …` line is the site's dead-request toast.
+
+    Design `2026-09-18-dead-generation-toast-revival` §4.1: a generation request
+    held hostage by the captcha modal dies server-side and the site asks the
+    human to "try again" — exactly what the bounded revival does. Every other
+    ERROR_PATTERN (limits, quotas, trace ids) stays terminal and must never be
+    revived, so this is deliberately a *narrower* pattern set.
+    """
+    if not text or not isinstance(text, str):
+        return ""
+    for rx in _DEAD_GENERATION_COMPILED:
+        if rx.search(text):
+            return text[:MAX_LINE]
+    return ""
 
 
 def build_error_scan_js() -> str:

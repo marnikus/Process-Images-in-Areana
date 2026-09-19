@@ -130,17 +130,27 @@ else
 fi
 echo ""
 
-# 6. Duplication jscpd (R0.4 lane from area R0)
-echo "▶ Duplication jscpd (report lane — app/, min-tokens 60)"
+# 6. Duplication jscpd (R0.4 lane, fail-on-regression per D6)
+echo "▶ Duplication jscpd (app/, min-tokens 60, baseline tools/jscpd_baseline.json)"
 if command -v npx > /dev/null 2>&1 && [ -d "$ROOT/node_modules" ]; then
   mkdir -p /tmp/jscpd-out
   npx --no-install jscpd app --min-tokens 60 --reporters json --output /tmp/jscpd-out --silent > /dev/null 2>&1 || true
   if [ -f /tmp/jscpd-out/jscpd-report.json ]; then
-    "$PY" - <<'PYEOF'
-import json
-d = json.load(open('/tmp/jscpd-out/jscpd-report.json'))
-print(f"  Duplication {d['statistics']['total']['percentage']}% "
-      f"({len(d['duplicates'])} groups) — baseline 1.51% / 55 groups")
+    "$PY" - "$ROOT/tools/jscpd_baseline.json" "$ROOT/config" <<'PYEOF'
+import json, sys
+report = json.load(open("/tmp/jscpd-out/jscpd-report.json"))
+current = float(report["statistics"]["total"]["percentage"])
+try:
+    baseline = float(json.load(open(sys.argv[1]))["duplicated_lines_percent"])
+except Exception as exc:
+    print(f"  ⚠ no jscpd baseline ({exc}) — reporting only")
+    sys.exit(0)
+groups = len(report["duplicates"])
+print(f"  Duplication {current:.3f}% ({groups} groups) — baseline {baseline:.3f}%")
+if current > baseline + 0.01:
+    print(f"  ❌ duplication grew {baseline:.3f}% → {current:.3f}% — dedup or update the "
+          f"baseline in a commit that says why")
+    sys.exit(1)
 PYEOF
   else
     echo "  ⚠ jscpd produced no report"
@@ -160,3 +170,5 @@ echo ""
 echo "✅ All pre-push checks PASSED — safe to push"
 echo "   git push origin $(git rev-parse --abbrev-ref HEAD)"
 echo "Lanes: syntax + pytest + node + coverage(ratchet) + quality gate(py+js) + vulture + jscpd + metrics"
+echo "Not in the push budget (run on demand): mutation — bash tools/mutmut_scope.sh run [SCOPE]"
+echo "  (scopes: tools/mutmut_scopes.txt, evidence: docs/archive/2026-09-19-area-d-implementation/d5-mutation.md)"

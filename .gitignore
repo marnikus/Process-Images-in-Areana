@@ -52,3 +52,6 @@ docs/research/*_files/
 # Keep docs
 !docs/
 config/session.json
+
+# D5 mutation testing scratch (mutmut working dir)
+mutants/

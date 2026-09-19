@@ -31,7 +31,6 @@ MAX_RESUBMITS = 1  # one revival attempt per generation wait, ever
 @dataclass
 class ResumePolicy:
     """Per-wait revival budget to keep gate functions ≤4 params (RULE 16)."""
-
     prompt: str
     image_path: Optional[str] = None
     grace_sec: float = RESUME_GRACE_SEC
@@ -97,18 +96,28 @@ def _cancelled(policy: ResumePolicy) -> bool:
         return False
 
 
+def _note_dead_generation(policy: ResumePolicy, diag: Dict[str, Any], now: float) -> bool:
+    """The site's toast IS the death proof ("Please try again.") — no grace to wait out."""
+    if not diag.get("dead_generation_error"):
+        return False
+    policy.spinner_seen = True
+    policy.dead_since = now - policy.grace_sec
+    policy.gen_error = str(diag["dead_generation_error"])[:160]
+    return True
+
+
+def _live_request(diag: Dict[str, Any]) -> bool:
+    """True while the page still shows progress (spinner or freshly seen outputs)."""
+    return bool(diag.get("spinning")) or int(diag.get("allNew", 0) or 0) > 0
+
+
 def _note_activity(policy: ResumePolicy, diag: Dict[str, Any], now: float) -> None:
     """Live signals stand the triggers down; dead polls start the window."""
-    if diag.get("dead_generation_error"):
-        # The site's toast IS the death proof ("Please try again.") — no
-        # grace window to wait out; the trigger matures this same poll.
-        policy.spinner_seen = True
-        policy.dead_since = now - policy.grace_sec
-        policy.gen_error = str(diag["dead_generation_error"])[:160]
+    if _note_dead_generation(policy, diag, now):
         return
     if diag.get("spinning"):
         policy.spinner_seen = True
-    if diag.get("spinning") or int(diag.get("allNew", 0) or 0) > 0:
+    if _live_request(diag):
         policy.dead_since = None
         policy.settled_at = None
         policy.gen_error = ""  # a live request stands the death proof down
@@ -148,11 +157,16 @@ async def _maybe_resume(ctrl: Any, diag: Dict[str, Any]) -> Dict[str, Any]:
     if not reason:
         return diag
     policy.resubmits += 1
+    _clear_trigger(policy)
+    await _resubmit(ctrl, policy, reason)
+    return diag
+
+
+def _clear_trigger(policy: ResumePolicy) -> None:
+    """Fresh window after a resubmit: every triggered flag stands down."""
     policy.settled_at = None
     policy.dead_since = None
     policy.gen_error = ""
-    await _resubmit(ctrl, policy, reason)
-    return diag
 
 
 async def _attachment_missing(verify: Callable, path: str) -> bool:

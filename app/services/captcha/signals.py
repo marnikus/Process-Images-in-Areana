@@ -20,8 +20,7 @@ def _evidence_kwargs(res: Dict[str, Any]) -> Dict[str, Any]:
     """Convert probe evidence keys without letting malformed data raise."""
     return {
         "integration": str(res.get("integration") or "unknown"),
-        "anchor_present": bool(res.get("anchorPresent")),
-        "anchor_visible": bool(res.get("anchorVisible")),
+        "anchor_present": bool(res.get("anchorPresent")), "anchor_visible": bool(res.get("anchorVisible")),
         "challenge_present": bool(res.get("challengePresent")),
         "challenge_visible": bool(res.get("challengeVisible")),
         "challenge_active": bool(res.get("challengeActive")),
@@ -58,7 +57,6 @@ class CaptchaSignal:
     response_scope: str = "none"
     sitekey_source: str = "none"
     page_identity: str = ""
-
     @property
     def solvable(self) -> bool:
         """A 2Captcha task can be created for this signal."""
@@ -109,3 +107,9 @@ class SolveOutcome:
     inject: str = ""
     page_error_at_s: float = 0.0
     page_error: str = ""
+    # D2/F-B: bounded recording evidence (offsets in solve-relative seconds)
+    task_created_sec: float = 0.0
+    dialog_cleared_sec: float = 0.0
+    page_identity: str = ""
+    challenge_identity: str = ""
+    continue_result: str = ""

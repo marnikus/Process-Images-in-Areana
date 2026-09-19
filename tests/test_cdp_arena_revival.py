@@ -11,6 +11,7 @@ import pytest
 
 from app.browser.cdp_arena import (CDPArenaController, _convert_dead_generation,
                                    _poll_diag_or_revive)
+from app.browser.cdp_arena.output import PollContext
 from app.utils.page_errors import PageErrorAbort
 
 DEAD = ("Page error: Something went wrong while generating the response. "
@@ -75,24 +76,24 @@ async def test_poll_or_revive_passthrough_and_paths():
     async def ok_poll():
         return {"ready": False, "reason": "generating"}
 
-    got = await _poll_diag_or_revive(PollCtrl(ok_poll, ctrl), None, None, None)
+    got = await _poll_diag_or_revive(PollCtrl(ok_poll, ctrl), PollContext())
     assert got == {"ready": False, "reason": "generating"}
 
     async def dead_poll():
         raise PageErrorAbort(DEAD)
 
-    got = await _poll_diag_or_revive(PollCtrl(dead_poll, ctrl), None, None, None)
+    got = await _poll_diag_or_revive(PollCtrl(dead_poll, ctrl), PollContext())
     assert got["reason"] == "dead_generation"  # revived instead of aborting
 
     ctrl2 = ScanCtrl()  # gate gone -> same toast aborts honestly
     with pytest.raises(PageErrorAbort):
-        await _poll_diag_or_revive(PollCtrl(dead_poll, ctrl2), None, None, None)
+        await _poll_diag_or_revive(PollCtrl(dead_poll, ctrl2), PollContext())
 
     async def limit_poll():
         raise PageErrorAbort(LIMIT)
 
     with pytest.raises(PageErrorAbort):  # terminal errors never revive
-        await _poll_diag_or_revive(PollCtrl(limit_poll, ctrl), None, None, None)
+        await _poll_diag_or_revive(PollCtrl(limit_poll, ctrl), PollContext())
 
 
 class PollCtrl:

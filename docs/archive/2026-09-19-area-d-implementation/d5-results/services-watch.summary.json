@@ -1,0 +1,558 @@
+{
+ "scope": "services-watch",
+ "total": 368,
+ "status": {
+  "killed": 233,
+  "survived": 135
+ },
+ "mutants_per_file": {
+  "app/services/watcher.py": 99,
+  "app/services/watcher_pkg/cdp.py": 22,
+  "app/services/watcher_pkg/handlers.py": 136,
+  "app/services/watcher_pkg/jobs_ctrl.py": 10,
+  "app/services/watcher_pkg/loop.py": 101
+ },
+ "kill_rate": 0.6332,
+ "survivors": [
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1__init____mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1set_logger__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1set_logger__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1update_config__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1get_config__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher.py::app.services.watcher.x\u01c1WatcherService\u01c1force_clear__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/cdp.py::app.services.watcher_pkg.cdp.x\u01c1WatcherCDP\u01c1__init____mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/cdp.py::app.services.watcher_pkg.cdp.x\u01c1WatcherCDP\u01c1get__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/cdp.py::app.services.watcher_pkg.cdp.x\u01c1WatcherCDP\u01c1check_captcha__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/cdp.py::app.services.watcher_pkg.cdp.x\u01c1WatcherCDP\u01c1check_captcha__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/cdp.py::app.services.watcher_pkg.cdp.x\u01c1WatcherCDP\u01c1check_captcha__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/cdp.py::app.services.watcher_pkg.cdp.x\u01c1WatcherCDP\u01c1check_captcha__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_35",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_42",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_captcha__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_37",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_41",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_43",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_44",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_45",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_46",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_47",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_49",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_generation__mutmut_50",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_27",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/handlers.py::app.services.watcher_pkg.handlers.x\u01c1WatcherHandlers\u01c1handle_clear__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1__init____mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1notify__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1notify__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1notify__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1notify__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1notify__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1notify__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1notify__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1notify__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1notify__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1check_once__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1check_once__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1check_once__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1check_once__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1start__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1start__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1start__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1start__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1start__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1start__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1start__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1start__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1start__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1ensure_task__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1ensure_task__mutmut_3",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1stop__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1_run__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1_run__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "app/services/watcher_pkg/loop.py::app.services.watcher_pkg.loop.x\u01c1WatcherLoop\u01c1_run__mutmut_3",
+   "exit": 0
+  }
+ ]
+}

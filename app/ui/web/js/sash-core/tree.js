@@ -50,7 +50,7 @@ function sashDefaultTree() {
   return sashSplit('col', [
     sashSplit('row', [
       sashSplit('col', [sashLeaf('url_list'), sashLeaf('folder')], [55, 45]),
-      sashSplit('col', [sashLeaf('prompt'), sashLeaf('run'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('captcha_records')], [35, 20, 20, 12, 13]),
+      sashSplit('col', [sashLeaf('prompt'), sashLeaf('run'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('recordings')], [35, 20, 20, 12, 13]),
     ], [60, 40]),
     sashSplit('row', [
       sashLeaf('queue'),
@@ -65,7 +65,7 @@ function sashLayoutA() {
   return sashSplit('col', [
     sashLeaf('url_list'), sashLeaf('folder'), sashLeaf('queue'),
     sashLeaf('prompt'), sashLeaf('run'), sashLeaf('progress'), sashLeaf('watcher'),
-    sashLeaf('log'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('captcha_records'), sashLeaf('browser'),
+    sashLeaf('log'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('recordings'), sashLeaf('browser'),
     sashLeaf('action_blocks'), sashLeaf('block_config'), sashLeaf('arena_presets'),
   ], [7, 5, 11, 9, 6, 6, 6, 7, 6, 6, 7, 7, 6, 6, 5]);
 }
@@ -74,7 +74,7 @@ function sashLayoutB() {
   return sashSplit('row', [
     sashSplit('col', [sashLeaf('url_list'), sashLeaf('folder'), sashLeaf('queue'), sashLeaf('action_blocks')], [25, 15, 35, 25]),
     sashSplit('col', [sashLeaf('prompt'), sashLeaf('block_config'), sashLeaf('progress'), sashLeaf('watcher'), sashLeaf('log')], [25, 20, 15, 20, 20]),
-    sashSplit('col', [sashLeaf('browser'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('captcha_records'), sashLeaf('arena_presets'), sashLeaf('run')], [30, 14, 14, 14, 14, 14]),
+    sashSplit('col', [sashLeaf('browser'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('recordings'), sashLeaf('arena_presets'), sashLeaf('run')], [30, 14, 14, 14, 14, 14]),
   ], [35, 35, 30]);
 }
 
@@ -86,7 +86,7 @@ function sashLayoutC() {
     ], [45, 55]),
     sashSplit('row', [
       sashLeaf('queue'),
-      sashSplit('col', [sashLeaf('folder'), sashLeaf('run'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('captcha_records'), sashLeaf('progress'), sashLeaf('watcher'), sashLeaf('arena_presets')], [12, 12, 14, 14, 12, 12, 12, 12]),
+      sashSplit('col', [sashLeaf('folder'), sashLeaf('run'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('recordings'), sashLeaf('progress'), sashLeaf('watcher'), sashLeaf('arena_presets')], [12, 12, 14, 14, 12, 12, 12, 12]),
     ], [60, 40]),
     sashLeaf('log'),
   ], [35, 48, 17]);

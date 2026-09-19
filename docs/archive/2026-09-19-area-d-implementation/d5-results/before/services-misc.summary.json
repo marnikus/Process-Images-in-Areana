@@ -1,0 +1,384 @@
+{
+ "scope": "services-misc",
+ "total": 374,
+ "status": {
+  "survived": 92,
+  "killed": 281,
+  "no_tests": 1
+ },
+ "mutants_per_file": {
+  "auto_connect.py": 324,
+  "verification.py": 50
+ },
+ "kill_rate": 0.7513,
+ "survivors": [
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_matches_pattern__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_matches_pattern__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_matches_pattern__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_13",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__tab_key__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_10",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_24",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_30",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_31",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_32",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__live_tabs__mutmut_33",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_index__mutmut_20",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_index__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_index__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_action__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_action__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_action__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_action__mutmut_16",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_action__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_action__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_action__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_action__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__row_action__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__apply_row_action__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__apply_row_action__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__apply_row_action__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_pick_primary_ws__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_pick_primary_ws__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_pick_primary_ws__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_pick_primary_ws__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_prunable_row_ids__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_prunable_row_ids__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_prunable_row_ids__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_prunable_row_ids__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_prunable_row_ids__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_prunable_row_ids__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_plan_auto_connect__mutmut_19",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_plan_auto_connect__mutmut_22",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_plan_auto_connect__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_plan_auto_connect__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_plan_auto_connect__mutmut_48",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_plan_auto_connect__mutmut_51",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_plan_auto_connect__mutmut_54",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_plan_auto_connect__mutmut_55",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_sync_pool_presence__mutmut_15",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__wins_over__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__wins_over__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__wins_over__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__wins_over__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__wins_over__mutmut_14",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__wins_over__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__best_per_tab__mutmut_4",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__best_per_tab__mutmut_6",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x__best_per_tab__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_dedupe_linked_rows__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "auto_connect.py::app.services.auto_connect.x_dedupe_linked_rows__mutmut_11",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1verify_attachment_success__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1verify_prompt_text__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_1",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_2",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_5",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_7",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_8",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_9",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_12",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_17",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_18",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_21",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_23",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_25",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_26",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_28",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_29",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_36",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_39",
+   "exit": 0
+  },
+  {
+   "mutant": "verification.py::app.services.verification.x\u01c1VerificationService\u01c1validate_downloaded_file__mutmut_46",
+   "exit": 0
+  }
+ ]
+}

@@ -10,7 +10,7 @@ log = logging.getLogger("arena")
 
 WINDOW_IDS = [
     "url_list", "folder", "queue", "prompt", "run", "progress", "watcher",
-    "log", "settings", "captcha", "captcha_records", "browser",
+    "log", "settings", "captcha", "recordings", "browser",
     "action_blocks", "block_config", "arena_presets",
 ]
 WINDOWS = [
@@ -56,7 +56,7 @@ def default_grid_tree() -> dict:
         split("row", [
             split("col", [leaf("url_list"), leaf("folder")], [55, 45]),
             split("col", [leaf("prompt"), leaf("run"), leaf("settings"),
-                          leaf("captcha"), leaf("captcha_records")], [35, 20, 20, 12, 13]),
+                          leaf("captcha"), leaf("recordings")], [35, 20, 20, 12, 13]),
         ], [60, 40]),
         split("row", [
             leaf("queue"),
@@ -66,20 +66,6 @@ def default_grid_tree() -> dict:
         ], [45, 35, 20]),
         leaf("log"),
     ], [38, 40, 22])
-
-
-def normalize_window_states(data: Any) -> "dict | None":
-    """Shared window-state filter: known ids only, minimized never reopens a closed win.
-
-    Returns None for non-dict payloads so callers can reject instead of substituting
-    defaults (RULE 13: never brick on corrupt state, never default-substitute).
-    """
-    if not isinstance(data, dict):
-        return None
-    closed = [i for i in data.get("closed", []) if isinstance(i, str) and i in WINDOW_IDS]
-    minimized = [i for i in data.get("minimized", [])
-                 if isinstance(i, str) and i in WINDOW_IDS and i not in closed]
-    return {"closed": closed, "minimized": minimized}
 
 
 def default_payload() -> str:
@@ -285,7 +271,10 @@ def _rename_legacy_windows(node):
         new_id = LEGACY_WINDOW_IDS.get(node.get("id"))
         return {**node, "id": new_id} if new_id else node
     if t == "split" and isinstance(node.get("children"), list):
-        return {**node, "children": [_rename_legacy_windows(k) for k in node["children"]]}
+        kids = [_rename_legacy_windows(k) for k in node["children"]]
+        if all(new is old for new, old in zip(kids, node["children"])):
+            return node  # nothing renamed: the stored tree keeps its identity
+        return {**node, "children": kids}
     return node
 
 

@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, Tuple, Callable, List
 from ..output_probes import build_check_js
 from ..output_state import flatten_diagnostics
 from ..output_wait import WaitSpec as PollSpec, wait_for_new_output_with_spec
-from ...utils.page_errors import PageErrorAbort, match_page_error
+from ...utils.page_errors import PageErrorAbort, match_dead_generation, match_page_error
 from .state import capture_baseline, scan_page_errors
 
 log = logging.getLogger("arena")
@@ -42,6 +42,61 @@ async def _run_resume_gate(ctrl, diag):
     try:
         return await gate(diag) or diag
     except Exception:
+        return diag
+
+
+async def _scan_safely(scanner) -> str:
+    """Fail-open scan: a broken/absent scanner reads as an empty corpus."""
+    if scanner is None:
+        return ""
+    try:
+        return await scanner()
+    except Exception:
+        return ""
+
+
+async def _rebaseline_errors(ctrl, ctx) -> str:
+    """Fresh page-error corpus after a converted toast (the banner must not re-fire)."""
+    scanner = getattr(ctrl, "_scan_page_errors", None) or getattr(ctrl, "scan_page_errors", None)
+    fresh = await _scan_safely(scanner)
+    ctrl._err_base = fresh
+    if ctx is not None:
+        ctx.err_base = fresh
+    return fresh
+
+
+async def _convert_dead_generation(ctrl, err: str, ctx=None) -> Optional[Dict[str, Any]]:
+    """Dead-generation toast -> one revival poll instead of an instant failure.
+
+    Design `2026-09-18-dead-generation-toast-revival` §4.2. Converts only when
+    the error is the site's dead-request toast, a `resume_gate` is armed, and
+    this wait has not converted yet (one shot per wait, reset at wait start).
+    Every other error re-raises unchanged (RULE 4: honest broken).
+    """
+    if match_dead_generation(err) == "":
+        return None
+    if getattr(ctrl, "resume_gate", None) is None or getattr(ctrl, "_dead_gen_revived", False):
+        return None
+    ctrl._dead_gen_revived = True
+    await _rebaseline_errors(ctrl, ctx)
+    return {"ready": False, "reason": "dead_generation", "dead_generation_error": err}
+
+
+async def _poll_diag_or_revive(ctrl, ctx: PollContext, cdp=None) -> Dict[str, Any]:
+    """One poll; a dead-generation abort becomes a revival diag, others re-raise.
+
+    Always delegates the poll itself: `ctrl._poll_output_diag` when the
+    controller has it (CDPArenaController mixin), else this module's scanner.
+    """
+    try:
+        poll = getattr(ctrl, "_poll_output_diag", None)
+        if poll is not None:
+            return await poll(ctx.old_srcs, ctx.correlation_id, ctx.old_outputs)
+        return await _poll_output_diag(cdp, ctx, ctrl)
+    except PageErrorAbort as exc:
+        diag = await _convert_dead_generation(ctrl, str(exc), ctx)
+        if diag is None:
+            raise
         return diag
 
 
@@ -90,26 +145,38 @@ async def _build_poll_context(baseline: Dict[str, Any], correlation_id, err_base
     )
 
 
-async def wait_for_new_output(cdp, spec: WaitSpec) -> Tuple[str, Dict[str, Any]]:
-    baseline = spec.baseline
+async def _prepare_wait(cdp, spec: WaitSpec) -> PollContext:
+    """Scan the error corpus once per wait and prime the one-shot revival."""
     err_base = await scan_page_errors(cdp)
-    ctx = await _build_poll_context(baseline, spec.correlation_id, err_base)
+    ctx = await _build_poll_context(spec.baseline, spec.correlation_id, err_base)
+    if spec.ctrl is not None:
+        spec.ctrl._err_base = err_base          # conversion re-baselines through here
+        spec.ctrl._dead_gen_revived = False     # one revival per wait
+    return ctx
 
+
+async def _run_wait(cdp, spec: WaitSpec, ctx: PollContext) -> Tuple[str, Dict[str, Any]]:
+    """Poll until the wait's own gates settle (done/abort mapping included)."""
     async def check_fn():
         await _security_gate(cdp, spec.ctrl)
-        diag = await _poll_output_diag(cdp, ctx, spec.ctrl)
+        diag = await _poll_diag_or_revive(spec.ctrl, ctx, cdp)
         return await _run_resume_gate(spec.ctrl, diag)
 
     def _log(msg: str):
         if spec.log_cb:
             spec.log_cb(msg)
 
+    poll = PollSpec(timeout=spec.timeout_ms / 1000.0, poll_interval=2.0)
+    result = await wait_for_new_output_with_spec(check_fn, _log, spec.cancel_check, poll)
+    return await _map_wait_result(cdp, result, spec.baseline, spec.timeout_ms)
+
+
+async def wait_for_new_output(cdp, spec: WaitSpec) -> Tuple[str, Dict[str, Any]]:
+    ctx = await _prepare_wait(cdp, spec)
     try:
-        first_err = match_page_error(err_base)
+        first_err = match_page_error(ctx.err_base)
         if first_err:
             return "failed", {"error": first_err}
-        poll = PollSpec(timeout=spec.timeout_ms / 1000.0, poll_interval=2.0)
-        result = await wait_for_new_output_with_spec(check_fn, _log, spec.cancel_check, poll)
-        return await _map_wait_result(cdp, result, baseline, spec.timeout_ms)
-    except Exception as e:
+        return await _run_wait(cdp, spec, ctx)
+    except Exception as e:  # RULE 4: a broken poll is an honest failed wait
         return "failed", {"error": str(e)}

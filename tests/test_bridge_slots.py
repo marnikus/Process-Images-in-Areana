@@ -73,6 +73,14 @@ def test_helpers_never_slots():
 # Contract design §1 item 1: the 119 JS slot names, frozen. Any add/remove
 # must update this set deliberately (JS contract review).
 FROZEN_SLOTS = frozenset({
+    'delete_recording',
+    'get_recording_detail',
+    'get_recording_diff',
+    'get_recording_settings',
+    'get_recording_snapshot',
+    'get_recordings_list',
+    'set_recording_label',
+    'set_recording_settings',
     'add_action_block',
     'add_url',
     'add_url_preset',
@@ -205,6 +213,7 @@ EXPECTED_PACKING = {
     'layout_state': 14,
     'page_pool': 9,
     'queue_scan': 12,
+    'recording_sessions': 8,
     'run_control': 10,
     'undo_history': 10,
     'url_queue': 9,
@@ -244,7 +253,7 @@ def test_frozen_slot_surface_exact():
 def test_panel_packing():
     counts = _panel_slot_counts()
     assert counts == EXPECTED_PACKING, f"packing drift: {counts}"
-    assert sum(counts.values()) == 119
+    assert sum(counts.values()) == 127
 
 
 @pytest.mark.unit

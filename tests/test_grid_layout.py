@@ -132,8 +132,9 @@ def test_default_payload_valid_with_captcha():
 def test_default_tree_mirrors_js_captcha_column():
     col = col_with(default_grid_tree(), "captcha")
     assert col is not None
-    assert [k.get("id") for k in col["children"]] == ["prompt", "run", "settings", "captcha"]
-    assert col["sizes"] == [40, 22, 26, 12]
+    assert [k.get("id") for k in col["children"]] == ["prompt", "run", "settings",
+                                                      "captcha", "recordings"]
+    assert col["sizes"] == [35, 20, 20, 12, 13]
 
 
 @pytest.mark.unit
@@ -154,7 +155,10 @@ def test_legacy_13_window_payload_migrates():
     col = col_with(tree, "captcha")
     idx = [k.get("id") for k in col["children"]].index("captcha")
     del col["children"][idx]
-    col["sizes"] = [44, 24, 32]  # renormalized, sums to 100
+    n = len(col["children"])
+    share = round(100 / n, 4)
+    col["sizes"] = [share] * n
+    col["sizes"][0] = round(100 - share * (n - 1), 4)  # renormalized, sums to 100
     assert "captcha" not in leaf_ids(tree)
     out, err = canonical_grid_payload(json.dumps({"v": 4, "tree": tree}))
     assert err is None

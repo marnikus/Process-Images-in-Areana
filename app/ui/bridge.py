@@ -37,6 +37,7 @@ from app.ui.panels.queue_scan import QueueScanMixin
 from app.ui.panels.app_settings import AppSettingsMixin
 from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
 from app.ui.panels.page_pool import PagePoolMixin
+from app.ui.panels.recording_sessions import RecordingSessionsMixin
 from app.ui.panels.browser_tabs import BrowserTabsMixin
 from app.ui.panels.cdp_tools import CdpToolsMixin
 from app.ui.panels.run_control import RunControlMixin, emit_job_action_status
@@ -53,7 +54,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)

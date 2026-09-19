@@ -10,6 +10,13 @@ from .recorder import CaptchaRecorder
 from .store import RecordingStore, recording_enabled, save_recording_enabled
 
 
+def _drop_active(active: dict[str, CaptchaRecorder], recorder: CaptchaRecorder) -> None:
+    """Forget a finished recorder by identity (one tab can hold only one)."""
+    for tab_id, held in tuple(active.items()):
+        if held is recorder:
+            active.pop(tab_id, None)
+
+
 class RecordingManager:
     """Own active recorders and expose summaries/labels to the UI."""
 
@@ -37,8 +44,7 @@ class RecordingManager:
             self.log(f"Captcha recording start skipped: {exc}", "warn")
             return None
 
-    async def finish(self, recorder: Optional[CaptchaRecorder], outcome: Any,
-                     report: Optional[dict[str, Any]] = None) -> None:
+    async def finish(self, recorder: Optional[CaptchaRecorder], outcome: Any, report: dict | None = None) -> None:
         if recorder is None:
             return
         try:
@@ -48,7 +54,7 @@ class RecordingManager:
         except Exception as exc:
             self.log(f"Captcha recording finish failed: {exc}", "warn")
         finally:
-            self._drop(recorder)
+            _drop_active(self._active, recorder)
 
     async def note(self, tab_id: str, phase: str, outcome: Any) -> None:
         recorder = self._active.get(tab_id)
@@ -67,7 +73,7 @@ class RecordingManager:
         except Exception as exc:
             self.log(f"Captcha recording abort failed: {exc}", "warn")
         finally:
-            self._drop(recorder)
+            _drop_active(self._active, recorder)
 
     def list_sessions(self, limit: int = 1000) -> list[dict[str, Any]]:
         return self.store.list_sessions(limit)
@@ -97,7 +103,6 @@ class RecordingManager:
         save_recording_enabled(self.store.root, enabled)
         return bool(enabled)
 
-    def _drop(self, recorder: CaptchaRecorder) -> None:
-        for tab_id, active in tuple(self._active.items()):
-            if active is recorder:
-                self._active.pop(tab_id, None)
+    def compare_sessions(self, left_id: str, right_id: str) -> dict[str, Any]:
+        """Side-by-side evidence report for two finished sessions (window #15)."""
+        return self.comparison.compare(self.get_session(left_id), self.get_session(right_id))

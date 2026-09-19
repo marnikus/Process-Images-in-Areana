@@ -836,3 +836,46 @@ async def test_not_accepted_retries_once_then_gives_up(monkeypatch, isolated_con
     assert outcome.attempts == 2
     assert len(client.created) == 2 and len(client.deleted) == 2
     assert any("retrying with fresh task" in m for m, _ in logs)
+
+
+class RaisingClient(FakeClient):
+    """createTask that always fails — the fail-open paths must stay honest."""
+
+    def __init__(self, key, error, **kwargs):
+        super().__init__(key, **kwargs)
+        self.error = error
+
+    async def create_task(self, task):
+        raise self.error
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_create_task_api_error_falls_back_without_retry(monkeypatch, isolated_config_dir):
+    """A provider error on createTask ends the auto attempt (no phantom retry)."""
+    from app.services.captcha.api_client import ApiError
+    client = RaisingClient("K", ApiError("no_credit", error_id=3))
+    solver, stats, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
+    ctrl = FakeCtrl(visible_seq=[True] * 8)
+
+    outcome = await solver.solve(ctrl, "tabA", signal(), lambda: False)
+
+    assert outcome.status == "auto_failed"
+    assert outcome.reason == "task_create: createTask failed"
+    assert any("createTask failed" in message for message, _ in logs)
+    assert client.created == []          # nothing was charged
+    assert stats.last_error               # the provider reason is visible to the panel
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_create_task_unexpected_error_is_fail_open(monkeypatch, isolated_config_dir):
+    """Any other createTask exception stays a warn + fallback, never a crash."""
+    client = RaisingClient("K", RuntimeError("socket exploded"))
+    solver, _, logs, _ = make_env(monkeypatch, isolated_config_dir, client, step=5)
+    ctrl = FakeCtrl(visible_seq=[True] * 8)
+
+    outcome = await solver.solve(ctrl, "tabA", signal(), lambda: False)
+
+    assert outcome.status == "auto_failed"
+    assert any("unexpected error" in message for message, _ in logs)

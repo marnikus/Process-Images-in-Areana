@@ -71,6 +71,19 @@ from typing import Dict, List, Tuple, Optional
 ROOT = Path(__file__).resolve().parent.parent
 APP_DIR = ROOT / "app"
 
+def apply_root(root: Optional[str]) -> None:
+    """Point the gate at another checkout (D6 negative tests use a tmp repo)."""
+    global ROOT, APP_DIR, JS_DIR
+    if not root:
+        return
+    ROOT = Path(root).resolve()
+    APP_DIR = ROOT / "app"
+    JS_DIR = ROOT / "app" / "ui" / "web"
+
+def baseline_path(args) -> str:
+    """Baseline location: explicit --baseline, else the (possibly overridden) root."""
+    return args.baseline or str(ROOT / "tools" / "quality_baseline.json")
+
 # Fail thresholds (from AGENT_RULES.md)
 LIMITS = {
     "func_loc": 30,
@@ -219,19 +232,40 @@ def js_maxima(js_files: List[Path]) -> Dict[str, Dict[str, int]]:
     return per_file
 
 
+# D6: a NEW JS symbol must respect the hard limits on its own — grandparenting
+# only ever covers what the baseline already recorded.
+JS_HARD_LIMITS = {"max_func_loc": 30, "max_params": 4, "max_nest": 4, "max_cc": 10}
+
+
+def _js_hard_limit_breach(rel: str, metric: str, value: int, limit: int) -> Dict:
+    return {"file": rel, "type": "js", "metric": f"js-{metric}", "value": value,
+            "limit": limit, "fail": True,
+            "message": f"JS {rel} {metric} {value} > {limit} (new symbol must meet the hard limit)"}
+
+
+def _js_ratchet_breach(rel: str, metric: str, value: int, limit: int) -> Dict:
+    return {"file": rel, "type": "js", "metric": f"ratchet-js-{metric}",
+            "value": value, "limit": limit, "fail": True,
+            "message": f"RATCHET JS {rel} {metric} grew {limit}→{value}"}
+
+
 def check_js(js_files: List[Path], baseline: Dict) -> List[Dict]:
-    """JS ratchet: a measured maximum may not exceed the recorded baseline."""
+    """JS lane: hard limits for new symbols + ratchet for baselined ones."""
     breaches = []
     for rel, cur in sorted(js_maxima(js_files).items()):
         base = baseline.get(rel) or {}
-        for metric in RATCHET_METRICS + ["file_lines", "func_count"]:
-            limit = base.get(metric)
+        for metric, hard in JS_HARD_LIMITS.items():
             value = cur.get(metric, 0)
-            if limit is None or value <= limit:
-                continue
-            breaches.append({"file": rel, "type": "js", "metric": f"ratchet-js-{metric}",
-                             "value": value, "limit": limit, "fail": True,
-                             "message": f"RATCHET JS {rel} {metric} grew {limit}→{value}"})
+            recorded = base.get(metric)
+            if recorded is None:
+                if value > hard:
+                    breaches.append(_js_hard_limit_breach(rel, metric, value, hard))
+            elif value > recorded:
+                breaches.append(_js_ratchet_breach(rel, metric, value, recorded))
+        for metric in ("file_lines", "func_count"):
+            recorded = base.get(metric)
+            if recorded is not None and cur.get(metric, 0) > recorded:
+                breaches.append(_js_ratchet_breach(rel, metric, cur[metric], recorded))
     return breaches
 
 
@@ -792,7 +826,8 @@ def parse_args():
     parser.add_argument("--base", type=str, default="origin/main",
                         help="base ref for --changed (default origin/main)")
     parser.add_argument("--allow-legacy", action="store_true", help="allow legacy files that are in baseline to exceed limits if not increased")
-    parser.add_argument("--baseline", type=str, default="tools/quality_baseline.json", help="baseline file for legacy")
+    parser.add_argument("--baseline", type=str, default=None,
+                        help="baseline file (default: <root>/tools/quality_baseline.json)")
     parser.add_argument("--coverage-file", type=str, default=None,
                         help="coverage.json path (default: ./coverage.json)")
     parser.add_argument("--coverage-ratchet", action="store_true",
@@ -805,6 +840,9 @@ def parse_args():
                         help="integrator-only: re-record py maxima/funcs + JS maxima + coverage floor, then exit")
     parser.add_argument("--js", action="store_true", help="force the JS lane on")
     parser.add_argument("--no-js", action="store_true", help="skip the JS lane")
+    parser.add_argument("--root", default=None, help="repo root override (gate self-tests)")
+    parser.add_argument("--changed-files", nargs="*", default=None,
+                        help="explicit files to gate instead of --changed (gate self-tests)")
     return parser.parse_args()
 
 
@@ -863,6 +901,9 @@ def downgrade_legacy(breaches: List[Dict], base: Optional[Dict]) -> List[Dict]:
 
 def select_files(args) -> Tuple[List[Path], Optional[str]]:
     """Files to gate + fallback reason when --changed is impossible (F-6)."""
+    if args.changed_files is not None:
+        return [p for p in (ROOT / rel for rel in args.changed_files)
+                if p.suffix == ".py" and p.exists() and not is_out_of_scope(p)], None
     if not args.changed:
         return all_app_files(), None
     files, fallback = changed_app_files(args.base)
@@ -905,7 +946,7 @@ def ratchet_floor(args) -> Optional[Dict[str, float]]:
     """Baseline coverage floor when ratchet mode is on (None = unavailable)."""
     if not args.coverage_ratchet:
         return None
-    return load_coverage_baseline(args.baseline)
+    return load_coverage_baseline(baseline_path(args))
 
 
 def print_text_report(fails: List[Dict], warns: List[Dict], files_checked: int) -> None:
@@ -959,28 +1000,36 @@ def print_fail_banner() -> None:
 
 def main():
     args = parse_args()
+    apply_root(args.root)
     if args.rebuild_legacy_baseline:
-        print(record_baseline(args.baseline, refresh=False,
+        print(record_baseline(baseline_path(args), refresh=False,
                               cov_path=Path(args.coverage_file) if args.coverage_file else None))
         return
     if args.record_baseline:
-        print(record_baseline(args.baseline, refresh=True,
+        print(record_baseline(baseline_path(args), refresh=True,
                               cov_path=Path(args.coverage_file) if args.coverage_file else None))
         return
     if args.update_coverage_baseline:
-        print(update_coverage_baseline(args.baseline, Path(args.coverage_file or ROOT / "coverage.json")))
+        print(update_coverage_baseline(Path(baseline_path(args)),
+              Path(args.coverage_file or ROOT / "coverage.json")))
         return
     baseline_data = {}
     if args.allow_legacy:
         try:
-            baseline_path = Path(args.baseline)
-            if baseline_path.exists():
-                baseline_data = json.loads(baseline_path.read_text(encoding="utf-8"))
+            bp = Path(baseline_path(args))
+            if bp.exists():
+                baseline_data = json.loads(bp.read_text(encoding="utf-8"))
         except Exception:
             baseline_data = {}
     files, changed_fallback = select_files(args)
     all_breaches = collect_breaches(args, files, baseline_data, ratchet_floor(args))
-    js_files = [] if args.no_js else (changed_js_files(args.base) if args.changed else all_js_files())
+    if args.no_js:
+        js_files = []
+    elif args.changed_files is not None:
+        js_files = [p for p in (ROOT / rel for rel in args.changed_files)
+                    if p.suffix == ".js" and p.exists()]
+    else:
+        js_files = changed_js_files(args.base) if args.changed else all_js_files()
     if js_files or args.js:
         all_breaches.extend(check_js(js_files, baseline_data))
     fails = [b for b in all_breaches if b.get("fail")]

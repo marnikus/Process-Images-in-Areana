@@ -18,8 +18,13 @@ export const ALL_WINDOW_IDS = [
   'settings', 'captcha', 'browser', 'action_blocks', 'block_config', 'arena_presets', 'recordings',
 ];
 
+// Panel element ids that predate the camelCase rule stay explicit — the DOM id
+// of the recordings panel is still winCaptchaRecords (window id: recordings).
+export const PANEL_IDS = {recordings: 'winCaptchaRecords'};
+
 export function panelIdOf(id) {
   // mirrors the ids in app/ui/web/index.html (camelCase: url_list → winUrlList)
+  if (PANEL_IDS[id]) return PANEL_IDS[id];
   return 'win' + id.split('_').map((p) => p[0].toUpperCase() + p.slice(1)).join('');
 }
 
@@ -34,14 +39,14 @@ export const TITLE_SECONDARIES = {
   log: { pre: [], post: ['clearLogBtn'] },
   settings: { pre: [], post: ['settingsSaveBtn'] },
   captcha: { pre: [], post: ['captchaSaveBtn', 'captchaStatsBtn'] },
-  recordings: { pre: [], post: ['recRefreshBtn'] },
+  recordings: { pre: [], post: ['captchaRecordsSummary', 'captchaRecordsRefreshBtn'] },
   browser: { pre: [], post: ['browserClearBtn'] },
   action_blocks: { pre: [], post: ['actionBlocksCount'] },
   block_config: { pre: [], post: ['closeBlockConfigBtn'] },
   arena_presets: { pre: [], post: ['arenaPresetsCount'] },
 };
 const BADGE_LIKE = new Set(['urlCount', 'queueCount', 'watcherStatusBadge',
-  'actionBlocksCount', 'arenaPresetsCount']);
+  'actionBlocksCount', 'arenaPresetsCount', 'captchaRecordsSummary']);
 
 function makePanel(id) {
   const p = new El('div');

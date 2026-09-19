@@ -9,6 +9,8 @@ import secrets
 VALID_ACTOR_LABELS = frozenset({"unknown", "bot", "manual", "mixed"})
 VALID_RESULT_LABELS = frozenset({"unknown", "passed", "failed"})
 VALID_LABELS = VALID_ACTOR_LABELS  # compatibility for schema-v1 callers
+# Actor and result are independent axes: the actor says who solved it,
+# the result says what happened (Area D3).
 FINAL_OUTCOMES = frozenset({
     "solved", "manual", "page_error", "token_stale", "auto_failed",
     "stopped", "interrupted",

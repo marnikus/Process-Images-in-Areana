@@ -140,3 +140,96 @@ bash tools/pre_push_check.sh
   check out the subtree with `git checkout 11e6520 -- "Process Images in Areana"`.
   History (and therefore repo size) still holds the blobs; a history rewrite
   was deliberately **not** done here because it would force-push every branch.
+
+## 8. R2 — Area D integrated (the last area)
+
+Source: `arena/01a0b97a-process-images-in-areana` (`52f661f` D1–D4, `ca648fc`
+D5+D6). D was built on **A's tip**, so nothing could be merged by ref: the same
+per-deliverable integration as §1 was used, and D's own design doc
+(`docs/archive/2026-09-19-area-d-implementation/design.md`) stays the record of
+what D did on its branch.
+
+### 8.1 What came across
+
+| Deliverable | Files | How it landed |
+|---|---|---|
+| D1 `dropped_events` | `captcha_recording/network.py`, `recorder.py` | clean (16 files were still byte-identical to D's base) |
+| D2 milestones | new `milestones.py`, `sanitize.contains_tokenish`, `solver.py` hooks, `reader.details()` | solver 3-way merged (0 conflicts); `echo` of D's evidence fields preserved |
+| D3 result labels | `models.py`, `store.py`, new `cohort.py`, bridge slots, viewer columns | clean + a 3-way merge of `captcha_recordings_bridge.py` |
+| D3 UI | `index.html` (Actor/Result headers), `captcha-recordings.js`, `captcha-recording-comparison.js` | the comparison pane was refactored here (C13), so D's render-body change was ported into `_formatEvents`/`_makeHeading` instead of copied |
+| D4 coverage ramp | 21 test files (428 tests) + `tests/conftest.py`, `test_watcher.py`, `test_captcha_recorder.py` | ported; 18 tests needed the merged APIs (see 8.2) |
+| D5 mutation tooling | `tools/mutmut_scope.sh`, `tools/mutmut_scopes.txt`, `setup.cfg`, `d5-results/**` | scope map re-pointed at the C2/C3 packages (`cdp/`, `cdp_arena/`, `watcher_pkg/`) |
+| D6 gate integrity | `--root` + `--changed-files`, gate negative tests, JS hard limits, jscpd baseline lane | ported **into** the one gate from §1 (see 8.3) |
+| D's real bug fix | `is_valid_session_id` (`retention.py`) | came with the clean set — `delete_session("..")` could `rmtree` the parent dir; now covered by D's tests |
+
+Deliberately **not** ported: `config/arena-action-blocks-2026-09-19.json` (a
+dated preset export, referenced nowhere — an artifact of D's run, not code),
+`tools/js_gate.mjs` and `tools/baseline_update.py` (the merged gate already
+carries a JS lane and `--record-baseline`; two gates would be the exact
+duplication RULE 18 warns about), and D's `quality_baseline.json` (a v2
+baseline for *its* tree — ours was re-recorded instead, §8.4).
+
+### 8.2 Seams the port exposed (all fixed, all now covered)
+
+Every failure was D's tests meeting this branch's newer APIs — the same class of
+seam as §3, and the same resolution (adapt the test, never the API):
+
+1. **`cdp/` package move (C2/C3)** — `test_cdp_client.py` patched
+   `app.browser.cdp_client._fetch_json_sync` / `fetch_tabs_sync`, but the facade
+   only re-exports *copies*; the real owners are `cdp.tabs` / `cdp.probe` /
+   `cdp.client` (and `probe` binds its names at import). 9 assertions now target
+   the owning modules.
+2. **`HighlightSpec` param object (C6)** — `highlight_element("#gen",
+   color=…, duration_ms=…, caption=…)` → `highlight_element("#gen", HighlightSpec(…))`.
+3. **`JobRecord.create(JobRequest)` (C6)** and **`get_output_path(…, OutputSpec)`
+   (C5)** — 11 D tests rewritten to build the spec objects. Same seam X1 fixed
+   inside `single_job_runner.save_image`.
+4. **`WatcherService` C9 split** — the task/running flags live on the delegated
+   `WatcherLoop`; the two tests now assert through `svc._loop` (public behaviour
+   unchanged, same transition lock).
+5. **A clean file copy can silently drop earlier compliance work.** D's version
+   of `services/captcha/service.py` predates X3.2's RULE 18 `ideal-size` note, so
+   taking D's copy whole put a 386-LOC file back over the 150–300 ideal with no
+   stated reason. Caught by re-running the audit (`grep -L ideal-size` over every
+   file >300 LOC) and restored as a comment after the docstring. Lesson for any
+   future port: re-run the audit, don't trust the copy.
+
+### 8.3 One gate, now with D's integrity features
+
+The merged gate (`tools/verify_quality.py`, B+C lineage) gained what D6 did
+better, and kept everything it already had:
+
+* `--root` + `--changed-files` — the gate can be pointed at a fixture repo, which
+  is what makes `tests/test_quality_gate.py` possible (5 negative tests: grown
+  function fails, per-file coverage drop fails, 40-LOC JS function fails, clean
+  tree passes).
+* **JS hard limits for new symbols** — the JS lane was ratchet-only, so a brand
+  new JS file with a 40-LOC function passed. Now: new symbol over
+  LOC 30 / params 4 / nesting 4 / CC 10 fails; baselined symbols still ratchet.
+* **Duplication lane fails on regression** (`tools/jscpd_baseline.json`) instead
+  of printing a number.
+* Mutation stays a **separate, non-blocking lane** (`tools/mutmut_scope.sh`,
+  ~minutes per scope) — RULE 17 evidence, not a push gate, because a full sweep
+  is far outside the 3-minute push budget.
+
+### 8.4 Verification (all lanes on the integrated branch)
+
+| Lane | Result |
+|---|---|
+| pytest (`QT_QPA_PLATFORM=offscreen`) | **1344 passed / 4 skipped** (776 before D) |
+| node --test | **137 pass** |
+| coverage | **line 84.47 % / branch 80.27 %** — the absolute 80/75 target (D4) is met |
+| gate `--allow-legacy --coverage-ratchet` | 0 fails, 1 warn; full mode 0 fails / 0 warns |
+| gate negative tests | 5/5 pass |
+| vulture @90 | clean |
+| jscpd | 1.240 % / 23 groups, lane green vs the re-based floor |
+| pre_push_check.sh | all lanes green end-to-end |
+
+**Baseline re-record (auditable):** the ported D code legitimately grows 15 py
+maxima + 6 JS maxima — the largest are `CaptchaSolver` 131→148 class LOC / 10
+methods (a co-dependent solve state machine; every method ≤28 LOC) and
+`RecordingManager` 14→15 methods (one-line delegations). All stay inside the
+hard caps (class 150, methods 15, func 30), so the integrator step was
+`--record-baseline` — the only path allowed to raise a maximum — with the
+coverage floor raised 68.44/61.02 → **84.46/80.27**. No hard-limit breach was
+grandfathered (full mode reports 0 fails, 0 warns).

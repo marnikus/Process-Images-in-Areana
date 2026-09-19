@@ -1,0 +1,45 @@
+# D5 mutation scope map (design.md): app/services/** + app/core/** + app/browser/cdp_*.py
+# Split into 8 sub-scopes so each mutmut run keeps a tight, fast test selection
+# (2-core box: per-mutant cost must stay in the seconds).
+# Format per block: SCOPE <name>, SOURCE lines, optional DO_NOT lines, TESTS line.
+SCOPE recording
+SOURCE app/services/captcha_recording
+TESTS tests/test_captcha_recorder.py tests/test_captcha_recording_store.py tests/test_captcha_milestones.py tests/test_captcha_result_labels.py tests/test_captcha_recordings_bridge.py tests/test_captcha_recording_service.py tests/test_analyze_recording.py tests/test_recording_store_full.py tests/test_recording_sanitize_milestones.py tests/test_recorder_full.py tests/test_recording_network_full.py tests/test_recording_cohort_retention_reader.py tests/test_recording_manager_probes.py
+
+SCOPE captcha
+SOURCE app/services/captcha
+TESTS tests/test_captcha_solver.py tests/test_captcha_service.py tests/test_captcha_api_client.py tests/test_captcha_boundaries.py tests/test_captcha_recovery.py tests/test_captcha_stats.py tests/test_captcha_key_store.py tests/test_captcha_job_lines.py tests/test_captcha_pure_full.py
+
+SCOPE cdp
+SOURCE app/browser/cdp
+SOURCE app/browser/cdp_arena
+SOURCE app/browser/cdp_client.py
+SOURCE app/browser/cdp_arena.py
+SOURCE app/browser/cdp_events.py
+SOURCE app/browser/cdp_protocol.py
+TESTS tests/test_cdp_client.py tests/test_cdp_arena.py tests/test_cdp_arena_submit.py tests/test_cdp_events.py tests/test_page_pool.py tests/test_output_wait_state.py tests/test_panel_browser_tabs.py tests/test_cdp_protocol_full.py
+
+SCOPE core
+SOURCE app/core
+TESTS tests/test_state_transitions.py tests/test_naming.py tests/test_scanner.py tests/test_persistence.py tests/test_undo.py tests/test_undo_history.py tests/test_grid_layout.py tests/test_layout_state.py tests/test_run_state.py tests/test_url_selection.py tests/test_stack_presets.py tests/test_blocks_stack.py tests/test_folder_ai.py tests/test_cooldown.py tests/test_action_blocks_full.py tests/test_models_full.py tests/test_layout_service_full.py tests/test_naming_cooldown_full.py
+
+SCOPE services-watch
+SOURCE app/services/watcher.py
+SOURCE app/services/watcher_pkg
+TESTS tests/test_watcher.py tests/test_watcher_overlay.py tests/test_page_errors.py
+
+SCOPE services-cooldown
+SOURCE app/services/cooldown_service.py
+TESTS tests/test_cooldown.py tests/test_cooldown_branches.py tests/test_cooldown_service.py tests/test_cooldown_store.py
+
+SCOPE services-run
+SOURCE app/services/run_state.py
+SOURCE app/services/single_job_runner.py
+SOURCE app/services/batch_orchestrator.py
+SOURCE app/services/multi_page_dispatcher.py
+TESTS tests/test_run_state.py tests/test_single_job_runner.py tests/test_batch_orchestrator.py tests/test_multi_page_dispatcher.py tests/test_multi_page_dispatcher_run.py
+
+SCOPE services-misc
+SOURCE app/services/auto_connect.py
+SOURCE app/services/verification.py
+TESTS tests/test_auto_connect.py tests/test_verification.py tests/test_preset_store.py tests/test_auto_connect_full.py tests/test_verification_full.py

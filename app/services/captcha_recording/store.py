@@ -9,8 +9,14 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .models import VALID_LABELS, day_folder_for, new_session_id, utc_now
-from .retention import drop_empty_day, find_session_folder, prune_recordings, session_folders
+from .models import VALID_LABELS, VALID_RESULT_LABELS, day_folder_for, new_session_id, utc_now
+from .retention import (
+    drop_empty_day,
+    find_session_folder,
+    is_valid_session_id,
+    prune_recordings,
+    session_folders,
+)
 from .sanitize import safe_url
 
 SCHEMA_VERSION = 1
@@ -31,6 +37,75 @@ def save_recording_enabled(root: Path, enabled: bool) -> None:
         json.dumps({"recording_enabled": bool(enabled)}), encoding="utf-8")
 
 
+def new_manifest(session_id: str, encounter: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "session_id": session_id,
+        "eid": str(encounter.get("eid", "")),
+        "tab": str(encounter.get("tab", "")),
+        "source": str(encounter.get("source", "")),
+        "url": safe_url(str(encounter.get("url", ""))),
+        "kind": str(encounter.get("kind", "unknown")),
+        "started_at": utc_now(),
+        "ended_at": "",
+        "status": "recording",
+        "outcome": "",
+        "reason": "",
+        "method": "",
+        "actor_label": "unknown",
+        "result_label": "unknown",
+        "label_history": [],
+        "elapsed_ms": 0,
+        "event_count": 0,
+        "mutation_count": 0,
+        "network_count": 0,
+        "snapshot_count": 0,
+        "dropped_events": 0,
+        "truncated": [],
+    }
+
+
+def read_manifest(folder: Path, tolerate: bool = False) -> dict[str, Any]:
+    try:
+        data = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("manifest is not an object")
+        return data
+    except Exception:
+        if tolerate:
+            return {}
+        raise
+
+
+def write_manifest(folder: Path, manifest: dict[str, Any]) -> None:
+    target = folder / "manifest.json"
+    temp = target.with_suffix(".json.tmp")
+    text = json.dumps(manifest, ensure_ascii=False, indent=2)
+    temp.write_text(text, encoding="utf-8")
+    os.replace(temp, target)
+
+
+def summary(folder: Path) -> dict[str, Any]:
+    manifest = read_manifest(folder, tolerate=True)
+    if not manifest:
+        return {}
+    keys = (
+        "session_id", "eid", "tab", "source", "url", "kind", "started_at",
+        "ended_at", "status", "outcome", "reason", "method", "actor_label",
+        "result_label", "elapsed_ms", "event_count", "mutation_count",
+        "network_count", "snapshot_count", "dropped_events", "truncated",
+    )
+    return {key: manifest.get(key) for key in keys}
+
+
+def validate_labels(actor: str, result: str | None) -> None:
+    """Reject unknown label axes before the manifest is touched (schema v1 + D3)."""
+    if actor not in VALID_LABELS:
+        raise ValueError("actor label must be unknown, bot, manual, or mixed")
+    if result is not None and result not in VALID_RESULT_LABELS:
+        raise ValueError("result label must be unknown, passed, or failed")
+
+
 class RecordingStore:
     """Atomic manifests plus append-only events and compressed checkpoints."""
 
@@ -44,12 +119,12 @@ class RecordingStore:
         session_id = new_session_id()
         folder = self.root / day_folder_for(session_id) / session_id
         (folder / "snapshots").mkdir(parents=True, exist_ok=False)
-        manifest = self._new_manifest(session_id, encounter)
-        self._write_manifest(folder, manifest)
+        manifest = new_manifest(session_id, encounter)
+        write_manifest(folder, manifest)
         return manifest
 
     def session_folder(self, session_id: str) -> Path:
-        if not session_id or Path(session_id).name != session_id:
+        if not is_valid_session_id(session_id):
             raise ValueError("invalid session id")
         folder = find_session_folder(self.root, session_id)
         if folder is None:
@@ -74,15 +149,15 @@ class RecordingStore:
 
     def finish(self, session_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         folder = self.session_folder(session_id)
-        manifest = self._read_manifest(folder)
+        manifest = read_manifest(folder)
         manifest.update(updates)
         manifest["ended_at"] = manifest.get("ended_at") or utc_now()
-        self._write_manifest(folder, manifest)
+        write_manifest(folder, manifest)
         prune_recordings(self.root)
         return manifest
 
     def list_sessions(self, limit: int = 1000) -> list[dict[str, Any]]:
-        rows = [self._summary(folder) for folder in session_folders(self.root)]
+        rows = [summary(folder) for folder in session_folders(self.root)]
         clean = [row for row in rows if row]
         clean.sort(key=lambda row: row.get("started_at") or "", reverse=True)
         return clean[:max(1, min(int(limit), 1000))]
@@ -97,80 +172,36 @@ class RecordingStore:
         return {"session_id": session_id, "deleted": True}
 
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
+        """Actor-only label update (schema-v1 callers and the single-select UI)."""
         if label not in VALID_LABELS:
-            raise ValueError("label must be unknown, bot, or manual")
+            raise ValueError("label must be unknown, bot, manual, or mixed")
+        return self.set_labels(session_id, actor=label, result=None)
+
+    def set_labels(self, session_id: str, actor: str, result: str | None = None) -> dict[str, Any]:
+        """Area D3: actor and result are independent axes — set one or both."""
+        validate_labels(actor, result)
         folder = self.session_folder(session_id)
-        manifest = self._read_manifest(folder)
+        manifest = read_manifest(folder)
         manifest["actor_label"] = actor
         if result is not None:
             manifest["result_label"] = result
+        self._note_label_history(manifest, {"actor": actor, "result": result or ""})
         manifest["label_updated_at"] = utc_now()
-        self._write_manifest(folder, manifest)
-        return self._summary(folder)
+        write_manifest(folder, manifest)
+        return summary(folder)
+
+    @staticmethod
+    def _note_label_history(manifest: dict[str, Any], change: dict[str, str]) -> None:
+        """D3: timestamped label history, bounded to the last 10 changes."""
+        history = manifest.get("label_history")
+        if not isinstance(history, list):
+            history = []
+        history.append({**change, "at": utc_now()})
+        manifest["label_history"] = history[-10:]
 
     def recover_interrupted(self) -> None:
         for folder in session_folders(self.root):
-            manifest = self._read_manifest(folder, tolerate=True)
+            manifest = read_manifest(folder, tolerate=True)
             if manifest and manifest.get("status") == "recording":
                 manifest.update({"status": "interrupted", "outcome": "interrupted", "ended_at": utc_now()})
-                self._write_manifest(folder, manifest)
-
-    def _new_manifest(self, session_id: str, encounter: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "schema_version": SCHEMA_VERSION,
-            "session_id": session_id,
-            "eid": str(encounter.get("eid", "")),
-            "tab": str(encounter.get("tab", "")),
-            "source": str(encounter.get("source", "")),
-            "url": safe_url(str(encounter.get("url", ""))),
-            "kind": str(encounter.get("kind", "unknown")),
-            "started_at": utc_now(),
-            "ended_at": "",
-            "status": "recording",
-            "outcome": "",
-            "reason": "",
-            "method": "",
-            "actor_label": "unknown",
-            "result_label": "unknown",
-            "elapsed_ms": 0,
-            "event_count": 0,
-            "mutation_count": 0,
-            "network_count": 0,
-            "snapshot_count": 0,
-            "truncated": [],
-        }
-
-    def _summary(self, folder: Path) -> dict[str, Any]:
-        manifest = self._read_manifest(folder, tolerate=True)
-        if not manifest:
-            return {}
-        keys = (
-            "session_id", "eid", "tab", "source", "url", "kind", "started_at",
-            "ended_at", "status", "outcome", "reason", "method", "actor_label",
-            "result_label", "elapsed_ms", "event_count", "mutation_count", "network_count",
-            "snapshot_count", "truncated",
-        )
-        summary = {key: manifest.get(key) for key in keys}
-        summary["actor_label"] = summary.get("actor_label") or "unknown"
-        summary["result_label"] = summary.get("result_label") or "unknown"
-        return summary
-
-    @staticmethod
-    def _read_manifest(folder: Path, tolerate: bool = False) -> dict[str, Any]:
-        try:
-            data = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                raise ValueError("manifest is not an object")
-            return data
-        except Exception:
-            if tolerate:
-                return {}
-            raise
-
-    @staticmethod
-    def _write_manifest(folder: Path, manifest: dict[str, Any]) -> None:
-        target = folder / "manifest.json"
-        temp = target.with_suffix(".json.tmp")
-        text = json.dumps(manifest, ensure_ascii=False, indent=2)
-        temp.write_text(text, encoding="utf-8")
-        os.replace(temp, target)
+                write_manifest(folder, manifest)

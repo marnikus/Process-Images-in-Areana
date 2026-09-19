@@ -430,7 +430,7 @@
       </div>
     </div>
 
-    <div class="panel" id="winCaptchaRecords" data-window="captcha_records">
+    <div class="panel" id="winCaptchaRecords" data-window="recordings">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">history</span> Captcha Session Records <span class="spacer"></span><span id="captchaRecordsSummary" class="captcha-record-summary">0 local sessions</span><button id="captchaRecordsRefreshBtn" class="btn-small">↻ Refresh</button></h3>
       <div class="captcha-records-wrap">
         <div class="captcha-record-note">Recordings start at visible captcha detection and stop at resolution. DOM and textual network data are redacted and stored locally in <code>config/captcha_recordings</code> (one folder per day). Review before sharing.</div>
@@ -439,7 +439,7 @@
         </label>
         <div id="captchaRecordsEmpty" class="captcha-record-empty">No captcha sessions recorded yet.</div>
         <table class="captcha-record-table">
-          <thead><tr><th>Started</th><th>Page</th><th>Method</th><th>Outcome</th><th>Time</th><th title="Mutations / network events / snapshots">M/N/S</th><th>Ground truth / Compare</th></tr></thead>
+          <thead><tr><th>Started</th><th>Page</th><th>Method</th><th>Outcome</th><th>Time</th><th title="Mutations / network events / snapshots">M/N/S</th><th title="who solved it — independent of the result">Actor</th><th title="what actually happened — independent of who solved it">Result</th><th>Compare</th></tr></thead>
           <tbody id="captchaRecordsBody"></tbody>
         </table>
         <div class="captcha-compare-title">Side-by-side evidence — use A/B on labeled manual and bot rows</div>

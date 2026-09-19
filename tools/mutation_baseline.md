@@ -1,5 +1,13 @@
 # Mutation Baseline — R0.6
 
+> **Superseded as the how-to-run guide by Area D (2026-09-19).** This file keeps
+> the R0.6 tool decision and the first reproduction attempt. The working runner
+> is now `tools/mutmut_scope.sh` + `tools/mutmut_scopes.txt` (scoped sources,
+> tight per-scope test selection, per-scope summaries), with results and survivor
+> triage in `docs/archive/2026-09-19-area-d-implementation/d5-mutation.md`.
+> Installed for the recorded runs: `mutmut 3.8.0` (not in `requirements.txt` —
+> it is a manual, non-blocking lane, never part of the push budget).
+
 **Decision:** `mutmut` vs `cosmic-ray`
 
 | Criteria | mutmut | cosmic-ray | Verdict |

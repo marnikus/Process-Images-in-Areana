@@ -134,6 +134,13 @@ def app_state_payload(bridge) -> dict:
             "undo_history_index": bridge.undo_service.history()[1],
         },
     }
+def read_grid_payload(config) -> str:
+    """Canonical stored grid payload ('' when absent or unreadable)."""
+    raw = config.get_state("grid_layout", None)
+    if not isinstance(raw, str) or not raw:
+        return ""
+    payload, err = canonical_grid_payload(raw)
+    return payload if not err else ""
 
 
 class LayoutStateMixin:
@@ -146,11 +153,7 @@ class LayoutStateMixin:
 
     @Slot(result=str)
     def get_grid_layout(self):
-        raw = self.config.get_state("grid_layout", None)
-        if not isinstance(raw, str) or not raw:
-            return ""
-        payload, err = canonical_grid_payload(raw)
-        return payload if not err else ""
+        return read_grid_payload(self.config)
 
     @Slot(str, result=bool)
     def save_grid_layout(self, layout_json: str):
