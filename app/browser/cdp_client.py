@@ -26,11 +26,11 @@ try:
     from PySide6.QtCore import QObject, Signal
 except ImportError:
     class QObject:
-        def __init__(self, *a, **kw): pass
-    def Signal(*a, **kw):
+        def __init__(self, *qt_shim_args, **qt_shim_kwargs): pass
+    def Signal(*sig_shim_args, **sig_shim_kwargs):
         class _Sig:
-            def emit(self, *a, **kw): pass
-            def connect(self, *a, **kw): pass
+            def emit(self, *emit_shim_args, **emit_shim_kwargs): pass
+            def connect(self, *connect_shim_args, **connect_shim_kwargs): pass
         return _Sig()
 
 # Phase 2: pure protocol extracted to cdp_protocol.py — transport stays here

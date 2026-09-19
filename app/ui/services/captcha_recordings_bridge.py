@@ -12,10 +12,10 @@ except ImportError:
     QDesktopServices = None
     QUrl = None
     class QObject:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *qt_shim_args, **qt_shim_kwargs):
             pass
 
-    def Slot(*args, **kwargs):
+    def Slot(*slot_shim_args, **slot_shim_kwargs):
         return lambda function: function
 
 

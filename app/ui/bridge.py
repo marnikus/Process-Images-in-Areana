@@ -19,13 +19,13 @@ try:
     from PySide6.QtWidgets import QFileDialog
 except ImportError:
     class QObject:
-        def __init__(self, *a, **kw): pass
-    def Signal(*a, **kw):
+        def __init__(self, *qt_shim_args, **qt_shim_kwargs): pass
+    def Signal(*sig_shim_args, **sig_shim_kwargs):
         class _Sig:
-            def emit(self, *a, **kw): pass
-            def connect(self, *a, **kw): pass
+            def emit(self, *emit_shim_args, **emit_shim_kwargs): pass
+            def connect(self, *connect_shim_args, **connect_shim_kwargs): pass
         return _Sig()
-    def Slot(*a, **kw):
+    def Slot(*slot_shim_args, **slot_shim_kwargs):
         def deco(fn): return fn
         return deco
     QFileDialog = None
