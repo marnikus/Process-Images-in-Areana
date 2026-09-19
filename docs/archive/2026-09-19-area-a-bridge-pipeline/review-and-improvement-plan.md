@@ -67,11 +67,16 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   (2 params), extract `_type_highlight` (runner), fold `stored_ws` into
   `info` (build_preset_doc → 3 params), extract `_write/_read_preset_doc`
   (preset files → ≤20); `__all__` in qt_compat; keep+extend tests.
-- **R2 — `url_queue` (9).** Move CRUD/test/URL-presets + 5 URL module funcs;
-  bridge keeps compat re-exports (contract §3); `_checked_tabs_ready` uses
-  `bridge.state.urls` (fake-compatible, zero test change). Kills
-  `_resolve_tab_info`? No — that dies in R7 (last caller). Kills: none (all
-  small); adds re-exports.
+- **R2 — `url_queue` (9).** ✅ done. Moved CRUD/test/URL-presets + 5 URL
+  module funcs + `_URL_GATE_MSG`; bridge keeps compat re-exports
+  (contract §3 — incl. `_URL_GATE_MSG`, used by `start_run`'s gate, and
+  `enabled_urls`, which `_get_enabled_urls` now delegates to);
+  lazy auto_connect imports hoisted to panel top level (no cycle:
+  services never import ui). Verified: 119/119 slots (67 bridge + 52 in
+  5 panels), full suite 551 green, gate fails byte-identical before/after
+  (97/35, 0 on `url_queue.py`), HEAD-vs-panel behavior diff clean
+  (only deliberate change: `None` input → "empty URL" instead of
+  `AttributeError`). Kills: none (all small), bridge −174 lines.
 - **R3 — `queue_scan` (12, reasoned).** Move scan/queue/file-tools/folder-AI;
   thin slots; delegate thumbnail to `thumbnail_service`, reveal/copy to new
   `ui/services/file_service.py`, folder-AI worker to
@@ -94,7 +99,9 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   (phases), `_do_find_tab`, `_report_auto_plan`, `_do_diagnose_chrome` (CC);
   auto-plan helpers → module funcs (reuse `app/services/auto_connect.py`);
   flip `_schedule_coro` sites to `run_state.schedule_coro`; delete
-  `_resolve_tab_info`, `_pooled_ids` after last flip. Kills 6.
+  `_resolve_tab_info`, `_pooled_ids` after last flip. Kills 7
+  (connect×3: cc+loc+nesting under radon, find, report, diagnose,
+  resolve).
 - **R8 — `cdp_tools` (9).** Move CDP config/test/highlight slots; split
   `set_cdp_config` (per-key), `_do_highlight`, `cdp_attach_image_test`;
   `_do_cdp_*`, highlight demo → module funcs; flip `_schedule_coro` sites.

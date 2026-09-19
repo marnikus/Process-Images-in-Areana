@@ -29,10 +29,20 @@ from app.browser.dom_highlight import build_highlight_js, build_clear_js, build_
 from app.browser.probe_requests import FindProbeSpec, ClickProbeSpec, HighlightSpec, COLOR_FIND, COLOR_CLICK, COLOR_COLLECT
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.ui.panels import blocks_stack, layout_state
+from app.ui.panels.url_queue import (
+    _URL_GATE_MSG,
+    _add_missing_rows,
+    _checked_tabs_ready,
+    _dedupe_state_rows,
+    _tab_already_owned,
+    _urls_gate_error,
+    enabled_urls,
+)  # compat: single source lives in panels/url_queue.py
 from app.ui.panels.layout_state import LayoutStateMixin
 from app.ui.panels.blocks_library import BlocksLibraryMixin
 from app.ui.panels.blocks_stack import BlocksStackMixin
 from app.ui.panels.undo_history import UndoHistoryMixin
+from app.ui.panels.url_queue import UrlQueueMixin
 from app.ui.services import arena_serialize, undo_entries
 from app.core.action_blocks import (
     default_stack,
@@ -44,70 +54,14 @@ log = logging.getLogger("arena")
 
 # ── URL-row ownership helpers (I-33) — module level, keep Bridge slim ──
 
-def _checked_tabs_ready(bridge) -> set:
-    """Rescue-claim checked unlinked rows; tab ids usable for runs."""
-    from app.services.auto_connect import claim_unlinked_from_pool, enabled_tab_ids
-    try:
-        pool = bridge._page_pool
-        pages = pool.status_snapshot().get("pages", []) if pool else []
-        if claim_unlinked_from_pool(bridge.state.urls, pages):
-            bridge._save_arena()
-    except Exception:
-        pass
-    return enabled_tab_ids(bridge._get_enabled_urls())
 
 
-_URL_GATE_MSG = {
-    "no enabled urls": ("⚠ No enabled URLs — check a URL row to use it for jobs", "warn"),
-    "no checked url linked to a tab": (
-        "❌ No checked URL is linked to a live tab — press Reparse or Connect on a checked row first",
-        "error"),
-}
 
 
-def _urls_gate_error(bridge, urls) -> str:
-    """Start gate: checked URLs must exist and own live tabs (I-33)."""
-    if not urls:
-        return "no enabled urls"
-    if not _checked_tabs_ready(bridge):
-        return "no checked url linked to a tab"
-    return ""
 
 
-def _dedupe_state_rows(state_urls) -> tuple[list, int]:
-    """Repair legacy N-rows-per-tab state; returns (plan rows, removed)."""
-    from app.services.auto_connect import dedupe_linked_rows
-    rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id, "enabled": u.enabled}
-            for u in state_urls]
-    kept, dropped = dedupe_linked_rows(rows)
-    if not dropped:
-        return rows, 0
-    drop = {r["id"] for r in dropped}
-    state_urls[:] = [u for u in state_urls if u.id not in drop]
-    return kept, len(dropped)
 
-
-def _tab_already_owned(urls, tab_id: str) -> bool:
-    """One row per tab (I-33): never add a second."""
-    for u in urls:
-        if u.tab_id == tab_id:
-            return True
-    return False
-
-
-def _add_missing_rows(urls, adds) -> int:
-    """Append rows for tabs none owns yet; returns count added."""
-    added = 0
-    for url, tab_id in adds:
-        if _tab_already_owned(urls, tab_id):
-            continue
-        from app.core.models import UrlRow
-        urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
-        added += 1
-    return added
-
-
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -658,88 +612,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
                         return json.dumps({"ok": False, "error": f"xclip/xsel failed {e_x}", "path": path_str})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e), "path": path_str})
-
-    @Slot(str, result=str)
-    def add_url(self, url: str):
-        url = url.strip()
-        if not url:
-            return json.dumps({"ok": False, "error": "empty URL"})
-        if not (url.startswith("http://") or url.startswith("https://")):
-            return json.dumps({"ok": False, "error": "URL must start with http:// or https://"})
-        for u in self.state.urls:
-            if u.url == url:
-                return json.dumps({"ok": False, "error": "URL already exists"})
-        # push undo before change? We'll push after with new state
-        item = UrlRow.create(url, enabled=True)
-        self.state.urls.append(item)
-        self._save_arena()
-        # push urls snapshot to undo
-        try:
-            js_urls = arena_serialize.arena_to_js(self.state)["urls"]
-            self.undo_service.push("urls", js_urls)
-            undo_entries.emit_undo_state(self)
-        except Exception:
-            pass
-        return json.dumps({"ok": True, "id": item.id})
-
-    def _push_urls_undo(self):
-        try:
-            js_urls = arena_serialize.arena_to_js(self.state)["urls"]
-            self.undo_service.push("urls", js_urls)
-            undo_entries.emit_undo_state(self)
-        except Exception:
-            pass
-
-    @Slot(str, result=str)
-    def remove_url(self, url_id: str):
-        before = len(self.state.urls)
-        self.state.urls = [u for u in self.state.urls if u.id != url_id]
-        if len(self.state.urls) == before:
-            return json.dumps({"ok": False, "error": "not found"})
-        self._save_arena()
-        self._push_urls_undo()
-        return json.dumps({"ok": True})
-
-    @Slot(str, result=str)
-    def toggle_url(self, url_id: str):
-        for u in self.state.urls:
-            if u.id == url_id:
-                u.enabled = not u.enabled
-                self._save_arena()
-                self._push_urls_undo()
-                return json.dumps({"ok": True, "enabled": u.enabled})
-        return json.dumps({"ok": False, "error": "not found"})
-
-    @Slot(str, str, result=str)
-    def edit_url(self, url_id: str, new_url: str):
-        new_url = new_url.strip()
-        if not new_url:
-            return json.dumps({"ok": False, "error": "empty URL"})
-        for u in self.state.urls:
-            if u.id == url_id:
-                u.url = new_url
-                u.last_status = "unchecked"
-                u.error = None
-                self._save_arena()
-                self._push_urls_undo()
-                return json.dumps({"ok": True})
-        return json.dumps({"ok": False, "error": "not found"})
-
-    @Slot(str, result=str)
-    def test_url(self, url_id: str):
-        for u in self.state.urls:
-            if u.id == url_id:
-                if u.url.startswith("http"):
-                    u.last_status = "ready"
-                    u.last_checked = datetime.utcnow().isoformat() + "Z"
-                    self._save_arena()
-                    return json.dumps({"ok": True, "status": "ready"})
-                else:
-                    u.last_status = "error"
-                    u.error = "Invalid URL"
-                    self._save_arena()
-                    return json.dumps({"ok": False, "error": "Invalid URL"})
-        return json.dumps({"ok": False, "error": "not found"})
 
     def _push_folder_undo(self):
         try:
@@ -2282,50 +2154,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
             self._find_in_progress = False
 
     # URL bookmarks (from old app, now using arena_presets)
-    @Slot(result=str)
-    def get_url_presets(self):
-        try:
-            presets = self.config.presets.get_url_presets()
-            return json.dumps(presets, ensure_ascii=False)
-        except Exception:
-            return "[]"
-
-    @Slot(str)
-    def add_url_preset(self, url: str):
-        url = (url or "").strip()
-        if not url:
-            self._log("⚠ URL field empty — nothing added", "warn")
-            return
-        try:
-            if self.config.presets.add_url_preset(url):
-                self._log(f"💾 URL bookmark added: {url}", "success")
-            else:
-                self._log(f"ℹ URL bookmark already exists: {url}", "info")
-            payload = json.dumps(self.config.presets.get_url_presets(), ensure_ascii=False)
-            self.url_presets_updated.emit(payload)
-            self.presets_changed.emit("urls", payload)
-        except Exception as e:
-            self._log(f"Add bookmark failed: {e}", "error")
-
-    @Slot(str)
-    def remove_url_preset(self, url: str):
-        try:
-            if self.config.presets.remove_url_preset(url):
-                self._log(f"🗑 URL bookmark removed: {url}", "warn")
-            payload = json.dumps(self.config.presets.get_url_presets(), ensure_ascii=False)
-            self.url_presets_updated.emit(payload)
-            self.presets_changed.emit("urls", payload)
-        except Exception as e:
-            self._log(f"Remove bookmark failed: {e}", "error")
-
-    @Slot(str)
-    def set_last_url_preset(self, url: str):
-        url = (url or "").strip()
-        if not url:
-            return
-        self.config.set_state(last_url_preset=url)
-        self._log(f"🔖 Bookmark remembered: {url}", "info")
-
     # Arena presets (full)
     @Slot(result=str)
     def list_arena_presets(self):
