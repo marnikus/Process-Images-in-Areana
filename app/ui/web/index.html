@@ -133,6 +133,20 @@
       <textarea id="promptTextarea" class="prompt-textarea" placeholder="Enter your prompt for image generation... e.g. 'Enhance this image, keep style'"></textarea>
       <!-- legacy alias: prompt-presets.js falls back to this id when the textarea is absent -->
       <input id="promptInput" type="hidden">
+      <!-- BUG 03.6: static prompt-preset UI in the Prompt window (bound by
+           js/panels/arena-presets/prompt-presets.js — no injection, no dup ids) -->
+      <div style="margin-top:8px;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">Prompt Presets</div>
+        <div style="display:flex; gap:6px; margin-bottom:6px;">
+          <input id="promptPresetNameInput" type="text" placeholder="prompt preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:11px;">
+          <button id="promptPresetSaveBtn" class="btn-small">Save Prompt</button>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-size:10px; color:var(--text-muted);">Save · Restore · Remove — prompt presets</span>
+          <span id="promptPresetsCount" style="font-size:10px; color:var(--text-muted);"></span>
+        </div>
+        <div id="promptPresetsList" style="border:1px solid var(--border); border-radius:4px; padding:4px; max-height:150px; overflow:auto;"></div>
+      </div>
       <div id="promptPreview" class="prompt-preview">Preview will appear here with [JOB-ID: ...] token highlighted</div>
       <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Token format: [JOB-ID: &lt;unique&gt;] will be appended automatically. Saved as preset JSON.</div>
     </div>
@@ -581,18 +595,6 @@
         <input id="arenaPresetFileInput" type="file" accept=".json" style="display:none;">
       </div>
       <div id="arenaPresetsList" style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px; padding:4px; max-height:300px;"></div>
-      <div style="margin-top:8px;">
-        <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">Prompt Presets</div>
-        <div style="display:flex; gap:6px; margin-bottom:6px;">
-          <input id="promptPresetNameInput" type="text" placeholder="prompt preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:11px;">
-          <button id="promptPresetSaveBtn" class="btn-small">Save Prompt</button>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-          <span style="font-size:10px; color:var(--text-muted);">Save · Restore · Remove — prompt presets</span>
-          <span id="promptPresetsCount" style="font-size:10px; color:var(--text-muted);"></span>
-        </div>
-        <div id="promptPresetsList" style="border:1px solid var(--border); border-radius:4px; padding:4px; max-height:150px; overflow:auto;"></div>
-      </div>
     </div>
 
   </main>

@@ -17,10 +17,19 @@
 window.FolderBrowse = {
   requires: ['folderPickBtn'],
   _busy: false,
+  _scanning: false,
 
+  /* Sole owner of Browse / Scan / New-Batch / Enter — the legacy
+     folder-picker.js no longer binds these (single binding, and every
+     call goes through BridgeCall so a missing meta-object entry can
+     never make a button silently dead, BUG 03.5). */
   init() {
     const btn = document.getElementById('folderPickBtn');
-    btn.addEventListener('click', () => this.browse());
+    if (btn) btn.addEventListener('click', () => this.browse());
+    const scanBtn = document.getElementById('folderScanBtn');
+    if (scanBtn) scanBtn.addEventListener('click', () => this.scan());
+    const scanNewBtn = document.getElementById('folderScanNewBtn');
+    if (scanNewBtn) scanNewBtn.addEventListener('click', () => this.scanNewBatch());
     const input = document.getElementById('folderPathInput');
     if (input) {
       input.addEventListener('keydown', (e) => {
@@ -87,7 +96,49 @@ window.FolderBrowse = {
     if (input) input.value = path;
     this.status(`Selected${via ? ` (${via} dialog)` : ''}`);
     this._log(`📁 Folder selected: ${path}`, 'success');
-    if (window.FolderPicker && FolderPicker.scan) FolderPicker.scan();
+    this.scan();  // auto-scan the freshly selected folder
+  },
+
+  /* Scan runs in a background worker; the queue re-renders itself when
+     the arena-state signal lands (listeners._handleArenaState). */
+  scan() {
+    if (this._scanning) { this.status('Scan already running — queue updates when it finishes', 'warn'); return; }
+    this._scanning = true;
+    this.status('🔍 Scanning folder… (non-blocking)');
+    this._log('Scanning folder… (non-blocking)', 'info');
+    BridgeCall.invoke('scan_folder', [], (r) => {
+      this._scanning = false;
+      if (r.queued) { this.status('Bridge not ready — try again', 'warn'); return; }
+      if (r.pending) { this.status('Scanning in background — the queue fills in automatically'); return; }
+      if (r.ok) { this.status(`Scan complete: ${r.count || 0} images found`, r.count ? '' : 'warn'); return; }
+      this.status(`Scan failed: ${r.error || 'unknown error'}`, 'error');
+      this._log(`❌ Scan failed: ${r.error || 'unknown error'}`, 'error');
+    });
+  },
+
+  scanNewBatch() {
+    const proceed = () => this._scanNewBatch();
+    if (window.Dialog && Dialog.confirm) {
+      Dialog.confirm('New batch',
+        'Start NEW batch? This clears the current list and scans the folder anew.', 'Start', proceed);
+      return;
+    }
+    if (!confirm('Start NEW batch? This will clear current list and scan folder anew.')) return;
+    proceed();
+  },
+
+  _scanNewBatch() {
+    this._scanning = true;
+    this.status('🗑 Clearing list + scanning new batch… (non-blocking)');
+    this._log('🗑 Clearing old list + scanning new batch… (non-blocking)', 'warn');
+    BridgeCall.invoke('scan_folder_new_batch', [], (r) => {
+      this._scanning = false;
+      if (r.queued) { this.status('Bridge not ready — try again', 'warn'); return; }
+      if (r.pending) { this.status(`New batch: cleared ${r.cleared || 0} old — scanning in background`, 'warn'); return; }
+      if (r.ok) { this.status(`New batch: cleared ${r.cleared || 0} old, ${r.count || 0} new images`); return; }
+      this.status(`New batch scan failed: ${r.error || 'unknown error'}`, 'error');
+      this._log(`❌ New batch scan failed: ${r.error || 'unknown error'}`, 'error');
+    });
   },
 
   /* Typing a path must work even when no dialog is available at all. */
