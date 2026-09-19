@@ -313,6 +313,20 @@ by design — all targets already RULE 16-legal).
   wire_thumb` (≤15 LOC); `Bridge.__init__` ≤20 (same attrs,
   `_batch_future=None`); `_log_build_version`/`_on_cdp_error` → module
   funcs. Kills 2 (`__init__`×2; the `[methods]` kill already fell in R9).
+  ✅ done. `bridge_context.py` (196 lines): `BridgeContext` dataclass +
+  `build_context` + `wire_cdp/wire_watcher/wire_page_pool/wire_thumb`
+  (all ≤15 LOC) + `init_run_state`/`init_tracking_state` flag groups +
+  `_watcher_config`/`_activate_watcher`/`_pool_endpoint`/`_log_quiet`
+  splits; `__init__` 122→15 LOC, straight-line; Bridge 12→10 methods,
+  bridge 287→159 lines; `_watcher_loop_task` grouped with the other
+  always-None loop handles; `wire_cdp` runs before the build to preserve
+  the original CDP-before-watcher order. +8 construction tests (attr
+  snapshot, endpoint honored/fallback, watcher on/off, CDP forwarding,
+  failure→None, error/version units). Verified: 563 green, gate 64→62
+  (bridge 0 fails), key strings 1:1. Deliberate: dead `_watcher_cb`
+  dropped (defined, never referenced); `_batch_future=None` initialized
+  (no hasattr branches; kills latent AttributeError); `Path(__file__)`
+  identical (same dir).
 - **R12 — A7 sweep** (= old R11 + F15): (a) vulture with @Slot whitelist
   + unused-import sweep, Area A clean; (b) F5 frozen-119 test; (c) F6
   packing test; (d) branch coverage ≥80/75, no uncovered new funcs
