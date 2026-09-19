@@ -164,6 +164,80 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
   `test_url_list_listeners.mjs`, `test_arena_presets_actions.mjs` (added on
   2026-10-02 but never wired into the script) and the two new files.
 
+## B8 — Image generated + downloaded, then every page probe answered nothing (`cdp/transport.py`, `page_recovery.py`, `visual_click.py`, `single_job_runner.py`)
+
+* **Saw:** the generation finished and the app pulled the image
+  (`📥 Python download 940228 bytes image/png`), then the very next block
+  (a user-added **Find & Click** with the default selector `button`, placed
+  after DOWNLOAD) logged `❌ FIND failed: button — no data returned from the
+  page (page context unavailable?)`, the job ended **failed** without the
+  image, and the automatic New-chat reset failed the same way three times
+  inside one second ("cooling anyway"). The next job on the same tab worked
+  again — the tab was never dead for long.
+* **Did (three defects, one incident):**
+  1. `CDPTransport.evaluate()` returned `None` for *every* failure class and
+     told nobody why. A CDP **protocol error** reply
+     (`{"error": {"message": "Execution context was destroyed."}}` — what
+     Chrome answers while a page is between two documents) was read as
+     `result={}` → `None` **without even a log line**; JS exceptions and
+     transport errors (`ConnectionClosed`, "CDP not connected") only went to
+     the `arena` Python logger, which has no file handler in the app
+     (`app/utils/logging.py` writes `arena_processor`). The UI could only guess
+     ("page context unavailable?").
+  2. The shared click runner (`visual_click.find_phase`, `_stage`) failed the
+     block on the **first** empty answer. A page mid-reload/navigation is a
+     ~1 s condition; a closed DevTools socket is recoverable by re-attaching
+     to the same tab — neither was ever retried, so one transient blip failed
+     the block, the job and the reset. No app code reloads/navigates the tab
+     (`reload_page` has no callers; nothing writes `location.*`), so the
+     loss came from the page/Chrome itself — it must be tolerated, not
+     assumed away.
+  3. Pipeline policy: `_loop_blocks` marked the job failed on **any** block
+     failure, and a `required` block failure broke the stack **before
+     VALIDATE/SAVE** — so a failing post-download page action threw away an
+     already-downloaded (paid) generation.
+* **Change:** (1) `transport.evaluate()` now records `last_error` /
+  `last_error_kind ∈ {js, protocol, transport}` (cleared on success) and logs
+  every class; (2) new `app/browser/page_recovery.py` classifies the record
+  (`is_transient_loss`: protocol "Execution context was destroyed" /
+  "Cannot find default execution context" / …, or any transport loss except
+  timeouts) and `recover_page_context()` waits up to 3 × 1 s for
+  `document.readyState` to answer again, **re-connecting the same ws URL when
+  the socket closed** (never re-picks tabs), then settles 1 s so a reloaded
+  SPA can mount; (3) `visual_click._probe_json` runs FIND and click-target
+  staging through that recovery (≤ 3 probe rounds) and every "no data"
+  message now carries the transport's real reason — the click dispatch itself
+  is deliberately **never** re-sent (it may already have landed); New-chat
+  reset goes through the same runner and inherits the recovery;
+  (4) `single_job_runner._loop_blocks`: once the output bytes are secured
+  (`_output_secured`, same > 100-byte rule as DOWNLOAD), a later failure of any
+  block other than VALIDATE/SAVE is logged as
+  `⚠ <block> failed after the image was downloaded (<err>) — continuing so
+  the image is saved` and the stack continues to VALIDATE/SAVE/ADVANCE; the
+  block still shows red in the stack UI. VALIDATE/SAVE failures,
+  pre-download failures (golden `nonreq_fail`) and cancellation keep the
+  legacy semantics. `download.py` reports the same reason when the in-page
+  download attempt answers nothing.
+* **Pinned by:** `tests/test_cdp_client.py::test_evaluate_records_{js_exception,protocol_error}_reason`,
+  `::test_evaluate_success_clears_last_error`,
+  `::test_evaluate_records_transport_loss_after_socket_close` (the shared
+  fake ws now raises on send-after-close like real `websockets`, instead of
+  parking the reply in a queue for the 30 s timeout);
+  `tests/test_page_recovery.py` (classification table, wait-until-document
+  answers, give-up after N, reconnect to the same tab, reconnect failure
+  reported not raised); `tests/test_visual_click_recovery.py` (FIND recovers
+  after "Execution context was destroyed" and succeeds, real reason in the
+  failure line, JS errors never retried, closed socket → reconnect → success,
+  legacy fakes unchanged, stage recovers but the click is dispatched exactly
+  once); `tests/test_job_output_policy.py` (post-download Find & Click
+  failure — required or not — keeps the image, job completes with the
+  warning; pre-download optional failure still "failed"; SAVE / VALIDATE
+  failures still fail the job; cancellation and VALIDATE/SAVE never
+  downgraded). Characterization goldens unchanged.
+* **Operator note:** a **Find & Click** with the bare default selector
+  `button` after DOWNLOAD clicks the first button on the page — configure the
+  block (selector / text) or remove it; the job no longer depends on it.
+
 ## Gate evidence (2026-10-02)
 
 | Gate | Result |

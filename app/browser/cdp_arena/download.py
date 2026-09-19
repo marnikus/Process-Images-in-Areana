@@ -9,6 +9,7 @@ import json
 import logging
 from typing import Tuple
 
+from ..page_recovery import evaluate_failure  # B8: why the page answered nothing
 from .js_snippets import JS_DOWNLOAD_IMAGE
 
 log = logging.getLogger("arena")
@@ -53,7 +54,7 @@ async def _js_download(cdp, src: str) -> Tuple[bool, bytes, str, str]:
             if len(data) > 100 and b"<html" not in data[:100].lower():
                 return True, data, result.get("contentType", ""), ""
             return False, b"", "", f"JS returned HTML/small {len(data)}"
-        err = result.get("error") if result else "No result"
+        err = result.get("error") if result else f"No result ({evaluate_failure(cdp) or 'empty answer'})"
         return False, b"", "", f"JS download failed {str(err)[:120]}"
     except Exception as e:
         return False, b"", "", f"JS download exc {e}"

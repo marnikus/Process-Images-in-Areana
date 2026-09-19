@@ -816,11 +816,38 @@ async def _run_one_checked(ctx: JobCtx, block: Any) -> tuple[bool, str, bool]:
         return True, err, should_break
 
 
+def _output_secured(ctx: JobCtx) -> bool:
+    """The generated image is already in memory (DOWNLOAD/WAIT delivered bytes)."""
+    return bool(ctx.file_bytes and len(ctx.file_bytes) > 100)
+
+
+# Blocks whose failure means the secured bytes themselves are bad or unsaved.
+_OUTPUT_BLOCKS = frozenset({"VALIDATE", "SAVE"})
+
+
+def _post_download_warning(ctx: JobCtx, block: Any, err: str, secured: bool) -> bool:
+    """B8 policy: once the image is downloaded, a later page-action failure is
+    a warning, not a job failure — the stack continues so VALIDATE/SAVE keep
+    the bytes (a paid generation is never thrown away). VALIDATE/SAVE and
+    cancellation keep their normal failure semantics."""
+    if not secured or _is_cancelled(ctx):
+        return False
+    if getattr(block, "block_id", "") in _OUTPUT_BLOCKS:
+        return False
+    name = getattr(block, "display_name", None) or getattr(block, "block_id", "block")
+    _report_recovery(ctx, f"⚠ {name} failed after the image was downloaded ({err}) "
+                          f"— continuing so the image is saved", "warn")
+    return True
+
+
 async def _loop_blocks(ctx: JobCtx, blocks: List[Any]) -> tuple[bool, str]:
     failed = False
     error = ""
     for block in blocks:
+        secured = _output_secured(ctx)
         f, e, brk = await _run_one_checked(ctx, block)
+        if f and _post_download_warning(ctx, block, e, secured):
+            continue
         if f:
             failed = True
             error = e
