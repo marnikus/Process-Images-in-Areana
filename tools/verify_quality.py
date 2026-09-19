@@ -528,6 +528,51 @@ def update_coverage_baseline(baseline_path: str, cov_path: Path) -> str:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return f"baseline coverage stored: line {cov['line']:.2f}%, branch {cov['branch']:.2f}%"
 
+def file_symbol_stats(file_path: Path) -> Dict:
+    """Per-symbol LOC map + func/class maxima for the legacy baseline."""
+    tree = ast.parse(file_path.read_text(encoding="utf-8"))
+    funcs: Dict[str, int] = {}
+    max_func = max_class = 0
+    count = 0
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            loc = node_loc(node)
+            funcs[node.name] = max(funcs.get(node.name, 0), loc)
+            max_func = max(max_func, loc)
+            count += 1
+        elif isinstance(node, ast.ClassDef):
+            max_class = max(max_class, node_loc(node))
+    return {"max_func_loc": max_func, "max_class_loc": max_class,
+            "func_count": count, "funcs": funcs}
+
+
+def rebuild_legacy_baseline(baseline_path: str) -> str:
+    """Add per-symbol 'funcs' maps to the legacy baseline (integrator-only,
+    RULE 16: run after an area goes green). Existing per-file maxima are
+    preserved; the stored coverage floor is carried over."""
+    path = Path(baseline_path)
+    data: Dict = {}
+    if path.exists():
+        try:
+            old = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            old = {}
+        if isinstance(old.get("coverage"), dict):
+            data["coverage"] = old["coverage"]
+    else:
+        old = {}
+    for f in all_app_files():
+        rel = str(f.relative_to(ROOT))
+        entry = old.get(rel) if isinstance(old.get(rel), dict) else {}
+        stats = file_symbol_stats(f)
+        data[rel] = {**stats, "max_func_loc": entry.get("max_func_loc", stats["max_func_loc"]),
+                     "max_class_loc": entry.get("max_class_loc", stats["max_class_loc"]),
+                     "func_count": entry.get("func_count", stats["func_count"])}
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    n = len(data) - (1 if "coverage" in data else 0)
+    return f"legacy baseline rebuilt: {n} files (per-symbol funcs maps added)"
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="RULE 16 quality gate for Arena")
     parser.add_argument("--json", action="store_true", help="machine-readable JSON output")
@@ -542,21 +587,58 @@ def parse_args():
                         help="mid-round mode: coverage fails only on DECREASE vs baseline 'coverage' key; absolute 80/75 warns (final D4 target)")
     parser.add_argument("--update-coverage-baseline", action="store_true",
                         help="store current coverage into the baseline file, then exit")
+    parser.add_argument("--rebuild-legacy-baseline", action="store_true",
+                        help="add per-symbol funcs maps to the legacy baseline (integrator-only), then exit")
     return parser.parse_args()
 
 
+def legacy_verdict(breach: Dict, base: Dict) -> Optional[str]:
+    """None = grandfathered (warn). 'growth'/'new' = must fail (RULE 16 §16.5).
+
+    Per-symbol: with a baseline 'funcs' map, a known symbol may not exceed
+    its own baseline LOC and an unknown symbol is new code in a legacy file.
+    Without the map, fall back to the file-level maxima."""
+    metric = breach.get("metric")
+    value = breach.get("value")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if metric == "loc":
+        funcs = base.get("funcs") or {}
+        if breach.get("name") in funcs:
+            return "growth" if value > funcs[breach["name"]] else None
+        if funcs:
+            return "new"
+        return "growth" if value > base.get("max_func_loc", value) else None
+    if metric == "class-loc":
+        return "growth" if value > base.get("max_class_loc", value) else None
+    return None
+
+
 def downgrade_legacy(breaches: List[Dict], base: Optional[Dict]) -> List[Dict]:
-    """Legacy file: downgrade metric breaches to warn; anti-gaming still fails."""
+    """Legacy file: downgrade metric breaches to warn — EXCEPT anti-gaming,
+    per-symbol growth, and new symbols, which still fail (RULE 16 §16.5:
+    legacy hotspots must not grow; new code in them must meet the standard)."""
     if not base:
         return breaches
     filtered = []
     for b in breaches:
         if b.get("metric") == "anti-gaming":
             filtered.append(b)
+            continue
+        verdict = legacy_verdict(b, base)
+        if verdict == "new":
+            b["fail"] = True
+            b["message"] = (f"[LEGACY-NEW] {b['message']} — new symbol in a "
+                            "legacy file must meet the standard (RULE 16 §16.5)")
+        elif verdict == "growth":
+            b["fail"] = True
+            b["message"] = (f"[LEGACY GROWTH] {b['message']} — exceeds the "
+                            "baseline maximum for this symbol: legacy hotspots "
+                            "must not grow (RULE 16 §16.5)")
         else:
             b["fail"] = False
             b["message"] = f"[LEGACY] {b['message']} (baseline max_func {base.get('max_func_loc')}, max_class {base.get('max_class_loc')})"
-            filtered.append(b)
+        filtered.append(b)
     return filtered
 
 
@@ -656,6 +738,9 @@ def print_fail_banner() -> None:
 
 def main():
     args = parse_args()
+    if args.rebuild_legacy_baseline:
+        print(rebuild_legacy_baseline(args.baseline))
+        return
     if args.update_coverage_baseline:
         print(update_coverage_baseline(args.baseline, Path(args.coverage_file or ROOT / "coverage.json")))
         return

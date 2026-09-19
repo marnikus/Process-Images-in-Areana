@@ -223,3 +223,40 @@ def test_corrupt_coverage_file_reports_parse_error(tmp_path: Path):
                       "--coverage-file", str(bad))
     cov = [b for b in json.loads(result.stdout)["breaches"] if b["type"] == "coverage"]
     assert len(cov) == 1 and cov[0]["metric"] == "parse-error" and not cov[0]["fail"]
+
+
+def _bridge_baseline_with_funcs(tmp_path: Path, funcs: dict) -> Path:
+    real = json.loads((ROOT / "tools" / "quality_baseline.json").read_text(encoding="utf-8"))
+    entry = dict(real.get("app/ui/bridge.py", {}))
+    entry["funcs"] = funcs
+    base = tmp_path / "funcs_baseline.json"
+    base.write_text(json.dumps({"app/ui/bridge.py": entry}), encoding="utf-8")
+    return base
+
+
+@pytest.mark.unit
+def test_legacy_new_symbol_fails_with_funcs_map(tmp_path: Path):
+    """With a per-symbol map, an unknown over-limit symbol is NEW code in a
+    legacy file and must fail (F-18/D6: adding a 31-LOC func to bridge fails)."""
+    # _schedule_coro is a real 62-LOC bridge function; everything else is 'new'
+    base = _bridge_baseline_with_funcs(tmp_path, {"_schedule_coro": 62})
+    result = run_tool("--json", "--allow-legacy", "--baseline", str(base))
+    breaches = [b for b in json.loads(result.stdout)["breaches"]
+                if b["file"] == "app/ui/bridge.py" and b.get("metric") == "loc"]
+    known = [b for b in breaches if b["name"] == "_schedule_coro"]
+    new = [b for b in breaches if b["name"] != "_schedule_coro"]
+    assert known and all(not b["fail"] for b in known), "grandfathered symbol must stay a warn"
+    assert new and all(b["fail"] for b in new), "new symbols must fail"
+    assert all("LEGACY-NEW" in b["message"] for b in new)
+
+
+@pytest.mark.unit
+def test_legacy_symbol_growth_fails_with_funcs_map(tmp_path: Path):
+    """A known symbol exceeding ITS OWN baseline LOC is growth -> fail."""
+    base = _bridge_baseline_with_funcs(tmp_path, {"_schedule_coro": 5})
+    result = run_tool("--json", "--allow-legacy", "--baseline", str(base))
+    breaches = [b for b in json.loads(result.stdout)["breaches"]
+                if b["file"] == "app/ui/bridge.py" and b.get("metric") == "loc"
+                and b["name"] == "_schedule_coro"]
+    assert breaches and all(b["fail"] for b in breaches)
+    assert all("LEGACY GROWTH" in b["message"] for b in breaches)
