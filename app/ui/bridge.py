@@ -19,7 +19,7 @@ from app.ui.qt_compat import QObject, QFileDialog, Signal, Slot
 from app.core.layout_service import (
     canonical_grid_payload, default_payload,
 )
-from app.core.models import AppState, UrlRow, ImageItem
+from app.core.models import AppState, UrlRow
 from app.core.persistence import load_state, save_preset, load_preset
 from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
@@ -29,6 +29,7 @@ from app.browser.dom_highlight import build_highlight_js, build_clear_js, build_
 from app.browser.probe_requests import FindProbeSpec, ClickProbeSpec, HighlightSpec, COLOR_FIND, COLOR_CLICK, COLOR_COLLECT
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.ui.panels import blocks_stack, layout_state
+from app.ui.panels.queue_scan import push_queue_undo, selected_images
 from app.ui.panels.url_queue import (
     _URL_GATE_MSG,
     _add_missing_rows,
@@ -43,6 +44,7 @@ from app.ui.panels.blocks_library import BlocksLibraryMixin
 from app.ui.panels.blocks_stack import BlocksStackMixin
 from app.ui.panels.undo_history import UndoHistoryMixin
 from app.ui.panels.url_queue import UrlQueueMixin
+from app.ui.panels.queue_scan import QueueScanMixin
 from app.ui.services import arena_serialize, undo_entries
 from app.core.action_blocks import (
     default_stack,
@@ -61,7 +63,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -425,350 +427,9 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
 
 
 
-    @Slot(str, result=str)
-    def get_image_thumbnail(self, img_id: str):
-        """Return base64 thumbnail — non-blocking to avoid mouse freeze.
-
-        Previously did PIL sync in Qt main thread for 80 images -> freeze.
-        Now: cache hit returns immediately; miss schedules background thread
-        and returns pending with file:// fallback, then emits thumbnail_ready.
-        """
-        try:
-            if img_id in self._thumb_cache:
-                cached = self._thumb_cache[img_id]
-                return json.dumps({"ok": True, "id": img_id, "data_url": cached, "cached": True}, ensure_ascii=False)
-
-            target = None
-            for im in self.state.images:
-                if im.id == img_id:
-                    target = im
-                    break
-            if not target:
-                return json.dumps({"ok": False, "error": "not found"})
-
-            p = Path(target.absolute_path)
-            if not p.exists():
-                return json.dumps({"ok": False, "error": "file not exists"})
-
-            if img_id in self._thumb_in_progress:
-                return json.dumps({"ok": False, "pending": True, "id": img_id, "fallback_url": f"file://{p}"}, ensure_ascii=False)
-
-            # Phase 2: delegate to thumbnail_service (pure, no Qt)
-            from .services.thumbnail_service import generate_thumbnail_data_url
-
-            def _gen_thumb():
-                res = generate_thumbnail_data_url(p, size=96, quality=80)
-                res["id"] = img_id
-                return res
-
-            def _on_done(fut):
-                try:
-                    res = fut.result()
-                    if res.get("ok") and res.get("data_url"):
-                        self._thumb_cache[img_id] = res["data_url"]
-                        try:
-                            payload = json.dumps(res, ensure_ascii=False)
-                            self.thumbnail_ready.emit(img_id, payload)
-                        except Exception:
-                            pass
-                    self._thumb_in_progress.discard(img_id)
-                except Exception:
-                    self._thumb_in_progress.discard(img_id)
-
-            if self._thumb_executor:
-                self._thumb_in_progress.add(img_id)
-                try:
-                    fut = self._thumb_executor.submit(_gen_thumb)
-                    fut.add_done_callback(_on_done)
-                except Exception:
-                    self._thumb_in_progress.discard(img_id)
-                    res = _gen_thumb()
-                    if res.get("ok") and res.get("data_url"):
-                        self._thumb_cache[img_id] = res["data_url"]
-                    return json.dumps(res, ensure_ascii=False)
-                return json.dumps({"ok": False, "pending": True, "id": img_id, "fallback_url": f"file://{p}"}, ensure_ascii=False)
-            else:
-                res = _gen_thumb()
-                if res.get("ok") and res.get("data_url"):
-                    self._thumb_cache[img_id] = res["data_url"]
-                return json.dumps(res, ensure_ascii=False)
-
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
-
-    @Slot(str, result=str)
-    def reveal_in_explorer(self, path_str: str):
-        """Open file in Explorer/Finder — btn to open this file in explorer (not link)."""
-        try:
-            import platform, subprocess, os
-            p = Path(path_str)
-            if not p.exists():
-                # try parent exists for output not yet created
-                if p.parent.exists():
-                    p = p.parent
-                else:
-                    return json.dumps({"ok": False, "error": f"Path does not exist: {path_str}"})
-            system = platform.system()
-            try:
-                if system == "Windows":
-                    # Use explorer /select for file, or open folder
-                    if p.is_file():
-                        # explorer /select,"path" — need to handle spaces
-                        subprocess.Popen(f'explorer /select,"{p}"')
-                    else:
-                        os.startfile(str(p))  # type: ignore
-                elif system == "Darwin":
-                    if p.is_file():
-                        subprocess.Popen(["open", "-R", str(p)])
-                    else:
-                        subprocess.Popen(["open", str(p)])
-                else:
-                    # Linux: xdg-open parent or file
-                    if p.is_file():
-                        subprocess.Popen(["xdg-open", str(p.parent)])
-                    else:
-                        subprocess.Popen(["xdg-open", str(p)])
-                self._log(f"📁 Revealed in Explorer: {path_str}", "info")
-                return json.dumps({"ok": True, "path": str(p)})
-            except Exception as e:
-                return json.dumps({"ok": False, "error": str(e)})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(str, result=str)
-    def copy_path_to_clipboard(self, path_str: str):
-        """Copy file path to clipboard — second option copy link to file. Fixed: was not copying."""
-        try:
-            # Try Qt clipboard — most reliable in QWebEngine
-            clipboard = None
-            try:
-                from PySide6.QtWidgets import QApplication
-                app = QApplication.instance()
-                if app is not None:
-                    clipboard = app.clipboard()
-            except Exception:
-                pass
-            if clipboard is None:
-                try:
-                    from PySide6.QtGui import QGuiApplication
-                    app2 = QGuiApplication.instance()
-                    if app2 is not None:
-                        clipboard = app2.clipboard()
-                except Exception:
-                    pass
-            if clipboard is not None:
-                try:
-                    from PySide6.QtGui import QClipboard
-                    # Windows path like F:\Creative Cloud Files\... with spaces must be copied verbatim
-                    clipboard.setText(path_str, mode=QClipboard.Clipboard)
-                    try:
-                        clipboard.setText(path_str, mode=QClipboard.Selection)
-                    except Exception:
-                        pass
-                    # Ensure clipboard holds text
-                    self._log(f"📋 Copied to clipboard: {path_str}", "info")
-                    return json.dumps({"ok": True, "path": path_str, "method": "qt"})
-                except Exception as e_qt:
-                    # Fall through to subprocess fallback
-                    self._log(f"Qt clipboard failed {e_qt}, trying subprocess", "warn")
-
-            # Fallback subprocess — handles Windows clip, mac pbcopy, Linux xclip/xsel
-            import subprocess, platform
-            system = platform.system()
-            if system == "Windows":
-                # clip expects UTF-16? Use UTF-8 and shell, also try powershell Set-Clipboard
-                try:
-                    # Primary: clip
-                    subprocess.run("clip", input=path_str.encode("utf-8"), check=True, shell=True)
-                    self._log(f"📋 Copied via clip: {path_str}", "info")
-                    return json.dumps({"ok": True, "path": path_str, "fallback": "clip"})
-                except Exception:
-                    # Secondary: powershell Set-Clipboard — handles spaces and Unicode better
-                    try:
-                        # Escape single quotes for powershell
-                        ps_escaped = path_str.replace("'", "''")
-                        ps_cmd = f"Set-Clipboard -Value '{ps_escaped}'"
-                        subprocess.run(["powershell", "-Command", ps_cmd], check=True)
-                        self._log(f"📋 Copied via powershell: {path_str}", "info")
-                        return json.dumps({"ok": True, "path": path_str, "fallback": "powershell"})
-                    except Exception as e_ps:
-                        return json.dumps({"ok": False, "error": f"clip/powershell failed {e_ps}", "path": path_str})
-            elif system == "Darwin":
-                subprocess.run("pbcopy", input=path_str.encode("utf-8"), check=True)
-                self._log(f"📋 Copied via pbcopy: {path_str}", "info")
-                return json.dumps({"ok": True, "path": path_str, "fallback": "pbcopy"})
-            else:
-                # Linux try xclip/xsel
-                try:
-                    subprocess.run(["xclip", "-selection", "clipboard"], input=path_str.encode("utf-8"), check=True)
-                    self._log(f"📋 Copied via xclip: {path_str}", "info")
-                    return json.dumps({"ok": True, "path": path_str, "fallback": "xclip"})
-                except Exception:
-                    try:
-                        subprocess.run(["xsel", "--clipboard", "--input"], input=path_str.encode("utf-8"), check=True)
-                        self._log(f"📋 Copied via xsel: {path_str}", "info")
-                        return json.dumps({"ok": True, "path": path_str, "fallback": "xsel"})
-                    except Exception as e_x:
-                        return json.dumps({"ok": False, "error": f"xclip/xsel failed {e_x}", "path": path_str})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e), "path": path_str})
-
-    def _push_folder_undo(self):
-        try:
-            self.undo_service.push("folder", self.state.folder.copy())
-            undo_entries.emit_undo_state(self)
-        except Exception:
-            pass
-
-    @Slot(str, result=str)
-    def pick_folder(self, start_dir: str):
-        if QFileDialog is None:
-            return json.dumps({"ok": False, "error": "No file dialog"})
-        start = (start_dir or "").strip()
-        if not start or not Path(start).is_dir():
-            last = (self.state.folder.get("root_path", "") or "").strip()
-            start = last if last and Path(last).is_dir() else ""
-        folder = QFileDialog.getExistingDirectory(None, "Select image folder", start)
-        if not folder:
-            return json.dumps({"ok": False, "cancelled": True})
-        self.state.folder["root_path"] = folder
-        self._save_arena()
-        self._push_folder_undo()
-        return json.dumps({"ok": True, "path": folder})
-
-    @Slot(str, result=str)
-    def set_folder_path(self, path: str):
-        p = Path(path)
-        if not p.exists() or not p.is_dir():
-            return json.dumps({"ok": False, "error": "Folder does not exist"})
-        self.state.folder["root_path"] = str(p)
-        self._save_arena()
-        self._push_folder_undo()
-        return json.dumps({"ok": True, "path": str(p)})
-
-    @Slot(result=str)
-    def scan_folder(self):
-        """Non-blocking scan to avoid UI freeze on mouse clicks."""
-        if getattr(self, '_scan_in_progress', False):
-            return json.dumps({"ok": False, "pending": True, "error": "scan already in progress"})
-        root = self.state.folder.get("root_path", "")
-        if not root:
-            return json.dumps({"ok": False, "error": "No folder set"})
-        root_path = Path(root)
-        if not root_path.exists():
-            return json.dumps({"ok": False, "error": "Folder does not exist"})
-
-        from .services.scan_service import scan_folder_pure
-
-        def _do_scan():
-            try:
-                supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
-                ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
-                scanned = scan_folder_pure(root_path, supported, ignore_ai)
-                added = self._merge_scanned(scanned)
-                self.state.recalculate_progress()
-                self._save_arena()
-                self._log(f"Scanned {len(scanned)} images, {added} new", "success")
-            except Exception as e:
-                self._log(f"Scan failed: {e}", "error")
-            finally:
-                self._scan_in_progress = False
-
-        # Schedule in thread pool — return pending immediately to avoid freeze
-        try:
-            self._scan_in_progress = True
-            self._log(f"🔍 Scanning folder {root_path}… (non-blocking)", "info")
-            if self._thumb_executor:
-                self._thumb_executor.submit(_do_scan)
-            else:
-                import threading
-                threading.Thread(target=_do_scan, daemon=True).start()
-            return json.dumps({"ok": True, "pending": True, "count": 0, "message": "scan started non-blocking"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(result=str)
-    def scan_folder_new_batch(self):
-        """Clear queue then scan — non-blocking to avoid freeze."""
-        try:
-            try:
-                self._push_queue_undo()
-            except Exception:
-                pass
-            cleared = len(self.state.images)
-            self.state.images = []
-            self.state.jobs = []
-            self.state.recalculate_progress()
-            self._save_arena()
-            self._log(f"🗑 Cleared {cleared} old — scanning new batch non-blocking", "warn")
-
-            root = self.state.folder.get("root_path", "")
-            if not root:
-                return json.dumps({"ok": False, "error": "No folder set", "cleared": cleared})
-            root_path = Path(root)
-            if not root_path.exists():
-                return json.dumps({"ok": False, "error": "Folder does not exist", "cleared": cleared})
-
-            from .services.scan_service import scan_folder_pure
-
-            def _do_scan_new():
-                try:
-                    supported = set(self.state.folder.get("supported_types", [".png",".jpg",".jpeg",".webp"]))
-                    ignore_ai = self.state.folder.get("ignore_ai_suffix", True)
-                    scanned = scan_folder_pure(root_path, supported, ignore_ai)
-                    for s in scanned:
-                        img = ImageItem.from_scan_dict(s, selected=False)
-                        self.state.images.append(img)
-                    self.state.recalculate_progress()
-                    self._save_arena()
-                    self._log(f"🗑 New batch: cleared {cleared} old, scanned {len(scanned)} new images", "warn")
-                except Exception as e:
-                    self._log(f"New batch scan failed: {e}", "error")
-                finally:
-                    self._scan_in_progress = False
-
-            self._scan_in_progress = True
-            if self._thumb_executor:
-                self._thumb_executor.submit(_do_scan_new)
-            else:
-                import threading
-                threading.Thread(target=_do_scan_new, daemon=True).start()
-            return json.dumps({"ok": True, "pending": True, "cleared": cleared, "message": "new batch scan started non-blocking"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
     def _push_queue_undo(self):
-        try:
-            js_images = arena_serialize.arena_to_js(self.state)["images"]
-            self.undo_service.push("queue", js_images)
-            undo_entries.emit_undo_state(self)
-        except Exception:
-            pass
-
-    @Slot(str, bool, result=str)
-    def set_image_selected(self, img_id: str, selected: bool):
-        for img in self.state.images:
-            if img.id == img_id:
-                img.selected = bool(selected)
-                if selected and img.status == "skipped":
-                    img.status = "pending"
-                self.state.recalculate_progress()
-                self._save_arena()
-                self._push_queue_undo()
-                return json.dumps({"ok": True})
-        return json.dumps({"ok": False, "error": "not found"})
-
-    @Slot(bool, str, result=str)
-    def bulk_select(self, selected: bool, filter_status: str):
-        count = 0
-        for img in self.state.images:
-            if filter_status == "all" or img.status == filter_status:
-                img.selected = bool(selected)
-                count += 1
-        self.state.recalculate_progress()
-        self._save_arena()
-        self._push_queue_undo()
-        return json.dumps({"ok": True, "count": count})
+        # R3 shim: queue_scan owns push_queue_undo; R9 deletes this with the last callers.
+        return push_queue_undo(self)
 
     @Slot(result=str)
     def retry_failed(self):
@@ -802,112 +463,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
             return json.dumps({"ok": True, "count": count})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(result=str)
-    def clear_images(self):
-        # alias for clear_queue for compatibility
-        return self.clear_queue()
-
-    @Slot(result=str)
-    def drop_ai_suffix(self):
-        """Drop _AI: strip the suffix from filenames in the picker folder."""
-        return self._run_folder_ai("strip")
-
-    @Slot(result=str)
-    def keep_only_ai_files(self):
-        """Only _AI: delete non-_AI images in the picker folder."""
-        return self._run_folder_ai("only")
-
-    def _merge_scanned(self, scanned) -> int:
-        """Merge scan dicts into the queue; returns added count."""
-        existing = {img.relative_path: img for img in self.state.images}
-        added = 0
-        for s in scanned:
-            rel = s["relative_path"]
-            if rel not in existing:
-                self.state.images.append(ImageItem.from_scan_dict(s, selected=False))
-                added += 1
-            else:
-                e = existing[rel]
-                e.size = s["size"]
-                e.mtime = s["mtime"]
-                e.absolute_path = s["absolute_path"]
-        return added
-
-    def _run_folder_ai(self, mode: str) -> str:
-        """Disk _AI op on the picker folder; refuses mid-run. Pending JSON."""
-        if getattr(self, "_run_state", "idle") != "idle":
-            return json.dumps({"ok": False, "error": "stop the run first"})
-        if getattr(self, '_scan_in_progress', False):
-            return json.dumps({"ok": False, "pending": True, "error": "scan already in progress"})
-        root = self.state.folder.get("root_path", "")
-        if not root:
-            return json.dumps({"ok": False, "error": "No folder set"})
-        root_path = Path(root)
-        if not root_path.exists():
-            return json.dumps({"ok": False, "error": "Folder does not exist"})
-        try:
-            self._scan_in_progress = True
-            self._log(f"Folder {'Only _AI' if mode == 'only' else 'Drop _AI'} in {root_path}...", "warn")
-            self._submit_folder_ai(root_path, set(self.state.folder.get("supported_types", [".png", ".jpg", ".jpeg", ".webp"])), mode)
-        except Exception as e:
-            self._scan_in_progress = False
-            return json.dumps({"ok": False, "error": str(e)})
-        return json.dumps({"ok": True, "pending": True})
-
-    def _submit_folder_ai(self, root_path, exts, mode) -> None:
-        """Run the folder _AI worker off the UI thread."""
-        if self._thumb_executor:
-            self._thumb_executor.submit(self._folder_ai_worker, root_path, exts, mode)
-        else:
-            import threading
-            threading.Thread(target=self._folder_ai_worker, args=(root_path, exts, mode), daemon=True).start()
-
-    def _folder_ai_worker(self, root_path, exts, mode) -> None:
-        """Rename/delete _AI files on disk, sync queue. Off UI thread."""
-        try:
-            from app.core.folder_ai import delete_non_ai_images, strip_ai_suffixes
-            if mode == "only":
-                deleted, errors = delete_non_ai_images(root_path, exts)
-                self._drop_missing_queue_images(root_path, deleted)
-                self._log(f"Only _AI: deleted {len(deleted)} files from {root_path}", "warn")
-            else:
-                pairs, skipped, errors = strip_ai_suffixes(root_path, exts)
-                self._rename_queue_images(root_path, pairs)
-                self._log(f"Drop _AI: renamed {len(pairs)}, skipped {skipped} in {root_path}", "warn")
-            for err in errors[:3]:
-                self._log(str(err), "warn")
-            self.state.recalculate_progress()
-            self._save_arena()
-        except Exception as e:
-            self._log(f"Folder _AI op failed: {e}", "error")
-        finally:
-            self._scan_in_progress = False
-
-    def _drop_missing_queue_images(self, root_path, deleted) -> None:
-        """Forget queue entries whose files were deleted."""
-        try:
-            gone = {str(Path(root_path, r).resolve()) for r in deleted}
-            self.state.images = [i for i in self.state.images if i.absolute_path not in gone]
-        except Exception:
-            pass
-
-    def _rename_queue_images(self, root_path, pairs) -> None:
-        """Point queue entries at renamed files (stats preserved)."""
-        try:
-            from app.utils.hashing import fingerprint_from_path_stat
-            by_old = {str(Path(root_path, old).resolve()): new for old, new in pairs}
-            for img in self.state.images:
-                new_rel = by_old.get(img.absolute_path)
-                if not new_rel:
-                    continue
-                img.relative_path = new_rel
-                img.absolute_path = str(Path(root_path, new_rel).resolve())
-                img.filename = Path(new_rel).name
-                img.base_name = Path(new_rel).stem
-                img.fingerprint = fingerprint_from_path_stat(new_rel, img.size, img.mtime)
-        except Exception:
-            pass
 
     @Slot(result=str)
     def reset_all(self):
@@ -1073,7 +628,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
 
     # ---- run controls — real implementation via CDP ----
     def _get_selected_images(self):
-        return [img for img in self.state.images if img.selected and img.status in ("pending","failed","selected","needs_review","processing")]
+        return selected_images(self.state.images)
 
     def _get_enabled_urls(self):
         return [u for u in self.state.urls if u.enabled]

@@ -4,9 +4,14 @@ Parent design: `docs/archive/2026-09-19-area-a-bridge-pipeline/design.md`
 (§1 contracts, §2–§8 steps). Progress log:
 `docs/archive/2026-09-19-area-a-bridge-pipeline/implementation-area-a.md`
 
-Measured review state: **551 passed, gate TOTAL 103** (baseline 120),
-`bridge.py` 2713 lines / 36 fails (was 52), 119/119 slots present
-(76 in `bridge.py`, 43 in 4 panels), **0 fails on all Area A new files**.
+Measured review state: **551 passed, gate TOTAL 97**, `bridge.py`
+2710 lines / 35 fails, 119/119 slots present (76 in `bridge.py`, 43 in
+4 panels), **0 fails on all Area A new files**. Counting method (all R1+
+numbers): `verify_quality.py` output lines matching
+`app/…:<line> [<tag>]` with tag in loc/cc/params/methods/nesting —
+i.e. every FAIL the gate reports, none of the WARN/prose lines.
+(Earlier drafts said 103/36: same fails, looser counting that swept in
+prose lines; re-measured exactly on the R1 tree.)
 
 Note: the gate uses `radon cc -s` when installed (else an AST approx that
 under-counts comprehension-`for`). All R1+ numbers are radon-based
@@ -77,12 +82,23 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   (97/35, 0 on `url_queue.py`), HEAD-vs-panel behavior diff clean
   (only deliberate change: `None` input → "empty URL" instead of
   `AttributeError`). Kills: none (all small), bridge −174 lines.
-- **R3 — `queue_scan` (12, reasoned).** Move scan/queue/file-tools/folder-AI;
-  thin slots; delegate thumbnail to `thumbnail_service`, reveal/copy to new
-  `ui/services/file_service.py`, folder-AI worker to
-  `ui/services/folder_ai_service.py`, scan bodies via `scan_service`;
-  `selected_images(images)` pure helper (run_control imports it).
-  Kills 7 fails: thumbnail×2, reveal, copy×2, scan×2.
+- **R3 — `queue_scan` (12).** ✅ done. 12 slots moved (thumbnail, reveal,
+  copy, pick/set-folder, 2 scans, select/bulk, `clear_images` alias,
+  AI twins); `clear_queue` target stays for R9 per log table
+  ("retry/retry/reset/reset/clear"); new `file_service.py` (OS reveal +
+  subprocess clipboard chain, log-callback, no Qt) and
+  `folder_ai_service.py` (bridge-opaque worker); `merge_scanned` added to
+  `scan_service` (new-batch reuses it post-clear, equivalent to the inline
+  loop); `selected_images(images)` pure helper added and
+  `_get_selected_images` flipped to it (R2 `enabled_urls` precedent);
+  `_push_queue_undo` kept as a 2-line R9 shim (4 R9 callers left);
+  orphaned `ImageItem` import dropped. Verified: 119/119 slots, mixin
+  109 LOC, all new funcs ≤20 LOC / CC ≤7, 551 green, gate 97→90
+  (bridge 35→28, exactly the planned 7: thumbnail×2, reveal, copy×2,
+  scan×2), Bridge methods 125→106. Deliberate changes: none (only
+  merge-loop equivalence + in-place drop refactor, both behavior-equal).
+  Also repaired 3 R2 plan-doc edits lost to a parallel-edit race (re-baseline
+  header, R10 kills, end-state 62) — same-file edits now done serially.
 - **R4 — `app_settings` (10).** Move prompt/settings/import-export/arena
   presets/theme/refresh; dispatch-split `save_settings` (per-section),
   `import_preset`, `save_arena_preset`, `load_arena_preset` (per-section).
@@ -116,12 +132,14 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   `build_context()` + `wire_cdp/wire_watcher/wire_page_pool/wire_thumb`
   (≤15 LOC); `Bridge.__init__` ≤20 (attach same attrs, init
   `_batch_future=None`); `_log_build_version`/`_on_cdp_error` → module
-  funcs. Kills `__init__`×2; Bridge class-loc/methods fixed by composition.
+  funcs. Kills 3 (`__init__`×2 + Bridge `[methods]`).
 - **R11 — A7 sweep.** (a) vulture + unused-import sweep, Area A clean;
   (b) F5 frozen-119 test; (c) F6 packing test; (d) branch coverage ≥80/75,
   no uncovered new funcs (dialog-fake tests as needed); (e) finish
   implementation log; SYSTEM_OF_RECORD.md §7 + docs/README.md (RULE 17);
   (f) RULE 18 audit table (every deviation reasoned); full gate + suite.
 
-Expected end state: TOTAL ≈ 103 − 36 = **67** (all `bridge.py` fails gone),
+Expected end state: TOTAL ≈ 97 − 35 = **62** (all `bridge.py` fails gone),
 suite green, Bridge ≈ 300 lines / 10 methods, 12 panels + 8 ui-services.
+Kill-map check: R3 7 + R4 7 + R5 1 + R7 7 + R8 4 + R9 6 + R10 3 = 35 ✓
+(R2/R6 kill 0 by design).

@@ -12,6 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Set
 
+from app.core.models import ImageItem
+
 
 def scan_folder_pure(
     root_path: Path, supported_types: Set[str] | None = None, ignore_ai_suffix: bool = True
@@ -48,6 +50,26 @@ def merge_scan_results(
         else:
             updated += 1
     return {"added": added, "updated": updated, "total": len(scanned)}
+
+
+def merge_scanned(images: List, scanned: List[Dict]) -> int:
+    """Merge scan dicts into the queue; returns added count (R3).
+
+    New paths append as unselected items; known paths refresh size/mtime.
+    """
+    existing = {img.relative_path: img for img in images}
+    added = 0
+    for s in scanned:
+        rel = s["relative_path"]
+        if rel not in existing:
+            images.append(ImageItem.from_scan_dict(s, selected=False))
+            added += 1
+        else:
+            e = existing[rel]
+            e.size = s["size"]
+            e.mtime = s["mtime"]
+            e.absolute_path = s["absolute_path"]
+    return added
 
 
 def should_ignore_file(filename: str, ignore_ai_suffix: bool = True) -> bool:
