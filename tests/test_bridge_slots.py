@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pytest
 
-BRIDGE = Path(__file__).parent.parent / "app" / "ui" / "bridge.py"
+REPO = Path(__file__).parent.parent
+BRIDGE = REPO / "app" / "ui" / "bridge.py"
+# W1.6: @Slot methods live on panel mixins; every file that can carry
+# slots is scanned so a move can never silently drop one.
+SLOT_FILES = sorted((REPO / "app" / "ui" / "panels").glob("*_panel.py")) + [BRIDGE]
 
 # Methods the web UI calls that must stay slots (extend with new slots).
 REQUIRED_SLOTS = (
@@ -30,7 +34,15 @@ NEVER_SLOTS = (
 )
 
 
-def _slot_names(path: Path) -> set:
+def _slot_names(paths) -> set:
+    """Slot names across all files that may carry @Slot (W1.6 panels)."""
+    names = set()
+    for path in paths:
+        names |= _slot_names_one(path)
+    return names
+
+
+def _slot_names_one(path: Path) -> set:
     import ast
     tree = ast.parse(path.read_text(encoding="utf-8"))
     names = set()
@@ -46,13 +58,13 @@ def _slot_names(path: Path) -> set:
 
 @pytest.mark.unit
 def test_required_slots_registered():
-    names = _slot_names(BRIDGE)
+    names = _slot_names(SLOT_FILES)
     missing = [s for s in REQUIRED_SLOTS if s not in names]
     assert not missing, f"lost @Slot decorator: {missing}"
 
 
 @pytest.mark.unit
 def test_helpers_never_slots():
-    names = _slot_names(BRIDGE)
+    names = _slot_names(SLOT_FILES)
     stolen = [s for s in NEVER_SLOTS if s in names]
     assert not stolen, f"helper captured @Slot: {stolen}"

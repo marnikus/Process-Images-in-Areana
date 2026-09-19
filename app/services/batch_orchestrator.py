@@ -472,7 +472,7 @@ def _hl_report(run: BatchRun, job: JobState, block: Any, res: dict) -> None:
     msg = f"Highlighted {block.selector} at {rect}" if rect else f"Highlight attempted {block.selector}"
     level = "success" if res.get("found") else "warn"
     b._log(f"[{job.correlation_id}] {msg}", level)
-    b._emit_job_action_status(job.job_id, block, "success" if res.get("found") else "failed", msg, rect=rect)
+    b._emit_job_action_rect(job.job_id, block, {"status": "success" if res.get("found") else "failed", "message": msg, "rect": rect})
     if not res.get("found"):
         raise RuntimeError(f"Highlight not found: {block.selector}")
 
@@ -583,7 +583,7 @@ async def _emit_success_with_rect(run: BatchRun, job: JobState, block: Any, opts
         rd = rect if isinstance(rect, dict) else None
         if isinstance(rect, dict) and rect.get("rect"):
             rd = rect.get("rect")
-        b._emit_job_action_status(job.job_id, block, "success", opts["msg"], rect=rd)
+        b._emit_job_action_rect(job.job_id, block, {"status": "success", "message": opts["msg"], "rect": rd})
     except Exception:
         if opts.get("optional"):
             raise
@@ -634,7 +634,7 @@ async def _block_verify_attachment(run: BatchRun, job: JobState, block: Any) -> 
         import json as _j
         res = _j.loads(raw) if raw else {}
         if res.get("found"):
-            b._emit_job_action_status(job.job_id, block, "success", f"Attachment preview found {sel}", rect=res.get("rect"))
+            b._emit_job_action_rect(job.job_id, block, {"status": "success", "message": f"Attachment preview found {sel}", "rect": res.get("rect")})
         else:
             raise RuntimeError(f"Attachment preview not found: {sel}")
     except Exception as e:

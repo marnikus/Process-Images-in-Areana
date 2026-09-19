@@ -118,7 +118,7 @@ def test_claim_unlinked_skips_disabled_and_garbage():
 
 # ── Bridge module-level gating helpers (I-33 glue, headless-safe import) ──
 
-import app.ui.bridge as bridge_mod  # noqa: E402
+import app.ui.panels._bridge_helpers as bridge_mod  # noqa: E402 (W1.6 move)
 
 
 class _FakePool:

@@ -152,8 +152,14 @@ class RecordingBridge:
     def _log(self, msg, level="info"):
         self.trace.append(("log", level, str(msg)))
 
-    def _emit_job_action_status(self, job_id, block, status, message="", rect=None):
-        self.trace.append(("action", getattr(block, "block_id", "?"), status))
+    def _emit_job_action_status(self, job_id, block, status, message=""):
+        self._emit_job_action(job_id, block, {"status": status, "message": message, "rect": None})
+
+    def _emit_job_action_rect(self, job_id, block, opts):
+        self._emit_job_action(job_id, block, opts)
+
+    def _emit_job_action(self, job_id, block, opts):
+        self.trace.append(("action", getattr(block, "block_id", "?"), opts.get("status")))
 
     def _emit_arena_state(self):
         self.trace.append(("emit", "arena_state"))
