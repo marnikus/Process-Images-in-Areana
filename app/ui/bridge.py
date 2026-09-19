@@ -246,12 +246,20 @@ class Bridge(QObject):
         except Exception:
             pass
 
-    def _match_tab(self, tabs, tab_id: str, ws_url: str, fallback_title: str, fallback_url: str):
+    def _is_tab_match(self, t, tab_id: str, ws_url: str) -> bool:
+        tid = getattr(t, 'id', '') or ''
+        tws = getattr(t, 'ws_url', '') or ''
+        return (tab_id and tid == tab_id) or (ws_url and tws == ws_url)
+
+    def _match_tab(self, ctx: dict):
+        tabs = ctx.get('tabs') or []
+        tab_id = ctx.get('tab_id', '')
+        ws_url = ctx.get('ws_url', '')
+        fallback_title = ctx.get('fallback_title', '')
+        fallback_url = ctx.get('fallback_url', '')
         try:
-            for t in tabs or []:
-                tid = getattr(t, 'id', '') or ''
-                tws = getattr(t, 'ws_url', '') or ''
-                if tab_id and tid == tab_id or (ws_url and tws == ws_url):
+            for t in tabs:
+                if self._is_tab_match(t, tab_id, ws_url):
                     return (getattr(t, 'title', '') or fallback_title, getattr(t, 'url', '') or fallback_url)
         except Exception:
             pass
@@ -265,7 +273,7 @@ class Bridge(QObject):
             tabs = await self.cdp.fetch_tabs()
         except Exception:
             return (title, url)
-        return self._match_tab(tabs, tab_id, ws_url, title, url)
+        return self._match_tab({'tabs': tabs, 'tab_id': tab_id, 'ws_url': ws_url, 'fallback_title': title, 'fallback_url': url})
 
     def _is_pool_page_ready(self, tab_id: str) -> bool:
         if not self._page_pool or not tab_id:
@@ -441,10 +449,15 @@ class Bridge(QObject):
         highlight_ms = getattr(block, 'highlight_duration_ms', 2000)
         return (block_id, block_name, color, highlight_ms)
 
-    def _emit_highlight_for_job(self, rect, status, block_name, color, highlight_ms):
+    def _emit_highlight_for_job(self, ctx: dict):
+        rect = ctx.get('rect')
+        status = ctx.get('status', '')
         if not (rect and status in ('running', 'success')):
             return
         try:
+            block_name = ctx.get('block_name', '')
+            color = ctx.get('color', '#FF0000')
+            highlight_ms = ctx.get('highlight_ms', 2000)
             hr = {'x': rect.get('x', 0), 'y': rect.get('y', 0), 'width': rect.get('width', 100), 'height': rect.get('height', 100), 'duration': highlight_ms / 1000 if highlight_ms else 2, 'label': block_name, 'color': color}
             self.highlight_rect.emit(json.dumps(hr))
         except Exception:
@@ -460,7 +473,7 @@ class Bridge(QObject):
             block_id, block_name, color, highlight_ms = self._extract_block_info(block)
             payload = json.dumps({'job_id': job_id, 'block_id': block_id, 'block_name': block_name, 'status': status, 'message': message, 'rect': rect, 'color': color, 'highlight_duration_ms': highlight_ms, 'timestamp': datetime.utcnow().isoformat() + 'Z'}, ensure_ascii=False)
             self.job_action_status.emit(job_id, block_id, payload)
-            self._emit_highlight_for_job(rect, status, block_name, color, highlight_ms)
+            self._emit_highlight_for_job({'rect': rect, 'status': status, 'block_name': block_name, 'color': color, 'highlight_ms': highlight_ms})
         except Exception as e:
             log.warning(f'emit job action status failed: {e}')
 
@@ -518,16 +531,23 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({'ok': False, 'error': str(e)})
 
+    def _filter_stack_by_id(self, block_id: str):
+        stack = self._get_action_blocks()
+        before = len(stack)
+        filtered = [b for b in stack if b.id != block_id]
+        if len(filtered) != before:
+            return filtered, True
+        filtered = [b for b in self._get_action_blocks() if b.block_id != block_id or b.required]
+        if len(filtered) == before:
+            return None, False
+        return filtered, True
+
     @Slot(str, result=str)
     def delete_action_block(self, block_id: str):
         try:
-            stack = self._get_action_blocks()
-            before = len(stack)
-            stack = [b for b in stack if b.id != block_id]
-            if len(stack) == before:
-                stack = [b for b in self._get_action_blocks() if b.block_id != block_id or b.required]
-                if len(stack) == before:
-                    return json.dumps({'ok': False, 'error': 'not found'})
+            stack, found = self._filter_stack_by_id(block_id)
+            if not found:
+                return json.dumps({'ok': False, 'error': 'not found'})
             ok, err = validate_stack(stack)
             if not ok:
                 return json.dumps({'ok': False, 'error': err})
@@ -556,20 +576,30 @@ class Bridge(QObject):
         except Exception:
             return json.dumps([], ensure_ascii=False)
 
+    def _parse_custom_block_data(self, block_json: str):
+        data = json.loads(block_json or '{}')
+        if not isinstance(data, dict) or 'block' not in data:
+            return None, 'invalid custom block format, need {name, block}'
+        name = data.get('name') or data.get('block', {}).get('custom_name') or data.get('block', {}).get('name') or 'Custom'
+        entry = {'name': name, 'block': data.get('block'), 'updated_at': datetime.utcnow().isoformat() + 'Z'}
+        return (name, entry), None
+
+    def _upsert_custom_block(self, entry, name):
+        raw = self.config.get_state('custom_blocks', [])
+        if not isinstance(raw, list):
+            raw = []
+        raw = [c for c in raw if c.get('name') != name]
+        raw.append(entry)
+        self.config.set_state(custom_blocks=raw)
+
     @Slot(str, result=str)
     def save_custom_block(self, block_json: str):
         try:
-            data = json.loads(block_json or '{}')
-            if not isinstance(data, dict) or 'block' not in data:
-                return json.dumps({'ok': False, 'error': 'invalid custom block format, need {name, block}'})
-            name = data.get('name') or data.get('block', {}).get('custom_name') or data.get('block', {}).get('name') or 'Custom'
-            entry = {'name': name, 'block': data.get('block'), 'updated_at': datetime.utcnow().isoformat() + 'Z'}
-            raw = self.config.get_state('custom_blocks', [])
-            if not isinstance(raw, list):
-                raw = []
-            raw = [c for c in raw if c.get('name') != name]
-            raw.append(entry)
-            self.config.set_state(custom_blocks=raw)
+            parsed, err = self._parse_custom_block_data(block_json)
+            if err:
+                return json.dumps({'ok': False, 'error': err})
+            name, entry = parsed
+            self._upsert_custom_block(entry, name)
             self._log(f'Custom block saved: {name}', 'success')
             return json.dumps({'ok': True, 'name': name})
         except Exception as e:
@@ -787,17 +817,22 @@ class Bridge(QObject):
         minimized = [i for i in raw.get('minimized', []) if isinstance(i, str) and i in WINDOW_IDS and (i not in closed)]
         return json.dumps({'closed': closed, 'minimized': minimized}, ensure_ascii=False)
 
+    def _parse_window_states(self, data):
+        if not isinstance(data, dict):
+            return None
+        closed = [i for i in data.get('closed', []) if isinstance(i, str) and i in WINDOW_IDS]
+        minimized = [i for i in data.get('minimized', []) if isinstance(i, str) and i in WINDOW_IDS and (i not in closed)]
+        return {'closed': closed, 'minimized': minimized}
+
     @Slot(str, result=bool)
     def save_window_states(self, states_json: str):
         try:
             data = json.loads(states_json or '{}')
         except json.JSONDecodeError:
             return False
-        if not isinstance(data, dict):
+        payload = self._parse_window_states(data)
+        if payload is None:
             return False
-        closed = [i for i in data.get('closed', []) if isinstance(i, str) and i in WINDOW_IDS]
-        minimized = [i for i in data.get('minimized', []) if isinstance(i, str) and i in WINDOW_IDS and (i not in closed)]
-        payload = {'closed': closed, 'minimized': minimized}
         self.config.set_state(window_states=payload)
         try:
             self.undo_service.push('window_states', payload)
