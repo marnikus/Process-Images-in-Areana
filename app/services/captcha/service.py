@@ -7,11 +7,11 @@ cooldown penalty record (same choke point as the 2026-09-17 fix).
 RULE 9 fail-open: probe errors, a missing service, or solver failures never
 stall the job — they degrade to the manual flow. RULE 7: stop is honoured
 inside the waits. Penalty records exactly once per solved edge.
+"""
 
 # ideal-size(reason): one choke point whose phases (probe, stats, solve,
-# manual wait, penalty) must stay in one readable control flow — the
-# phase helpers are separate functions, the sequence is not.
-"""
+# manual wait, penalty) must stay in one readable control flow — the phase
+# helpers are separate functions, the sequence is not.
 
 from __future__ import annotations
 
