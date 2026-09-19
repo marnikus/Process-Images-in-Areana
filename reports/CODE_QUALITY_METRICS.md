@@ -1,3 +1,20 @@
+# Code Quality Metrics — C16f finish (2026-09-19)
+
+## Gates (C16f)
+- verify_quality --changed --allow-legacy: 0 fails — **PASSED** (safe to push, RULE 16)
+- verify_quality (full): 29 fails — all grandfathered legacy: `BrowserController` class-loc/methods (2) + `bridge.py` Area A (26; `_do_run_batch` 918 LOC CC 355 pending the A4 pipeline flip); ratchet growth 0 after baseline re-record (179 entries, per-file coverage included)
+- Full-mode before this increment: 55 fails → 29 after (dead `_legacy` shims ×7, wrapper params ×3, from_dict/load_stack/undo/normalize/reconcile LOC+CC, `_poll_task` cog, 5 JS-literal overrides per RULE 16.1.5)
+- JS tests: 135 pass 0 fail; Python: 548 pass 0 fail (fast lane; previously 1 red: test_window_states_keep_captcha — fixed via `layout_service.normalize_window_states`)
+- Coverage: line 45.0% (baseline 41% — up, never decreased), branch 36.3%; coverage.json now generated in the gate (warn cleared); vulture @90: only the pre-existing non-changed finding remains; jscpd 2.14% 55 groups (same 55 as baseline, no new groups)
+
+## Structure changes this increment
+- Spec-object entries are THE API: `JobRecord.create(JobRequest)`, `wait_for_new_output_with_spec(..., WaitSpec)`, `build_highlight_js_from_spec(..., HighlightJsSpec)`; the multi-param wrappers and zero-caller `_legacy` shims are deleted
+- Window states: `normalize_window_states` in `app/core/layout_service.py` — one filter for get/save (closed/minimized vs WINDOW_IDS)
+- Action blocks: `from_dict` driven by `_DEFN_DEFAULTS`/`_CTOR_RAW`/`_CTOR_FROM_DEFN` tables; stack loading via `_block_from_saved` + `_append_missing_required`
+- Captcha poll: transient-network retry budget lives on `SolvePlan.transient_errors` (≤4-param convention of the module)
+
+---
+
 # Code Quality Metrics — C14 v4 final (2026-09-19)
 
 ## Gates

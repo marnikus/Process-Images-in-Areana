@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from app.core.cooldown import is_cooling as _is_cooling
 from app.core.cooldown import remaining_seconds as _remaining
 
 

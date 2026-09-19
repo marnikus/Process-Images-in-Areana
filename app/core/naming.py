@@ -71,24 +71,6 @@ def get_output_path(source_path: Path, spec: OutputSpec = None) -> Path:
     return _find_unique_path(img_spec, spec)
 
 
-def get_output_path_legacy(
-    source_path: Path,
-    suffix: str = "_AI",
-    preserve_format: bool = True,
-    overwrite: bool = False,
-    downloaded_ext: str | None = None,
-    unique_template: str = "{base}_AI_{n}{ext}",
-) -> Path:
-    spec = OutputSpec(
-        suffix=suffix,
-        preserve_format=preserve_format,
-        overwrite=overwrite,
-        downloaded_ext=downloaded_ext,
-        unique_template=unique_template,
-    )
-    return get_output_path(source_path, spec)
-
-
 def atomic_write_bytes(temp_dir: Path, final_path: Path, data: bytes) -> Path:
     final_path = Path(final_path)
     temp_dir = Path(temp_dir)

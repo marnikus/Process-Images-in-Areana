@@ -41,14 +41,14 @@ except ImportError:
             return fn
         return deco
     QFileDialog = None
-from app.core.layout_service import GRID_VERSION, WINDOW_IDS, canonical_grid_payload, default_payload, leaf_ids
+from app.core.layout_service import GRID_VERSION, WINDOW_IDS, canonical_grid_payload, default_payload, leaf_ids, normalize_window_states
 from app.core.models import AppState, UrlRow, ImageItem
 from app.core.persistence import load_state, save_state, save_preset, load_preset
 from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
 from app.browser.tab_matcher import best_matches
-from app.browser.dom_highlight import build_highlight_js, build_clear_js, build_highlight_probe, build_find_probe, build_click_probe
+from app.browser.dom_highlight import HighlightJsSpec, build_highlight_js_from_spec, build_clear_js, build_highlight_probe, build_find_probe, build_click_probe
 from app.browser.probe_requests import FindProbeSpec, ClickProbeSpec, HighlightSpec, COLOR_FIND, COLOR_CLICK, COLOR_COLLECT
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.core.action_blocks import default_stack, stack_to_dicts, load_stack_from_dicts, parse_stack_json, validate_stack, create_default_block, BUILTIN_BLOCKS, get_builtin_blocks_json, BLOCK_DEFINITIONS
@@ -810,19 +810,10 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def get_window_states(self):
-        raw = self.config.get_state('window_states', None)
-        if not isinstance(raw, dict):
+        payload = normalize_window_states(self.config.get_state('window_states', None))
+        if payload is None:
             return ''
-        closed = [i for i in raw.get('closed', []) if isinstance(i, str) and i in WINDOW_IDS]
-        minimized = [i for i in raw.get('minimized', []) if isinstance(i, str) and i in WINDOW_IDS and (i not in closed)]
-        return json.dumps({'closed': closed, 'minimized': minimized}, ensure_ascii=False)
-
-    def _parse_window_states(self, data):
-        if not isinstance(data, dict):
-            return None
-        closed = [i for i in data.get('closed', []) if isinstance(i, str) and i in WINDOW_IDS]
-        minimized = [i for i in data.get('minimized', []) if isinstance(i, str) and i in WINDOW_IDS and (i not in closed)]
-        return {'closed': closed, 'minimized': minimized}
+        return json.dumps(payload, ensure_ascii=False)
 
     @Slot(str, result=bool)
     def save_window_states(self, states_json: str):
@@ -830,7 +821,7 @@ class Bridge(QObject):
             data = json.loads(states_json or '{}')
         except json.JSONDecodeError:
             return False
-        payload = self._parse_window_states(data)
+        payload = normalize_window_states(data)
         if payload is None:
             return False
         self.config.set_state(window_states=payload)
@@ -4405,7 +4396,10 @@ class Bridge(QObject):
 
     async def _do_highlight(self, selector: str, color: str, duration_ms: int, caption: str):
         try:
-            js = build_highlight_js(selector, color or '#FF0000', duration_ms or 2000, caption or selector, clear_first=True)
+            js = build_highlight_js_from_spec(HighlightJsSpec(
+                selector=selector, color=color or '#FF0000',
+                duration_ms=duration_ms or 2000, caption=caption or selector,
+                clear_first=True))
             result_json = await self.cdp.evaluate(js)
             if result_json:
                 try:

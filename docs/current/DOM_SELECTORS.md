@@ -462,8 +462,8 @@ All selectors will be centralized in `app/browser/site_adapter.py` as constants 
 **New modules:**
 - `app/browser/output_probes.py`: `build_baseline_js()` returns baseline JS with full src, `build_check_js(old_srcs, correlation_id, old_outputs)` returns v3 JS with layout-aware reverse detection, smallest container hasJob&&(hasImg||hasFlex), isReference `isSmall && !is50vh`, isLarge `50vh||>=400`, deduplication, full src.
 - `app/browser/output_state.py`: `flatten_diagnostics(result)` ensures orderCheck/jobTop/validAbove/belowCandidates not None, `build_order_check_text()` builds log line.
-- `app/browser/output_wait.py`: `wait_for_new_output_loop(check_fn, log_cb, cancel_check, timeout)` polls 2s, handles spinner visible/gone, ready with 3s wait + re-check, fallback stable ≥400px after 10s, returns last_check on timeout.
-- `app/browser/cdp_arena.py`: refactored from 534 LOC class to thin delegation (~300 LOC, methods ≤15 LOC, each ≤20 LOC, CC ≤7) — deleted old `JS_CHECK_NEW_OUTPUT`, now uses `build_check_js`, `flatten_diagnostics`, `wait_for_new_output_loop`.
+- `app/browser/output_wait.py`: `wait_for_new_output_with_spec(check_fn, log_cb, cancel_check, WaitSpec)` polls `spec.poll_interval` (2s default) up to `spec.timeout`, handles spinner visible/gone, ready with 3s wait + re-check, fallback stable ≥400px after 10s, returns last_check on timeout. (The old 5-param `wait_for_new_output_loop` and the dead `_legacy` compat shims were removed 2026-09-19 — zero callers; `WaitSpec` is the single entry.)
+- `app/browser/cdp_arena.py`: refactored from 534 LOC class to thin delegation (~300 LOC, methods ≤15 LOC, each ≤20 LOC, CC ≤7) — deleted old `JS_CHECK_NEW_OUTPUT`, now uses `build_check_js`, `flatten_diagnostics`, `wait_for_new_output_with_spec`.
 
 **Verification logs after fix:**
 - `jobTop 53` + image `top 461` + `isAssistantBubble justify-start` + `isLarge 50vh 1092x1440` → `validBelow 1` (was 0)

@@ -154,13 +154,6 @@ async def highlight_element(transport, selector: str, spec: HighlightSpec = None
     return await transport.evaluate(js)
 
 
-async def highlight_element_legacy(transport, selector: str, color: str = "#FF0000",
-                                   duration_ms: int = 2000, caption: str = ""):
-    """Backward compat wrapper — old signature."""
-    spec = HighlightSpec(color=color, duration_ms=duration_ms, caption=caption)
-    return await highlight_element(transport, selector, spec)
-
-
 async def clear_highlights(transport):
     js = """
 (function(){

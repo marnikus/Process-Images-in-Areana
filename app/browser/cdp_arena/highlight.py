@@ -55,8 +55,11 @@ async def _try_highlight_probe(cdp, selector: str, spec: HighlightSpec) -> Optio
 
 async def _try_highlight_fallback(cdp, selector: str, spec: HighlightSpec) -> Optional[dict]:
     try:
-        from ..dom_highlight import build_highlight_js
-        js = build_highlight_js(selector, spec.color, spec.duration_ms, spec.caption, clear_first=True)
+        from ..dom_highlight import HighlightJsSpec, build_highlight_js_from_spec
+        js_spec = HighlightJsSpec(selector=selector, color=spec.color,
+                                  duration_ms=spec.duration_ms, caption=spec.caption,
+                                  clear_first=True)
+        js = build_highlight_js_from_spec(js_spec)
         raw = await cdp.evaluate(js)
         return _parse_rect(raw)
     except Exception as e:
@@ -74,12 +77,6 @@ async def highlight_selector(cdp, selector: str, spec: HighlightSpec = None) -> 
     if rect2:
         return rect2
     return {"x": 100, "y": 100, "width": 200, "height": 100}
-
-
-async def highlight_selector_legacy(cdp, selector: str, color: str = "#FF0000",
-                                    duration_ms: int = 2000, caption: str = "") -> dict | None:
-    spec = HighlightSpec(color=color, duration_ms=duration_ms, caption=caption)
-    return await highlight_selector(cdp, selector, spec)
 
 
 async def clear_highlights(cdp):
@@ -109,13 +106,6 @@ async def show_watcher_overlay(cdp, spec: WatcherOverlaySpec = None) -> bool:
     except Exception as e:
         log.debug(f"watcher overlay failed {e}")
         return False
-
-
-async def show_watcher_overlay_legacy(cdp, message: str = "wait for finish generation",
-                                      kind: str = "generation", timeout_sec: int = 600,
-                                      sub: str = "") -> bool:
-    spec = WatcherOverlaySpec(message=message, kind=kind, timeout_sec=timeout_sec, sub=sub)
-    return await show_watcher_overlay(cdp, spec)
 
 
 async def hide_watcher_overlay(cdp) -> bool:

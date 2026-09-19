@@ -42,40 +42,35 @@ class UndoService:
     def push(self, kind: str, value: Any):
         return self.store.push(kind, value)
 
+    def _undo_to_frontier(self, hist):
+        """Index 0: undoing restores the pre-first state — no value, 'empty' marker."""
+        entry = hist[0] if hist else None
+        if not entry:
+            return None
+        self.store.set(hist, -1)
+        return {
+            "kind": entry["kind"],
+            "value": None,
+            "index": -1,
+            "undone": entry,
+            "empty": True,
+        }
+
     def undo(self):
         hist, idx = self.store.get()
         if idx < 0 or not hist:
             return None
         if idx == 0:
-            entry = hist[0] if hist else None
-            if entry:
-                self.store.set(hist, -1)
-                return {
-                    "kind": entry["kind"],
-                    "value": None,
-                    "index": -1,
-                    "undone": entry,
-                    "empty": True,
-                }
-            return None
+            return self._undo_to_frontier(hist)
         new_idx = idx - 1
         self.store.set(hist, new_idx)
         target = hist[new_idx] if 0 <= new_idx < len(hist) else None
         undone = hist[idx] if 0 <= idx < len(hist) else None
         if target:
-            return {
-                "kind": target["kind"],
-                "value": target["value"],
-                "index": new_idx,
-                "undone": undone,
-            }
-        return {
-            "kind": "empty",
-            "value": None,
-            "index": -1,
-            "undone": undone,
-            "empty": True,
-        }
+            return {"kind": target["kind"], "value": target["value"],
+                    "index": new_idx, "undone": undone}
+        return {"kind": "empty", "value": None,
+                "index": -1, "undone": undone, "empty": True}
 
     def redo(self):
         hist, idx = self.store.get()

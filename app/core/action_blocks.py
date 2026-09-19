@@ -27,7 +27,7 @@ Blocks:
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import copy
 import json
 import uuid
@@ -520,6 +520,73 @@ class ActionBlock:
         d["highlight_duration_ms"] = self.highlight_ms
         return d
 
+    # Definition-provided defaults: (attr, defn key, raw fallback) — table, not if/elif (RULE 19)
+    _DEFN_DEFAULTS: tuple = (
+        ("label_selector", "default_label_selector", ""),
+        ("match_text", "default_match_text", ""),
+        ("match_mode", "default_match_mode", "contains"),
+        ("click_enabled", "default_click_enabled", True),
+        ("click_selector", "default_click_selector", ""),
+        ("fallback_selector", "default_fallback_selector", ""),
+        ("fallback_text", "default_fallback_text", ""),
+        ("highlight_enabled", "default_highlight_enabled", True),
+        ("timeout_ms", "default_timeout_ms", 10000),
+        ("pre_delay_ms", "default_pre_delay_ms", 200),
+        ("highlight_ms", "default_highlight_ms", 2000),
+        ("confirm_pause_ms", "default_confirm_pause_ms", 700),
+    )
+    # Constructor fallbacks — after _apply_definition_defaults these only fire for
+    # fields the table never setdefaults (selector/enabled/custom_name)
+    _CTOR_RAW: tuple = (
+        ("enabled", True),
+        ("selector", ""),
+        ("label_selector", ""),
+        ("match_text", ""),
+        ("match_mode", "contains"),
+        ("click_enabled", True),
+        ("click_selector", ""),
+        ("fallback_selector", ""),
+        ("fallback_text", ""),
+        ("highlight_enabled", True),
+        ("color", "#FF0000"),
+        ("timeout_ms", 10000),
+        ("pre_delay_ms", 200),
+        ("highlight_ms", 2000),
+        ("confirm_pause_ms", 700),
+        ("custom_name", ""),
+        ("extra", {}),
+    )
+    # Constructor fallbacks that read the block definition itself when the key is absent
+    _CTOR_FROM_DEFN: tuple = (
+        ("name", "name", ""),
+        ("description", "description", ""),
+        ("icon", "icon", ""),
+        ("required", "required", False),
+        ("category", "category", "action"),
+    )
+
+    @staticmethod
+    def _apply_definition_defaults(data: Dict[str, Any], defn: Dict[str, Any]) -> None:
+        """Fill per-block defaults from the definition before constructing (C5 table)."""
+        for attr, key, fb in ActionBlock._DEFN_DEFAULTS:
+            data.setdefault(attr, defn.get(key, fb))
+        data.setdefault("color", defn.get("default_color", defn.get("color", "#FF0000")))
+        data.setdefault("highlight_duration_ms", data.get("highlight_ms", 2000))
+        data.setdefault("extra", {})
+
+    @staticmethod
+    def _ctor_kwargs(data: Dict[str, Any], defn: Dict[str, Any]) -> Dict[str, Any]:
+        """Constructor kwargs; after _apply_definition_defaults every table key is present."""
+        kw = {
+            "id": data.get("id", str(uuid.uuid4())),
+            "block_id": data.get("block_id", ""),
+            "highlight_duration_ms": data.get("highlight_duration_ms", data.get("highlight_ms", 2000)),
+        }
+        kw.update({attr: data.get(attr, fb) for attr, fb in ActionBlock._CTOR_RAW})
+        kw.update({attr: data.get(attr, defn.get(dkey, dfb))
+                   for attr, dkey, dfb in ActionBlock._CTOR_FROM_DEFN})
+        return kw
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ActionBlock":
         for rk in RETIRED_KEYS:
@@ -528,50 +595,10 @@ class ActionBlock:
             data["highlight_ms"] = data.get("highlight_duration_ms", 2000)
         bid = data.get("block_id", "")
         defn = BLOCK_DEFINITIONS.get(bid, {})
-        data.setdefault("label_selector", defn.get("default_label_selector", ""))
-        data.setdefault("match_text", defn.get("default_match_text", ""))
-        data.setdefault("match_mode", defn.get("default_match_mode", "contains"))
-        data.setdefault("click_enabled", defn.get("default_click_enabled", True))
-        data.setdefault("click_selector", defn.get("default_click_selector", ""))
-        data.setdefault("fallback_selector", defn.get("default_fallback_selector", ""))
-        data.setdefault("fallback_text", defn.get("default_fallback_text", ""))
-        data.setdefault("highlight_enabled", defn.get("default_highlight_enabled", True))
-        data.setdefault("color", defn.get("default_color", defn.get("color", "#FF0000")))
-        data.setdefault("timeout_ms", defn.get("default_timeout_ms", 10000))
-        data.setdefault("pre_delay_ms", defn.get("default_pre_delay_ms", 200))
-        data.setdefault("highlight_ms", defn.get("default_highlight_ms", 2000))
-        data.setdefault("confirm_pause_ms", defn.get("default_confirm_pause_ms", 700))
-        data.setdefault("highlight_duration_ms", data.get("highlight_ms", 2000))
-        data.setdefault("extra", {})
+        cls._apply_definition_defaults(data, defn)
         if not data.get("id"):
             data["id"] = f"{bid.lower()}_{uuid.uuid4().hex[:8]}"
-        return cls(
-            id=data.get("id", str(uuid.uuid4())),
-            block_id=data.get("block_id", ""),
-            name=data.get("name", defn.get("name", "")),
-            description=data.get("description", defn.get("description", "")),
-            icon=data.get("icon", defn.get("icon", "")),
-            enabled=data.get("enabled", True),
-            selector=data.get("selector", ""),
-            label_selector=data.get("label_selector", ""),
-            match_text=data.get("match_text", ""),
-            match_mode=data.get("match_mode", "contains"),
-            click_enabled=data.get("click_enabled", True),
-            click_selector=data.get("click_selector", ""),
-            fallback_selector=data.get("fallback_selector", ""),
-            fallback_text=data.get("fallback_text", ""),
-            highlight_enabled=data.get("highlight_enabled", True),
-            color=data.get("color", "#FF0000"),
-            timeout_ms=data.get("timeout_ms", 10000),
-            required=data.get("required", defn.get("required", False)),
-            category=data.get("category", defn.get("category", "action")),
-            custom_name=data.get("custom_name", ""),
-            pre_delay_ms=data.get("pre_delay_ms", 200),
-            highlight_ms=data.get("highlight_ms", 2000),
-            confirm_pause_ms=data.get("confirm_pause_ms", 700),
-            highlight_duration_ms=data.get("highlight_duration_ms", data.get("highlight_ms", 2000)),
-            extra=data.get("extra", {}),
-        )
+        return cls(**cls._ctor_kwargs(data, defn))
 
     @property
     def display_name(self) -> str:
@@ -634,28 +661,38 @@ def default_stack() -> List[ActionBlock]:
     return [create_default_block(bt) for bt in DEFAULT_STACK_ORDER]
 
 
-def load_stack_from_dicts(dicts: List[Dict[str, Any]]) -> List[ActionBlock]:
-    blocks: List[ActionBlock] = []
-    for d in dicts:
-        try:
-            if not isinstance(d, dict):
-                continue
-            for rk in RETIRED_KEYS:
-                d.pop(rk, None)
-            if "block_id" in d:
-                blocks.append(ActionBlock.from_dict(d))
-            else:
-                bt = d.get("id") or d.get("block_id") or ""
-                if bt in BLOCK_DEFINITIONS:
-                    blocks.append(create_default_block(bt, custom_id=d.get("id")))
-                else:
-                    blocks.append(ActionBlock.from_dict(d))
-        except Exception:
-            continue
+def _block_from_saved(d: Dict[str, Any]) -> Optional[ActionBlock]:
+    """One saved entry → block, or None when corrupt (load is forgiving, never bricks)."""
+    try:
+        for rk in RETIRED_KEYS:
+            d.pop(rk, None)
+        if "block_id" in d:
+            return ActionBlock.from_dict(d)
+        bt = d.get("id") or ""
+        if bt in BLOCK_DEFINITIONS:
+            return create_default_block(bt, custom_id=d.get("id"))
+        return ActionBlock.from_dict(d)
+    except Exception:
+        return None
+
+
+def _append_missing_required(blocks: List[ActionBlock]) -> None:
+    """Required blocks are always present: append defaults for anything absent."""
     existing_types = {b.block_id for b in blocks}
     for req_type, defn in BLOCK_DEFINITIONS.items():
         if defn.get("required") and req_type not in existing_types:
             blocks.append(create_default_block(req_type))
+
+
+def load_stack_from_dicts(dicts: List[Dict[str, Any]]) -> List[ActionBlock]:
+    blocks: List[ActionBlock] = []
+    for d in dicts:
+        if not isinstance(d, dict):
+            continue
+        block = _block_from_saved(d)
+        if block is not None:
+            blocks.append(block)
+    _append_missing_required(blocks)
     return blocks
 
 

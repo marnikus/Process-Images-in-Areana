@@ -256,6 +256,7 @@ class BrowserController:
         except Exception as e:
             self._log(f"Highlight failed: {e}")
 
+    # quality-override: loc=47 reason=embedded JS probe literal, allowed by RULE 16.1.5
     def _baseline_js(self):
         return """
             () => {
@@ -446,6 +447,7 @@ class BrowserController:
             await self.page.wait_for_timeout(500)
         return False, f"Send button not found or disabled after {timeout}ms: {last_err}"
 
+    # quality-override: loc=57 reason=embedded JS probe literal, allowed by RULE 16.1.5
     def _generation_check_js(self):
         return """
             (oldSrcs) => {
@@ -542,6 +544,7 @@ class BrowserController:
                 return True, {"new_output": out, "current": current}
         return False, {"reason": "New outputs not loaded", "new_outputs": new_outputs, "current": current}
 
+    # quality-override: loc=51 reason=embedded JS probe literal, allowed by RULE 16.1.5
     def _download_js(self):
         return """
             async (src) => {

@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, Tuple, Callable, List
 
 from ..output_probes import build_check_js
 from ..output_state import flatten_diagnostics
-from ..output_wait import wait_for_new_output_loop
+from ..output_wait import WaitSpec as PollSpec, wait_for_new_output_with_spec
 from ...utils.page_errors import PageErrorAbort, match_page_error
 from .state import capture_baseline, scan_page_errors
 
@@ -108,22 +108,8 @@ async def wait_for_new_output(cdp, spec: WaitSpec) -> Tuple[str, Dict[str, Any]]
         first_err = match_page_error(err_base)
         if first_err:
             return "failed", {"error": first_err}
-        result = await wait_for_new_output_loop(
-            check_fn=check_fn,
-            log_cb=_log,
-            cancel_check=spec.cancel_check,
-            timeout=spec.timeout_ms / 1000.0,
-            poll_interval=2.0,
-        )
+        poll = PollSpec(timeout=spec.timeout_ms / 1000.0, poll_interval=2.0)
+        result = await wait_for_new_output_with_spec(check_fn, _log, spec.cancel_check, poll)
         return await _map_wait_result(cdp, result, baseline, spec.timeout_ms)
     except Exception as e:
         return "failed", {"error": str(e)}
-
-
-async def wait_for_new_output_legacy(cdp, baseline: Dict[str, Any], timeout_ms: int = 180000,
-                                     correlation_id: Optional[str] = None,
-                                     cancel_check=None, log_cb=None, ctrl=None):
-    spec = WaitSpec(baseline=baseline, timeout_ms=timeout_ms,
-                    correlation_id=correlation_id, cancel_check=cancel_check,
-                    log_cb=log_cb, ctrl=ctrl)
-    return await wait_for_new_output(cdp, spec)

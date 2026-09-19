@@ -193,11 +193,6 @@ def build_highlight_js_from_spec(spec: HighlightJsSpec) -> str:
     return ";" + build_highlight_probe(spec.selector, hs).lstrip()
 
 
-def build_highlight_js(selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = "", clear_first: bool = True) -> str:
-    spec = HighlightJsSpec(selector=selector, color=color, duration_ms=duration_ms, caption=caption, clear_first=clear_first)
-    return build_highlight_js_from_spec(spec)
-
-
 def build_clear_js() -> str:
     return build_clear_probe()
 
@@ -216,11 +211,6 @@ def build_highlight_rect_js_from_spec(spec: HighlightRectSpec) -> str:
   }} catch(e) {{ return JSON.stringify({{found:false}}); }}
 }})()
 """
-
-
-def build_highlight_rect_js(x: float, y: float, w: float, h: float, color: str = "#FF0000", duration_ms: int = 2000, caption: str = "") -> str:
-    spec = HighlightRectSpec(x=x, y=y, w=w, h=h, color=color, duration_ms=duration_ms, caption=caption)
-    return build_highlight_rect_js_from_spec(spec)
 
 
 def _watcher_style_js() -> str:
@@ -258,6 +248,7 @@ def _watcher_drag_js() -> str:
 """
 
 
+# quality-override: loc=50 reason=embedded JS overlay literal, allowed by RULE 16.1.5
 def build_watcher_overlay_js_from_spec(spec: WatcherOverlaySpec) -> str:
     msg_json = json.dumps(spec.message or "wait")
     kind_json = json.dumps(spec.kind or "generation")

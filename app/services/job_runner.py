@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, Callable, Dict, Any
 from datetime import datetime
 
-from ..core.models import ImageItem, UrlRow, JobRecord, AppState
+from ..core.models import ImageItem, UrlRow, JobRecord, JobRequest, AppState
 from ..core.enums import ImageStatus, JobStatus
 from ..utils.correlation import generate_correlation_id, build_final_prompt
 from ..core.naming import OutputSpec, get_output_path, atomic_write_bytes
@@ -264,7 +264,7 @@ class _SingleJobExecutor:
     def _create_job(self, image: ImageItem, url_row: UrlRow, user_prompt: str, attempt: int):
         correlation_id = generate_correlation_id()
         final_prompt = build_final_prompt(correlation_id, user_prompt)
-        job = JobRecord.create(image, url_row, correlation_id, final_prompt, attempt=attempt)
+        job = JobRecord.create(JobRequest(image, url_row, correlation_id, final_prompt, attempt))
         self._state.jobs.append(job)
         image.status = ImageStatus.PROCESSING.value
         image.assigned_url_id = url_row.id

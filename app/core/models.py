@@ -82,6 +82,16 @@ class ImageItem:
         )
 
 @dataclass
+class JobRequest:
+    """Param object for JobRecord.create (C6 spec pattern — keeps factory ≤4 params)."""
+    image: ImageItem
+    url: UrlRow
+    correlation_id: str
+    prompt: str
+    attempt: int = 1
+
+
+@dataclass
 class JobRecord:
     job_id: str
     image_id: str
@@ -103,19 +113,19 @@ class JobRecord:
     logs: List[Dict[str, Any]] = field(default_factory=list)
 
     @staticmethod
-    def create(image: ImageItem, url: UrlRow, correlation_id: str, prompt: str, attempt: int = 1) -> "JobRecord":
+    def create(req: JobRequest) -> "JobRecord":
         return JobRecord(
-            job_id=correlation_id,
-            image_id=image.id,
-            image_path=image.absolute_path,
-            url_id=url.id,
-            url=url.url,
-            correlation_id=correlation_id,
-            attempt=attempt,
+            job_id=req.correlation_id,
+            image_id=req.image.id,
+            image_path=req.image.absolute_path,
+            url_id=req.url.id,
+            url=req.url.url,
+            correlation_id=req.correlation_id,
+            attempt=req.attempt,
             status=JobStatus.CREATED.value,
             created_at=now_iso(),
             baseline={},
-            prompt=prompt,
+            prompt=req.prompt,
             submitted_at=None,
             output_src=None,
             output_metadata={},

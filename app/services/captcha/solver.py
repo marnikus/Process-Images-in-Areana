@@ -53,6 +53,7 @@ class SolvePlan:
     err_base: Optional[str] = None  # error-scan corpus at solve start (None = not taken)
     err_seen: bool = False  # a mid-solve page error was already logged
     polls: int = 0  # provider poll rounds (report retry count)
+    transient_errors: int = 0  # consecutive transient-network poll errors (retry budget)
     attempts: int = 0  # paid 2Captcha tasks used for this encounter (H1)
     token_fp: str = ""  # token fingerprint (shape only)
     dialog_at_token: str = ""  # visible | gone | "" (no token yet)
@@ -359,12 +360,20 @@ async def _provider_result(plan: SolvePlan, res: Dict[str, Any]
     return False, None, ""
 
 
+async def _poll_retryable(plan: SolvePlan, exc: ApiError, start: float,
+                          timeout_sec: int) -> bool:
+    """True when the error was transient-network and a retry window was granted."""
+    if exc.reason != "network":
+        return False
+    return await _retry_network(plan, start, plan.transient_errors, timeout_sec)
+
+
 async def _poll_task(plan: SolvePlan, task_id: str,
                      timeout_sec: int) -> Tuple[Optional[str], str]:
     """Poll until a token arrives; (None, why) on stop/error/timeout."""
     start = time.monotonic()
     last_beat = start
-    transient_errors = 0
+    plan.transient_errors = 0
     while True:
         if plan.stop():
             plan.logger("2Captcha polling stopped (user stop)", "info")
@@ -373,12 +382,11 @@ async def _poll_task(plan: SolvePlan, task_id: str,
         try:
             res = await plan.client.get_result(task_id)
         except ApiError as exc:
-            transient_errors += 1
-            if exc.reason == "network" and await _retry_network(
-                    plan, start, transient_errors, timeout_sec):
+            plan.transient_errors += 1
+            if await _poll_retryable(plan, exc, start, timeout_sec):
                 continue
             return _poll_fail(plan, exc.reason, str(exc))
-        transient_errors = 0
+        plan.transient_errors = 0
         done, token, why = await _provider_result(plan, res)
         if done:
             return token, why

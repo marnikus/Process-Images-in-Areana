@@ -65,6 +65,20 @@ def default_grid_tree() -> dict:
     ], [38, 40, 22])
 
 
+def normalize_window_states(data: Any) -> "dict | None":
+    """Shared window-state filter: known ids only, minimized never reopens a closed win.
+
+    Returns None for non-dict payloads so callers can reject instead of substituting
+    defaults (RULE 13: never brick on corrupt state, never default-substitute).
+    """
+    if not isinstance(data, dict):
+        return None
+    closed = [i for i in data.get("closed", []) if isinstance(i, str) and i in WINDOW_IDS]
+    minimized = [i for i in data.get("minimized", [])
+                 if isinstance(i, str) and i in WINDOW_IDS and i not in closed]
+    return {"closed": closed, "minimized": minimized}
+
+
 def default_payload() -> str:
     return json.dumps({"v": GRID_VERSION, "tree": default_grid_tree()},
                       ensure_ascii=False, separators=(",", ":"))
@@ -153,20 +167,8 @@ def _normalize_children(kids, depth: int) -> tuple[list | None, str | None]:
     return clean_kids, None
 
 
-def normalize_grid_tree(node, depth=0):
-    _, err = _check_depth(depth)
-    if err:
-        return None, err
-    if not isinstance(node, dict):
-        return None, "node must be object"
-    t = node.get("t", node.get("type"))
-
-    # predicate table for node types
-    if t == "leaf":
-        return _normalize_leaf(node)
-    if t != "split":
-        return None, "unknown node type"
-
+def _normalize_split(node, depth):
+    """Validate + rebuild a split node; leaf dispatch stays in normalize_grid_tree."""
     err = _check_dir(node)
     if err:
         return None, err
@@ -178,7 +180,6 @@ def normalize_grid_tree(node, depth=0):
     err = _check_sizes_match(sizes, kids)
     if err:
         return None, err
-
     clean_sizes, err = _normalize_size_list(sizes)
     if err:
         return None, err
@@ -186,6 +187,20 @@ def normalize_grid_tree(node, depth=0):
     if err:
         return None, err
     return {"t": "split", "dir": node["dir"], "children": clean_kids, "sizes": clean_sizes}, None
+
+
+def normalize_grid_tree(node, depth=0):
+    _, err = _check_depth(depth)
+    if err:
+        return None, err
+    if not isinstance(node, dict):
+        return None, "node must be object"
+    t = node.get("t", node.get("type"))
+    if t == "leaf":
+        return _normalize_leaf(node)
+    if t != "split":
+        return None, "unknown node type"
+    return _normalize_split(node, depth)
 
 
 def leaf_ids(node, out=None):

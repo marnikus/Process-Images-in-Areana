@@ -160,21 +160,25 @@ def _handle_interrupted(state: AppState) -> int:
     return count
 
 
-def reconcile_with_filesystem(state: AppState, root_path: Path | None = None) -> dict:
-    from .scanner import ScanSpec, scan_folder, detect_changes
-
-    root, err = _resolve_root(state, root_path)
-    if err:
-        return err
-    assert root is not None
+def _reconcile_diff(state: AppState, root: Path) -> dict:
+    """Diff persisted queue vs a fresh scan (spec object in, changes dict out)."""
+    from .scanner import ScanSpec, scan_folder, detect_changes  # local: circular import guard
 
     supported = state.folder.get("supported_types", [".png", ".jpg", ".jpeg", ".webp"])
     ignore_ai = state.folder.get("ignore_ai_suffix", True)
     spec = ScanSpec(supported_exts=set(supported), ignore_ai_suffix=ignore_ai)
     current_scan = scan_folder(root, spec)
-
     prev_scan = _build_prev_scan(state)
-    changes = detect_changes(prev_scan, current_scan)
+    return detect_changes(prev_scan, current_scan)
+
+
+def reconcile_with_filesystem(state: AppState, root_path: Path | None = None) -> dict:
+    root, err = _resolve_root(state, root_path)
+    if err:
+        return err
+    assert root is not None
+
+    changes = _reconcile_diff(state, root)
 
     # predicate table for handlers
     handlers = {

@@ -1,7 +1,7 @@
 """Tests for dom_highlight.py pure helpers."""
 from app.browser.dom_highlight import (
     _candidate_lines, interpret_find, _found_state, _outline_suffix,
-    interpret_click, interpret_click_target, build_highlight_js, build_clear_js,
+    interpret_click, interpret_click_target, build_clear_js,
     HighlightJsSpec, build_highlight_js_from_spec
 )
 
@@ -64,8 +64,9 @@ def test_interpret_click_target():
     assert "clickable" in msg.lower()
 
 def test_build_highlight_js():
-    js = build_highlight_js("button", "#FF0000", 1000, "test", True)
-    assert "button" in js or "selector" in js.lower() or "highlight" in js.lower()
+    spec = HighlightJsSpec(selector="button", color="#FF0000", duration_ms=1000, caption="test", clear_first=True)
+    js = build_highlight_js_from_spec(spec)
+    assert "button" in js and "#FF0000" in js and "test" in js and "1000" in js
 
 def test_build_clear_js():
     js = build_clear_js()

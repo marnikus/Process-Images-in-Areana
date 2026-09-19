@@ -186,11 +186,6 @@ async def _handle_non_ready_branch(diag: dict, log_cb: Callable, state: LoopStat
     return None
 
 
-async def wait_for_new_output_loop(check_fn, log_cb, cancel_check, timeout, poll_interval=2.0) -> dict:
-    spec = WaitSpec(timeout=timeout, poll_interval=poll_interval)
-    return await wait_for_new_output_with_spec(check_fn, log_cb, cancel_check, spec)
-
-
 async def wait_for_new_output_with_spec(check_fn, log_cb, cancel_check, spec: WaitSpec) -> dict:
     state = LoopState(last={"ready": False, "reason": "not_started"}, start=time.monotonic())
     while True:
@@ -214,10 +209,3 @@ async def wait_for_new_output_with_spec(check_fn, log_cb, cancel_check, spec: Wa
         if fb_result:
             return fb_result
         await asyncio.sleep(spec.poll_interval)
-
-
-def wait_for_new_output_loop_legacy(check_fn, log_cb, cancel_check, timeout, poll_interval=2.0):
-    import asyncio as _asyncio
-    return _asyncio.get_event_loop().run_until_complete(
-        wait_for_new_output_loop(check_fn, log_cb, cancel_check, timeout, poll_interval)
-    )

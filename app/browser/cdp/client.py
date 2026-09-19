@@ -118,10 +118,5 @@ class CDPClient(CDPTransport):
             spec = HighlightSpec()
         return await dom_highlight_element(self, selector, spec)
 
-    async def highlight_element_legacy(self, selector: str, color: str = "#FF0000",
-                                       duration_ms: int = 2000, caption: str = ""):
-        spec = HighlightSpec(color=color, duration_ms=duration_ms, caption=caption)
-        return await dom_highlight_element(self, selector, spec)
-
     async def clear_highlights(self):
         return await dom_clear_highlights(self)

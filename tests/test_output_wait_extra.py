@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 from app.browser.output_wait import (
     WaitSpec, LoopState, _poll_check, _process_ready,
     _process_spinner, _handle_ready_branch, _handle_non_ready_branch,
-    wait_for_new_output_with_spec, wait_for_new_output_loop,
+    wait_for_new_output_with_spec,
     handle_spinner_visible, handle_ready_result, handle_no_exact_below,
     handle_mismatch, _check_timeout, _check_cancelled, _reraise_abort,
     is_mismatch_reason

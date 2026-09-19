@@ -277,6 +277,7 @@ def list_selectors() -> Dict[str, SelectorObject]:
     return SELECTORS
 
 # Helper to generate JS for finding element with fallbacks
+# quality-override: loc=37 reason=embedded JS find literal, allowed by RULE 16.1.5
 def build_js_find(selector_obj: SelectorObject) -> str:
     """
     Build JS snippet that tries primary then fallbacks, returns element or null.
