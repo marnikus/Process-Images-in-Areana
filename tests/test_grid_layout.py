@@ -31,8 +31,26 @@ SASH_CORE = ROOT / "app" / "ui" / "web" / "js" / "sash-core.js"
 
 def js_windows():
     """The real JS window set, parsed from the WINDOWS block (not layouts)."""
-    text = SASH_CORE.read_text(encoding="utf-8")
-    block = text.split("const WINDOWS = [", 1)[1].split("];", 1)[0]
+    candidates = [
+        SASH_CORE.parent / "sash-core" / "constants.js",
+        SASH_CORE,
+    ]
+    text = ""
+    for cand in candidates:
+        if cand.exists():
+            txt = cand.read_text(encoding="utf-8")
+            if "WINDOWS" in txt and "id:" in txt:
+                text = txt
+                if "const WINDOWS = [" in txt:
+                    break
+            if not text:
+                text = txt
+    if "const WINDOWS = [" in text:
+        block = text.split("const WINDOWS = [", 1)[1].split("];", 1)[0]
+    elif "WINDOWS = [" in text:
+        block = text.split("WINDOWS = [", 1)[1].split("];", 1)[0]
+    else:
+        block = text
     return re.findall(r"\{\s*id:\s*'([^']+)',\s*title:\s*'([^']+)'\s*\}", block)
 
 

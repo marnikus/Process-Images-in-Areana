@@ -1098,13 +1098,13 @@
     "max_params": 4
   },
   "app/ui/web/js/core/ui-helpers.js": {
-    "file_lines": 105,
-    "func_count": 7,
+    "file_lines": 128,
+    "func_count": 20,
     "js": true,
-    "max_cc": 14,
-    "max_func_loc": 38,
+    "max_cc": 7,
+    "max_func_loc": 17,
     "max_nest": 3,
-    "max_params": 3
+    "max_params": 4
   },
   "app/ui/web/js/log-console.js": {
     "file_lines": 62,
@@ -1116,12 +1116,48 @@
     "max_params": 2
   },
   "app/ui/web/js/panels/action-blocks.js": {
-    "file_lines": 837,
-    "func_count": 146,
+    "file_lines": 435,
+    "func_count": 120,
     "js": true,
-    "max_cc": 90,
-    "max_func_loc": 169,
-    "max_nest": 5,
+    "max_cc": 10,
+    "max_func_loc": 21,
+    "max_nest": 2,
+    "max_params": 3
+  },
+  "app/ui/web/js/panels/action-blocks/block-config.js": {
+    "file_lines": 158,
+    "func_count": 21,
+    "js": true,
+    "max_cc": 5,
+    "max_func_loc": 20,
+    "max_nest": 2,
+    "max_params": 3
+  },
+  "app/ui/web/js/panels/action-blocks/block-listeners.js": {
+    "file_lines": 61,
+    "func_count": 20,
+    "js": true,
+    "max_cc": 8,
+    "max_func_loc": 15,
+    "max_nest": 1,
+    "max_params": 3
+  },
+  "app/ui/web/js/panels/action-blocks/block-render.js": {
+    "file_lines": 195,
+    "func_count": 33,
+    "js": true,
+    "max_cc": 9,
+    "max_func_loc": 22,
+    "max_nest": 3,
+    "max_params": 4
+  },
+  "app/ui/web/js/panels/action-blocks/block-store.js": {
+    "file_lines": 285,
+    "func_count": 35,
+    "js": true,
+    "max_cc": 9,
+    "max_func_loc": 23,
+    "max_nest": 3,
     "max_params": 3
   },
   "app/ui/web/js/panels/arena-presets.js": {
@@ -1170,13 +1206,49 @@
     "max_params": 2
   },
   "app/ui/web/js/panels/cdp.js": {
-    "file_lines": 549,
-    "func_count": 53,
+    "file_lines": 125,
+    "func_count": 52,
     "js": true,
-    "max_cc": 22,
-    "max_func_loc": 71,
-    "max_nest": 5,
+    "max_cc": 13,
+    "max_func_loc": 33,
+    "max_nest": 2,
     "max_params": 2
+  },
+  "app/ui/web/js/panels/cdp/cdp-actions.js": {
+    "file_lines": 130,
+    "func_count": 19,
+    "js": true,
+    "max_cc": 10,
+    "max_func_loc": 16,
+    "max_nest": 1,
+    "max_params": 2
+  },
+  "app/ui/web/js/panels/cdp/cdp-listeners.js": {
+    "file_lines": 117,
+    "func_count": 13,
+    "js": true,
+    "max_cc": 10,
+    "max_func_loc": 16,
+    "max_nest": 2,
+    "max_params": 3
+  },
+  "app/ui/web/js/panels/cdp/cdp-render.js": {
+    "file_lines": 112,
+    "func_count": 16,
+    "js": true,
+    "max_cc": 8,
+    "max_func_loc": 17,
+    "max_nest": 3,
+    "max_params": 3
+  },
+  "app/ui/web/js/panels/cdp/cdp-store.js": {
+    "file_lines": 120,
+    "func_count": 18,
+    "js": true,
+    "max_cc": 9,
+    "max_func_loc": 14,
+    "max_nest": 2,
+    "max_params": 3
   },
   "app/ui/web/js/panels/folder-picker.js": {
     "file_lines": 119,
@@ -1269,13 +1341,58 @@
     "max_params": 2
   },
   "app/ui/web/js/sash-core.js": {
-    "file_lines": 528,
-    "func_count": 65,
+    "file_lines": 30,
+    "func_count": 7,
     "js": true,
-    "max_cc": 173,
-    "max_func_loc": 518,
-    "max_nest": 4,
-    "max_params": 5
+    "max_cc": 15,
+    "max_func_loc": 21,
+    "max_nest": 1,
+    "max_params": 2
+  },
+  "app/ui/web/js/sash-core/constants.js": {
+    "file_lines": 25,
+    "func_count": 3,
+    "js": true,
+    "max_cc": 1,
+    "max_func_loc": 22,
+    "max_nest": 0,
+    "max_params": 1
+  },
+  "app/ui/web/js/sash-core/mutate.js": {
+    "file_lines": 265,
+    "func_count": 27,
+    "js": true,
+    "max_cc": 9,
+    "max_func_loc": 21,
+    "max_nest": 3,
+    "max_params": 4
+  },
+  "app/ui/web/js/sash-core/traverse.js": {
+    "file_lines": 88,
+    "func_count": 20,
+    "js": true,
+    "max_cc": 5,
+    "max_func_loc": 10,
+    "max_nest": 2,
+    "max_params": 3
+  },
+  "app/ui/web/js/sash-core/tree.js": {
+    "file_lines": 106,
+    "func_count": 21,
+    "js": true,
+    "max_cc": 7,
+    "max_func_loc": 14,
+    "max_nest": 1,
+    "max_params": 3
+  },
+  "app/ui/web/js/sash-core/validate.js": {
+    "file_lines": 166,
+    "func_count": 20,
+    "js": true,
+    "max_cc": 10,
+    "max_func_loc": 18,
+    "max_nest": 2,
+    "max_params": 4
   },
   "app/ui/web/js/sash-grid-drag-core.js": {
     "file_lines": 229,

@@ -1,9 +1,6 @@
 /**
  * Tier A — Logic tests for sash-core.js (Node.js, no browser, ~50ms total)
- * Phase 3: Reduce WebEngine tests to smoke-only — move all split-tree edge cases here.
- *
- * RULE 18: file ideal 150-300 LOC, current ~220 LOC.
- * Tests pure functions: leaf, split, defaultTree, normalizeSizes, moveWindow, serialize.
+ * Updated for C7 split: loads constants/tree/traverse/mutate/validate + facade.
  */
 
 import { test, describe } from 'node:test';
@@ -15,10 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const sashCorePath = path.resolve(__dirname, '../../app/ui/web/js/sash-core.js');
-const sashCode = fs.readFileSync(sashCorePath, 'utf-8');
 
-// UMD loader: provide module.exports and root
 function loadSashCore() {
   const sandbox = {
     module: { exports: {} },
@@ -30,13 +24,24 @@ function loadSashCore() {
     Array,
     Set,
     Error,
+    Number,
   };
-  // Provide self and window as sandbox
   sandbox.self = sandbox;
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(sashCode, sandbox, { filename: 'sash-core.js' });
-  // Try CommonJS export first, then global
+
+  const base = path.resolve(__dirname, '../../app/ui/web/js/sash-core');
+  const files = ['constants.js', 'tree.js', 'traverse.js', 'mutate.js', 'validate.js'];
+  for (const f of files) {
+    const p = path.join(base, f);
+    if (fs.existsSync(p)) {
+      const code = fs.readFileSync(p, 'utf-8');
+      vm.runInContext(code, sandbox, { filename: f });
+    }
+  }
+  const corePath = path.resolve(__dirname, '../../app/ui/web/js/sash-core.js');
+  const coreCode = fs.readFileSync(corePath, 'utf-8');
+  vm.runInContext(coreCode, sandbox, { filename: 'sash-core.js' });
   return sandbox.module.exports && Object.keys(sandbox.module.exports).length ? sandbox.module.exports : sandbox.SashCore;
 }
 
@@ -44,7 +49,6 @@ const SashCore = loadSashCore();
 
 describe('sash-core pure logic — Tier A (no browser)', () => {
   test('leaf creates leaf node', () => {
-    // SashCore.leaf may not be exported, test via defaultTree structure
     const tree = SashCore.defaultTree();
     assert.ok(tree);
     assert.equal(tree.t, 'split');
@@ -56,9 +60,7 @@ describe('sash-core pure logic — Tier A (no browser)', () => {
     assert.equal(tree.t, 'split');
     assert.ok(['row', 'col'].includes(tree.dir));
     assert.ok(tree.children.length >= 2);
-    // Sizes normalized
     const sum = tree.sizes.reduce((a, b) => a + b, 0);
-    // Should be ~100 (normalized)
     assert.ok(sum > 90 && sum <= 100, `sizes sum ${sum} should be ~100`);
   });
 
@@ -68,7 +70,6 @@ describe('sash-core pure logic — Tier A (no browser)', () => {
       const sum = sizes.reduce((a, b) => a + b, 0);
       assert.ok(Math.abs(sum - 100) < 0.1);
     } else {
-      // Fallback: test via split
       const tree = SashCore.split('row', [{ t: 'leaf', id: 'a' }, { t: 'leaf', id: 'b' }], [1, 3]);
       const sum = tree.sizes.reduce((a, b) => a + b, 0);
       assert.ok(Math.abs(sum - 100) < 1);
@@ -96,7 +97,6 @@ describe('sash-core pure logic — Tier A (no browser)', () => {
       else if (node.t === 'split' && Array.isArray(node.children)) node.children.forEach(collect);
     }
     collect(tree);
-    // Should contain at least url_list, queue, log
     assert.ok(ids.has('url_list'), 'should have url_list');
     assert.ok(ids.has('queue'), 'should have queue');
     assert.ok(ids.has('log'), 'should have log');
@@ -112,13 +112,11 @@ describe('sash-core pure logic — Tier A (no browser)', () => {
   test('moveWindow moves window to sibling', () => {
     if (typeof SashCore.moveWindow === 'function') {
       const tree = SashCore.defaultTree();
-      // Simulate drop: move url_list after queue (if supported)
       try {
         const newTree = SashCore.moveWindow(tree, 'url_list', { kind: 'sibling', target: 'queue', side: 'after' });
         assert.ok(newTree);
         assert.equal(newTree.t, 'split');
       } catch (e) {
-        // If moveWindow signature differs, just ensure it doesn't crash on invalid
         assert.ok(e.message);
       }
     }
@@ -128,14 +126,11 @@ describe('sash-core pure logic — Tier A (no browser)', () => {
     if (typeof SashCore.clone === 'function') {
       const tree = SashCore.defaultTree();
       const cloned = SashCore.clone(tree);
-      // Check deep copy: modifying clone doesn't affect original
-      // Use JSON comparison for structure, not deepEqual of functions
       assert.equal(cloned.t, tree.t);
       assert.equal(cloned.dir, tree.dir);
       const origSize = tree.sizes[0];
       cloned.sizes[0] = 999;
       assert.notEqual(tree.sizes[0], 999, 'clone should be deep copy');
-      // Restore
       cloned.sizes[0] = origSize;
     }
   });
@@ -156,7 +151,6 @@ describe('sash-core pure logic — Tier A (no browser)', () => {
     if (typeof SashCore.serialize === 'function' && typeof SashCore.deserialize === 'function') {
       const ser = SashCore.serialize(tree);
       const deser = SashCore.deserialize(ser);
-      // deserialize returns {v, tree} or tree directly
       const outTree = deser.tree || deser;
       assert.equal(outTree.t, tree.t);
       assert.equal(outTree.dir, tree.dir);
@@ -171,7 +165,6 @@ describe('sash-core pure logic — Tier A (no browser)', () => {
 
 describe('sash-core edge cases — should be in Tier A not WebEngine', () => {
   test('empty tree handling', () => {
-    // Should not crash on corrupted layout
     if (typeof SashCore.normalizeGridTree === 'function') {
       const corrupted = { t: 'leaf', id: 'nonexistent' };
       const normalized = SashCore.normalizeGridTree(corrupted);
@@ -181,7 +174,6 @@ describe('sash-core edge cases — should be in Tier A not WebEngine', () => {
 
   test('resize sizes stay >= MIN_SIZE', () => {
     const tree = SashCore.defaultTree();
-    // Check all sizes >= MIN_SIZE (4)
     function checkSizes(node) {
       if (!node) return;
       if (node.t === 'split' && Array.isArray(node.sizes)) {
@@ -200,8 +192,6 @@ describe('sash-core edge cases — should be in Tier A not WebEngine', () => {
             const tree = SashCore.PRESETS[key]();
             assert.equal(tree.t, 'split');
           } catch (e) {
-            // Known: layoutA has sizes mismatch (12 sizes vs 11 children) — old bug, not test failure
-            // Tier A should catch such bugs, so we assert error is meaningful
             assert.ok(e.message.includes('sizes must match') || e.message.includes('split'), `expected size mismatch error, got ${e.message}`);
           }
         }

@@ -121,6 +121,11 @@ export function createSashGrid() {
   vm.createContext(sandbox);
 
   const load = (file) => vm.runInContext(read(file), sandbox, { filename: file });
+  load('sash-core/constants.js');
+  load('sash-core/tree.js');
+  load('sash-core/traverse.js');
+  load('sash-core/mutate.js');
+  load('sash-core/validate.js');
   load('sash-core.js');
   load('core/ui-helpers.js');
   load('sash-grid-tree.js');

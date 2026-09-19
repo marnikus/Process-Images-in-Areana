@@ -1,9 +1,6 @@
 /* Tier A — composer probes (Node.js, no browser).
-   RULE 8: extracts the REAL JS_INSERT_PROMPT / JS_SEND_STATE consts from
-   app/browser/cdp_arena.py (regex on the triple-quoted strings — the file
-   under test, not a copy) and runs them against a stub document.
-   Regression: the error-state DOM offers a hidden first-match textarea;
-   insert must fill the VISIBLE composer or Send stays disabled forever. */
+   Extracts JS_INSERT_PROMPT / JS_SEND_STATE from cdp_arena module.
+*/
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,13 +10,26 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const arenaPy = fs.readFileSync(
-  path.resolve(__dirname, '../../app/browser/cdp_arena.py'), 'utf-8');
+const candidates = [
+  path.resolve(__dirname, '../../app/browser/cdp_arena/js_snippets.py'),
+  path.resolve(__dirname, '../../app/browser/cdp_arena.py'),
+];
+
+function tryExtractFromText(txt, name) {
+  const m = txt.match(new RegExp(name + ' = """\\n([\\s\\S]*?)\\n"""'));
+  return m ? m[1] : null;
+}
 
 function extract(name) {
-  const m = arenaPy.match(new RegExp(name + ' = """\\n([\\s\\S]*?)\\n"""'));
-  assert.ok(m, `${name} const not found in cdp_arena.py`);
-  return m[1];
+  for (const p of candidates) {
+    try {
+      if (!fs.existsSync(p)) continue;
+      const txt = fs.readFileSync(p, 'utf-8');
+      const val = tryExtractFromText(txt, name);
+      if (val) return val;
+    } catch {}
+  }
+  assert.fail(`${name} const not found in cdp_arena`);
 }
 
 function docStub(lists) {
@@ -46,7 +56,7 @@ function textareaStub(visible) {
 }
 
 function plain(value) {
-  return JSON.parse(JSON.stringify(value)); // vm-realm objects fail deepEqual
+  return JSON.parse(JSON.stringify(value));
 }
 
 function runInsert(lists, text) {
@@ -59,8 +69,7 @@ function runInsert(lists, text) {
     set(v) { this._reactValue = v; }, configurable: true,
   });
   vm.createContext(sandbox);
-  const fn = vm.runInContext(extract('JS_INSERT_PROMPT'), sandbox,
-    { filename: 'JS_INSERT_PROMPT' });
+  const fn = vm.runInContext(extract('JS_INSERT_PROMPT'), sandbox, { filename: 'JS_INSERT_PROMPT' });
   return fn(text);
 }
 
@@ -69,8 +78,7 @@ function runSendState(buttons) {
     document: docStub({ 'button[aria-label="Send message"]': buttons }),
   };
   vm.createContext(sandbox);
-  const fn = vm.runInContext(extract('JS_SEND_STATE'), sandbox,
-    { filename: 'JS_SEND_STATE' });
+  const fn = vm.runInContext(extract('JS_SEND_STATE'), sandbox, { filename: 'JS_SEND_STATE' });
   return fn();
 }
 
@@ -86,7 +94,7 @@ describe('composer probes — Tier A (no browser)', () => {
     assert.deepEqual(plain(res), { ok: true, len: 4213 });
     assert.equal(visible.value, text);
     assert.equal(visible._reactValue, text);
-    assert.ok(visible.events >= 2); // input + change dispatched
+    assert.ok(visible.events >= 2);
     assert.equal(hidden.value, '');
     assert.equal(hidden._reactValue, undefined);
     assert.equal(hidden.events, 0);
@@ -100,12 +108,9 @@ describe('composer probes — Tier A (no browser)', () => {
   });
 
   test('send-state maps missing / hidden / disabled / enabled', () => {
-    assert.deepEqual(plain(runSendState([])),
-      { found: false, visible: false, enabled: false });
-    assert.deepEqual(plain(runSendState([{ offsetParent: null, disabled: false }])),
-      { found: true, visible: false, enabled: false });
-    assert.deepEqual(plain(runSendState([{ offsetParent: {}, disabled: true }])),
-      { found: true, visible: true, enabled: false });
+    assert.deepEqual(plain(runSendState([])), { found: false, visible: false, enabled: false });
+    assert.deepEqual(plain(runSendState([{ offsetParent: null, disabled: false }])), { found: true, visible: false, enabled: false });
+    assert.deepEqual(plain(runSendState([{ offsetParent: {}, disabled: true }])), { found: true, visible: true, enabled: false });
     assert.deepEqual(plain(runSendState([
       { offsetParent: null, disabled: false },
       { offsetParent: {}, disabled: true },

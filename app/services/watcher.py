@@ -166,128 +166,146 @@ class WatcherService:
         finally:
             self.state.status = "idle"
 
+    def _get_cdp(self):
+        return self._cdp_getter() if self._cdp_getter else None
+
+    async def _check_captcha(self, cdp) -> bool:
+        try:
+            return bool(await cdp.is_security_dialog_visible())
+        except Exception as e:
+            self._logger(f"Watcher captcha check error: {e}", "warn")
+            return False
+
+    async def _check_generation(self, cdp):
+        try:
+            return await cdp.is_generating()
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    def _pause_jobs(self):
+        if not self.config.auto_pause_jobs:
+            return
+        jr = self._job_runner_getter() if self._job_runner_getter else None
+        if jr and hasattr(jr, "pause_run"):
+            try:
+                jr.pause_run()
+            except Exception:
+                pass
+
+    def _resume_jobs(self):
+        if not self.config.auto_pause_jobs:
+            return
+        jr = self._job_runner_getter() if self._job_runner_getter else None
+        if jr and hasattr(jr, "resume_run"):
+            try:
+                jr.resume_run()
+            except Exception:
+                pass
+
+    async def _show_overlay(self, cdp, msg, kind, timeout):
+        try:
+            await cdp.show_watcher_overlay(msg, kind=kind, timeout_sec=timeout)
+        except Exception as e:
+            self._logger(f"Watcher overlay show failed: {e}", "warn")
+
+    async def _hide_overlay(self, cdp):
+        try:
+            await cdp.hide_watcher_overlay()
+        except Exception:
+            pass
+
+    async def _handle_captcha(self, cdp, is_captcha: bool):
+        from .watcher_overlay import (
+            build_captcha_msg,
+            should_start_captcha_waiting,
+            is_captcha_timeout,
+        )
+
+        self.state.last_captcha_detected = is_captcha
+        if not is_captcha:
+            return False
+
+        if should_start_captcha_waiting(self.state.waiting_kind):
+            self.state.waiting_since = time.time()
+            self.state.waiting_kind = "captcha"
+            self.state.captcha_waits += 1
+            self.state.status = "waiting_captcha"
+            self._logger(f"🛡️ Watcher: Captcha detected — {build_captcha_msg(self.config.captcha_timeout_sec)}, pausing jobs", "warn")
+            await self._show_overlay(cdp, "wait for user. Captcha", "captcha", self.config.captcha_timeout_sec)
+            self._pause_jobs()
+            await self._notify()
+        else:
+            if is_captcha_timeout(self.state.waiting_since, self.config.captcha_timeout_sec):
+                elapsed = int(time.time() - (self.state.waiting_since or time.time()))
+                self._logger(f"⏰ Watcher: Captcha timeout {elapsed}s limit {self.config.captcha_timeout_sec}s", "error")
+                await self._notify()
+        return True
+
+    async def _handle_generation(self, cdp, is_gen: bool, details: Dict[str, Any]):
+        from .watcher_overlay import (
+            build_generation_msg,
+            should_start_generation_waiting,
+            is_generation_timeout,
+        )
+
+        self.state.last_generation_details = details
+        if not is_gen:
+            return False
+
+        if should_start_generation_waiting(self.state.waiting_kind):
+            self.state.waiting_since = time.time()
+            self.state.waiting_kind = "generation"
+            self.state.generation_waits += 1
+            self.state.status = "waiting_generation"
+            self._logger(f"⏳ Watcher: {build_generation_msg(details, self.config.generation_timeout_sec)}, pausing jobs", "warn")
+            await self._show_overlay(cdp, "wait for finish generation", "generation", self.config.generation_timeout_sec)
+            self._pause_jobs()
+            await self._notify()
+        else:
+            if is_generation_timeout(self.state.waiting_since, self.config.generation_timeout_sec):
+                elapsed = int(time.time() - (self.state.waiting_since or time.time()))
+                self._logger(f"⏰ Watcher: Generation timeout {elapsed}s limit {self.config.generation_timeout_sec}s", "error")
+                await self._notify()
+        return True
+
+    async def _handle_clear_if_needed(self, cdp, is_captcha: bool, is_gen: bool):
+        from .watcher_overlay import should_clear_overlay, build_clear_msg
+
+        if not should_clear_overlay(self.state.waiting_kind, is_captcha, is_gen):
+            return False
+
+        kind = self.state.waiting_kind
+        elapsed = int(time.time() - (self.state.waiting_since or time.time()))
+        self._logger(f"✅ Watcher: {build_clear_msg(kind, elapsed)}, resuming", "success")
+        await self._hide_overlay(cdp)
+        self._resume_jobs()
+        self.state.waiting_since = None
+        self.state.waiting_kind = None
+        self.state.status = "watching"
+        await self._notify()
+        return True
+
     async def check_once(self) -> Dict[str, Any]:
-        """Single check — returns state."""
+        """Single check — orchestrator ≤20 LOC (C1)."""
         self.state.checks_count += 1
         self.state.last_check = time.time()
 
-        cdp = self._cdp_getter() if self._cdp_getter else None
+        cdp = self._get_cdp()
         if not cdp:
-            # No CDP controller — idle
             self.state.status = "watching"
             await self._notify()
             return self.get_state()
 
-        # Check captcha first — higher priority
-        try:
-            is_captcha = await cdp.is_security_dialog_visible()
-        except Exception as e:
-            is_captcha = False
-            self._logger(f"Watcher captcha check error: {e}", "warn")
-
-        self.state.last_captcha_detected = is_captcha
-
-        if is_captcha:
-            # Captcha detected — draw rectangle and wait
-            if self.state.waiting_kind != "captcha":
-                self.state.waiting_since = time.time()
-                self.state.waiting_kind = "captcha"
-                self.state.captcha_waits += 1
-                self.state.status = "waiting_captcha"
-                self._logger(f"🛡️ Watcher: Captcha detected — drawing rectangle 'wait for user. Captcha' on left center (timeout {self.config.captcha_timeout_sec}s user setting from win), pausing jobs", "warn")
-                # Show overlay with timeout from win settings
-                try:
-                    await cdp.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=self.config.captcha_timeout_sec)
-                except Exception as e:
-                    self._logger(f"Watcher overlay show failed: {e}", "warn")
-                # Pause jobs if configured
-                if self.config.auto_pause_jobs:
-                    jr = self._job_runner_getter() if self._job_runner_getter else None
-                    if jr and hasattr(jr, 'pause_run'):
-                        try:
-                            jr.pause_run()
-                        except Exception:
-                            pass
-                await self._notify()
-            else:
-                # Already waiting — check timeout
-                elapsed = time.time() - (self.state.waiting_since or time.time())
-                if elapsed > self.config.captcha_timeout_sec:
-                    self._logger(f"⏰ Watcher: Captcha wait timeout after {int(elapsed)}s (limit {self.config.captcha_timeout_sec}s) — still waiting, user needs to solve", "error")
-                    # Don't auto-resume, keep waiting but log timeout — user setting is max wait, but we keep waiting?
-                    # Per spec: time to solve timeout add user in win — so we respect timeout but keep overlay
-                    # We will continue waiting until solved, but notify timeout
-                    await self._notify()
-                else:
-                    # Still waiting
-                    pass
-
-            # Sleep circle — wait loop: check again after interval, but stay in waiting state
-            # The main loop will re-check after interval
+        is_captcha = await self._check_captcha(cdp)
+        if await self._handle_captcha(cdp, is_captcha):
             return self.get_state()
 
-        # Check generating (awaiting icon)
-        try:
-            is_gen, gen_details = await cdp.is_generating()
-        except Exception as e:
-            is_gen = False
-            gen_details = {"error": str(e)}
-
-        self.state.last_generation_details = gen_details
-
-        if is_gen:
-            if self.state.waiting_kind != "generation":
-                self.state.waiting_since = time.time()
-                self.state.waiting_kind = "generation"
-                self.state.generation_waits += 1
-                self.state.status = "waiting_generation"
-                details_str = ", ".join([d.get("label","") for d in gen_details.get("details", [])]) if isinstance(gen_details, dict) else ""
-                self._logger(f"⏳ Watcher: Generation detected {details_str} — drawing rectangle 'wait for finish generation' on left center (timeout {self.config.generation_timeout_sec}s user setting from win), pausing jobs", "warn")
-                try:
-                    await cdp.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=self.config.generation_timeout_sec)
-                except Exception as e:
-                    self._logger(f"Watcher overlay show failed: {e}", "warn")
-                if self.config.auto_pause_jobs:
-                    jr = self._job_runner_getter() if self._job_runner_getter else None
-                    if jr and hasattr(jr, 'pause_run'):
-                        try:
-                            jr.pause_run()
-                        except Exception:
-                            pass
-                await self._notify()
-            else:
-                elapsed = time.time() - (self.state.waiting_since or time.time())
-                if elapsed > self.config.generation_timeout_sec:
-                    self._logger(f"⏰ Watcher: Generation wait timeout after {int(elapsed)}s (limit {self.config.generation_timeout_sec}s) — still generating, keep waiting", "error")
-                    await self._notify()
-
+        is_gen, gen_details = await self._check_generation(cdp)
+        if await self._handle_generation(cdp, is_gen, gen_details):
             return self.get_state()
 
-        # No captcha, no generation — if we were waiting, clear overlay and resume
-        if self.state.waiting_kind in ("generation", "captcha"):
-            kind = self.state.waiting_kind
-            elapsed = int(time.time() - (self.state.waiting_since or time.time()))
-            self._logger(f"✅ Watcher: {kind} finished after {elapsed}s — clearing overlay, resuming", "success")
-            try:
-                await cdp.hide_watcher_overlay()
-            except Exception:
-                pass
-            # Resume jobs if paused by watcher
-            if self.config.auto_pause_jobs:
-                jr = self._job_runner_getter() if self._job_runner_getter else None
-                if jr and hasattr(jr, 'resume_run'):
-                    try:
-                        jr.resume_run()
-                    except Exception:
-                        pass
-            self.state.waiting_since = None
-            self.state.waiting_kind = None
-            self.state.status = "watching"
-            await self._notify()
-
-        else:
-            self.state.status = "watching"
-
+        await self._handle_clear_if_needed(cdp, is_captcha, is_gen)
+        self.state.status = "watching"
         await self._notify()
         return self.get_state()
 

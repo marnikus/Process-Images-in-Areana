@@ -1,6 +1,6 @@
 /**
  * Tier A — Logic tests for sash-grid-tree.js pure tree ops
- * Phase 3: Move all split-tree edge cases to Node, not WebEngine.
+ * Updated for C7 split
  */
 
 import { test, describe } from 'node:test';
@@ -12,8 +12,6 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const sashCorePath = path.resolve(__dirname, '../../app/ui/web/js/sash-core.js');
-const sashCode = fs.readFileSync(sashCorePath, 'utf-8');
 
 function loadSashCore() {
   const sandbox = {
@@ -26,11 +24,19 @@ function loadSashCore() {
     Array,
     Set,
     Error,
+    Number,
   };
   sandbox.self = sandbox;
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(sashCode, sandbox, { filename: 'sash-core.js' });
+  const base = path.resolve(__dirname, '../../app/ui/web/js/sash-core');
+  const files = ['constants.js', 'tree.js', 'traverse.js', 'mutate.js', 'validate.js'];
+  for (const f of files) {
+    const p = path.join(base, f);
+    if (fs.existsSync(p)) vm.runInContext(fs.readFileSync(p, 'utf-8'), sandbox, { filename: f });
+  }
+  const corePath = path.resolve(__dirname, '../../app/ui/web/js/sash-core.js');
+  vm.runInContext(fs.readFileSync(corePath, 'utf-8'), sandbox, { filename: 'sash-core.js' });
   return sandbox.module.exports && Object.keys(sandbox.module.exports).length ? sandbox.module.exports : sandbox.SashCore;
 }
 
@@ -45,7 +51,6 @@ describe('sash-grid-tree pure ops — Tier A', () => {
       assert.ok(Array.isArray(ids));
       assert.ok(ids.length > 5);
     } else {
-      // Manual collect
       const ids = [];
       function walk(n) {
         if (n.t === 'leaf') ids.push(n.id);
@@ -64,7 +69,6 @@ describe('sash-grid-tree pure ops — Tier A', () => {
       return 0;
     }
     const d = depth(tree);
-    // MAX_DEPTH is 12 per sash-core.js
     assert.ok(d <= 12, `depth ${d} should be <= MAX_DEPTH 12`);
   });
 
@@ -98,7 +102,6 @@ describe('sash-grid-tree pure ops — Tier A', () => {
         collect2(newTree);
         assert.deepEqual(afterIds, beforeIds, 'move should preserve all leaves');
       } catch (e) {
-        // If move not supported for this combo, ensure error is meaningful
         assert.ok(e.message.length > 0);
       }
     }
@@ -115,7 +118,6 @@ describe('sash-grid-tree pure ops — Tier A', () => {
       const normalized = SashCore.normalizeGridTree(corrupted);
       assert.ok(normalized);
     } else {
-      // At least should not crash when cloning
       const cloned = JSON.parse(JSON.stringify(corrupted));
       assert.ok(cloned);
     }

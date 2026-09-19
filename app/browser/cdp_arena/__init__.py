@@ -1,6 +1,6 @@
-"""Shim for backward compat — new implementation lives in app.browser.cdp_arena (C3)."""
-from .cdp_arena.controller import CDPArenaController
-from .cdp_arena.js_snippets import (
+"""CDP Arena package facade (C3) — re-exports controller + JS snippets for compat."""
+from .controller import CDPArenaController
+from .js_snippets import (
     JS_INSERT_PROMPT,
     JS_SEND_STATE,
     JS_CLICK_SEND,
