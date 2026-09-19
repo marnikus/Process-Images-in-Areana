@@ -1539,13 +1539,13 @@
     "max_params": 2
   },
   "app/ui/web/js/panels/url-list.js": {
-    "file_lines": 191,
-    "func_count": 55,
+    "file_lines": 307,
+    "func_count": 74,
     "js": true,
     "max_cc": 14,
     "max_func_loc": 28,
     "max_nest": 2,
-    "max_params": 3
+    "max_params": 4
   },
   "app/ui/web/js/panels/url-list/actions.js": {
     "file_lines": 145,

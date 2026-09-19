@@ -79,16 +79,103 @@ const UrlList = {
   coolAction(a,b) { if (this._actions && this._actions.coolAction) return this._actions.coolAction(a,b); },
   reparseTabs() { if (this._actions && this._actions.reparseTabs) return this._actions.reparseTabs(); },
   popupTabs() { if (this._actions && this._actions.popupTabs) return this._actions.popupTabs(); },
-  loadCooldownConfig() { if (this._actions && this._actions.loadCooldownConfig) return this._actions.loadCooldownConfig(); },
-  saveCooldownConfig() { if (this._actions && this._actions.saveCooldownConfig) return this._actions.saveCooldownConfig(); },
+  _applyCooldownConfig(c) {
+    const en = document.getElementById('urlCooldownEnabled');
+    if (en) en.checked = c.enabled !== false;
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    setVal('urlCooldownMin', c.min_minutes ?? Math.round((c.min_seconds||300)/60));
+    setVal('urlCooldownPenalty', c.captcha_penalty_minutes ?? Math.round((c.captcha_penalty_seconds||900)/60));
+    setVal('urlCooldownRateLimit', c.rate_limit_penalty_minutes ?? Math.round((c.rate_limit_penalty_seconds||1800)/60));
+  },
+
+  _readCooldownInputs() {
+    const en = document.getElementById('urlCooldownEnabled');
+    const getNum = (id, fb) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return isNaN(v) ? fb : v; };
+    const minM = Math.max(0, Math.min(1440, getNum('urlCooldownMin',5)));
+    const penM = Math.max(0, Math.min(1440, getNum('urlCooldownPenalty',15)));
+    const rlM = Math.max(0, Math.min(1440, getNum('urlCooldownRateLimit',30)));
+    return { en, minM, penM, rlM };
+  },
+
+  loadCooldownConfig() {
+    if (this._actions && this._actions.loadCooldownConfig) return this._actions.loadCooldownConfig();
+    const b = window.App && window.App.bridge;
+    if (!b || !b.get_cooldown_config) return;
+    b.get_cooldown_config((res)=>{
+      try {
+        const r=JSON.parse(res);
+        if (!r.ok||!r.config) return;
+        this._applyCooldownConfig(r.config);
+      } catch {}
+    });
+  },
+
+  saveCooldownConfig() {
+    if (this._actions && this._actions.saveCooldownConfig) return this._actions.saveCooldownConfig();
+    const inputs = this._readCooldownInputs();
+    const payload = { enabled: inputs.en?inputs.en.checked:true, min_seconds:Math.round(inputs.minM*60), captcha_penalty_seconds:Math.round(inputs.penM*60), rate_limit_penalty_seconds:Math.round(inputs.rlM*60) };
+    const b = window.App && window.App.bridge;
+    if (b && b.set_cooldown_config) b.set_cooldown_config(JSON.stringify(payload),(res)=>{
+      try {
+        const r=JSON.parse(res);
+        const msg = r.ok ? `Cooldown saved: ${inputs.en&&inputs.en.checked?'on':'off'} pause=${inputs.minM}m captcha=+${inputs.penM}m limit=+${inputs.rlM}m` : 'Cooldown save failed: '+r.error;
+        if (typeof LogConsole !== 'undefined') LogConsole.log(msg, r.ok?'success':'error');
+      } catch {}
+    });
+  },
+
+  _findBound(boundTabId, pages) {
+    if (!boundTabId) return null;
+    return (pages||[]).find(p => p && p.tab_id === boundTabId) || null;
+  },
+
+  _extractForScore(q) {
+    try {
+      if (this._store && this._store.extractUrl) return this._store.extractUrl(q).toLowerCase();
+    } catch {}
+    return (q||'').toLowerCase();
+  },
+
+  _findExactPrefix(q, pages) {
+    for (const p of pages) {
+      const pu = (p.url||'').toLowerCase();
+      if (!pu) continue;
+      if (pu===q || pu.startsWith(q) || q.startsWith(pu)) return p;
+    }
+    return null;
+  },
+
+  _findHostMatch(url, pages) {
+    try {
+      const host = new URL(url).host;
+      for (const p of pages) {
+        try { if (p.url && new URL(p.url).host===host) return p; } catch {}
+      }
+    } catch {}
+    return null;
+  },
+
+  _pagesSnapshot() {
+    if (typeof PagePoolPanel !== 'undefined' && PagePoolPanel.snapshot && PagePoolPanel.snapshot.pages) return PagePoolPanel.snapshot.pages;
+    return [];
+  },
 
   matchPoolPage(url, bound) {
     if (this._matching && this._matching.matchPoolPage) return this._matching.matchPoolPage(url, bound);
-    return null;
+    if (!url) return null;
+    const pages = this._pagesSnapshot();
+    if (!pages.length) return null;
+    const b = this._findBound(bound, pages);
+    if (b) return b;
+    const q = this._extractForScore(url);
+    const exact = this._findExactPrefix(q, pages);
+    if (exact) return exact;
+    return this._findHostMatch(url, pages);
   },
+
   scorePoolPage(r,p) {
     if (this._matching && this._matching.scorePoolPage) return this._matching.scorePoolPage(r,p);
-    const q = (r||'').toLowerCase();
+    const q = this._extractForScore(r);
     const pu = (p||'').toLowerCase();
     if (!pu||!q) return 0;
     if (pu===q) return 500;
@@ -96,20 +183,49 @@ const UrlList = {
     try { if (new URL(p).host === new URL(r).host) return 200; } catch {}
     return 0;
   },
-  assignPoolPages(rows,pages) {
-    if (this._matching && this._matching.assignPoolPages) return this._matching.assignPoolPages(rows,pages);
-    const claimed = new Map(), taken = new Set();
+
+  _claimBound(rows,pages,claimed,taken) {
     rows.forEach((tr, ri) => {
       const bound = tr.dataset ? (tr.dataset.tabId || '') : '';
       if (!bound) return;
-      const pi = (pages || []).findIndex(p => p && p.tab_id === bound);
-      if (pi >= 0 && !taken.has(pi)) { claimed.set(ri, pi); taken.add(pi); }
+      const pi = (pages||[]).findIndex(p => p && p.tab_id === bound);
+      if (pi>=0 && !taken.has(pi)) { claimed.set(ri, pi); taken.add(pi); }
+    });
+  },
+
+  _buildCandidates(rows,pages) {
+    const cands=[];
+    rows.forEach((tr, ri) => {
+      (pages||[]).forEach((p, pi) => {
+        const s = this.scorePoolPage(tr.dataset.url||'', p.url);
+        if (s>0) cands.push({ri, pi, s});
+      });
+    });
+    cands.sort((a,b)=>b.s-a.s);
+    return cands;
+  },
+
+  assignPoolPages(rows,pages) {
+    if (this._matching && this._matching.assignPoolPages) return this._matching.assignPoolPages(rows,pages);
+    const claimed = new Map(), taken = new Set();
+    this._claimBound(rows,pages,claimed,taken);
+    const cands = this._buildCandidates(rows,pages);
+    cands.forEach(c => {
+      if (!claimed.has(c.ri) && !taken.has(c.pi)) { claimed.set(c.ri, c.pi); taken.add(c.pi); }
     });
     return claimed;
   },
+
   matchUnclaimedPage(rowUrl,pages,claimed) {
     if (this._matching && this._matching.matchUnclaimedPage) return this._matching.matchUnclaimedPage(rowUrl,pages,claimed);
-    return null;
+    const taken = new Set((claimed||new Map()).values());
+    let best=null, bestScore=299;
+    (pages||[]).forEach((p, pi) => {
+      if (taken.has(pi)) return;
+      const s = this.scorePoolPage(rowUrl, p.url);
+      if (s>bestScore) { bestScore=s; best=p; }
+    });
+    return best;
   },
   jobLineForTab(pages,tabId) {
     if (this._matching && this._matching.jobLineForTab) return this._matching.jobLineForTab(pages,tabId);
