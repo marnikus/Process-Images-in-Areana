@@ -2,7 +2,7 @@
 
 ## Reused from Old App
 
-The new app reuses the complete modern UI framework from `Process Images in Areana/Old App/ui`:
+The new app reuses the complete modern UI framework from `Process Images in Areana/Old App/ui` (that tree was removed in R1 — readable at commit `11e6520`):
 
 - **Dark mode**: `variables.css` defines `--bg-app #0f1117`, `--bg-panel #1a1d27`, etc. Light theme via `[data-theme=light]`. Toggle via header button, persisted in `localStorage` and `config/session.json` `theme`.
 - **Sash layout**: `sash-grid` system with draggable windows via `win-grip drag_indicator` in title bar.

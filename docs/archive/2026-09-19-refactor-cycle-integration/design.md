@@ -122,3 +122,21 @@ bash tools/pre_push_check.sh
   and must only move up from here.
 * The 15 >300-LOC files and the ESM/`ui-helpers` duplication pair — listed
   above so the next cycle starts from facts, not from a re-measurement.
+
+## 7. R1 — legacy study tree removed
+
+* Deleted `Process Images in Areana/Old App/**`: 948 tracked files, 106 MB
+  (205,758 deleted lines), including the `Restore/` HTML/CSS/JS dumps.
+* Nothing in the app, tools or tests reads it: the gate scans `app/` only and
+  the remaining mentions are prose provenance (`restored from Old App`).
+  What was worth keeping had already been ported — the UI system, the
+  action-block catalogue, RULE 1's visual runner and the detailed rules in
+  `docs/current/AGENT_RULES.md`.
+* `.gitignore` lost its three now-dead `Process Images in Areana/Old App/...`
+  entries; docs pointers in `docs/README.md` and
+  `docs/current/SYSTEM_OF_RECORD.md` §10 were rewritten to name the last
+  commit that still contains the tree (`11e6520`) instead of a live path.
+* Recovery: `git show 11e6520:"Process Images in Areana/Old App/<path>"`, or
+  check out the subtree with `git checkout 11e6520 -- "Process Images in Areana"`.
+  History (and therefore repo size) still holds the blobs; a history rewrite
+  was deliberately **not** done here because it would force-push every branch.

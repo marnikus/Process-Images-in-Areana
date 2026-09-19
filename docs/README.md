@@ -66,7 +66,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 - `archive/2026-09-19-area-a-bridge-pipeline/` — **Area A implementation (centre of gravity)**: `design.md` (A1–A7: golden harness → converged runner → orchestrator seam → flip+delete → 12 panel mixins → BridgeContext → sweep) + `review-and-improvement-plan.md` (R0–R12 execution record: ideals hardening, 8 panel rounds with 87/87 + 70/70 + 39/39 behavior differentials, ideals sweep, context, sweep) + `implementation-area-a.md` (per-step log with SHAs, packing table, coverage baseline, F17 follow-up). End state: 590 green, gate TOTAL 62 (bridge 0), Bridge 159 lines / 10 methods, 119 frozen slots, panels→services direction + one Qt shim
 - `archive/2026-09-19-refactor-cycle-integration/design.md` — **cycle X**: how R0+A+B+C were merged into one branch (per-deliverable winners with evidence), the three regressions the integration caught (silent `@Slot` swap, `CDPClient.connect()` TypeError in real Qt, RULE 21 literal drift), the payload-equivalence check, and the RULE 18 audit of what is still >300 LOC
 
-Old App archive: `Process Images in Areana/Old App/docs/archive/` and `Process Images in Areana/Old App/docs/current/` (source for detailed rules).
+Legacy study tree: the Old App (`Process Images in Areana/Old App/**`, 948 files) was **removed in R1** — it had already given what it had (UI system, action-blocks idea, and the detailed rules now living in `current/AGENT_RULES.md`). It remains readable from history at commit `11e6520`; see `archive/2026-09-19-refactor-cycle-integration/design.md` §7.
 
 ---
 
@@ -92,4 +92,4 @@ Do not add new top-level doc for feature — pointer outward beats wall of prose
 
 ---
 
-*Last updated: 2026-09-19 — Area A complete (R0–R12): SYSTEM_OF_RECORD §7 rewritten to the panel/context end-state; archive entry added. Previous: 2026-09-15 migration to detailed rules from Old App.*
+*Last updated: 2026-09-19 — R1: legacy `Process Images in Areana/Old App/**` tree removed (948 files) and `.gitignore` cleaned; docs map + SYSTEM_OF_RECORD pointers updated. Previous: refactor cycle X (R0+A+B+C integrated; archive entry added) and before that Area A complete (R0–R12).*

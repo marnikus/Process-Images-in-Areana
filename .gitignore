@@ -48,9 +48,6 @@ coverage.json
 
 # Old project research (keep HTML but ignore large files dir)
 docs/research/*_files/
-Process Images in Areana/Old App/Restore/
-Process Images in Areana/Old App/logs/
-Process Images in Areana/Old App/reports/
 
 # Keep docs
 !docs/

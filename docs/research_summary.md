@@ -2,7 +2,7 @@
 
 ## Sources Inspected
 - `docs/research/Directly Chat with Frontier Image Generation AI Models.html` (arena.ai/c/01a0a4f3-b60a-7169-8e15-aa3f099d8e4e) — full saved page with JS bundles
-- `Process Images in Areana/Old App/Restore/From Webpage Code saved/Arena _ Benchmark & Compare the Best AI Models.html` — older landing page (not image direct chat, used for selector cross-check)
+- `Process Images in Areana/Old App/Restore/From Webpage Code saved/Arena _ Benchmark & Compare the Best AI Models.html` — older landing page (not image direct chat, used for selector cross-check); removed in R1, readable at commit `11e6520`
 - Prompt-supplied selector inventory (steps A-L)
 
 ## Page Structure Observed

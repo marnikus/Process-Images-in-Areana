@@ -1,7 +1,7 @@
 # Action Blocks Restore Plan — Arena (from Old App)
 
 Date: 2026-09-15
-Source: `Process Images in Areana/Old App` analysis + current Arena `app/core/action_blocks.py` + `app/ui/web/js/panels/action-blocks.js`
+Source: `Process Images in Areana/Old App` analysis (tree removed in R1 — readable at commit `11e6520`) + current Arena `app/core/action_blocks.py` + `app/ui/web/js/panels/action-blocks.js`
 Goal: Restore full stacking jobs / Action Blocks system as in Old App, adjusted to Arena image-to-image workflow, with visual confirmations, rectangles, separate jobs visibility.
 
 ---
