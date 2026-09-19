@@ -112,9 +112,18 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   Verified: 119/119 slots, mixin 123 LOC, all funcs ≤20/CC ≤7, 551
   green, gate 90→83 (bridge 28→21, exactly the planned 7), Bridge
   methods 106→95. Deliberate changes: none.
-- **R5 — `watcher_captcha` (10).** Move watcher+captcha slots; split
-  `set_watcher_config` (per-key); `_get_watcher_cdp_controller` /
-  `_on_watcher_state` → module funcs + `__init__` lambda edits. Kills 1.
+- **R5 — `watcher_captcha` (10).** ✅ done. 10 slots moved (7 watcher +
+  3 captcha); `set_watcher_config` split (validate/clamp + persist +
+  shared `create_watcher_service`); `_get_watcher_cdp_controller` /
+  `_on_watcher_state` → module funcs + `__init__` lambda edits;
+  watcher/captcha/CDP imports stay lazy (load-bearing fault tolerance);
+  `clear_watcher_overlay` if/else twins folded (identical schedule order);
+  `Bridge._captcha_service` kept as a 2-line delegation — main_window +
+  app/services/captcha call that seam (permanent, not an R9 shim).
+  Verified: 119/119 slots, mixin 127 LOC, all funcs ≤20/CC ≤7, 551
+  green, gate 83→82 (bridge 21→20: the planned set_watcher_config
+  loc), Bridge methods 95→83. Deliberate changes: none (dead
+  `import asyncio` in clear-body dropped — it was unused).
 - **R6 — `page_pool` (9).** Move pool/cooldown slots; `_do_connect_page_pool`
   + `_reset_stuck_page` → module funcs (run_state calls);
   `_persist_cooldowns` → Bridge delegation to run_state (contract §2);
