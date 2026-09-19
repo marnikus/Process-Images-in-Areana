@@ -271,6 +271,12 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     let debugFiltered = [];
     let mismatchDetails = [];
 
+    // Baseline entry recorded before submission; "not ready then" means the
+    // same src may legitimately reappear as this job's finished output.
+    function oldWasNotReady(old) {
+      return !old.complete || old.naturalWidth===0 || old.opacity==='0' || (old.className&&old.className.includes('opacity-0')) || !old.visible;
+    }
+
     function isReferenceImage(el) {
       try {
         const cls = el.className || '';
@@ -322,36 +328,23 @@ JS_CHECK_NEW_OUTPUT_V3 = """
         }
         // Parallel fix: if expectedId matches any nearby, prefer it directly
         if (expectedId) {
+          const matched = (c) => ({
+            associatedJobId: c.jobId,
+            associatedTop: c.top,
+            domPrevJobId: domPrev ? domPrev.jobId : null,
+            domNextJobId: domNext ? domNext.jobId : null,
+            visualPrevJobId: visualPrev ? visualPrev.jobId : null,
+            visualNextJobId: visualNext ? visualNext.jobId : null,
+            visualPrevTop: visualPrev ? visualPrev.top : null,
+            domPrevTop: domPrev ? domPrev.top : null,
+            matchedExpected: true
+          });
           const nearbyChecks = [domPrev, domNext, visualPrev, visualNext];
           for (const c of nearbyChecks) {
-            if (c && c.jobId === expectedId) {
-              return {
-                associatedJobId: c.jobId,
-                associatedTop: c.top,
-                domPrevJobId: domPrev ? domPrev.jobId : null,
-                domNextJobId: domNext ? domNext.jobId : null,
-                visualPrevJobId: visualPrev ? visualPrev.jobId : null,
-                visualNextJobId: visualNext ? visualNext.jobId : null,
-                visualPrevTop: visualPrev ? visualPrev.top : null,
-                domPrevTop: domPrev ? domPrev.top : null,
-                matchedExpected: true
-              };
-            }
+            if (c && c.jobId === expectedId) return matched(c);
           }
           for (const c of aboveCandidates) {
-            if (c.jobId === expectedId) {
-              return {
-                associatedJobId: c.jobId,
-                associatedTop: c.top,
-                domPrevJobId: domPrev ? domPrev.jobId : null,
-                domNextJobId: domNext ? domNext.jobId : null,
-                visualPrevJobId: visualPrev ? visualPrev.jobId : null,
-                visualNextJobId: visualNext ? visualNext.jobId : null,
-                visualPrevTop: visualPrev ? visualPrev.top : null,
-                domPrevTop: domPrev ? domPrev.top : null,
-                matchedExpected: true
-              };
-            }
+            if (c.jobId === expectedId) return matched(c);
           }
         }
         let associated = null;
@@ -425,7 +418,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
             try {
               const old = (oldOutputs||[]).find(o=>o.src===el.src);
               if (old) {
-                const wasNotReady = !old.complete || old.naturalWidth===0 || old.opacity==='0' || (old.className&&old.className.includes('opacity-0')) || !old.visible;
+                const wasNotReady = oldWasNotReady(old);
                 if (!wasNotReady) {
                   debugFiltered.push({reason:'in_oldSrcs_ready', src:el.src.slice(-80), sel});
                   continue;
@@ -567,7 +560,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
             try {
               const old = (oldOutputs||[]).find(o=>o.src===el.src);
               if (old) {
-                const wasNotReady = !old.complete || old.naturalWidth===0 || old.opacity==='0' || (old.className&&old.className.includes('opacity-0')) || !old.visible;
+                const wasNotReady = oldWasNotReady(old);
                 if (!wasNotReady) continue;
               } else continue;
             } catch(e) { continue; }
