@@ -234,6 +234,9 @@ Deleted 2026-09-19 (Area B, proven dead): `app/browser/controller.py` (Playwrigh
 | `tests/test_verification.py` | Baseline capture, new output detection, validation (not HTML, dimensions >0) | RULE 15 |
 | `tests/test_selector.py` | Selector map primary+fallbacks, presence, count, evidence | RULE 21 + DOM_SELECTORS.md |
 | `tests/test_probe_selectors.py` | RULE 21 enforcement: no selector literal in probe sources + payloads wired to site_adapter lists | Single selector source |
+| `tests/test_action_block_defaults.py` | Action-block defaults vs site_adapter: mirror families, frozen divergent list (CHECK_SECURITY/WAIT_OUTPUT/SUBMIT fallback), JS `getDefaultBlocks()` + stack-order mirror, source-scan for new literals | RULE 21 + RULE 3 mirror; drift alarm |
+| `tests/unit/test_preset_store.py`, `tests/unit/test_undo_store.py`, `tests/unit/test_config_manager.py` | Persistence contracts: preset families/dedup/deep copy, undo clamp/branch/dedup, session+window-preset stores, facade (RULE 13) | Never brick; store contracts |
+| `tests/unit/test_output_state.py`, `tests/unit/test_cooldown_store_edges.py` | `flatten_diagnostics` normaliser; cooldown junk-entry/stats/idle-drop edge branches (RULE 4) | Diag + cooldown robustness |
 | `tests/js/test_composer_probes.mjs`, `tests/js/test_output_probes.mjs` | JS probe payloads extracted from the real Python sources and executed against a stub DOM (RULE 8) | Insert/send state, output v4 verify |
 | `tools/verify_quality.py` + `tools/quality_baseline.json` | Code-quality gate: LOC 30/150, params 4, methods 15, CC 10, cognitive 15, nesting 4, coverage 80%/75% (RULE 16) | Gate every change |
 

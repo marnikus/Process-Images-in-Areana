@@ -1,5 +1,12 @@
 # MVP Implementation Plan with Test Strategy
 
+> **HISTORICAL (2026-09-19).** Step-by-step build plan from project start;
+> the build is complete. Module names below reflect the tree at planning
+> time — several were since renamed or deleted (e.g. `job_runner.py` →
+> `single_job_runner.py`). Current architecture:
+> `docs/current/SYSTEM_OF_RECORD.md` §7.
+
+
 ## Phases
 
 ### Phase 0 — Project Scaffolding (Done)

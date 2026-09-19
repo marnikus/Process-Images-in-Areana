@@ -1,5 +1,12 @@
 # Action Blocks Restore Plan — Arena (from Old App)
 
+> **SUPERSEDED / HISTORICAL (2026-09-19).** This is the original 2026-09-15
+> restoration plan. The restore it describes is DONE — the live system is
+> `app/core/action_blocks.py` (catalog), `app/services/single_job_runner.py`
+> (execution; the `app/services/job_runner.py` named below was deleted
+> 2026-09-19) and `app/ui/bridge.py` (handlers). Read as history only;
+> authoritative state: `docs/current/SYSTEM_OF_RECORD.md` §7.
+
 Date: 2026-09-15
 Source: `Process Images in Areana/Old App` analysis + current Arena `app/core/action_blocks.py` + `app/ui/web/js/panels/action-blocks.js`
 Goal: Restore full stacking jobs / Action Blocks system as in Old App, adjusted to Arena image-to-image workflow, with visual confirmations, rectangles, separate jobs visibility.

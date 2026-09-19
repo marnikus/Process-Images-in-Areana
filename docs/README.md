@@ -24,6 +24,7 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 | `data_model.md` | Data structures: ImageItem, URLItem, AppState, etc. | Supporting — should match SYSTEM_OF_RECORD §6 |
 | `workflow_diagram.md` | Visual workflow of scan→select→attach→prompt→submit→wait→download→save | Supporting — state machine in SYSTEM_OF_RECORD §3 is authoritative |
 | `implementation_plan.md` | Step-by-step build plan | Historical — implementation done |
+| `action-blocks-restore-plan.md` | Original action-blocks restoration plan (2026-09-15) | Historical — restore complete; superseded header in file |
 | `selector_map.md` | Detailed selector map with evidence (181 lines) — source for DOM_SELECTORS.md | Supporting — DOM_SELECTORS.md is living reference |
 | `research_summary.md` | Findings from saved HTML inspection | Historical research |
 | `risks.md` | Risks, mitigations | Supporting |
