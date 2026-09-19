@@ -633,15 +633,3 @@ class CDPClient(QObject):
 """
         return await self.evaluate(js)
 
-    async def clear_highlights(self):
-        js = """
-(function(){
-  try {
-    var old = document.querySelectorAll('[data-arena-highlight]');
-    var n = old.length;
-    for(var i=0;i<old.length;i++){ if(old[i].parentNode) old[i].parentNode.removeChild(old[i]); }
-    return {cleared:n};
-  } catch(e){ return {cleared:0}; }
-})()
-"""
-        return await self.evaluate(js)

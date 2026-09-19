@@ -442,22 +442,6 @@ def build_clear_js() -> str:
     return build_clear_probe()
 
 
-def build_highlight_rect_js(x: float, y: float, w: float, h: float, color: str = "#FF0000", duration_ms: int = 2000, caption: str = "") -> str:
-    # Fake element with given rect for demo / re-highlight
-    color_json = json.dumps(color)
-    caption_json = json.dumps(caption or f"{int(w)}x{int(h)}")
-    return f"""
-;(function(){{
-{_HELPERS_JS}
-  try {{
-    var r = {{left:{x}, top:{y}, width:{w}, height:{h}}};
-    var fake = {{getBoundingClientRect:function(){{return r;}}}};
-    var rect = highlight(fake, {color_json}, {duration_ms}, {caption_json});
-    return JSON.stringify({{found: !!rect, rect: r}});
-  }} catch(e) {{ return JSON.stringify({{found:false}}); }}
-}})()
-"""
-
 # ── watcher overlay ────────────────────────────────────────────────
 WATCHER_ATTR = "data-arena-watcher-overlay"
 

@@ -16,8 +16,9 @@ from typing import Optional, List, Dict, Any, Tuple, Callable
 from .cdp_client import CDPClient
 from .captcha_probes import build_visible_js
 from .output_probes import build_baseline_js, build_check_js
-from .output_state import flatten_diagnostics, build_order_check_text
+from .output_state import flatten_diagnostics
 from .output_wait import wait_for_new_output_loop
+from .probe_requests import COLOR_PROMPT, COLOR_SUBMIT
 from .probe_selectors import (
     attachment_preview_selectors,
     readiness_checks,
@@ -232,9 +233,6 @@ class CDPArenaController:
         self.cdp = cdp_client
         self._log_callback = log_callback
 
-    def set_log_callback(self, cb: Callable[[str], None]):
-        self._log_callback = cb
-
     def _log(self, msg: str, level: str = "info"):
         log.info(msg)
         if self._log_callback:
@@ -288,7 +286,7 @@ class CDPArenaController:
         if not await self.ensure_connected():
             return False, "Not connected"
         try:
-            await self.highlight_selector(textarea_primary(), color="#00AAFF", duration_ms=1000, caption="Prompt")
+            await self.highlight_selector(textarea_primary(), color=COLOR_PROMPT, duration_ms=1000, caption="Prompt")
         except Exception:
             pass
         js = f";({JS_INSERT_PROMPT})({json.dumps(prompt_text)})"
@@ -314,7 +312,7 @@ class CDPArenaController:
         if not await self.ensure_connected():
             return False, "Not connected"
         try:
-            await self.highlight_selector(send_presence_selector(), color="#FFAA00", duration_ms=1000, caption="Send")
+            await self.highlight_selector(send_presence_selector(), color=COLOR_SUBMIT, duration_ms=1000, caption="Send")
         except Exception:
             pass
         js = f";({JS_CLICK_SEND})()"
@@ -503,15 +501,6 @@ class CDPArenaController:
         except Exception as e:
             log.debug(f"highlight failed {e}")
             return None
-
-    async def clear_highlights(self):
-        # ideal-size: 5 lines reason=clear overlay
-        try:
-            from .dom_highlight import build_clear_js
-            js = build_clear_js()
-            await self.cdp.evaluate(js)
-        except Exception as e:
-            log.debug(f"clear failed {e}")
 
     async def show_watcher_overlay(self, message: str = "wait for finish generation", kind: str = "generation", timeout_sec: int = 600, sub: str = "") -> bool:
         # ideal-size: 10 lines reason=show watcher overlay with timeout from win settings
