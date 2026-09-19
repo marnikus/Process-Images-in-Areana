@@ -13,6 +13,12 @@ from typing import Any, Dict, List, Optional
 from app.core.enums import ImageStatus
 from app.core.naming import OutputSpec, atomic_write_bytes, get_output_path
 from app.browser.dom_highlight import build_find_probe, build_highlight_probe
+from app.browser.probe_selectors import (
+    send_click_primary,
+    send_presence_selector,
+    textarea_primary,
+)
+from app.browser.site_adapter import get_selector
 from app.browser.probe_requests import FindProbeSpec, HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.services.run_state import JobAction
@@ -191,7 +197,7 @@ async def _try_click(ctx: JobCtx, req: ClickRequest) -> str:
 
 async def _submit_visual(ctx: JobCtx, block: Any) -> str:
     """Primary submit click through the visual runner."""
-    sel = getattr(block, "selector", "") or 'button[aria-label="Send message"]:not([disabled])'
+    sel = getattr(block, "selector", "") or send_click_primary()
     return await _try_click(ctx, _click_req(block, sel, getattr(block, "match_text", "") or ""))
 
 
@@ -421,7 +427,7 @@ async def _attach_open_dialog(ctx: JobCtx, block: Any):
 async def _attach_emit(ctx: JobCtx, block: Any, reason: str):
     """Attach success, with confirmation rect when highlight works."""
     try:
-        sel = getattr(block, "selector", "") or 'input[type="file"]'
+        sel = getattr(block, "selector", "") or get_selector("file_input").presence()
         color = getattr(block, "color", "") or "#FF0000"
         ms = getattr(block, "highlight_ms", 0) or 2000
         rect = await ctx.ctrl.highlight_selector(sel, color=color, duration_ms=ms, caption="Attached ok")
@@ -638,7 +644,7 @@ async def _type_highlight(ctx: JobCtx, block: Any) -> None:
     if not getattr(block, "highlight_enabled", False):
         return
     try:
-        sel = getattr(block, "selector", "") or 'textarea[name="message"]'
+        sel = getattr(block, "selector", "") or textarea_primary()
         await ctx.ctrl.highlight_selector(sel, color=getattr(block, "color", "") or "#FF0000", duration_ms=getattr(block, "highlight_ms", 0) or 2000, caption=_display(block))
     except Exception:
         pass
@@ -656,16 +662,21 @@ async def _handle_type_prompt(ctx: JobCtx, block: Any):
     _emit_action(ctx, block, "success", reason)
 
 
+def attachment_preview_selector() -> str:
+    """Preview-image probe selector (RULE 21: container from site_adapter)."""
+    return get_selector("attachment_preview_container").primary + " img"
+
+
 def _marker_selector(block: Any) -> str:
     """Default selector per HIGHLIGHT_* marker (legacy parity)."""
     if getattr(block, "selector", ""):
         return block.selector
     btype = getattr(block, "block_id", "")
     if "ATTACH" in btype:
-        return 'input[type="file"]'
+        return get_selector("file_input").presence()
     if "PROMPT" in btype:
-        return 'textarea[name="message"]'
-    return 'button[aria-label="Send message"]'
+        return textarea_primary()
+    return send_presence_selector()
 
 
 async def _handle_marker_highlight(ctx: JobCtx, block: Any):
@@ -682,7 +693,7 @@ async def _handle_marker_highlight(ctx: JobCtx, block: Any):
 
 async def _handle_verify_attachment(ctx: JobCtx, block: Any):
     """Handle attachment-preview check (find probe, legacy parity)."""
-    sel = getattr(block, "selector", "") or "div.flex.flex-wrap.gap-2 img"
+    sel = getattr(block, "selector", "") or attachment_preview_selector()
     spec = FindProbeSpec(highlight=getattr(block, "highlight_enabled", True), highlight_ms=getattr(block, "highlight_ms", 0) or 1500, color=getattr(block, "color", "") or "#FF0000")
     try:
         raw = await ctx.client.evaluate(build_find_probe(sel, spec))

@@ -2,39 +2,13 @@
 
 import copy
 import json
-import os
-import tempfile
 from pathlib import Path
 from typing import Any
 
+from .json_store import load_json as _load_json, save_json_atomic as _atomic_write
+
 MAX_HISTORY = 100
 DEFAULTS = {"history": [], "index": -1}
-
-def _atomic_write(path: Path, data: Any):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=path.stem+"_", suffix=".json.tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        Path(tmp).replace(path)
-    finally:
-        if Path(tmp).exists():
-            try:
-                Path(tmp).unlink()
-            except:
-                pass
-
-def _load_json(path: Path, default: Any):
-    if not path.exists():
-        return copy.deepcopy(default)
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            return data
-        return copy.deepcopy(default)
-    except Exception:
-        return copy.deepcopy(default)
 
 class UndoStore:
     def __init__(self, path: Path):

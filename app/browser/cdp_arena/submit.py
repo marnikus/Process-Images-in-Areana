@@ -11,13 +11,14 @@ from typing import Dict, Any, Tuple
 
 from .js_snippets import JS_INSERT_PROMPT, JS_VERIFY_PROMPT, JS_CLICK_SEND, JS_SEND_STATE
 from .highlight import highlight_selector
+from ..probe_selectors import send_presence_selector, textarea_primary
 
 
 async def insert_prompt(cdp, prompt_text: str, ensure_connected) -> Tuple[bool, str]:
     if not await ensure_connected():
         return False, "Not connected"
     try:
-        await highlight_selector(cdp, 'textarea[name="message"]', color="#00AAFF",
+        await highlight_selector(cdp, textarea_primary(), color="#00AAFF",
                                  duration_ms=1000, caption="Prompt")
     except Exception:
         pass
@@ -44,7 +45,7 @@ async def submit(cdp, ensure_connected) -> Tuple[bool, str]:
     if not await ensure_connected():
         return False, "Not connected"
     try:
-        await highlight_selector(cdp, 'button[aria-label="Send message"]',
+        await highlight_selector(cdp, send_presence_selector(),
                                  color="#FFAA00", duration_ms=1000, caption="Send")
     except Exception:
         pass

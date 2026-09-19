@@ -9,25 +9,13 @@ Per RULE 21 selector priority, RULE 22 correlation token.
 """
 
 import json
-from typing import List
 
-SELECTORS_V3: List[str] = [
-    'div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',
-    'div.no-scrollbar img[src*="messages-prod."]',
-    'div.no-scrollbar img[loading="lazy"].aspect-square',
-    'img.aspect-square.cursor-pointer',
-    'img.cursor-pointer',
-    'div.flex img[src*=".r2.cloudflarestorage.com/"]',
-    'main img[src*=".r2.cloudflarestorage.com/"]',
-    'div.no-scrollbar img[src^="https://"]',
-    'img.aspect-square.w-full',
-    'img[src*=".r2.cloudflarestorage.com/"]',
-    'img[src*="messages-prod"]',
-    'img.h-\\[50vh\\]',
-    'img.w-\\[50vh\\]',
-    'ol img[src^="https://"]',
-    'main img',
-]
+from .probe_selectors import model_label_probe, output_image_selectors, spinner_selector
+
+# Single source is site_adapter via probe_selectors (RULE 21).
+SELECTORS_V3 = output_image_selectors()
+_SPINNER_SEL = json.dumps(spinner_selector())
+_MODEL_LABEL = model_label_probe()
 
 JS_BASELINE_V3 = """
 (() => {
@@ -63,7 +51,7 @@ JS_BASELINE_V3 = """
     }
     let spinning = false;
     try {
-      const spinners = document.querySelectorAll('div.animate-spin');
+      const spinners = document.querySelectorAll(__SPINNER_SELECTOR__);
       for (const s of spinners) { if (s.offsetParent !== null) { spinning = true; break; } }
     } catch(e) {}
     return {
@@ -78,7 +66,7 @@ JS_BASELINE_V3 = """
     return {output_count:0, output_srcs:[], error:String(e), timestamp:Date.now(), spinning:false};
   }
 })
-""".replace("__SELECTORS__", json.dumps(SELECTORS_V3))
+""".replace("__SELECTORS__", json.dumps(SELECTORS_V3)).replace("__SPINNER_SELECTOR__", _SPINNER_SEL)
 
 JS_CHECK_NEW_OUTPUT_V3 = """
 ((oldSrcs, correlationId, oldOutputs) => {
@@ -87,15 +75,15 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     let spinCount = 0;
     let spinDetails = [];
     try {
-      const spinners = document.querySelectorAll('div.animate-spin');
+      const spinners = document.querySelectorAll(__SPINNER_SELECTOR__);
       for (const s of spinners) {
         if (s.offsetParent !== null) {
           spinning = true;
           spinCount++;
-          let parent = s.closest('div.flex.min-w-0.flex-1.items-center.gap-2');
+          let parent = s.closest(__MODEL_ROW_SCOPE__);
           let label = '';
           if (parent) {
-            const trunc = parent.querySelector('span.truncate');
+            const trunc = parent.querySelector(__MODEL_LABEL__);
             if (trunc) label = trunc.textContent.trim();
           }
           spinDetails.push({label: label || 'unknown', visible: true});
@@ -116,6 +104,17 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     } catch(e) {}
 
     let allJobs = [];
+    const jobRecord = (jobId, el, container, rect, text, isUserBubble) => ({
+      jobId: jobId,
+      el: el,
+      container: container,
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+      text: text.slice(0,200),
+      isUserBubble: isUserBubble
+    });
     try {
       const jobRegex = /\\[JOB-ID:\\s*([^\\]\\s]+)\\]/g;
       const allEls = document.querySelectorAll('div, span, p, pre');
@@ -158,17 +157,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
           seenContainers.add(key);
           try {
             const rect = container.getBoundingClientRect();
-            allJobs.push({
-              jobId: jobId,
-              el: el,
-              container: container,
-              top: rect.top,
-              left: rect.left,
-              width: rect.width,
-              height: rect.height,
-              text: txt.slice(0,200),
-              isUserBubble: (container.className||'').includes('items-end')
-            });
+            allJobs.push(jobRecord(jobId, el, container, rect, txt, (container.className||'').includes('items-end')));
           } catch(e) {}
         }
       }
@@ -182,17 +171,9 @@ JS_CHECK_NEW_OUTPUT_V3 = """
             if (parent && parent.tagName !== 'TEXTAREA' && parent.tagName !== 'SCRIPT') {
               try {
                 const r = parent.getBoundingClientRect();
-                allJobs.push({
-                  jobId: correlationId,
-                  el: parent,
-                  container: parent.closest('div.flex.min-w-0.flex-1.flex-col.items-end, div.group, div.flex.flex-col') || parent,
-                  top: r.top,
-                  left: r.left,
-                  width: r.width,
-                  height: r.height,
-                  text: val.slice(0,200),
-                  isUserBubble: true
-                });
+                allJobs.push(jobRecord(correlationId, parent,
+                  parent.closest('div.flex.min-w-0.flex-1.flex-col.items-end, div.group, div.flex.flex-col') || parent,
+                  r, val, true));
                 break;
               } catch(e) {}
             }
@@ -283,6 +264,12 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     let debugFiltered = [];
     let mismatchDetails = [];
 
+    // Baseline entry recorded before submission; "not ready then" means the
+    // same src may legitimately reappear as this job's finished output.
+    function oldWasNotReady(old) {
+      return !old.complete || old.naturalWidth===0 || old.opacity==='0' || (old.className&&old.className.includes('opacity-0')) || !old.visible;
+    }
+
     function isReferenceImage(el) {
       try {
         const cls = el.className || '';
@@ -333,37 +320,24 @@ JS_CHECK_NEW_OUTPUT_V3 = """
           } catch(e) {}
         }
         // Parallel fix: if expectedId matches any nearby, prefer it directly
+        const assocShape = (j) => ({
+          associatedJobId: j ? j.jobId : null,
+          associatedTop: j ? j.top : null,
+          domPrevJobId: domPrev ? domPrev.jobId : null,
+          domNextJobId: domNext ? domNext.jobId : null,
+          visualPrevJobId: visualPrev ? visualPrev.jobId : null,
+          visualNextJobId: visualNext ? visualNext.jobId : null,
+          visualPrevTop: visualPrev ? visualPrev.top : null,
+          domPrevTop: domPrev ? domPrev.top : null
+        });
         if (expectedId) {
+          const matched = (c) => Object.assign(assocShape(c), {matchedExpected: true});
           const nearbyChecks = [domPrev, domNext, visualPrev, visualNext];
           for (const c of nearbyChecks) {
-            if (c && c.jobId === expectedId) {
-              return {
-                associatedJobId: c.jobId,
-                associatedTop: c.top,
-                domPrevJobId: domPrev ? domPrev.jobId : null,
-                domNextJobId: domNext ? domNext.jobId : null,
-                visualPrevJobId: visualPrev ? visualPrev.jobId : null,
-                visualNextJobId: visualNext ? visualNext.jobId : null,
-                visualPrevTop: visualPrev ? visualPrev.top : null,
-                domPrevTop: domPrev ? domPrev.top : null,
-                matchedExpected: true
-              };
-            }
+            if (c && c.jobId === expectedId) return matched(c);
           }
           for (const c of aboveCandidates) {
-            if (c.jobId === expectedId) {
-              return {
-                associatedJobId: c.jobId,
-                associatedTop: c.top,
-                domPrevJobId: domPrev ? domPrev.jobId : null,
-                domNextJobId: domNext ? domNext.jobId : null,
-                visualPrevJobId: visualPrev ? visualPrev.jobId : null,
-                visualNextJobId: visualNext ? visualNext.jobId : null,
-                visualPrevTop: visualPrev ? visualPrev.top : null,
-                domPrevTop: domPrev ? domPrev.top : null,
-                matchedExpected: true
-              };
-            }
+            if (c.jobId === expectedId) return matched(c);
           }
         }
         let associated = null;
@@ -393,16 +367,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
         } else {
           associated = domPrev || visualPrev || domNext;
         }
-        return {
-          associatedJobId: associated ? associated.jobId : null,
-          associatedTop: associated ? associated.top : null,
-          domPrevJobId: domPrev ? domPrev.jobId : null,
-          domNextJobId: domNext ? domNext.jobId : null,
-          visualPrevJobId: visualPrev ? visualPrev.jobId : null,
-          visualNextJobId: visualNext ? visualNext.jobId : null,
-          visualPrevTop: visualPrev ? visualPrev.top : null,
-          domPrevTop: domPrev ? domPrev.top : null
-        };
+        return assocShape(associated);
       } catch(e) {
         return {associatedJobId: null, error: String(e)};
       }
@@ -437,7 +402,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
             try {
               const old = (oldOutputs||[]).find(o=>o.src===el.src);
               if (old) {
-                const wasNotReady = !old.complete || old.naturalWidth===0 || old.opacity==='0' || (old.className&&old.className.includes('opacity-0')) || !old.visible;
+                const wasNotReady = oldWasNotReady(old);
                 if (!wasNotReady) {
                   debugFiltered.push({reason:'in_oldSrcs_ready', src:el.src.slice(-80), sel});
                   continue;
@@ -579,7 +544,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
             try {
               const old = (oldOutputs||[]).find(o=>o.src===el.src);
               if (old) {
-                const wasNotReady = !old.complete || old.naturalWidth===0 || old.opacity==='0' || (old.className&&old.className.includes('opacity-0')) || !old.visible;
+                const wasNotReady = oldWasNotReady(old);
                 if (!wasNotReady) continue;
               } else continue;
             } catch(e) { continue; }
@@ -674,6 +639,32 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     let largePool = pool.filter(c => c.isLarge);
     if (largePool.length > 0) pool = largePool;
 
+    // Shared core of both job_id_mismatch_no_matching_image returns (field
+    // set frozen by tests/js/test_output_probes.mjs key-set locks).
+    const mismatchReturn = (orderCheckMsg, extra) => Object.assign({
+      ready: false,
+      reason: 'job_id_mismatch_no_matching_image',
+      spinning: spinning,
+      spinCount: spinCount,
+      spinDetails: spinDetails,
+      jobFound: jobFound,
+      jobTop: jobTop,
+      prevJobTop: prevJobTop,
+      nextJobTop: nextJobTop,
+      jobIndex: jobIndex,
+      allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})),
+      allNew: allNew.length,
+      validBelow: validBelow.length,
+      validAbove: validAbove.length,
+      jobId: correlationId,
+      expectedJobId: correlationId,
+      mismatchDetails: mismatchDetails.slice(0,10),
+      layoutReverse: layoutReverse,
+      orderCheck: orderCheckMsg,
+      debugAllImgs: debugAllImgs.slice(0,10),
+      debugFiltered: debugFiltered.slice(0,15)
+    }, extra);
+
     // Final strict verification: if correlationId provided, pool must have matching associatedJobId
     // Parallel fix: allow if any nearby job equals expected (domPrev/domNext/visualPrev/visualNext) — covers reverse layout where visualPrev may be old but domPrev is expected
     if (correlationId) {
@@ -684,30 +675,9 @@ JS_CHECK_NEW_OUTPUT_V3 = """
         return nearby.includes(correlationId);
       });
       if (matchingPool.length === 0 && pool.length > 0) {
-        return {
-          ready: false,
-          reason: 'job_id_mismatch_no_matching_image',
-          spinning: spinning,
-          spinCount: spinCount,
-          spinDetails: spinDetails,
-          jobFound: jobFound,
-          jobTop: jobTop,
-          prevJobTop: prevJobTop,
-          nextJobTop: nextJobTop,
-          jobIndex: jobIndex,
-          allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})),
-          allNew: allNew.length,
-          validBelow: validBelow.length,
-          validAbove: validAbove.length,
-          jobId: correlationId,
-          expectedJobId: correlationId,
-          mismatchDetails: mismatchDetails.slice(0,10),
-          poolDetails: pool.slice(0,5).map(p=>({src:p.src.slice(0,80), associated:p.associatedJobId, expected:correlationId, top:Math.round(p.top)})),
-          layoutReverse: layoutReverse,
-          orderCheck: `JOB-ID mismatch: expected ${correlationId} but found images belong to ${mismatchDetails.map(m=>m.associated).join(',')} — not downloading, will error`,
-          debugAllImgs: debugAllImgs.slice(0,10),
-          debugFiltered: debugFiltered.slice(0,15)
-        };
+        return mismatchReturn(
+          `JOB-ID mismatch: expected ${correlationId} but found images belong to ${mismatchDetails.map(m=>m.associated).join(',')} — not downloading, will error`,
+          {poolDetails: pool.slice(0,5).map(p=>({src:p.src.slice(0,80), associated:p.associatedJobId, expected:correlationId, top:Math.round(p.top)}))});
       }
       pool = matchingPool;
     }
@@ -741,7 +711,9 @@ JS_CHECK_NEW_OUTPUT_V3 = """
         }
       } catch(e) {}
       if (mismatchDetails.length > 0) {
-        return {ready:false, reason:'job_id_mismatch_no_matching_image', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), allNew: allNew.length, allNewDetails: allNewDetails, validBelow: validBelow.length, validAbove: validAbove.length, belowCount: belowCandidates.length, aboveCount: aboveCandidates.length, jobId: correlationId, expectedJobId: correlationId, mismatchDetails: mismatchDetails.slice(0,10), layoutReverse: layoutReverse, orderCheck: `JOB-ID mismatch after reset: expected ${correlationId} but all ${allNew.length} new images belong to different keys ${mismatchDetails.map(m=>m.associated).join(',')} — do not download, error`, debugAllImgs: debugAllImgs.slice(0,10), debugFiltered: debugFiltered.slice(0,15)};
+        return mismatchReturn(
+          `JOB-ID mismatch after reset: expected ${correlationId} but all ${allNew.length} new images belong to different keys ${mismatchDetails.map(m=>m.associated).join(',')} — do not download, error`,
+          {allNewDetails: allNewDetails, belowCount: belowCandidates.length, aboveCount: aboveCandidates.length});
       }
       return {ready:false, reason:'no_exact_below_found_wait_next', spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top, isUser:j.isUserBubble})), allNew: allNew.length, allNewDetails: allNewDetails, validBelow: validBelow.length, validAbove: validAbove.length, belowCount: belowCandidates.length, aboveCount: aboveCandidates.length, jobId: correlationId, expectedJobId: correlationId, mismatchDetails: mismatchDetails.slice(0,10), layoutReverse: layoutReverse, orderCheck: `No exact below: jobTop ${jobTop} prevTop ${prevJobTop} nextTop ${nextJobTop} allNew ${allNew.length} validBelow ${validBelow.length} validAbove ${validAbove.length} expected ${correlationId}`, debugAllImgs: debugAllImgs.slice(0,10), debugFiltered: debugFiltered.slice(0,15), oldSrcsSample: oldSrcs.slice(0,3).map(s=>s.slice(0,80))};
     }
@@ -752,7 +724,9 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), validBelow: validBelow.length, validAbove: validAbove.length, allNew: allNew.length, jobId: correlationId, expectedJobId: correlationId, mismatchDetails: mismatchDetails.slice(0,10), layoutReverse: layoutReverse, orderCheck: `No new images at all, oldSrcs ${oldSrcs.length} expected ${correlationId}`, debugAllImgs: debugAllImgs.slice(0,10), debugFiltered: debugFiltered.slice(0,10), oldSrcsSample: oldSrcs.slice(0,3).map(s=>s.slice(0,80))};
   } catch(e) { return {ready:false, reason:String(e), spinning: false}; }
 })
-""".replace("__SELECTORS__", json.dumps(SELECTORS_V3))
+""".replace("__SELECTORS__", json.dumps(SELECTORS_V3)).replace("__SPINNER_SELECTOR__", _SPINNER_SEL) \
+    .replace("__MODEL_ROW_SCOPE__", json.dumps(_MODEL_LABEL["scope"])) \
+    .replace("__MODEL_LABEL__", json.dumps(_MODEL_LABEL["label"]))
 
 
 def build_baseline_js() -> str:
@@ -761,11 +735,3 @@ def build_baseline_js() -> str:
 
 def build_check_js(old_srcs, correlation_id, old_outputs) -> str:
     return f";({JS_CHECK_NEW_OUTPUT_V3})({json.dumps(old_srcs)}, {json.dumps(correlation_id) if correlation_id else 'null'}, {json.dumps(old_outputs)})"
-
-
-def is_layout_reverse_js() -> str:
-    return "!!document.querySelector('ol.flex-col-reverse')"
-
-
-def get_selectors() -> list:
-    return SELECTORS_V3.copy()

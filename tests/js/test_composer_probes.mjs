@@ -1,6 +1,12 @@
 /* Tier A — composer probes (Node.js, no browser).
-   Extracts JS_INSERT_PROMPT / JS_SEND_STATE from cdp_arena module.
-*/
+   RULE 8: extracts the REAL JS_INSERT_PROMPT / JS_SEND_STATE templates from
+   app/browser/cdp_arena.py (regex on the triple-quoted strings — the file
+   under test, not a copy; C3 split: cdp_arena/js_snippets.py) and runs them against a stub document.
+   RULE 21: the templates carry __PLACEHOLDER__ tokens; the app fills them
+   from site_adapter at import (wiring proven by tests/test_probe_selectors.py);
+   here we substitute representative selectors, exactly like the app does.
+   Regression: the error-state DOM offers a hidden first-match textarea;
+   insert must fill the VISIBLE composer or Send stays disabled forever. */
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,26 +16,27 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// The payloads live in the cdp_arena package (C3 split); the facade is kept
+// as a fallback so the test keeps working if they move back.
 const candidates = [
   path.resolve(__dirname, '../../app/browser/cdp_arena/js_snippets.py'),
   path.resolve(__dirname, '../../app/browser/cdp_arena.py'),
 ];
 
-function tryExtractFromText(txt, name) {
-  const m = txt.match(new RegExp(name + ' = """\\n([\\s\\S]*?)\\n"""'));
-  return m ? m[1] : null;
+function extract(name) {
+  // Matches both `NAME = """template"""` and `NAME = _inject("""template""", ...)`.
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) continue;
+    const txt = fs.readFileSync(candidate, 'utf-8');
+    const m = txt.match(new RegExp(name + ' = [^"]*"""\\n([\\s\\S]*?)\\n"""'));
+    if (m) return m[1];
+  }
+  assert.fail(`${name} const not found in cdp_arena package`);
 }
 
-function extract(name) {
-  for (const p of candidates) {
-    try {
-      if (!fs.existsSync(p)) continue;
-      const txt = fs.readFileSync(p, 'utf-8');
-      const val = tryExtractFromText(txt, name);
-      if (val) return val;
-    } catch {}
-  }
-  assert.fail(`${name} const not found in cdp_arena`);
+// Same substitution the app performs at import (json.dumps of selector payloads).
+function fill(template, name, value) {
+  return template.replaceAll(name, JSON.stringify(value));
 }
 
 function docStub(lists) {
@@ -56,7 +63,7 @@ function textareaStub(visible) {
 }
 
 function plain(value) {
-  return JSON.parse(JSON.stringify(value));
+  return JSON.parse(JSON.stringify(value)); // vm-realm objects fail deepEqual
 }
 
 function runInsert(lists, text) {
@@ -69,7 +76,10 @@ function runInsert(lists, text) {
     set(v) { this._reactValue = v; }, configurable: true,
   });
   vm.createContext(sandbox);
-  const fn = vm.runInContext(extract('JS_INSERT_PROMPT'), sandbox, { filename: 'JS_INSERT_PROMPT' });
+  const template = fill(extract('JS_INSERT_PROMPT'), '__TEXTAREA_SELECTORS__',
+    [SEL_MSG, SEL_DESC]);
+  const fn = vm.runInContext(template, sandbox,
+    { filename: 'JS_INSERT_PROMPT' });
   return fn(text);
 }
 
@@ -78,7 +88,10 @@ function runSendState(buttons) {
     document: docStub({ 'button[aria-label="Send message"]': buttons }),
   };
   vm.createContext(sandbox);
-  const fn = vm.runInContext(extract('JS_SEND_STATE'), sandbox, { filename: 'JS_SEND_STATE' });
+  const template = fill(extract('JS_SEND_STATE'), '__SEND_PRESENCE_SELECTOR__',
+    'button[aria-label="Send message"]');
+  const fn = vm.runInContext(template, sandbox,
+    { filename: 'JS_SEND_STATE' });
   return fn();
 }
 
@@ -94,7 +107,7 @@ describe('composer probes — Tier A (no browser)', () => {
     assert.deepEqual(plain(res), { ok: true, len: 4213 });
     assert.equal(visible.value, text);
     assert.equal(visible._reactValue, text);
-    assert.ok(visible.events >= 2);
+    assert.ok(visible.events >= 2); // input + change dispatched
     assert.equal(hidden.value, '');
     assert.equal(hidden._reactValue, undefined);
     assert.equal(hidden.events, 0);
@@ -108,9 +121,12 @@ describe('composer probes — Tier A (no browser)', () => {
   });
 
   test('send-state maps missing / hidden / disabled / enabled', () => {
-    assert.deepEqual(plain(runSendState([])), { found: false, visible: false, enabled: false });
-    assert.deepEqual(plain(runSendState([{ offsetParent: null, disabled: false }])), { found: true, visible: false, enabled: false });
-    assert.deepEqual(plain(runSendState([{ offsetParent: {}, disabled: true }])), { found: true, visible: true, enabled: false });
+    assert.deepEqual(plain(runSendState([])),
+      { found: false, visible: false, enabled: false });
+    assert.deepEqual(plain(runSendState([{ offsetParent: null, disabled: false }])),
+      { found: true, visible: false, enabled: false });
+    assert.deepEqual(plain(runSendState([{ offsetParent: {}, disabled: true }])),
+      { found: true, visible: true, enabled: false });
     assert.deepEqual(plain(runSendState([
       { offsetParent: null, disabled: false },
       { offsetParent: {}, disabled: true },

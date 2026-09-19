@@ -13,6 +13,7 @@ from typing import NamedTuple
 
 from app.services.run_state import schedule_coro
 from app.ui.qt_compat import Slot
+from app.browser.probe_selectors import textarea_primary
 
 HighlightArgs = NamedTuple("HighlightArgs", [("selector", str), ("color", str),
                                              ("duration_ms", int), ("caption", str)])
@@ -39,7 +40,7 @@ async def do_highlight_demo_cdp(bridge, img_id: str) -> None:
         duration_ms = int(duration * 1000) if duration else 2000
         from app.browser.cdp_arena import CDPArenaController
         ctrl = CDPArenaController(bridge.cdp, log_callback=lambda m: bridge._log(m, "info"))
-        await ctrl.highlight_selector('textarea[name="message"]', color="#FF0000", duration_ms=duration_ms, caption=f"Image {img_id[:8]}" if img_id else "Clicked element")
+        await ctrl.highlight_selector(textarea_primary(), color="#FF0000", duration_ms=duration_ms, caption=f"Image {img_id[:8]}" if img_id else "Clicked element")
         bridge.highlight_rect.emit(json.dumps({"x": 200, "y": 200, "width": 320, "height": 180, "duration": duration, "label": f"Image {img_id}" if img_id else "Clicked element"}))
     except Exception as e:
         bridge._log(f"Highlight failed: {e}", "warn")

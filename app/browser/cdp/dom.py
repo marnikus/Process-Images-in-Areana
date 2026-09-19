@@ -71,13 +71,19 @@ async def _resolve_image_path(image_path: str) -> str:
     return str(Path(image_path).resolve())
 
 
+# Mirrors site_adapter "file_input" exactly (alarm: test_action_block_defaults
+# ::test_cdp_client_attach_list_mirrors_adapter_exactly). RULE 21 residual:
+# the CDP DOM domain cannot import the browser adapter layer.
+DEFAULT_FILE_INPUT_SELECTORS = [
+    'form input[type="file"][accept*="image"]',
+    'input[type="file"][accept*="image"]',
+    'input[type="file"]',
+]
+
+
 async def attach_image_cdp(transport, image_path: str, selectors: List[str] = None) -> Tuple[bool, str]:
     if selectors is None:
-        selectors = [
-            'form input[type="file"][accept*="image"]',
-            'input[type="file"][accept*="image"]',
-            'input[type="file"]',
-        ]
+        selectors = DEFAULT_FILE_INPUT_SELECTORS
     try:
         doc = await get_document(transport)
         if not doc:
