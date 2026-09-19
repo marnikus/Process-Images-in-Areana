@@ -25,6 +25,8 @@ Blocks:
 - HIGHLIGHT_SUBMIT, SUBMIT, WAIT_OUTPUT, AWAIT_PROCESSING_IMAGE (waiting), DOWNLOAD, VALIDATE, SAVE, ADVANCE
 - PAUSE, HIGHLIGHT (pure visual)
 """
+# ideal-size(reason): owns the BLOCK_DEFINITIONS catalog (one entry per block
+# type, read as a unit) plus its compiler — splitting would scatter the catalog.
 
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional

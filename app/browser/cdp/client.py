@@ -97,6 +97,15 @@ class CDPClient(CDPTransport):
     async def connect(self, ws_url: str) -> bool:
         return await connect_with_lock(self, ws_url)
 
+    async def disconnect(self):
+        """QObject shadow guard: PySide6 resolves an INHERITED `disconnect`
+        on a QObject subclass to QObject.disconnect (built-in) instead of
+        CDPTransport.disconnect — connect() then raises "not enough
+        arguments". Defining it in this class keeps the coroutine in the
+        instance's own MRO lookup. Regression: tests/test_cdp_client_stub.py
+        ::test_disconnect_is_not_shadowed_by_qobject."""
+        await CDPTransport.disconnect(self)
+
     # ---- DOM delegations ----
     async def get_document(self):
         return await dom_get_document(self)

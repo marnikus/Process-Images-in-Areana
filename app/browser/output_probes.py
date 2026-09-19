@@ -7,6 +7,8 @@ Fixes after page reset incorrect image saved:
 
 Per RULE 21 selector priority, RULE 22 correlation token.
 """
+# ideal-size(reason): mostly JS payloads (data) sent as single evaluate() calls;
+# splitting a payload would break its atomicity.
 
 import json
 

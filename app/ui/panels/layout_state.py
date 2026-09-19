@@ -123,6 +123,19 @@ def _window_filter(raw: dict) -> dict:
     return {"closed": closed, "minimized": minimized}
 
 
+def app_state_payload(bridge) -> dict:
+    """Theme + grid/window/undo snapshot for the JS boot call."""
+    return {
+        "theme": bridge.config.get_state("theme", "dark"),
+        "state": {
+            "grid_layout": bridge.config.get_state("grid_layout", None),
+            "window_states": bridge.config.get_state("window_states", None),
+            "undo_history": bridge.undo_service.history()[0],
+            "undo_history_index": bridge.undo_service.history()[1],
+        },
+    }
+
+
 class LayoutStateMixin:
     """Grid layout, window states/presets, app/arena state slots.
 
@@ -257,20 +270,7 @@ class LayoutStateMixin:
 
     @Slot(result=str)
     def get_app_state(self):
-        theme = self.config.get_state("theme", "dark")
-        grid_layout = self.config.get_state("grid_layout", None)
-        window_states = self.config.get_state("window_states", None)
-        hist, idx = self.undo_service.history()
-        payload = {
-            "theme": theme,
-            "state": {
-                "grid_layout": grid_layout,
-                "window_states": window_states,
-                "undo_history": hist,
-                "undo_history_index": idx,
-            }
-        }
-        return json.dumps(payload, ensure_ascii=False)
+        return json.dumps(app_state_payload(self), ensure_ascii=False)
 
     @Slot(result=str)
     def get_arena_state(self):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 R0.1 — One command reproducing metrics-baseline-2026-09-18.md ±1%
-Usage: python tools/metrics_report.py [--json] [--out /tmp/report.json]
+Usage: .venv/bin/python tools/metrics_report.py [--json] [--out /tmp/report.json]
 """
 from __future__ import annotations
 import ast, json, statistics, subprocess, sys
@@ -38,6 +38,7 @@ def count_params(fn, in_cls=False) -> int:
 def collect_py():
     locs, classes, files = [], [], []
     cog_over, nest_over, par_over = [], [], []
+    cog_all = []
     try:
         from cognitive_complexity.api import get_cognitive_complexity as cog_fn
     except Exception:
@@ -64,6 +65,7 @@ def collect_py():
                 if cog_fn:
                     try:
                         cv = cog_fn(node)
+                        cog_all.append(cv)
                         if cv > 15:
                             cog_over.append((cv, loc, str(p.relative_to(ROOT)), node.lineno, node.name))
                     except Exception:
@@ -77,11 +79,11 @@ def collect_py():
             for ch in ast.iter_child_nodes(node):
                 walk(ch, stack + [node])
         walk(tree)
-    return locs, classes, files, cog_over, nest_over, par_over
+    return locs, classes, files, cog_over, nest_over, par_over, cog_all
 
 def radon_cc():
     try:
-        out = subprocess.check_output(["python", "-m", "radon", "cc", "-s", "-j", str(APP)], text=True, timeout=20)
+        out = subprocess.check_output([sys.executable, "-m", "radon", "cc", "-s", "-j", str(APP)], text=True, timeout=20)
         data = json.loads(out)
         blocks = []
         for _, ents in data.items():
@@ -94,7 +96,7 @@ def radon_cc():
 
 def radon_mi():
     try:
-        out = subprocess.check_output(["python", "-m", "radon", "mi", "-s", str(APP)], text=True, timeout=20)
+        out = subprocess.check_output([sys.executable, "-m", "radon", "mi", "-s", str(APP)], text=True, timeout=20)
         vals = []
         for line in out.splitlines():
             if " - " in line:
@@ -179,7 +181,7 @@ def lcom4():
 def vulture_metrics():
     def run_vul(conf):
         try:
-            out = subprocess.check_output(["python", "-m", "vulture", "app", "--min-confidence", str(conf)], text=True, timeout=10, stderr=subprocess.STDOUT)
+            out = subprocess.check_output([sys.executable, "-m", "vulture", "app", "tools/vulture_whitelist.py", "--min-confidence", str(conf)], text=True, timeout=10, stderr=subprocess.STDOUT)
             return out
         except subprocess.CalledProcessError as e:
             # vulture exits 3 when finds dead code, still has output
@@ -229,7 +231,7 @@ def main():
     ap.add_argument("--out", type=str, default="")
     args = ap.parse_args()
 
-    locs, classes, files, cog_over, nest_over, par_over = collect_py()
+    locs, classes, files, cog_over, nest_over, par_over, cog_all = collect_py()
     cc_blocks, cc_over = radon_cc()
     mi_vals = radon_mi()
     cov = coverage_data()
@@ -253,7 +255,7 @@ def main():
     c_over300 = sum(1 for c in classes if c[0] > 300)
 
     report = {
-        "python": {"files": total_files, "lines": total_lines, "funcs": len(locs), "mean": mean_loc, "median": median_loc, "max": max(locs) if locs else 0, "over30": over30, "band_4_20": band, "under4": under4, "classes": len(classes), "c_over150": c_over150, "c_over300": c_over300, "f_over300": over300, "f_over500": over500, "f_ideal": ideal, "cc_max": cc_blocks[0][0] if cc_blocks else 0, "cc_over10": len(cc_over), "cog_max": max([c[0] for c in cog_over]) if cog_over else 0, "cog_over15": len(cog_over), "nest_max": max([n[0] for n in nest_over]) if nest_over else 0, "nest_over4": len(nest_over), "params_over4": len(par_over)},
+        "python": {"files": total_files, "lines": total_lines, "funcs": len(locs), "mean": mean_loc, "median": median_loc, "max": max(locs) if locs else 0, "over30": over30, "band_4_20": band, "under4": under4, "classes": len(classes), "c_over150": c_over150, "c_over300": c_over300, "f_over300": over300, "f_over500": over500, "f_ideal": ideal, "cc_max": cc_blocks[0][0] if cc_blocks else 0, "cc_over10": len(cc_over), "cog_max": max(cog_all) if cog_all else 0, "cog_over15": len(cog_over), "nest_max": max([n[0] for n in nest_over]) if nest_over else 0, "nest_over4": len(nest_over), "params_over4": len(par_over)},
         "mi": {"mean": statistics.mean(mi_vals) if mi_vals else 0, "min": min(mi_vals) if mi_vals else 0, "under20": sum(1 for v in mi_vals if v < 20), "under40": sum(1 for v in mi_vals if v < 40)},
         "coupling": coup, "lcom4": lcom, "coverage": cov["totals"] if cov and "totals" in cov else None,
         "js": jsd, "vulture": vul, "jscpd": jsc,

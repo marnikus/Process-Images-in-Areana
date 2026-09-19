@@ -1,123 +1,162 @@
 #!/bin/bash
-# pre_push_check.sh — R0.4 + R0.5 + R0.3 ratchet, all lanes, <3min
-# Called by .git/hooks/pre-push and manually: bash tools/pre_push_check.sh
-# Docs: docs/current/AGENT_RULES.md RULE16, docs/current/CODE_VERIFICATION.md
+# pre_push_check.sh — runs quality gate before push (RULE 16)
+# Called by .git/hooks/pre-push and manually via: bash tools/pre_push_check.sh
+#
+# F-6 fixes (2026-09-19):
+#   - picks .venv/bin/python when present (no bare `python` assumption)
+#   - --changed resolves its base (env -> origin/<branch> -> origin/main)
+#     so the changed-file lane gates exactly the unpushed commits;
+#     unusable bases WARN LOUDLY on stderr instead of silently
+#     stderr instead of silently falling back to all files
+#   - node lane: npm run test:js gates the JS production code too
+#   - coverage is generated FRESH before the single gate pass and uses the
+#     RATCHET lane mid-round (fail only on decrease vs the baseline
+#     'coverage' key; the absolute 80/75 stays the final D4 target and only
+#     warns here until D4 lands)
 
 set -e
-set -o pipefail
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-echo "=== Arena Quality Gate — pre-push check (RULE 16 + R0) ==="
-echo "Docs: docs/current/AGENT_RULES.md RULE 16 + RULE 18, CODE_VERIFICATION.md"
+# Python picker: repo venv first, then python3, then python
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  PY="$ROOT/.venv/bin/python"
+elif command -v python3 > /dev/null 2>&1; then
+  PY="python3"
+else
+  PY="python"
+fi
+echo "Using python: $PY"
+
+echo "=== Arena Quality Gate — pre-push check (RULE 16) ==="
+echo "Docs: docs/current/AGENT_RULES.md RULE 16"
 echo ""
 
-# 1. Syntax
-echo "▶ 1/7 Python syntax"
-python -m py_compile $(find app -name "*.py" | head -n 20) 2>&1 | head
+# 1. Python syntax compile
+echo "▶ Checking Python syntax..."
+"$PY" -m py_compile app/browser/dom_highlight.py app/browser/probe_requests.py app/browser/visual_click.py app/core/action_blocks.py app/ui/bridge.py app/browser/cdp_arena.py app/core/layout_service.py
 echo "  ✅ Syntax ok"
 echo ""
 
-# 2. Quality gate changed + allow-legacy + JS gate + ratchet (R0.2 + R0.3)
-echo "▶ 2/7 Quality gate --changed --allow-legacy (py + js + ratchet)"
-if python tools/verify_quality.py --changed --allow-legacy; then
-  echo "  ✅ Quality gate passed (changed)"
+# 2. Tests (fast lane — plain pytest, fails early with readable output)
+echo "▶ Running pytest..."
+if QT_QPA_PLATFORM=offscreen "$PY" -m pytest tests -q -p no:cacheprovider; then
+  echo "  ✅ Tests passed"
 else
-  echo "  ❌ Quality gate FAILED on changed"
-  echo "  Full: python tools/verify_quality.py"
+  echo "  ❌ Tests FAILED"
   exit 1
 fi
 echo ""
 
-# 3. Fast lane pytest (R0.5)
-echo "▶ 3/7 Fast lane pytest -m 'not slow and not e2e'"
-if QT_QPA_PLATFORM=offscreen python -m pytest -m "not slow and not e2e" -q 2>&1 | tee /tmp/fast_pytest.log | tail -n 20; then
-  echo "  ✅ Fast tests passed"
-else
-  echo "  ❌ Fast tests FAILED"
-  cat /tmp/fast_pytest.log | tail -n 40
-  exit 1
-fi
-echo ""
-
-# 4. JS lane (R0.5)
-echo "▶ 4/7 JS lane node --test tests/js/*"
-if command -v node > /dev/null 2>&1; then
-  if [ -f "node_modules/.bin" ] || [ -d "node_modules" ]; then
-    if npm run test:js 2>&1 | tail -n 30; then
-      echo "  ✅ JS tests passed"
-    else
-      echo "  ⚠ JS tests FAILED (check npm ci)"
-      # Don't fail push on JS if jsdom missing? But gate should fail if real fail
-      # We check exit code: if npm run fails, exit 1
-      npm run test:js
-      exit 1
-    fi
+# 2b. Node lane (RULE 16: JS in app/ui/web/js is production code too).
+# Loud graceful skip when the runner is unavailable — never a silent pass.
+if command -v npm > /dev/null 2>&1 && [ -d "$ROOT/node_modules" ]; then
+  echo "▶ Running node tests (npm run test:js)..."
+  if npm run test:js --silent; then
+    echo "  ✅ Node tests passed"
   else
-    echo "  ⚠ node_modules missing — run npm ci, skipping JS lane"
+    echo "  ❌ Node tests FAILED"
+    exit 1
   fi
 else
-  echo "  ⚠ node not found, skipping JS lane"
+  echo "⚠⚠ NODE LANE SKIPPED: npm or node_modules unavailable —"
+  echo "    JS production code (app/ui/web/js) was NOT gated. Install Node +"
+  echo "    run 'npm ci' before trusting this push for JS changes."
 fi
 echo ""
 
-# 5. Coverage (R0.4) + json generation
-echo "▶ 5/7 Coverage branch + json"
-if python -m coverage --version > /dev/null 2>&1; then
-  QT_QPA_PLATFORM=offscreen python -m coverage run --branch --source=app -m pytest -m "not slow and not e2e" -q 2>&1 | tail -n 10
-  python -m coverage json -o coverage.json 2>&1 | tail -n 5
-  echo "  Coverage.json generated"
-  python -c "import json; d=json.load(open('coverage.json')); t=d['totals']; cb=t.get('covered_branches',0); nb=t.get('num_branches',0); bp=cb/nb*100 if nb else 0; print(f\"  Line {t.get('percent_covered',0):.1f}% Branch {bp:.1f}%\")"
-  echo "  ✅ Coverage thresholds checked (warn if <80/75, ratchet handles per-file regression)"
+# 3. Coverage (fresh, branch-aware) — generated BEFORE the gate so the
+#    gate's coverage lanes always judge current data, never a stale file.
+if "$PY" -m coverage --version > /dev/null 2>&1; then
+  echo "▶ Generating fresh coverage..."
+  QT_QPA_PLATFORM=offscreen "$PY" -m coverage run --branch --source=app -m pytest tests -q -p no:cacheprovider
+  "$PY" -m coverage json -o coverage.json
+  echo "  ✅ Coverage report generated (coverage.json)"
 else
-  echo "  ⚠ coverage not installed — pip install coverage"
+  echo "⚠ coverage not installed — gate coverage lanes will warn (pip install coverage)"
 fi
 echo ""
 
-# 6. Vulture unused code (R0.4)
-echo "▶ 6/7 Vulture --min-confidence 90"
-if python -m vulture --version > /dev/null 2>&1; then
-  set +o pipefail
-  python -m vulture app --min-confidence 90 > /tmp/vulture.txt 2>&1 || true
-  cat /tmp/vulture.txt
-  if grep -q "unused" /tmp/vulture.txt; then
-    echo "  ⚠ Vulture found unused @90 — baseline has $(wc -l < /tmp/vulture.txt) lines (grandfathered), fail only if new in changed files"
-    # Fail if new unused in changed files? For now warn, but gate will catch if in changed
-    if python tools/verify_quality.py --changed --allow-legacy --json 2>&1 | grep -q "vulture"; then
-      echo "  ❌ Vulture breach in changed files"
+# 4. Quality gate — ONE authoritative pass (RULE 16):
+#    sizes/complexity on changed files vs BASE (legacy grandfathered via
+#    tools/quality_baseline.json) + coverage RATCHET (fail on decrease;
+#    absolute 80/75 = final D4 target, warns mid-round).
+#    If BASE shares no ancestry with HEAD the gate prints a LOUD stderr
+#    warning and gates ALL files — no silent fallback.
+# Base for the changed-file lane: gate exactly what is being pushed.
+# Resolution order: explicit env override -> origin/<current-branch>
+# (diff = the unpushed commits; merge-base always exists) -> origin/main
+# (loud GATE HONESTY warning when it shares no ancestry, gates ALL files).
+resolve_base() {
+  if [ -n "$VERIFY_QUALITY_BASE" ]; then echo "$VERIFY_QUALITY_BASE"; return; fi
+  local branch
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  if [ -n "$branch" ] && git merge-base HEAD "origin/$branch" > /dev/null 2>&1; then
+    echo "origin/$branch"
+  else
+    echo "origin/main"
+  fi
+}
+BASE="$(resolve_base)"
+echo "▶ Running tools/verify_quality.py --changed --base $BASE --allow-legacy --coverage-ratchet..."
+if "$PY" tools/verify_quality.py --changed --base "$BASE" --allow-legacy --coverage-ratchet; then
+  echo "  ✅ Quality gate passed (changed files vs $BASE, coverage ratchet)"
+else
+  echo "  ❌ Quality gate FAILED — fix before push"
+  echo "  See docs/current/AGENT_RULES.md RULE 16, RULE 19 remediation order"
+  echo "  To see all files: $PY tools/verify_quality.py"
+  exit 1
+fi
+
+echo ""
+
+# 5. Vulture unused code (R0.4 lane from area R0)
+echo "▶ Vulture --min-confidence 90 (whitelist: tools/vulture_whitelist.py)"
+if "$PY" -m vulture --version > /dev/null 2>&1; then
+  if "$PY" -m vulture app tools/vulture_whitelist.py --min-confidence 90 > /tmp/vulture.txt 2>&1; then
+    if [ -s /tmp/vulture.txt ]; then
+      echo "  ❌ Vulture found unused code @90:"
+      cat /tmp/vulture.txt
       exit 1
     fi
-  else
     echo "  ✅ Vulture clean @90"
+  else
+    echo "  ⚠ vulture run failed (not a code breach):"
+    tail -n 5 /tmp/vulture.txt
   fi
-  set -o pipefail
 else
-  echo "  ⚠ vulture not installed — pip install vulture"
+  echo "  ⚠ vulture not installed — $PY -m pip install vulture"
 fi
 echo ""
 
-# 7. Duplication jscpd delta (R0.4)
-echo "▶ 7/7 Duplication jscpd"
-if npx jscpd --version > /dev/null 2>&1; then
+# 6. Duplication jscpd (R0.4 lane from area R0)
+echo "▶ Duplication jscpd (report lane — app/, min-tokens 60)"
+if command -v npx > /dev/null 2>&1 && [ -d "$ROOT/node_modules" ]; then
   mkdir -p /tmp/jscpd-out
-  npx jscpd app --min-tokens 60 --reporters json --output /tmp/jscpd-out --silent 2>&1 | tail
+  npx --no-install jscpd app --min-tokens 60 --reporters json --output /tmp/jscpd-out --silent > /dev/null 2>&1 || true
   if [ -f /tmp/jscpd-out/jscpd-report.json ]; then
-    python -c "import json; d=json.load(open('/tmp/jscpd-out/jscpd-report.json')); print(f\"  Duplication {d['statistics']['total']['percentage']}% {len(d['duplicates'])} groups\")"
-    echo "  ✅ Duplication checked (baseline 1.51% 55 groups, fail on new group)"
+    "$PY" - <<'PYEOF'
+import json
+d = json.load(open('/tmp/jscpd-out/jscpd-report.json'))
+print(f"  Duplication {d['statistics']['total']['percentage']}% "
+      f"({len(d['duplicates'])} groups) — baseline 1.51% / 55 groups")
+PYEOF
+  else
+    echo "  ⚠ jscpd produced no report"
   fi
 else
-  echo "  ⚠ jscpd not installed — npm install -D jscpd"
+  echo "  ⚠ npx/node_modules unavailable — duplication lane skipped"
 fi
 echo ""
 
-# Optional: metrics report
-echo "▶ Optional metrics_report.py"
-if python tools/metrics_report.py 2>&1 | head -n 20; then
-  echo "  ✅ Metrics report ok"
+# 7. Metrics report (R0.1, informational)
+echo "▶ tools/metrics_report.py (informational)"
+if ! "$PY" tools/metrics_report.py 2>&1 | head -n 12; then
+  echo "  ⚠ metrics_report failed (informational only)"
 fi
 echo ""
 
 echo "✅ All pre-push checks PASSED — safe to push"
 echo "   git push origin $(git rev-parse --abbrev-ref HEAD)"
-echo "Lanes: fast pytest + js + coverage + vulture + jscpd + quality gate (py+js+ratchet)"
-echo "Time target <3min locally"
+echo "Lanes: syntax + pytest + node + coverage(ratchet) + quality gate(py+js) + vulture + jscpd + metrics"

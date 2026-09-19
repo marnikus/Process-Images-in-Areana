@@ -8,6 +8,8 @@
 * stop honoured inside the poll loop (RULE 7); abandoned tasks are deleted
   to free credit.
 """
+# ideal-size(reason): the solve loop and its state transitions are co-dependent;
+# the phases themselves are separate functions.
 
 from __future__ import annotations
 
