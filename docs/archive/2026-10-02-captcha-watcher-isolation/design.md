@@ -124,7 +124,9 @@ attached to), never from a raw `list_tabs` of the whole browser.
   `main` too (PySide6 shim import arc, CDP IPv6 connect message, none captcha-related).
 * `npm run test:js`: 142 pass / 0 fail.
 * `tools/verify_quality.py --js`: 0 fails (all new symbols within RULE 16 hard
-  limits; JS lane clean).
+  limits; JS lane clean); changed-file ratchet lane passes after the reviewed
+  `--record-baseline` (why: `docs/current/QUALITY_RECHECK.md`); coverage
+  85.64 % line / 81.32 % branch (floor was 84.47 / 80.27).
 * Real SDK contract checked against `2captcha-python 2.1.1`:
   `AsyncTwoCaptcha(apiKey, defaultTimeout, recaptchaTimeout, pollingInterval)`,
   `await recaptcha(sitekey=, url=, version='v2', enterprise=, invisible=)` →

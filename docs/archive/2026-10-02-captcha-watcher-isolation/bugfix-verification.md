@@ -116,5 +116,5 @@ the user saw → what the code did → what changed → the test that pins it.
 |---|---|
 | `pytest -q -n 4` | 1,393 passed, 1 skipped, 3 pre-existing environmental failures (identical on `main`: `test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message, `test_verify_quality_tool` xdist flake passes alone) |
 | `npm run test:js` | 142 pass / 0 fail |
-| `tools/verify_quality.py --js` | PASSED — 0 fails, 1 warn (`coverage.json` not generated in this sandbox) |
+| `tools/verify_quality.py --js` | PASSED — 0 fails; `--changed --base origin/main --allow-legacy --coverage-ratchet` PASSED after the reviewed baseline re-record (`docs/current/QUALITY_RECHECK.md`); coverage 85.64 % line / 81.32 % branch |
 | `tests/test_bridge_slots.py` | frozen surface 134 slots, packing table updated |

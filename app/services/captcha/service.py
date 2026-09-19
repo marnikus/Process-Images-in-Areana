@@ -229,14 +229,6 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     return outcome
 
 
-async def _dialog_still_visible(ctx: CaptchaCtx) -> bool:
-    """H4: can a human still solve this challenge right now? (fail closed)."""
-    try:
-        return bool(await ctx.ctrl.is_security_dialog_visible())
-    except Exception:
-        return False
-
-
 async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
                            svc: Optional["CaptchaService"], rep: Dict[str, Any]) -> SolveOutcome:
     """Wait-only policy: the pipeline never solves; the Watcher (when ON) or

@@ -18,7 +18,7 @@ import threading
 from pathlib import Path
 
 from app.ui.qt_compat import Slot, clipboard_copy
-from app.ui.panels.queue_scan_folder import FolderPickMixin, as_folder_dict, push_folder_undo, resolve_pick_start  # noqa: F401 — compat re-exports
+from app.ui.panels.queue_scan_folder import FolderPickMixin, as_folder_dict
 from app.ui.services import arena_serialize, undo_entries
 from app.ui.services import file_service, folder_ai_service
 from app.ui.services.scan_service import merge_scanned, scan_folder_pure

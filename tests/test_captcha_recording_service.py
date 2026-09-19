@@ -116,3 +116,42 @@ async def test_recording_start_failure_does_not_change_manual_flow(monkeypatch, 
     outcome = await handle_captcha(CaptchaCtx(ctrl=FakeCtrl([True, False]), pool=pool,
                                                bridge=bridge, tab_id="t1"))
     assert outcome.status == "manual"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_wait_failure_aborts_recording_and_reraises(monkeypatch, isolated_config_dir):
+    """A crash inside the wait must abort the recording (never leave it open) and propagate."""
+    instant_sleep(monkeypatch)
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    service = CaptchaService(str(isolated_config_dir), bridge._log)
+    spy = RecordingSpy()
+    service.recordings = spy
+    bridge._captcha_service = lambda: service
+
+    class CrashCtrl(FakeCtrl):
+        async def show_watcher_overlay(self, *a, **k):
+            raise KeyboardInterrupt()  # BaseException, not Exception → must still abort
+
+    with pytest.raises(KeyboardInterrupt):
+        await handle_captcha(CaptchaCtx(ctrl=CrashCtrl([True]), pool=pool, bridge=bridge, tab_id="t1"))
+    assert spy.calls[0][0] == "start"
+    assert spy.calls[-1][0] == "abort" and "KeyboardInterrupt" in spy.calls[-1][2]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_detect_without_url_falls_back_to_pool_page_url(monkeypatch, isolated_config_dir):
+    from app.services.captcha.service import detect_signal
+
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    bridge = make_bridge(pool, isolated_config_dir)
+    ctrl = FakeCtrl([True], detect={"visible": True, "kind": "recaptcha_v2", "sitekey": "k", "url": ""})
+    sig = await detect_signal(CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1"))
+    assert sig.page_url == "https://arena.ai/image/direct"  # pool page url used
+    pool.get_page = lambda tab_id: (_ for _ in ()).throw(RuntimeError("pool gone"))
+    sig = await detect_signal(CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1"))
+    assert sig.page_url == ""  # fail open, never raises
