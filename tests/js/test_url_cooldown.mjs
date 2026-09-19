@@ -14,17 +14,31 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const baseDir = path.resolve(__dirname, '../../app/ui/web/js/panels/url-list');
+const files = ['store.js','render.js','matching.js','cooldown.js','actions.js','../url-list.js'];
 const panelPath = path.resolve(__dirname, '../../app/ui/web/js/panels/url-list.js');
-const panelCode = fs.readFileSync(panelPath, 'utf-8');
+
+function loadAllCode() {
+  return files.map(f => fs.readFileSync(path.resolve(baseDir, f), 'utf-8')).join('\n');
+}
 
 function loadUrlList() {
   const sandbox = { console, JSON, Math, Object, Array, Map, Set, Error, URL,
-    document: undefined };
+    document: undefined, PagePoolPanel: undefined, LogConsole: { log: ()=>{} } };
   sandbox.self = sandbox;
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(panelCode + '\nthis.__U = UrlList;', sandbox, { filename: 'url-list.js' });
+  const allCode = loadAllCode();
+  vm.runInContext(allCode + '\nthis.__U = UrlList;', sandbox, { filename: 'url-list.js' });
+  // init delegates
+  if (sandbox.__U && sandbox.__U._store === null) {
+    sandbox.__U._store = sandbox.UrlListStore;
+    sandbox.__U._render = sandbox.UrlListRender;
+    sandbox.__U._matching = sandbox.UrlListMatching;
+    sandbox.__U._actions = sandbox.UrlListActions;
+    sandbox.__U._cooldown = sandbox.UrlListCooldown;
+  }
   return sandbox.__U;
 }
 
@@ -161,13 +175,20 @@ describe('sticky row-tab binding (F10)', () => {
     const pages = [{ tab_id: 'A', url: 'https://arena.ai/same' },
                    { tab_id: 'B', url: 'https://arena.ai/same' }];
     const sandbox = { console, JSON, Math, Object, Array, Map, Set, Error, URL,
-      document: undefined, PagePoolPanel: { snapshot: { pages } } };
+      document: undefined, PagePoolPanel: { snapshot: { pages } }, LogConsole: { log: ()=>{} } };
     sandbox.self = sandbox;
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.createContext(sandbox);
-    const code = fs.readFileSync(panelPath, 'utf-8');
-    vm.runInContext(code + '\nthis.__U = UrlList;', sandbox);
+    const allCode = loadAllCode();
+    vm.runInContext(allCode + '\nthis.__U = UrlList;', sandbox);
+    if (sandbox.__U && sandbox.__U._store === null) {
+      sandbox.__U._store = sandbox.UrlListStore;
+      sandbox.__U._render = sandbox.UrlListRender;
+      sandbox.__U._matching = sandbox.UrlListMatching;
+      sandbox.__U._actions = sandbox.UrlListActions;
+      sandbox.__U._cooldown = sandbox.UrlListCooldown;
+    }
     assert.equal(sandbox.__U.matchPoolPage('https://arena.ai/same', 'B').tab_id, 'B');
     assert.equal(sandbox.__U.matchPoolPage('https://arena.ai/same', '').tab_id, 'A');
   });
@@ -183,10 +204,18 @@ describe('rate-limit penalty field (3rd cooldown input)', () => {
     const sandbox = { console, JSON, Math, Object, Array, Map, Set, Error, URL,
       document: { getElementById: (id) => elements[id] || null },
       App: { bridge },
-      LogConsole: { log: () => {} } };
+      LogConsole: { log: () => {} }, PagePoolPanel: undefined };
     sandbox.self = sandbox; sandbox.window = sandbox; sandbox.globalThis = sandbox;
     vm.createContext(sandbox);
-    vm.runInContext(panelCode + '\nthis.__U = UrlList;', sandbox, { filename: 'url-list.js' });
+    const allCode = loadAllCode();
+    vm.runInContext(allCode + '\nthis.__U = UrlList;', sandbox, { filename: 'url-list.js' });
+    if (sandbox.__U && sandbox.__U._store === null) {
+      sandbox.__U._store = sandbox.UrlListStore;
+      sandbox.__U._render = sandbox.UrlListRender;
+      sandbox.__U._matching = sandbox.UrlListMatching;
+      sandbox.__U._actions = sandbox.UrlListActions;
+      sandbox.__U._cooldown = sandbox.UrlListCooldown;
+    }
     return { u: sandbox.__U, captured, elements };
   }
 

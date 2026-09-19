@@ -13,17 +13,29 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const panelPath = path.resolve(__dirname, '../../app/ui/web/js/panels/url-list.js');
-const panelCode = fs.readFileSync(panelPath, 'utf-8');
+const baseDir = path.resolve(__dirname, '../../app/ui/web/js/panels/url-list');
+const files = ['store.js','render.js','matching.js','cooldown.js','actions.js','../url-list.js'];
+
+function loadAllCode() {
+  return files.map(f => fs.readFileSync(path.resolve(baseDir, f), 'utf-8')).join('\n');
+}
 
 function loadUrlList() {
   const sandbox = { console, JSON, Math, Object, Array, Map, Set, Error, URL,
-    document: undefined };
+    document: undefined, PagePoolPanel: undefined, LogConsole: { log: ()=>{} } };
   sandbox.self = sandbox;
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(panelCode + '\nthis.__U = UrlList;', sandbox, { filename: 'url-list.js' });
+  const allCode = loadAllCode();
+  vm.runInContext(allCode + '\nthis.__U = UrlList;', sandbox, { filename: 'url-list.js' });
+  if (sandbox.__U && sandbox.__U._store === null) {
+    sandbox.__U._store = sandbox.UrlListStore;
+    sandbox.__U._render = sandbox.UrlListRender;
+    sandbox.__U._matching = sandbox.UrlListMatching;
+    sandbox.__U._actions = sandbox.UrlListActions;
+    sandbox.__U._cooldown = sandbox.UrlListCooldown;
+  }
   return sandbox.__U;
 }
 

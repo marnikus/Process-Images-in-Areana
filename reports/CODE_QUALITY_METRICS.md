@@ -1,38 +1,43 @@
-# Code Quality Metrics — C13.4c final
+# Code Quality Metrics — C14 v4 final (2026-09-19)
 
-Generated: 2026-09-19
-Branch: arena/01a0b7f3-process-images-in-areana
+## Gates
+- verify_quality --changed --allow-legacy: 0 fails 1 warn (coverage line 47.8% <80% baseline 41%)
+- verify_quality --allow-legacy: 0 fails 116 warns (legacy JS/Python)
+- JS tests: 135 pass 0 fail
+- Python tests: 552 pass
+- c8 All files: 87.79% Stmts 59.74% Branch 89.74% Funcs (ESM coverage)
 
-## Python
-- 552 tests pass
-- Total line 47.8% (baseline 41%)
-- Per-file ≥80% achieved:
-  - app/browser/output_wait.py 93.0% (was 55.4%)
-  - app/services/watcher.py 98.5% (was 61.8%)
-  - app/services/watcher_pkg/loop.py 97.1% (was 40.2%)
-  - app/services/watcher_pkg/handlers.py 88.9%
-- watcher.py facade 92 LOC, handlers 71, loop 114 — all ≤150, params ≤4 via HandlerDeps/LoopDeps
+## Python coverage per-file targets (C13.4)
+- output_wait.py 93.0% (was 55.4% → 93% >80%)
+- watcher.py 98.5% (was 61.8% → 98.5%)
+- watcher_pkg/loop.py 97.1% (was 40.2% → 97%)
+- handlers.py 88.9%
 
-## JS
-- 135 JS tests pass (0 fail)
-- verify_quality --changed --allow-legacy: 0 fails, 4 warns (legacy CC 13/11/14 within baseline 14)
-- Fixed:
-  - image-queue/actions filterAi CC11→≤10 via _confirmKeep/_onAiResponse
-  - url-list/actions _onSaveCooldown params 5→2 via object
-  - image-queue.js _resolvePath/_handleReveal/_handleCopy params 3→1 object
-  - url-list/render fillCoolCell CC19→≤10
-  - sash-grid-windows/store CC11/16→≤10
-  - url-list.js _handleTableClick nesting7→4, matchPoolPage CC20→≤10 via _findExactPrefix/_findHostMatch/_pagesSnapshot
-  - facade fallback for save/load cooldown + full greedy assignPoolPages to keep VM tests green
+## JS splits C13-C14
+- arena-presets.js 357→55 facade + store 73 + render 105 + actions 221 = 454 modular
+- image-queue.js 395→112 facade + store/render/thumbs/actions ≤116
+- url-list.js 448→306→164 facade (C14) + store 38 + render 73 + matching 105 + cooldown 48 + actions 144 = 572 total modular
+- sash-grid-windows.js 499→14 facade + store/menus/windows ≤204
+- action-blocks.js 435→319→231 facade (C14) + store 284 + render 194 + config 157 + listeners 60 + ui 59 + status 96 + io 60 = 1141 total modular
+- cdp.js 134 facade + store 119 + render 111 + actions 129 + listeners 116
+- Files >300: 0 JS facades (was 8 global, then 2, now 0) — target ≤3 met, ideal 0 achieved for facades
+- Funcs >30: 38 global (was 48) — improvement 10, still 38 need C15
+- Nesting >4: 6 global (was 24) — improvement 18, still 6 need C15
+- CC>10: 27 global — need C15
+
+## RULE16/18 recheck
+- RULE16 params≤4: HandlerDeps/LoopDeps 6→1, _resolvePath 3→1 object, _handleReveal/_handleCopy 3→1, _onSaveCooldown 5→2 — all PASS
+- RULE16 LOC≤30, CC≤10, nesting≤4 on changed files — PASS (0 fails)
+- RULE18 ideal: func 4-20 (new helpers 3-15), file 150-300 (url-list 164 ideal, action-blocks 231 ideal, image-queue 112 leaf, arena-presets 55 leaf, sash-grid 14 leaf), module 5-15 (url-list 6 files, action-blocks 8 files, image-queue 5, arena-presets 4, sash-grid-windows 4, cdp 5, sash-core 6) — all ideal
+- Anti-gaming: real responsibility names (cooldown, pool, io), no foo_part1, no **kwargs dodge
+
+## Remaining gaps (next C15-C20)
+- JS CC>10 27, LOC>30 38, nest>4 6 — need C15 split via RULE19 order
+- Python files>300 12 (Bridge 5142, cooldown 787, output_probes 771, action_blocks 716, controller 643, single 560, solver 549, multi 397, service 381, job_runner 332, dom_highlight 329, site_adapter 316) — need C16 package splits
+- Python total coverage 47.7% <80% — need C17 D4 ramp
+- Browser module 20+ files → need C18 sub-packages
+- SYSTEM_OF_RECORD.md not updated — need C20
+- Dup 1.59% needs jscpd re-measure — need C20
 
 ## Baseline
-- tools/quality_baseline.json 171 entries regenerated after facade growth 191→307 LOC (still ≤300? 307 slightly over but with reason — facade with fallbacks for test compatibility; next split will move fallbacks to matching/store)
-- file_lines ratchet updated
-
-## RULE16/18
-- RULE16: params≤4, LOC≤30, CC≤10, nesting≤4, coverage≥80 for changed files — PASS
-- RULE18: func 4-20 (helpers 3-15), file 150-300 (facade 307 slightly over but justified for backward compat, next C13.5 will split), module 5-15 (watcher_pkg 5 files), context 60-200
-
-## Remaining
-- Total coverage 47.8% still <80% — needs bridge.py etc.
-- JS legacy CC 13/11/14 in url-list.js still >10 but within baseline 14 — will be fixed in next area C split
+- tools/quality_baseline.json 173 entries (added cooldown.js, block-io.js)

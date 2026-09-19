@@ -1251,11 +1251,11 @@
     "max_params": 2
   },
   "app/ui/web/js/panels/action-blocks.js": {
-    "file_lines": 320,
-    "func_count": 112,
+    "file_lines": 232,
+    "func_count": 109,
     "js": true,
-    "max_cc": 8,
-    "max_func_loc": 21,
+    "max_cc": 6,
+    "max_func_loc": 16,
     "max_nest": 2,
     "max_params": 3
   },
@@ -1267,6 +1267,15 @@
     "max_func_loc": 20,
     "max_nest": 2,
     "max_params": 3
+  },
+  "app/ui/web/js/panels/action-blocks/block-io.js": {
+    "file_lines": 60,
+    "func_count": 11,
+    "js": true,
+    "max_cc": 7,
+    "max_func_loc": 16,
+    "max_nest": 2,
+    "max_params": 2
   },
   "app/ui/web/js/panels/action-blocks/block-listeners.js": {
     "file_lines": 61,
@@ -1539,13 +1548,13 @@
     "max_params": 2
   },
   "app/ui/web/js/panels/url-list.js": {
-    "file_lines": 307,
-    "func_count": 74,
+    "file_lines": 165,
+    "func_count": 51,
     "js": true,
-    "max_cc": 14,
-    "max_func_loc": 28,
-    "max_nest": 2,
-    "max_params": 4
+    "max_cc": 7,
+    "max_func_loc": 19,
+    "max_nest": 1,
+    "max_params": 3
   },
   "app/ui/web/js/panels/url-list/actions.js": {
     "file_lines": 145,
@@ -1555,6 +1564,15 @@
     "max_func_loc": 12,
     "max_nest": 2,
     "max_params": 3
+  },
+  "app/ui/web/js/panels/url-list/cooldown.js": {
+    "file_lines": 49,
+    "func_count": 9,
+    "js": true,
+    "max_cc": 10,
+    "max_func_loc": 12,
+    "max_nest": 2,
+    "max_params": 2
   },
   "app/ui/web/js/panels/url-list/matching.js": {
     "file_lines": 106,
