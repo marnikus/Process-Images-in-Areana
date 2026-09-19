@@ -124,11 +124,20 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   green, gate 83→82 (bridge 21→20: the planned set_watcher_config
   loc), Bridge methods 95→83. Deliberate changes: none (dead
   `import asyncio` in clear-body dropped — it was unused).
-- **R6 — `page_pool` (9).** Move pool/cooldown slots; `_do_connect_page_pool`
-  + `_reset_stuck_page` → module funcs (run_state calls);
-  `_persist_cooldowns` → Bridge delegation to run_state (contract §2);
-  delete `_restore_*`, `_cooldowns_path` after flipping to run_state
-  (verify callers). Kills 0 fails, deletes ~100 LOC.
+- **R6 — `page_pool` (9).** ✅ done. 9 slots moved; `_reset_stuck_page`
+  → module func; `_do_connect_page_pool` split (connect-client /
+  finish-join phases, ≤4 params); `_persist_cooldowns` → Bridge
+  delegation to run_state (contract §2, `_emit_pool_status` unchanged);
+  deleted `_cooldowns_path` + 4 restore twins + `_pooled_ids` after
+  flipping all callers to run_state (bridge/run_state restore proven
+  equivalent line-by-line incl. log strings and miss/order semantics;
+  a missed 3rd `_do_connect_page_pool` caller in `_join_new_tabs` was
+  caught by the post-surgery sweep and flipped too). Cooldown imports
+  hoisted (run_state already top-imports them: zero marginal boot
+  risk); browser imports stay lazy (R5 precedent). Verified: 119/119
+  slots, mixin 139 LOC, all funcs ≤20/CC ≤7, 551 green, gate 82→82
+  (kills 0 by design), Bridge methods 83→66, bridge −276 lines.
+  Deliberate changes: none.
 - **R7 — `browser_tabs` (7).** Move tab slots; split `_do_connect_tab`
   (phases), `_do_find_tab`, `_report_auto_plan`, `_do_diagnose_chrome` (CC);
   auto-plan helpers → module funcs (reuse `app/services/auto_connect.py`);

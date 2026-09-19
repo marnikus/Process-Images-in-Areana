@@ -32,6 +32,7 @@ from app.ui.panels import blocks_stack, layout_state
 from app.ui.panels.queue_scan import push_queue_undo, selected_images
 from app.ui.panels.watcher_captcha import (
     captcha_service, get_watcher_cdp_controller, on_watcher_state)
+from app.services.run_state import persist_cooldowns, pooled_ids, restore_page_state
 from app.ui.panels.url_queue import (
     _URL_GATE_MSG,
     _add_missing_rows,
@@ -49,6 +50,7 @@ from app.ui.panels.url_queue import UrlQueueMixin
 from app.ui.panels.queue_scan import QueueScanMixin
 from app.ui.panels.app_settings import AppSettingsMixin
 from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
+from app.ui.panels.page_pool import PagePoolMixin, do_connect_page_pool
 from app.ui.services import arena_serialize, undo_entries
 from app.core.action_blocks import (
     default_stack,
@@ -67,7 +69,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -254,91 +256,9 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
             pass
         return title, url
 
-    def _cooldowns_path(self):
-        """config/cooldowns.json next to the other stores."""
-        try:
-            base = getattr(self.config, "dir", None)
-            if base:
-                return str(Path(base) / "cooldowns.json")
-        except Exception:
-            pass
-        return "config/cooldowns.json"
-
     def _persist_cooldowns(self):
-        """Autosave wall-clock timers + job counters across restarts."""
-        try:
-            if not self._page_pool:
-                return
-            from app.persistence.cooldown_store import save_pool_snapshot
-            save_pool_snapshot(self._cooldowns_path(), self._page_pool)
-            if not self._persist_ok:
-                self._persist_ok = True
-                self._log("✅ Cooldown autosave recovered", "success")
-        except Exception as e:
-            if self._persist_ok:
-                self._persist_ok = False
-                self._log(f"⚠ Cooldown autosave failing ({e}) — timers will NOT survive restart", "warn")
-
-    def _restore_job_counter(self, tab_id: str, page_url: str):
-        """Re-apply one tab's saved job counter (never moves backwards)."""
-        try:
-            from app.persistence.cooldown_store import load_stats, normalize_url
-            from app.services.cooldown_service import restore_page_stats
-            stats = load_stats(self._cooldowns_path())
-            restore_page_stats(self._page_pool, tab_id, normalize_url(page_url), stats)
-        except Exception:
-            pass
-
-    def _log_restore_miss(self, tab_id: str, page_url: str, entries: dict, report: dict):
-        """Loud miss: file-level notes once, tab-level mismatch per tab."""
-        if report.get("live", 0) == 0:
-            if self._restore_note_done:
-                return
-            self._restore_note_done = True
-            if not report.get("exists"):
-                self._log("⏳ No saved timers file yet — nothing to resume", "info")
-            elif report.get("dropped"):
-                self._log(f"⏳ Saved timer(s) already expired while app was closed "
-                          f"({len(report['dropped'])} dropped) — tab starts ready", "info")
-            else:
-                self._log("⏳ Saved timers file is empty — nothing to resume", "info")
-            return
-        want = f"{tab_id[:12]} / {page_url[:60]}"
-        have = ", ".join(f"{k[:8]}:{(v.get('url', '') if isinstance(v, dict) else '')[:40]}"
-                         for k, v in list(entries.items())[:5])
-        self._log(f"⚠ Cooldown restore missed for {want} — {report['live']} live saved timer(s) "
-                  f"for other tabs ({have}); tab ids/URLs changed since save?", "warn")
-
-    def _apply_restored_entry(self, path: str, entries: dict, tab_id: str, entry: dict):
-        """Apply a consumed entry: persist it back, announce, emit."""
-        from app.persistence.cooldown_store import save_entries
-        from app.services.cooldown_service import restore_cooldown_entry
-        if not restore_cooldown_entry(self._page_pool, tab_id, entry):
-            return
-        save_entries(path, entries)
-        page = self._page_pool.get_page(tab_id)
-        left = page.remaining_seconds() if page else 0
-        self._log(f"⏳ Restored cooldown for {tab_id[:12]}: {left // 60:02d}:{left % 60:02d} left (timer kept running while app was closed)", "info")
-        self._emit_pool_status()
-
-    def _restore_page_state(self, tab_id: str):
-        """Re-apply persisted wall-clock pause + job counter after restart."""
-        try:
-            if not self._page_pool or not tab_id:
-                return
-            from app.persistence.cooldown_store import consume_entry_for, describe_cooldown_file, load_entries
-            path = self._cooldowns_path()
-            entries = load_entries(path)
-            page = self._page_pool.get_page(tab_id)
-            page_url = getattr(page, "url", "") if page else ""
-            _key, entry = consume_entry_for(entries, tab_id, page_url, self._pooled_ids())
-            self._restore_job_counter(tab_id, page_url)
-            if not entry:
-                self._log_restore_miss(tab_id, page_url, entries, describe_cooldown_file(path))
-                return
-            self._apply_restored_entry(path, entries, tab_id, entry)
-        except Exception as e:
-            self._log(f"Cooldown restore skipped: {e}", "warn")
+        # Contract §2: run_state owns cooldown persistence.
+        return persist_cooldowns(self)
 
     def _on_cdp_error(self, err_msg: str):
         try:
@@ -601,105 +521,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
 
     # ---- watcher win — passive recheck every x ms for generating icon or captcha ----
     # ---- PagePool — multi-page steady/busy tracking ----
-    @Slot(result=str)
-    def get_page_pool_status(self):
-        try:
-            if not self._page_pool:
-                return json.dumps({"total": 0, "steady": 0, "busy": 0, "cooling": 0, "free": 0, "pages": []})
-            try:
-                from app.services.cooldown_service import refresh_expired
-                for _tid in refresh_expired(self._page_pool):
-                    self._log(f"✅ Page {_tid[:12]} cooldown expired — STEADY ready", "success")
-            except Exception:
-                pass
-            snap = self._page_pool.status_snapshot()
-            self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
-            self._persist_cooldowns()
-            return json.dumps(snap, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-
-    @Slot(result=str)
-    def clear_page_pool(self):
-        try:
-            if not self._page_pool:
-                return json.dumps({"ok": True, "cleared": 0})
-            snap = self._page_pool.status_snapshot()
-            count = snap.get("total", 0)
-            # Clear internal dicts
-            try:
-                self._page_pool._pages.clear()
-                self._page_pool._clients.clear()
-                self._page_pool._controllers.clear()
-            except Exception:
-                pass
-            try:
-                from app.persistence.cooldown_store import save_entries
-                save_entries(self._cooldowns_path(), {})
-            except Exception:
-                pass
-            self._emit_pool_status()
-            self._log(f"Page pool cleared {count} pages", "warn")
-            return json.dumps({"ok": True, "cleared": count})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(str, result=str)
-    def connect_page_pool(self, ws_url: str):
-        try:
-            if not self._page_pool:
-                return json.dumps({"ok": False, "error": "pool not initialized"})
-            if not ws_url:
-                return json.dumps({"ok": False, "error": "empty ws_url"})
-            self._log(f"🔗 Adding tab to pool {ws_url[:80]}… steady", "info")
-            self._schedule_coro(self._do_connect_page_pool(ws_url))
-            return json.dumps({"ok": True})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(str, result=str)
-    def disconnect_page_pool(self, tab_id: str):
-        try:
-            if not self._page_pool:
-                return json.dumps({"ok": False, "error": "pool not initialized"})
-            ok = self._page_pool.remove_page(tab_id)
-            self._emit_pool_status()
-            if ok:
-                self._log(f"Pool page {tab_id[:12]} removed", "info")
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "not found"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(result=str)
-    def get_cooldown_config(self):
-        try:
-            from app.core.cooldown import config_to_dict
-            from app.services.cooldown_service import load_config
-            cfg = load_config(self.config.get_state)
-            return json.dumps({"ok": True, "config": config_to_dict(cfg)}, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(str, result=str)
-    def set_cooldown_config(self, cfg_json: str):
-        try:
-            from app.core.cooldown import clamp_seconds
-            data = json.loads(cfg_json or "{}")
-            enabled = bool(data.get("enabled", True))
-            min_s = clamp_seconds(data.get("min_seconds", 300), 300)
-            pen_s = clamp_seconds(data.get("captcha_penalty_seconds", 900), 900)
-            rl_s = clamp_seconds(data.get("rate_limit_penalty_seconds", 1800), 1800)
-            self.config.set_state(cooldown_enabled=enabled, cooldown_min_seconds=min_s,
-                                  cooldown_captcha_penalty_seconds=pen_s,
-                                  cooldown_rate_limit_penalty_seconds=rl_s)
-            self._log(f"Cooldown set: enabled={enabled} min={min_s // 60}m penalty={pen_s // 60}m per captcha limit={rl_s // 60}m", "success")
-            return json.dumps({"ok": True, "config": {"enabled": enabled, "min_seconds": min_s,
-                                                      "captcha_penalty_seconds": pen_s,
-                                                      "rate_limit_penalty_seconds": rl_s}}, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
     # ---- 2Captcha solving (opt-in, RULE 20 as amended 2026-09-17) ----
     # WebChannel constraint: slots must live on this QObject (wire format);
     # the lazy getter keeps __init__ untouched. Net line delta of this
@@ -708,96 +529,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     def _captcha_service(self):
         # Seam for main_window + app/services/captcha (watcher_captcha owns the factory).
         return captcha_service(self)
-
-    @Slot(str, result=str)
-    def reset_page_cooldown(self, tab_id: str):
-        try:
-            from app.services.cooldown_service import is_stuck_status, reset_cooldown
-            if not self._page_pool:
-                return json.dumps({"ok": False, "error": "pool not initialized"})
-            page = self._page_pool.get_page(tab_id)
-            if page is None:
-                return json.dumps({"ok": False, "error": "unknown tab"})
-            if is_stuck_status(page.status):
-                return self._reset_stuck_page(tab_id, page)
-            if reset_cooldown(self._page_pool, tab_id):
-                self._emit_pool_status()
-                self._log(f"♻️ Cooldown reset for {(tab_id or '')[:12]} — tab ready", "success")
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "unknown tab"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(str, result=str)
-    def stop_tab_job(self, tab_id: str):
-        """Abort the live job on this tab; it fails as Aborted."""
-        try:
-            from app.services.cooldown_service import request_tab_abort
-            if request_tab_abort(self._page_pool, tab_id):
-                self._log(f"⛔ Stop requested for job on {(tab_id or '')[:12]}", "warn")
-                self._emit_pool_status()
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "no live job on this tab"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    def _reset_stuck_page(self, tab_id: str, page) -> str:
-        """Force-free a stuck page; refuses while its own job is alive."""
-        from app.services.cooldown_service import force_reset_page, tab_has_live_job
-        was = getattr(page.status, "value", page.status)
-        if tab_has_live_job(self._page_pool, tab_id):
-            self._log(f"⚠ Reset refused for {(tab_id or '')[:12]} — job still running on this tab; stop it first", "warn")
-            return json.dumps({"ok": False, "error": "job still running on this tab — stop it first"})
-        if force_reset_page(self._page_pool, tab_id):
-            self._emit_pool_status()
-            self._log(f"♻️ Stuck {was} reset for {(tab_id or '')[:12]} (no run active) — tab ready, fix and run again", "success")
-            return json.dumps({"ok": True})
-        return json.dumps({"ok": False, "error": "unknown tab"})
-
-    @Slot(str, int, result=str)
-    def set_page_cooldown(self, tab_id: str, seconds: int):
-        try:
-            from app.core.cooldown import format_remaining
-            from app.services.cooldown_service import edit_cooldown
-            if not self._page_pool:
-                return json.dumps({"ok": False, "error": "pool not initialized"})
-            if edit_cooldown(self._page_pool, tab_id, int(seconds or 0)):
-                self._emit_pool_status()
-                left = format_remaining(int(seconds or 0))
-                self._log(f"⏳ Cooldown for {(tab_id or '')[:12]} set to {left}", "info")
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "unknown tab or job running"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    async def _do_connect_page_pool(self, ws_url: str):
-        try:
-            from app.browser.cdp_client import CDPClient
-            from app.browser.cdp_arena import CDPArenaController
-            from app.browser.page_status import PageInfo
-            import re
-            m = re.search(r'/devtools/page/([^/]+)$', ws_url)
-            tab_id = m.group(1) if m else ws_url
-            host = self._page_pool._host if self._page_pool else "127.0.0.1"
-            port = self._page_pool._port if self._page_pool else 9222
-            client = CDPClient(host=host, port=port)
-            ok = await client.connect(ws_url)
-            if not ok:
-                self._log(f"❌ Pool connect failed {ws_url[:80]}", "error")
-                return
-            ctrl = CDPArenaController(client, log_callback=lambda msg: self._log(msg, "info"))
-            live_title, live_url = await self._resolve_tab_info(tab_id, ws_url)
-            info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
-            self._page_pool.add_page(info)
-            self._page_pool.register_client(tab_id, client, ctrl)
-            self._restore_page_state(tab_id)
-            self._emit_pool_status()
-            total, free = self._page_pool.get_counts()
-            self._log(f"✅ Pool added {tab_id[:12]} steady — {info.title[:40]} — total {total} free {free}", "success")
-            if total >= 2:
-                self._log(f"✅ {total} tabs in pool ready for parallel — 2+ images will dispatch to different webpages", "success")
-        except Exception as e:
-            self._log(f"Pool connect exception {e}", "error")
 
     @Slot(str, result=str)
     def highlight_image(self, img_id: str):
@@ -1014,13 +745,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
         except Exception as e:
             self._log(f"❌ Tab fetch failed: {e}", "error")
 
-    def _pooled_ids(self) -> set:
-        """Ids currently in the pool; empty when pool is unavailable."""
-        try:
-            return set(self._page_pool._pages.keys())
-        except Exception:
-            return set()
-
     @Slot(str, result=str)
     def auto_connect_scan(self, source: str):
         """Non-blocking auto-connect scan: rows + pool follow open tabs."""
@@ -1075,7 +799,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
         """Pool-join each connectable tab; skips empty sockets."""
         for ws in sockets or []:
             if ws:
-                await self._do_connect_page_pool(ws)
+                await do_connect_page_pool(self, ws)
 
     def _auto_prune_allowed(self, tabs) -> bool:
         """Prune dead rows only with a healthy tab list and no live run."""
@@ -1086,7 +810,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     def _plan_auto_sync(self, tabs, pattern, rows):
         """Plan the scan; attach safe row pruning when allowed."""
         from app.services.auto_connect import live_tab_keys, plan_auto_connect, prunable_row_ids
-        plan = plan_auto_connect(tabs, pattern, rows, self._pooled_ids())
+        plan = plan_auto_connect(tabs, pattern, rows, pooled_ids(self._page_pool))
         if self._auto_prune_allowed(tabs):
             plan.remove = prunable_row_ids(rows, live_tab_keys(tabs))
         return plan
@@ -1284,7 +1008,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
                                 self._emit_pool_status()
                                 total_f, _ = self._page_pool.get_counts() if self._page_pool else (0, 0)
                                 self._log(f"📦 Pool: added primary tab {tab_id[:12]} steady (dedicated failed, using primary) — total {total_f}", "warn")
-                            self._restore_page_state(tab_id)
+                            restore_page_state(self, tab_id)
                 except Exception as e:
                     import traceback as _tb
                     self._log(f"Pool add primary failed: {e} {_tb.format_exc()[-500:]}", "warn")
