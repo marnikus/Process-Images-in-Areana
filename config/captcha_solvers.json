@@ -1,0 +1,14 @@
+{
+  "provider": "2captcha",
+  "solve_timeout_sec": 180,
+  "providers": {
+    "2captcha": {
+      "enabled": true,
+      "api_key": "68919006adc62cd12ff7e00f8b8d4983"
+    },
+    "capmonster": {
+      "enabled": true,
+      "api_key": "68919006adc62cd12ff7e00f8b8d4983"
+    }
+  }
+}
