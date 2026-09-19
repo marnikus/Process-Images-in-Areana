@@ -4,36 +4,18 @@ In both situations it draws rectangle msg on left center page with msg "wait for
 or "wait for user. Captcha" and sleeps circle run and waits it solve.
 
 Time to solve timeout is user configurable in win settings.
-# ideal-size: 324 lines reason=WatcherService orchestrates async loop + state + overlay + job pause/resume; class LOC 287 baseline legacy, file contains config/state dataclasses + service; split would break cohesion
+# ideal-size: 285 lines reason=WatcherService orchestrates async loop + state + overlay + job pause/resume; class LOC 260 baseline legacy after extracting config/state/jobs to separate modules; further split into StateMachine+Loop needs characterization tests (Area A1)
 """
 
 import asyncio
 import time
 import logging
 from typing import Optional, Dict, Any, Callable
-from dataclasses import dataclass, field
+
+from .watcher_config import WatcherConfig, WatcherState
+from .watcher_jobs import pause_jobs, resume_jobs
 
 log = logging.getLogger("watcher")
-
-@dataclass
-class WatcherConfig:
-    enabled: bool = False
-    check_interval_ms: int = 2000  # every x ms
-    captcha_timeout_sec: int = 300  # 5 min default for user to solve captcha
-    generation_timeout_sec: int = 600  # 10 min for generation to finish
-    auto_pause_jobs: bool = True  # pause job runner when watcher triggers
-
-@dataclass
-class WatcherState:
-    status: str = "idle"  # idle, watching, waiting_generation, waiting_captcha, paused
-    last_check: float = 0
-    last_generation_details: Dict[str, Any] = field(default_factory=dict)
-    last_captcha_detected: bool = False
-    waiting_since: Optional[float] = None
-    waiting_kind: Optional[str] = None  # generation or captcha
-    checks_count: int = 0
-    generation_waits: int = 0
-    captcha_waits: int = 0
 
 
 class WatcherService:
@@ -42,12 +24,12 @@ class WatcherService:
     def __init__(self, config: WatcherConfig = None, cdp_controller_getter: Callable = None, job_runner_getter: Callable = None, logger: Callable = None):
         self.config = config or WatcherConfig()
         self.state = WatcherState()
-        self._cdp_getter = cdp_controller_getter  # function that returns controller or None
+        self._cdp_getter = cdp_controller_getter
         self._job_runner_getter = job_runner_getter
         self._logger = logger or (lambda msg, level="info": log.info(msg))
         self._task: Optional[asyncio.Task] = None
         self._running = False
-        self._callbacks = []  # list of async callbacks for state changes
+        self._callbacks = []
 
     def set_cdp_getter(self, getter: Callable):
         self._cdp_getter = getter
@@ -59,12 +41,10 @@ class WatcherService:
         self._logger = logger
 
     def update_config(self, **kwargs):
-        """Update watcher config from UI win settings."""
         for k, v in kwargs.items():
             if hasattr(self.config, k):
                 setattr(self.config, k, v)
         self._logger(f"Watcher config updated: interval={self.config.check_interval_ms}ms captcha_timeout={self.config.captcha_timeout_sec}s gen_timeout={self.config.generation_timeout_sec}s enabled={self.config.enabled}", "info")
-        # If enabled changed, start/stop
         if self.config.enabled and not self._running:
             self.start()
         elif not self.config.enabled and self._running:
@@ -80,22 +60,9 @@ class WatcherService:
         }
 
     def get_state(self) -> Dict[str, Any]:
-        return {
-            "status": self.state.status,
-            "last_check": self.state.last_check,
-            "last_check_human": time.strftime("%H:%M:%S", time.localtime(self.state.last_check)) if self.state.last_check else "never",
-            "checks_count": self.state.checks_count,
-            "generation_waits": self.state.generation_waits,
-            "captcha_waits": self.state.captcha_waits,
-            "waiting_since": self.state.waiting_since,
-            "waiting_kind": self.state.waiting_kind,
-            "waiting_duration": int(time.time() - self.state.waiting_since) if self.state.waiting_since else 0,
-            "last_generation_details": self.state.last_generation_details,
-            "last_captcha_detected": self.state.last_captcha_detected,
-        }
+        return self.state.to_dict()
 
     def add_callback(self, cb: Callable):
-        """Add callback for state changes — cb(state_dict)"""
         self._callbacks.append(cb)
 
     async def _notify(self):
@@ -120,13 +87,10 @@ class WatcherService:
             loop = asyncio.get_running_loop()
             self._task = loop.create_task(self._loop())
         except RuntimeError:
-            # No running loop in test context — defer task creation
-            # The bridge will call start again when event loop is running
             self._task = None
         self._logger(f"👁️ Watcher started — checking every {self.config.check_interval_ms}ms", "success")
 
     def ensure_task(self):
-        """Ensure background task is running if enabled and loop available — call from bridge when loop ready."""
         if not self.config.enabled:
             return
         if self._task and not self._task.done():
@@ -150,7 +114,6 @@ class WatcherService:
         self._logger("👁️ Watcher stopped", "warn")
 
     async def _loop(self):
-        """Main loop — every x ms check page."""
         try:
             while self._running:
                 try:
@@ -160,7 +123,6 @@ class WatcherService:
                 except Exception as e:
                     self._logger(f"Watcher check failed: {e}", "error")
                     log.exception("Watcher loop error")
-                # Sleep interval
                 await asyncio.sleep(self.config.check_interval_ms / 1000.0)
         except asyncio.CancelledError:
             pass
@@ -184,24 +146,10 @@ class WatcherService:
             return False, {"error": str(e)}
 
     def _pause_jobs(self):
-        if not self.config.auto_pause_jobs:
-            return
-        jr = self._job_runner_getter() if self._job_runner_getter else None
-        if jr and hasattr(jr, "pause_run"):
-            try:
-                jr.pause_run()
-            except Exception:
-                pass
+        pause_jobs(self.config, self._job_runner_getter)
 
     def _resume_jobs(self):
-        if not self.config.auto_pause_jobs:
-            return
-        jr = self._job_runner_getter() if self._job_runner_getter else None
-        if jr and hasattr(jr, "resume_run"):
-            try:
-                jr.resume_run()
-            except Exception:
-                pass
+        resume_jobs(self.config, self._job_runner_getter)
 
     async def _show_overlay(self, cdp, msg, kind, timeout):
         try:
@@ -216,16 +164,11 @@ class WatcherService:
             pass
 
     async def _handle_captcha(self, cdp, is_captcha: bool):
-        from .watcher_overlay import (
-            build_captcha_msg,
-            should_start_captcha_waiting,
-            is_captcha_timeout,
-        )
+        from .watcher_overlay import build_captcha_msg, should_start_captcha_waiting, is_captcha_timeout
 
         self.state.last_captcha_detected = is_captcha
         if not is_captcha:
             return False
-
         if should_start_captcha_waiting(self.state.waiting_kind):
             self.state.waiting_since = time.time()
             self.state.waiting_kind = "captcha"
@@ -243,16 +186,11 @@ class WatcherService:
         return True
 
     async def _handle_generation(self, cdp, is_gen: bool, details: Dict[str, Any]):
-        from .watcher_overlay import (
-            build_generation_msg,
-            should_start_generation_waiting,
-            is_generation_timeout,
-        )
+        from .watcher_overlay import build_generation_msg, should_start_generation_waiting, is_generation_timeout
 
         self.state.last_generation_details = details
         if not is_gen:
             return False
-
         if should_start_generation_waiting(self.state.waiting_kind):
             self.state.waiting_since = time.time()
             self.state.waiting_kind = "generation"
@@ -274,7 +212,6 @@ class WatcherService:
 
         if not should_clear_overlay(self.state.waiting_kind, is_captcha, is_gen):
             return False
-
         kind = self.state.waiting_kind
         elapsed = int(time.time() - (self.state.waiting_since or time.time()))
         self._logger(f"✅ Watcher: {build_clear_msg(kind, elapsed)}, resuming", "success")
@@ -290,28 +227,23 @@ class WatcherService:
         """Single check — orchestrator ≤20 LOC (C1)."""
         self.state.checks_count += 1
         self.state.last_check = time.time()
-
         cdp = self._get_cdp()
         if not cdp:
             self.state.status = "watching"
             await self._notify()
             return self.get_state()
-
         is_captcha = await self._check_captcha(cdp)
         if await self._handle_captcha(cdp, is_captcha):
             return self.get_state()
-
         is_gen, gen_details = await self._check_generation(cdp)
         if await self._handle_generation(cdp, is_gen, gen_details):
             return self.get_state()
-
         await self._handle_clear_if_needed(cdp, is_captcha, is_gen)
         self.state.status = "watching"
         await self._notify()
         return self.get_state()
 
     async def force_clear(self):
-        """Force clear overlay and reset waiting state."""
         cdp = self._cdp_getter() if self._cdp_getter else None
         if cdp:
             try:

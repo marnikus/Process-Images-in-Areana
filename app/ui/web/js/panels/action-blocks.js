@@ -1,8 +1,7 @@
-/* action-blocks.js — facade (C7)
-   Delegates to block-store, block-render, block-config, block-listeners.
+/* action-blocks.js — facade (C7/C12)
+   Delegates to block-store, block-render, block-config, block-listeners, block-ui, block-status.
    RULE18: file 150-300 ideal, ≤500 hard limit, func ≤30, CC≤10 via helpers
-   ideal-size: 434 lines reason=facade must keep getter/setter proxies + lifecycle + pause overlay + bridge binding in one place for App compatibility; further split would create circular deps with store/render
- */
+*/
 'use strict';
 
 const ActionBlocksPanel = {
@@ -10,6 +9,8 @@ const ActionBlocksPanel = {
   _render: null,
   _config: null,
   _listeners: null,
+  _ui: null,
+  _status: null,
   _bridgeUnsubs: [],
   _dragSrc: null,
   _isPaused: false,
@@ -33,6 +34,8 @@ const ActionBlocksPanel = {
     this._render = window.ActionBlocksRender;
     this._config = window.ActionBlocksConfig;
     this._listeners = window.ActionBlocksListeners;
+    this._ui = window.ActionBlocksUI;
+    this._status = window.ActionBlocksStatus;
     this._store.loadBuiltin();
     this._store.loadCustom();
     this._store.loadStackPresets();
@@ -56,88 +59,18 @@ const ActionBlocksPanel = {
     }
   },
 
-  attachGlobalHandlers() {
-    window.addEventListener('arena-presets-updated', () => this.load());
-    document.addEventListener('keydown', (e) => this.handleKeydown(e));
-    window.addEventListener('blur', () => this._cleanupDragState());
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this._cleanupDragState();
-    });
-    document.addEventListener('pointerup', () => this._cleanSashLeftovers());
-  },
-
-  _cleanSashLeftovers() {
-    try {
-      const body = document.body;
-      const needsClean = body.classList.contains('sash-dragging') || body.classList.contains('sash-resizing-row');
-      if (!needsClean) return;
-      const sg = window.SashGrid;
-      if (!sg || (!sg._drag && !sg._resize)) {
-        body.classList.remove('sash-dragging', 'sash-resizing-row', 'sash-resizing-col');
-      }
-    } catch {}
-  },
-
-  _cleanupDragState() {
-    try {
-      this._dragSrc = null;
-      const cont = document.getElementById('actionBlocksStack');
-      if (cont) cont.querySelectorAll('.action-block').forEach(el => el.classList.remove('dragging', 'drag-over'));
-      document.body.classList.remove('sash-dragging', 'sash-resizing-row', 'sash-resizing-col');
-      document.querySelectorAll('.sash-active').forEach(el => el.classList.remove('sash-active'));
-      document.querySelectorAll('.sash-drag-clone, .sash-drag-ghost').forEach(el => { if (el.parentNode) el.parentNode.removeChild(el); });
-    } catch {}
-  },
-
-  ensurePauseOverlay() {
-    if (document.getElementById('pauseCornerOverlay')) return;
-    const div = document.createElement('div');
-    div.id = 'pauseCornerOverlay';
-    div.innerHTML = '<span class="material-icons">hourglass_top</span><div><div style="font-size:12px;">ON PAUSE</div><div id="pauseCornerReason" style="font-size:10px; opacity:0.8;">Captcha detected</div></div>';
-    document.body.appendChild(div);
-  },
-
-  _updateBadge(paused, reason) {
-    const badge = document.getElementById('abPauseBadge');
-    if (!badge) return;
-    badge.classList.toggle('hidden', !paused);
-    if (paused) badge.title = reason || 'Paused';
-  },
-
-  _updateCorner(paused, reason) {
-    const corner = document.getElementById('pauseCornerOverlay');
-    if (!corner) return;
-    corner.classList.toggle('visible', !!paused);
-    const reasonEl = document.getElementById('pauseCornerReason');
-    if (reasonEl) reasonEl.textContent = reason || 'Captcha / Security detected';
-  },
-
-  _updateStatus(paused, reason) {
-    const statusEl = document.getElementById('abStatus');
-    if (!statusEl) return;
-    statusEl.textContent = paused ? `Status: ON PAUSE — ${reason || 'Captcha'}` : 'Status: Awaiting run command';
-    statusEl.style.color = paused ? '#FFAA00' : '';
-    statusEl.style.fontWeight = paused ? '700' : '';
-  },
-
-  setPaused(paused, reason) {
-    this._isPaused = !!paused;
-    this._pauseReason = reason || '';
-    this._updateBadge(paused, reason);
-    this._updateCorner(paused, reason);
-    this._updateStatus(paused, reason);
-    if (paused && typeof LogConsole !== 'undefined') LogConsole.log(`⏸ ON PAUSE — ${reason || 'Captcha'}`, 'warn');
-  },
-
-  handleKeydown(e) {
-    if (!e.altKey) return;
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-    const stack = document.getElementById('actionBlocksStack');
-    if (!stack || this.selectedIdx < 0) return;
-    e.preventDefault();
-    if (e.key === 'ArrowUp' && this.selectedIdx > 0) this.moveBlock(this.selectedIdx, this.selectedIdx - 1);
-    if (e.key === 'ArrowDown' && this.selectedIdx < this.blocks.length - 1) this.moveBlock(this.selectedIdx, this.selectedIdx + 1);
-  },
+  attachGlobalHandlers() { this._ui.attachGlobalHandlers(this); },
+  _cleanSashLeftovers() { this._ui._cleanSashLeftovers(); },
+  _cleanupDragState() { this._ui._cleanupDragState(this); },
+  ensurePauseOverlay() { this._ui.ensurePauseOverlay(); },
+  _updateBadge(p, r) { this._status._updateBadge(p, r); },
+  _updateCorner(p, r) { this._status._updateCorner(p, r); },
+  _updateStatus(p, r) { this._status._updateStatus(p, r); },
+  setPaused(p, r) { this._status.setPaused(this, p, r); },
+  _isCaptchaStatus(s) { return this._status._isCaptchaStatus(s); },
+  detectPause(s) { this._status.detectPause(this, s); },
+  _ensureJob(id) { this._status._ensureJob(this, id); },
+  handleKeydown(e) { this._ui.handleKeydown(this, e); },
 
   bindUI() {
     const map = {
@@ -185,61 +118,12 @@ const ActionBlocksPanel = {
     } catch {}
   },
 
-  _ensureJob(jobId) {
-    if (this.jobStatuses[jobId]) return;
-    this.jobStatuses[jobId] = {};
-    this.jobOrder.push(jobId);
-    if (this.jobOrder.length > 20) {
-      const old = this.jobOrder.shift();
-      delete this.jobStatuses[old];
-    }
-  },
-
-  onJobStarted(jobId) {
-    this.currentJobId = jobId;
-    this._ensureJob(jobId);
-    this.setPaused(false, '');
-    this.renderJobStack(jobId);
-    this.renderAllJobs();
-    this.updateFooter();
-  },
-
-  onJobActionStatus(jobId, blockId, statusJson) {
-    try {
-      const status = typeof statusJson === 'string' ? JSON.parse(statusJson) : statusJson;
-      this._ensureJob(jobId);
-      this.jobStatuses[jobId][blockId] = status;
-      this.currentJobId = jobId;
-      this.detectPause(status);
-      this.renderJobStack(jobId);
-      this.renderAllJobs();
-      this.updateFooter();
-    } catch {}
-  },
-
-  _isCaptchaStatus(status) {
-    const name = (status.block_name || '').toLowerCase();
-    const msg = (status.message || '').toLowerCase();
-    return name.includes('security') || name.includes('captcha') || msg.includes('captcha') || msg.includes('security verification');
-  },
-
-  detectPause(status) {
-    const isCaptcha = this._isCaptchaStatus(status);
-    const isWaiting = ['running', 'waiting', 'paused'].includes(status.status);
-    if (isCaptcha && isWaiting) this.setPaused(true, status.message || 'Security Verification');
-    if (status.status === 'success' && isCaptcha) this.setPaused(false, '');
-  },
-
-  onJobFinished(jobId) {
-    this.setPaused(false, '');
-    this.renderJobStack(jobId);
-    this.renderAllJobs();
-    this.updateFooter();
-  },
-
-  onJobPaused(reason) { this.setPaused(true, reason); },
-  onJobResumed() { this.setPaused(false, ''); },
-  onJobFailed(jobId) { this.onJobFinished(jobId); },
+  onJobStarted(id) { this._status.onJobStarted(this, id); },
+  onJobActionStatus(j, b, s) { this._status.onJobActionStatus(this, j, b, s); },
+  onJobFinished(id) { this._status.onJobFinished(this, id); },
+  onJobPaused(r) { this._status.onJobPaused(this, r); },
+  onJobResumed() { this._status.onJobResumed(this); },
+  onJobFailed(id) { this._status.onJobFailed(this, id); },
   onCustomBlocksUpdated() { this.loadCustom(); },
   onStackPresetsUpdated() { this.loadStackPresets(); },
 
@@ -316,8 +200,8 @@ const ActionBlocksPanel = {
     if (idx !== null) this._config.bindFormEvents(root, () => this.blocks[this.selectedIdx], () => this.save());
   },
 
-  moveBlock(fromIdx, toIdx) { this._store.moveBlock(fromIdx, toIdx); this.render(); },
-  toggleBlock(blockId, enabled) { this._store.toggleBlock(blockId, enabled); this.render(); },
+  moveBlock(f, t) { this._store.moveBlock(f, t); this.render(); },
+  toggleBlock(id, en) { this._store.toggleBlock(id, en); this.render(); },
 
   deleteBlock(blockId) {
     const b = this.blocks.find(x => x.id === blockId);

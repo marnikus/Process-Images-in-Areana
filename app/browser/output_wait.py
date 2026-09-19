@@ -1,12 +1,23 @@
-"""Output wait loop — C6 refactor with WaitSpec and small helpers.
-# ideal-size: 310 lines reason=WaitSpec+LoopState polling branches + fallback + mismatch handling; file contains many ≤20 LOC helpers, split would scatter polling decision cohesion
+"""Output wait loop — C6/C11 refactor with WaitSpec and small helpers.
+# ideal-size: 250 lines reason=WaitSpec+LoopState polling branches + ready/spinner handling; fallback logic moved to output_wait_fallback.py for cohesion
 """
+
 from __future__ import annotations
 
 import asyncio
 import time
 from dataclasses import dataclass
 from typing import Callable
+
+from .output_wait_fallback import (
+    _handle_timeout_fallback,
+    _recheck_after_delay,
+    _process_fallback,
+    should_fallback,
+    is_mismatch_reason,
+    _has_assoc_mismatch,
+    _is_mismatch_block,
+)
 
 
 @dataclass
@@ -37,33 +48,6 @@ def is_cancelled(cancel_check: Callable | None) -> bool:
         return bool(cancel_check())
     except Exception:
         return False
-
-
-def _is_mismatch_block(diag: dict) -> bool:
-    if diag.get("reason") == "job_id_mismatch_no_matching_image":
-        return True
-    mism = diag.get("mismatchDetails")
-    if mism and len(mism) > 0 and diag.get("allNew", 0) > 0:
-        if diag.get("validBelow", 0) == 0 and diag.get("validAbove", 0) == 0:
-            return True
-    return False
-
-
-def should_fallback(elapsed: float, diag: dict) -> bool:
-    if elapsed < 10:
-        return False
-    if _is_mismatch_block(diag):
-        return False
-    if diag.get("allNew", 0) > 0 and diag.get("validBelow", 0) == 0 and diag.get("validAbove", 0) == 0:
-        return True
-    if diag.get("allNew", 0) > 0 and diag.get("spinning") is False:
-        if not diag.get("mismatchDetails"):
-            return True
-    return False
-
-
-def is_mismatch_reason(reason: str) -> bool:
-    return reason in ("job_id_mismatch_no_matching_image", "job_id_mismatch")
 
 
 async def handle_spinner_visible(diag: dict, log_cb: Callable) -> None:
@@ -119,25 +103,6 @@ async def handle_mismatch(diag: dict, log_cb: Callable) -> None:
         log_cb("❌ JOB-ID mismatch — not downloading incorrect image")
 
 
-async def _handle_timeout_fallback(last_check: dict, timeout: float, log_cb: Callable) -> dict | None:
-    if last_check.get("reason") == "job_id_mismatch_no_matching_image":
-        return None
-    if last_check.get("mismatchDetails"):
-        return None
-    if last_check.get("allNew", 0) > 0 and last_check.get("src"):
-        assoc = last_check.get("associatedJobId")
-        exp = last_check.get("expectedJobId")
-        if exp and assoc and assoc != exp:
-            log_cb(f"⚠️ Timeout {timeout}s but only mismatched images (assoc {assoc} != expected {exp}) — NOT using fallback")
-            return None
-        log_cb(f"⚠️ Timeout {timeout}s fallback stable image")
-        last_check["ready"] = True
-        last_check["fallback"] = True
-        await asyncio.sleep(3.0)
-        return last_check
-    return None
-
-
 async def _poll_check(check_fn: Callable, poll_interval: float):
     try:
         result = await check_fn()
@@ -153,30 +118,6 @@ def _reraise_abort(exc: Exception) -> None:
     from ..utils.page_errors import PageErrorAbort
     if isinstance(exc, PageErrorAbort):
         raise exc
-
-
-def _has_assoc_mismatch(diag: dict) -> bool:
-    assoc = diag.get("associatedJobId")
-    exp = diag.get("expectedJobId") or diag.get("jobId")
-    return bool(exp and assoc and assoc != exp)
-
-
-async def _recheck_after_delay(check_fn: Callable, log_cb: Callable) -> dict | None:
-    await asyncio.sleep(3.0)
-    try:
-        recheck = await check_fn()
-        from .output_state import flatten_diagnostics
-        rd = flatten_diagnostics(recheck)
-        if _has_assoc_mismatch(rd):
-            r_assoc = rd.get("associatedJobId")
-            r_exp = rd.get("expectedJobId") or rd.get("jobId")
-            log_cb(f"❌ Re-check after 3s mismatch: associated {r_assoc} != expected {r_exp} — NOT downloading")
-            return None
-        if rd.get("ready"):
-            return rd
-    except Exception:
-        pass
-    return None
 
 
 async def _process_ready(diag: dict, check_fn: Callable, log_cb: Callable) -> dict | None:
@@ -199,33 +140,6 @@ async def _process_spinner(diag: dict, log_cb: Callable, was_visible: bool) -> b
         await handle_spinner_gone(log_cb)
         return False
     return was_visible
-
-
-def _extract_fallback_src(diag: dict) -> str | None:
-    src = diag.get("src")
-    if src:
-        return src
-    try:
-        return (diag.get("allNewDetails", [{}])[0] or {}).get("src")
-    except Exception:
-        return None
-
-
-async def _process_fallback(diag: dict, elapsed: float, log_cb: Callable):
-    if not should_fallback(elapsed, diag):
-        return None
-    src = _extract_fallback_src(diag)
-    if not src:
-        return None
-    assoc = diag.get("associatedJobId")
-    exp = diag.get("expectedJobId")
-    if exp and assoc and assoc != exp:
-        return None
-    log_cb(f"⚠️ Fallback after {elapsed:.1f}s {src[:80]}")
-    await asyncio.sleep(3.0)
-    diag["ready"] = True
-    diag["fallback"] = True
-    return diag
 
 
 async def _check_cancelled(cancel_check, state: LoopState) -> dict | None:
@@ -286,19 +200,16 @@ async def wait_for_new_output_with_spec(check_fn, log_cb, cancel_check, spec: Wa
         timed_out = await _check_timeout(state, spec, log_cb)
         if timed_out:
             return timed_out
-
         diag, err = await _poll_check(check_fn, spec.poll_interval)
         if diag is None:
             state.last = err
             continue
         state.last = diag
-
         if is_ready_result(diag):
             result, done = await _handle_ready_branch(diag, check_fn, log_cb, spec)
             if done:
                 return result
             continue
-
         fb_result = await _handle_non_ready_branch(diag, log_cb, state, spec)
         if fb_result:
             return fb_result

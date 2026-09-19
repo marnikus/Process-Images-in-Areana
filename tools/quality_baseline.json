@@ -275,8 +275,8 @@
     "max_params": 4
   },
   "app/browser/dom_highlight.py": {
-    "file_lines": 478,
-    "func_count": 25,
+    "file_lines": 329,
+    "func_count": 23,
     "max_cc": 10,
     "max_class_loc": 8,
     "max_cog": 11,
@@ -284,6 +284,17 @@
     "max_methods": 0,
     "max_nest": 2,
     "max_params": 7
+  },
+  "app/browser/dom_highlight_js.py": {
+    "file_lines": 161,
+    "func_count": 2,
+    "max_cc": 2,
+    "max_class_loc": 0,
+    "max_cog": 1,
+    "max_func_loc": 4,
+    "max_methods": 0,
+    "max_nest": 1,
+    "max_params": 1
   },
   "app/browser/new_chat.py": {
     "file_lines": 184,
@@ -330,15 +341,26 @@
     "max_params": 1
   },
   "app/browser/output_wait.py": {
-    "file_lines": 312,
-    "func_count": 27,
-    "max_cc": 9,
+    "file_lines": 223,
+    "func_count": 19,
+    "max_cc": 8,
     "max_class_loc": 4,
     "max_cog": 14,
-    "max_func_loc": 26,
+    "max_func_loc": 23,
     "max_methods": 0,
     "max_nest": 3,
     "max_params": 5
+  },
+  "app/browser/output_wait_fallback.py": {
+    "file_lines": 106,
+    "func_count": 8,
+    "max_cc": 9,
+    "max_class_loc": 0,
+    "max_cog": 8,
+    "max_func_loc": 17,
+    "max_methods": 0,
+    "max_nest": 2,
+    "max_params": 3
   },
   "app/browser/page_pool.py": {
     "file_lines": 207,
@@ -891,15 +913,37 @@
     "max_params": 2
   },
   "app/services/watcher.py": {
-    "file_lines": 325,
+    "file_lines": 257,
     "func_count": 25,
     "max_cc": 7,
-    "max_class_loc": 287,
+    "max_class_loc": 237,
     "max_cog": 7,
-    "max_func_loc": 26,
+    "max_func_loc": 21,
     "max_methods": 25,
     "max_nest": 2,
     "max_params": 4
+  },
+  "app/services/watcher_config.py": {
+    "file_lines": 47,
+    "func_count": 1,
+    "max_cc": 3,
+    "max_class_loc": 25,
+    "max_cog": 2,
+    "max_func_loc": 14,
+    "max_methods": 1,
+    "max_nest": 0,
+    "max_params": 0
+  },
+  "app/services/watcher_jobs.py": {
+    "file_lines": 30,
+    "func_count": 2,
+    "max_cc": 6,
+    "max_class_loc": 0,
+    "max_cog": 6,
+    "max_func_loc": 9,
+    "max_methods": 0,
+    "max_nest": 1,
+    "max_params": 2
   },
   "app/services/watcher_overlay.py": {
     "file_lines": 55,
@@ -1044,10 +1088,10 @@
     "max_params": 2
   },
   "app/ui/web/js/panels/action-blocks.js": {
-    "file_lines": 436,
-    "func_count": 120,
+    "file_lines": 320,
+    "func_count": 112,
     "js": true,
-    "max_cc": 10,
+    "max_cc": 8,
     "max_func_loc": 21,
     "max_nest": 2,
     "max_params": 3
@@ -1079,6 +1123,15 @@
     "max_nest": 3,
     "max_params": 4
   },
+  "app/ui/web/js/panels/action-blocks/block-status.js": {
+    "file_lines": 97,
+    "func_count": 13,
+    "js": true,
+    "max_cc": 6,
+    "max_func_loc": 12,
+    "max_nest": 1,
+    "max_params": 4
+  },
   "app/ui/web/js/panels/action-blocks/block-store.js": {
     "file_lines": 285,
     "func_count": 35,
@@ -1087,6 +1140,15 @@
     "max_func_loc": 23,
     "max_nest": 3,
     "max_params": 3
+  },
+  "app/ui/web/js/panels/action-blocks/block-ui.js": {
+    "file_lines": 60,
+    "func_count": 13,
+    "js": true,
+    "max_cc": 10,
+    "max_func_loc": 11,
+    "max_nest": 1,
+    "max_params": 2
   },
   "app/ui/web/js/panels/arena-presets.js": {
     "file_lines": 358,
