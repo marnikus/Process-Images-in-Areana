@@ -108,9 +108,9 @@ def test_submit_fallback_list_is_frozen_pre_b3():
 # adapter or the copy changes, this fails — no silent drift possible.
 @pytest.mark.unit
 def test_cdp_client_attach_list_mirrors_adapter_exactly():
-    src = (REPO / "app" / "browser" / "cdp_client.py").read_text(encoding="utf-8")
-    m = re.search(r"selectors = \[\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*\]", src)
-    assert m, "cdp_client attach selector list changed shape"
+    src = (REPO / "app" / "browser" / "cdp" / "dom.py").read_text(encoding="utf-8")
+    m = re.search(r"DEFAULT_FILE_INPUT_SELECTORS = \[\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*\]", src)
+    assert m, "cdp dom attach selector list changed shape"
     assert list(m.groups()) == get_selector("file_input").all_selectors()
 
 
@@ -135,7 +135,7 @@ FROZEN_LITERALS = {
     "app/services/verification.py": {
         'textarea[name="message"]',                # probe-internal; mirrors adapter primary (alarm above)
     },
-    "app/browser/cdp_client.py": {
+    "app/browser/cdp/dom.py": {
         'form input[type="file"][accept*="image"]',
         'input[type="file"][accept*="image"]',
         'input[type="file"]',
