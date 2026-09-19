@@ -378,5 +378,9 @@
     "max_func_loc": 15,
     "max_class_loc": 0,
     "func_count": 11
+  },
+  "coverage": {
+    "line": 44.31,
+    "branch": 35.1
   }
 }

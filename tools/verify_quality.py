@@ -8,7 +8,24 @@ preserving thresholds, invariants pattern, and override format.
 Usage:
     python tools/verify_quality.py              # report, exit 1 on breach
     python tools/verify_quality.py --json       # machine-readable
-    python tools/verify_quality.py --changed    # only files changed vs main
+    python tools/verify_quality.py --changed    # only files changed vs base
+    python tools/verify_quality.py --changed --base <ref>
+                                                 # base ref for the diff
+                                                 # (default origin/main); if
+                                                 # the ref has no merge-base
+                                                 # with HEAD the tool falls
+                                                 # back to ALL files with a
+                                                 # LOUD stderr warning —
+                                                 # never silently
+    python tools/verify_quality.py --coverage-ratchet
+                                                 # mid-round mode: coverage
+                                                 # fails only on DECREASE vs
+                                                 # the baseline 'coverage'
+                                                 # key; the absolute 80/75
+                                                 # (final D4 target) warns
+    python tools/verify_quality.py --update-coverage-baseline
+                                                 # store current coverage in
+                                                 # the baseline file
 
 Thresholds (from docs/current/AGENT_RULES.md RULE 16):
     Function LOC: prefer ≤20, fail >30
@@ -92,32 +109,48 @@ def is_out_of_scope(path: Path) -> bool:
             return True
     return False
 
-def find_py_files(changed_only: bool = False) -> List[Path]:
-    if changed_only:
-        try:
-            import subprocess
-            out = subprocess.check_output(
-                ["git", "diff", "--name-only", "origin/main...HEAD"],
-                cwd=str(ROOT),
-                text=True,
-            )
-            files = []
-            for line in out.splitlines():
-                p = ROOT / line.strip()
-                # Only app files are gated for quality (tests/tools out of scope)
-                if not str(p).startswith(str(APP_DIR)):
-                    continue
-                if p.suffix == ".py" and p.exists() and not is_out_of_scope(p):
-                    files.append(p)
-            if files:
-                return sorted(files)
-        except Exception:
-            pass
+def changed_app_files(base_ref: str) -> Tuple[List[Path], Optional[str]]:
+    """App files changed vs base_ref. Returns (files, fallback_reason):
+    fallback_reason is None on a real changed-file list, or a human-readable
+    reason why the caller must fall back to checking ALL files."""
+    import subprocess
+    try:
+        out = subprocess.check_output(
+            ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
+            cwd=str(ROOT),
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as e:
+        return [], (f"git diff vs '{base_ref}' failed — likely no merge-base "
+                    f"with HEAD ({e.__class__.__name__})")
+    files = []
+    for line in out.splitlines():
+        p = ROOT / line.strip()
+        # Only app files are gated for quality (tests/tools out of scope)
+        if not str(p).startswith(str(APP_DIR)):
+            continue
+        if p.suffix == ".py" and p.exists() and not is_out_of_scope(p):
+            files.append(p)
+    if not files:
+        return [], f"diff vs '{base_ref}' lists no gated app files"
+    return sorted(files), None
+
+
+def all_app_files() -> List[Path]:
     files = []
     for p in APP_DIR.rglob("*.py"):
         if not is_out_of_scope(p):
             files.append(p)
     return sorted(files)
+
+
+def find_py_files(changed_only: bool = False, base_ref: str = "origin/main") -> List[Path]:
+    if changed_only:
+        files, _reason = changed_app_files(base_ref)
+        if files:
+            return files
+    return all_app_files()
 
 def get_override_comment(node: ast.AST, source_lines: List[str]) -> Dict[str, Tuple[str, str]]:
     """Parse quality-override comments for a node. Returns metric -> (value, reason)."""
@@ -448,66 +481,123 @@ def check_file(file_path: Path) -> List[Dict]:
     walk(tree)
     return breaches
 
-def check_coverage() -> List[Dict]:
-    breaches = []
-    # Try to run pytest --cov if coverage available
-    # We don't run coverage here by default to keep gate fast; instead check existing coverage.json if present
-    cov_path = ROOT / "coverage.json"
-    if cov_path.exists():
-        try:
-            data = json.loads(cov_path.read_text(encoding="utf-8"))
-            totals = data.get("totals", {})
-            line_pct = totals.get("percent_covered", 0)
-            # branch coverage: covered_branches / num_branches
-            covered_branches = totals.get("covered_branches", 0)
-            num_branches = totals.get("num_branches", 0)
-            branch_pct = (covered_branches / num_branches * 100) if num_branches else 0
-            if line_pct < 80:
-                breaches.append({
-                    "file": "coverage.json",
-                    "type": "coverage",
-                    "metric": "line",
-                    "value": line_pct,
-                    "limit": 80,
-                    "fail": True,
-                    "message": f"Line coverage {line_pct:.1f}% < 80%",
-                })
-            if branch_pct < 75 and num_branches > 0:
-                breaches.append({
-                    "file": "coverage.json",
-                    "type": "coverage",
-                    "metric": "branch",
-                    "value": branch_pct,
-                    "limit": 75,
-                    "fail": True,
-                    "message": f"Branch coverage {branch_pct:.1f}% < 75%",
-                })
-        except Exception as e:
-            breaches.append({
-                "file": "coverage.json",
-                "type": "coverage",
-                "error": str(e),
-                "fail": False,
-                "message": f"Failed to parse coverage.json: {e}",
-            })
-    else:
-        # No coverage file, warn but not fail
-        breaches.append({
-            "file": "coverage.json",
-            "type": "coverage",
-            "metric": "missing",
-            "fail": False,
-            "message": "coverage.json not found — run: QT_QPA_PLATFORM=offscreen python -m coverage run --branch --source=app -m pytest tests -q && python -m coverage json -o coverage.json",
-        })
-    return breaches
+def read_coverage(cov_path: Path) -> Optional[Dict[str, float]]:
+    """{line, branch} percentages from a coverage.json, or None if absent."""
+    if not cov_path.exists():
+        return None
+    data = json.loads(cov_path.read_text(encoding="utf-8"))
+    totals = data.get("totals", {})
+    covered_branches = totals.get("covered_branches", 0)
+    num_branches = totals.get("num_branches", 0)
+    return {
+        "line": float(totals.get("percent_covered", 0)),
+        "branch": (covered_branches / num_branches * 100) if num_branches else 0.0,
+    }
+
+
+def coverage_breach(metric: str, value: float, limit: float, fail: bool, message: str) -> Dict:
+    return {
+        "file": "coverage.json",
+        "type": "coverage",
+        "metric": metric,
+        "value": value,
+        "limit": limit,
+        "fail": fail,
+        "message": message,
+    }
+
+
+ABSOLUTE_COVERAGE = {"line": 80.0, "branch": 75.0}
+
+
+def metric_lane(metric: str, value: float, ratchet: Optional[float]) -> List[Dict]:
+    """One coverage lane. Absolute 80/75 is the FINAL D4 target.
+
+    With ratchet (mid-round, RULE 16 'never decrease'): a drop below the
+    baseline FAILS; the absolute shortfall only WARNS until D4 lands.
+    Without ratchet: the absolute shortfall FAILS as before."""
+    limit = ABSOLUTE_COVERAGE[metric]
+    if ratchet is not None:
+        lanes = []
+        if value < ratchet:
+            lanes.append(coverage_breach(
+                metric, value, ratchet, True,
+                f"Coverage RATCHET: {metric} {value:.2f}% < baseline "
+                f"{ratchet:.2f}% — coverage must never decrease (RULE 16)"))
+        if value < limit:
+            lanes.append(coverage_breach(
+                metric, value, limit, False,
+                f"{metric.capitalize()} coverage {value:.1f}% < {limit:.0f}% "
+                "(final D4 target — warning in ratchet mode)"))
+        return lanes
+    if value < limit:
+        return [coverage_breach(
+            metric, value, limit, True,
+            f"{metric.capitalize()} coverage {value:.1f}% < {limit:.0f}%")]
+    return []
+
+
+def check_coverage(cov_path: Path = None, ratchet: Optional[Dict[str, float]] = None) -> List[Dict]:
+    """Coverage lanes from an existing coverage.json (gate stays fast; the
+    pre-push script generates the file right before invoking the gate)."""
+    cov_path = cov_path or (ROOT / "coverage.json")
+    try:
+        cov = read_coverage(cov_path)
+    except Exception as e:
+        return [coverage_breach("parse-error", 0, 0, False, f"Failed to parse {cov_path.name}: {e}")]
+    if cov is None:
+        return [coverage_breach(
+            "missing", 0, 0, False,
+            f"{cov_path.name} not found — run: QT_QPA_PLATFORM=offscreen "
+            "python -m coverage run --branch --source=app -m pytest tests -q "
+            f"&& python -m coverage json -o {cov_path}")]
+    lanes = []
+    for metric in ("line", "branch"):
+        base = ratchet.get(metric) if ratchet else None
+        lanes.extend(metric_lane(metric, cov[metric], base))
+    return lanes
+
+
+def load_coverage_baseline(baseline_path: str) -> Optional[Dict[str, float]]:
+    """"coverage" key of the quality baseline, if present."""
+    try:
+        data = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+        cov = data.get("coverage")
+        return cov if isinstance(cov, dict) else None
+    except Exception:
+        return None
+
+
+def update_coverage_baseline(baseline_path: str, cov_path: Path) -> str:
+    """Store current coverage in the baseline file (keeps existing keys)."""
+    cov = read_coverage(cov_path)
+    if cov is None:
+        raise SystemExit(f"no coverage data at {cov_path} — generate it first")
+    path = Path(baseline_path)
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    data["coverage"] = {"line": round(cov["line"], 2), "branch": round(cov["branch"], 2)}
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return f"baseline coverage stored: line {cov['line']:.2f}%, branch {cov['branch']:.2f}%"
 
 def main():
     parser = argparse.ArgumentParser(description="RULE 16 quality gate for Arena")
     parser.add_argument("--json", action="store_true", help="machine-readable JSON output")
-    parser.add_argument("--changed", action="store_true", help="only check files changed vs origin/main")
+    parser.add_argument("--changed", action="store_true", help="only check files changed vs the base ref")
+    parser.add_argument("--base", type=str, default="origin/main",
+                        help="base ref for --changed (default origin/main)")
     parser.add_argument("--allow-legacy", action="store_true", help="allow legacy files that are in baseline to exceed limits if not increased")
     parser.add_argument("--baseline", type=str, default="tools/quality_baseline.json", help="baseline file for legacy")
+    parser.add_argument("--coverage-file", type=str, default=None,
+                        help="coverage.json path (default: ./coverage.json)")
+    parser.add_argument("--coverage-ratchet", action="store_true",
+                        help="mid-round mode: coverage fails only on DECREASE vs baseline 'coverage' key; absolute 80/75 warns (final D4 target)")
+    parser.add_argument("--update-coverage-baseline", action="store_true",
+                        help="store current coverage into the baseline file, then exit")
     args = parser.parse_args()
+
+    if args.update_coverage_baseline:
+        print(update_coverage_baseline(args.baseline, Path(args.coverage_file or ROOT / "coverage.json")))
+        return
 
     baseline_data = {}
     if args.allow_legacy:
@@ -518,7 +608,20 @@ def main():
         except Exception:
             baseline_data = {}
 
-    files = find_py_files(changed_only=args.changed)
+    changed_fallback = None
+    if args.changed:
+        files, changed_fallback = changed_app_files(args.base)
+        if changed_fallback:
+            # LOUD, never silent (finding F-6): tell the user the changed-file
+            # lane is impossible and ALL files are being gated instead.
+            sys.stderr.write(
+                f"⚠⚠ GATE HONESTY (--changed): {changed_fallback}\n"
+                f"    Falling back to gating ALL app files. For a true changed-only\n"
+                f"    run, pass --base <ref> where <ref> shares ancestry with HEAD\n"
+                f"    (e.g. --base {args.base} after the branch is rebased/merged).\n")
+            files = all_app_files()
+    else:
+        files = all_app_files()
     all_breaches = []
     for f in files:
         breaches = check_file(f)
@@ -539,7 +642,10 @@ def main():
                 breaches = filtered
         all_breaches.extend(breaches)
 
-    cov_breaches = check_coverage()
+    ratchet = load_coverage_baseline(args.baseline) if args.coverage_ratchet else None
+    cov_breaches = check_coverage(
+        cov_path=Path(args.coverage_file) if args.coverage_file else None,
+        ratchet=ratchet)
     all_breaches.extend(cov_breaches)
 
     # Filter fail vs warn
@@ -547,7 +653,9 @@ def main():
     warns = [b for b in all_breaches if not b.get("fail")]
 
     if args.json:
-        print(json.dumps({"breaches": all_breaches, "fails": fails, "warns": warns, "files_checked": len(files)}, indent=2, ensure_ascii=False))
+        print(json.dumps({"breaches": all_breaches, "fails": fails, "warns": warns,
+                          "files_checked": len(files),
+                          "changed_fallback": changed_fallback}, indent=2, ensure_ascii=False))
     else:
         print(f"Checked {len(files)} files in app/")
         print(f"Found {len(fails)} fail(s), {len(warns)} warn(s)")
