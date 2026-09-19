@@ -1,98 +1,162 @@
-# Code Verification Before Push — RULE 16 Enforcement
+# Code Verification Before Push — RULE 16 + R0 Enforcement
 
-Per `AGENT_RULES.md` RULE 16, every production code change must pass quality gates before push. This document describes the verification workflow that must be run every time code is added.
+Per `AGENT_RULES.md` RULE 16 + RULE 18 + Round 0 (R0.1–R0.6), every production change must pass quality gates before push.
 
 ## Why
 
-Old App had detailed quality gates (LOC 30/150, params 4, methods 15, CC 10, cognitive 15, nesting 4, coverage 80%/75%) enforced via `tools/metrics/rule16_gate.py` and pre-commit hook. New Arena app preserves same thresholds (adapted) and same pattern.
+Old App had gates LOC 30/150, params 4, methods 15, CC 10, cognitive 15, nesting 4, coverage 80%/75% enforced via `rule16_gate.py` and pre-commit hook. Arena preserves same thresholds plus **JS gate** (acorn, same fail lines), **baseline ratchet per-metric** (fails on any increase even in legacy), **vulture + jscpd + coverage lanes**, **fast/slow lanes**, **mutation baseline**.
 
-Adding code without verification leads to:
-- Functions >30 LOC that hide complexity
-- Classes >150 LOC / >15 methods that become unmaintainable
-- CC >10, nesting >4 that make logic hard to test
-- Coverage drops below 80%/75%
-- Anti-gaming (foo_part1, **kwargs dodge, dummy helpers)
+Adding code without verification leads to: long functions hiding complexity, god classes, untestable logic, coverage drop, anti-gaming (`foo_part1`, `**kwargs` dodge), JS un-gated mass (48 funcs >30 LOC), silent evidence loss.
 
 ## What to run before every push
 
-### 1. Syntax check
+### 0. Install (once)
+
 ```bash
-python -m py_compile app/browser/dom_highlight.py app/browser/probe_requests.py app/browser/visual_click.py app/core/action_blocks.py app/ui/bridge.py app/browser/cdp_arena.py app/core/layout_service.py
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt radon vulture coverage cognitive-complexity
+npm ci                      # jsdom + acorn + acorn-walk + jscpd for JS lane (R0.5)
 ```
 
-### 2. Quality gate — changed files only (legacy allowed)
+`npm ci` is required for JS lane: `node --test tests/js/*` needs jsdom, JS gate needs acorn.
+
+### 1. Syntax
+
+```bash
+python -m py_compile $(find app -name "*.py" | head -n 20)
+```
+
+### 2. Quality gate — changed files only (legacy allowed + ratchet + JS)
+
 ```bash
 python tools/verify_quality.py --changed --allow-legacy
 ```
-- Checks only files changed vs `origin/main` (git diff)
-- Legacy files in `tools/quality_baseline.json` are allowed to exceed limits if not increased (grandfathered per RATCHET pattern from Old App)
-- Fails on:
-  - New function LOC >30, class LOC >150, params >4, methods >15
-  - CC >10, cognitive >15, nesting >4 on new/edited functions
-  - Anti-gaming: `_part1` split, `**kwargs` dodge
 
-### 3. Full quality gate (all app files) — for review
+- Checks only files changed vs merge-base `origin/main` (R0.3: uses `git merge-base`, not `...HEAD` only, so worktrees gated correctly; fallback HEAD~1..HEAD if no common ancestor)
+- Includes **JS gate** R0.2: acorn-based func LOC, params, nesting, rough CC, same fail lines as Python (30/4/4/10). Deliberately bloated JS fails gate.
+- **Baseline ratchet** R0.3: `quality_baseline.json` stores per-metric maxima per file (max_func_loc, max_class_loc, max_methods, max_cc, max_cog, max_nest, max_params, file_lines, func_count, coverage per file). Gate **fails on any increase**, even in legacy files. `--allow-legacy` may only suppress pre-existing values, never new growth.
+- Fails on: new func LOC>30, class>150, params>4, methods>15, CC>10, cog>15, nest>4, JS same, anti-gaming `_partN`, `**kwargs` dodge, ratchet growth.
+
+### 3. Full gate (all files) — for review
+
 ```bash
 python tools/verify_quality.py
-```
-- Reports all fails/warns, including legacy. Use to see overall health.
-- Legacy breaches are reported but allowed in `--allow-legacy` mode.
-
-### 4. Tests
-```bash
-python -m pytest tests -q
+python tools/verify_quality.py --json > /tmp/gate.json
 ```
 
-### 5. Coverage
+- Reports all fails/warns, including legacy. Legacy allowed in `--allow-legacy` only if not increased.
+
+### 4. Tests — fast lane + JS lane (R0.5)
+
 ```bash
-QT_QPA_PLATFORM=offscreen python -m coverage run --branch --source=app -m pytest tests -q
+QT_QPA_PLATFORM=offscreen python -m pytest -m "not slow and not e2e" -q   # fast lane, 455 tests ~10s
+npm run test:js                                                             # JS lane, 105 tests ~1.3s, needs npm ci
+python -m pytest tests -q                                                   # full lane
+```
+
+Fast lane is what pre-push runs. Slow/e2e are for nightly/manual.
+
+### 5. Coverage + json generation (R0.4)
+
+```bash
+QT_QPA_PLATFORM=offscreen python -m coverage run --branch --source=app -m pytest -m "not slow and not e2e" -q
 python -m coverage json -o coverage.json
-python tools/verify_quality.py --json | python -c "import json,sys; data=json.load(sys.stdin); fails=[b for b in data['breaches'] if b.get('fail') and b.get('type')=='coverage']; sys.exit(1 if fails else 0)"
+python -c "import json; d=json.load(open('coverage.json')); t=d['totals']; print(f\"line {t['percent_covered']:.1f}% branch {t['covered_branches']/t['num_branches']*100:.1f}%\")"
 ```
-- Requires `coverage` pip package
-- Thresholds: line ≥80%, branch ≥75%, never decrease vs baseline
 
-### 6. Combined pre-push check (runs all above)
+- Thresholds: line ≥80%, branch ≥75%, never decrease vs baseline (ratchet per file in future)
+- Current baseline: line 43.6% / 41.2% combined, branch 32.2% — gap to close in Area D
+- `coverage.json` is generated by pre-push hook (R0.4)
+
+### 6. Vulture + duplication (R0.4)
+
+```bash
+python -m vulture app --min-confidence 90   # 2 unused imports now, 30 @60 for triage
+npx jscpd app --min-tokens 60 --reporters json --output /tmp/jscpd-out   # 43 groups 1.57% now, baseline 1.51% 55 groups
+```
+
+- Wired into `pre_push_check.sh` (R0.4). Fails on new unused import or new duplication group in changed files.
+
+### 7. Metrics report (R0.1)
+
+```bash
+python tools/metrics_report.py            # human readable
+python tools/metrics_report.py --json --out /tmp/metrics.json
+```
+
+- One command reproducing every number in `metrics-baseline-2026-09-18.md` ±1%: radon CC/MI, cognitive, nesting, LOC, file/class/methods/params distribution, coupling Ca/Ce/I, LCOM4, coverage, duplication, vulture, JS via acorn, tests green.
+- Done when `python tools/metrics_report.py` reproduces baseline tables within ±1%.
+
+### 8. Mutation baseline (R0.6)
+
+```bash
+# Decision: mutmut vs cosmic-ray — choose mutmut (simpler, faster, py3.11, better config)
+# Baseline for app/core/** + app/services/** — record score to compare against ≥70%
+# See tools/mutation_baseline.md for decision and instructions
+```
+
+- Old App baseline was 99.4% mutation on covered modules. Target ≥70% for first round.
+- Runner documented in `tools/`, not run on every push (nightly/manual lane).
+
+### 9. Combined pre-push check (runs all above, <3min)
+
 ```bash
 bash tools/pre_push_check.sh
 ```
 
+Lanes: syntax + quality gate changed (py+js+ratchet) + fast pytest + JS tests + coverage + vulture @90 + jscpd delta + metrics_report.
+
 ## Git hook — automatic enforcement
 
-A pre-push hook is installed at `.git/hooks/pre-push` that runs `tools/pre_push_check.sh` automatically on `git push`.
+Pre-push hook at `.git/hooks/pre-push` runs `pre_push_check.sh` automatically.
 
-- If gate fails, push is blocked.
-- Bypass only with `git push --no-verify` if you have explicit reason and have run verification manually (not recommended).
-- Hook can be reinstalled via:
+- If gate fails, push blocked.
+- Bypass only with `git push --no-verify` if explicit reason and manual verification done.
+- Reinstall: `bash tools/install_hooks.sh`
+
+## Baseline ratchet (R0.3) — how it works
+
+Old hole: `--allow-legacy` downgraded every breach in baseline file to warning, so new 40-line func in `bridge.py` passed.
+
+New:
+
+- `quality_baseline.json` has per-metric maxima per file: `max_func_loc`, `max_class_loc`, `max_methods`, `max_cc`, `max_cog`, `max_nest`, `max_params`, `file_lines`, `func_count`, plus JS `max_func_loc`, `max_cc`, `max_nest`, `max_params`, `file_lines`.
+- For each file, compute current maxima. If any current > baseline → **fail** (growth), even with `--allow-legacy`.
+- If current ≤ baseline and file in baseline → downgrade to `[LEGACY]` warn when `--allow-legacy`, else fail.
+- `--allow-legacy` may only suppress pre-existing values, never new growth.
+- Three negative tests: (i) adding 31-LOC func to `bridge.py` fails, (ii) adding 40-LOC JS func fails, (iii) dropping coverage below recorded per-file fails.
+
+Generate new baseline (integrator only, single writer):
+
 ```bash
-bash tools/install_hooks.sh
-# or manually:
-cp tools/pre_push_check.sh .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+python tools/generate_baseline.py
 ```
 
-## Override format (when constraint forces breach)
+## JS gate (R0.2) — how it works
 
-If a breach is unavoidable due to real constraint (Qt slot signature, wire format, generated JS literal), add override comment on line above or same line:
+- `tools/js_metrics.js` uses acorn + acorn-walk to parse `app/ui/web/js/**/*.js`, measures every function (loc, params, depth, cc) and file size.
+- Same fail lines as Python: func LOC 30, params 4, nesting 4, CC 10, file 150–300 ideal, >500 warn.
+- Current JS: 36 files / 749 funcs (acorn counts block funcs) / 48 >30 LOC / 8 nesting>4 / 111 CC>10 / 8 files>300 (baseline 34/995/48/24/8). Grandfathered via baseline.
+- Deliberately bloated JS fails gate (tested in `verify_quality.py` with untracked file detection).
+
+## Override format
+
+If breach unavoidable due to real constraint (Qt slot signature, wire format, generated JS literal), add:
 
 ```python
 # quality-override: loc=35 reason=Qt slot signature requires 5 params, matches QWebChannel wire
 def my_slot(self, a, b, c, d, e): ...
-
-# quality-override: cc=12 reason=Baseline capture must check 6 selectors + security dialog + sign-in, cannot reduce branches without deleting real decision
 ```
 
-- Format strict: `quality-override: <metric>=<value> reason=<≥20 chars>`
+- Strict: `quality-override: <metric>=<value> reason=<≥20 chars>`
 - metric ∈ `loc, class-loc, params, methods, cc, cognitive, nesting, coverage, vulture, dup`
 - Reason must name constraint, not "faster to ship"
-- One override per metric per symbol
-- Override whose function now fits is stale and must be deleted
+- One per metric per symbol, stale overrides must be deleted
 
 ## Remediation order (RULE 19)
 
-When code is over limit, fix in this order (size is symptom, others are cause):
-
-1. **Nesting >4** → extract guard, early return, flatten
-2. **CC >10** → split decision, not just code (no `foo_part1`)
+1. **Nesting >4** → guard, early return, flatten
+2. **CC >10** → dispatch table, not `foo_part1`
 3. **Cognitive >15** → name predicates, simplify boolean
 4. **LOC >30** → extract helper with real responsibility name
 
@@ -102,33 +166,34 @@ Verify after every step: `python tools/verify_quality.py --changed` and `pytest`
 
 | File | Purpose |
 |---|---|
-| `tools/verify_quality.py` | RULE 16 gate implementation (AST-based LOC, params, methods, CC approx, nesting, anti-gaming, coverage) |
-| `tools/quality_baseline.json` | Baseline for legacy files (max_func_loc, max_class_loc) — grandfathered, ratchet |
-| `tools/pre_push_check.sh` | Combined check: syntax + quality gate changed + tests + coverage |
-| `.git/hooks/pre-push` | Git hook that runs pre_push_check.sh on push |
+| `tools/verify_quality.py` | RULE 16 gate: py + JS (acorn) + ratchet per-metric + coverage, changed detection via merge-base |
+| `tools/quality_baseline.json` | Baseline per-metric maxima per file (py+js) — ratchet, grandfathered |
+| `tools/generate_baseline.py` | Generates baseline json from current tree (integrator only) |
+| `tools/metrics_report.py` | R0.1 one command reproducing all numbers ±1% (radon, cognitive, nesting, LOC, coupling, LCOM4, coverage, JS, duplication, vulture) |
+| `tools/js_metrics.js` | R0.2 JS metrics via acorn, outputs JSON |
+| `tools/pre_push_check.sh` | R0.4 + R0.5 combined: syntax + gate changed + fast pytest + JS lane + coverage + vulture @90 + jscpd + metrics_report (<3min) |
+| `tools/mutation_baseline.md` | R0.6 decision mutmut vs cosmic-ray + baseline score for core/services |
+| `.git/hooks/pre-push` | Hook calling pre_push_check.sh |
 | `docs/current/AGENT_RULES.md` | Detailed rules, thresholds, anti-gaming, override format |
-| `docs/current/CODE_VERIFICATION.md` | This file — verification workflow |
+| `docs/current/CODE_VERIFICATION.md` | This file |
 
-## CI equivalent (if added later)
+## CI equivalent
 
-Same as pre-push hook, but in CI:
 ```bash
 python tools/verify_quality.py --changed --allow-legacy --json > quality.json
 # fail if any fail
 ```
 
-## Quick checklist for agent workflow (RULE 16 §16.6 adapted)
+## Quick checklist (RULE 16 §16.6)
 
-From `AGENT_RULES.md`:
-
-1. Read `current/SYSTEM_OF_RECORD.md` + `current/AGENT_RULES.md` rules 1-15 + RULE 18 size ideals
-2. Research saved HTML in `research/` + `selector_map.md` + `current/DOM_SELECTORS.md`
-3. Design in `archive/<date>-<topic>/` if complexity moves across files — record radon numbers, target numbers, dishonest reductions rejected
+1. Read `SYSTEM_OF_RECORD.md` + `AGENT_RULES.md` rules 1-15 + RULE 18 ideals
+2. Research saved HTML + `DOM_SELECTORS.md`
+3. Design in `archive/<date>-<topic>/` if complexity moves — record radon numbers, target, dishonest reductions rejected
 4. Tests first (RULE 8)
-5. **Measure**: `python tools/verify_quality.py --changed --allow-legacy` — any new function fail → stop and redesign in order RULE 19
-6. **Run**: `bash tools/pre_push_check.sh` — must pass before `git push`
+5. Measure: `python tools/verify_quality.py --changed --allow-legacy` — any fail → redesign RULE 19 order
+6. Run: `bash tools/pre_push_check.sh` — must pass before push
 7. Update current docs in same change (RULE 17)
 
 ---
 
-*Last updated: 2026-09-15 — added mandatory verification before push, based on Old App's rule16_gate.py and AGENT_RULES.md detailed quality rules.*
+*Last updated: 2026-09-19 — Round 0 R0.1–R0.6: metrics_report one command, JS gate acorn, baseline ratchet per-metric maxima, vulture/jscpd/coverage lanes, fast lane + JS lane + npm ci docs, mutation decision mutmut baseline.*

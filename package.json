@@ -9,5 +9,10 @@
   },
   "dependencies": {
     "jsdom": "^24.0.0"
+  },
+  "devDependencies": {
+    "acorn": "^8.18.0",
+    "acorn-walk": "^8.3.5",
+    "jscpd": "^5.3.0"
   }
 }
