@@ -1,4 +1,5 @@
 /* arena-presets.js — full presets & save variables system (window + arena: URLs, prompt, settings, highlight_duration, custom variables) */
+// ideal-size: 357 lines reason=single ArenaPresets panel owns arena+prompt+settings presets + save/load + export/import + detailed list; splitting would scatter one preset lifecycle (RULE 18.2) — will be split into store/render/actions in C13 next round
 'use strict';
 
 const ArenaPresets = {

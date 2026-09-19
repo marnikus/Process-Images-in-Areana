@@ -209,11 +209,14 @@ except (json.JSONDecodeError, ValidationError):
 | Layer | Files | Responsibility | Imports allowed |
 |---|---|---|---|
 | **core** | `app/core/action_blocks.py`, `correlation.py`, `naming.py`, `image_saver.py` | Domain logic, no Qt, no CDP | stdlib, PIL |
-| **services** | `app/services/folder_scanner.py`, `url_validator.py` | Folder scan, URL validation, filtering (RULE 6) | core, stdlib |
-| **browser** | `app/browser/cdp_client.py`, `cdp_arena.py`, `dom_highlight.py`, `site_adapter.py` | CDP connection with lock, visual runner (RULE 1), selector map (RULE 21) | core, services, stdlib, websockets |
+| **services** | `app/services/folder_scanner.py`, `url_validator.py`, `watcher.py` (257 LOC) + `watcher_config.py` (47) + `watcher_jobs.py` (30) + `watcher_overlay.py` (55) | Folder scan, URL validation, watcher lifecycle split C9 (config/jobs/overlay) | core, stdlib |
+| **browser** | `app/browser/cdp_client.py`, `cdp_arena.py`, `dom_highlight.py` (329 LOC, C10) + `dom_highlight_js.py` (161 JS payloads) + `output_wait.py` (223 LOC, C11) + `output_wait_fallback.py` (106 fallback), `site_adapter.py` | CDP connection with lock, visual runner (RULE 1), selector map (RULE 21), output wait split | core, services, stdlib, websockets |
 | **persistence** | `app/persistence/app_state.py`, `config_manager.py`, `layout_service.py`, `undo_service.py` | JSON persistence, grid layout validation (RULE 13), undo timeline (RULE 12) | core, stdlib |
-| **ui** | `app/ui/bridge.py`, `main_window.py`, `panels/*.js`, `web/js/*.js`, `web/css/variables.css` | PyQt6 + WebChannel, sash-grid, win-grip, dark mode, rect overlay | all below via bridge |
-| **pipeline** | `app/pipeline/runner.py` (if exists) or `bridge._do_run_batch()` | Batch loop, state machine 00-22, stop honour (RULE 7), progress (RULE 5) | core, browser, persistence |
+| **ui-py** | `app/ui/bridge.py`, `main_window.py` | PyQt6 + WebChannel bridge | all below |
+| **ui-js-core** | `app/ui/web/js/core/ui-helpers.js` (127) deduped esc/el/chip/sortArrow/mergeParts, `panels/highlight.js` (59) | Shared DOM builders C8 | browser |
+| **ui-js-panels** | `panels/action-blocks.js` (319) + `block-store.js` + `block-render.js` + `block-config.js` + `block-listeners.js` + `block-ui.js` (59) + `block-status.js` (96) C12, `panels/watcher.js` (272) C9, `panels/page-pool.js` (240), `panels/arena-presets.js` (357), `panels/image-queue.js` (~400), `panels/url-list.js` (~435), `sash-grid-windows.js` (499) | Panel facades C7-C13, ideal-size reasons where >300 | core/ui-js-core |
+| **ui-js-app** | `js/arena-app.js` (134) facade + `arena-app/listeners.js` (158) registry table C13 | App init + 22 bridge listeners via buildRegistry table | ui-js-panels |
+| **pipeline** | `bridge._do_run_batch()` | Batch loop, state machine 00-22, stop honour (RULE 7), progress (RULE 5) | core, browser, persistence |
 
 **Import direction:** `ui` → `browser` → `services` → `core` → stdlib. No cycles. No `browser.*` import from `ui/` except via bridge. No Qt in `core/`.
 
@@ -286,6 +289,14 @@ Remediation order: nesting → cyclomatic → cognitive → size (RULE 19).
 * `docs/archive/2026-09-18-captcha-reporting/design.md` — round 10: structured reporting — one `CAPTCHA_SOLVE` JSON line per encounter (detection + task + token + edge data, joined by eid) + one `CAPTCHA_JOB` line at image-job end (outcome + page error)
 * `docs/archive/2026-09-18-captcha-session-recording/design.md` — bounded redacted DOM/network session recordings, CDP event fan-out, automatic encounter lifecycle, local records window, and user-owned bot/manual labels
 * `docs/archive/2026-09-18-captcha-solve-comparison-diagnostic/verification-and-problem-diagnostic.md` — evidence-gated comparison of manual-pass, bot-pass, and bot-fail sessions; confirmed schema/tooling gaps, candidate failure signatures, and fix acceptance criteria
+* `docs/archive/2026-09-19-area-c-quality-splits/` — Area C C9-C13 quality refactors per RULE 18 ideal sizes (func 4-20, file 150-300, module 5-15, context 60-200) + RULE 16 gates + AGENT_RULES anti-gaming:
+  - C9 watcher: 325→257 LOC file ≤300, class 287→237, split config (47 LOC check_once ≤20) + jobs (30) + overlay (55) modules
+  - C10 dom_highlight: 478→329 LOC (-31%) + dom_highlight_js 161 JS payloads package, attach/prompt/submit helpers ≤15 LOC CC≤5, registry table
+  - C11 output_wait: 312→223 LOC (-29%) + output_wait_fallback 106, WaitSpec/HighlightSpec param objects, predicate table
+  - C12 action-blocks: 435→319 LOC (-27%) + block-ui 59 + block-status 96, block-store/config/render/listeners split, listener registry table
+  - C13 arena-app: 332→134+158=292 LOC total (-40), setupBridgeListeners 164 CC66 → 22 helpers CC≤5 + buildRegistry() table + bindBridge() in listeners.js
+  - Remaining >300 JS panels (arena-presets 357, image-queue ~400, url-list ~435, sash-grid-windows 499) carry ideal-size reason comments per RULE 18.2 and will be split store/render/actions next round
+  - Baseline: 145→151 entries after cognitive-complexity installed, verify_quality --changed --allow-legacy PASSED, JS 117 pass, Py 430 pass (offscreen, bridge excluded)
 * `docs/archive/2026-09-18-recaptcha-page-mechanics/research-design.md` — follow-up research/design: CAPTCHA is layered (Enterprise bootstrap, anchor, challenge, response field, callback, page/backend acceptance, generation output); callback + dialog gone is not whole-job success
 * `docs/archive/2026-09-18-recaptcha-verification-architecture/design.md` — round 11 architecture: evidence-rich probe, page-error/stale-token terminal outcomes, callback acceptance candidate separated from output completion, no penalty for stale/page-failed attempts
 * `docs/archive/2026-09-18-recaptcha-verification-architecture/implementation-2026-09-18.md` — implemented identity gate: page URL + performance.timeOrigin and bounded challenge-frame identity are re-probed before token injection; mismatch deletes provider task and returns token_stale; `SolveOutcome` carries the lifecycle (polls, token fp, dialog state, inject, mid-solve error)
@@ -320,4 +331,4 @@ Remediation order: nesting → cyclomatic → cognitive → size (RULE 19).
 
 ---
 
-*Last updated: 2026-09-17. This file is the current truth — if not true today, it does not belong here (RULE 17). Archive old truth to `docs/archive/<date>-<topic>/`.*
+*Last updated: 2026-09-19 — C9-C13 splits (watcher 325→257, dom_highlight 478→329, output_wait 312→223, action-blocks 435→319, arena-app 332→292) + SYSTEM_OF_RECORD updated.* This file is the current truth — if not true today, it does not belong here (RULE 17). Archive old truth to `docs/archive/<date>-<topic>/`.*

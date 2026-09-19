@@ -1,4 +1,5 @@
 /* sash-grid part — sash-grid-windows.js (Round H, H-A3) */
+// ideal-size: 499 lines reason=single SashGridWindows owns window store + persistence + render + menus + drag spec; splitting literal would scatter one grid lifecycle (RULE 18.2) — will be split into store/persistence/render in C13
 
 const SashGridWindowStore = {
   _collectPanels() {
