@@ -33,10 +33,23 @@ echo "=== Arena Quality Gate — pre-push check (RULE 16) ==="
 echo "Docs: docs/current/AGENT_RULES.md RULE 16"
 echo ""
 
-# 1. Python syntax compile
-echo "▶ Checking Python syntax..."
-"$PY" -m py_compile app/browser/dom_highlight.py app/browser/probe_requests.py app/browser/visual_click.py app/core/action_blocks.py app/ui/bridge.py app/browser/cdp_arena.py app/core/layout_service.py
-echo "  ✅ Syntax ok"
+# 1. Python syntax + undefined-name check
+#    Whole app/, not a hand-picked list: 2026-09-19 a merge dropped an import in
+#    app/ui/main_window.py (outside the old list) and the app died on startup
+#    with NameError: CaptchaRecordingsBridge.
+echo "▶ Checking Python syntax (whole app/)..."
+"$PY" -m compileall -q app > /dev/null || { echo "  ❌ compileall failed"; exit 1; }
+if "$PY" -c "import pyflakes" 2>/dev/null; then
+  UNDEFINED="$("$PY" -m pyflakes app/ | grep -i 'undefined name' || true)"
+  if [ -n "$UNDEFINED" ]; then
+    echo "  ❌ undefined name(s) — the startup-crash class:"
+    echo "$UNDEFINED"
+    exit 1
+  fi
+  echo "  ✅ Syntax + no undefined names (pyflakes)"
+else
+  echo "  ✅ Syntax ok (pyflakes not installed — undefined-name check skipped)"
+fi
 echo ""
 
 # 2. Tests (fast lane — plain pytest, fails early with readable output)
