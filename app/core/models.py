@@ -1,3 +1,6 @@
+"""Models — C5 refactor with predicate table for recalculate_progress."""
+from __future__ import annotations
+
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -15,7 +18,7 @@ class UrlRow:
     last_status: str = UrlStatus.UNCHECKED.value
     last_checked: Optional[str] = None
     error: Optional[str] = None
-    tab_id: str = ""  # linked CDP target id; "" = manual/unlinked row
+    tab_id: str = ""
 
     @staticmethod
     def create(url: str, enabled: bool = True, tab_id: str = "") -> "UrlRow":
@@ -30,7 +33,6 @@ class UrlRow:
         )
 
     def link_tab(self, tab_id: str) -> bool:
-        """Bind this row to the tab running it; empty never clears."""
         if not tab_id:
             return False
         self.tab_id = tab_id
@@ -103,7 +105,7 @@ class JobRecord:
     @staticmethod
     def create(image: ImageItem, url: UrlRow, correlation_id: str, prompt: str, attempt: int = 1) -> "JobRecord":
         return JobRecord(
-            job_id=correlation_id,  # use correlation as job_id for simplicity
+            job_id=correlation_id,
             image_id=image.id,
             image_path=image.absolute_path,
             url_id=url.id,
@@ -158,6 +160,40 @@ class AppSettings:
     supported_types: List[str] = field(default_factory=lambda: [".png", ".jpg", ".jpeg", ".webp"])
     ignore_ai_suffix: bool = True
 
+# ---- progress helpers with predicate table (C5) ----
+
+def _count_selected(images: List[ImageItem]) -> int:
+    return sum(1 for img in images if img.selected)
+
+
+def _count_by_status(images: List[ImageItem], status_value: str) -> int:
+    return sum(1 for img in images if img.status == status_value)
+
+
+def _count_pending_selected(images: List[ImageItem]) -> int:
+    pending_set = {ImageStatus.PENDING.value, ImageStatus.SELECTED.value}
+    return sum(1 for img in images if img.selected and img.status in pending_set)
+
+
+def _build_progress_counts(images: List[ImageItem]) -> Dict[str, int]:
+    # predicate table mapping progress keys to counting funcs/statuses
+    status_map = {
+        "processing": ImageStatus.PROCESSING.value,
+        "completed": ImageStatus.COMPLETED.value,
+        "skipped": ImageStatus.SKIPPED.value,
+        "failed": ImageStatus.FAILED.value,
+        "needs_review": ImageStatus.NEEDS_REVIEW.value,
+    }
+    counts = {
+        "total": len(images),
+        "selected": _count_selected(images),
+        "pending": _count_pending_selected(images),
+    }
+    for key, status_val in status_map.items():
+        counts[key] = _count_by_status(images, status_val)
+    return counts
+
+
 @dataclass
 class AppState:
     version: str = "1.0.0"
@@ -188,28 +224,7 @@ class AppState:
     last_run: Optional[str] = None
 
     def recalculate_progress(self):
-        total = len(self.images)
-        selected = sum(1 for img in self.images if img.selected)
-        pending = sum(1 for img in self.images if img.status == ImageStatus.PENDING.value and img.selected)
-        # Also count selected that are pending status? Let's treat SELECTED as pending if not processed
-        # For simplicity, pending includes both PENDING and SELECTED
-        pending_selected = sum(1 for img in self.images if img.selected and img.status in [ImageStatus.PENDING.value, ImageStatus.SELECTED.value])
-        processing = sum(1 for img in self.images if img.status == ImageStatus.PROCESSING.value)
-        completed = sum(1 for img in self.images if img.status == ImageStatus.COMPLETED.value)
-        skipped = sum(1 for img in self.images if img.status == ImageStatus.SKIPPED.value)
-        failed = sum(1 for img in self.images if img.status == ImageStatus.FAILED.value)
-        needs_review = sum(1 for img in self.images if img.status == ImageStatus.NEEDS_REVIEW.value)
-
-        self.progress = {
-            "total": total,
-            "selected": selected,
-            "pending": pending_selected,
-            "processing": processing,
-            "completed": completed,
-            "skipped": skipped,
-            "failed": failed,
-            "needs_review": needs_review,
-        }
+        self.progress = _build_progress_counts(self.images)
 
     def to_dict(self) -> dict:
         return {

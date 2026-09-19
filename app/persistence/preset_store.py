@@ -1,4 +1,5 @@
-"""PresetStore for Arena — stores named presets for urls, prompts, settings, etc."""
+"""PresetStore — C6 refactor with mixins to keep methods ≤15."""
+from __future__ import annotations
 
 import copy
 import json
@@ -14,9 +15,10 @@ DEFAULTS = {
     "arena_presets": {},
 }
 
+
 def _atomic_write(path: Path, data: Any):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=path.stem+"_", suffix=".json.tmp", dir=str(path.parent))
+    fd, tmp = tempfile.mkstemp(prefix=path.stem + "_", suffix=".json.tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -25,8 +27,9 @@ def _atomic_write(path: Path, data: Any):
         if Path(tmp).exists():
             try:
                 Path(tmp).unlink()
-            except:
+            except Exception:
                 pass
+
 
 def _load_json(path: Path, default: Any):
     if not path.exists():
@@ -40,13 +43,10 @@ def _load_json(path: Path, default: Any):
     except Exception:
         return copy.deepcopy(default)
 
-class PresetStore:
-    def __init__(self, path: Path):
-        self.path = Path(path)
-        self._data = _load_json(self.path, DEFAULTS)
-        for k in DEFAULTS:
-            if k not in self._data:
-                self._data[k] = copy.deepcopy(DEFAULTS[k])
+
+class _BaseMixin:
+    path: Path
+    _data: dict
 
     def load(self):
         self._data = _load_json(self.path, DEFAULTS)
@@ -57,7 +57,14 @@ class PresetStore:
     def save(self):
         _atomic_write(self.path, self._data)
 
-    # URL presets (list of URLs)
+    def all_data(self):
+        return copy.deepcopy(self._data)
+
+
+class UrlPresetMixin:
+    path: Path
+    _data: dict
+
     def get_url_presets(self):
         return copy.deepcopy(self._data.get("url_presets", []))
 
@@ -81,19 +88,20 @@ class PresetStore:
         presets = self._data.get("url_presets", [])
         if url not in presets:
             return False
-        presets = [p for p in presets if p != url]
-        self._data["url_presets"] = presets
+        self._data["url_presets"] = [p for p in presets if p != url]
         self.save()
         return True
 
-    # Prompt presets - returns list of names for JS compatibility
+
+class PromptPresetMixin:
+    _data: dict
+
     def list_prompt_presets(self):
-        data = self._data.get("prompt_presets", {})
-        return list(data.keys())
+        return list(self._data.get("prompt_presets", {}).keys())
 
     def list_prompt_presets_detailed(self):
         data = self._data.get("prompt_presets", {})
-        return [{"name": k, "template": v.get("template","")[:80]} for k,v in data.items()]
+        return [{"name": k, "template": v.get("template", "")[:80]} for k, v in data.items()]
 
     def save_prompt_preset(self, name: str, template: str):
         if "prompt_presets" not in self._data:
@@ -111,10 +119,12 @@ class PresetStore:
             return True
         return False
 
-    # Settings presets
+
+class SettingsPresetMixin:
+    _data: dict
+
     def list_settings_presets(self):
-        data = self._data.get("settings_presets", {})
-        return list(data.keys())
+        return list(self._data.get("settings_presets", {}).keys())
 
     def save_settings_preset(self, name: str, settings: dict):
         if "settings_presets" not in self._data:
@@ -132,12 +142,17 @@ class PresetStore:
             return True
         return False
 
-    # Arena presets (full snapshot) - list returns names sorted by updated_at desc
+
+class ArenaPresetMixin:
+    _data: dict
+
     def list_arena_presets(self):
         data = self._data.get("arena_presets", {})
+
         def _updated(name):
             doc = data.get(name, {})
-            return doc.get("updated_at","") if isinstance(doc, dict) else ""
+            return doc.get("updated_at", "") if isinstance(doc, dict) else ""
+
         names = list(data.keys())
         names.sort(key=_updated, reverse=True)
         return names
@@ -152,7 +167,7 @@ class PresetStore:
                 "name": name,
                 "url_count": len(doc.get("urls", [])),
                 "image_count": len(doc.get("images", [])),
-                "updated_at": doc.get("updated_at",""),
+                "updated_at": doc.get("updated_at", ""),
             })
         result.sort(key=lambda x: x["updated_at"], reverse=True)
         return result
@@ -173,5 +188,11 @@ class PresetStore:
             return True
         return False
 
-    def all_data(self):
-        return copy.deepcopy(self._data)
+
+class PresetStore(_BaseMixin, UrlPresetMixin, PromptPresetMixin, SettingsPresetMixin, ArenaPresetMixin):
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self._data = _load_json(self.path, DEFAULTS)
+        for k in DEFAULTS:
+            if k not in self._data:
+                self._data[k] = copy.deepcopy(DEFAULTS[k])

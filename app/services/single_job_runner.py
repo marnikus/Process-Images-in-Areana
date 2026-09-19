@@ -286,14 +286,17 @@ async def download_image(ctx: JobCtx, src: str) -> tuple[bool, bytes, str]:
 async def save_image(ctx: JobCtx, file_bytes: bytes) -> Optional[Path]:
     """Save atomically."""
     try:
+        from app.core.naming import OutputSpec
         settings = ctx.bridge.state.settings
-        suffix = settings.output.get("suffix", "_AI")
-        overwrite = settings.output.get("overwrite", False)
-        preserve = settings.output.get("preserve_format", True)
-        tpl = settings.output.get("unique_suffix_template", "{base}_AI_{n}{ext}")
-        ext = ".png"
+        spec = OutputSpec(
+            suffix=settings.output.get("suffix", "_AI"),
+            overwrite=settings.output.get("overwrite", False),
+            preserve_format=settings.output.get("preserve_format", True),
+            unique_template=settings.output.get("unique_suffix_template", "{base}_AI_{n}{ext}"),
+            downloaded_ext=".png",
+        )
         src_path = Path(ctx.img.absolute_path)
-        out_path = get_output_path(src_path, suffix=suffix, preserve_format=preserve, overwrite=overwrite, downloaded_ext=ext, unique_template=tpl)
+        out_path = get_output_path(src_path, spec)
         atomic_write_bytes(src_path.parent, out_path, file_bytes)
         return out_path
     except Exception as e:

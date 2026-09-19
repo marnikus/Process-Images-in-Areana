@@ -2553,7 +2553,7 @@ class Bridge(QObject):
         try:
             from app.browser.cdp_arena import CDPArenaController
             from app.utils.correlation import generate_correlation_id, build_final_prompt
-            from app.core.naming import get_output_path, atomic_write_bytes
+            from app.core.naming import OutputSpec, get_output_path, atomic_write_bytes
             from app.core.enums import ImageStatus
             from app.services.cooldown_service import wait_for_batch_ready
             import asyncio
@@ -3647,14 +3647,14 @@ class Bridge(QObject):
                             source_path = Path(img.absolute_path)
                             if not ext:
                                 ext = ".png"
-                            output_path = get_output_path(
-                                source_path,
+                            out_spec = OutputSpec(
                                 suffix=suffix,
                                 preserve_format=preserve_format,
                                 overwrite=overwrite,
                                 downloaded_ext=ext,
-                                unique_template=unique_tpl
+                                unique_template=unique_tpl,
                             )
+                            output_path = get_output_path(source_path, out_spec)
                             atomic_write_bytes(source_path.parent, output_path, file_bytes)
                             img.output_path = str(output_path)
                             self._log(f"[{correlation_id}] ✅ Saved to {output_path} ({len(file_bytes)} bytes)", "success")

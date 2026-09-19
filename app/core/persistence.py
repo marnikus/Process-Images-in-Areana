@@ -1,9 +1,13 @@
+"""Persistence — C5 refactor with predicate tables and small helpers."""
+from __future__ import annotations
+
 import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
+
 from .models import AppState
+
 
 def load_state(path: Path) -> AppState:
     path = Path(path)
@@ -17,17 +21,17 @@ def load_state(path: Path) -> AppState:
         print(f"Failed to load state from {path}: {e}, returning empty state")
         return AppState()
 
-def save_state(state: AppState, path: Path) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = state.to_dict()
-    # Atomic write: write to temp file in same dir, then replace
-    fd, tmp_path_str = tempfile.mkstemp(prefix=path.stem + "_", suffix=".json.tmp", dir=str(path.parent))
+
+def _atomic_json_write(target: Path, data: dict) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path_str = tempfile.mkstemp(
+        prefix=target.stem + "_", suffix=".json.tmp", dir=str(target.parent)
+    )
     tmp_path = Path(tmp_path_str)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        tmp_path.replace(path)
+        tmp_path.replace(target)
     finally:
         if tmp_path.exists():
             try:
@@ -35,10 +39,14 @@ def save_state(state: AppState, path: Path) -> None:
             except Exception:
                 pass
 
+
+def save_state(state: AppState, path: Path) -> None:
+    path = Path(path)
+    _atomic_json_write(path, state.to_dict())
+
+
 def save_preset(state: AppState, preset_path: Path) -> None:
-    """Save preset JSON containing UI params (urls, prompt, settings, folder) without jobs/images."""
     preset_path = Path(preset_path)
-    preset_path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "version": state.version,
         "urls": [u.__dict__ for u in state.urls],
@@ -46,18 +54,8 @@ def save_preset(state: AppState, preset_path: Path) -> None:
         "prompt": state.prompt,
         "settings": state.settings.__dict__,
     }
-    fd, tmp_path_str = tempfile.mkstemp(prefix=preset_path.stem + "_", suffix=".json.tmp", dir=str(preset_path.parent))
-    tmp_path = Path(tmp_path_str)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        tmp_path.replace(preset_path)
-    finally:
-        if tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except Exception:
-                pass
+    _atomic_json_write(preset_path, data)
+
 
 def load_preset(preset_path: Path) -> dict:
     preset_path = Path(preset_path)
@@ -66,34 +64,23 @@ def load_preset(preset_path: Path) -> dict:
     with preset_path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
-def reconcile_with_filesystem(state: AppState, root_path: Path | None = None) -> dict:
-    """
-    Reconcile saved state with current filesystem.
-    Returns dict of changes.
-    - Marks missing source files as skipped
-    - Detects changed files (size/mtime) and resets completed to pending if needed
-    - Does not auto-resubmit interrupted jobs
-    """
-    from .scanner import scan_folder, detect_changes
-    from .enums import ImageStatus, JobStatus
 
+# ---- reconcile helpers (C5 predicate table + small funcs) ----
+
+def _resolve_root(state: AppState, root_path: Path | None) -> tuple[Path | None, dict | None]:
     if root_path is None:
         root_str = state.folder.get("root_path", "")
         if not root_str:
-            return {"error": "No root path configured"}
+            return None, {"error": "No root path configured"}
         root_path = Path(root_str)
-
     root_path = Path(root_path)
     if not root_path.exists():
-        return {"error": f"Root path does not exist: {root_path}"}
+        return None, {"error": f"Root path does not exist: {root_path}"}
+    return root_path, None
 
-    # Scan current
-    supported = state.folder.get("supported_types", [".png", ".jpg", ".jpeg", ".webp"])
-    ignore_ai = state.folder.get("ignore_ai_suffix", True)
-    current_scan = scan_folder(root_path, set(supported), ignore_ai)
 
-    # Previous as scan dicts
-    prev_scan = [
+def _build_prev_scan(state: AppState) -> list[dict]:
+    return [
         {
             "relative_path": img.relative_path,
             "absolute_path": img.absolute_path,
@@ -108,10 +95,10 @@ def reconcile_with_filesystem(state: AppState, root_path: Path | None = None) ->
         for img in state.images
     ]
 
-    changes = detect_changes(prev_scan, current_scan)
 
-    # Handle removed: mark as skipped with error
-    removed_rels = {r["relative_path"] for r in changes["removed"]}
+def _handle_removed(state: AppState, removed: list[dict]) -> None:
+    from .enums import ImageStatus
+    removed_rels = {r["relative_path"] for r in removed}
     for img in state.images:
         if img.relative_path in removed_rels:
             if img.status not in [ImageStatus.SKIPPED.value, ImageStatus.COMPLETED.value]:
@@ -119,19 +106,18 @@ def reconcile_with_filesystem(state: AppState, root_path: Path | None = None) ->
                 img.error = "Source file removed"
                 img.selected = False
 
-    # Handle changed: if previously completed, reset to pending
-    for ch in changes["changed"]:
+
+def _handle_changed(state: AppState, changed: list[dict]) -> None:
+    from .enums import ImageStatus
+    for ch in changed:
         old = ch["old"]
         new = ch["new"]
-        # Find image
         for img in state.images:
             if img.relative_path == old["relative_path"]:
-                # Update metadata
                 img.size = new["size"]
                 img.mtime = new["mtime"]
                 img.fingerprint = new["fingerprint"]
                 img.absolute_path = new["absolute_path"]
-                # If completed, reset
                 if img.status == ImageStatus.COMPLETED.value:
                     img.status = ImageStatus.PENDING.value
                     img.selected = True
@@ -139,31 +125,71 @@ def reconcile_with_filesystem(state: AppState, root_path: Path | None = None) ->
                     img.error = "Source changed, needs reprocessing"
                 break
 
-    # Handle added: add as pending
-    for added in changes["added"]:
-        from .models import ImageItem
-        new_img = ImageItem.from_scan_dict(added, selected=False)
-        # Avoid duplicate
+
+def _handle_added(state: AppState, added: list[dict]) -> None:
+    from .models import ImageItem
+    for item in added:
+        new_img = ImageItem.from_scan_dict(item, selected=False)
         if not any(i.relative_path == new_img.relative_path for i in state.images):
             state.images.append(new_img)
 
-    # Handle interrupted jobs
-    interrupted_count = 0
+
+def _handle_interrupted(state: AppState) -> int:
+    from .enums import ImageStatus, JobStatus
+    # predicate table of in-progress statuses (C5)
+    interrupted_statuses = {
+        JobStatus.ATTACHING.value,
+        JobStatus.SUBMITTED.value,
+        JobStatus.WAITING_GENERATION.value,
+        JobStatus.DOWNLOADING.value,
+        JobStatus.VALIDATING.value,
+        JobStatus.SAVING.value,
+        JobStatus.PROMPT_INSERTED.value,
+        JobStatus.BASELINE_CAPTURED.value,
+    }
+    count = 0
     for job in state.jobs:
-        if job.status in [JobStatus.PROCESSING.value, JobStatus.SUBMITTED.value, JobStatus.WAITING_GENERATION.value, JobStatus.ATTACHING.value]:
+        if job.status in interrupted_statuses:
             job.status = JobStatus.INTERRUPTED.value
             job.error = "Interrupted by crash/restart, requires confirmation"
-            interrupted_count += 1
-            # Also mark image as failed or pending?
+            count += 1
             for img in state.images:
                 if img.id == job.image_id and img.status == ImageStatus.PROCESSING.value:
                     img.status = ImageStatus.FAILED.value
                     img.error = "Interrupted"
+    return count
 
+
+def reconcile_with_filesystem(state: AppState, root_path: Path | None = None) -> dict:
+    from .scanner import ScanSpec, scan_folder, detect_changes
+
+    root, err = _resolve_root(state, root_path)
+    if err:
+        return err
+    assert root is not None
+
+    supported = state.folder.get("supported_types", [".png", ".jpg", ".jpeg", ".webp"])
+    ignore_ai = state.folder.get("ignore_ai_suffix", True)
+    spec = ScanSpec(supported_exts=set(supported), ignore_ai_suffix=ignore_ai)
+    current_scan = scan_folder(root, spec)
+
+    prev_scan = _build_prev_scan(state)
+    changes = detect_changes(prev_scan, current_scan)
+
+    # predicate table for handlers
+    handlers = {
+        "removed": _handle_removed,
+        "changed": _handle_changed,
+        "added": _handle_added,
+    }
+    for key, handler in handlers.items():
+        handler(state, changes[key])
+
+    interrupted = _handle_interrupted(state)
     state.recalculate_progress()
     return {
         "added": len(changes["added"]),
         "removed": len(changes["removed"]),
         "changed": len(changes["changed"]),
-        "interrupted": interrupted_count,
+        "interrupted": interrupted,
     }

@@ -9,7 +9,7 @@ from typing import Optional, Callable, Dict, Any
 from ..core.models import ImageItem, UrlRow, JobRecord, AppState
 from ..core.enums import ImageStatus, JobStatus
 from ..utils.correlation import generate_correlation_id, build_final_prompt
-from ..core.naming import get_output_path, atomic_write_bytes
+from ..core.naming import OutputSpec, get_output_path, atomic_write_bytes
 from ..browser.controller import BrowserController
 from .verification import VerificationService
 from datetime import datetime
@@ -229,14 +229,14 @@ class JobRunner:
             if fmt:
                 downloaded_ext = f".{fmt}" if not fmt.startswith(".") else fmt
 
-            output_path = get_output_path(
-                source_path,
+            spec = OutputSpec(
                 suffix=self.state.settings.output.get("suffix", "_AI"),
                 preserve_format=self.state.settings.output.get("preserve_format", True),
                 overwrite=self.state.settings.output.get("overwrite", False),
                 downloaded_ext=downloaded_ext,
-                unique_template=self.state.settings.output.get("unique_suffix_template", "{base}_AI_{n}{ext}")
+                unique_template=self.state.settings.output.get("unique_suffix_template", "{base}_AI_{n}{ext}"),
             )
+            output_path = get_output_path(source_path, spec)
 
             # Atomic write
             atomic_write_bytes(source_path.parent, output_path, file_bytes)

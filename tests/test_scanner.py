@@ -1,15 +1,13 @@
 from pathlib import Path
 import tempfile
-import os
 import pytest
-from app.core.scanner import scan_folder, detect_changes
+from app.core.scanner import ScanSpec, scan_folder, detect_changes
 
 @pytest.mark.integration
 def test_scan_recursive_and_ignore_ai():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / "sub").mkdir()
-        # Create files
         (root / "a.png").write_bytes(b"pngdata")
         (root / "b.jpg").write_bytes(b"jpgdata")
         (root / "c_AI.png").write_bytes(b"should be ignored")
@@ -17,7 +15,8 @@ def test_scan_recursive_and_ignore_ai():
         (root / "sub" / "e_AI_2.jpg").write_bytes(b"ignore")
         (root / "sub" / "f.txt").write_bytes(b"not image")
 
-        results = scan_folder(root, supported_exts={".png", ".jpg", ".jpeg", ".webp"}, ignore_ai_suffix=True)
+        spec = ScanSpec(supported_exts={".png", ".jpg", ".jpeg", ".webp"}, ignore_ai_suffix=True)
+        results = scan_folder(root, spec)
         rel_paths = {r["relative_path"] for r in results}
         assert "a.png" in rel_paths
         assert "b.jpg" in rel_paths
@@ -45,8 +44,8 @@ def test_detect_changes():
     ]
     curr = [
         {"relative_path": "a.png", "size": 100, "mtime": 1},
-        {"relative_path": "b.jpg", "size": 250, "mtime": 3},  # changed
-        {"relative_path": "c.png", "size": 300, "mtime": 4},  # added
+        {"relative_path": "b.jpg", "size": 250, "mtime": 3},
+        {"relative_path": "c.png", "size": 300, "mtime": 4},
     ]
     changes = detect_changes(prev, curr)
     assert len(changes["added"]) == 1
@@ -55,7 +54,6 @@ def test_detect_changes():
     assert len(changes["unchanged"]) == 1
     assert len(changes["removed"]) == 0
 
-    # Test removed
     prev2 = curr
     curr2 = [{"relative_path": "a.png", "size": 100, "mtime": 1}]
     changes2 = detect_changes(prev2, curr2)

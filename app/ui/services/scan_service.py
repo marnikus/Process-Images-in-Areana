@@ -17,7 +17,7 @@ def scan_folder_pure(
     root_path: Path, supported_types: Set[str] | None = None, ignore_ai_suffix: bool = True
 ) -> List[Dict]:
     """Pure scan wrapper — delegates to core.scanner.scan_folder but no Qt."""
-    from ...core.scanner import scan_folder
+    from ...core.scanner import ScanSpec, scan_folder
 
     if supported_types is None:
         supported_types = {".png", ".jpg", ".jpeg", ".webp"}
@@ -25,7 +25,8 @@ def scan_folder_pure(
     if not root.exists() or not root.is_dir():
         return []
     try:
-        return scan_folder(root, supported_types, ignore_ai_suffix)
+        spec = ScanSpec(supported_exts=supported_types, ignore_ai_suffix=ignore_ai_suffix)
+        return scan_folder(root, spec)
     except Exception:
         return []
 
