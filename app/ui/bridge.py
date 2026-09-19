@@ -1133,70 +1133,92 @@ class Bridge(QObject):
         except Exception as e:
             return json.dumps({'ok': False, 'error': str(e)})
 
+    def _get_qt_clipboard(self):
+        try:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app is not None:
+                return app.clipboard()
+        except Exception:
+            pass
+        try:
+            from PySide6.QtGui import QGuiApplication
+            app2 = QGuiApplication.instance()
+            if app2 is not None:
+                return app2.clipboard()
+        except Exception:
+            pass
+        return None
+
+    def _copy_via_qt(self, path_str: str, clipboard):
+        try:
+            from PySide6.QtGui import QClipboard
+            clipboard.setText(path_str, mode=QClipboard.Clipboard)
+            try:
+                clipboard.setText(path_str, mode=QClipboard.Selection)
+            except Exception:
+                pass
+            self._log(f'📋 Copied to clipboard: {path_str}', 'info')
+            return json.dumps({'ok': True, 'path': path_str, 'method': 'qt'})
+        except Exception as e_qt:
+            self._log(f'Qt clipboard failed {e_qt}, trying subprocess', 'warn')
+            return None
+
+    def _copy_via_windows(self, path_str: str):
+        import subprocess
+        try:
+            subprocess.run('clip', input=path_str.encode('utf-8'), check=True, shell=True)
+            self._log(f'📋 Copied via clip: {path_str}', 'info')
+            return json.dumps({'ok': True, 'path': path_str, 'fallback': 'clip'})
+        except Exception:
+            try:
+                ps_escaped = path_str.replace("'", "''")
+                ps_cmd = f"Set-Clipboard -Value '{ps_escaped}'"
+                subprocess.run(['powershell', '-Command', ps_cmd], check=True)
+                self._log(f'📋 Copied via powershell: {path_str}', 'info')
+                return json.dumps({'ok': True, 'path': path_str, 'fallback': 'powershell'})
+            except Exception as e_ps:
+                return json.dumps({'ok': False, 'error': f'clip/powershell failed {e_ps}', 'path': path_str})
+
+    def _copy_via_macos(self, path_str: str):
+        import subprocess
+        subprocess.run('pbcopy', input=path_str.encode('utf-8'), check=True)
+        self._log(f'📋 Copied via pbcopy: {path_str}', 'info')
+        return json.dumps({'ok': True, 'path': path_str, 'fallback': 'pbcopy'})
+
+    def _copy_via_linux(self, path_str: str):
+        import subprocess
+        try:
+            subprocess.run(['xclip', '-selection', 'clipboard'], input=path_str.encode('utf-8'), check=True)
+            self._log(f'📋 Copied via xclip: {path_str}', 'info')
+            return json.dumps({'ok': True, 'path': path_str, 'fallback': 'xclip'})
+        except Exception:
+            try:
+                subprocess.run(['xsel', '--clipboard', '--input'], input=path_str.encode('utf-8'), check=True)
+                self._log(f'📋 Copied via xsel: {path_str}', 'info')
+                return json.dumps({'ok': True, 'path': path_str, 'fallback': 'xsel'})
+            except Exception as e_x:
+                return json.dumps({'ok': False, 'error': f'xclip/xsel failed {e_x}', 'path': path_str})
+
+    def _copy_via_subprocess(self, path_str: str):
+        import platform
+        system = platform.system()
+        if system == 'Windows':
+            return self._copy_via_windows(path_str)
+        if system == 'Darwin':
+            return self._copy_via_macos(path_str)
+        return self._copy_via_linux(path_str)
+
     @Slot(str, result=str)
     def copy_path_to_clipboard(self, path_str: str):
         """Copy file path to clipboard — second option copy link to file. Fixed: was not copying."""
         try:
-            clipboard = None
-            try:
-                from PySide6.QtWidgets import QApplication
-                app = QApplication.instance()
-                if app is not None:
-                    clipboard = app.clipboard()
-            except Exception:
-                pass
-            if clipboard is None:
-                try:
-                    from PySide6.QtGui import QGuiApplication
-                    app2 = QGuiApplication.instance()
-                    if app2 is not None:
-                        clipboard = app2.clipboard()
-                except Exception:
-                    pass
+            clipboard = self._get_qt_clipboard()
             if clipboard is not None:
-                try:
-                    from PySide6.QtGui import QClipboard
-                    clipboard.setText(path_str, mode=QClipboard.Clipboard)
-                    try:
-                        clipboard.setText(path_str, mode=QClipboard.Selection)
-                    except Exception:
-                        pass
-                    self._log(f'📋 Copied to clipboard: {path_str}', 'info')
-                    return json.dumps({'ok': True, 'path': path_str, 'method': 'qt'})
-                except Exception as e_qt:
-                    self._log(f'Qt clipboard failed {e_qt}, trying subprocess', 'warn')
-            import subprocess, platform
-            system = platform.system()
-            if system == 'Windows':
-                try:
-                    subprocess.run('clip', input=path_str.encode('utf-8'), check=True, shell=True)
-                    self._log(f'📋 Copied via clip: {path_str}', 'info')
-                    return json.dumps({'ok': True, 'path': path_str, 'fallback': 'clip'})
-                except Exception:
-                    try:
-                        ps_escaped = path_str.replace("'", "''")
-                        ps_cmd = f"Set-Clipboard -Value '{ps_escaped}'"
-                        subprocess.run(['powershell', '-Command', ps_cmd], check=True)
-                        self._log(f'📋 Copied via powershell: {path_str}', 'info')
-                        return json.dumps({'ok': True, 'path': path_str, 'fallback': 'powershell'})
-                    except Exception as e_ps:
-                        return json.dumps({'ok': False, 'error': f'clip/powershell failed {e_ps}', 'path': path_str})
-            elif system == 'Darwin':
-                subprocess.run('pbcopy', input=path_str.encode('utf-8'), check=True)
-                self._log(f'📋 Copied via pbcopy: {path_str}', 'info')
-                return json.dumps({'ok': True, 'path': path_str, 'fallback': 'pbcopy'})
-            else:
-                try:
-                    subprocess.run(['xclip', '-selection', 'clipboard'], input=path_str.encode('utf-8'), check=True)
-                    self._log(f'📋 Copied via xclip: {path_str}', 'info')
-                    return json.dumps({'ok': True, 'path': path_str, 'fallback': 'xclip'})
-                except Exception:
-                    try:
-                        subprocess.run(['xsel', '--clipboard', '--input'], input=path_str.encode('utf-8'), check=True)
-                        self._log(f'📋 Copied via xsel: {path_str}', 'info')
-                        return json.dumps({'ok': True, 'path': path_str, 'fallback': 'xsel'})
-                    except Exception as e_x:
-                        return json.dumps({'ok': False, 'error': f'xclip/xsel failed {e_x}', 'path': path_str})
+                res = self._copy_via_qt(path_str, clipboard)
+                if res:
+                    return res
+            return self._copy_via_subprocess(path_str)
         except Exception as e:
             return json.dumps({'ok': False, 'error': str(e), 'path': path_str})
 
@@ -1626,53 +1648,62 @@ class Bridge(QObject):
         self._push_prompt_undo(template)
         return json.dumps({'ok': True})
 
+    def _apply_timeout_settings(self, data):
+        if 'timeout_seconds' in data:
+            self.state.settings.timeouts['page_load'] = int(data['timeout_seconds'])
+        if 'generation_timeout' in data:
+            gt = int(data['generation_timeout'])
+            gt = max(30, min(3600, gt))
+            self.state.settings.timeouts['generation'] = gt
+            self._log(f'Generation timeout set to {gt}s (waiting max time)', 'info')
+            try:
+                self.config.set_state(watcher_generation_timeout_sec=gt)
+                if self._watcher:
+                    self._watcher.update_config(generation_timeout_sec=gt)
+            except Exception:
+                pass
+        if 'max_retries' in data:
+            self.state.settings.retries['max_attempts'] = int(data['max_retries'])
+
+    def _apply_output_settings(self, data):
+        if 'naming_suffix' in data:
+            self.state.settings.output['suffix'] = data['naming_suffix']
+        if 'supported_types' in data:
+            self.state.folder['supported_types'] = data['supported_types']
+            self.state.settings.supported_types = data['supported_types']
+        if 'overwrite' in data:
+            self.state.settings.output['overwrite'] = bool(data['overwrite'])
+        if 'highlight_duration' in data:
+            self.state.settings.highlight['duration_seconds'] = int(data['highlight_duration'])
+            self.config.set_state(highlight_duration=int(data['highlight_duration']))
+
+    def _apply_watcher_settings(self, data):
+        if 'watcher_captcha_timeout_sec' in data:
+            try:
+                ct = max(10, min(3600, int(data['watcher_captcha_timeout_sec'])))
+                self.config.set_state(watcher_captcha_timeout_sec=ct)
+                if self._watcher:
+                    self._watcher.update_config(captcha_timeout_sec=ct)
+                self._log(f'Watcher captcha timeout set to {ct}s (user win setting)', 'info')
+            except Exception:
+                pass
+        if 'watcher_generation_timeout_sec' in data:
+            try:
+                gt2 = max(30, min(3600, int(data['watcher_generation_timeout_sec'])))
+                self.config.set_state(watcher_generation_timeout_sec=gt2)
+                if self._watcher:
+                    self._watcher.update_config(generation_timeout_sec=gt2)
+                self._log(f'Watcher generation timeout set to {gt2}s (user win setting)', 'info')
+            except Exception:
+                pass
+
     @Slot(str, result=str)
     def save_settings(self, settings_json: str):
         try:
             data = json.loads(settings_json)
-            if 'timeout_seconds' in data:
-                self.state.settings.timeouts['page_load'] = int(data['timeout_seconds'])
-            if 'generation_timeout' in data:
-                gt = int(data['generation_timeout'])
-                gt = max(30, min(3600, gt))
-                self.state.settings.timeouts['generation'] = gt
-                self._log(f'Generation timeout set to {gt}s (waiting max time)', 'info')
-                try:
-                    self.config.set_state(watcher_generation_timeout_sec=gt)
-                    if self._watcher:
-                        self._watcher.update_config(generation_timeout_sec=gt)
-                except Exception:
-                    pass
-            if 'max_retries' in data:
-                self.state.settings.retries['max_attempts'] = int(data['max_retries'])
-            if 'naming_suffix' in data:
-                self.state.settings.output['suffix'] = data['naming_suffix']
-            if 'supported_types' in data:
-                self.state.folder['supported_types'] = data['supported_types']
-                self.state.settings.supported_types = data['supported_types']
-            if 'overwrite' in data:
-                self.state.settings.output['overwrite'] = bool(data['overwrite'])
-            if 'highlight_duration' in data:
-                self.state.settings.highlight['duration_seconds'] = int(data['highlight_duration'])
-                self.config.set_state(highlight_duration=int(data['highlight_duration']))
-            if 'watcher_captcha_timeout_sec' in data:
-                try:
-                    ct = max(10, min(3600, int(data['watcher_captcha_timeout_sec'])))
-                    self.config.set_state(watcher_captcha_timeout_sec=ct)
-                    if self._watcher:
-                        self._watcher.update_config(captcha_timeout_sec=ct)
-                    self._log(f'Watcher captcha timeout set to {ct}s (user win setting)', 'info')
-                except Exception:
-                    pass
-            if 'watcher_generation_timeout_sec' in data:
-                try:
-                    gt2 = max(30, min(3600, int(data['watcher_generation_timeout_sec'])))
-                    self.config.set_state(watcher_generation_timeout_sec=gt2)
-                    if self._watcher:
-                        self._watcher.update_config(generation_timeout_sec=gt2)
-                    self._log(f'Watcher generation timeout set to {gt2}s (user win setting)', 'info')
-                except Exception:
-                    pass
+            self._apply_timeout_settings(data)
+            self._apply_output_settings(data)
+            self._apply_watcher_settings(data)
             self._save_arena()
             try:
                 self.undo_service.push('settings', self._arena_to_js()['settings'])
