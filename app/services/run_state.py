@@ -212,7 +212,7 @@ def schedule_coro(bridge, coro):
 def _cdp_attrs(bridge) -> Tuple[str, str]:
     """Best-known (title, url) from cdp attrs."""
     cdp = getattr(bridge, "cdp", None)
-    return getattr(cdp, "_current_title", "") or "", getattr(cdp, "_current_url", "") or ""
+    return _cdp_attr(cdp, "_current_title"), _cdp_attr(cdp, "_current_url")
 
 
 async def _fetch_tabs_safe(bridge) -> List[Any]:
@@ -263,12 +263,17 @@ def _pool_needs_page(bridge, tab_id: str) -> bool:
     return not (getattr(page, "url", "") and getattr(page, "title", ""))
 
 
+def _cdp_attr(cdp, name: str) -> str:
+    """One cached CDP field, normalized to str."""
+    return getattr(cdp, name, "") or ""
+
+
 async def _page_identity(bridge, tab_id: str) -> Tuple[str, str, str]:
     """(ws, title, url) for registering this tab."""
     cdp = getattr(bridge, "cdp", None)
-    ws = getattr(cdp, "_current_ws_url", "") or ""
-    title = getattr(cdp, "_current_title", "") or ""
-    url = getattr(cdp, "_current_url", "") or ""
+    ws = _cdp_attr(cdp, "_current_ws_url")
+    title = _cdp_attr(cdp, "_current_title")
+    url = _cdp_attr(cdp, "_current_url")
     if not url or not title:
         live_title, live_url = await resolve_tab_info(bridge, tab_id, ws)
         title = title or live_title or tab_id

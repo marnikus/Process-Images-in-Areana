@@ -295,11 +295,24 @@ by design — all targets already RULE 16-legal).
       returns `(False, None)`.
   Each fix: implement → targeted tests/behavior-diff → gate (0 new) →
   suite. Single commit. Kills 0 by design.
+  ✅ done. All 8 mains now ≤20 LOC / ≤7 CC (`_page_identity` 9→6,
+  `save_custom_block` 8→7 with `delete` 6→5 via the shared normalizer,
+  `_window_filter` 8→3, `import_preset_file` 21→19 LOC,
+  `parse_preset_input` 8→5, `wait_for_output` 25→19 LOC/9→5,
+  `_run_one_checked` 23→20 LOC, `check_security` 21→10 LOC; all 8
+  helpers A-grade), plus `_cdp_attrs` delegated to `_cdp_attr` (same
+  pattern, A1). Runner extracts proven by byte-compared goldens
+  (cancel/disabled/captcha/wait paths green, no separate diff needed).
+  Item 11 was verify-only (`__init__` already exports 12/12 since
+  R7–R9). Item 12: shim 35→72 lines, moved bodies byte-identical,
+  panels now PySide6-free. +4 tests (validator + 3 headless shim).
+  Verified: 555 green, gate 64→64 byte-identical. Also fixed an R9
+  doc race: the R11-bullet kills correction lost to a parallel edit.
 - **R11 — A6 `BridgeContext`** (= old R10): `app/ui/bridge_context.py`
   dataclass + `build_context()` + `wire_cdp/wire_watcher/wire_page_pool/
   wire_thumb` (≤15 LOC); `Bridge.__init__` ≤20 (same attrs,
   `_batch_future=None`); `_log_build_version`/`_on_cdp_error` → module
-  funcs. Kills 3 (`__init__`×2 + Bridge `[methods]`).
+  funcs. Kills 2 (`__init__`×2; the `[methods]` kill already fell in R9).
 - **R12 — A7 sweep** (= old R11 + F15): (a) vulture with @Slot whitelist
   + unused-import sweep, Area A clean; (b) F5 frozen-119 test; (c) F6
   packing test; (d) branch coverage ≥80/75, no uncovered new funcs

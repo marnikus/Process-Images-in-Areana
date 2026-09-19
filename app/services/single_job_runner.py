@@ -79,14 +79,8 @@ def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
             pass
 
 
-async def check_security(ctx: JobCtx) -> bool:
-    """Captcha gate: auto-solve (2Captcha, opt-in) else wait for user (RULE 20)."""
-    try:
-        visible = await ctx.ctrl.is_security_dialog_visible()
-    except Exception:
-        visible = False
-    if not visible:
-        return False
+async def _run_security_captcha(ctx: JobCtx) -> None:
+    """Solve/handle the visible security dialog (closures + outcome)."""
     from app.services.captcha import CaptchaCtx, handle_captcha
 
     def log(msg, level="info"):
@@ -102,6 +96,17 @@ async def check_security(ctx: JobCtx) -> bool:
                                               bridge=ctx.bridge, tab_id=ctx.tab_id,
                                               source="check-security", stop=stop, log=log))
     _handle_captcha_outcome(ctx, outcome)
+
+
+async def check_security(ctx: JobCtx) -> bool:
+    """Captcha gate: auto-solve (2Captcha, opt-in) else wait for user (RULE 20)."""
+    try:
+        visible = await ctx.ctrl.is_security_dialog_visible()
+    except Exception:
+        visible = False
+    if not visible:
+        return False
+    await _run_security_captcha(ctx)
     return True
 
 
@@ -218,19 +223,25 @@ async def submit_job(ctx: JobCtx, block: Any) -> tuple[bool, str]:
         return False, f"Submit failed: {e}"
 
 
+async def _poll_generation(ctx: JobCtx, timeout_ms: int):
+    """Poll for new output; (status, data, src) with abort marking."""
+    status, data = await ctx.ctrl.wait_for_new_output(
+        ctx.baseline, timeout_ms=timeout_ms, correlation_id=ctx.corr_id,
+        cancel_check=lambda: _is_cancelled(ctx),
+    )
+    if isinstance(data, dict) and data.get("cancelled") and _tab_aborted(ctx):
+        data["error"] = "Aborted by operator"
+    src = data.get("new_src") if isinstance(data, dict) else None
+    return status, data, src
+
+
 async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], Optional[bytes], str]:
     """Wait output."""
     try:
         await _show_gen_overlay(ctx, timeout_ms)
         _arm_revival(ctx)  # bounded resubmit if the blocked generation died
         ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
-        status, data = await ctx.ctrl.wait_for_new_output(
-            ctx.baseline, timeout_ms=timeout_ms, correlation_id=ctx.corr_id,
-            cancel_check=lambda: _is_cancelled(ctx),
-        )
-        if isinstance(data, dict) and data.get("cancelled") and _tab_aborted(ctx):
-            data["error"] = "Aborted by operator"
-        src = data.get("new_src") if isinstance(data, dict) else None
+        status, data, src = await _poll_generation(ctx, timeout_ms)
         if status == "completed" and src:
             return await _verify_download(ctx, src)
         return await _hide_and_result(ctx, src, data)
@@ -448,6 +459,8 @@ async def _handle_submit(ctx: JobCtx, block: Any):
 
 async def _handle_wait(ctx: JobCtx, block: Any):
     """Handle wait (announce watching state first, like the legacy loop)."""
+    # ideals-TABLED (R10.9): CC 9 is 3 readable ternaries + single-level
+    # ifs with no nesting; the A2-converged legacy body stays verbatim.
     is_await = getattr(block, "block_id", "") == "AWAIT_PROCESSING_IMAGE"
     label = "Waiting for image to finish generating" if is_await else "Waiting for generation"
     timeout = getattr(block, "timeout_ms", 0) or ctx.bridge.state.settings.timeouts.get("generation", 180) * 1000
@@ -693,6 +706,8 @@ async def _handle_verify_prompt(ctx: JobCtx, block: Any):
 
 def _handler_map():
     """Map block_id to handler (20 block types converged)."""
+    # ideals-TABLED (R10.9): flat registry literal; splitting the dict
+    # would scatter the A2 converge map across helpers with no seam.
     return {
         "OBSERVE_BASELINE": _handle_baseline,
         "CHECK_SECURITY": _handle_security,
@@ -755,13 +770,21 @@ def _is_cancelled(ctx: JobCtx) -> bool:
     return bool(getattr(ctx.bridge, "_cancel_requested", False)) or _tab_aborted(ctx)
 
 
-async def _run_one_checked(ctx: JobCtx, block: Any) -> tuple[bool, str, bool]:
+def _block_skip_reason(ctx: JobCtx, block: Any):
+    """Cancellation/disabled short-circuit result, or None to run."""
     if _is_cancelled(ctx):
         reason = "Aborted by operator" if _tab_aborted(ctx) else "Cancelled by user"
         return True, reason, True
     if not getattr(block, "enabled", True):
         _emit_action(ctx, block, "skipped", "Skipped (disabled)")
         return False, "", False
+    return None
+
+
+async def _run_one_checked(ctx: JobCtx, block: Any) -> tuple[bool, str, bool]:
+    skip = _block_skip_reason(ctx, block)
+    if skip is not None:
+        return skip
     await _maybe_delay(block)
     try:
         _emit_action(ctx, block, "running", f"[{ctx.tab_id[:6]}] {block.display_name}")

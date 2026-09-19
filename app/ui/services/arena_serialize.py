@@ -52,6 +52,8 @@ def prompt_to_js(d: Dict[str, Any]) -> Dict[str, Any]:
 
 def settings_to_js(d: Dict[str, Any]) -> Dict[str, Any]:
     """Settings -> flattened timeouts/output/highlight/browser view."""
+    # ideals-TABLED (R10.9): flat 12-key view mapping at CC 1; one key
+    # per line is the readable shape, any split would scatter the wire view.
     settings_dict = d.get("settings", {})
     timeouts = settings_dict.get("timeouts", {})
     output = settings_dict.get("output", {})

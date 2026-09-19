@@ -20,6 +20,11 @@ def custom_entry(data: dict) -> dict:
             "updated_at": datetime.utcnow().isoformat() + "Z"}
 
 
+def _custom_block_list(raw) -> list:
+    """Stored custom blocks as a list (non-list store → empty)."""
+    return raw if isinstance(raw, list) else []
+
+
 class BlocksLibraryMixin:
     """Custom blocks and prompt preset slots."""
 
@@ -48,9 +53,7 @@ class BlocksLibraryMixin:
             if not isinstance(data, dict) or "block" not in data:
                 return json.dumps({"ok": False, "error": "invalid custom block format, need {name, block}"})
             entry = custom_entry(data)
-            raw = self.config.get_state("custom_blocks", [])
-            if not isinstance(raw, list):
-                raw = []
+            raw = _custom_block_list(self.config.get_state("custom_blocks", []))
             raw = [c for c in raw if c.get("name") != entry["name"]]
             raw.append(entry)
             self.config.set_state(custom_blocks=raw)
@@ -62,9 +65,7 @@ class BlocksLibraryMixin:
     @Slot(str, result=str)
     def delete_custom_block(self, name: str):
         try:
-            raw = self.config.get_state("custom_blocks", [])
-            if not isinstance(raw, list):
-                raw = []
+            raw = _custom_block_list(self.config.get_state("custom_blocks", []))
             before = len(raw)
             raw = [c for c in raw if c.get("name") != name]
             if len(raw) == before:

@@ -70,6 +70,11 @@ def parse_preset_input(grid_json: str):
     tree, payload, ws, doc = extract_from_portable(parsed)
     if payload:
         return tree, payload, ws, doc, None
+    return _raw_tree_result(parsed, grid_json)
+
+
+def _raw_tree_result(parsed, grid_json):
+    """Raw {v,tree} input -> (tree, payload, ws, doc, err); Nones when N/A."""
     if "v" in parsed and "tree" in parsed:
         tp, err = canonical_grid_payload(grid_json)
         if not err:

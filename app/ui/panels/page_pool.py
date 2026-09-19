@@ -94,7 +94,12 @@ async def do_connect_page_pool(bridge, ws_url: str):
 
 
 class PagePoolMixin:
-    """Pooled-tab management and cooldown config/control slots."""
+    """Pooled-tab management and cooldown config/control slots.
+
+    ideal-size: 9 frozen JS slots; validate/wire helpers already live at
+    module level — remaining per-slot bodies cannot move without
+    scattering slot+helper pairs (R10.10).
+    """
 
     @Slot(result=str)
     def get_page_pool_status(self):

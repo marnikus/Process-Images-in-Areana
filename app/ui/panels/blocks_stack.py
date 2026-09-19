@@ -102,7 +102,12 @@ def export_stack_file(bridge, blocks) -> str:
 
 
 class BlocksStackMixin:
-    """Action-block stack and stack-preset slots."""
+    """Action-block stack and stack-preset slots.
+
+    ideal-size: 10 frozen JS slots; validate/wire helpers already live at
+    module level — remaining per-slot bodies cannot move without
+    scattering slot+helper pairs (R10.10).
+    """
 
     @Slot(result=str)
     def get_action_blocks(self):

@@ -15,7 +15,7 @@ import json
 import threading
 from pathlib import Path
 
-from app.ui.qt_compat import QFileDialog, Slot
+from app.ui.qt_compat import QFileDialog, Slot, clipboard_copy
 from app.ui.services import arena_serialize, undo_entries
 from app.ui.services import file_service, folder_ai_service
 from app.ui.services.scan_service import merge_scanned, scan_folder_pure
@@ -162,46 +162,10 @@ def run_folder_ai_request(bridge, mode: str) -> str:
     return json.dumps({"ok": True, "pending": True})
 
 
-def _qt_clipboard_handle():
-    """Qt clipboard via QApplication, else QGuiApplication (None when absent)."""
-    try:
-        from PySide6.QtWidgets import QApplication
-        app = QApplication.instance()
-        if app is not None:
-            return app.clipboard()
-    except Exception:
-        pass
-    try:
-        from PySide6.QtGui import QGuiApplication
-        app2 = QGuiApplication.instance()
-        if app2 is not None:
-            return app2.clipboard()
-    except Exception:
-        pass
-    return None
-
-
-def try_qt_clipboard_copy(text: str):
-    """Qt clipboard attempt; (True, None) / (False, warn-or-None)."""
-    clipboard = _qt_clipboard_handle()
-    if clipboard is None:
-        return False, None
-    try:
-        from PySide6.QtGui import QClipboard
-        clipboard.setText(text, mode=QClipboard.Clipboard)
-        try:
-            clipboard.setText(text, mode=QClipboard.Selection)
-        except Exception:
-            pass
-        return True, None
-    except Exception as e_qt:
-        return False, f"Qt clipboard failed {e_qt}, trying subprocess"
-
-
 def copy_path_text(bridge, path_str: str) -> str:
     """Copy path: Qt first, subprocess chain fallback. Result JSON."""
     try:
-        ok, warn = try_qt_clipboard_copy(path_str)
+        ok, warn = clipboard_copy(path_str)
         if ok:
             bridge._log(f"📋 Copied to clipboard: {path_str}", "info")
             return json.dumps({"ok": True, "path": path_str, "method": "qt"})

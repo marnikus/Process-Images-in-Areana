@@ -9,6 +9,7 @@ shaping lives in `ui/services/window_preset_service.py`, state->JS mapping in
 import json
 import logging
 from pathlib import Path
+from typing import Optional
 
 from app.core.layout_service import (
     WINDOW_IDS,
@@ -79,6 +80,16 @@ def export_preset_file(bridge, name: str) -> str:
         return json.dumps({"ok": False, "error": str(e)})
 
 
+def _preset_grid_error(doc) -> Optional[str]:
+    """Grid-payload validation error, or None when valid/absent."""
+    payload = doc.get("grid", {}).get("payload")
+    if payload:
+        _, err = canonical_grid_payload(payload)
+        if err:
+            return f"invalid grid: {err}"
+    return None
+
+
 def import_preset_file(bridge) -> str:
     """Read a preset doc from disk after validating its grid payload."""
     try:
@@ -89,11 +100,9 @@ def import_preset_file(bridge) -> str:
             return json.dumps({"ok": False, "cancelled": True})
         doc = _read_preset_doc(file_path)
         name = doc.get("name") or Path(file_path).stem
-        payload = doc.get("grid", {}).get("payload")
-        if payload:
-            _, err = canonical_grid_payload(payload)
-            if err:
-                return json.dumps({"ok": False, "error": f"invalid grid: {err}"})
+        err = _preset_grid_error(doc)
+        if err:
+            return json.dumps({"ok": False, "error": err})
         bridge.config.window_presets.save_preset(name, doc)
         bridge.list_window_presets()
         bridge._log(f"Window preset imported: {name}", "success")
@@ -102,16 +111,25 @@ def import_preset_file(bridge) -> str:
         return json.dumps({"ok": False, "error": str(e)})
 
 
+def _known_ids(items) -> list:
+    """String items restricted to known window ids."""
+    return [i for i in items if isinstance(i, str) and i in WINDOW_IDS]
+
+
 def _window_filter(raw: dict) -> dict:
     """Closed/minimized lists restricted to known window ids."""
-    closed = [i for i in raw.get("closed", []) if isinstance(i, str) and i in WINDOW_IDS]
-    minimized = [i for i in raw.get("minimized", []) if isinstance(i, str) and i in WINDOW_IDS
-                 and i not in closed]
+    closed = _known_ids(raw.get("closed", []))
+    minimized = [i for i in _known_ids(raw.get("minimized", [])) if i not in closed]
     return {"closed": closed, "minimized": minimized}
 
 
 class LayoutStateMixin:
-    """Grid layout, window states/presets, app/arena state slots."""
+    """Grid layout, window states/presets, app/arena state slots.
+
+    ideal-size: 14 frozen JS slots; validate/wire helpers already live at
+    module level — remaining per-slot bodies cannot move without
+    scattering slot+helper pairs (R10.10).
+    """
 
     @Slot(result=str)
     def get_grid_layout(self):

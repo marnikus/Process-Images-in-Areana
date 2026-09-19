@@ -104,7 +104,12 @@ def captcha_service(bridge):
 
 
 class WatcherCaptchaMixin:
-    """Passive-watcher config/control and 2Captcha settings slots."""
+    """Passive-watcher config/control and 2Captcha settings slots.
+
+    ideal-size: 10 frozen JS slots; validate/wire helpers already live at
+    module level — remaining per-slot bodies cannot move without
+    scattering slot+helper pairs (R10.10).
+    """
 
     @Slot(result=str)
     def get_watcher_config(self):

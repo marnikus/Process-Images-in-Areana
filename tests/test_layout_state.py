@@ -133,3 +133,12 @@ def test_export_import_headless(tmp_path, monkeypatch):
     assert res["ok"] is False
     res = json.loads(panel.import_preset_file(bridge))
     assert res["ok"] is False and "headless" in res["error"]
+
+
+def test_preset_grid_error_validator():
+    assert panel._preset_grid_error({}) is None
+    assert panel._preset_grid_error({"grid": {}}) is None
+    good = {"grid": {"payload": json.dumps({"v": 4, "tree": default_grid_tree()})}}
+    assert panel._preset_grid_error(good) is None
+    bad = {"grid": {"payload": "junk"}}
+    assert panel._preset_grid_error(bad).startswith("invalid grid: ")
