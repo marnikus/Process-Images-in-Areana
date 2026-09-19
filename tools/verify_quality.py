@@ -52,6 +52,7 @@ Anti-gaming checks:
 from __future__ import annotations
 
 import argparse
+import math
 import ast
 import json
 import re
@@ -524,7 +525,10 @@ def update_coverage_baseline(baseline_path: str, cov_path: Path) -> str:
             f"{cov['line']:.2f}/{cov['branch']:.2f} (RULE 16 never-decrease). "
             "Fix the coverage drop — lowering the floor needs an explicit, "
             "reviewed baseline edit.")
-    data["coverage"] = {"line": round(cov["line"], 2), "branch": round(cov["branch"], 2)}
+    # floor to 2dp: a rounded-UP floor can exceed what was actually measured
+    # and then fail the very next identical run (51.168 -> 51.17 trap).
+    data["coverage"] = {"line": math.floor(cov["line"] * 100) / 100,
+                        "branch": math.floor(cov["branch"] * 100) / 100}
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return f"baseline coverage stored: line {cov['line']:.2f}%, branch {cov['branch']:.2f}%"
 

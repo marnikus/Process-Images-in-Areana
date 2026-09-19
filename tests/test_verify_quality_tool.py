@@ -149,7 +149,9 @@ def test_update_coverage_baseline_round_trip(tmp_path: Path):
                       "--baseline", str(base), "--coverage-file", str(cov))
     assert "44.31" in result.stdout
     stored = json.loads(base.read_text(encoding="utf-8"))
-    assert stored["coverage"] == {"line": 44.31, "branch": 33.76}
+    # floors at 2dp: a rounded-up floor (33.76) can exceed the measured
+    # 33.755... and fail the next identical run (W4 rounding fix)
+    assert stored["coverage"] == {"line": 44.31, "branch": 33.75}
     assert "app/example.py" in stored, "existing per-file baseline keys must survive"
 
 
