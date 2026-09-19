@@ -155,32 +155,41 @@ class Bridge(QObject):
         self.config = config_manager
         self.state_path = Path(state_path)
         self.state = load_state(self.state_path)
-        self._run_state = "idle"
-        self._cancel_requested = False
-        self._pause_requested = False
-        self._stop_after = False
-        self._exported_paths = {}
+        self._init_state_flags()
         self.undo_service = UndoService(self.config.undo)
         self.cdp = cdp_client
-        # persistent bg loop for CDP (keeps websocket alive)
-        import threading as _th
-        self._bg_loop = None
-        self._bg_thread = None
-        self._bg_lock = _th.Lock()
-        self._bg_ready = _th.Event()
-        # debouncing for CDP tab find/connect to avoid x2 logs and race
-        self._last_find_query = ""
-        self._last_find_ts = 0.0
-        self._last_connect_ws = ""
-        self._last_connect_ts = 0.0
-        self._find_in_progress = False
-        self._connect_in_progress = False
-        self._auto_scan_running = False
-        self._ensure_running = False
+        self._init_thumbnail_infra()
+        try:
+            self.config.undo.load()
+        except Exception:
+            pass
+        self._wire_cdp_client()
+        self._watcher = self._build_watcher_service()
+        self._watcher_loop_task = None
+        self._page_pool = self._build_page_pool()
+        self._log_build_version()
+
+    def _init_state_flags(self) -> None:
+        """Construction defaults: run lifecycle, CDP bg loop, debounce guards."""
+        self._run_state = "idle"
+        self._cancel_requested = self._pause_requested = False
+        self._stop_after = False
+        self._exported_paths = {}
         self._persist_ok = True
         self._restore_note_done = False
-        # thumbnail cache + thread pool to avoid UI freeze on mouse clicks
-        # Previously get_image_thumbnail did PIL thumbnail sync in main thread for 80 images -> freeze
+        import threading as _th  # bg CDP loop keeps websocket alive
+        self._bg_loop = self._bg_thread = None
+        self._bg_lock = _th.Lock()
+        self._bg_ready = _th.Event()
+        # find/connect debounce avoids x2 logs and races
+        self._last_find_query = self._last_connect_ws = ""
+        self._last_find_ts = self._last_connect_ts = 0.0
+        self._find_in_progress = self._connect_in_progress = False
+        self._auto_scan_running = self._ensure_running = False
+        self._scan_in_progress = False
+
+    def _init_thumbnail_infra(self) -> None:
+        """Thumb cache + pool — PIL thumbnails off the main thread (80-img freeze)."""
         self._thumb_cache = {}
         self._thumb_in_progress = set()
         try:
@@ -188,90 +197,77 @@ class Bridge(QObject):
             self._thumb_executor = _cf.ThreadPoolExecutor(max_workers=2, thread_name_prefix="thumb")
         except Exception:
             self._thumb_executor = None
-        # scan folder debouncing to avoid freeze
-        self._scan_in_progress = False
-        # ensure undo history loaded
+
+    def _wire_cdp_client(self) -> None:
+        """Install CDP status forwarding signals if a client exists."""
+        if not self.cdp:
+            return
         try:
-            self.config.undo.load()
+            self.cdp.connected.connect(lambda: self.connection_status.emit("connected"))
+            self.cdp.disconnected.connect(lambda: self.connection_status.emit("disconnected"))
+            self.cdp.error.connect(lambda e: self._on_cdp_error(e))
         except Exception:
             pass
-        # install CDP status forwarding if client exists
-        if self.cdp:
-            try:
-                self.cdp.connected.connect(lambda: self.connection_status.emit("connected"))
-                self.cdp.disconnected.connect(lambda: self.connection_status.emit("disconnected"))
-                self.cdp.error.connect(lambda e: self._on_cdp_error(e))
-            except Exception:
-                pass
 
-        # Watcher service — passive recheck every x ms for generating icon or captcha
-        self._watcher = None
-        self._watcher_loop_task = None
+    def _build_watcher_service(self):
+        """Watcher service — passive recheck every x ms for generating icon
+        or captcha. Returns the service, or None on init failure."""
         try:
-            from app.services.watcher import WatcherService, WatcherConfig
-            cfg = WatcherConfig(
-                enabled=bool(self.config.get_state("watcher_enabled", False)),
-                check_interval_ms=int(self.config.get_state("watcher_interval_ms", 2000)),
-                captcha_timeout_sec=int(self.config.get_state("watcher_captcha_timeout_sec", 300)),
-                generation_timeout_sec=int(self.config.get_state("watcher_generation_timeout_sec", 600)),
-                auto_pause_jobs=bool(self.config.get_state("watcher_auto_pause", True)),
-            )
+            from app.services.watcher import WatcherService
+            cfg = self._build_watcher_config()
             self._watcher = WatcherService(
                 config=cfg,
                 cdp_controller_getter=lambda: self._get_watcher_cdp_controller(),
                 job_runner_getter=lambda: self,
                 logger=lambda msg, level="info": self._log(f"[Watcher] {msg}", level)
             )
-            # Callback to emit watcher_status to UI
-            def _watcher_cb(payload):
-                try:
-                    import json as _json
-                    self.watcher_status.emit(_json.dumps(payload, ensure_ascii=False))
-                except Exception:
-                    pass
-            # Use sync callback that will be called from async loop — need to handle via signal
-            # We'll wrap to emit via log as well
             self._watcher.add_callback(lambda p: self._on_watcher_state(p))
-            # Auto-start if enabled
-            if cfg.enabled:
-                # Start will be called when event loop is ready — schedule
+            if cfg.enabled:  # auto-start only when a loop is already running
                 try:
                     import asyncio
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
+                    if asyncio.get_event_loop().is_running():
                         self._watcher.start()
-                    else:
-                        # Will start on first get_watcher_config call or explicit start
-                        pass
                 except Exception:
                     pass
+            return self._watcher
         except Exception as e:
             try:
                 self._log(f"Watcher init failed: {e}", "warn")
             except Exception:
                 pass
-            self._watcher = None
+            return None
 
-        # PagePool — multi-page steady/busy tracking
-        self._page_pool = None
+    def _build_watcher_config(self):
+        """Watcher settings from user config (intervals, timeouts, pause)."""
+        from app.services.watcher import WatcherConfig
+
+        return WatcherConfig(
+            enabled=bool(self.config.get_state("watcher_enabled", False)),
+            check_interval_ms=int(self.config.get_state("watcher_interval_ms", 2000)),
+            captcha_timeout_sec=int(self.config.get_state("watcher_captcha_timeout_sec", 300)),
+            generation_timeout_sec=int(self.config.get_state("watcher_generation_timeout_sec", 600)),
+            auto_pause_jobs=bool(self.config.get_state("watcher_auto_pause", True)),
+        )
+
+    def _build_page_pool(self):
+        """PagePool — multi-page steady/busy tracking bound to CDP host/port."""
         try:
             from app.browser.page_pool import PagePool
-            self._page_pool = PagePool(logger=lambda m, l="info": self._log(m, l))
+            pool = PagePool(logger=lambda m, l="info": self._log(m, l))
             try:
                 host = self.config.get_state("cdp_host", "127.0.0.1")
                 port = int(self.config.get_state("cdp_port", 9222))
             except Exception:
-                host = "127.0.0.1"
-                port = 9222
-            self._page_pool._host = str(host)
-            self._page_pool._port = int(port)
+                host, port = "127.0.0.1", 9222
+            pool._host = str(host)
+            pool._port = int(port)
+            return pool
         except Exception as e:
             try:
                 self._log(f"PagePool init failed: {e}", "warn")
             except Exception:
                 pass
-            self._page_pool = None
-        self._log_build_version()
+            return None
 
     def _log_build_version(self) -> None:
         """Log the running commit so behavior is traceable. Best effort."""
