@@ -507,12 +507,23 @@ def load_coverage_baseline(baseline_path: str) -> Optional[Dict[str, float]]:
 
 
 def update_coverage_baseline(baseline_path: str, cov_path: Path) -> str:
-    """Store current coverage in the baseline file (keeps existing keys)."""
+    """Store current coverage in the baseline file (keeps existing keys).
+
+    The ratchet floor may only move UP (RULE 16 never-decrease); refusing
+    a lower value is what makes the floor tamper-proof."""
     cov = read_coverage(cov_path)
     if cov is None:
         raise SystemExit(f"no coverage data at {cov_path} — generate it first")
     path = Path(baseline_path)
     data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    old = data.get("coverage") if isinstance(data.get("coverage"), dict) else None
+    if old and (cov["line"] < old.get("line", 0) or cov["branch"] < old.get("branch", 0)):
+        raise SystemExit(
+            f"refusing to LOWER the ratchet floor: baseline stores "
+            f"{old.get('line')}/{old.get('branch')} but current run measured "
+            f"{cov['line']:.2f}/{cov['branch']:.2f} (RULE 16 never-decrease). "
+            "Fix the coverage drop — lowering the floor needs an explicit, "
+            "reviewed baseline edit.")
     data["coverage"] = {"line": round(cov["line"], 2), "branch": round(cov["branch"], 2)}
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return f"baseline coverage stored: line {cov['line']:.2f}%, branch {cov['branch']:.2f}%"
@@ -564,7 +575,8 @@ def select_files(args) -> Tuple[List[Path], Optional[str]]:
     return files, None
 
 
-def collect_breaches(args, files: List[Path], baseline_data: Dict) -> List[Dict]:
+def collect_breaches(args, files: List[Path], baseline_data: Dict,
+                    ratchet: Optional[Dict[str, float]]) -> List[Dict]:
     """Per-file metric breaches (legacy-downgraded when allowed) + coverage lanes."""
     all_breaches: List[Dict] = []
     for f in files:
@@ -573,10 +585,16 @@ def collect_breaches(args, files: List[Path], baseline_data: Dict) -> List[Dict]
             rel = str(f.relative_to(ROOT)) if f.is_relative_to(ROOT) else str(f)
             breaches = downgrade_legacy(breaches, baseline_data.get(rel) or baseline_data.get(str(f)))
         all_breaches.extend(breaches)
-    ratchet = load_coverage_baseline(args.baseline) if args.coverage_ratchet else None
     cov_path = Path(args.coverage_file) if args.coverage_file else None
     all_breaches.extend(check_coverage(cov_path=cov_path, ratchet=ratchet))
     return all_breaches
+
+
+def ratchet_floor(args) -> Optional[Dict[str, float]]:
+    """Baseline coverage floor when ratchet mode is on (None = unavailable)."""
+    if not args.coverage_ratchet:
+        return None
+    return load_coverage_baseline(args.baseline)
 
 
 def print_text_report(fails: List[Dict], warns: List[Dict], files_checked: int) -> None:
@@ -642,7 +660,16 @@ def main():
         except Exception:
             baseline_data = {}
     files, changed_fallback = select_files(args)
-    all_breaches = collect_breaches(args, files, baseline_data)
+    ratchet = ratchet_floor(args)
+    all_breaches = collect_breaches(args, files, baseline_data, ratchet)
+    if args.coverage_ratchet and ratchet is None:
+        all_breaches.append({
+            "file": "coverage.json", "type": "coverage",
+            "metric": "ratchet-unavailable", "fail": False,
+            "message": "--coverage-ratchet: baseline 'coverage' key missing or "
+                       "unreadable — ratchet floor unavailable, absolute D4 "
+                       "lanes applied (seed with --update-coverage-baseline)",
+        })
     fails = [b for b in all_breaches if b.get("fail")]
     warns = [b for b in all_breaches if not b.get("fail")]
     if args.json:

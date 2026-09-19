@@ -135,3 +135,54 @@ def test_pre_push_script_gates_node_and_skips_loudly():
     assert "NODE LANE SKIPPED" in script, "skip path must warn loudly"
     # pytest lanes must not dirty the worktree mid-push (F-11)
     assert "-p no:cacheprovider" in script
+
+
+@pytest.mark.unit
+def test_update_baseline_refuses_to_lower_the_ratchet_floor(tmp_path: Path):
+    """F-14: the maintenance flag must not be able to lower the floor."""
+    cov_low = coverage_file(tmp_path, 20.0, 100, 1000)
+    base = baseline_file(tmp_path, "base_floor.json", 44.31, 35.10)
+    result = run_tool("--update-coverage-baseline",
+                      "--baseline", str(base), "--coverage-file", str(cov_low))
+    assert result.returncode != 0, "lowering the ratchet floor must fail"
+    assert "LOWER" in result.stdout + result.stderr
+    # baseline untouched by the refused run
+    assert json.loads(base.read_text(encoding="utf-8"))["coverage"] == {"line": 44.31, "branch": 35.10}
+    # equal line + higher branch is accepted (floor may only move up)
+    cov_up = coverage_file(tmp_path, 44.31, 1020, 2900)
+    ok = run_tool("--update-coverage-baseline",
+                  "--baseline", str(base), "--coverage-file", str(cov_up))
+    assert ok.returncode == 0
+    assert json.loads(base.read_text(encoding="utf-8"))["coverage"]["branch"] > 35.10
+
+
+@pytest.mark.unit
+def test_ratchet_with_missing_baseline_key_warns_not_silent(tmp_path: Path):
+    """F-17a: no usable ratchet floor -> explicit warn lane + absolute fails."""
+    base = tmp_path / "base_nokey.json"
+    base.write_text(json.dumps({"app/example.py": {"max_func_loc": 10}}), encoding="utf-8")
+    cov = coverage_file(tmp_path, 50.0, 400, 1000)
+    result = run_tool("--changed", "--base", GOOD_BASE, "--json",
+                      "--coverage-file", str(cov),
+                      "--coverage-ratchet", "--baseline", str(base))
+    lanes = [b for b in json.loads(result.stdout)["breaches"] if b["type"] == "coverage"]
+    assert any(b["metric"] == "ratchet-unavailable" and not b["fail"] for b in lanes)
+    assert {b["metric"] for b in lanes if b["fail"]} == {"line", "branch"}
+
+
+@pytest.mark.unit
+def test_missing_coverage_file_is_a_warn_not_a_fail():
+    result = run_tool("--changed", "--base", GOOD_BASE, "--json",
+                      "--coverage-file", "/nonexistent/cov.json")
+    cov = [b for b in json.loads(result.stdout)["breaches"] if b["type"] == "coverage"]
+    assert len(cov) == 1 and cov[0]["metric"] == "missing" and not cov[0]["fail"]
+
+
+@pytest.mark.unit
+def test_corrupt_coverage_file_reports_parse_error(tmp_path: Path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json", encoding="utf-8")
+    result = run_tool("--changed", "--base", GOOD_BASE, "--json",
+                      "--coverage-file", str(bad))
+    cov = [b for b in json.loads(result.stdout)["breaches"] if b["type"] == "coverage"]
+    assert len(cov) == 1 and cov[0]["metric"] == "parse-error" and not cov[0]["fail"]
