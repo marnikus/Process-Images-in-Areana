@@ -1036,22 +1036,64 @@ class Bridge(QObject):
         return json.dumps(js_state, ensure_ascii=False)
 
     @Slot(str, result=str)
-    def get_image_thumbnail(self, img_id: str):
-        """Return base64 thumbnail — non-blocking to avoid mouse freeze.
+    def _find_image_by_id(self, img_id: str):
+        for im in self.state.images:
+            if im.id == img_id:
+                return im
+        return None
 
-        Previously did PIL sync in Qt main thread for 80 images -> freeze.
-        Now: cache hit returns immediately; miss schedules background thread
-        and returns pending with file:// fallback, then emits thumbnail_ready.
-        """
+    def _get_cached_thumbnail(self, img_id: str):
+        if img_id in self._thumb_cache:
+            cached = self._thumb_cache[img_id]
+            return json.dumps({'ok': True, 'id': img_id, 'data_url': cached, 'cached': True}, ensure_ascii=False)
+        return None
+
+    def _make_thumb_callbacks(self, img_id: str, p):
+        from .services.thumbnail_service import generate_thumbnail_data_url
+        def _gen_thumb():
+            res = generate_thumbnail_data_url(p, size=96, quality=80)
+            res['id'] = img_id
+            return res
+        def _on_done(fut):
+            try:
+                res = fut.result()
+                if res.get('ok') and res.get('data_url'):
+                    self._thumb_cache[img_id] = res['data_url']
+                    try:
+                        payload = json.dumps(res, ensure_ascii=False)
+                        self.thumbnail_ready.emit(img_id, payload)
+                    except Exception:
+                        pass
+                self._thumb_in_progress.discard(img_id)
+            except Exception:
+                self._thumb_in_progress.discard(img_id)
+        return _gen_thumb, _on_done
+
+    def _schedule_thumb(self, img_id: str, p):
+        _gen_thumb, _on_done = self._make_thumb_callbacks(img_id, p)
+        if self._thumb_executor:
+            self._thumb_in_progress.add(img_id)
+            try:
+                fut = self._thumb_executor.submit(_gen_thumb)
+                fut.add_done_callback(_on_done)
+            except Exception:
+                self._thumb_in_progress.discard(img_id)
+                res = _gen_thumb()
+                if res.get('ok') and res.get('data_url'):
+                    self._thumb_cache[img_id] = res['data_url']
+                return json.dumps(res, ensure_ascii=False)
+            return json.dumps({'ok': False, 'pending': True, 'id': img_id, 'fallback_url': f'file://{p}'}, ensure_ascii=False)
+        res = _gen_thumb()
+        if res.get('ok') and res.get('data_url'):
+            self._thumb_cache[img_id] = res['data_url']
+        return json.dumps(res, ensure_ascii=False)
+
+    def get_image_thumbnail(self, img_id: str):
         try:
-            if img_id in self._thumb_cache:
-                cached = self._thumb_cache[img_id]
-                return json.dumps({'ok': True, 'id': img_id, 'data_url': cached, 'cached': True}, ensure_ascii=False)
-            target = None
-            for im in self.state.images:
-                if im.id == img_id:
-                    target = im
-                    break
+            cached = self._get_cached_thumbnail(img_id)
+            if cached:
+                return cached
+            target = self._find_image_by_id(img_id)
             if not target:
                 return json.dumps({'ok': False, 'error': 'not found'})
             p = Path(target.absolute_path)
@@ -1059,43 +1101,7 @@ class Bridge(QObject):
                 return json.dumps({'ok': False, 'error': 'file not exists'})
             if img_id in self._thumb_in_progress:
                 return json.dumps({'ok': False, 'pending': True, 'id': img_id, 'fallback_url': f'file://{p}'}, ensure_ascii=False)
-            from .services.thumbnail_service import generate_thumbnail_data_url
-
-            def _gen_thumb():
-                res = generate_thumbnail_data_url(p, size=96, quality=80)
-                res['id'] = img_id
-                return res
-
-            def _on_done(fut):
-                try:
-                    res = fut.result()
-                    if res.get('ok') and res.get('data_url'):
-                        self._thumb_cache[img_id] = res['data_url']
-                        try:
-                            payload = json.dumps(res, ensure_ascii=False)
-                            self.thumbnail_ready.emit(img_id, payload)
-                        except Exception:
-                            pass
-                    self._thumb_in_progress.discard(img_id)
-                except Exception:
-                    self._thumb_in_progress.discard(img_id)
-            if self._thumb_executor:
-                self._thumb_in_progress.add(img_id)
-                try:
-                    fut = self._thumb_executor.submit(_gen_thumb)
-                    fut.add_done_callback(_on_done)
-                except Exception:
-                    self._thumb_in_progress.discard(img_id)
-                    res = _gen_thumb()
-                    if res.get('ok') and res.get('data_url'):
-                        self._thumb_cache[img_id] = res['data_url']
-                    return json.dumps(res, ensure_ascii=False)
-                return json.dumps({'ok': False, 'pending': True, 'id': img_id, 'fallback_url': f'file://{p}'}, ensure_ascii=False)
-            else:
-                res = _gen_thumb()
-                if res.get('ok') and res.get('data_url'):
-                    self._thumb_cache[img_id] = res['data_url']
-                return json.dumps(res, ensure_ascii=False)
+            return self._schedule_thumb(img_id, p)
         except Exception as e:
             return json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False)
 

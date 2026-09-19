@@ -1117,13 +1117,13 @@
   },
   "app/ui/bridge.py": {
     "coverage": 12.689723811893506,
-    "file_lines": 4592,
-    "func_count": 281,
+    "file_lines": 4598,
+    "func_count": 285,
     "max_cc": 356,
-    "max_class_loc": 4486,
+    "max_class_loc": 4492,
     "max_cog": 1100,
     "max_func_loc": 918,
-    "max_methods": 260,
+    "max_methods": 264,
     "max_nest": 23,
     "max_params": 4
   },
