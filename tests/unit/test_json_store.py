@@ -56,3 +56,44 @@ def test_save_is_atomic_no_tmp_residue_and_valid_json(tmp_path: Path):
     save_json_atomic(path, {"x": 2})
     assert json.loads(path.read_text(encoding="utf-8")) == {"x": 2}
     assert [p.name for p in path.parent.iterdir() if p.name != "out.json"] == []
+
+
+@pytest.mark.unit
+def test_failed_write_leaves_no_tmp_file(tmp_path: Path, monkeypatch):
+    """If serialisation fails mid-write, the temp file is cleaned up (RULE 23)."""
+    import app.persistence.json_store as js
+
+    path = tmp_path / "state.json"
+    real_fdopen = js.os.fdopen
+
+    def exploding_fdopen(fd, *a, **kw):
+        close_fd = real_fdopen(fd, "w", encoding="utf-8")  # keep fd valid
+        close_fd.close()
+        raise OSError("disk full simulation")
+
+    monkeypatch.setattr(js.os, "fdopen", exploding_fdopen)
+    with pytest.raises(OSError):
+        js.save_json_atomic(path, {"x": 1})
+    assert [p.name for p in tmp_path.iterdir()] == [], "temp file leaked on failed write"
+
+
+@pytest.mark.unit
+def test_unlink_failure_is_swallowed_not_raised(tmp_path: Path, monkeypatch):
+    """Cleanup unlink failing must not mask the original result (finally: pass)."""
+    import app.persistence.json_store as js
+
+    path = tmp_path / "state.json"
+    real_fdopen = js.os.fdopen
+
+    def exploding_fdopen(fd, *a, **kw):
+        f = real_fdopen(fd, "w", encoding="utf-8")
+        f.close()
+        raise OSError("boom")
+
+    def raising_unlink(self):
+        raise OSError("cannot unlink")
+
+    monkeypatch.setattr(js.os, "fdopen", exploding_fdopen)
+    monkeypatch.setattr(js.Path, "unlink", raising_unlink)
+    with pytest.raises(OSError):
+        js.save_json_atomic(path, {"x": 1})  # unlink OSError swallowed, original raises
