@@ -58,3 +58,25 @@ def test_detect_changes():
     curr2 = [{"relative_path": "a.png", "size": 100, "mtime": 1}]
     changes2 = detect_changes(prev2, curr2)
     assert len(changes2["removed"]) == 2
+
+
+@pytest.mark.unit
+def test_merge_scanned_appends_new_and_refreshes_known():
+    from app.core.models import ImageItem
+    from app.ui.services.scan_service import merge_scanned
+
+    def scan_dict(rel, size=100, mtime=1.0):
+        return {"relative_path": rel, "absolute_path": f"/x/{rel}",
+                "filename": rel, "base_name": rel.rsplit(".", 1)[0],
+                "extension": ".png", "size": size, "mtime": mtime,
+                "fingerprint": f"fp-{rel}", "id": f"id-{rel}"}
+
+    known = ImageItem.from_scan_dict(scan_dict("a.png"), selected=True)
+    images = [known]
+    added = merge_scanned(images, [scan_dict("a.png", size=200, mtime=2.0),
+                                   scan_dict("b.png")])
+    assert added == 1
+    assert [i.relative_path for i in images] == ["a.png", "b.png"]
+    assert (known.size, known.mtime) == (200, 2.0)
+    assert known.selected is True  # refresh preserves queue state
+    assert images[1].selected is False  # newcomers unselected

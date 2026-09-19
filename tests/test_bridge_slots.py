@@ -9,7 +9,9 @@ from pathlib import Path
 
 import pytest
 
-BRIDGE = Path(__file__).parent.parent / "app" / "ui" / "bridge.py"
+UI = Path(__file__).parent.parent / "app" / "ui"
+BRIDGE = UI / "bridge.py"
+PANELS = UI / "panels"
 
 # Methods the web UI calls that must stay slots (extend with new slots).
 REQUIRED_SLOTS = (
@@ -47,12 +49,203 @@ def _slot_names(path: Path) -> set:
 @pytest.mark.unit
 def test_required_slots_registered():
     names = _slot_names(BRIDGE)
+    if PANELS.exists():
+        for panel in PANELS.glob("*.py"):
+            names |= _slot_names(panel)
     missing = [s for s in REQUIRED_SLOTS if s not in names]
     assert not missing, f"lost @Slot decorator: {missing}"
 
 
 @pytest.mark.unit
 def test_helpers_never_slots():
+    paths = [BRIDGE] + (list(PANELS.glob("*.py")) if PANELS.exists() else [])
+    for path in paths:
+        names = _slot_names(path)
+        stolen = [s for s in NEVER_SLOTS if s in names]
+        assert not stolen, f"helper captured @Slot in {path.name}: {stolen}"
+
+
+# ── F5 frozen surface + F6 packing (R12/A7) ──
+
+# Contract design §1 item 1: the 119 JS slot names, frozen. Any add/remove
+# must update this set deliberately (JS contract review).
+FROZEN_SLOTS = frozenset({
+    'add_action_block',
+    'add_url',
+    'add_url_preset',
+    'auto_connect_scan',
+    'bulk_select',
+    'cancel_current',
+    'cdp_attach_image_test',
+    'cdp_insert_prompt_test',
+    'cdp_test_full_flow',
+    'check_watcher_now',
+    'clear_highlights',
+    'clear_images',
+    'clear_page_pool',
+    'clear_queue',
+    'clear_watcher_overlay',
+    'connect_page_pool',
+    'connect_tab',
+    'copy_path_to_clipboard',
+    'delete_action_block',
+    'delete_arena_preset',
+    'delete_custom_block',
+    'delete_prompt_preset',
+    'delete_stack_preset',
+    'delete_window_preset',
+    'diagnose_chrome',
+    'disconnect_page_pool',
+    'drop_ai_suffix',
+    'edit_url',
+    'ensure_primary_connected',
+    'export_action_blocks',
+    'export_custom_block',
+    'export_preset',
+    'export_window_preset',
+    'find_tab_by_url',
+    'get_action_blocks',
+    'get_app_state',
+    'get_arena_state',
+    'get_builtin_blocks',
+    'get_captcha_stats',
+    'get_captcha_status',
+    'get_cdp_config',
+    'get_chrome_launch_command',
+    'get_cooldown_config',
+    'get_custom_blocks',
+    'get_grid_layout',
+    'get_image_thumbnail',
+    'get_page_pool_status',
+    'get_stack_history',
+    'get_stack_presets',
+    'get_tabs',
+    'get_undo_history',
+    'get_url_presets',
+    'get_watcher_config',
+    'get_watcher_state',
+    'get_window_states',
+    'highlight_image',
+    'highlight_selector',
+    'import_preset',
+    'import_window_preset',
+    'keep_only_ai_files',
+    'list_arena_presets',
+    'list_prompt_presets',
+    'list_window_presets',
+    'load_arena_preset',
+    'load_prompt_preset',
+    'load_window_preset',
+    'pause_run',
+    'pick_folder',
+    'popup_url_tabs',
+    'push_global_history',
+    'push_stack_history',
+    'redo',
+    'redo_grid_layout',
+    'redo_stack',
+    'refresh_users',
+    'remove_url',
+    'remove_url_preset',
+    'reset_action_blocks',
+    'reset_all',
+    'reset_grid_layout',
+    'reset_image',
+    'reset_page_cooldown',
+    'resume_run',
+    'retry_failed',
+    'retry_image',
+    'reveal_in_explorer',
+    'save_action_blocks',
+    'save_arena_preset',
+    'save_custom_block',
+    'save_grid_layout',
+    'save_prompt_preset',
+    'save_settings',
+    'save_stack_history',
+    'save_stack_preset',
+    'save_window_preset',
+    'save_window_states',
+    'scan_folder',
+    'scan_folder_new_batch',
+    'set_captcha_settings',
+    'set_cdp_config',
+    'set_cooldown_config',
+    'set_folder_path',
+    'set_image_selected',
+    'set_last_url_preset',
+    'set_page_cooldown',
+    'set_prompt',
+    'set_theme',
+    'set_watcher_config',
+    'show_window_preset_in_folder',
+    'start_run',
+    'start_watcher',
+    'stop_after_current',
+    'stop_tab_job',
+    'stop_watcher',
+    'test_url',
+    'toggle_url',
+    'undo',
+    'undo_grid_layout',
+    'undo_stack',
+})
+
+
+# Design packing table (implementation-area-a.md): per-panel slot counts.
+EXPECTED_PACKING = {
+    'app_settings': 10,
+    'blocks_library': 9,
+    'blocks_stack': 10,
+    'browser_tabs': 7,
+    'cdp_tools': 9,
+    'layout_state': 14,
+    'page_pool': 9,
+    'queue_scan': 12,
+    'run_control': 10,
+    'undo_history': 10,
+    'url_queue': 9,
+    'watcher_captcha': 10,
+}
+
+
+def _panel_slot_counts() -> dict:
+    counts = {}
+    for panel in PANELS.glob("*.py"):
+        if panel.name == "__init__.py":
+            continue
+        counts[panel.stem] = len(_slot_names(panel))
+    return counts
+
+
+def _bridge_direct_methods() -> list:
+    import ast
+    tree = ast.parse(BRIDGE.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == "Bridge":
+            return [n.name for n in node.body
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    raise AssertionError("Bridge class not found")
+
+
+@pytest.mark.unit
+def test_frozen_slot_surface_exact():
     names = _slot_names(BRIDGE)
-    stolen = [s for s in NEVER_SLOTS if s in names]
-    assert not stolen, f"helper captured @Slot: {stolen}"
+    for panel in PANELS.glob("*.py"):
+        names |= _slot_names(panel)
+    assert names == FROZEN_SLOTS, (f"slot surface drift: lost={sorted(FROZEN_SLOTS - names)}, "
+                                   f"added={sorted(names - FROZEN_SLOTS)}")
+
+
+@pytest.mark.unit
+def test_panel_packing():
+    counts = _panel_slot_counts()
+    assert counts == EXPECTED_PACKING, f"packing drift: {counts}"
+    assert sum(counts.values()) == 119
+
+
+@pytest.mark.unit
+def test_bridge_direct_methods_capped():
+    methods = _bridge_direct_methods()
+    assert len(methods) <= 10, f"Bridge grew past 10 direct methods: {methods}"
+    assert not (_slot_names(BRIDGE) & FROZEN_SLOTS), "slots must live in panels, not Bridge"

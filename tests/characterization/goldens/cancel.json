@@ -1,0 +1,64 @@
+{
+ "events": [
+  [
+   "OBSERVE_BASELINE",
+   "running"
+  ],
+  [
+   "OBSERVE_BASELINE",
+   "success"
+  ],
+  [
+   "CHECK_SECURITY",
+   "running"
+  ],
+  [
+   "CHECK_SECURITY",
+   "success"
+  ],
+  [
+   "ATTACH_IMAGE",
+   "running"
+  ],
+  [
+   "ATTACH_IMAGE",
+   "success"
+  ],
+  [
+   "INSERT_PROMPT",
+   "running"
+  ],
+  [
+   "INSERT_PROMPT",
+   "success"
+  ],
+  [
+   "SUBMIT",
+   "running"
+  ],
+  [
+   "SUBMIT",
+   "success"
+  ]
+ ],
+ "clicks": [
+  "button[aria-label=\"Add files\"]",
+  "button[aria-label=\"Send message\"]:not([disabled])"
+ ],
+ "evals": 0,
+ "signals": [
+  [
+   "job_started",
+   "pic1.png"
+  ]
+ ],
+ "images": [
+  {
+   "rel": "pic1.png",
+   "status": "failed",
+   "error": "Cancelled by user"
+  }
+ ],
+ "files": [],
+ "run_state": "idle"
+}

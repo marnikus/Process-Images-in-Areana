@@ -91,10 +91,10 @@ def make_fake(config_dir):
         undo_service=SimpleNamespace(push=lambda *a: None),
         _emit_undo_state=lambda: None,
     )
-    for helper in ("_parse_preset_input", "_extract_from_portable",
-                   "_extract_tree_from_grid", "_extract_payload_from_grid",
-                   "_build_preset_doc", "list_window_presets",
-                   "get_grid_layout"):
+    # A5: the 5 preset helpers are module functions in
+    # app/ui/services/window_preset_service.py now (slots call them directly,
+    # so the fake needs no bound copies); only live slots stay bound.
+    for helper in ("list_window_presets", "get_grid_layout"):
         setattr(fake, helper, getattr(Bridge, helper).__get__(fake))
     return fake, logs
 

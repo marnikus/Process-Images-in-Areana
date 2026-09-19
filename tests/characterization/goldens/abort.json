@@ -1,0 +1,52 @@
+{
+ "events": [
+  [
+   "OBSERVE_BASELINE",
+   "running"
+  ],
+  [
+   "OBSERVE_BASELINE",
+   "success"
+  ],
+  [
+   "CHECK_SECURITY",
+   "running"
+  ],
+  [
+   "CHECK_SECURITY",
+   "success"
+  ],
+  [
+   "ATTACH_IMAGE",
+   "running"
+  ],
+  [
+   "ATTACH_IMAGE",
+   "success"
+  ]
+ ],
+ "clicks": [
+  "button[aria-label=\"Add files\"]"
+ ],
+ "evals": 3,
+ "signals": [
+  [
+   "job_started",
+   "pic1.png"
+  ],
+  [
+   "job_finished",
+   "failed",
+   false
+  ]
+ ],
+ "images": [
+  {
+   "rel": "pic1.png",
+   "status": "failed",
+   "error": "Aborted by operator"
+  }
+ ],
+ "files": [],
+ "run_state": "idle"
+}

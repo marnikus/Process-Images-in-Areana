@@ -1,0 +1,15 @@
+{
+ "events": [],
+ "clicks": [],
+ "evals": 0,
+ "signals": [],
+ "images": [
+  {
+   "rel": "pic1.png",
+   "status": "pending",
+   "error": ""
+  }
+ ],
+ "files": [],
+ "run_state": "idle"
+}
