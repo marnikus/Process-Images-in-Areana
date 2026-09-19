@@ -62,6 +62,7 @@ class SolvePlan:
     stale_reason: str = ""
     page_identity: str = ""
     challenge_identity: str = ""
+    transient_errors: int = 0  # consecutive transient poll errors (reset on success)
 
 
 def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> SolveOutcome:
@@ -359,12 +360,21 @@ async def _provider_result(plan: SolvePlan, res: Dict[str, Any]
     return False, None, ""
 
 
+async def _handle_poll_error(plan: SolvePlan, exc: ApiError, started: float,
+                             timeout_sec: int) -> Tuple[bool, Optional[Tuple[None, str]]]:
+    """One polling ApiError: retry a network glitch, else the terminal (None, why)."""
+    plan.transient_errors += 1
+    if exc.reason == "network" and await _retry_network(
+            plan, started, plan.transient_errors, timeout_sec):
+        return True, None
+    return False, _poll_fail(plan, exc.reason, str(exc))
+
+
 async def _poll_task(plan: SolvePlan, task_id: str,
                      timeout_sec: int) -> Tuple[Optional[str], str]:
     """Poll until a token arrives; (None, why) on stop/error/timeout."""
     start = time.monotonic()
     last_beat = start
-    transient_errors = 0
     while True:
         if plan.stop():
             plan.logger("2Captcha polling stopped (user stop)", "info")
@@ -373,12 +383,11 @@ async def _poll_task(plan: SolvePlan, task_id: str,
         try:
             res = await plan.client.get_result(task_id)
         except ApiError as exc:
-            transient_errors += 1
-            if exc.reason == "network" and await _retry_network(
-                    plan, start, transient_errors, timeout_sec):
+            retry, terminal = await _handle_poll_error(plan, exc, start, timeout_sec)
+            if retry:
                 continue
-            return _poll_fail(plan, exc.reason, str(exc))
-        transient_errors = 0
+            return terminal
+        plan.transient_errors = 0
         done, token, why = await _provider_result(plan, res)
         if done:
             return token, why
