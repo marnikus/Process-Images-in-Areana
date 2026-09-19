@@ -4,43 +4,123 @@
     "max_class_loc": 0,
     "func_count": 0
   },
-  "app/main.py": {
+  "app/browser/__init__.py": {
+    "max_func_loc": 0,
+    "max_class_loc": 0,
+    "func_count": 0
+  },
+  "app/browser/captcha_probes.py": {
+    "max_func_loc": 7,
+    "max_class_loc": 0,
+    "func_count": 5
+  },
+  "app/browser/cdp_arena.py": {
+    "max_func_loc": 28,
+    "max_class_loc": 359,
+    "func_count": 33
+  },
+  "app/browser/cdp_client.py": {
+    "max_func_loc": 106,
+    "max_class_loc": 456,
+    "func_count": 33
+  },
+  "app/browser/cdp_events.py": {
+    "max_func_loc": 10,
+    "max_class_loc": 24,
+    "func_count": 8
+  },
+  "app/browser/cdp_protocol.py": {
     "max_func_loc": 16,
+    "max_class_loc": 7,
+    "func_count": 7
+  },
+  "app/browser/dom_highlight.py": {
+    "max_func_loc": 198,
+    "max_class_loc": 0,
+    "func_count": 18
+  },
+  "app/browser/new_chat.py": {
+    "max_func_loc": 13,
+    "max_class_loc": 8,
+    "func_count": 12
+  },
+  "app/browser/output_probes.py": {
+    "max_func_loc": 2,
+    "max_class_loc": 0,
+    "func_count": 2
+  },
+  "app/browser/output_state.py": {
+    "max_func_loc": 25,
     "max_class_loc": 0,
     "func_count": 1
+  },
+  "app/browser/output_wait.py": {
+    "max_func_loc": 40,
+    "max_class_loc": 0,
+    "func_count": 17
+  },
+  "app/browser/page_pool.py": {
+    "max_func_loc": 23,
+    "max_class_loc": 143,
+    "func_count": 19
+  },
+  "app/browser/page_status.py": {
+    "max_func_loc": 22,
+    "max_class_loc": 79,
+    "func_count": 7
+  },
+  "app/browser/probe_requests.py": {
+    "max_func_loc": 0,
+    "max_class_loc": 9,
+    "func_count": 0
+  },
+  "app/browser/probe_selectors.py": {
+    "max_func_loc": 6,
+    "max_class_loc": 0,
+    "func_count": 11
+  },
+  "app/browser/selector.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 39,
+    "func_count": 3
+  },
+  "app/browser/site_adapter.py": {
+    "max_func_loc": 8,
+    "max_class_loc": 0,
+    "func_count": 2
+  },
+  "app/browser/tab_matcher.py": {
+    "max_func_loc": 19,
+    "max_class_loc": 0,
+    "func_count": 10
+  },
+  "app/browser/visual_click.py": {
+    "max_func_loc": 25,
+    "max_class_loc": 56,
+    "func_count": 15
   },
   "app/core/__init__.py": {
     "max_func_loc": 0,
     "max_class_loc": 0,
     "func_count": 0
   },
+  "app/core/action_blocks.py": {
+    "max_func_loc": 51,
+    "max_class_loc": 109,
+    "func_count": 15
+  },
+  "app/core/cooldown.py": {
+    "max_func_loc": 14,
+    "max_class_loc": 7,
+    "func_count": 7
+  },
   "app/core/enums.py": {
     "max_func_loc": 0,
     "max_class_loc": 18,
     "func_count": 0
   },
-  "app/core/naming.py": {
-    "max_func_loc": 43,
-    "max_class_loc": 0,
-    "func_count": 3
-  },
-  "app/core/scanner.py": {
-    "max_func_loc": 66,
-    "max_class_loc": 0,
-    "func_count": 2
-  },
-  "app/core/models.py": {
-    "max_func_loc": 28,
-    "max_class_loc": 95,
-    "func_count": 8
-  },
-  "app/core/persistence.py": {
-    "max_func_loc": 101,
-    "max_class_loc": 0,
-    "func_count": 5
-  },
-  "app/core/state_machine.py": {
-    "max_func_loc": 3,
+  "app/core/folder_ai.py": {
+    "max_func_loc": 18,
     "max_class_loc": 0,
     "func_count": 4
   },
@@ -49,95 +129,225 @@
     "max_class_loc": 0,
     "func_count": 12
   },
+  "app/core/models.py": {
+    "max_func_loc": 28,
+    "max_class_loc": 95,
+    "func_count": 9
+  },
+  "app/core/naming.py": {
+    "max_func_loc": 43,
+    "max_class_loc": 0,
+    "func_count": 3
+  },
+  "app/core/persistence.py": {
+    "max_func_loc": 101,
+    "max_class_loc": 0,
+    "func_count": 5
+  },
+  "app/core/scanner.py": {
+    "max_func_loc": 66,
+    "max_class_loc": 0,
+    "func_count": 2
+  },
+  "app/core/state_machine.py": {
+    "max_func_loc": 3,
+    "max_class_loc": 0,
+    "func_count": 4
+  },
   "app/core/undo_service.py": {
     "max_func_loc": 38,
     "max_class_loc": 102,
     "func_count": 10
   },
-  "app/core/action_blocks.py": {
-    "max_func_loc": 51,
-    "max_class_loc": 109,
-    "func_count": 12
-  },
-  "app/browser/__init__.py": {
-    "max_func_loc": 0,
+  "app/main.py": {
+    "max_func_loc": 16,
     "max_class_loc": 0,
-    "func_count": 0
+    "func_count": 1
   },
-  "app/browser/selector.py": {
-    "max_func_loc": 15,
-    "max_class_loc": 32,
-    "func_count": 2
-  },
-  "app/browser/site_adapter.py": {
-    "max_func_loc": 37,
-    "max_class_loc": 0,
-    "func_count": 4
-  },
-  "app/browser/controller.py": {
-    "max_func_loc": 90,
-    "max_class_loc": 625,
-    "func_count": 22
-  },
-  "app/browser/cdp_client.py": {
-    "max_func_loc": 106,
-    "max_class_loc": 472,
-    "func_count": 34
-  },
-  "app/browser/tab_matcher.py": {
-    "max_func_loc": 19,
-    "max_class_loc": 0,
-    "func_count": 10
-  },
-  "app/browser/dom_highlight.py": {
-    "max_func_loc": 19,
-    "max_class_loc": 0,
+  "app/persistence/config_manager.py": {
+    "max_func_loc": 13,
+    "max_class_loc": 44,
     "func_count": 17
   },
-  "app/browser/cdp_arena.py": {
-    "max_func_loc": 30,
-    "max_class_loc": 302,
-    "func_count": 26
+  "app/persistence/cooldown_store.py": {
+    "max_func_loc": 17,
+    "max_class_loc": 0,
+    "func_count": 16
   },
-  "app/browser/probe_requests.py": {
-    "max_func_loc": 0,
-    "max_class_loc": 9,
-    "func_count": 0
+  "app/persistence/json_store.py": {
+    "max_func_loc": 15,
+    "max_class_loc": 0,
+    "func_count": 2
   },
-  "app/browser/visual_click.py": {
-    "max_func_loc": 25,
-    "max_class_loc": 56,
-    "func_count": 15
+  "app/persistence/preset_store.py": {
+    "max_func_loc": 14,
+    "max_class_loc": 135,
+    "func_count": 23
+  },
+  "app/persistence/undo_store.py": {
+    "max_func_loc": 22,
+    "max_class_loc": 79,
+    "func_count": 9
   },
   "app/services/__init__.py": {
     "max_func_loc": 0,
     "max_class_loc": 0,
     "func_count": 0
   },
+  "app/services/auto_connect.py": {
+    "max_func_loc": 19,
+    "max_class_loc": 9,
+    "func_count": 22
+  },
+  "app/services/captcha/__init__.py": {
+    "max_func_loc": 0,
+    "max_class_loc": 0,
+    "func_count": 0
+  },
+  "app/services/captcha/api_client.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 63,
+    "func_count": 10
+  },
+  "app/services/captcha/key_store.py": {
+    "max_func_loc": 11,
+    "max_class_loc": 66,
+    "func_count": 9
+  },
+  "app/services/captcha/recovery.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 13,
+    "func_count": 14
+  },
+  "app/services/captcha/service.py": {
+    "max_func_loc": 26,
+    "max_class_loc": 56,
+    "func_count": 27
+  },
+  "app/services/captcha/signals.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 44,
+    "func_count": 5
+  },
+  "app/services/captcha/solver.py": {
+    "max_func_loc": 29,
+    "max_class_loc": 131,
+    "func_count": 41
+  },
+  "app/services/captcha/stats.py": {
+    "max_func_loc": 14,
+    "max_class_loc": 111,
+    "func_count": 14
+  },
+  "app/services/captcha_recording/__init__.py": {
+    "max_func_loc": 0,
+    "max_class_loc": 0,
+    "func_count": 0
+  },
+  "app/services/captcha_recording/manager.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 86,
+    "func_count": 14
+  },
+  "app/services/captcha_recording/models.py": {
+    "max_func_loc": 4,
+    "max_class_loc": 7,
+    "func_count": 3
+  },
+  "app/services/captcha_recording/network.py": {
+    "max_func_loc": 19,
+    "max_class_loc": 79,
+    "func_count": 8
+  },
+  "app/services/captcha_recording/probes.py": {
+    "max_func_loc": 2,
+    "max_class_loc": 0,
+    "func_count": 5
+  },
+  "app/services/captcha_recording/reader.py": {
+    "max_func_loc": 13,
+    "max_class_loc": 57,
+    "func_count": 6
+  },
+  "app/services/captcha_recording/recorder.py": {
+    "max_func_loc": 18,
+    "max_class_loc": 148,
+    "func_count": 15
+  },
+  "app/services/captcha_recording/retention.py": {
+    "max_func_loc": 13,
+    "max_class_loc": 0,
+    "func_count": 6
+  },
+  "app/services/captcha_recording/sanitize.py": {
+    "max_func_loc": 10,
+    "max_class_loc": 0,
+    "func_count": 6
+  },
+  "app/services/captcha_recording/store.py": {
+    "max_func_loc": 23,
+    "max_class_loc": 137,
+    "func_count": 17
+  },
+  "app/services/cooldown_service.py": {
+    "max_func_loc": 22,
+    "max_class_loc": 11,
+    "func_count": 62
+  },
+  "app/services/multi_page_dispatcher.py": {
+    "max_func_loc": 29,
+    "max_class_loc": 9,
+    "func_count": 27
+  },
+  "app/services/single_job_runner.py": {
+    "max_func_loc": 25,
+    "max_class_loc": 17,
+    "func_count": 47
+  },
   "app/services/verification.py": {
     "max_func_loc": 42,
     "max_class_loc": 108,
     "func_count": 6
   },
-  "app/services/job_runner.py": {
-    "max_func_loc": 207,
-    "max_class_loc": 316,
-    "func_count": 9
+  "app/services/watcher.py": {
+    "max_func_loc": 124,
+    "max_class_loc": 269,
+    "func_count": 15
   },
   "app/ui/__init__.py": {
     "max_func_loc": 0,
     "max_class_loc": 0,
     "func_count": 0
   },
-  "app/ui/main_window.py": {
-    "max_func_loc": 39,
-    "max_class_loc": 58,
-    "func_count": 2
-  },
   "app/ui/bridge.py": {
-    "max_func_loc": 1030,
-    "max_class_loc": 3593,
-    "func_count": 146
+    "max_func_loc": 1209,
+    "max_class_loc": 5000,
+    "func_count": 221
+  },
+  "app/ui/main_window.py": {
+    "max_func_loc": 31,
+    "max_class_loc": 131,
+    "func_count": 9
+  },
+  "app/ui/services/__init__.py": {
+    "max_func_loc": 0,
+    "max_class_loc": 0,
+    "func_count": 0
+  },
+  "app/ui/services/captcha_recordings_bridge.py": {
+    "max_func_loc": 8,
+    "max_class_loc": 66,
+    "func_count": 11
+  },
+  "app/ui/services/scan_service.py": {
+    "max_func_loc": 18,
+    "max_class_loc": 0,
+    "func_count": 3
+  },
+  "app/ui/services/thumbnail_service.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 0,
+    "func_count": 8
   },
   "app/utils/__init__.py": {
     "max_func_loc": 0,
@@ -159,39 +369,14 @@
     "max_class_loc": 0,
     "func_count": 2
   },
-  "app/persistence/config_manager.py": {
-    "max_func_loc": 13,
-    "max_class_loc": 44,
-    "func_count": 19
-  },
-  "app/persistence/undo_store.py": {
+  "app/utils/page_errors.py": {
     "max_func_loc": 22,
-    "max_class_loc": 79,
-    "func_count": 11
-  },
-  "app/persistence/preset_store.py": {
-    "max_func_loc": 14,
-    "max_class_loc": 135,
-    "func_count": 25
-  },
-  "app/services/watcher.py": {
-    "max_func_loc": 124,
-    "max_class_loc": 269,
-    "func_count": 15
-  },
-  "app/browser/output_probes.py": {
-    "max_func_loc": 3,
-    "max_class_loc": 0,
+    "max_class_loc": 2,
     "func_count": 4
   },
-  "app/browser/output_state.py": {
-    "max_func_loc": 19,
+  "app/utils/win_popup.py": {
+    "max_func_loc": 15,
     "max_class_loc": 0,
-    "func_count": 5
-  },
-  "app/browser/output_wait.py": {
-    "max_func_loc": 25,
-    "max_class_loc": 0,
-    "func_count": 14
+    "func_count": 11
   }
 }
