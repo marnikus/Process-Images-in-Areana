@@ -436,7 +436,7 @@ class CDPArenaController:
             return False, b"", f"Python download failed: {e}"
 
     async def download_image(self, src: str) -> Tuple[bool, bytes, str]:
-        # ideal-size: 20 lines reason=JS fetch then Python fallback
+        # ideal-size: 21 lines reason=JS fetch then Python fallback
         js = f";({JS_DOWNLOAD_IMAGE})({json.dumps(src)})"
         try:
             result = await self.cdp.evaluate(js)
@@ -454,7 +454,7 @@ class CDPArenaController:
         ok, data, ctype = await self._python_download(src)
         if ok:
             return True, data, ctype
-
+        self._log(f"Python download rejected: {ctype[:120]}", "warn")
         return False, b"", f"All methods failed for {src[:120]}"
 
     def report(self, message: str, level: str = "info"):

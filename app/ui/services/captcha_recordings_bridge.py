@@ -74,6 +74,24 @@ class CaptchaRecordingsBridge(QObject):
         except Exception as exc:
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
+    @Slot(str, str, result=str)
+    def set_result_label(self, session_id: str, label: str) -> str:
+        """D3: outcome label (unknown|passed|failed|mixed), independent of actor."""
+        try:
+            row = self.manager.set_result_label(session_id, label)
+            return json.dumps({"ok": True, "session": row}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+    @Slot(result=str)
+    def cohort(self) -> str:
+        try:
+            from app.services.captcha_recording.cohort import cohort as build_cohort
+            rows = self.manager.list_sessions(1000)
+            return json.dumps({"ok": True, "cohort": build_cohort(rows)}, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
     @Slot(str, result=str)
     def get_session(self, session_id: str) -> str:
         try:

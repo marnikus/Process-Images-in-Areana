@@ -330,8 +330,13 @@ class CaptchaService:
         self.keys = CaptchaKeyStore(config_dir)
         self.stats = CaptchaStatsStore(config_dir)
         self._log = log or (lambda msg, level="info": None)
-        self.solver = CaptchaSolver(self.keys, self.stats, self._log)
         self.recordings = RecordingManager(config_dir, self._log)
+        # D2: solver milestones flow into the active recording (fail-open inside the hook)
+        self.solver = CaptchaSolver(self.keys, self.stats, self._log,
+                                    milestone_hook=self._on_milestone)
+
+    async def _on_milestone(self, tab_id: str, phase: str, outcome: Any) -> None:
+        await self.recordings.note(tab_id, phase, outcome)
 
     def auto_enabled(self) -> bool:
         try:

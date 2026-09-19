@@ -22,6 +22,7 @@ class EvidenceReader:
         return {
             "manifest": manifest,
             "events": self._events(folder / "events.jsonl"),
+            "milestones": self._milestones(folder / "events.jsonl"),
             "latest_snapshot": self._snapshot(folder / "snapshots"),
         }
 
@@ -53,6 +54,21 @@ class EvidenceReader:
                     rows.append(value)
             except (json.JSONDecodeError, TypeError):
                 continue
+        return rows
+
+    @staticmethod
+    def _milestones(path: Path) -> list[dict[str, Any]]:
+        """D2: every milestone event (full scan; the file is bounded by max_events)."""
+        if not path.exists():
+            return []
+        rows = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                value = json.loads(line)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if isinstance(value, dict) and value.get("kind") == "milestone":
+                rows.append(value)
         return rows
 
     @staticmethod

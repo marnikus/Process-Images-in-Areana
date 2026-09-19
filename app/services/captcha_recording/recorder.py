@@ -8,6 +8,7 @@ import json
 import time
 from typing import Any, Optional
 
+from .milestones import MILESTONE_PHASES, build_milestone
 from .models import RecordingLimits, utc_now
 from .network import NetworkCollector
 from .probes import drain_probe, install_probe, snapshot_probe, stop_probe
@@ -51,11 +52,13 @@ class CaptchaRecorder:
             await self._join_worker()
         await self._drain_mutations()
         await self.network.drain()
+        self.network.close()
         await self._checkpoint("resolved", force=True)
         await self._event("state", self._outcome_payload(outcome))
+        await self._milestone_event("final", outcome)
         await self.ctrl.cdp.evaluate(stop_probe())
         self._detach_listener()
-        return self.store.finish(self.session_id, self._finish_updates(outcome))
+        return self.store.finish(self.session_id, finish_updates(self, outcome))
 
     async def note_outcome(self, phase: str, outcome: Any) -> None:
         payload = self._outcome_payload(outcome)
@@ -63,6 +66,23 @@ class CaptchaRecorder:
                         "dialog_at_token": getattr(outcome, "dialog_at_token", ""),
                         "inject": getattr(outcome, "inject", "")})
         await self._event("state", payload)
+        await self._milestone_event(phase, outcome)
+
+    def _offset_ms(self) -> int:
+        return round((time.monotonic() - self.started) * 1000)
+
+    async def _milestone_event(self, phase: str, outcome: Any) -> None:
+        """D2: persist a bounded token-free milestone; fail closed on violation."""
+        milestone_phase = _milestone_phase_for(phase)
+        if milestone_phase is None:
+            return
+        try:
+            payload = build_milestone(milestone_phase, outcome, offset_ms=self._offset_ms())
+        except ValueError:
+            await self._event("milestone_skipped",
+                              {"phase": milestone_phase, "why": "token-free check failed"})
+            return
+        await self._event("milestone", payload)
 
     async def abort(self, reason: str) -> None:
         class Interrupted:
@@ -87,7 +107,7 @@ class CaptchaRecorder:
 
     async def _drain_mutations(self) -> None:
         result = await self.ctrl.cdp.evaluate(drain_probe())
-        data = self._as_dict(result)
+        data = as_dict(result)
         changes = data.get("changes") if data.get("ok") else []
         if changes:
             clean = clean_mapping(changes)
@@ -104,7 +124,7 @@ class CaptchaRecorder:
         if self._counts["snapshot"] >= self.limits.max_snapshots:
             self._truncated.add("snapshots")
             return
-        data = self._as_dict(await self.ctrl.cdp.evaluate(snapshot_probe()))
+        data = as_dict(await self.ctrl.cdp.evaluate(snapshot_probe()))
         if not data.get("ok"):
             return
         html = redact_text(data.get("html", ""), self.limits.max_snapshot_chars)
@@ -133,33 +153,47 @@ class CaptchaRecorder:
         if router is not None:
             router.remove(self.network.on_event)
 
-    def _finish_updates(self, outcome: Any) -> dict[str, Any]:
-        return {"status": str(getattr(outcome, "status", "interrupted")),
-                "outcome": str(getattr(outcome, "status", "interrupted")),
-                "reason": redact_text(getattr(outcome, "reason", ""), 500),
-                "method": str(getattr(outcome, "method", "")),
-                "task_id": str(getattr(outcome, "task_id", "")),
-                "polls": int(getattr(outcome, "polls", 0)),
-                "attempts": int(getattr(outcome, "attempts", 1)),
-                "elapsed_ms": round((time.monotonic() - self.started) * 1000),
-                "event_count": self._counts["event"],
-                "mutation_count": self._counts["mutation"],
-                "network_count": self._counts["network"],
-                "snapshot_count": self._counts["snapshot"],
-                "truncated": sorted(self._truncated)}
-
     @staticmethod
     def _outcome_payload(outcome: Any) -> dict[str, Any]:
         return {"state": "recording_finished", "outcome": getattr(outcome, "status", "interrupted"),
                 "method": getattr(outcome, "method", ""),
                 "reason": redact_text(getattr(outcome, "reason", ""), 500)}
 
-    @staticmethod
-    def _as_dict(value: Any) -> dict[str, Any]:
-        if isinstance(value, dict):
-            return value
-        try:
-            data = json.loads(value) if isinstance(value, str) else {}
-            return data if isinstance(data, dict) else {}
-        except Exception:
-            return {}
+
+def finish_updates(rec: "CaptchaRecorder", outcome: Any) -> dict[str, Any]:
+    """Bounded manifest updates from a finished recording."""
+    counts = rec._counts
+    return {"status": str(getattr(outcome, "status", "interrupted")),
+            "outcome": str(getattr(outcome, "status", "interrupted")),
+            "reason": redact_text(getattr(outcome, "reason", ""), 500),
+            "method": str(getattr(outcome, "method", "")),
+            "task_id": str(getattr(outcome, "task_id", "")),
+            "polls": int(getattr(outcome, "polls", 0)),
+            "attempts": int(getattr(outcome, "attempts", 1)),
+            "elapsed_ms": round((time.monotonic() - rec.started) * 1000),
+            "event_count": counts["event"],
+            "mutation_count": counts["mutation"],
+            "network_count": counts["network"],
+            "snapshot_count": counts["snapshot"],
+            "dropped_events": rec.network.dropped_events,
+            "truncated": sorted(rec._truncated)}
+
+
+def as_dict(value: Any) -> dict[str, Any]:
+    """Best-effort dict view of a CDP evaluate result (JSON strings included)."""
+    if isinstance(value, dict):
+        return value
+    try:
+        data = json.loads(value) if isinstance(value, str) else {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _milestone_phase_for(phase: str) -> Optional[str]:
+    """Map recorder phases onto milestone phases (unknown phases write nothing)."""
+    if phase in MILESTONE_PHASES:
+        return phase
+    if phase == "auto_attempt_finished":
+        return "auto_finished"
+    return None

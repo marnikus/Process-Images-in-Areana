@@ -27,16 +27,20 @@ const CaptchaRecordingComparison = {
     const pane = document.getElementById(`captchaCompare${slot ? 'B' : 'A'}`);
     if (!pane) return;
     const manifest = details.manifest || {};
-    const events = (details.events || []).map((event) =>
-      `${event.offset_ms ?? 0}ms  ${event.kind || '?'}  ${this.eventText(event)}`).join('\n');
+    const line = (event) => `${event.offset_ms ?? 0}ms  ${event.kind || '?'}  ${this.eventText(event)}`;
+    // D2: milestones always surface, even when the 200-event tail cut them off
+    const milestones = (details.milestones || []).map(line).join('\n');
+    const events = (details.events || []).filter((e) => e.kind !== 'milestone').map(line).join('\n');
+    const timelineText = [milestones, events].filter(Boolean).join('\n');
     const snapshot = details.latest_snapshot || {};
     pane.replaceChildren();
+    // D3: actor (who) and result (what) shown side by side, never conflated
     const heading = document.createElement('b');
-    heading.textContent = `${manifest.actor_label || 'unknown'} · ${manifest.method || '—'} · ${manifest.outcome || manifest.status || '—'}`;
+    heading.textContent = `${manifest.actor_label || 'unknown'} · ${manifest.result_label || 'unknown'} · ${manifest.method || '—'} · ${manifest.outcome || manifest.status || '—'}`;
     const meta = document.createElement('div');
     meta.textContent = `${CaptchaRecordingsPanel.when(manifest.started_at)} · ${CaptchaRecordingsPanel.route(manifest.url)} · ${manifest.session_id || ''}`;
     const timeline = document.createElement('pre');
-    timeline.textContent = events || 'No events';
+    timeline.textContent = timelineText || 'No events';
     const dom = document.createElement('pre');
     dom.textContent = snapshot.html || 'No DOM checkpoint';
     const stamp = document.createElement('div');

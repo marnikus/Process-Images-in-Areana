@@ -107,3 +107,9 @@ class SolveOutcome:
     inject: str = ""
     page_error_at_s: float = 0.0
     page_error: str = ""
+    # D2/F-B: bounded recording evidence (offsets in solve-relative seconds)
+    task_created_sec: float = 0.0
+    dialog_cleared_sec: float = 0.0
+    page_identity: str = ""
+    challenge_identity: str = ""
+    continue_result: str = ""

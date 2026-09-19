@@ -64,6 +64,8 @@ async def test_recorder_captures_diff_network_body_and_finish(tmp_path):
     assert "A" * 100 not in json.dumps(events)
     assert cdp.sent[0][0] == "Network.getResponseBody"
     assert result["snapshot_count"] >= 1 and result["network_count"] == 2
+    # D1: finish() returns the manifest itself — normal path records zero loss
+    assert result["dropped_events"] == 0
 
 
 @pytest.mark.unit
@@ -101,8 +103,36 @@ async def test_network_collector_no_loss_across_threads():
         await asyncio.sleep(0.001)
     await collector.drain()
     thread.join()
+    collector.close()
     assert len(recorded) == 500  # zero loss
     assert recorded[0][0] == "network_request"
+    assert collector.dropped_events == 0  # D1: cross-thread drain lost nothing
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_network_collector_counts_events_dropped_after_close():
+    """D1: events landing after close() are counted, never lost silently."""
+    from app.services.captcha_recording.network import NetworkCollector
+
+    recorded = []
+
+    async def sink(kind, payload, network):
+        recorded.append(kind)
+
+    async def send(method, params, timeout=5):
+        return {"result": {}}
+
+    collector = NetworkCollector(SimpleNamespace(send=send), sink, 1000, set().add)
+    await collector.drain()
+    collector.close()
+    for i in range(7):
+        collector.on_event({"method": "Network.requestWillBeSent",
+                            "params": {"requestId": str(i), "type": "Fetch",
+                                       "request": {"url": f"https://x.test/{i}", "method": "GET"}}})
+    collector.on_event({"method": "DOM.setFileInputFiles", "params": {}})
+    assert collector.dropped_events == 7  # non-Network events still ignored
+    assert recorded == []
 
 
 @pytest.mark.unit

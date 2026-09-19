@@ -64,3 +64,9 @@ def _clean_item(key: str, value: Any) -> Any:
 def textual_mime(mime: str) -> bool:
     value = str(mime or "").lower()
     return value.startswith("text/") or any(part in value for part in ("json", "xml", "javascript"))
+
+
+def contains_tokenish(text: str) -> bool:
+    """True when the text carries a raw credential-shaped string (D2 backstop)."""
+    value = str(text or "")
+    return bool(_BEARER.search(value) or _LONG_TOKEN.search(value))

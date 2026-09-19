@@ -7,6 +7,10 @@ from datetime import datetime, timezone
 import secrets
 
 VALID_LABELS = frozenset({"unknown", "bot", "manual"})
+# D3: outcome is independent of actor — "passed/failed" says what happened,
+# the actor label says who solved it. "mixed" = both (bot solved, user
+# finished) or indistinguishable from one recording.
+VALID_RESULT_LABELS = frozenset({"unknown", "passed", "failed", "mixed"})
 FINAL_OUTCOMES = frozenset({
     "solved", "manual", "page_error", "token_stale", "auto_failed",
     "stopped", "interrupted",

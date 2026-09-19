@@ -78,6 +78,9 @@ class RecordingManager:
     def set_label(self, session_id: str, label: str) -> dict[str, Any]:
         return self.store.set_label(session_id, label)
 
+    def set_result_label(self, session_id: str, label: str) -> dict[str, Any]:
+        return self.store.set_result_label(session_id, label)
+
     def get_session(self, session_id: str) -> dict[str, Any]:
         return self.reader.details(session_id)
 

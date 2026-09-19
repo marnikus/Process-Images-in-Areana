@@ -110,3 +110,61 @@ test('records UI lists all retained sessions and deletes with confirmation', () 
   assert.equal(deleted, 's1');
   assert.equal(listed, 2, 'list refreshes after delete');
 });
+
+test('records UI keeps actor and result labels independent (D3 wording)', () => {
+  const dom = new JSDOM('<table><tbody id="captchaRecordsBody"></tbody></table>',
+    {url: 'https://app.local', runScripts: 'outside-only'});
+  dom.window.LogConsole = {log() {}};
+  const rows = [{session_id: 's9', actor_label: 'bot', result_label: 'failed',
+    method: 'auto', outcome: 'auto_failed', url: 'https://arena.ai/c/1',
+    started_at: '2026-09-18T10:00:00Z', elapsed_ms: 9000,
+    mutation_count: 1, network_count: 2, snapshot_count: 1}];
+  const calls = [];
+  dom.window.CaptchaRecordingsBridge = {
+    list_sessions(limit, callback) { callback(JSON.stringify({ok: true, sessions: rows, total: 1, limit})); },
+    set_label(id, label, callback) { calls.push(['actor', id, label]);
+      callback(JSON.stringify({ok: true, session: {session_id: id}})); },
+    set_result_label(id, label, callback) { calls.push(['result', id, label]);
+      callback(JSON.stringify({ok: true, session: {session_id: id, result_label: label}})); },
+  };
+  loadPanelScripts(dom);
+  dom.window.CaptchaRecordingsPanel.load();
+  const selects = [...dom.window.document.querySelectorAll('#captchaRecordsBody select')];
+  assert.equal(selects.length, 2, 'one actor select and one result select per row');
+  const actorOptions = [...selects[0].options].map((o) => o.textContent);
+  const resultOptions = [...selects[1].options].map((o) => o.textContent);
+  assert.deepEqual(actorOptions, ['Unknown', 'Bot (2Captcha)', 'Manual (user)']);
+  assert.deepEqual(resultOptions, ['Unknown', 'Passed', 'Failed', 'Mixed']);
+  assert.equal(selects[0].value, 'bot');
+  assert.equal(selects[1].value, 'failed');
+  selects[0].value = 'manual';
+  selects[0].dispatchEvent(new dom.window.Event('change'));
+  selects[1].value = 'passed';
+  selects[1].dispatchEvent(new dom.window.Event('change'));
+  assert.deepEqual(calls, [['actor', 's9', 'manual'], ['result', 's9', 'passed']]);
+});
+
+test('comparison pane heading shows actor, result, method, and outcome (D3)', () => {
+  const dom = new JSDOM('<section id="captchaCompareA"></section>',
+    {url: 'https://app.local', runScripts: 'outside-only'});
+  dom.window.LogConsole = {log() {}};
+  const details = {manifest: {session_id: 's1', actor_label: 'bot', result_label: 'mixed',
+    method: 'auto', outcome: 'auto_failed', url: 'https://arena.ai/c/1',
+    started_at: '2026-09-18T10:00:00Z'}, events: [], milestones: [
+    {seq: 3, kind: 'milestone', offset_ms: 4000, phase: 'task_created', task_id: '42'},
+    {seq: 9, kind: 'milestone', offset_ms: 18000, phase: 'dialog_cleared',
+     dialog_cleared_sec_ms: 18000}],
+  latest_snapshot: {}};
+  dom.window.CaptchaRecordingsBridge = {
+    get_session(_id, callback) { callback(JSON.stringify({ok: true, details})); },
+  };
+  loadPanelScripts(dom);
+  dom.window.CaptchaRecordingComparison.load('s1', 0);
+  const text = dom.window.document.getElementById('captchaCompareA').textContent;
+  assert.match(text, /bot/);          // actor
+  assert.match(text, /auto/);         // method
+  assert.match(text, /auto_failed/);  // outcome
+  assert.match(text, /4000ms  milestone/);       // milestone surfaced in timeline
+  assert.match(text, /"phase":"task_created"/);
+  assert.match(text, /"phase":"dialog_cleared"/);
+});

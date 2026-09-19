@@ -548,10 +548,10 @@ class CDPClient(QObject):
         try:
             # files must be absolute paths accessible to Chrome
             r = await self.send("DOM.setFileInputFiles", {"nodeId": node_id, "files": files})
-            # Check error
-            if r.get("result"):
-                return True
-            # Some Chrome versions return empty result on success
+            # CDP error reply → failure; empty result is a valid success
+            if "error" in r:
+                log.warning(f"setFileInputFiles error reply for node {node_id}: {r['error']}")
+                return False
             return True
         except Exception as e:
             log.warning(f"setFileInputFiles failed for node {node_id} files {files}: {e}")

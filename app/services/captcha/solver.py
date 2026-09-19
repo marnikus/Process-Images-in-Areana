@@ -62,6 +62,10 @@ class SolvePlan:
     stale_reason: str = ""
     page_identity: str = ""
     challenge_identity: str = ""
+    last_task_id: str = ""  # current provider task (D2 milestone evidence)
+    task_created_at: float = 0.0  # monotonic() when createTask succeeded
+    dialog_cleared_at: float = 0.0  # monotonic() when the dialog closed post-inject
+    continue_result: str = ""  # clicked | error (best-effort continue probe)
 
 
 def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> SolveOutcome:
@@ -78,7 +82,17 @@ def _failed(reason: str, detail: str = "", plan: Optional[SolvePlan] = None) -> 
         out.inject = plan.inject
         out.page_error_at_s = plan.page_error_at
         out.page_error = plan.page_error
+        _copy_evidence(plan, out)
     return out
+
+
+def _copy_evidence(plan: SolvePlan, out: SolveOutcome) -> None:
+    """D2: bounded recording evidence, solve-relative seconds (offsets)."""
+    out.task_created_sec = plan.task_created_at - plan.start if plan.task_created_at else 0.0
+    out.dialog_cleared_sec = plan.dialog_cleared_at - plan.start if plan.dialog_cleared_at else 0.0
+    out.page_identity = plan.page_identity
+    out.challenge_identity = plan.challenge_identity
+    out.continue_result = plan.continue_result
 
 
 def task_type_for(kind: str) -> str:
@@ -184,12 +198,13 @@ async def _delete_task(client: Captcha2Client, task_id: str, stats: Any,
         pass
 
 
-async def _click_continue(ctrl: Any) -> None:
+async def _click_continue(ctrl: Any) -> str:
     """Best effort: the site may auto-submit on token receipt instead."""
     try:
         await ctrl.cdp.evaluate(build_continue_js())
+        return "clicked"
     except Exception:
-        pass
+        return "error"
 
 
 async def _note_preinject_state(plan: SolvePlan, log: Callable[[str, str], None]) -> None:
@@ -396,12 +411,14 @@ def _solved(plan: SolvePlan, task_id: str) -> SolveOutcome:
     plan.stats.record("auto_solved", host_of(plan.signal.page_url))
     plan.logger(f"🤖 2Captcha solved tab {str(plan.tab_id)[:12]} in {secs:.0f}s "
                 f"(token {tok:.0f}s, token accepted)", "success")
-    return SolveOutcome(status="solved", method="auto", task_id=task_id,
-                        reason="token accepted", elapsed_sec=secs,
-                        polls=plan.polls, attempts=max(1, plan.attempts),
-                        token_sec=tok, token_fp=plan.token_fp,
-                        dialog_at_token=plan.dialog_at_token, inject=plan.inject,
-                        page_error_at_s=plan.page_error_at, page_error=plan.page_error)
+    out = SolveOutcome(status="solved", method="auto", task_id=task_id,
+                       reason="token accepted", elapsed_sec=secs,
+                       polls=plan.polls, attempts=max(1, plan.attempts),
+                       token_sec=tok, token_fp=plan.token_fp,
+                       dialog_at_token=plan.dialog_at_token, inject=plan.inject,
+                       page_error_at_s=plan.page_error_at, page_error=plan.page_error)
+    _copy_evidence(plan, out)
+    return out
 
 
 async def _accepted_after_close(plan: SolvePlan, task_id: str) -> SolveOutcome:
@@ -415,14 +432,45 @@ async def _accepted_after_close(plan: SolvePlan, task_id: str) -> SolveOutcome:
     return _solved(plan, task_id)
 
 
+def evidence_outcome(plan: SolvePlan) -> SolveOutcome:
+    """Current bounded evidence as an outcome (no status — milestones whitelist fields)."""
+    out = SolveOutcome(task_id=plan.last_task_id, polls=plan.polls,
+                       attempts=max(1, plan.attempts), token_fp=plan.token_fp,
+                       dialog_at_token=plan.dialog_at_token, inject=plan.inject,
+                       page_error=plan.page_error, page_identity=plan.page_identity,
+                       challenge_identity=plan.challenge_identity,
+                       continue_result=plan.continue_result)
+    _copy_evidence(plan, out)
+    return out
+
+
+async def _reject_outcome(plan: SolvePlan, task_id: str, res: Dict[str, Any]) -> SolveOutcome:
+    """Free the provider task and report the token as not accepted."""
+    await _delete_task(plan.client, task_id, plan.stats, plan.logger)
+    why = _reject_reason(res)
+    _auto_fail(plan, "not_accepted", why)
+    return _failed("not_accepted", why, plan)
+
+
 class CaptchaSolver:
     """Owns the inflight task map; all methods are small (RULE 18)."""
 
-    def __init__(self, keys: Any, stats: Any, log: Callable[[str, str], None]):
+    def __init__(self, keys: Any, stats: Any, log: Callable[[str, str], None],
+                 milestone_hook: Optional[Any] = None):
         self._keys = keys
         self._stats = stats
         self._log = log
         self._inflight: Dict[str, asyncio.Task] = {}
+        self._milestone = milestone_hook  # D2: async hook(tab_id, phase, outcome)
+
+    async def _emit(self, plan: SolvePlan, phase: str) -> None:
+        """Fire the recording milestone hook; a recording failure never kills the solve."""
+        if self._milestone is None:
+            return
+        try:
+            await self._milestone(plan.tab_id, phase, evidence_outcome(plan))
+        except Exception:
+            pass
 
     async def solve(self, ctrl: Any, tab_id: str, signal: CaptchaSignal,
                     stop: Optional[Callable[[], bool]] = None) -> SolveOutcome:
@@ -469,12 +517,14 @@ class CaptchaSolver:
         task_id = await self._create_task(plan)
         if not task_id:
             return _failed("task_create", "createTask failed", plan)
+        await self._emit(plan, "task_created")
         token, why = await _poll_task(plan, task_id, timeout_sec)
         if not token:
             await _delete_task(plan.client, task_id, self._stats, self._log)
             return _failed(why or "no_token", _no_token_detail(plan), plan)
         plan.token_at = time.monotonic()
         plan.token_fp = _token_fingerprint(token)
+        await self._emit(plan, "token_ready")
         self._log(f"🤖 2Captcha task #{task_id} token received in "
                   f"{plan.token_at - plan.start:.0f}s ({plan.token_fp})", "success")
         return await self._inject_and_verify(plan, token, task_id)
@@ -518,22 +568,26 @@ class CaptchaSolver:
             return await _inject_failure(plan, task_id)
         plan.inject = f"scope={res.get('scope')} fields={res.get('fields', 1)} cb={_cb_desc(res)}"
         self._log(f"🤖 token injected ({plan.inject})", "info")
-        await _click_continue(plan.ctrl)
+        await self._emit(plan, "injected")
+        if res.get("cbCalled"):
+            await self._emit(plan, "acceptance_candidate")
+        plan.continue_result = await _click_continue(plan.ctrl)
         error = await _page_error_outcome(plan, task_id, self._stats, self._log)
         if error is not None:
             return error
         if await _verify_gone(plan.ctrl, plan.stop):
+            plan.dialog_cleared_at = time.monotonic()
+            await self._emit(plan, "dialog_cleared")
             return await _accepted_after_close(plan, task_id)
-        await _delete_task(plan.client, task_id, self._stats, self._log)
-        why = _reject_reason(res)
-        _auto_fail(plan, "not_accepted", why)
-        return _failed("not_accepted", why, plan)
+        return await _reject_outcome(plan, task_id, res)
 
     async def _create_task(self, plan: SolvePlan) -> str:
         task_type = task_type_for(plan.signal.kind)
         payload = _task_payload(task_type, plan.signal)
         try:
             task_id = await plan.client.create_task(payload)
+            plan.last_task_id = str(task_id)
+            plan.task_created_at = time.monotonic()
             self._stats.record("task_created", host_of(plan.signal.page_url))
             self._log(f"🤖 2Captcha task {task_type} #{task_id} submitted (tab {str(plan.tab_id)[:12]}, "
                       f"isInvisible={plan.signal.is_invisible}, key=****)", "info")

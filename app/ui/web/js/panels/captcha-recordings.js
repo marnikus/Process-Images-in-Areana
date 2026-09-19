@@ -61,8 +61,11 @@ const CaptchaRecordingsPanel = {
     this.cell(tr, item.outcome || item.status || '—');
     this.cell(tr, this.duration(item.elapsed_ms));
     this.cell(tr, `${item.mutation_count || 0}/${item.network_count || 0}/${item.snapshot_count || 0}`);
+    // D3: actor (who solved) and result (what happened) are independent columns
+    this.selectCell(tr, this.labelSelect(item));
+    this.selectCell(tr, this.resultSelect(item));
     const labelCell = document.createElement('td');
-    labelCell.append(this.labelSelect(item), CaptchaRecordingComparison.button(item, 0),
+    labelCell.append(CaptchaRecordingComparison.button(item, 0),
       CaptchaRecordingComparison.button(item, 1), this.openButton(item), this.deleteButton(item));
     tr.appendChild(labelCell);
     tr.title = item.reason || item.session_id || '';
@@ -110,20 +113,34 @@ const CaptchaRecordingsPanel = {
   labelSelect(item) {
     const select = document.createElement('select');
     select.className = 'captcha-record-label';
-    [['unknown', 'Unknown'], ['bot', 'Bot passed'], ['manual', 'User passed']].forEach(([value, text]) => {
+    select.title = 'Actor — who solved the captcha (independent of the result)';
+    [['unknown', 'Unknown'], ['bot', 'Bot (2Captcha)'], ['manual', 'Manual (user)']].forEach(([value, text]) => {
       const option = document.createElement('option');
       option.value = value; option.textContent = text; select.appendChild(option);
     });
     select.value = item.actor_label || 'unknown';
-    select.addEventListener('change', () => this.setLabel(item.session_id, select));
+    select.addEventListener('change', () => this.setLabel(item.session_id, select, 'set_label'));
     return select;
   },
 
-  setLabel(sessionId, select) {
+  resultSelect(item) {
+    const select = document.createElement('select');
+    select.className = 'captcha-record-result';
+    select.title = 'Result — what actually happened (independent of the actor)';
+    [['unknown', 'Unknown'], ['passed', 'Passed'], ['failed', 'Failed'], ['mixed', 'Mixed']].forEach(([value, text]) => {
+      const option = document.createElement('option');
+      option.value = value; option.textContent = text; select.appendChild(option);
+    });
+    select.value = item.result_label || 'unknown';
+    select.addEventListener('change', () => this.setLabel(item.session_id, select, 'set_result_label'));
+    return select;
+  },
+
+  setLabel(sessionId, select, slotName) {
     const bridge = window.CaptchaRecordingsBridge;
-    if (!bridge?.set_label) return;
+    if (!bridge?.[slotName]) return;
     select.disabled = true;
-    bridge.set_label(sessionId, select.value, (raw) => {
+    bridge[slotName](sessionId, select.value, (raw) => {
       select.disabled = false;
       try {
         const result = JSON.parse(raw);
@@ -135,6 +152,10 @@ const CaptchaRecordingsPanel = {
   cell(row, text) {
     const td = document.createElement('td');
     td.textContent = String(text == null ? '' : text); row.appendChild(td);
+  },
+  selectCell(row, select) {
+    const td = document.createElement('td');
+    td.appendChild(select); row.appendChild(td);
   },
   when(value) {
     if (!value) return '—';
