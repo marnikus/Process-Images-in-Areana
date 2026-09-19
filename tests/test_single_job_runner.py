@@ -28,8 +28,8 @@ def make_bridge(stack=None, pool=None, cancel=False):
         config=SimpleNamespace(get_state=lambda k, d=None: d),
         state=state,
         _log=lambda m, l="info": logs.append((m, l)),
-        _emit_job_action_status=lambda j, b, s, m="", r=None: events.append(
-            (getattr(b, "block_id", b), s, m)),
+        _emit_job_action_status=lambda action: events.append(
+            (getattr(action.block, "block_id", action.block), action.status, action.message)),
         _emit_pool_status=lambda: logs.append(("pool", "")),
         _get_action_blocks=lambda: list(stack or []),
         highlight_rect=SimpleNamespace(emit=lambda p: logs.append(("rect", p))),

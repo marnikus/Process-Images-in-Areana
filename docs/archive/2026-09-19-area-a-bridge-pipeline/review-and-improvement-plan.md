@@ -184,8 +184,8 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
 
 Expected end state: TOTAL ≈ 97 − 35 = **62** (all `bridge.py` fails gone),
 suite green, Bridge ≈ 300 lines / 10 methods, 12 panels + 8 ui-services.
-Kill-map check: R3 7 + R4 7 + R5 1 + R7 7 + R8 4 + R9 6 + R11 3 (A6) = 35 ✓
-(R2/R6/R10 kill 0 by design).
+Kill-map check: R3 7 + R4 7 + R5 1 + R7 7 + R8 4 + R9 7 + R11 2 (A6) = 35 ✓
+(R2/R6/R10 kill 0 by design; R9 took the methods-count kill R11 planned).
 
 ## 3. Second review pass (post-R6, pre-R7)
 

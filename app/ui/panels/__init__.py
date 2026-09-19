@@ -14,6 +14,7 @@ from app.ui.panels.cdp_tools import CdpToolsMixin
 from app.ui.panels.layout_state import LayoutStateMixin
 from app.ui.panels.page_pool import PagePoolMixin
 from app.ui.panels.queue_scan import QueueScanMixin
+from app.ui.panels.run_control import RunControlMixin
 from app.ui.panels.undo_history import UndoHistoryMixin
 from app.ui.panels.url_queue import UrlQueueMixin
 from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
@@ -27,6 +28,7 @@ __all__ = [
     "LayoutStateMixin",
     "PagePoolMixin",
     "QueueScanMixin",
+    "RunControlMixin",
     "UndoHistoryMixin",
     "UrlQueueMixin",
     "WatcherCaptchaMixin",

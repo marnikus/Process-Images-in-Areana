@@ -181,6 +181,16 @@ def _run_detached(bridge, coro):
     return None
 
 
+@dataclass
+class JobAction:
+    """Runner→UI block-status event (F8: replaces the 5-arg seam)."""
+    job_id: str
+    block: Any
+    status: str
+    message: str = ""
+    rect: Optional[dict] = None
+
+
 def schedule_coro(bridge, coro):
     """Non-blocking schedule on the bg loop (None when detached)."""
     try:

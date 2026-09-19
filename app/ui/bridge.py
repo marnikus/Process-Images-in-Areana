@@ -10,9 +10,7 @@ Handles:
 import asyncio
 import json
 import logging
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from app.ui.qt_compat import QObject, Signal, Slot
 
@@ -25,18 +23,15 @@ from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
 from app.ui.panels import blocks_stack, layout_state
-from app.ui.panels.queue_scan import push_queue_undo, selected_images
 from app.ui.panels.watcher_captcha import (
     captcha_service, get_watcher_cdp_controller, on_watcher_state)
 from app.services.run_state import persist_cooldowns
 from app.ui.panels.url_queue import (
-    _URL_GATE_MSG,
     _add_missing_rows,
     _checked_tabs_ready,
     _dedupe_state_rows,
     _tab_already_owned,
     _urls_gate_error,
-    enabled_urls,
 )  # compat: single source lives in panels/url_queue.py
 from app.ui.panels.layout_state import LayoutStateMixin
 from app.ui.panels.blocks_library import BlocksLibraryMixin
@@ -49,6 +44,7 @@ from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
 from app.ui.panels.page_pool import PagePoolMixin
 from app.ui.panels.browser_tabs import BrowserTabsMixin
 from app.ui.panels.cdp_tools import CdpToolsMixin
+from app.ui.panels.run_control import RunControlMixin, emit_job_action_status
 from app.ui.services import arena_serialize, undo_entries
 from app.core.action_blocks import (
     default_stack,
@@ -67,7 +63,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin, BrowserTabsMixin, CdpToolsMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -258,51 +254,9 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     def _emit_action_blocks(self):
         blocks_stack.emit_action_blocks(self)
 
-    def _emit_job_action_status(self, job_id: str, block: Any, status: str, message: str = "", rect: dict = None):
-        try:
-            # block can be ActionBlock or dict or block_id string
-            if isinstance(block, str):
-                block_id = block
-                block_name = block
-                color = "#FF0000"
-                highlight_ms = 2000
-            else:
-                block_id = getattr(block, 'id', '') or getattr(block, 'block_id', '') or str(block)
-                block_name = getattr(block, 'display_name', None) or getattr(block, 'name', block_id)
-                if callable(block_name):
-                    block_name = block_name()
-                color = getattr(block, 'color', '#FF0000')
-                highlight_ms = getattr(block, 'highlight_duration_ms', 2000)
-            payload = json.dumps({
-                "job_id": job_id,
-                "block_id": block_id,
-                "block_name": block_name,
-                "status": status,  # pending, running, success, failed, skipped
-                "message": message,
-                "rect": rect,
-                "color": color,
-                "highlight_duration_ms": highlight_ms,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-            }, ensure_ascii=False)
-            self.job_action_status.emit(job_id, block_id, payload)
-            # Also emit highlight rect if rect provided
-            if rect and status in ("running", "success"):
-                try:
-                    hr = {
-                        "x": rect.get("x", 0),
-                        "y": rect.get("y", 0),
-                        "width": rect.get("width", 100),
-                        "height": rect.get("height", 100),
-                        "duration": highlight_ms / 1000 if highlight_ms else 2,
-                        "label": block_name,
-                        "color": color,
-                    }
-                    self.highlight_rect.emit(json.dumps(hr))
-                except Exception:
-                    pass
-        except Exception as e:
-            log.warning(f"emit job action status failed: {e}")
-
+    def _emit_job_action_status(self, action) -> None:
+        # F8: runner seam (JobAction event); run_control owns the emit.
+        emit_job_action_status(self, action)
 
     def _save_arena(self):
         layout_state.save_arena_state(self)
@@ -324,185 +278,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
         except Exception:
             pass
 
-
-
-    def _push_queue_undo(self):
-        # R3 shim: queue_scan owns push_queue_undo; R9 deletes this with the last callers.
-        return push_queue_undo(self)
-
-    @Slot(result=str)
-    def retry_failed(self):
-        count = 0
-        for img in self.state.images:
-            if img.status == "failed":
-                img.status = "pending"
-                img.selected = True
-                img.error = None
-                count += 1
-        self.state.recalculate_progress()
-        self._save_arena()
-        self._push_queue_undo()
-        return json.dumps({"ok": True, "count": count})
-
-    @Slot(result=str)
-    def clear_queue(self):
-        """Clear entire image queue — start new batch. User requested: should able to start new batch not adding only."""
-        try:
-            count = len(self.state.images)
-            # push undo before clearing so user can undo
-            try:
-                self._push_queue_undo()
-            except Exception:
-                pass
-            self.state.images = []
-            self.state.jobs = []
-            self.state.recalculate_progress()
-            self._save_arena()
-            self._log(f"🗑 Cleared image queue: {count} images removed — ready for new batch", "warn")
-            return json.dumps({"ok": True, "count": count})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(result=str)
-    def reset_all(self):
-        for img in self.state.images:
-            img.status = "pending"
-            img.selected = False
-            img.error = None
-            img.output_path = None
-            img.assigned_url_id = None
-            img.attempt_count = 0
-        self.state.jobs = []
-        self.state.recalculate_progress()
-        self._save_arena()
-        self._push_queue_undo()
-        return json.dumps({"ok": True})
-
-    @Slot(str, result=str)
-    def retry_image(self, img_id: str):
-        for img in self.state.images:
-            if img.id == img_id:
-                img.status = "pending"
-                img.selected = True
-                img.error = None
-                self.state.recalculate_progress()
-                self._save_arena()
-                self._push_queue_undo()
-                return json.dumps({"ok": True})
-        return json.dumps({"ok": False, "error": "not found"})
-
-    @Slot(str, result=str)
-    def reset_image(self, img_id: str):
-        for img in self.state.images:
-            if img.id == img_id:
-                img.status = "pending"
-                img.selected = False
-                img.error = None
-                img.output_path = None
-                img.assigned_url_id = None
-                img.attempt_count = 0
-                self.state.recalculate_progress()
-                self._save_arena()
-                self._push_queue_undo()
-                return json.dumps({"ok": True})
-        return json.dumps({"ok": False, "error": "not found"})
-
-    # ---- run controls — real implementation via CDP ----
-    def _get_selected_images(self):
-        return selected_images(self.state.images)
-
-    def _get_enabled_urls(self):
-        return [u for u in self.state.urls if u.enabled]
-
-    @Slot(result=str)
-    def start_run(self):
-        prompt = self.state.prompt.get("user_prompt","").strip()
-        if not prompt:
-            self._log("⚠ Prompt is empty — set prompt before running", "warn")
-            return json.dumps({"ok": False, "error": "empty prompt"})
-        selected = self._get_selected_images()
-        if not selected:
-            self._log("⚠ No selected images — select images in queue", "warn")
-            return json.dumps({"ok": False, "error": "no selected images"})
-        urls = self._get_enabled_urls()
-        gate = _urls_gate_error(self, urls)
-        if gate:
-            msg, level = _URL_GATE_MSG[gate]
-            self._log(msg, level)
-            return json.dumps({"ok": False, "error": gate})
-        if not self.cdp or not self.cdp.is_connected:
-            self._log("❌ Chrome not connected — click Diagnose, Refresh, Connect first. CDP must be connected to automate.", "error")
-            return json.dumps({"ok": False, "error": "cdp not connected"})
-        if self._run_state == "running":
-            self._log("⚠ Already running", "warn")
-            return json.dumps({"ok": False, "error": "already running"})
-        self._run_state = "running"
-        self._cancel_requested = False
-        self._pause_requested = False
-        self._stop_after = False
-        self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
-        self._emit_arena_state()
-        from app.services.batch_orchestrator import run_batch
-        fut = self._schedule_coro(run_batch(self))
-        if fut:
-            self._batch_future = fut
-        return json.dumps({"ok": True})
-
-    @Slot(result=str)
-    def pause_run(self):
-        self._pause_requested = True
-        self._run_state = "paused"
-        self._log("⏸ Paused — will pause after current step", "warn")
-        self._emit_arena_state()
-        return json.dumps({"ok": True})
-
-    @Slot(result=str)
-    def resume_run(self):
-        self._pause_requested = False
-        self._run_state = "running"
-        self._log("▶ Resumed", "info")
-        self._emit_arena_state()
-        return json.dumps({"ok": True})
-
-    @Slot(result=str)
-    def stop_after_current(self):
-        self._stop_after = True
-        self._run_state = "stopping"
-        self._log("⏹ Will stop after current image", "warn")
-        self._emit_arena_state()
-        return json.dumps({"ok": True})
-
-    @Slot(result=str)
-    def cancel_current(self):
-        self._cancel_requested = True
-        self._run_state = "idle"
-        self._pause_requested = False
-        self._stop_after = False
-        self._log("✖ Cancel requested — stopping immediately", "error")
-        self._emit_arena_state()
-        # Try to cancel running batch future immediately
-        try:
-            if self._batch_future:
-                self._batch_future.cancel()
-                self._log("✖ Batch future cancelled", "warn")
-        except Exception as e:
-            self._log(f"Cancel future failed: {e}", "warn")
-        try:
-            # Also emit job_finished cancelled for current jobs
-            from app.core.enums import ImageStatus
-            for img in self._get_selected_images():
-                if img.status == ImageStatus.PROCESSING.value:
-                    img.status = ImageStatus.FAILED.value
-                    img.error = "Cancelled by user"
-            self.state.recalculate_progress()
-            self._save_arena()
-        except Exception:
-            pass
-        return json.dumps({"ok": True})
-
-    # ---- watcher win — passive recheck every x ms for generating icon or captcha ----
-    # ---- PagePool — multi-page steady/busy tracking ----
-    # ---- 2Captcha solving (opt-in, RULE 20 as amended 2026-09-17) ----
     # WebChannel constraint: slots must live on this QObject (wire format);
     # the lazy getter keeps __init__ untouched. Net line delta of this
     # change is negative (inline captcha blocks replaced by choke point).
@@ -510,123 +285,3 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     def _captcha_service(self):
         # Seam for main_window + app/services/captcha (watcher_captcha owns the factory).
         return captcha_service(self)
-
-    # ---- CDP Chrome connection (robust, non-blocking to avoid UI freeze) ----
-    # Persistent background asyncio loop to keep CDP websocket receive_task alive.
-    # Previous short-lived asyncio.run() closed loop immediately after connect(),
-    # cancelling receive_task and causing instant disconnect.
-    def _ensure_bg_loop(self):
-        """Ensure a background event loop thread exists and is running."""
-        try:
-            import asyncio
-            import threading
-            # Ensure lock/event exist (robust against old None values from previous version)
-            if not isinstance(getattr(self, '_bg_lock', None), type(threading.Lock())):
-                # _bg_lock may be None or wrong type after unpickle/migration — recreate
-                self._bg_lock = threading.Lock()
-            if not isinstance(getattr(self, '_bg_ready', None), type(threading.Event())):
-                self._bg_ready = threading.Event()
-            # If loop exists and running, reuse
-            bg_loop = getattr(self, '_bg_loop', None)
-            if bg_loop and bg_loop.is_running():
-                return bg_loop
-            with self._bg_lock:
-                bg_loop = getattr(self, '_bg_loop', None)
-                if bg_loop and bg_loop.is_running():
-                    return bg_loop
-                try:
-                    self._bg_ready.clear()
-                except Exception:
-                    self._bg_ready = threading.Event()
-                def _run_loop():
-                    try:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        self._bg_loop = loop
-                        try:
-                            self._bg_ready.set()
-                        except Exception:
-                            pass
-                        loop.run_forever()
-                    except Exception as e:
-                        log.warning(f"bg loop crashed: {e}")
-                        try:
-                            self._bg_ready.set()
-                        except Exception:
-                            pass
-                t = threading.Thread(target=_run_loop, daemon=True, name="arena-bg-loop")
-                t.start()
-                self._bg_thread = t
-            # Wait for loop to be ready
-            try:
-                self._bg_ready.wait(timeout=5)
-            except Exception:
-                pass
-            return getattr(self, '_bg_loop', None)
-        except Exception as e:
-            import traceback
-            log.warning(f"_ensure_bg_loop failed: {e} {traceback.format_exc()[-500:]}")
-            return None
-
-    def _schedule_coro(self, coro):
-        """Schedule coro on persistent background loop via run_coroutine_threadsafe.
-        This keeps CDP websocket receive loop alive after connect, unlike short-lived asyncio.run.
-        Non-blocking for UI thread.
-        """
-        try:
-            import asyncio
-            loop = self._ensure_bg_loop()
-            if loop and loop.is_running():
-                future = asyncio.run_coroutine_threadsafe(coro, loop)
-                # Store batch future for immediate cancel
-                try:
-                    # Heuristic: if coro is the batch runner, keep reference
-                    if hasattr(coro, 'cr_code') and coro.cr_code.co_name == 'run_batch':
-                        self._batch_future = future
-                except Exception:
-                    pass
-                def _cb(fut):
-                    try:
-                        fut.result()
-                    except Exception as e:
-                        # Ignore CancelledError after cancel
-                        try:
-                            import concurrent.futures
-                            if isinstance(e, concurrent.futures.CancelledError):
-                                return
-                        except Exception:
-                            pass
-                        log.warning(f"coro thread failed: {e}")
-                        try:
-                            self._log(f"Async task failed: {e}", "error")
-                        except Exception:
-                            pass
-                    finally:
-                        # Clear batch future when done
-                        try:
-                            if self._batch_future is fut:
-                                self._batch_future = None
-                        except Exception:
-                            pass
-                future.add_done_callback(_cb)
-                return future
-            # Fallback: short-lived thread if bg loop not available
-            import threading
-            def _run():
-                try:
-                    asyncio.run(coro)
-                except Exception as e:
-                    log.warning(f"coro thread fallback failed: {e}")
-                    try:
-                        self._log(f"Async task failed: {e}", "error")
-                    except Exception:
-                        pass
-            t = threading.Thread(target=_run, daemon=True)
-            t.start()
-            return None
-        except Exception as e:
-            log.warning(f"_schedule_coro failed: {e}")
-            try:
-                coro.close()
-            except Exception:
-                pass

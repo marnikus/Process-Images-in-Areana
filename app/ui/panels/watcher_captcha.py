@@ -13,6 +13,7 @@ import asyncio
 import json
 
 from app.ui.qt_compat import Slot
+from app.services.run_state import schedule_coro
 
 
 def get_watcher_cdp_controller(bridge):
@@ -177,9 +178,9 @@ class WatcherCaptchaMixin:
         try:
             cdp = get_watcher_cdp_controller(self)
             if cdp:
-                self._schedule_coro(cdp.hide_watcher_overlay())
+                schedule_coro(self, cdp.hide_watcher_overlay())
             if self._watcher:
-                self._schedule_coro(self._watcher.force_clear())
+                schedule_coro(self, self._watcher.force_clear())
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -189,7 +190,7 @@ class WatcherCaptchaMixin:
         try:
             if not self._watcher:
                 return json.dumps({"ok": False, "error": "watcher not initialized"})
-            self._schedule_coro(self._watcher.check_once())
+            schedule_coro(self, self._watcher.check_once())
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})

@@ -15,6 +15,7 @@ from app.core.naming import atomic_write_bytes, get_output_path
 from app.browser.dom_highlight import build_find_probe, build_highlight_probe
 from app.browser.probe_requests import FindProbeSpec, HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
+from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
 
@@ -43,7 +44,7 @@ class JobCtx:
 def _emit_action(ctx: JobCtx, block: Any, status: str, msg: str):
     """Emit action status."""
     try:
-        ctx.bridge._emit_job_action_status(ctx.job_id, block, status, msg)
+        ctx.bridge._emit_job_action_status(JobAction(ctx.job_id, block, status, msg))
     except Exception:
         pass
 
@@ -412,7 +413,7 @@ async def _attach_emit(ctx: JobCtx, block: Any, reason: str):
         ms = getattr(block, "highlight_ms", 0) or 2000
         rect = await ctx.ctrl.highlight_selector(sel, color=color, duration_ms=ms, caption="Attached ok")
         rd = rect.get("rect", rect) if isinstance(rect, dict) else None
-        ctx.bridge._emit_job_action_status(ctx.job_id, block, "success", reason, rd)
+        ctx.bridge._emit_job_action_status(JobAction(ctx.job_id, block, "success", reason, rd))
     except Exception:
         _emit_action(ctx, block, "success", reason)
 
@@ -541,7 +542,7 @@ async def _custom_ok_emit(ctx: JobCtx, block: Any, sel: str):
         ms = getattr(block, "highlight_ms", 0) or 2000
         rect = await ctx.ctrl.highlight_selector(sel, color=getattr(block, "color", "") or "#FF0000", duration_ms=ms, caption=_display(block))
         rd = rect.get("rect", rect) if isinstance(rect, dict) else None
-        ctx.bridge._emit_job_action_status(ctx.job_id, block, "success", f"FIND+CLICK ok {sel}", rd)
+        ctx.bridge._emit_job_action_status(JobAction(ctx.job_id, block, "success", f"FIND+CLICK ok {sel}", rd))
     except Exception:
         _emit_action(ctx, block, "success", f"FIND+CLICK ok {sel}")
 
@@ -605,7 +606,7 @@ async def _handle_highlight(ctx: JobCtx, block: Any):
     if not res.get("found"):
         raise RuntimeError(f"Highlight not found: {sel}")
     _report_recovery(ctx, f"Highlighted {sel}", "success")
-    ctx.bridge._emit_job_action_status(ctx.job_id, block, "success", f"Highlighted {sel}", res.get("rect"))
+    ctx.bridge._emit_job_action_status(JobAction(ctx.job_id, block, "success", f"Highlighted {sel}", res.get("rect")))
 
 
 async def _handle_pause(ctx: JobCtx, block: Any):
@@ -659,7 +660,7 @@ async def _handle_marker_highlight(ctx: JobCtx, block: Any):
         ms = getattr(block, "highlight_ms", 0) or getattr(block, "highlight_duration_ms", 0) or 2000
         rect = await ctx.ctrl.highlight_selector(sel, color=getattr(block, "color", "") or "#FF0000", duration_ms=ms, caption=_display(block))
         rd = rect.get("rect", rect) if isinstance(rect, dict) else None
-        ctx.bridge._emit_job_action_status(ctx.job_id, block, "success", f"Highlighted {sel}", rd)
+        ctx.bridge._emit_job_action_status(JobAction(ctx.job_id, block, "success", f"Highlighted {sel}", rd))
     except Exception as e:
         _emit_action(ctx, block, "success", f"Highlight skipped: {e}")
 
@@ -675,7 +676,7 @@ async def _handle_verify_attachment(ctx: JobCtx, block: Any):
         raise RuntimeError(f"Verify attachment failed: {e}")
     if not res.get("found"):
         raise RuntimeError(f"Verify attachment failed: preview not found {sel}")
-    ctx.bridge._emit_job_action_status(ctx.job_id, block, "success", f"Attachment preview found {sel}", res.get("rect"))
+    ctx.bridge._emit_job_action_status(JobAction(ctx.job_id, block, "success", f"Attachment preview found {sel}", res.get("rect")))
 
 
 async def _handle_verify_prompt(ctx: JobCtx, block: Any):
