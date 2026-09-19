@@ -2,13 +2,13 @@
   "version": "1.0.0",
   "urls": [
     {
-      "id": "url_43ababe7",
+      "id": "url_523123bd",
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
       "last_checked": null,
       "error": null,
-      "tab_id": "C515A1C992AE2AAFCB63BDB116B25D74"
+      "tab_id": "AB71078A888AA87A2C2861207C9EF196"
     }
   ],
   "folder": {
@@ -131,10 +131,10 @@
       "fingerprint": "57a018f19268a185",
       "status": "failed",
       "selected": true,
-      "assigned_url_id": "url_43ababe7",
-      "attempt_count": 4,
-      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-color-picker_AI_2.png",
-      "error": "No new_src from previous wait block",
+      "assigned_url_id": "url_523123bd",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-color-picker_AI_4.png",
+      "error": "Find & Click failed for button",
       "content_hash": null
     },
     {
