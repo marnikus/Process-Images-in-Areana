@@ -57,10 +57,26 @@ class CaptchaSignal:
     response_scope: str = "none"
     sitekey_source: str = "none"
     page_identity: str = ""
+    # REFACTOR 02 — SDK task parameters (REFACTOR 02: watcher_gate/sdk_client
+    # consume these; the legacy probe flow never sets them).
+    action: str = ""          # recaptcha v3 action
+    min_score: float = 0.0    # recaptcha v3 min_score (0 -> SDK default 0.7)
+    data_s: str = ""          # site-provided datas blob
+
     @property
     def solvable(self) -> bool:
         """A 2Captcha task can be created for this signal."""
         return self.visible and self.kind in SOLVABLE_KINDS and bool(self.sitekey)
+
+    @property
+    def enterprise(self) -> bool:
+        """REFACTOR 02 — v2-enterprise family (SDK `enterprise=1`)."""
+        return self.kind == "recaptcha_enterprise"
+
+    @property
+    def invisible(self) -> bool:
+        """REFACTOR 02 — probe field alias for the SDK kwarg name."""
+        return self.is_invisible
 
     @classmethod
     def from_result(cls, res: Optional[Any]) -> "CaptchaSignal":
@@ -113,3 +129,13 @@ class SolveOutcome:
     page_identity: str = ""
     challenge_identity: str = ""
     continue_result: str = ""
+    # REFACTOR 02 — gate/SDK result shape (watcher_gate + sdk_client +
+    # captcha_step). `ok` is the canonical new flag; legacy `status` stays
+    # for the service.py consumers. Append-only: all defaults keep the
+    # existing keyword construction sites source-compatible.
+    ok: bool = False
+    token: str = ""
+    retryable: bool = False
+    skipped: bool = False
+    tab_id: str = ""
+    duration_sec: float = 0.0

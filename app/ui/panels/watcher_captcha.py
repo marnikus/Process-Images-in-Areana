@@ -53,6 +53,8 @@ def watcher_config_values(config, enabled=None) -> dict:
         "captcha_timeout_sec": int(config.get_state("watcher_captcha_timeout_sec", 300)),
         "generation_timeout_sec": int(config.get_state("watcher_generation_timeout_sec", 600)),
         "auto_pause_jobs": bool(config.get_state("watcher_auto_pause", True)),
+        # REFACTOR 02 — captcha gate arm switch (off by default)
+        "captcha_solving": bool(config.get_state("watcher_captcha_solving", False)),
     }
     if enabled is not None:
         values["enabled"] = enabled
@@ -67,17 +69,24 @@ def parse_watcher_config(data: dict) -> dict:
         "captcha_timeout_sec": max(10, min(int(data.get("captcha_timeout_sec", 300)), 3600)),
         "generation_timeout_sec": max(30, min(int(data.get("generation_timeout_sec", 600)), 3600)),
         "auto_pause_jobs": bool(data.get("auto_pause_jobs", True)),
+        "captcha_solving": bool(data.get("captcha_solving", False)),
     }
 
 
 def create_watcher_service(bridge, values: dict):
     """Build + wire a WatcherService (caller decides when to start)."""
     from app.services.watcher import WatcherService, WatcherConfig
+    try:
+        from app.services.captcha.watcher_gate import current_gate
+        gate = current_gate()
+    except Exception:  # noqa: BLE001 — gate is optional; watcher runs passive
+        gate = None
     watcher = WatcherService(
         config=WatcherConfig(**values),
         cdp_controller_getter=lambda: get_watcher_cdp_controller(bridge),
         job_runner_getter=lambda: bridge,
-        logger=lambda msg, level="info": bridge._log(f"[Watcher] {msg}", level)
+        logger=lambda msg, level="info": bridge._log(f"[Watcher] {msg}", level),
+        captcha_gate=gate,
     )
     watcher.add_callback(lambda p: on_watcher_state(bridge, p))
     return watcher
@@ -91,6 +100,7 @@ def persist_watcher_config(config, values: dict) -> None:
         watcher_captcha_timeout_sec=values["captcha_timeout_sec"],
         watcher_generation_timeout_sec=values["generation_timeout_sec"],
         watcher_auto_pause=values["auto_pause_jobs"],
+        watcher_captcha_solving=values["captcha_solving"],
     )
 
 
@@ -101,6 +111,22 @@ def captcha_service(bridge):
         from app.services.captcha import CaptchaService
         svc = bridge._captcha_service_obj = CaptchaService(str(bridge.config.dir), bridge._log)
     return svc
+
+
+def gate_status_payload(bridge) -> dict:
+    """REFACTOR 02 — gate read model + per-page rows for the Watcher panel."""
+    try:
+        from app.services.captcha.watcher_gate import current_gate
+        gate = current_gate()
+        if gate is None:
+            return {"enabled": False, "reason": "gate_unavailable", "pages": []}
+        pages = []
+        step = getattr(bridge._watcher, "captcha_step", None) if bridge._watcher else None
+        if step is not None:
+            pages = step.snapshot()
+        return {**gate.status(), "pages": pages}
+    except Exception as e:  # noqa: BLE001 — status must never break the slot
+        return {"enabled": False, "reason": f"gate_error: {e}", "pages": []}
 
 
 class WatcherCaptchaMixin:
@@ -129,7 +155,13 @@ class WatcherCaptchaMixin:
     @Slot(str, result=str)
     def set_watcher_config(self, cfg_json: str):
         try:
-            values = parse_watcher_config(json.loads(cfg_json or "{}"))
+            incoming = json.loads(cfg_json or "{}")
+            if not isinstance(incoming, dict):
+                return json.dumps({"ok": False, "error": "config must be an object"})
+            # Merge over current state: partial payloads (e.g. the Watcher
+            # panel's {"captcha_solving": true}) must not reset other fields.
+            values = parse_watcher_config({**watcher_config_values(self.config),
+                                           **incoming})
             persist_watcher_config(self.config, values)
             if self._watcher:
                 self._watcher.update_config(**values)
@@ -139,7 +171,8 @@ class WatcherCaptchaMixin:
             self._log(f"Watcher config saved: enabled={values['enabled']}"
                       f" interval={values['check_interval_ms']}ms"
                       f" captcha_to={values['captcha_timeout_sec']}s"
-                      f" gen_to={values['generation_timeout_sec']}s", "success")
+                      f" gen_to={values['generation_timeout_sec']}s"
+                      f" solving={values['captcha_solving']}", "success")
             return json.dumps({"ok": True, "config": values}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -219,12 +252,20 @@ class WatcherCaptchaMixin:
 
     @Slot(result=str)
     def get_captcha_status(self):
-        """Key mask + balance + last error; raw key never leaves the store."""
+        """Gate status (Watcher panel) + key mask/balance (captcha window).
+
+        REFACTOR 02: `enabled`/`reason`/`solved`/`failed`/`skipped`/`pages`
+        describe the *gate* (watcher + solving armed). The 2Captcha service
+        flag moves to `service_enabled` so both windows read one truth.
+        """
         try:
             svc = captcha_service(self)
-            if svc.status_payload().get("has_key"):
+            payload = svc.status_payload()
+            if payload.get("has_key"):
                 asyncio.create_task(svc.refresh_balance())  # fire-and-forget, next call shows it
-            return json.dumps({"ok": True, **svc.status_payload()}, ensure_ascii=False)
+            status = {"ok": True, **payload, "service_enabled": payload.get("enabled", False)}
+            status.update(gate_status_payload(self))
+            return json.dumps(status, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 

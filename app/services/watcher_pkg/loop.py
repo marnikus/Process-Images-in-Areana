@@ -16,6 +16,10 @@ class LoopDeps:
     handlers: Any
     notifier: Callable
     logger: Callable
+    # REFACTOR 02 — per-page captcha step (None = legacy tick, no solving).
+    captcha_step: Any = None
+    # Stable key of the watched page (the watcher tracks one active page).
+    page_key: str = "primary"
 
 class WatcherLoop:
     def __init__(self, deps: LoopDeps):
@@ -28,6 +32,9 @@ class WatcherLoop:
         self._running = False
         self._task = None
         self._callbacks = []
+        # REFACTOR 02 — per-page captcha step (None = passive watcher only)
+        self.captcha_step = deps.captcha_step
+        self.page_key = deps.page_key
 
     def add_callback(self, cb):
         self._callbacks.append(cb)
@@ -60,6 +67,7 @@ class WatcherLoop:
             await self._notify()
             return self.state.to_dict()
         is_captcha = await self.cdp_probe.check_captcha(cdp)
+        await self._captcha_tick(cdp, is_captcha)
         if await self.handlers.handle_captcha(cdp, is_captcha):
             return self.state.to_dict()
         is_gen, gen_details = await self.cdp_probe.check_generation(cdp)
@@ -69,6 +77,23 @@ class WatcherLoop:
         self.state.status = "watching"
         await self._notify()
         return self.state.to_dict()
+
+    async def _captcha_tick(self, cdp, is_captcha: bool) -> None:
+        """REFACTOR 02 — per-page solve cycle; the gate decides, never the loop.
+
+        Runs BEFORE the legacy handlers so a solved page never pauses jobs.
+        """
+        step = self.captcha_step
+        if step is None or cdp is None:
+            return
+        if getattr(getattr(step, "d", None), "gate", None) is None:
+            return  # no gate wired (degraded boot) — passive watcher only
+        try:
+            signal = await self.cdp_probe.detect_signal(cdp, self.page_key) if is_captcha else None
+            await step.handle_page(cdp, self.page_key, signal)
+        except Exception as e:  # noqa: BLE001 — the tick must never die on a captcha
+            self._logger(f"Watcher captcha step failed: {e}", "error")
+            log.exception("Watcher captcha step error")
 
     def start(self):
         if self._running:

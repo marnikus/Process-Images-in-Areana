@@ -9,6 +9,22 @@
    "success"
   ],
   [
+   "verify_attachment",
+   "running"
+  ],
+  [
+   "verify_attachment",
+   "success"
+  ],
+  [
+   "verify_prompt",
+   "running"
+  ],
+  [
+   "verify_prompt",
+   "success"
+  ],
+  [
    "NOPE_CUSTOM",
    "running"
   ],
@@ -89,7 +105,7 @@
   "button[aria-label=\"Add files\"]",
   "button[aria-label=\"Send message\"]:not([disabled])"
  ],
- "evals": 0,
+ "evals": 1,
  "signals": [
   [
    "job_started",

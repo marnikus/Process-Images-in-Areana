@@ -145,7 +145,8 @@ window.ActionBlocksConfig = {
     this._saveTimer = null;
     const block = getSelectedBlock();
     if (!block) return;
-    const root = document.getElementById('panel-action-blocks');
+    /* Form host: #ab-config-form lives in the Block Config window. */
+    const root = document.getElementById('blockConfigForm') || document;
     Object.assign(block, this.readFormValues(root));
     onSave();
   },

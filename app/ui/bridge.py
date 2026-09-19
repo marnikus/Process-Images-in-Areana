@@ -11,7 +11,7 @@ import json
 import logging
 from pathlib import Path
 
-from app.ui.qt_compat import QObject, Signal
+from app.ui.qt_compat import QObject, Signal, Slot
 
 from app.core.persistence import load_state
 from app.persistence.config_manager import ConfigManager
@@ -41,6 +41,10 @@ from app.ui.panels.recording_sessions import RecordingSessionsMixin
 from app.ui.panels.browser_tabs import BrowserTabsMixin
 from app.ui.panels.cdp_tools import CdpToolsMixin
 from app.ui.panels.run_control import RunControlMixin, emit_job_action_status
+from app.ui import bridge_slots
+from app.ui.panels.blocks_defaults import BlocksDefaultsMixin
+from app.ui.panels.folder_browse import FolderBrowseMixin
+from app.ui.panels.queue_scan import push_folder_undo
 
 log = logging.getLogger("arena")
 
@@ -54,7 +58,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin, BlocksDefaultsMixin, FolderBrowseMixin, bridge_slots.BridgeDispatchMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -93,7 +97,45 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
         self._watcher = ctx.watcher
         self._page_pool = ctx.page_pool
         self._thumb_executor = ctx.thumb_executor
+        self.captcha_gate = ctx.captcha_gate
         log_build_version(self)
+        bridge_slots.log_slot_audit(self)  # dead buttons fail loudly at boot
+
+    # BUG 03.5 — declared in the class body so the QMetaObject *must*
+    # contain them; the mix-in implementations below stay the fallback.
+    @Slot(str, str, result=str)
+    def invoke(self, name: str, args_json: str = "[]") -> str:
+        return bridge_slots.dispatch(self, name, args_json)
+
+    @Slot(result=str)
+    def slot_audit(self) -> str:
+        return json.dumps(bridge_slots.audit_slots(self), ensure_ascii=False)
+
+    # BUG 03.2 — defaults are always restorable (blocks_defaults mixin).
+    @Slot(bool, result=str)
+    def restore_default_blocks(self, merge_missing: bool = False) -> str:
+        return BlocksDefaultsMixin.restore_default_blocks(self, merge_missing)
+
+    # BUG 03.4 — the fixed folder dialog (folder_browse mixin) + undo.
+    @Slot(str, result=str)
+    def pick_folder(self, start_dir: str = "") -> str:
+        res = json.loads(FolderBrowseMixin.pick_folder(self, start_dir))
+        if res.get("ok"):
+            try:
+                push_folder_undo(self)
+            except Exception:
+                pass
+        return json.dumps(res)
+
+    @Slot(str, result=str)
+    def set_folder_path(self, path: str) -> str:
+        res = json.loads(FolderBrowseMixin.set_folder_path(self, path))
+        if res.get("ok"):
+            try:
+                push_folder_undo(self)
+            except Exception:
+                pass
+        return json.dumps(res)
 
     def _emit_pool_status(self):
         try:

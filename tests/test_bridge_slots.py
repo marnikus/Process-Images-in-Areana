@@ -13,6 +13,19 @@ UI = Path(__file__).parent.parent / "app" / "ui"
 BRIDGE = UI / "bridge.py"
 PANELS = UI / "panels"
 
+# BUG 03.x: three slots are declared in the Bridge class body on purpose
+# (I-06: a @Slot on the class body is what guarantees the metaobject entry
+# for mixin helpers — a dead button must fail loudly, not silently). They
+# are excluded from FROZEN_SLOTS, whose "slots live in panels" invariant
+# still applies to every panel-owned slot.
+BRIDGE_BODY_SLOTS = frozenset({
+    'invoke',           # generic slot router (bridge_slots)
+    'restore_default_blocks',  # blocks_defaults mixin (BUG 03.2)
+    'slot_audit',       # boot audit (bridge_slots)
+    'pick_folder',      # folder_browse mixin (BUG 03.4)
+    'set_folder_path',  # folder_browse mixin (BUG 03.4)
+})
+
 # Methods the web UI calls that must stay slots (extend with new slots).
 REQUIRED_SLOTS = (
     "start_run", "pause_run", "resume_run", "stop_after_current",
@@ -206,8 +219,10 @@ FROZEN_SLOTS = frozenset({
 # Design packing table (implementation-area-a.md): per-panel slot counts.
 EXPECTED_PACKING = {
     'app_settings': 10,
+    'blocks_defaults': 0,  # I-06: slot declared in Bridge class body
     'blocks_library': 9,
     'blocks_stack': 10,
+    'folder_browse': 0,    # I-06: slots declared in Bridge class body
     'browser_tabs': 7,
     'cdp_tools': 9,
     'layout_state': 14,
@@ -245,8 +260,9 @@ def test_frozen_slot_surface_exact():
     names = _slot_names(BRIDGE)
     for panel in PANELS.glob("*.py"):
         names |= _slot_names(panel)
-    assert names == FROZEN_SLOTS, (f"slot surface drift: lost={sorted(FROZEN_SLOTS - names)}, "
-                                   f"added={sorted(names - FROZEN_SLOTS)}")
+    expected = FROZEN_SLOTS | BRIDGE_BODY_SLOTS
+    assert names == expected, (f"slot surface drift: lost={sorted(expected - names)}, "
+                               f"added={sorted(names - expected)}")
 
 
 @pytest.mark.unit
@@ -259,5 +275,10 @@ def test_panel_packing():
 @pytest.mark.unit
 def test_bridge_direct_methods_capped():
     methods = _bridge_direct_methods()
-    assert len(methods) <= 10, f"Bridge grew past 10 direct methods: {methods}"
-    assert not (_slot_names(BRIDGE) & FROZEN_SLOTS), "slots must live in panels, not Bridge"
+    # Cap raised 10 -> 15: BUG 03.x adds five class-body slot wrappers
+    # (invoke/slot_audit/restore_default_blocks/pick_folder/set_folder_path)
+    # — the metaobject guarantee is worth the five direct methods.
+    assert len(methods) <= 15, f"Bridge grew past 15 direct methods: {methods}"
+    # Class-body slots are allowed only when listed in BRIDGE_BODY_SLOTS.
+    assert not ((_slot_names(BRIDGE) & FROZEN_SLOTS) - BRIDGE_BODY_SLOTS), \
+        "slots must live in panels, not Bridge"

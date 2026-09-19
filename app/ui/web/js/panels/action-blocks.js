@@ -160,7 +160,9 @@ const ActionBlocksPanel = {
   },
   deselect() { this.selectedIdx=-1; this.showConfig(null); this.render(); },
   showConfig(idx) {
-    const root = document.getElementById('panel-action-blocks') || document;
+    /* The per-block form renders in the Block Config window (#blockConfigForm
+       hosts #ab-config-form) — the stack panel root is for list rendering. */
+    const root = document.getElementById('blockConfigForm') || document;
     this._config.showConfig(root, idx, this.blocks);
     if (idx!==null) this._config.bindFormEvents(root, ()=>this.blocks[this.selectedIdx], ()=>this.save());
   },

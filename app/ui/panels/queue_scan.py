@@ -260,28 +260,24 @@ class QueueScanMixin:
         """Copy file path to clipboard — Qt first, subprocess fallback."""
         return copy_path_text(self, path_str)
 
+    # BUG 03.4: the dialog strategy chain + real parent window live in
+    # folder_browse (FolderBrowseMixin). Bridge re-declares these as
+    # class-body slots; this delegation keeps every host on the fix.
     @Slot(str, result=str)
     def pick_folder(self, start_dir: str):
-        if QFileDialog is None:
-            return json.dumps({"ok": False, "error": "No file dialog"})
-        folder = QFileDialog.getExistingDirectory(
-            None, "Select image folder", resolve_pick_start(self.state.folder, start_dir))
-        if not folder:
-            return json.dumps({"ok": False, "cancelled": True})
-        self.state.folder["root_path"] = folder
-        self._save_arena()
-        push_folder_undo(self)
-        return json.dumps({"ok": True, "path": folder})
+        from app.ui.panels.folder_browse import FolderBrowseMixin
+        res = json.loads(FolderBrowseMixin.pick_folder(self, start_dir))
+        if res.get("ok"):
+            push_folder_undo(self)
+        return json.dumps(res)
 
     @Slot(str, result=str)
     def set_folder_path(self, path: str):
-        p = Path(path)
-        if not p.exists() or not p.is_dir():
-            return json.dumps({"ok": False, "error": "Folder does not exist"})
-        self.state.folder["root_path"] = str(p)
-        self._save_arena()
-        push_folder_undo(self)
-        return json.dumps({"ok": True, "path": str(p)})
+        from app.ui.panels.folder_browse import FolderBrowseMixin
+        res = json.loads(FolderBrowseMixin.set_folder_path(self, path))
+        if res.get("ok"):
+            push_folder_undo(self)
+        return json.dumps(res)
 
     @Slot(result=str)
     def scan_folder(self):

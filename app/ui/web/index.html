@@ -65,6 +65,8 @@
         <input id="urlInput" type="text" placeholder="https://example.com/page" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
         <button id="urlAddBtn" class="btn-primary" style="padding:6px 12px;">Add</button>
       </div>
+      <!-- BUG 03.1: inline add-URL error hint (add-url.js writes the reason here) -->
+      <div id="urlAddError" style="font-size:11px; color:var(--error, #bf616a); margin-top:4px;"></div>
       <div id="urlCooldownBar" style="display:flex; gap:8px; align-items:center; margin-bottom:8px; font-size:11px; color:var(--text-muted); flex-wrap:wrap;" title="Job cycle & cooldown — same settings as Settings panel, one shared image queue">
         <span>⏳ pause <input id="urlCooldownMin" type="number" min="0" max="1440" placeholder="5" style="width:52px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">m</span>
         <span>🛡 +<input id="urlCooldownPenalty" type="number" min="0" max="1440" placeholder="15" style="width:52px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">m/captcha</span>
@@ -90,6 +92,8 @@
         <button id="folderScanBtn" class="btn-primary">Scan</button>
         <button id="folderScanNewBtn" class="btn-small" style="background:var(--bg-danger,#3a1a1a); border-color:var(--red,#ff4d4d); color:var(--red,#ff6b6b);" title="Clear list first, then scan — start new batch">🗑 New Batch Scan</button>
       </div>
+      <!-- BUG 03.4: inline status — visible even with the Log window closed -->
+      <div id="folderPickStatus" style="font-size:11px; margin-top:4px;"></div>
       <div id="folderStats" class="folder-stats"></div>
       <div style="font-size:11px; color:var(--text-muted);">Recursive scan, ignores *_AI files. Supports: png, jpg, jpeg, webp (configurable).</div>
     </div>
@@ -127,6 +131,8 @@
     <div class="panel" id="winPrompt" data-window="prompt">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">edit_note</span> Prompt Editor <span class="spacer"></span><button id="promptSaveBtn" class="btn-small btn-primary">Save</button></h3>
       <textarea id="promptTextarea" class="prompt-textarea" placeholder="Enter your prompt for image generation... e.g. 'Enhance this image, keep style'"></textarea>
+      <!-- legacy alias: prompt-presets.js falls back to this id when the textarea is absent -->
+      <input id="promptInput" type="hidden">
       <div id="promptPreview" class="prompt-preview">Preview will appear here with [JOB-ID: ...] token highlighted</div>
       <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Token format: [JOB-ID: &lt;unique&gt;] will be appended automatically. Saved as preset JSON.</div>
     </div>
@@ -236,6 +242,19 @@
             <div>Last generation: <code id="watcherLastGen" style="font-size:10px; word-break:break-all;">—</code></div>
             <div>Captcha detected: <b id="watcherLastCaptcha">false</b></div>
           </div>
+        </div>
+
+        <!-- REFACTOR 02: the ONLY captcha switch in the app — the Watcher.
+             Static markup so captcha-watch.js binds it instead of injecting. -->
+        <div id="watcherCaptchaBox" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">
+          <div style="display:flex; align-items:center; gap:8px; font-size:12px;">
+            <label style="display:flex; align-items:center; gap:6px;">
+              <input id="watcherCaptchaToggle" type="checkbox">
+              <span>Solve captchas while watching</span>
+            </label>
+            <span id="watcherCaptchaState" style="font-size:11px; color:var(--text-muted);"></span>
+          </div>
+          <div id="watcherCaptchaPages" style="margin-top:6px; font-size:11px;"></div>
         </div>
 
         <!-- How it works -->
@@ -477,6 +496,13 @@
         <b>Reorder Blocks:</b> Drag the handle (alt + arrows as alternative). <span class="ab-visual-colors"><b>Visual confirmation colors:</b> <span style="color:#ff4d4d">RED find</span>, <span style="color:#ff9500">ORANGE click</span>, and <span style="color:#4ade80">GREEN collect</span>. All parameters stored in preset JSON.</span>
       </div>
 
+      <!-- BUG 03.2/03.3: legacy panel root (display:contents = layout-neutral)
+           so the action-blocks renderers resolve their container again -->
+      <div id="panel-action-blocks" style="display:contents">
+
+      <!-- BUG 03.2/03.3: defaults toolbar — block-defaults.js binds these -->
+      <div id="actionBlocksDefaultsBar" class="ab-defaults-bar" style="display:flex; gap:6px; margin:0 0 8px 0; flex-wrap:wrap;"></div>
+
       <!-- Main stack — full height resizable, no fixed max-height -->
       <div id="actionBlocksStack" class="ab-stack"></div>
 
@@ -518,6 +544,7 @@
         <summary><span class="material-icons">history</span> All Separate Jobs — rectangles confirmations</summary>
         <div id="allJobsStack" class="ab-all-jobs"><span style="font-size:11px; color:var(--text-muted);">No jobs yet — run batch to see all jobs with rect confirmations</span></div>
       </details>
+      </div><!-- /panel-action-blocks -->
     </div>
 
     <!-- BLOCK CONFIG — separate win, redesigned as shown in screenshot (security Check Security Dialog) -->
@@ -525,6 +552,8 @@
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tune</span> Block Config <span class="spacer"></span><button id="closeBlockConfigBtn" class="btn-small" title="Close config"><span class="material-icons" style="font-size:14px;">close</span></button></h3>
       <div id="blockConfigHead" class="block-config-head" style="padding:8px 12px; background:var(--bg-input); border-bottom:1px solid var(--border); border-radius:6px 6px 0 0; display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; font-weight:600;">Select a block to configure — all params storable in preset JSON, rect duration configurable</div>
       <div id="blockConfigForm" class="block-config-form config-panel" style="flex:1; overflow:auto; padding:12px; background:var(--bg-card); border:1px solid var(--border); border-top:0; border-radius:0 0 8px 8px; max-height:520px;">
+        <!-- block-config.js builds the per-block form here (one host, no injection) -->
+        <div id="ab-config-form" style="margin-bottom:8px;"></div>
         <div style="padding:12px; color:var(--text-muted); font-size:11px; line-height:1.5;">
           <p><b>Action Blocks</b> — stacking jobs system restored from Old App.</p>
           <p>Each block is a separate job: click on btn, click on text areas, visual confirmations seeing images/waiting.</p>
@@ -557,6 +586,10 @@
         <div style="display:flex; gap:6px; margin-bottom:6px;">
           <input id="promptPresetNameInput" type="text" placeholder="prompt preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:11px;">
           <button id="promptPresetSaveBtn" class="btn-small">Save Prompt</button>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-size:10px; color:var(--text-muted);">Save · Restore · Remove — prompt presets</span>
+          <span id="promptPresetsCount" style="font-size:10px; color:var(--text-muted);"></span>
         </div>
         <div id="promptPresetsList" style="border:1px solid var(--border); border-radius:4px; padding:4px; max-height:150px; overflow:auto;"></div>
       </div>
@@ -644,6 +677,8 @@
 </div>
 
 <script src="js/core/bridge-ready.js"></script>
+<script src="js/core/bridge-call.js"></script>
+<script src="js/core/panel-boot.js"></script>
 <script src="js/core/ui-helpers.js"></script>
 <script src="js/core/dialog.js"></script>
 <script src="js/sash-core/constants.js"></script>
@@ -674,7 +709,9 @@
 <script src="js/panels/url-list/cooldown.js"></script>
 <script src="js/panels/url-list/actions.js"></script>
 <script src="js/panels/url-list.js"></script>
+<script src="js/panels/url-list/add-url.js"></script>
 <script src="js/panels/folder-picker.js"></script>
+<script src="js/panels/folder-picker-browse.js"></script>
 <script src="js/panels/image-queue/store.js"></script>
 <script src="js/panels/image-queue/thumbs.js"></script>
 <script src="js/panels/image-queue/render.js"></script>
@@ -698,6 +735,7 @@
 <script src="js/panels/arena-presets/render.js"></script>
 <script src="js/panels/arena-presets/actions.js"></script>
 <script src="js/panels/arena-presets.js"></script>
+<script src="js/panels/arena-presets/prompt-presets.js"></script>
 <script src="js/panels/action-blocks/block-store.js"></script>
 <script src="js/panels/action-blocks/block-render.js"></script>
 <script src="js/panels/action-blocks/block-config.js"></script>
@@ -705,11 +743,13 @@
 <script src="js/panels/action-blocks/block-ui.js"></script>
 <script src="js/panels/action-blocks/block-status.js"></script>
 <script src="js/panels/action-blocks/block-io.js"></script>
+<script src="js/panels/action-blocks/block-defaults.js"></script>
 <script src="js/panels/action-blocks.js"></script>
 <script src="js/panels/watcher/store.js"></script>
 <script src="js/panels/watcher/render.js"></script>
 <script src="js/panels/watcher/actions.js"></script>
 <script src="js/panels/watcher.js"></script>
+<script src="js/panels/watcher/captcha-watch.js"></script>
 <script src="js/panels/page-pool/store.js"></script>
 <script src="js/panels/page-pool/render.js"></script>
 <script src="js/panels/page-pool/actions.js"></script>
@@ -717,5 +757,8 @@
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app/listeners.js"></script>
 <script src="js/arena-app.js"></script>
+<!-- highlight.js (deprecated app overlay) resolves this id; keep it as a
+     hidden anchor — rectangles draw on the webpage via CDP, never here -->
+<div id="highlightOverlay" style="display:none" aria-hidden="true"></div>
 </body>
 </html>

@@ -11,8 +11,9 @@ const ArenaPresets = {
     this._render = window.ArenaPresetsRender;
     this._actions = window.ArenaPresetsActions;
     this._actions.bindSettingsPresets();
-    this._actions.bindPromptPresets();
     this._actions.bindArenaPresets();
+    // BUG 03.6: prompt presets are bound by the PromptPresets panel (static
+    // #winArenaPresets markup) — no injected bar, no duplicate ids.
     this.loadAll();
   },
 
@@ -55,9 +56,7 @@ const ArenaPresets = {
   },
 
   bindSettingsPresets() { this._actions.bindSettingsPresets(); },
-  bindPromptPresets() { this._actions.bindPromptPresets(); },
   bindArenaPresets() { this._actions.bindArenaPresets(); },
-  loadPromptList() { this._actions.loadPromptList(); },
 
   renderPromptPresets(payload) { this._render.renderPromptPresets(payload); },
   renderArenaPresets(payload) { this._render.renderArenaPresets(payload); },

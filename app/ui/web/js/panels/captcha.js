@@ -17,8 +17,11 @@ const CaptchaPanel = {
   },
 
   _applyStatusValues(r) {
+    /* REFACTOR 02: top-level `enabled` now describes the Watcher gate;
+       this window controls the 2Captcha service flag (service_enabled). */
     const en = document.getElementById('captchaEnabled');
-    if (en) en.checked = r.enabled !== false;
+    const svcEnabled = r.service_enabled !== undefined ? r.service_enabled : r.enabled;
+    if (en) en.checked = svcEnabled !== false;
     const setVal = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; };
     setVal('captchaTimeoutMin', Math.round(((r.solve_timeout_sec || 180) / 60) * 10) / 10);
   },
@@ -48,7 +51,7 @@ const CaptchaPanel = {
   renderStatus(r) {
     const line = document.getElementById('captchaStatusLine');
     if (!line) return;
-    const mode = this._modeText(r.enabled);
+    const mode = this._modeText(r.service_enabled !== undefined ? r.service_enabled : r.enabled);
     const key = r.has_key ? `key: ${r.masked_key || '****'}` : 'key: (not set)';
     const bal = this._balanceText(r);
     const err = r.last_error ? ` · last error: ${r.last_error}` : '';

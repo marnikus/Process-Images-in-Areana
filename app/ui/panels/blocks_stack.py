@@ -27,19 +27,14 @@ log = logging.getLogger("arena")
 
 
 def get_action_blocks(bridge):
-    """Load action blocks from session or default."""
-    try:
-        raw = bridge.config.get_state("action_blocks", None)
-        if raw is None:
-            return default_stack()
-        if isinstance(raw, list):
-            return load_stack_from_dicts(raw)
-        if isinstance(raw, str):
-            return parse_stack_json(raw)
-        return default_stack()
-    except Exception as e:
-        log.warning(f"Failed to load action blocks: {e}")
-        return default_stack()
+    """Load action blocks from session or default.
+
+    BUG 03.2/03.3: self-healing load lives in blocks_defaults — a persisted
+    ``[]`` (delete-all / truncated session.json) or corrupt state falls back
+    to the default stack, and missing required blocks are re-inserted.
+    """
+    from app.ui.panels.blocks_defaults import load_blocks
+    return load_blocks(bridge)
 
 
 def save_action_blocks(bridge, stack) -> bool:
