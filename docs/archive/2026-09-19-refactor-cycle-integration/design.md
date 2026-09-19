@@ -102,10 +102,11 @@ bash tools/pre_push_check.sh
 * `bridge.py` 4,592 → **149** LOC / 10 methods; panels 278–544 LOC, each with
   an `ideal-size:` reason where it exceeds 300 (their class LOC is ≤150 and
   every function ≤30).
-* 15 files remain >300 LOC. All but three carry an `ideal-size:` reason;
-  this merge **added** reasons to `core/action_blocks.py` (catalog table),
-  `browser/output_probes.py` (atomic JS payloads) and
-  `services/captcha/solver.py` (co- dependent state machine). The largest,
+* 15 files remain >300 LOC and **all 15 now carry an `ideal-size:` reason**;
+  this merge added the missing four: `core/action_blocks.py` (catalog table),
+  `browser/output_probes.py` (atomic JS payloads),
+  `services/captcha/solver.py` (co-dependent state machine) and
+  `services/captcha/service.py` (one choke point, one control flow). The largest,
   `services/single_job_runner.py` (875), is the intentional price of the
   pipeline convergence: every block handler lives in one dispatch table.
   Splitting it is a candidate for the next cycle, together with the JS
