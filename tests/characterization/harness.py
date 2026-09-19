@@ -31,6 +31,9 @@ from .fakes import FakeCDP, Recorder
 
 GOLDENS = Path(__file__).parent / "goldens"
 CORR_RE = re.compile(r"\d{8}-\d{6}-[A-Z0-9]{4}")
+# BUG 03.2: self-healing load re-creates missing required blocks with fresh
+# uuid suffixes — normalize them so goldens stay stable.
+BLOCK_UUID_RE = re.compile(r"verify_(attachment|prompt)_[0-9a-f]{8}")
 
 
 def make_block(block_id: str, **over) -> ActionBlock:
@@ -174,6 +177,7 @@ def collect_trace(env, clicks) -> Dict[str, Any]:
 def normalize(trace: Dict[str, Any]) -> Dict[str, Any]:
     s = json.dumps(trace, ensure_ascii=False, default=str)
     s = CORR_RE.sub("JOBID", s)
+    s = BLOCK_UUID_RE.sub(r"verify_\1", s)
     return json.loads(s)
 
 

@@ -17,6 +17,9 @@ class WatcherConfig:
     captcha_timeout_sec: int = 300
     generation_timeout_sec: int = 600
     auto_pause_jobs: bool = True
+    # REFACTOR 02 — arm the captcha gate (off by default: docs/03 §7).
+    # Watcher enabled AND this flag => captchas are solved per page.
+    captcha_solving: bool = False
 
 
 @dataclass

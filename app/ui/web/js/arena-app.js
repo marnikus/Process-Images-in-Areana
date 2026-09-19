@@ -24,20 +24,19 @@ App.recordGlobal = function(kind, value, options) {
 };
 
 const _PANEL_INITS = [
-  'WindowPresets','UrlList','FolderPicker','ImageQueue','PromptEditor',
-  'RunControls','ProgressPanel','WatcherPanel','PagePoolPanel','SettingsPanel',
-  'CaptchaPanel','CaptchaRecordingsPanel','BrowserPreview','HighlightOverlay',
-  'CDPPanel','ArenaPresets','ActionBlocksPanel'
+  'WindowPresets','UrlList','UrlAdd','FolderPicker','FolderBrowse','ImageQueue',
+  'PromptEditor','RunControls','ProgressPanel','WatcherPanel','CaptchaWatch',
+  'PagePoolPanel','SettingsPanel','CaptchaPanel','CaptchaRecordingsPanel',
+  'BrowserPreview','HighlightOverlay','CDPPanel','ArenaPresets','PromptPresets',
+  'ActionBlocksPanel','BlockDefaults'
 ];
-
-function _initIfExists(name) {
-  const obj = window[name];
-  if (obj?.init) obj.init();
-}
 
 function initApp() {
   setupHeader();
-  _PANEL_INITS.forEach(_initIfExists);
+  // BUG 03.5: fault-isolated boot — one throwing init() can no longer
+  // unbind every panel after it (js/core/panel-boot.js).
+  if (window.PanelBoot) PanelBoot.bootAll(_PANEL_INITS);
+  else _PANEL_INITS.forEach((name) => { const obj = window[name]; if (obj?.init) obj.init(); });
   document.getElementById('clearLogBtn')?.addEventListener('click', () => LogConsole.clear());
   if (App.bridge) initWithBridge();
 }

@@ -86,6 +86,12 @@ window.ArenaAppListeners = {
 
   _handleActionBlocks(payload) {
     if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.onBlocksUpdated(payload);
+    // BUG 03.2: keep the defaults toolbar / empty state in sync with the stack
+    if (typeof BlockDefaults !== 'undefined') {
+      let data = payload;
+      try { data = typeof payload === 'string' ? JSON.parse(payload) : payload; } catch (e) {}
+      BlockDefaults.onBlocks(Array.isArray(data) ? data : []);
+    }
   },
 
   _handleJobActionStatus(jobId, blockId, statusJson) {

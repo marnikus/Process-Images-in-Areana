@@ -4,20 +4,17 @@
 window.ArenaPresetsRender = {
   _store() { return window.ArenaPresetsStore; },
 
+  /* BUG 03.6: the prompt preset list lives in the static #promptPresetsList
+     and is owned by the PromptPresets panel (per-row Restore/Remove). The
+     injected <select id="promptPresetSelect"> is gone. */
   renderPromptPresets(payload) {
     try {
-      const arr = this._store().setPromptPresets(payload);
-      const sel = document.getElementById('promptPresetSelect');
-      if (!sel) return;
-      sel.innerHTML = '';
-      arr.forEach(item => {
-        const name = typeof item === 'string' ? item : (item.name || item.id || '');
-        if (!name) return;
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        sel.appendChild(opt);
-      });
+      this._store().setPromptPresets(payload);
+      if (window.PromptPresets && PromptPresets.refresh) {
+        PromptPresets.refresh();
+      } else if (typeof LogConsole !== 'undefined') {
+        LogConsole.log('⚠ Prompt preset update arrived but PromptPresets panel is not loaded', 'warn');
+      }
     } catch (e) { console.warn('renderPromptPresets failed', e); }
   },
 
@@ -25,58 +22,15 @@ window.ArenaPresetsRender = {
     try {
       const arr = this._store().setArenaPresets(payload);
       const names = this._store().namesFromArray(arr);
-      this._renderChips(names);
       this._renderList(names);
     } catch (e) { console.warn('renderArenaPresets failed', e); }
   },
 
-  _renderChips(names) {
-    const chipsWrap = document.getElementById('arenaPresetChips');
-    if (!chipsWrap) return;
-    chipsWrap.innerHTML = '';
-    names.forEach(name => {
-      chipsWrap.appendChild(this._buildChip(name));
-    });
-  },
-
-  _buildChip(name) {
-    const chip = document.createElement('div');
-    chip.className = 'chip';
-    chip.style.cssText = 'display:inline-flex; align-items:center; gap:4px; background:var(--bg-input); border:1px solid var(--border); border-radius:12px; padding:2px 8px; font-size:11px; cursor:pointer;';
-    const txt = document.createElement('span');
-    txt.textContent = name;
-    txt.addEventListener('click', () => this._onLoadChip(name));
-    const del = document.createElement('span');
-    del.textContent = '✕';
-    del.style.cssText = 'cursor:pointer; color:var(--text-muted); margin-left:4px;';
-    del.title = 'Delete';
-    del.addEventListener('click', (e) => { e.stopPropagation(); this._onDeleteChip(name); });
-    chip.appendChild(txt);
-    chip.appendChild(del);
-    return chip;
-  },
-
-  _onLoadChip(name) {
-    this._store().loadArenaPreset(name, (res) => {
-      try {
-        const r = JSON.parse(res);
-        if (r.ok) LogConsole.log('Arena preset loaded: ' + name, 'success');
-        else LogConsole.log('Load failed: ' + r.error, 'error');
-      } catch {}
-    });
-  },
-
-  _onDeleteChip(name) {
-    this._store().deleteArenaPreset(name, (res) => {
-      try {
-        const r = JSON.parse(res);
-        if (r.ok) LogConsole.log('Arena preset deleted: ' + name, 'info');
-      } catch {}
-    });
-  },
-
   _renderList(names) {
-    const listEl = document.getElementById('arenaPresetList');
+    /* Static #winArenaPresets markup — the injected #arenaPresetList is gone. */
+    const listEl = document.getElementById('arenaPresetsList');
+    const countEl = document.getElementById('arenaPresetsCount');
+    if (countEl) countEl.textContent = `${names.length} preset${names.length === 1 ? '' : 's'}`;
     if (!listEl) return;
     listEl.innerHTML = '';
     if (names.length === 0) {

@@ -4,7 +4,7 @@ import json
 from types import SimpleNamespace
 
 from app.core.layout_service import default_grid_tree
-from app.ui.panels import app_settings, blocks_stack, layout_state, queue_scan
+from app.ui.panels import app_settings, blocks_stack, folder_browse, layout_state, queue_scan
 
 
 class FakeDialog:
@@ -105,17 +105,23 @@ def test_app_settings_import_dialog_ok_and_cancel(tmp_path, monkeypatch):
 
 
 def test_pick_folder_dialog_ok_cancel_headless(tmp_path, monkeypatch):
-    monkeypatch.setattr(queue_scan, "QFileDialog", FakeDialog)
+    # BUG 03.4: pick_folder now delegates to FolderBrowseMixin (parented,
+    # strategy-chained dialog) — the fake must patch folder_browse's dialog
+    # and model the option flags the real QFileDialog exposes.
+    FakeDialog.ShowDirsOnly = 1
+    FakeDialog.DontUseNativeDialog = 2
+    monkeypatch.setattr(folder_browse, "QFileDialog", FakeDialog)
     FakeDialog.existing_dir = str(tmp_path)
     state = SimpleNamespace(folder={"root_path": ""})
-    fake = SimpleNamespace(state=state, _save_arena=Rec())
+    fake = SimpleNamespace(state=state, _save_arena=Rec(),
+                           _log=lambda *a, **k: None)
     res = json.loads(queue_scan.QueueScanMixin.pick_folder(fake, ""))
-    assert res == {"ok": True, "path": str(tmp_path)}
+    assert res["ok"] is True and res["path"] == str(tmp_path) and res["via"] == "native"
     assert state.folder["root_path"] == str(tmp_path)
     assert fake._save_arena.calls
     FakeDialog.existing_dir = ""
     res = json.loads(queue_scan.QueueScanMixin.pick_folder(fake, ""))
-    assert res == {"ok": False, "cancelled": True}
-    monkeypatch.setattr(queue_scan, "QFileDialog", None)
+    assert res["ok"] is False and res["cancelled"] is True
+    monkeypatch.setattr(folder_browse, "QFileDialog", None)
     res = json.loads(queue_scan.QueueScanMixin.pick_folder(fake, ""))
-    assert res == {"ok": False, "error": "No file dialog"}
+    assert res["ok"] is False and "Qt file dialog unavailable" in res["error"]

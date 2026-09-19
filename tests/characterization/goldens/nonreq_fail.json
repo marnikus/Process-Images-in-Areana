@@ -25,6 +25,14 @@
    "success"
   ],
   [
+   "verify_attachment",
+   "running"
+  ],
+  [
+   "verify_attachment",
+   "success"
+  ],
+  [
    "INSERT_PROMPT",
    "running"
   ],
@@ -97,7 +105,7 @@
   "button[aria-label=\"Add files\"]",
   "button[aria-label=\"Send message\"]:not([disabled])"
  ],
- "evals": 0,
+ "evals": 1,
  "signals": [
   [
    "job_started",

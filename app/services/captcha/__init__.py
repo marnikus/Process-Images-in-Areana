@@ -12,6 +12,8 @@ from .api_client import Captcha2Client, ApiError
 from .solver import CaptchaSolver
 from .service import CaptchaCtx, CaptchaService, handle_captcha
 from .recovery import ResumePolicy, arm_resume, clear_resume, maybe_resume, note_settle
+from .sdk_client import SdkConfig, SdkSolver
+from .watcher_gate import CaptchaGate, current_gate, install_gate, is_solving_enabled
 
 __all__ = [
     "CaptchaSignal",
@@ -30,4 +32,11 @@ __all__ = [
     "clear_resume",
     "maybe_resume",
     "note_settle",
+    # REFACTOR 02 — the watcher-only captcha path (gate + SDK adapter)
+    "SdkConfig",
+    "SdkSolver",
+    "CaptchaGate",
+    "current_gate",
+    "install_gate",
+    "is_solving_enabled",
 ]

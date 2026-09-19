@@ -11,7 +11,7 @@ from typing import Any
 
 from app.core.undo_service import UndoService
 from app.ui.panels.watcher_captcha import (
-    get_watcher_cdp_controller, on_watcher_state)
+    captcha_service, get_watcher_cdp_controller, on_watcher_state)
 
 
 @dataclass
@@ -22,6 +22,42 @@ class BridgeContext:
     watcher: Any
     page_pool: Any
     thumb_executor: Any
+    captcha_gate: Any = None  # REFACTOR 02 — the watcher-only captcha gate
+
+
+def _watcher_enabled(bridge) -> bool:
+    w = getattr(bridge, "_watcher", None)
+    return bool(w is not None and w.config.enabled)
+
+
+def _solving_armed(bridge) -> bool:
+    w = getattr(bridge, "_watcher", None)
+    return bool(w is not None and getattr(w.config, "captcha_solving", False))
+
+
+def _sdk_settings(bridge):
+    """SdkConfig from the 2captcha key store (empty key = gate reports it)."""
+    from app.services.captcha.sdk_client import SdkConfig
+    try:
+        s = captcha_service(bridge).keys.load()
+        return SdkConfig(api_key=s.api_key, timeout_sec=s.solve_timeout_sec)
+    except Exception:  # noqa: BLE001 — boot must not die on key-store failure
+        return SdkConfig(api_key="")
+
+
+def wire_captcha_gate(bridge):
+    """Install the process-wide CaptchaGate (REFACTOR 02); None on failure."""
+    try:
+        from app.services.captcha.watcher_gate import CaptchaGate, install_gate
+        return install_gate(CaptchaGate(
+            watcher_enabled=lambda: _watcher_enabled(bridge),
+            settings_getter=lambda: _sdk_settings(bridge),
+            solving_enabled=lambda: _solving_armed(bridge),
+            logger=bridge._log,
+        ))
+    except Exception as e:
+        _log_quiet(bridge, f"Captcha gate init failed: {e}")
+        return None
 
 
 def init_run_state(bridge) -> None:
@@ -130,7 +166,11 @@ def _activate_watcher(bridge, watcher) -> None:
 
 
 def wire_watcher(bridge):
-    """Watcher service (autostarted when enabled); None on failure."""
+    """Watcher service (autostarted when enabled); None on failure.
+
+    REFACTOR 02: the watcher's per-page captcha step resolves the process-wide
+    gate from the registry (installed by `wire_captcha_gate` first).
+    """
     try:
         from app.services.watcher import WatcherService
         watcher = WatcherService(
@@ -183,14 +223,16 @@ def wire_thumb(bridge):
 
 
 def build_context(bridge) -> BridgeContext:
-    """Fallible services (undo/watcher/pool/thumb) in one bundle."""
+    """Fallible services (undo/watcher/pool/thumb/gate) in one bundle."""
     try:
         bridge.config.undo.load()
     except Exception:
         pass
+    gate = wire_captcha_gate(bridge)  # REFACTOR 02 — before the watcher
     return BridgeContext(
         undo_service=UndoService(bridge.config.undo),
         watcher=wire_watcher(bridge),
         page_pool=wire_page_pool(bridge),
         thumb_executor=wire_thumb(bridge),
+        captcha_gate=gate,
     )
