@@ -1,5 +1,4 @@
 /* window-presets-actions.js — save/load/export/remove for WindowPresets facade (H-B2b JS split)
-
 Design: ≤250 LOC.
 */
 
@@ -14,6 +13,49 @@ const WindowPresetsActions = {
     });
   },
 
+  _parseSaveResult(raw) {
+    let ok = false;
+    let err = '';
+    try {
+      if (typeof raw === 'boolean') ok = raw;
+      else if (typeof raw === 'string') {
+        const parsed = JSON.parse(raw);
+        ok = !!parsed.ok;
+        err = parsed.error || '';
+      } else if (raw && typeof raw === 'object') {
+        ok = !!raw.ok;
+        err = raw.error || '';
+      } else {
+        ok = !!raw;
+      }
+    } catch(e) {
+      ok = !!raw;
+    }
+    return { ok, err };
+  },
+
+  _handleSaveDone(clean, imported, raw) {
+    const res = this._parseSaveResult(raw);
+    if (!res.ok) { this._message('Preset “' + clean.name + '” could not be written.' + (res.err ? ' ' + res.err : ''), 'error'); return; }
+    this.selectedName = clean.name; this.refresh();
+    this._message((imported ? 'Imported' : 'Saved') + ' window preset “' + clean.name + '”.', 'success');
+  },
+
+  _doSaveBridge(clean, imported) {
+    const bridge = typeof App !== 'undefined' ? App.bridge : null;
+    const done = (raw) => this._handleSaveDone(clean, imported, raw);
+    try {
+      const result = bridge.save_window_preset(clean.name, JSON.stringify(clean), done);
+      if (typeof result === 'boolean') done(result);
+      else if (typeof result === 'string') {
+        try {
+          const p = JSON.parse(result);
+          if (p && typeof p.ok === 'boolean') done(result);
+        } catch(e) {}
+      }
+    } catch (error) { done(false); }
+  },
+
   _persistDocument(document, imported = false) {
     const checked = SashGrid.validatePortablePreset(document);
     if (!checked.ok) { this._message('Preset was not saved: ' + checked.error, 'error'); return; }
@@ -24,41 +66,7 @@ const WindowPresetsActions = {
       this._saveLocalDocument(clean);
       this._message('Window preset “' + clean.name + '” saved locally.', 'success'); return;
     }
-    const done = (raw) => {
-      let ok = false;
-      let err = '';
-      try {
-        if (typeof raw === 'boolean') ok = raw;
-        else if (typeof raw === 'string') {
-          const parsed = JSON.parse(raw);
-          ok = !!parsed.ok;
-          err = parsed.error || '';
-        } else if (raw && typeof raw === 'object') {
-          ok = !!raw.ok;
-          err = raw.error || '';
-        } else {
-          ok = !!raw;
-        }
-      } catch(e) {
-        // If raw is truthy string that is not JSON, treat as success for backward compat
-        ok = !!raw;
-      }
-      if (!ok) { this._message('Preset “' + clean.name + '” could not be written.' + (err ? ' ' + err : ''), 'error'); return; }
-      this.selectedName = clean.name; this.refresh();
-      this._message((imported ? 'Imported' : 'Saved') + ' window preset “' + clean.name + '”.', 'success');
-    };
-    try {
-      const result = bridge.save_window_preset(clean.name, JSON.stringify(clean), done);
-      // QWebChannel may return boolean synchronously or via callback — handle both
-      if (typeof result === 'boolean') done(result);
-      else if (typeof result === 'string') {
-        // If result is JSON string returned synchronously, also handle
-        try {
-          const p = JSON.parse(result);
-          if (p && typeof p.ok === 'boolean') done(result);
-        } catch(e) {}
-      }
-    } catch (error) { done(false); }
+    this._doSaveBridge(clean, imported);
   },
 
   _saveLocalDocument(document) {
@@ -76,39 +84,42 @@ const WindowPresetsActions = {
 
   load(name) { this._getDocument(name, (document) => { if (document) this._showPreview(document, 'restore'); }); },
 
+  _handleLoadRaw(name, raw, callback) {
+    if (!raw || raw === 'null') { callback(null); return; }
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (parsed && parsed.ok === false) {
+        this._message('Preset “' + name + '” could not be loaded.' + (parsed.error ? ' ' + parsed.error : ''), 'error');
+        callback(null); return;
+      }
+      callback(parsed);
+    }
+    catch (e) { this._message('Preset “' + name + '” is not valid JSON.', 'error'); callback(null); }
+  },
+
   _getDocument(name, callback) {
     const local = this._localDocuments()[name];
     const bridge = typeof App !== 'undefined' ? App.bridge : null;
     if (!bridge || !bridge.load_window_preset) { callback(local || null); return; }
-    bridge.load_window_preset(name, (raw) => {
-      if (!raw || raw === 'null') { callback(null); return; }
-      try {
-        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (parsed && parsed.ok === false) {
-          this._message('Preset “' + name + '” could not be loaded.' + (parsed.error ? ' ' + parsed.error : ''), 'error');
-          callback(null);
-          return;
-        }
-        callback(parsed);
-      }
-      catch (e) { this._message('Preset “' + name + '” is not valid JSON.', 'error'); callback(null); }
-    });
+    bridge.load_window_preset(name, (raw) => this._handleLoadRaw(name, raw, callback));
   },
 
   exportSelected() { if (this.selectedName) this.export(this.selectedName); },
+
+  _doExportBridge(name) {
+    const bridge = typeof App !== 'undefined' ? App.bridge : null;
+    let handled = false;
+    const done = (raw) => { if (handled) return; handled = true; this._handleExportResponse(name, raw); };
+    try { const result = bridge.export_window_preset(name, done); if (typeof result === 'string' || (result && typeof result === 'object')) done(result); }
+    catch (error) { done(JSON.stringify({ ok: false, error: error.message })); }
+  },
 
   export(name) {
     const self = this;
     this._getDocument(name, (doc) => {
       if (!doc) { self._message('Preset “' + name + '” not found.', 'error'); return; }
       const bridge = typeof App !== 'undefined' ? App.bridge : null;
-      if (bridge && bridge.export_window_preset) {
-        let handled = false;
-        const done = (raw) => { if (handled) return; handled = true; self._handleExportResponse(name, raw); };
-        try { const result = bridge.export_window_preset(name, done); if (typeof result === 'string' || (result && typeof result === 'object')) done(result); }
-        catch (error) { done(JSON.stringify({ ok: false, error: error.message })); }
-        return;
-      }
+      if (bridge && bridge.export_window_preset) { self._doExportBridge(name); return; }
       self._exportViaDownload(doc);
     });
   },
@@ -148,16 +159,23 @@ const WindowPresetsActions = {
     try { const result = bridge.show_window_preset_in_folder(name, done); if (typeof result === 'boolean') done(result); } catch (error) { done(false); }
   },
 
+  _removeLocal(name) {
+    const map = this._localDocuments(); delete map[name];
+    try { localStorage.setItem(this.LOCAL_KEY, JSON.stringify(Object.values(map))); } catch (e) {}
+    this.selectedName = ''; this.setPresets(Object.values(map));
+  },
+
+  _removeBridge(name) {
+    const bridge = typeof App !== 'undefined' ? App.bridge : null;
+    const result = bridge.delete_window_preset(name, (ok) => { if (ok) this.refresh(); });
+    if (typeof result === 'boolean' && result) this.refresh();
+  },
+
   remove(name) {
     Dialog.confirm('Delete window preset?', '“' + name + '” will be removed.', 'Delete', () => {
       const bridge = typeof App !== 'undefined' ? App.bridge : null;
-      if (!bridge || !bridge.delete_window_preset) {
-        const map = this._localDocuments(); delete map[name];
-        try { localStorage.setItem(this.LOCAL_KEY, JSON.stringify(Object.values(map))); } catch (e) {}
-        this.selectedName = ''; this.setPresets(Object.values(map)); return;
-      }
-      const result = bridge.delete_window_preset(name, (ok) => { if (ok) this.refresh(); });
-      if (typeof result === 'boolean' && result) this.refresh();
+      if (!bridge || !bridge.delete_window_preset) { this._removeLocal(name); return; }
+      this._removeBridge(name);
     });
   },
 

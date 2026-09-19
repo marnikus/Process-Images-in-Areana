@@ -1,5 +1,4 @@
 /* window-presets-core.js — state + bootstrap + render for WindowPresets facade (H-B2b JS split)
-
 Design: ≤200 LOC.
 */
 
@@ -34,15 +33,25 @@ const WindowPresetsCore = {
     try { const raw = localStorage.getItem(this.LOCAL_KEY); if (raw) this.setPresets(raw); } catch (e) {}
   },
 
-  setPresets(raw) {
+  _normalizeItem(item) {
+    return {
+      name: item.name,
+      window_count: item.window_count || (item.grid && item.grid.window_count) || 0,
+      updated_at: item.updated_at || '',
+      app_version: item.app_version || '',
+    };
+  },
+
+  _parsePresets(raw) {
     try {
       const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
       const list = Array.isArray(value) ? value : [];
-      this.presets = list.filter((item) => item && typeof item.name === 'string').map((item) => ({
-        name: item.name, window_count: item.window_count || (item.grid && item.grid.window_count) || 0,
-        updated_at: item.updated_at || '', app_version: item.app_version || '',
-      }));
-    } catch (e) { this.presets = []; }
+      return list.filter((item) => item && typeof item.name === 'string').map((item) => this._normalizeItem(item));
+    } catch (e) { return []; }
+  },
+
+  setPresets(raw) {
+    this.presets = this._parsePresets(raw);
     if (!this.presets.some((item) => item.name === this.selectedName)) this.selectedName = this.presets[0] ? this.presets[0].name : '';
     this.render();
   },
@@ -78,6 +87,20 @@ const WindowPresetsCore = {
     return button;
   },
 
+  _makeRow(item) {
+    const row = document.createElement('div'); row.className = 'window-preset-row'; if (item.name === this.selectedName) row.classList.add('selected');
+    const name = document.createElement('span'); name.className = 'window-preset-name'; name.textContent = item.name;
+    const meta = document.createElement('span'); meta.className = 'window-preset-meta'; meta.textContent = (item.window_count || 0) + ' windows · ' + (item.updated_at || '');
+    const actions = document.createElement('span'); actions.className = 'window-preset-row-actions';
+    actions.appendChild(this._rowAction('Restore', () => this.load(item.name)));
+    actions.appendChild(this._rowAction('Export', () => this.export(item.name)));
+    actions.appendChild(this._rowAction('Show in folder', () => this.showInFolder(item.name)));
+    actions.appendChild(this._rowAction('Delete', () => this.remove(item.name), true));
+    row.append(name, meta, actions);
+    row.addEventListener('click', () => { this.selectedName = item.name; this.render(); });
+    return row;
+  },
+
   _renderList() {
     const host = document.getElementById('windowPresetList');
     if (!host) return;
@@ -85,19 +108,7 @@ const WindowPresetsCore = {
     if (!this.presets.length) {
       const empty = document.createElement('div'); empty.className = 'window-preset-list-empty'; empty.textContent = 'No saved window presets yet. Save the current grid to create one.'; host.appendChild(empty); return;
     }
-    this.presets.forEach((item) => {
-      const row = document.createElement('div'); row.className = 'window-preset-row'; if (item.name === this.selectedName) row.classList.add('selected');
-      const name = document.createElement('span'); name.className = 'window-preset-name'; name.textContent = item.name;
-      const meta = document.createElement('span'); meta.className = 'window-preset-meta'; meta.textContent = (item.window_count || 0) + ' windows · ' + (item.updated_at || '');
-      const actions = document.createElement('span'); actions.className = 'window-preset-row-actions';
-      actions.appendChild(this._rowAction('Restore', () => this.load(item.name)));
-      actions.appendChild(this._rowAction('Export', () => this.export(item.name)));
-      actions.appendChild(this._rowAction('Show in folder', () => this.showInFolder(item.name)));
-      actions.appendChild(this._rowAction('Delete', () => this.remove(item.name), true));
-      row.append(name, meta, actions);
-      row.addEventListener('click', () => { this.selectedName = item.name; this.render(); });
-      host.appendChild(row);
-    });
+    this.presets.forEach((item) => host.appendChild(this._makeRow(item)));
   },
 
   _rowAction(label, action, danger = false) {

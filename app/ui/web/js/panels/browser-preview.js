@@ -17,40 +17,42 @@ const BrowserPreview = {
     return 'file://' + encodeURI(p).replace(/#/g, '%23').replace(/\?/g, '%3F');
   },
 
+  _onThumbFail(frame, img, el) {
+    if (App.bridge?.get_image_thumbnail) {
+      App.bridge.get_image_thumbnail(img.id, (res)=>{
+        try {
+          const r = typeof res === 'string' ? JSON.parse(res) : res;
+          if (r.ok && r.data_url) {
+            el.src = r.data_url;
+            el.onerror = null;
+            return;
+          }
+        } catch(e){}
+        frame.textContent = 'Preview not available: ' + img.relative_path;
+      });
+    } else {
+      frame.textContent = 'Preview not available: ' + img.relative_path;
+    }
+  },
+
+  _showAbsolute(frame, img) {
+    const i = document.createElement('img');
+    i.src = this._fileUrl(img.absolute_path);
+    i.alt = img.relative_path;
+    i.style.maxWidth = '100%';
+    i.style.maxHeight = '100%';
+    i.style.objectFit = 'contain';
+    i.onerror = () => this._onThumbFail(frame, img, i);
+    frame.appendChild(i);
+  },
+
   showImage(img) {
     const frame = document.getElementById('browserFrame');
     if (!frame) return;
     frame.innerHTML = '';
-    if (img.absolute_path) {
-      const i = document.createElement('img');
-      i.src = this._fileUrl(img.absolute_path);
-      i.alt = img.relative_path;
-      i.style.maxWidth = '100%';
-      i.style.maxHeight = '100%';
-      i.style.objectFit = 'contain';
-      i.onerror = () => {
-        // Try base64 thumbnail via bridge
-        if (App.bridge && App.bridge.get_image_thumbnail) {
-          App.bridge.get_image_thumbnail(img.id, (res)=>{
-            try {
-              const r = typeof res === 'string' ? JSON.parse(res) : res;
-              if (r.ok && r.data_url) {
-                i.src = r.data_url;
-                i.onerror = null;
-                return;
-              }
-            } catch(e){}
-            frame.textContent = 'Preview not available: ' + img.relative_path;
-          });
-        } else {
-          frame.textContent = 'Preview not available: ' + img.relative_path;
-        }
-      };
-      frame.appendChild(i);
-    } else {
-      frame.textContent = img.relative_path;
-    }
-    if (App.bridge && App.bridge.highlight_image) {
+    if (img.absolute_path) this._showAbsolute(frame, img);
+    else frame.textContent = img.relative_path;
+    if (App.bridge?.highlight_image) {
       App.bridge.highlight_image(img.id, ()=>{});
     }
   },

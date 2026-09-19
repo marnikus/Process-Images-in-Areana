@@ -21,24 +21,36 @@ const SashGridPresets = {
       width: w, height: h };
   },
 
-  createPortablePreset(name) {
-    const rect = this.gridEl && this.gridEl.getBoundingClientRect
-      ? this.gridEl.getBoundingClientRect() : { left: 0, top: 0, width: 1, height: 1 };
-    const screen = this._screenSnapshot(rect);
-    const states = this.getWindowStates();
+  _collectClosed(states, rect, screen) {
     const closed = states.closed.slice();
     SashCore.WINDOW_IDS.forEach((id) => {
       const panel = this.winEls[id];
-      if (!closed.includes(id) && !states.minimized.includes(id) &&
-          panel && this._panelIsHidden(panel)) closed.push(id);
+      if (closed.includes(id)) return;
+      if (states.minimized.includes(id)) return;
+      if (!panel) return;
+      if (!this._panelIsHidden(panel)) return;
+      closed.push(id);
     });
-    const effectiveStates = { closed, minimized: states.minimized.slice() };
-    const windows = SashCore.WINDOWS.map((item) => {
+    return closed;
+  },
+
+  _buildWindows(effectiveStates, rect, screen) {
+    return SashCore.WINDOWS.map((item) => {
       const state = effectiveStates.closed.includes(item.id) ? 'closed'
         : (effectiveStates.minimized.includes(item.id) ? 'minimized' : 'open');
       return { id: item.id, title: item.title, state,
         bounds: this._portableBounds(item.id, rect, screen) };
     });
+  },
+
+  createPortablePreset(name) {
+    const rect = this.gridEl && this.gridEl.getBoundingClientRect
+      ? this.gridEl.getBoundingClientRect() : { left: 0, top: 0, width: 1, height: 1 };
+    const screen = this._screenSnapshot(rect);
+    const states = this.getWindowStates();
+    const closed = this._collectClosed(states, rect, screen);
+    const effectiveStates = { closed, minimized: states.minimized.slice() };
+    const windows = this._buildWindows(effectiveStates, rect, screen);
     const now = new Date().toISOString();
     return { format: this.PRESET_FORMAT, schema_version: this.PRESET_SCHEMA_VERSION,
       app_version: this.APP_VERSION, name: String(name || '').trim() || 'Untitled preset',
@@ -62,17 +74,24 @@ const SashGridPresets = {
     return { ok: true, states: { closed: state.closed.slice(), minimized: state.minimized.slice() } };
   },
 
+  _checkWindowItem(item, states, seen) {
+    if (!item || typeof item.id !== 'string') return 'windows contain an unknown or duplicate id';
+    if (seen.has(item.id)) return 'windows contain an unknown or duplicate id';
+    if (!SashCore.WINDOW_IDS.includes(item.id)) return 'windows contain an unknown or duplicate id';
+    const wanted = states.closed.includes(item.id) ? 'closed'
+      : (states.minimized.includes(item.id) ? 'minimized' : 'open');
+    if (item.state !== wanted) return 'window state or normalized bounds are invalid';
+    if (!this._validPortableBounds(item.bounds)) return 'window state or normalized bounds are invalid';
+    return null;
+  },
+
   _portableWindows(doc, states) {
     if (!Array.isArray(doc.windows) || doc.windows.length !== SashCore.WINDOW_IDS.length)
       return { ok: false, error: 'windows do not contain the current window set' };
     const seen = new Set();
     for (const item of doc.windows) {
-      if (!item || typeof item.id !== 'string' || seen.has(item.id) || !SashCore.WINDOW_IDS.includes(item.id))
-        return { ok: false, error: 'windows contain an unknown or duplicate id' };
-      const wanted = states.closed.includes(item.id) ? 'closed'
-        : (states.minimized.includes(item.id) ? 'minimized' : 'open');
-      if (item.state !== wanted || !this._validPortableBounds(item.bounds))
-        return { ok: false, error: 'window state or normalized bounds are invalid' };
+      const err = this._checkWindowItem(item, states, seen);
+      if (err) return { ok: false, error: err };
       seen.add(item.id);
     }
     if (seen.size !== SashCore.WINDOW_IDS.length)
@@ -87,16 +106,25 @@ const SashGridPresets = {
     return bounds.x + bounds.width <= 1.001 && bounds.y + bounds.height <= 1.001;
   },
 
+  _extractDpr(screen) {
+    if (!screen) return null;
+    const dpr = screen.device_pixel_ratio === undefined ? 1 : screen.device_pixel_ratio;
+    if (typeof dpr !== 'number' || !Number.isFinite(dpr) || dpr <= 0) return null;
+    return dpr;
+  },
+
+  _screenSizeValid(screen) {
+    if (!screen) return false;
+    if (typeof screen.width !== 'number' || !Number.isFinite(screen.width)) return false;
+    if (typeof screen.height !== 'number' || !Number.isFinite(screen.height)) return false;
+    if (screen.width <= 0 || screen.height <= 0) return false;
+    return true;
+  },
+
   _portableScreen(doc) {
     const screen = doc.screen;
-    const dpr = screen && screen.device_pixel_ratio === undefined
-      ? 1 : screen && screen.device_pixel_ratio;
-    if (!screen || typeof screen.width !== 'number' || !Number.isFinite(screen.width) ||
-        typeof screen.height !== 'number' || !Number.isFinite(screen.height) ||
-        screen.width <= 0 || screen.height <= 0 || typeof dpr !== 'number' ||
-        !Number.isFinite(dpr) || dpr <= 0)
-      return null;
-    return dpr;
+    if (!this._screenSizeValid(screen)) return null;
+    return this._extractDpr(screen);
   },
 
   _cleanPortablePreset(doc, treeResult) {
@@ -112,26 +140,61 @@ const SashGridPresets = {
       warning: clean.app_version === this.APP_VERSION ? '' : 'preset was created by app ' + clean.app_version };
   },
 
-  validatePortablePreset(raw) {
-    let doc;
-    try { doc = typeof raw === 'string' ? JSON.parse(raw) : SashCore.clone(raw); }
+  _parseRaw(raw) {
+    try { return { ok: true, doc: typeof raw === 'string' ? JSON.parse(raw) : SashCore.clone(raw) }; }
     catch (e) { return { ok: false, error: 'bad JSON: ' + e.message }; }
-    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return { ok: false, error: 'document must be an object' };
+  },
+
+  _checkFormat(doc) {
+    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return 'document must be an object';
     if (doc.format !== this.PRESET_FORMAT || doc.schema_version !== this.PRESET_SCHEMA_VERSION)
-      return { ok: false, error: 'unsupported window preset format or schema version' };
-    if (typeof doc.app_version !== 'string' || !doc.app_version.trim()) return { ok: false, error: 'app_version is required' };
+      return 'unsupported window preset format or schema version';
+    return null;
+  },
+
+  _checkVersionAndName(doc) {
+    if (typeof doc.app_version !== 'string' || !doc.app_version.trim()) return 'app_version is required';
     if (typeof doc.name !== 'string' || !doc.name.trim() || doc.name.trim().length > 80)
-      return { ok: false, error: 'preset name must be 1–80 characters' };
+      return 'preset name must be 1–80 characters';
+    return null;
+  },
+
+  _checkGridMeta(doc) {
     const grid = doc.grid;
     if (!grid || grid.type !== 'sash-tree' || grid.sizes_unit !== 'percent' || grid.window_count !== SashCore.WINDOW_IDS.length)
-      return { ok: false, error: 'grid metadata is invalid' };
-    const treeResult = SashCore.deserialize(JSON.stringify({ v: grid.version, tree: grid.tree }));
+      return 'grid metadata is invalid';
+    return null;
+  },
+
+  _validateDocMeta(doc) {
+    let err = this._checkFormat(doc);
+    if (err) return err;
+    err = this._checkVersionAndName(doc);
+    if (err) return err;
+    return this._checkGridMeta(doc);
+  },
+
+  validatePortablePreset(raw) {
+    const parsed = this._parseRaw(raw);
+    if (!parsed.ok) return parsed;
+    const doc = parsed.doc;
+    const metaErr = this._validateDocMeta(doc);
+    if (metaErr) return { ok: false, error: metaErr };
+    const treeResult = SashCore.deserialize(JSON.stringify({ v: doc.grid.version, tree: doc.grid.tree }));
     if (!treeResult.ok) return { ok: false, error: 'invalid grid tree: ' + treeResult.error };
     const stateResult = this._portableStates(doc);
     if (!stateResult.ok) return stateResult;
     const windowResult = this._portableWindows(doc, stateResult.states);
     if (!windowResult.ok) return windowResult;
     return this._cleanPortablePreset(doc, treeResult);
+  },
+
+  _restoreWinElsVisibility() {
+    Object.values(this.winEls).forEach((panel) => {
+      if (!panel) return;
+      panel.classList.remove('hidden');
+      if (panel.style && panel.style.display === 'none') panel.style.display = '';
+    });
   },
 
   applyPortablePreset(raw) {
@@ -144,11 +207,7 @@ const SashGridPresets = {
     this.root = SashCore.clone(doc.grid.tree);
     this.closedWindows = new Set(doc.window_states.closed);
     this.minimizedWindows = new Set(doc.window_states.minimized);
-    Object.values(this.winEls).forEach((panel) => {
-      if (!panel) return;
-      panel.classList.remove('hidden');
-      if (panel.style && panel.style.display === 'none') panel.style.display = '';
-    });
+    this._restoreWinElsVisibility();
     this.render();
     this._save();
     this._saveWindowStates();

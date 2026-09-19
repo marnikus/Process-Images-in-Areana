@@ -37,25 +37,49 @@ const ImageQueue = {
     document.getElementById('queueClearListBtn')?.addEventListener('click', () => this.clearList());
   },
 
+  _onCheckboxClick(cb) {
+    if (!cb?.dataset?.imgId) return false;
+    this.toggleSelect(cb.dataset.imgId, cb.checked);
+    return true;
+  },
+
+  _doSimpleAction(act, id) {
+    if (!id) return false;
+    if (act === 'retry') { this.retryOne(id); return true; }
+    if (act === 'reset') { this.resetOne(id); return true; }
+    if (act === 'exclude') { this.excludeOne(id); return true; }
+    if (act === 'preview') { this.previewOne(id); return true; }
+    return false;
+  },
+
+  _doPathAction(act, id, pathType, p) {
+    if (act === 'reveal') { this._handleReveal({id, pathType, fallback: p}); return true; }
+    if (act === 'copy') { this._handleCopy({id, pathType, fallback: p}); return true; }
+    return false;
+  },
+
+  _onButtonAction(btn) {
+    if (!btn) return false;
+    const act = btn.dataset.action;
+    const id = btn.dataset.imgId;
+    const p = btn.dataset.path;
+    const pathType = btn.dataset.pathType;
+    if (this._doSimpleAction(act, id)) return true;
+    if (this._doPathAction(act, id, pathType, p)) return true;
+    return false;
+  },
+
+  _handleTableClick(e) {
+    const cb = e.target.closest('input[type=checkbox]');
+    if (cb && this._onCheckboxClick(cb)) return;
+    const btn = e.target.closest('button');
+    this._onButtonAction(btn);
+  },
+
   _bindTable() {
     const tbody = document.getElementById('queueTableBody');
     if (!tbody) return;
-    tbody.addEventListener('click', (e) => {
-      const cb = e.target.closest('input[type=checkbox]');
-      if (cb && cb.dataset.imgId) { this.toggleSelect(cb.dataset.imgId, cb.checked); return; }
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      const act = btn.dataset.action;
-      const id = btn.dataset.imgId;
-      const p = btn.dataset.path;
-      const pathType = btn.dataset.pathType;
-      if (act === 'retry' && id) this.retryOne(id);
-      else if (act === 'reset' && id) this.resetOne(id);
-      else if (act === 'exclude' && id) this.excludeOne(id);
-      else if (act === 'preview' && id) this.previewOne(id);
-      else if (act === 'reveal') this._handleReveal({id, pathType, fallback: p});
-      else if (act === 'copy') this._handleCopy({id, pathType, fallback: p});
-    });
+    tbody.addEventListener('click', (e) => this._handleTableClick(e));
   },
 
   _resolvePath(opts) {

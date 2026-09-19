@@ -23,25 +23,56 @@ const CaptchaRecordingComparison = {
     });
   },
 
+  _formatEvents(details) {
+    const evts = details.events || [];
+    return evts.map((event) =>
+      `${event.offset_ms ?? 0}ms  ${event.kind || '?'}  ${this.eventText(event)}`).join('\n');
+  },
+
+  _makeHeading(manifest) {
+    const heading = document.createElement('b');
+    heading.textContent = `${manifest.actor_label || 'unknown'} · ${manifest.method || '—'} · ${manifest.outcome || manifest.status || '—'}`;
+    return heading;
+  },
+
+  _makeMeta(manifest) {
+    const meta = document.createElement('div');
+    meta.textContent = `${CaptchaRecordingsPanel.when(manifest.started_at)} · ${CaptchaRecordingsPanel.route(manifest.url)} · ${manifest.session_id || ''}`;
+    return meta;
+  },
+
+  _makeTimeline(eventsStr) {
+    const timeline = document.createElement('pre');
+    timeline.textContent = eventsStr || 'No events';
+    return timeline;
+  },
+
+  _makeDom(snapshot) {
+    const dom = document.createElement('pre');
+    dom.textContent = snapshot.html || 'No DOM checkpoint';
+    return dom;
+  },
+
   render(slot, details) {
     const pane = document.getElementById(`captchaCompare${slot ? 'B' : 'A'}`);
     if (!pane) return;
     const manifest = details.manifest || {};
-    const events = (details.events || []).map((event) =>
-      `${event.offset_ms ?? 0}ms  ${event.kind || '?'}  ${this.eventText(event)}`).join('\n');
+    const eventsStr = this._formatEvents(details);
     const snapshot = details.latest_snapshot || {};
     pane.replaceChildren();
-    const heading = document.createElement('b');
-    heading.textContent = `${manifest.actor_label || 'unknown'} · ${manifest.method || '—'} · ${manifest.outcome || manifest.status || '—'}`;
-    const meta = document.createElement('div');
-    meta.textContent = `${CaptchaRecordingsPanel.when(manifest.started_at)} · ${CaptchaRecordingsPanel.route(manifest.url)} · ${manifest.session_id || ''}`;
-    const timeline = document.createElement('pre');
-    timeline.textContent = events || 'No events';
-    const dom = document.createElement('pre');
-    dom.textContent = snapshot.html || 'No DOM checkpoint';
+    pane.append(
+      this._makeHeading(manifest),
+      this._makeMeta(manifest),
+      this._makeTimeline(eventsStr),
+      this._makeDom(snapshot),
+      this._makeStamp(snapshot)
+    );
+  },
+
+  _makeStamp(snapshot) {
     const stamp = document.createElement('div');
     stamp.textContent = snapshot.at ? `checkpoint: ${CaptchaRecordingsPanel.when(snapshot.at)}` : '';
-    pane.append(heading, meta, timeline, dom, stamp);
+    return stamp;
   },
 
   eventText(event) {

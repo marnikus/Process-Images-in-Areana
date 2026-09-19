@@ -16,28 +16,41 @@ const CaptchaPanel = {
     setTimeout(() => this.loadStats(), 1400);
   },
 
+  _applyStatusValues(r) {
+    const en = document.getElementById('captchaEnabled');
+    if (en) en.checked = r.enabled !== false;
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; };
+    setVal('captchaTimeoutMin', Math.round(((r.solve_timeout_sec || 180) / 60) * 10) / 10);
+  },
+
   loadStatus() {
-    if (App.bridge && App.bridge.get_captcha_status) {
-      App.bridge.get_captcha_status((res) => {
-        try {
-          const r = JSON.parse(res);
-          if (!r.ok) return;
-          const en = document.getElementById('captchaEnabled');
-          if (en) en.checked = r.enabled !== false;
-          const setVal = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; };
-          setVal('captchaTimeoutMin', Math.round(((r.solve_timeout_sec || 180) / 60) * 10) / 10);
-          this.renderStatus(r);
-        } catch (e) {}
-      });
-    }
+    if (!App.bridge?.get_captcha_status) return;
+    App.bridge.get_captcha_status((res) => {
+      try {
+        const r = JSON.parse(res);
+        if (!r.ok) return;
+        this._applyStatusValues(r);
+        this.renderStatus(r);
+      } catch (e) {}
+    });
+  },
+
+  _modeText(enabled) {
+    return enabled ? 'auto-solve: ON (2Captcha will solve visible captchas)' : 'auto-solve: OFF (app waits for your manual solve)';
+  },
+
+  _balanceText(r) {
+    if (r.balance === null || r.balance === undefined) return 'balance: —';
+    const suffix = r.balance_at ? ` (checked ${r.balance_at})` : '';
+    return `balance: $${Number(r.balance).toFixed(2)}${suffix}`;
   },
 
   renderStatus(r) {
     const line = document.getElementById('captchaStatusLine');
     if (!line) return;
-    const mode = r.enabled ? 'auto-solve: ON (2Captcha will solve visible captchas)' : 'auto-solve: OFF (app waits for your manual solve)';
+    const mode = this._modeText(r.enabled);
     const key = r.has_key ? `key: ${r.masked_key || '****'}` : 'key: (not set)';
-    const bal = r.balance !== null && r.balance !== undefined ? `balance: $${Number(r.balance).toFixed(2)}${r.balance_at ? ` (checked ${r.balance_at})` : ''}` : 'balance: —';
+    const bal = this._balanceText(r);
     const err = r.last_error ? ` · last error: ${r.last_error}` : '';
     line.textContent = `${mode} · ${key} · ${bal}${err}`;
     if (r.balance !== null && r.balance !== undefined) {
@@ -46,39 +59,44 @@ const CaptchaPanel = {
     }
   },
 
-  save() {
+  _buildPayload() {
     const en = document.getElementById('captchaEnabled');
     const key = (document.getElementById('captchaApiKey')?.value || '').trim();
     const min = parseFloat(document.getElementById('captchaTimeoutMin')?.value);
     const timeoutSec = Math.round((isNaN(min) ? 3 : min) * 60);
-    const payload = {enabled: en ? en.checked : false, api_key: key, solve_timeout_sec: timeoutSec};
-    if (App.bridge && App.bridge.set_captcha_settings) {
-      App.bridge.set_captcha_settings(JSON.stringify(payload), (res) => {
-        try {
-          const r = JSON.parse(res);
-          if (r.ok) {
-            LogConsole.log(`2Captcha saved: ${r.enabled ? 'enabled' : 'disabled'}, key=${r.masked_key || '(empty)'}`, 'success');
-            document.getElementById('captchaApiKey').value = '';  // don't keep the raw key in the field
-            this.loadStatus();
-            this.loadStats();
-          } else {
-            LogConsole.log('2Captcha save failed: ' + (r.error || '?'), 'error');
-          }
-        } catch (e) {}
-      });
-    }
+    return {enabled: en ? en.checked : false, api_key: key, solve_timeout_sec: timeoutSec};
+  },
+
+  _onSaveRes(res) {
+    try {
+      const r = JSON.parse(res);
+      if (r.ok) {
+        LogConsole.log(`2Captcha saved: ${r.enabled ? 'enabled' : 'disabled'}, key=${r.masked_key || '(empty)'}`, 'success');
+        const k = document.getElementById('captchaApiKey');
+        if (k) k.value = '';
+        this.loadStatus();
+        this.loadStats();
+      } else {
+        LogConsole.log('2Captcha save failed: ' + (r.error || '?'), 'error');
+      }
+    } catch (e) {}
+  },
+
+  save() {
+    if (!App.bridge?.set_captcha_settings) return;
+    const payload = this._buildPayload();
+    App.bridge.set_captcha_settings(JSON.stringify(payload), (res) => this._onSaveRes(res));
   },
 
   loadStats() {
-    if (App.bridge && App.bridge.get_captcha_stats) {
-      App.bridge.get_captcha_stats((res) => {
-        try {
-          const r = JSON.parse(res);
-          if (!r.ok) return;
-          this.renderStats(r);
-        } catch (e) {}
-      });
-    }
+    if (!App.bridge?.get_captcha_stats) return;
+    App.bridge.get_captcha_stats((res) => {
+      try {
+        const r = JSON.parse(res);
+        if (!r.ok) return;
+        this.renderStats(r);
+      } catch (e) {}
+    });
   },
 
   renderStats(r) {

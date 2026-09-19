@@ -1,5 +1,4 @@
 /* sash-grid part — sash-grid-drag-spec.js (Issue 4 row creation)
-
 Drop spec computation with outer row/col zones, full-width preview, ≤250 LOC.
 */
 
@@ -21,20 +20,26 @@ const SashGridSpec = {
     return this._outerSpec(x, y, true);
   },
 
-  _outerSpec(x, y, includeInside) {
-    const d = this._drag;
-    if (!d.gridRect) return null;
-    const g = d.gridRect;
+  _isOutsideGrid(x, y, g) {
+    return x < g.left - 24 || x > g.right + 24 || y < g.top - 24 || y > g.bottom + 24;
+  },
+
+  _sideFromPos(x, y, g) {
     const EDGE = 36;
-    const inside = x >= g.left && x < g.right && y >= g.top && y < g.bottom;
-    if (!inside && !includeInside) {
-      if (x < g.left - 24 || x > g.right + 24 || y < g.top - 24 || y > g.bottom + 24) return null;
-    }
     if (y < g.top + EDGE) return { kind: 'outer', side: 'top', zone: 'top' };
     if (y > g.bottom - EDGE) return { kind: 'outer', side: 'bottom', zone: 'bottom' };
     if (x < g.left + EDGE) return { kind: 'outer', side: 'left', zone: 'left' };
     if (x > g.right - EDGE) return { kind: 'outer', side: 'right', zone: 'right' };
     return null;
+  },
+
+  _outerSpec(x, y, includeInside) {
+    const d = this._drag;
+    if (!d.gridRect) return null;
+    const g = d.gridRect;
+    const inside = x >= g.left && x < g.right && y >= g.top && y < g.bottom;
+    if (!inside && !includeInside && this._isOutsideGrid(x, y, g)) return null;
+    return this._sideFromPos(x, y, g);
   },
 
   _edgeZoneSpec(id, r, x, y) {
@@ -49,15 +54,17 @@ const SashGridSpec = {
     return { kind: 'edge', target: id, zone, dir, newFirst: (zone === 'left' || zone === 'top') };
   },
 
+  _centerSpecLeaf(id, r, x, y) {
+    const midX = r.left + r.width / 2, midY = r.top + r.height / 2;
+    const dir = Math.abs(x - midX) / (r.width / 2) >= Math.abs(y - midY) / (r.height / 2) ? 'row' : 'col';
+    const newFirst = dir === 'row' ? x < midX : y < midY;
+    return { kind: 'edge', target: id, zone: dir === 'row' ? (newFirst ? 'left' : 'right') : (newFirst ? 'top' : 'bottom'), dir, newFirst };
+  },
+
   _centerSpec(id, r, x, y) {
-    const tEl = this.gridEl.querySelector('.sash-window[data-win="' + id + '"]');
+    const tEl = this.gridEl.querySelector('.sash-window[data-win=\"' + id + '\"]');
     const pEl = tEl && tEl.parentElement;
-    if (!pEl || !pEl.classList.contains('sash-split')) {
-      const midX = r.left + r.width / 2, midY = r.top + r.height / 2;
-      const dir = Math.abs(x - midX) / (r.width / 2) >= Math.abs(y - midY) / (r.height / 2) ? 'row' : 'col';
-      const newFirst = dir === 'row' ? x < midX : y < midY;
-      return { kind: 'edge', target: id, zone: dir === 'row' ? (newFirst ? 'left' : 'right') : (newFirst ? 'top' : 'bottom'), dir, newFirst };
-    }
+    if (!pEl || !pEl.classList.contains('sash-split')) return this._centerSpecLeaf(id, r, x, y);
     const isRow = pEl.classList.contains('sash-row');
     const side = isRow ? (x < r.left + r.width / 2 ? 'before' : 'after') : (y < r.top + r.height / 2 ? 'before' : 'after');
     return { kind: 'sibling', target: id, side, zone: side === 'before' ? (isRow ? 'left' : 'top') : (isRow ? 'right' : 'bottom') };
@@ -92,41 +99,62 @@ const SashGridSpec = {
     this._placeIndicator(g.bar);
   },
 
+  _outerBar(g, side) {
+    if (side === 'top') return { left: g.left, top: g.top, width: g.width, height: 4 };
+    if (side === 'bottom') return { left: g.left, top: g.bottom - 4, width: g.width, height: 4 };
+    if (side === 'left') return { left: g.left, top: g.top, width: 4, height: g.height };
+    return { left: g.right - 4, top: g.top, width: 4, height: g.height };
+  },
+
+  _edgeBar(r, spec, tEl) {
+    if (tEl) { tEl.classList.add('sash-drag-target'); }
+    if (spec.dir === 'row') return { left: r.left + r.width / 2 - 1.5, top: r.top, width: 3, height: r.height };
+    return { left: r.left, top: r.top + r.height / 2 - 1.5, width: r.width, height: 3 };
+  },
+
+  _sashBar(spec) {
+    const hit = this._drag.sashes.find((s) => s.leftId === spec.left && s.rightId === spec.right);
+    if (!hit) return { sashEl: null, bar: null };
+    const pEl = hit.el.parentElement;
+    const sr = hit.rect;
+    const pRect = pEl.getBoundingClientRect();
+    let bar;
+    if (pEl.classList.contains('sash-row')) bar = { left: sr.left + sr.width / 2 - 1.5, top: pRect.top, width: 3, height: pRect.height };
+    else bar = { left: pRect.left, top: sr.top + sr.height / 2 - 1.5, width: pRect.width, height: 3 };
+    return { sashEl: hit.el, bar };
+  },
+
+  _siblingGeometry(spec) {
+    const r = this._drag.rects[spec.target];
+    const tEl = this.gridEl.querySelector('.sash-window[data-win=\"' + spec.target + '\"]');
+    const pEl = tEl && tEl.parentElement;
+    if (tEl) { tEl.classList.add('sash-drag-target'); }
+    const pRect = pEl ? pEl.getBoundingClientRect() : r;
+    const bar = this._siblingBar(r, pEl, pRect, spec.zone);
+    return { targetEl: tEl, bar };
+  },
+
   _specGeometry(spec) {
-    const d = this._drag;
-    let targetEl = null, sashEl = null, bar = null;
     if (spec.kind === 'outer') {
-      const g = d.gridRect;
+      const g = this._drag.gridRect;
       if (!g) return { targetEl: null, sashEl: null, bar: null };
-      if (spec.side === 'top') bar = { left: g.left, top: g.top, width: g.width, height: 4 };
-      else if (spec.side === 'bottom') bar = { left: g.left, top: g.bottom - 4, width: g.width, height: 4 };
-      else if (spec.side === 'left') bar = { left: g.left, top: g.top, width: 4, height: g.height };
-      else bar = { left: g.right - 4, top: g.top, width: 4, height: g.height };
-    } else if (spec.kind === 'edge') {
-      const r = d.rects[spec.target];
-      const tEl = this.gridEl.querySelector('.sash-window[data-win="' + spec.target + '"]');
-      if (tEl) { tEl.classList.add('sash-drag-target'); targetEl = tEl; }
-      if (spec.dir === 'row') bar = { left: r.left + r.width / 2 - 1.5, top: r.top, width: 3, height: r.height };
-      else bar = { left: r.left, top: r.top + r.height / 2 - 1.5, width: r.width, height: 3 };
-    } else if (spec.kind === 'sibling') {
-      const r = d.rects[spec.target];
-      const tEl = this.gridEl.querySelector('.sash-window[data-win="' + spec.target + '"]');
-      const pEl = tEl && tEl.parentElement;
-      if (tEl) { tEl.classList.add('sash-drag-target'); targetEl = tEl; }
-      const pRect = pEl ? pEl.getBoundingClientRect() : r;
-      bar = this._siblingBar(r, pEl, pRect, spec.zone);
-    } else if (spec.kind === 'sash') {
-      const hit = d.sashes.find((s) => s.leftId === spec.left && s.rightId === spec.right);
-      sashEl = hit && hit.el;
-      if (sashEl) {
-        const pEl = sashEl.parentElement;
-        const sr = hit.rect;
-        const pRect = pEl.getBoundingClientRect();
-        if (pEl.classList.contains('sash-row')) bar = { left: sr.left + sr.width / 2 - 1.5, top: pRect.top, width: 3, height: pRect.height };
-        else bar = { left: pRect.left, top: sr.top + sr.height / 2 - 1.5, width: pRect.width, height: 3 };
-      }
+      return { targetEl: null, sashEl: null, bar: this._outerBar(g, spec.side) };
     }
-    return { targetEl, sashEl, bar };
+    if (spec.kind === 'edge') {
+      const r = this._drag.rects[spec.target];
+      const tEl = this.gridEl.querySelector('.sash-window[data-win=\"' + spec.target + '\"]');
+      const bar = this._edgeBar(r, spec, tEl);
+      return { targetEl: tEl, sashEl: null, bar };
+    }
+    if (spec.kind === 'sibling') {
+      const geo = this._siblingGeometry(spec);
+      return { targetEl: geo.targetEl, sashEl: null, bar: geo.bar };
+    }
+    if (spec.kind === 'sash') {
+      const res = this._sashBar(spec);
+      return { targetEl: null, sashEl: res.sashEl, bar: res.bar };
+    }
+    return { targetEl: null, sashEl: null, bar: null };
   },
 
   _siblingBar(r, pEl, pRect, zone) {

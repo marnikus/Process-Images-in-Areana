@@ -1,34 +1,38 @@
 /* sash-grid part — sash-grid-drag-resize.js (bug5 sash fix)
-
 Sash resize with pixel allocation, ≤250 LOC.
 */
 
 const SashGridResize = {
-  _startResize(sashEl, ev) {
-    // Safety: clean stuck dragging class that freezes mouse clicks
+  _cleanStuckDrag() {
     if (document.body.classList.contains('sash-dragging')) {
       document.body.classList.remove('sash-dragging');
     }
-    const pEl = sashEl.parentElement;
-    if (!pEl || !pEl.classList.contains('sash-split')) return;
-    const sIdx = parseInt(sashEl.dataset.idx, 10);
-    const isRow = pEl.classList.contains('sash-row');
+  },
+
+  _collectChildEls(pEl) {
     const childEls = [];
     for (let i = 0; i * 2 < pEl.children.length; i++) childEls.push(pEl.children[i * 2]);
-    const axisSize = (el) => { const r = el.getBoundingClientRect(); return isRow ? r.width : r.height; };
+    return childEls;
+  },
+
+  _measureAxis(isRow) {
+    return (el) => { const r = el.getBoundingClientRect(); return isRow ? r.width : r.height; };
+  },
+
+  _buildResizeCtx(pEl, sashEl, sIdx, ev) {
+    const isRow = pEl.classList.contains('sash-row');
+    const childEls = this._collectChildEls(pEl);
+    const axisSize = this._measureAxis(isRow);
     const childSizes = childEls.map(axisSize);
     const sashSizes = Array.from(pEl.children).filter((el) => el.classList.contains('sash')).map(axisSize);
-    // The draggable pair is this sash's left child (always visible — a sash
-    // whose left child is hidden is itself hidden) and the NEXT VISIBLE
-    // child; hidden children in between occupy no visible space.
     let rIdx = sIdx + 1;
     while (rIdx < childSizes.length && childSizes[rIdx] <= 1) rIdx++;
     const z = { pEl, sashEl, sIdx, rIdx, isRow, childEls, pointerId: ev.pointerId, childSizes, sashSizes, otherWidths: {}, originalFlex: childEls.map((child) => child.style.flex), pointerCaptured: false };
     for (let i = 0; i < childSizes.length; i++) { if (i === sIdx || i === rIdx) continue; z.otherWidths[i] = childSizes[i]; }
-    this._resize = z;
-    if (ev.pointerId != null && typeof sashEl.setPointerCapture === 'function') {
-      try { sashEl.setPointerCapture(ev.pointerId); z.pointerCaptured = true; } catch (e) {}
-    }
+    return z;
+  },
+
+  _bindResizeListeners(sashEl, isRow, ev) {
     sashEl.classList.add('sash-active');
     document.body.classList.add(isRow ? 'sash-resizing-row' : 'sash-resizing-col');
     this._onResizeMove = this._resizeMove.bind(this);
@@ -45,8 +49,21 @@ const SashGridResize = {
     ev.preventDefault();
   },
 
+  _startResize(sashEl, ev) {
+    this._cleanStuckDrag();
+    const pEl = sashEl.parentElement;
+    if (!pEl || !pEl.classList.contains('sash-split')) return;
+    const sIdx = parseInt(sashEl.dataset.idx, 10);
+    const z = this._buildResizeCtx(pEl, sashEl, sIdx, ev);
+    this._resize = z;
+    if (ev.pointerId != null && typeof sashEl.setPointerCapture === 'function') {
+      try { sashEl.setPointerCapture(ev.pointerId); z.pointerCaptured = true; } catch (e) {}
+    }
+    this._bindResizeListeners(sashEl, z.isRow, ev);
+  },
+
   _resizePixelAllocation(z, pointer, rect) {
-    if (z.rIdx >= z.childSizes.length) return null; // no visible child to the right
+    if (z.rIdx >= z.childSizes.length) return null;
     const axis = z.isRow ? rect.width : rect.height;
     const sashTotal = z.sashSizes.reduce((sum, size) => sum + Math.max(0, size), 0);
     let others = 0;
@@ -88,10 +105,6 @@ const SashGridResize = {
     if (typeof LogConsole !== 'undefined') LogConsole.log('📏 Grid resized', 'info');
   },
 
-  /* Commit drag result to model sizes. Visible children keep the exact ratios
-     the user dragged, scaled to the visible budget (100 - hidden children's
-     stored sizes); hidden children keep their stored sizes. Without hidden
-     children this equals the old renderedPx/total*100 formula. */
   _commitResizeSizes(z, prev) {
     const kids = z.childEls.map((el, i) => {
       const r = el.getBoundingClientRect();
@@ -106,26 +119,36 @@ const SashGridResize = {
       : (prev ? prev[k.i] : 100 / kids.length));
   },
 
-  _cancelResize(restore = true) {
-    const z = this._resize;
-    // Always clean body classes — fixes freeze mouse clicks when resize stuck
+  _cleanupResizeBody() {
     try { document.body.classList.remove('sash-resizing-row', 'sash-resizing-col', 'sash-dragging'); } catch (e) {}
-    if (!z) {
-      this._resize = null;
-      return;
-    }
+  },
+
+  _removeResizeListeners() {
     try { document.removeEventListener('pointermove', this._onResizeMove, { passive: false }); } catch (e) {}
     try { document.removeEventListener('pointerup', this._onResizeUp); } catch (e) {}
     try { document.removeEventListener('pointercancel', this._onResizeCancel); } catch (e) {}
     try { document.removeEventListener('keydown', this._onResizeKey, true); } catch (e) {}
     try { window.removeEventListener('blur', this._onResizeBlur); } catch (e) {}
     try { document.removeEventListener('visibilitychange', this._onResizeBlur); } catch (e) {}
-    if (restore) {
-      try { z.childEls.forEach((child, i) => { child.style.flex = z.originalFlex[i]; }); } catch (e) {}
-    }
-    if (z.pointerCaptured && typeof z.sashEl.releasePointerCapture === 'function') {
-      try { z.sashEl.releasePointerCapture(z.pointerId); } catch (e) {}
-    }
+  },
+
+  _restoreResizeFlex(z) {
+    try { z.childEls.forEach((child, i) => { child.style.flex = z.originalFlex[i]; }); } catch (e) {}
+  },
+
+  _releaseResizeCapture(z) {
+    if (!z.pointerCaptured) return;
+    if (typeof z.sashEl.releasePointerCapture !== 'function') return;
+    try { z.sashEl.releasePointerCapture(z.pointerId); } catch (e) {}
+  },
+
+  _cancelResize(restore = true) {
+    const z = this._resize;
+    this._cleanupResizeBody();
+    if (!z) { this._resize = null; return; }
+    this._removeResizeListeners();
+    if (restore) this._restoreResizeFlex(z);
+    this._releaseResizeCapture(z);
     try { z.sashEl.classList.remove('sash-active'); } catch (e) {}
     this._resize = null;
   },

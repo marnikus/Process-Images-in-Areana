@@ -1,36 +1,49 @@
 /* sash-grid part — sash-grid-drag-core.js (Issue 4 row creation + bug5 sash fix)
-
 Core drag lifecycle, ≤200 LOC.
 */
 
 const SashGridDrag = {
+  _isDragBlocked() {
+    if (this._drag) return true;
+    if (this._resize) return true;
+    return false;
+  },
+
+  _tryStartResize(ev) {
+    const sashEl = ev.target.closest('.sash');
+    if (!sashEl) return false;
+    this._startResize(sashEl, ev);
+    return true;
+  },
+
+  _findDragWin(ev) {
+    const title = ev.target.closest('.win-title');
+    if (!title) return null;
+    if (!this.gridEl.contains(title)) return null;
+    if (ev.target.closest('button, input, select, textarea, a, .chip, .win-controls, .win-btn')) return null;
+    const winEl = title.closest('.sash-window');
+    if (!winEl) return null;
+    if (winEl.classList.contains('sash-win-hidden')) return null;
+    if (winEl.classList.contains('sash-win-closed')) return null;
+    return winEl;
+  },
+
   _pointerDown(ev) {
     if (ev.button !== 0) return;
-    if (this._drag || this._resize) return;
-    const sashEl = ev.target.closest('.sash');
-    if (sashEl) { this._startResize(sashEl, ev); return; }
-    const title = ev.target.closest('.win-title');
-    if (!title || !this.gridEl.contains(title)) return;
-    if (ev.target.closest('button, input, select, textarea, a, .chip, .win-controls, .win-btn')) return;
-    const winEl = title.closest('.sash-window');
+    if (this._isDragBlocked()) return;
+    if (this._tryStartResize(ev)) return;
+    const winEl = this._findDragWin(ev);
     if (!winEl) return;
-    if (winEl.classList.contains('sash-win-hidden') || winEl.classList.contains('sash-win-closed')) return;
     this._startDrag(winEl, ev);
   },
 
-  _startDrag(winEl, ev) {
-    // Safety: if previous drag left body class stuck (freeze mouse clicks), clean it
+  _cleanStuckBody() {
     if (document.body.classList.contains('sash-dragging')) {
       document.body.classList.remove('sash-dragging');
     }
-    this._drag = {
-      active: false, winEl, id: winEl.dataset.win,
-      startX: ev.clientX, startY: ev.clientY, pointerId: ev.pointerId,
-      lastX: ev.clientX, lastY: ev.clientY,
-      clone: null, badge: null, indicator: null,
-      rects: null, sashes: null,
-      lastSpec: null, lastSpecKey: null, targetEl: null,
-    };
+  },
+
+  _bindDragListeners() {
     this._onDragMove = this._dragMove.bind(this);
     this._onDragUp = this._dragUp.bind(this);
     this._onDragKey = (e) => { if (e.key === 'Escape') this._cancelDrag(); };
@@ -41,7 +54,9 @@ const SashGridDrag = {
     document.addEventListener('keydown', this._onDragKey, true);
     window.addEventListener('blur', this._onDragBlur);
     document.addEventListener('visibilitychange', this._onDragBlur);
-    // Capture pointer if possible to ensure we get pointerup even outside window
+  },
+
+  _tryCapturePointer(winEl, ev) {
     try {
       if (ev.pointerId != null && winEl.setPointerCapture) {
         winEl.setPointerCapture(ev.pointerId);
@@ -49,6 +64,20 @@ const SashGridDrag = {
         this._drag.capturedEl = winEl;
       }
     } catch (e) {}
+  },
+
+  _startDrag(winEl, ev) {
+    this._cleanStuckBody();
+    this._drag = {
+      active: false, winEl, id: winEl.dataset.win,
+      startX: ev.clientX, startY: ev.clientY, pointerId: ev.pointerId,
+      lastX: ev.clientX, lastY: ev.clientY,
+      clone: null, badge: null, indicator: null,
+      rects: null, sashes: null,
+      lastSpec: null, lastSpecKey: null, targetEl: null,
+    };
+    this._bindDragListeners();
+    this._tryCapturePointer(winEl, ev);
   },
 
   _beginDrag() {
@@ -167,34 +196,58 @@ const SashGridDrag = {
     if (d.active && typeof LogConsole !== 'undefined') LogConsole.log('↩ Window drag cancelled — layout unchanged', 'warn');
   },
 
-  _cleanupDrag() {
-    const d = this._drag;
-    // Always clean body classes even if d null — fixes freeze mouse clicks when drag stuck
+  _cleanupBodyClasses() {
     try {
       document.body.classList.remove('sash-dragging');
       document.body.classList.remove('sash-resizing-row', 'sash-resizing-col');
     } catch (e) {}
-    if (!d) {
-      this._drag = null;
-      return;
-    }
+  },
+
+  _removeDragListeners() {
     try { document.removeEventListener('pointermove', this._onDragMove, { passive: false }); } catch (e) {}
     try { document.removeEventListener('pointerup', this._onDragUp); } catch (e) {}
     try { document.removeEventListener('pointercancel', this._onDragCancel); } catch (e) {}
     try { document.removeEventListener('keydown', this._onDragKey, true); } catch (e) {}
     try { window.removeEventListener('blur', this._onDragBlur); } catch (e) {}
     try { document.removeEventListener('visibilitychange', this._onDragBlur); } catch (e) {}
+  },
+
+  _releasePointerCapture(d) {
     try {
       if (d.pointerCaptured && d.capturedEl && d.capturedEl.releasePointerCapture) {
         d.capturedEl.releasePointerCapture(d.pointerId);
       }
     } catch (e) {}
-    if (d.clone && d.clone.parentNode) d.clone.parentNode.removeChild(d.clone);
-    if (d.badge && d.badge.parentNode) d.badge.parentNode.removeChild(d.badge);
-    if (d.indicator && d.indicator.parentNode) d.indicator.parentNode.removeChild(d.indicator);
+  },
+
+  _removeClone(d) {
+    if (d.clone?.parentNode) d.clone.parentNode.removeChild(d.clone);
+  },
+  _removeBadge(d) {
+    if (d.badge?.parentNode) d.badge.parentNode.removeChild(d.badge);
+  },
+  _removeIndicator(d) {
+    if (d.indicator?.parentNode) d.indicator.parentNode.removeChild(d.indicator);
+  },
+  _clearTargets(d) {
     if (d.targetEl) d.targetEl.classList.remove('sash-drag-target');
     try { this.gridEl.querySelectorAll('.sash-target').forEach((s) => s.classList.remove('sash-target')); } catch (e) {}
-    if (d.winEl && d.winEl.isConnected) d.winEl.classList.remove('sash-drag-source');
+    if (d.winEl?.isConnected) d.winEl.classList.remove('sash-drag-source');
+  },
+  _removeDragVisuals(d) {
+    this._removeClone(d);
+    this._removeBadge(d);
+    this._removeIndicator(d);
+    this._clearTargets(d);
+  },
+
+  _cleanupDrag() {
+    const d = this._drag;
+    this._cleanupBodyClasses();
+    if (!d) { this._drag = null; return; }
+    this._removeDragListeners();
+    this._releasePointerCapture(d);
+    this._removeDragVisuals(d);
     this._drag = null;
   },
 
@@ -207,19 +260,26 @@ const SashGridDrag = {
     setTimeout(() => el.classList.remove('sash-landed'), 700);
   },
 
+  _dropForZone(targetId, zone) {
+    const map = {
+      'before': { kind: 'sibling', target: targetId, side: 'before' },
+      'after': { kind: 'sibling', target: targetId, side: 'after' },
+      'left': { kind: 'edge', target: targetId, dir: 'row', newFirst: true },
+      'right': { kind: 'edge', target: targetId, dir: 'row', newFirst: false },
+      'top': { kind: 'edge', target: targetId, dir: 'col', newFirst: true },
+      'bottom': { kind: 'edge', target: targetId, dir: 'col', newFirst: false },
+      'outer-top': { kind: 'outer', side: 'top' },
+      'outer-bottom': { kind: 'outer', side: 'bottom' },
+      'outer-left': { kind: 'outer', side: 'left' },
+      'outer-right': { kind: 'outer', side: 'right' },
+    };
+    const drop = map[zone];
+    if (!drop) throw new Error('simulateDrop: bad zone ' + zone);
+    return drop;
+  },
+
   simulateDrop(draggedId, targetId, zone) {
-    const drop =
-      zone === 'before' ? { kind: 'sibling', target: targetId, side: 'before' } :
-      zone === 'after'  ? { kind: 'sibling', target: targetId, side: 'after' } :
-      zone === 'left'   ? { kind: 'edge', target: targetId, dir: 'row', newFirst: true } :
-      zone === 'right'  ? { kind: 'edge', target: targetId, dir: 'row', newFirst: false } :
-      zone === 'top'    ? { kind: 'edge', target: targetId, dir: 'col', newFirst: true } :
-      zone === 'bottom' ? { kind: 'edge', target: targetId, dir: 'col', newFirst: false } :
-      zone === 'outer-top' ? { kind: 'outer', side: 'top' } :
-      zone === 'outer-bottom' ? { kind: 'outer', side: 'bottom' } :
-      zone === 'outer-left' ? { kind: 'outer', side: 'left' } :
-      zone === 'outer-right' ? { kind: 'outer', side: 'right' } :
-                          (() => { throw new Error('simulateDrop: bad zone ' + zone); })();
+    const drop = this._dropForZone(targetId, zone);
     this.root = SashCore.moveWindow(this.root, draggedId, drop);
     this.render();
     this._save();

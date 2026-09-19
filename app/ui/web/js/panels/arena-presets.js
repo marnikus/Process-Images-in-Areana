@@ -16,31 +16,42 @@ const ArenaPresets = {
     this.loadAll();
   },
 
+  _loadPromptPresets() {
+    try {
+      if (window.App.bridge.list_prompt_presets) {
+        window.App.bridge.list_prompt_presets((res) => {
+          try { if (typeof res === 'string') this.renderPromptPresets(res); } catch {}
+        });
+      }
+    } catch {}
+  },
+
+  _loadArenaPresets() {
+    try {
+      if (window.App.bridge.list_arena_presets) {
+        window.App.bridge.list_arena_presets((res) => {
+          try { if (typeof res === 'string') this.renderArenaPresets(res); } catch {}
+        });
+      }
+    } catch {}
+  },
+
+  _bindPresetsChanged() {
+    try {
+      if (window.App.bridge.presets_changed) {
+        window.App.bridge.presets_changed.connect((kind, payload) => {
+          if (kind === 'arena') this.renderArenaPresets(payload);
+          if (kind === 'prompt') this.renderPromptPresets(payload);
+        });
+      }
+    } catch {}
+  },
+
   loadAll() {
-    if (window.App && window.App.bridge) {
-      try {
-        if (window.App.bridge.list_prompt_presets) {
-          window.App.bridge.list_prompt_presets((res) => {
-            try { if (typeof res === 'string') this.renderPromptPresets(res); } catch {}
-          });
-        }
-      } catch {}
-      try {
-        if (window.App.bridge.list_arena_presets) {
-          window.App.bridge.list_arena_presets((res) => {
-            try { if (typeof res === 'string') this.renderArenaPresets(res); } catch {}
-          });
-        }
-      } catch {}
-      try {
-        if (window.App.bridge.presets_changed) {
-          window.App.bridge.presets_changed.connect((kind, payload) => {
-            if (kind === 'arena') this.renderArenaPresets(payload);
-            if (kind === 'prompt') this.renderPromptPresets(payload);
-          });
-        }
-      } catch {}
-    }
+    if (!window.App?.bridge) return;
+    this._loadPromptPresets();
+    this._loadArenaPresets();
+    this._bindPresetsChanged();
   },
 
   bindSettingsPresets() { this._actions.bindSettingsPresets(); },
