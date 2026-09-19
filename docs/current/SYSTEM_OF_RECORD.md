@@ -264,7 +264,8 @@ COVERAGE_FILE=.coverage .venv/bin/python -m coverage json -o coverage.json
 | Line coverage | ≥80% | <80% or below baseline | `pytest --cov` |
 | Branch coverage | ≥75% | <75% | `coverage json` |
 
-Baseline: `tools/quality_baseline.json` (regenerated 2026-09-19 after Area B). Never decrease.
+Baseline: `tools/quality_baseline.json` (regenerated 2026-09-19 after Area B; `coverage` key seeded 44.31/35.10). Never decrease.
+Coverage lanes: mid-round the gate runs `--coverage-ratchet` — a FAIL only on a decrease vs the baseline `coverage` key, with the absolute 80%/75% as warnings (final D4 target); without the flag the absolute 80%/75 fails outright.
 
 Override format: `# quality-override: metric=value reason=...` with metric ∈ `loc, class-loc, params, methods, cc, cognitive, nesting, coverage, vulture, dup`, reason ≥20 chars naming constraint.
 
