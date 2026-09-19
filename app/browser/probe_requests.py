@@ -13,8 +13,6 @@ COLOR_CLICK = "#ff9500"     # ORANGE
 COLOR_COLLECT = "#00c853"   # GREEN
 COLOR_PROMPT = "#00AAFF"    # BLUE
 COLOR_SUBMIT = "#FFAA00"    # YELLOW
-COLOR_ATTACH = "#00FF00"    # BRIGHT GREEN
-COLOR_SECURITY = "#FF6B6B"  # RED for security
 
 @dataclass(frozen=True, slots=True)
 class FindProbeSpec:

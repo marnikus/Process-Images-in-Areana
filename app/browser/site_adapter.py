@@ -1,11 +1,18 @@
 """
-Site Adapter — centralized selectors for arena.ai image generation.
-Replaceable because webpage structure will change.
+Site Adapter — the single source of selectors for arena.ai (RULE 21).
+
+Every JS probe payload receives its selector list from here via
+`app/browser/probe_selectors.py`; no selector literal may appear in a
+probe file (enforced by tests/test_probe_selectors.py).
+Replaceable because webpage structure will change — update this file +
+DOM_SELECTORS.md only. Imports: `selector.py` only (same layer).
 """
 from .selector import SelectorObject
 from typing import Dict, List
 
-# Define selectors per spec and research
+# Define selectors per spec and research.
+# Fallback lists are the live verified probe lists (byte-identical to what
+# cdp_arena.py / output_probes.py send today — see DOM_SELECTORS.md).
 
 SELECTORS: Dict[str, SelectorObject] = {
     "model_label": SelectorObject(
@@ -25,21 +32,14 @@ SELECTORS: Dict[str, SelectorObject] = {
     "processing_spinner": SelectorObject(
         name="processing_spinner",
         primary="div.animate-spin",
-        fallbacks=[
-            "div.h-5.w-5.flex-shrink-0.animate-spin",
-            "div.animate-spin > canvas",
-            "div.flex.min-w-0.flex-1.items-center.gap-2 div.animate-spin",
-            "div.flex.min-w-0.flex-1.items-center.gap-2:has(div.animate-spin)",
-            "div:has(> div.animate-spin)",
-            "canvas[width=\"28\"][height=\"28\"]",
-        ],
+        fallbacks=[],
         scope=None,
         mustBeVisible=True,
         mustBeEnabled=False,
         expectedCount=0,
         verification="spinner visible near model label indicates processing. User provided HTML: <div class=\"flex min-w-0 flex-1 items-center gap-2\"><div class=\"h-5 w-5 flex-shrink-0 animate-spin\"><canvas></canvas></div><span><span class=\"truncate\">Response A</span></span></div> — indicates generating. Wait for spinner to disappear + new output image to appear.",
         evidence="spec A + user report 2026-09-16 with Response A/B spinner",
-        lastVerified="2026-09-16",
+        lastVerified="2026-09-19",
     ),
     "add_files_button": SelectorObject(
         name="add_files_button",
@@ -69,9 +69,10 @@ SELECTORS: Dict[str, SelectorObject] = {
         mustBeVisible=False,  # hidden
         mustBeEnabled=True,
         expectedCount=1,
-        verification="can set files via playwright",
-        evidence="Directly Chat...html confirmed hidden input",
-        lastVerified="2026-09-15",
+        presenceSelector='input[type="file"]',
+        verification="can set files via CDP DOM.setFileInputFiles",
+        evidence="Directly Chat...html confirmed hidden input; presence selector is readiness-gate broad form",
+        lastVerified="2026-09-19",
     ),
     "attachment_preview_container": SelectorObject(
         name="attachment_preview_container",
@@ -90,7 +91,7 @@ SELECTORS: Dict[str, SelectorObject] = {
         primary='div.flex.flex-wrap.gap-2 img[alt]',
         fallbacks=[
             'div.flex.flex-wrap.gap-2 img[src^="blob:"]',
-            'div.group.relative.overflow-hidden.rounded-lg.h-16.w-16 img',
+            'form img[src^="blob:"]',
         ],
         scope="form",
         mustBeVisible=True,
@@ -98,8 +99,8 @@ SELECTORS: Dict[str, SelectorObject] = {
         expectedCount=1,
         textCondition=None,
         verification="preview is new, visible, inside active input area and matches expected filename when available",
-        evidence="spec C",
-        lastVerified="2026-09-15",
+        evidence="spec C; list matches live JS_VERIFY_ATTACHMENT probe (cdp_arena.py)",
+        lastVerified="2026-09-19",
     ),
     "remove_file_button": SelectorObject(
         name="remove_file_button",
@@ -120,9 +121,6 @@ SELECTORS: Dict[str, SelectorObject] = {
         name="prompt_textarea",
         primary='textarea[name="message"]',
         fallbacks=[
-            'textarea[name="message"][autocomplete="off"]',
-            'textarea[placeholder^="Describe how you want to edit"]',
-            'textarea[placeholder^="Describe the image you want to generate"]',
             'textarea[placeholder^="Describe"]',
             'textarea[rows="1"]',
         ],
@@ -131,30 +129,24 @@ SELECTORS: Dict[str, SelectorObject] = {
         mustBeEnabled=True,
         expectedCount=1,
         verification="after insertion, textarea.value equals expected prompt exactly",
-        evidence="Directly Chat...html confirmed",
-        lastVerified="2026-09-15",
+        evidence="Directly Chat...html confirmed; list matches live JS_INSERT_PROMPT probe (cdp_arena.py)",
+        lastVerified="2026-09-19",
     ),
     "send_button": SelectorObject(
         name="send_button",
         primary='button[aria-label="Send message"]:not([disabled])',
         fallbacks=[
+            'form button[aria-label="Send message"]',
             'button[aria-label="Send message"]',
-            'form button[aria-label="Send message"]:not([disabled])',
-            'form:has(textarea[name="message"]) button[aria-label="Send message"]:not([disabled])',
-            'div.flex.items-center.gap-2 button[aria-label="Send message"]:not([disabled])',
-            'button[type="button"][aria-label="Send message"]:not([disabled])',
-            'button[type="submit"][aria-label="Send message"]',
-            'form div.flex.items-center.gap-2 button:last-child:not([disabled])',
-            'form button:has(svg):not([disabled])',
-            'button.inline-flex.h-8.w-8[aria-label="Send message"]',
         ],
         scope="form",
         mustBeVisible=True,
         mustBeEnabled=True,
         expectedCount=1,
-        verification="click once, confirm processing/loading state, prevent duplicate. Must be enabled after prompt insertion; wait for disabled->enabled transition. User log shows 0 nodes when disabled, need :not([disabled]) primary + wait.",
-        evidence="Directly Chat...html confirmed disabled has opacity-50 pointer-events-none; improved 2026-09-16 after failed submit log",
-        lastVerified="2026-09-16",
+        presenceSelector='button[aria-label="Send message"]',
+        verification="click once, confirm processing/loading state, prevent duplicate. State scans use presenceSelector so disabled buttons are still found (JS_SEND_STATE, readiness gate).",
+        evidence="Directly Chat...html confirmed disabled has opacity-50 pointer-events-none; list matches live JS_CLICK_SEND probe (cdp_arena.py)",
+        lastVerified="2026-09-19",
     ),
     "output_region": SelectorObject(
         name="output_region",
@@ -167,9 +159,10 @@ SELECTORS: Dict[str, SelectorObject] = {
         mustBeVisible=True,
         mustBeEnabled=False,
         expectedCount=1,
-        verification="output observation container exists",
+        presenceSelector="div.no-scrollbar",
+        verification="output observation container exists; readiness gate probes the broad form",
         evidence="spec G",
-        lastVerified="2026-09-15",
+        lastVerified="2026-09-19",
     ),
     "output_image": SelectorObject(
         name="output_image",
@@ -179,21 +172,24 @@ SELECTORS: Dict[str, SelectorObject] = {
             'div.no-scrollbar img[loading="lazy"].aspect-square',
             'img.aspect-square.cursor-pointer',
             'img.cursor-pointer',
-            'img[loading="lazy"]',
             'div.flex img[src*=".r2.cloudflarestorage.com/"]',
-            'div.flex img.aspect-square',
-            'img.aspect-square.w-full',
-            'div.no-scrollbar img[src^="https://"]',
             'main img[src*=".r2.cloudflarestorage.com/"]',
-            'main img.aspect-square',
+            'div.no-scrollbar img[src^="https://"]',
+            'img.aspect-square.w-full',
+            'img[src*=".r2.cloudflarestorage.com/"]',
+            'img[src*="messages-prod"]',
+            'img.h-\\[50vh\\]',
+            'img.w-\\[50vh\\]',
+            'ol img[src^="https://"]',
+            'main img',
         ],
         scope=None,
         mustBeVisible=True,
         mustBeEnabled=False,
         expectedCount=0,  # 0..n
         verification="capture all matching nodes and src before submission, result must be newly inserted or new source after submission, appear after current prompt, finish loading, nonzero natural dimensions. Wait for processing spinner to disappear first.",
-        evidence="spec G + user report 2026-09-16 image created but download failed",
-        lastVerified="2026-09-16",
+        evidence="spec G + user report 2026-09-16; list matches live output_probes v4 SELECTORS_V3 exactly",
+        lastVerified="2026-09-19",
     ),
     "security_dialog": SelectorObject(
         name="security_dialog",
@@ -272,45 +268,3 @@ def get_selector(name: str) -> SelectorObject:
     if name not in SELECTORS:
         raise KeyError(f"Selector {name} not found")
     return SELECTORS[name]
-
-def list_selectors() -> Dict[str, SelectorObject]:
-    return SELECTORS
-
-# Helper to generate JS for finding element with fallbacks
-def build_js_find(selector_obj: SelectorObject) -> str:
-    """
-    Build JS snippet that tries primary then fallbacks, returns element or null.
-    This is used for browser controller to evaluate.
-    """
-    selectors = selector_obj.all_selectors()
-    # Escape for JS string
-    js_array = "[" + ", ".join(f'"{s}"' for s in selectors) + "]"
-    js = f"""
-    (function() {{
-        const selectors = {js_array};
-        const mustBeVisible = {str(selector_obj.mustBeVisible).lower()};
-        const mustBeEnabled = {str(selector_obj.mustBeEnabled).lower()};
-        function isVisible(el) {{
-            if (!el) return false;
-            const style = window.getComputedStyle(el);
-            return style && style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
-        }}
-        function isEnabled(el) {{
-            return !el.disabled && el.getAttribute('aria-disabled') !== 'true';
-        }}
-        for (const sel of selectors) {{
-            try {{
-                const els = document.querySelectorAll(sel);
-                for (const el of els) {{
-                    if (mustBeVisible && !isVisible(el)) continue;
-                    if (mustBeEnabled && !isEnabled(el)) continue;
-                    return el;
-                }}
-            }} catch (e) {{
-                continue;
-            }}
-        }}
-        return null;
-    }})()
-    """
-    return js

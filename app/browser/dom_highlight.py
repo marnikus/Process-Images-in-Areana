@@ -314,17 +314,6 @@ class HighlightJsSpec:
 
 
 @dataclass
-class HighlightRectSpec:
-    x: float
-    y: float
-    w: float
-    h: float
-    color: str = "#FF0000"
-    duration_ms: int = 2000
-    caption: str = ""
-
-
-@dataclass
 class WatcherOverlaySpec:
     message: str = "wait for finish generation"
     kind: str = "generation"
@@ -345,27 +334,6 @@ def build_highlight_js(selector: str, color: str = "#FF0000", duration_ms: int =
 
 def build_clear_js() -> str:
     return build_clear_probe()
-
-
-def build_highlight_rect_js_from_spec(spec: HighlightRectSpec) -> str:
-    color_json = json.dumps(spec.color)
-    caption_json = json.dumps(spec.caption or f"{int(spec.w)}x{int(spec.h)}")
-    return f"""
-;(function(){{
-{_HELPERS_JS}
-  try {{
-    var r = {{left:{spec.x}, top:{spec.y}, width:{spec.w}, height:{spec.h}}};
-    var fake = {{getBoundingClientRect:function(){{return r;}}}};
-    var rect = highlight(fake, {color_json}, {spec.duration_ms}, {caption_json});
-    return JSON.stringify({{found: !!rect, rect: r}});
-  }} catch(e) {{ return JSON.stringify({{found:false}}); }}
-}})()
-"""
-
-
-def build_highlight_rect_js(x: float, y: float, w: float, h: float, color: str = "#FF0000", duration_ms: int = 2000, caption: str = "") -> str:
-    spec = HighlightRectSpec(x=x, y=y, w=w, h=h, color=color, duration_ms=duration_ms, caption=caption)
-    return build_highlight_rect_js_from_spec(spec)
 
 
 # ---- watcher overlay split into small helpers (C6) ----

@@ -14,13 +14,18 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from .probe_selectors import new_chat_selectors, textarea_primary
 from .visual_click import ClickRequest, find_and_click
 
 # (selector, label_selector, match_text) — semantic href first, no classes.
+# Selectors come from site_adapter (RULE 21); the text-proof strategy stays
+# here: the two semantic entries must show the "New Chat" label, the
+# structural fallback clicks on shape alone.
+_NC_SELS = new_chat_selectors()
 NEW_CHAT_CANDIDATES = (
-    ('a[href="/image/direct"]', "span", "New Chat"),
-    ('li[data-sidebar="menu-item"] a[href="/image/direct"]', "span", "New Chat"),
-    ('a[data-sidebar="menu-button"][href="/image/direct"]', "", ""),
+    (_NC_SELS[0], "span", "New Chat"),
+    (_NC_SELS[1], "span", "New Chat"),
+    (_NC_SELS[2], "", ""),
 )
 
 
@@ -35,11 +40,9 @@ class ResetCtx:
     cancel_check: Optional[Callable[[], bool]] = None
 
 
-def build_page_loaded_js() -> str:
-    """Probe: document complete + composer textarea present."""
-    return """;(() => {
+_PAGE_LOADED_TEMPLATE = """;(() => {
   try {
-    const ta = document.querySelector('textarea[name="message"]');
+    const ta = document.querySelector(__TEXTAREA_PRIMARY__);
     const rs = document.readyState;
     return {complete: rs === 'complete', readyState: rs,
             hasTextarea: !!ta && ta.offsetParent !== null};
@@ -47,15 +50,23 @@ def build_page_loaded_js() -> str:
 })()"""
 
 
-def build_composer_empty_js() -> str:
-    """Probe: new-chat composer is clean (empty value)."""
-    return """;(() => {
+_COMPOSER_EMPTY_TEMPLATE = """;(() => {
   try {
-    const ta = document.querySelector('textarea[name="message"]');
+    const ta = document.querySelector(__TEXTAREA_PRIMARY__);
     if (!ta) return {empty: false, len: -1};
     return {empty: ta.value.length === 0, len: ta.value.length};
   } catch (e) { return {empty: false, error: String(e)}; }
 })()"""
+
+
+def build_page_loaded_js() -> str:
+    """Probe: document complete + composer textarea present."""
+    return _PAGE_LOADED_TEMPLATE.replace("__TEXTAREA_PRIMARY__", repr(textarea_primary()))
+
+
+def build_composer_empty_js() -> str:
+    """Probe: new-chat composer is clean (empty value)."""
+    return _COMPOSER_EMPTY_TEMPLATE.replace("__TEXTAREA_PRIMARY__", repr(textarea_primary()))
 
 
 def _report(engine: Any, message: str, level: str = "info"):

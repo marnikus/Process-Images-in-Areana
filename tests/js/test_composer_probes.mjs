@@ -1,7 +1,10 @@
 /* Tier A — composer probes (Node.js, no browser).
-   RULE 8: extracts the REAL JS_INSERT_PROMPT / JS_SEND_STATE consts from
+   RULE 8: extracts the REAL JS_INSERT_PROMPT / JS_SEND_STATE templates from
    app/browser/cdp_arena.py (regex on the triple-quoted strings — the file
    under test, not a copy) and runs them against a stub document.
+   RULE 21: the templates carry __PLACEHOLDER__ tokens; the app fills them
+   from site_adapter at import (wiring proven by tests/test_probe_selectors.py);
+   here we substitute representative selectors, exactly like the app does.
    Regression: the error-state DOM offers a hidden first-match textarea;
    insert must fill the VISIBLE composer or Send stays disabled forever. */
 
@@ -17,9 +20,15 @@ const arenaPy = fs.readFileSync(
   path.resolve(__dirname, '../../app/browser/cdp_arena.py'), 'utf-8');
 
 function extract(name) {
-  const m = arenaPy.match(new RegExp(name + ' = """\\n([\\s\\S]*?)\\n"""'));
+  // Matches both `NAME = """template"""` and `NAME = _inject("""template""", ...)`.
+  const m = arenaPy.match(new RegExp(name + ' = [^"]*"""\\n([\\s\\S]*?)\\n"""'));
   assert.ok(m, `${name} const not found in cdp_arena.py`);
   return m[1];
+}
+
+// Same substitution the app performs at import (json.dumps of selector payloads).
+function fill(template, name, value) {
+  return template.replaceAll(name, JSON.stringify(value));
 }
 
 function docStub(lists) {
@@ -59,7 +68,9 @@ function runInsert(lists, text) {
     set(v) { this._reactValue = v; }, configurable: true,
   });
   vm.createContext(sandbox);
-  const fn = vm.runInContext(extract('JS_INSERT_PROMPT'), sandbox,
+  const template = fill(extract('JS_INSERT_PROMPT'), '__TEXTAREA_SELECTORS__',
+    [SEL_MSG, SEL_DESC]);
+  const fn = vm.runInContext(template, sandbox,
     { filename: 'JS_INSERT_PROMPT' });
   return fn(text);
 }
@@ -69,7 +80,9 @@ function runSendState(buttons) {
     document: docStub({ 'button[aria-label="Send message"]': buttons }),
   };
   vm.createContext(sandbox);
-  const fn = vm.runInContext(extract('JS_SEND_STATE'), sandbox,
+  const template = fill(extract('JS_SEND_STATE'), '__SEND_PRESENCE_SELECTOR__',
+    'button[aria-label="Send message"]');
+  const fn = vm.runInContext(template, sandbox,
     { filename: 'JS_SEND_STATE' });
   return fn();
 }

@@ -13,8 +13,6 @@ Public API
 find_and_click(cdp, ClickRequest(...))
     Locate element (optionally by text of child) and click it.
     Legacy callers may pass knobs as kwargs.
-find_and_click_exact(cdp, selector=..., label_selector=..., text=...)
-    Same but exact text match.
 """
 
 import asyncio
@@ -33,7 +31,6 @@ from app.browser.dom_highlight import (
 )
 from app.browser.probe_requests import (
     MATCH_CONTAINS,
-    MATCH_EXACT,
     ClickProbeSpec,
     FindProbeSpec,
 )
@@ -224,6 +221,3 @@ async def find_and_click(cdp, request: Optional[ClickRequest] = None, engine: Op
     return await run_click(cdp, request or ClickRequest.from_kwargs(**legacy), engine=engine)
 
 
-async def find_and_click_exact(cdp, *, text: str, **kw) -> str:
-    kw.pop("match_mode", None)
-    return await find_and_click(cdp, match_text=text, match_mode=MATCH_EXACT, **kw)
