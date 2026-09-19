@@ -30,3 +30,6 @@ except ImportError:  # headless/test: duck-type dummies
         return deco
 
     QFileDialog = None
+
+
+__all__ = ["QObject", "Signal", "Slot", "QFileDialog"]

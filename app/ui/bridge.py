@@ -28,6 +28,7 @@ from app.browser.tab_matcher import best_matches
 from app.browser.dom_highlight import build_highlight_js, build_clear_js, build_highlight_probe, build_find_probe, build_click_probe
 from app.browser.probe_requests import FindProbeSpec, ClickProbeSpec, HighlightSpec, COLOR_FIND, COLOR_CLICK, COLOR_COLLECT
 from app.browser.visual_click import ClickRequest, find_and_click
+from app.ui.panels import blocks_stack, layout_state
 from app.ui.panels.layout_state import LayoutStateMixin
 from app.ui.panels.blocks_library import BlocksLibraryMixin
 from app.ui.panels.blocks_stack import BlocksStackMixin
@@ -391,12 +392,10 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
 
     # ---- Action Blocks — stacking jobs with visual confirmations ----
     def _get_action_blocks(self):
-        from app.ui.panels import blocks_stack as stack
-        return stack.get_action_blocks(self)
+        return blocks_stack.get_action_blocks(self)
 
     def _emit_action_blocks(self):
-        from app.ui.panels import blocks_stack as stack
-        stack.emit_action_blocks(self)
+        blocks_stack.emit_action_blocks(self)
 
     def _emit_job_action_status(self, job_id: str, block: Any, status: str, message: str = "", rect: dict = None):
         try:
@@ -445,12 +444,10 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
 
 
     def _save_arena(self):
-        from app.ui.panels import layout_state as layout
-        layout.save_arena_state(self)
+        layout_state.save_arena_state(self)
 
     def _emit_arena_state(self):
-        from app.ui.panels import layout_state as layout
-        layout.emit_arena_state(self)
+        layout_state.emit_arena_state(self)
 
     def _log(self, msg: str, level: str = "info"):
         # Emit only arena_log to avoid duplicate logs (previously emitted both log_message and arena_log

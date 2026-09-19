@@ -107,10 +107,10 @@ def _wrap_incoming(name: str, payload: str, info: dict) -> dict:
     return doc
 
 
-def build_preset_doc(name: str, payload: str, info: dict, stored_ws: dict) -> dict:
+def build_preset_doc(name: str, payload: str, info: dict) -> dict:
     """Final preset document from validated payload + info dict."""
     tree = info.get("tree") or json.loads(payload).get("tree")
-    ws = _preset_ws(info, stored_ws)
+    ws = _preset_ws(info, info.get("stored_ws"))
     incoming = info.get("incoming")
     if incoming and isinstance(incoming, dict) and incoming.get("format") == "chat-v-bot.window-preset":
         resolved = {"tree": tree, "ws": ws, "incoming": incoming}
@@ -134,8 +134,8 @@ def save_preset_doc(name: str, grid_json: str, layout_fallback: str, stored_ws: 
         return None, err
     if not payload:
         return None, "invalid grid payload"
-    info = {"tree": tree, "ws": ws, "incoming": incoming}
-    return build_preset_doc(name, payload, info, stored_ws), None
+    info = {"tree": tree, "ws": ws, "incoming": incoming, "stored_ws": stored_ws}
+    return build_preset_doc(name, payload, info), None
 
 
 def load_preset_doc(doc: Optional[dict], name: str):

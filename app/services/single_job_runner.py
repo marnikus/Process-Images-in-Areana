@@ -617,17 +617,23 @@ async def _handle_pause(ctx: JobCtx, block: Any):
     _emit_action(ctx, block, "success", f"Paused {dur}ms")
 
 
+async def _type_highlight(ctx: JobCtx, block: Any) -> None:
+    """Best-effort highlight before typed prompt (never fails)."""
+    if not getattr(block, "highlight_enabled", False):
+        return
+    try:
+        sel = getattr(block, "selector", "") or 'textarea[name="message"]'
+        await ctx.ctrl.highlight_selector(sel, color=getattr(block, "color", "") or "#FF0000", duration_ms=getattr(block, "highlight_ms", 0) or 2000, caption=_display(block))
+    except Exception:
+        pass
+
+
 async def _handle_type_prompt(ctx: JobCtx, block: Any):
     """Handle typed prompt (highlight, then insert full prompt)."""
     extra = getattr(block, "extra", {}) or {}
     speed = extra.get("typing_speed_ms", 10)
     _report_recovery(ctx, f"⌨ Typing prompt speed {speed}ms", "info")
-    if getattr(block, "highlight_enabled", False):
-        try:
-            sel = getattr(block, "selector", "") or 'textarea[name="message"]'
-            await ctx.ctrl.highlight_selector(sel, color=getattr(block, "color", "") or "#FF0000", duration_ms=getattr(block, "highlight_ms", 0) or 2000, caption=_display(block))
-        except Exception:
-            pass
+    await _type_highlight(ctx, block)
     ok, reason = await insert_prompt(ctx)
     if not ok:
         raise RuntimeError(f"Type prompt failed: {reason}")

@@ -46,6 +46,18 @@ def emit_arena_state(bridge) -> None:
         log.warning(f"emit arena state failed: {e}")
 
 
+def _write_preset_doc(path: Path, doc: dict) -> None:
+    """Write one preset doc as indented JSON."""
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=2, ensure_ascii=False)
+
+
+def _read_preset_doc(file_path: str) -> dict:
+    """Read one preset doc from disk."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def export_preset_file(bridge, name: str) -> str:
     """Write the stored preset doc to disk (dialog, else headless fallback)."""
     doc = bridge.config.window_presets.load_preset(name)
@@ -54,15 +66,12 @@ def export_preset_file(bridge, name: str) -> str:
     try:
         if QFileDialog is None:
             path = Path("config") / f"{name}_window.json"
-            with path.open("w", encoding="utf-8") as f:
-                json.dump(doc, f, indent=2, ensure_ascii=False)
         else:
             folder = QFileDialog.getExistingDirectory(None, "Export window preset")
             if not folder:
                 return json.dumps({"ok": False, "cancelled": True})
             path = Path(folder) / f"{name}.json"
-            with path.open("w", encoding="utf-8") as f:
-                json.dump(doc, f, indent=2, ensure_ascii=False)
+        _write_preset_doc(path, doc)
         bridge._exported_paths[name] = str(path)
         bridge._log(f"Window preset exported to {path}", "success")
         return json.dumps({"ok": True, "path": str(path)})
@@ -78,8 +87,7 @@ def import_preset_file(bridge) -> str:
         file_path, _ = QFileDialog.getOpenFileName(None, "Import window preset", "", "JSON (*.json)")
         if not file_path:
             return json.dumps({"ok": False, "cancelled": True})
-        with open(file_path, "r", encoding="utf-8") as f:
-            doc = json.load(f)
+        doc = _read_preset_doc(file_path)
         name = doc.get("name") or Path(file_path).stem
         payload = doc.get("grid", {}).get("payload")
         if payload:

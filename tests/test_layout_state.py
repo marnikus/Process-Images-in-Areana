@@ -56,8 +56,8 @@ def test_parse_and_build_round_trip():
     t, payload, ws, doc, err = presets.parse_preset_input(json.dumps(portable(tree)))
     assert err is None and payload and ws["closed"] == ["captcha"]
     assert leaf_ids(t) == leaf_ids(tree)
-    out = presets.build_preset_doc("D", payload, {"tree": t, "ws": ws, "incoming": doc},
-                                   {"closed": [], "minimized": []})
+    out = presets.build_preset_doc("D", payload, {"tree": t, "ws": ws, "incoming": doc,
+                                                   "stored_ws": {"closed": [], "minimized": []}})
     assert out["format"] == "chat-v-bot.window-preset" and out["name"] == "D"
     assert out["window_states"]["closed"] == ["captcha"]
 

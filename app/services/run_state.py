@@ -353,6 +353,35 @@ def _announce_restore(bridge, tab_id: str) -> None:
     bridge._emit_pool_status()
 
 
+def _page_url_of(pool, tab_id: str) -> str:
+    """Live URL of a pooled page (missing-safe)."""
+    page = pool.get_page(tab_id)
+    return getattr(page, "url", "") if page else ""
+
+
+def _log_restore_miss(bridge, note: RestoreNote) -> None:
+    """File-level note when nothing live, else loud per-tab miss."""
+    if note.report.get("live", 0) == 0:
+        _log_file_note(bridge, note.report)
+    else:
+        _log_tab_miss(bridge, note)
+
+
+def _saved_entry_or_note(bridge, tab_id: str):
+    """Consume this tab's saved entry; log file/tab miss when absent."""
+    pool = getattr(bridge, "_page_pool", None)
+    page_url = _page_url_of(pool, tab_id) if pool else ""
+    path = cooldowns_path(bridge)
+    entries = load_entries(path)
+    _key, entry = consume_entry_for(entries, tab_id, page_url, pooled_ids(pool))
+    if entry:
+        return entries, entry
+    note = RestoreNote(tab_id=tab_id, page_url=page_url,
+                       entries=entries, report=describe_cooldown_file(path))
+    _log_restore_miss(bridge, note)
+    return entries, None
+
+
 def restore_page_state(bridge, tab_id: str) -> None:
     """Re-apply persisted wall-clock pause + job counter after restart."""
     try:
@@ -360,18 +389,10 @@ def restore_page_state(bridge, tab_id: str) -> None:
         if not pool or not tab_id:
             return
         path = cooldowns_path(bridge)
-        entries = load_entries(path)
-        page = pool.get_page(tab_id)
-        page_url = getattr(page, "url", "") if page else ""
+        page_url = _page_url_of(pool, tab_id)
         _restore_job_counter(bridge, tab_id, page_url)
-        _key, entry = consume_entry_for(entries, tab_id, page_url, pooled_ids(pool))
+        entries, entry = _saved_entry_or_note(bridge, tab_id)
         if not entry:
-            note = RestoreNote(tab_id=tab_id, page_url=page_url,
-                               entries=entries, report=describe_cooldown_file(path))
-            if note.report.get("live", 0) == 0:
-                _log_file_note(bridge, note.report)
-            else:
-                _log_tab_miss(bridge, note)
             return
         if not restore_cooldown_entry(pool, tab_id, entry):
             return

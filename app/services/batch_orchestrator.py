@@ -90,12 +90,17 @@ def _log_stay_reason(bridge, tab_id: str) -> None:
         pass
 
 
+def _pool_ws(pool, want: str) -> str:
+    """Websocket URL of a pooled page (missing-safe)."""
+    page = pool.get_page(want) if pool else None
+    return getattr(page, "ws_url", "") or ""
+
+
 async def _move_to_tab(bridge, tab_id: str, want: str) -> str:
     """Reconnect to a readier tab; stay on failure."""
     try:
         pool = _pool_of(bridge)
-        page = pool.get_page(want) if pool else None
-        ws = getattr(page, "ws_url", "") or ""
+        ws = _pool_ws(pool, want)
         if ws and bridge.cdp and await bridge.cdp.connect(ws):
             bridge._log(f"🔀 Run moved to ready tab {want[:12]}", "info")
             return want
@@ -216,10 +221,14 @@ async def _execute_image(ctx: BatchCtx, img: Any, url_row) -> ImageResult:
     return ImageResult(img=img, failed=failed, error=error, job_id=job_id, corr_id=corr_id)
 
 
-def _emit_job_finished(bridge, res: ImageResult, status: str, message: str) -> None:
-    """job_finished signal (best effort; cancelled jobs never emit)."""
+def _emit_job_finished(bridge, res: ImageResult) -> None:
+    """job_finished signal, derived from the result (cancelled never emit)."""
     try:
         import json
+        if res.failed:
+            status, message = "failed", res.error
+        else:
+            status, message = "completed", f"Saved to {res.img.output_path}"
         payload = json.dumps({"status": status, "message": message,
                               "output_path": res.img.output_path or ""}, ensure_ascii=False)
         bridge.job_finished.emit(res.job_id, payload)
@@ -241,7 +250,7 @@ def _fail_job(ctx: BatchCtx, res: ImageResult) -> None:
     res.img.status = ImageStatus.FAILED.value
     res.img.error = res.error
     ctx.bridge._log(f"[{res.corr_id}] ❌ Failed {res.img.relative_path}: {res.error}", "error")
-    _emit_job_finished(ctx.bridge, res, "failed", res.error)
+    _emit_job_finished(ctx.bridge, res)
 
 
 def _complete_job(ctx: BatchCtx, res: ImageResult) -> None:
@@ -249,7 +258,7 @@ def _complete_job(ctx: BatchCtx, res: ImageResult) -> None:
     if res.img.status != ImageStatus.COMPLETED.value:
         res.img.status = ImageStatus.COMPLETED.value
     ctx.bridge._log(f"[{res.corr_id}] ✅ Job completed {res.img.relative_path}", "success")
-    _emit_job_finished(ctx.bridge, res, "completed", f"Saved to {res.img.output_path}")
+    _emit_job_finished(ctx.bridge, res)
 
 
 def _settle_image(ctx: BatchCtx, res: ImageResult) -> None:

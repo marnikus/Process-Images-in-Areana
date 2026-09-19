@@ -59,6 +59,17 @@ def save_action_blocks(bridge, stack) -> bool:
         return False
 
 
+def _remove_block(bridge, block_id: str):
+    """Remove by id, else legacy block_id fallback; returns (stack, found)."""
+    stack = get_action_blocks(bridge)
+    before = len(stack)
+    kept = [b for b in stack if b.id != block_id]
+    if len(kept) != before:
+        return kept, True
+    kept = [b for b in get_action_blocks(bridge) if b.block_id != block_id or b.required]
+    return kept, len(kept) != before
+
+
 def emit_action_blocks(bridge) -> None:
     """Re-emit the current stack payload (Bridge delegates here)."""
     try:
@@ -150,13 +161,9 @@ class BlocksStackMixin:
     @Slot(str, result=str)
     def delete_action_block(self, block_id: str):
         try:
-            stack = get_action_blocks(self)
-            before = len(stack)
-            stack = [b for b in stack if b.id != block_id]
-            if len(stack) == before:
-                stack = [b for b in get_action_blocks(self) if b.block_id != block_id or b.required]
-                if len(stack) == before:
-                    return json.dumps({"ok": False, "error": "not found"})
+            stack, found = _remove_block(self, block_id)
+            if not found:
+                return json.dumps({"ok": False, "error": "not found"})
             ok, err = validate_stack(stack)
             if not ok:
                 return json.dumps({"ok": False, "error": err})

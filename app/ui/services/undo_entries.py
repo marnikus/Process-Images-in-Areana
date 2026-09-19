@@ -1,3 +1,4 @@
+# ideal-size: ~400 lines reason=three kind-dispatch tables (remember/apply/empty) share one kind vocabulary plus row builders; splitting would scatter remember/apply twins that always change together (RULE 18.2)
 """Undo entry remember/apply — kind dispatch (no Qt/signals/panels).
 
 Owns the per-kind state mutations for global undo plus the undo-step flow.

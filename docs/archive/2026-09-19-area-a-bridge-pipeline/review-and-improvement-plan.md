@@ -4,9 +4,14 @@ Parent design: `docs/archive/2026-09-19-area-a-bridge-pipeline/design.md`
 (§1 contracts, §2–§8 steps). Progress log:
 `docs/archive/2026-09-19-area-a-bridge-pipeline/implementation-area-a.md`
 
-Measured review state: **551 passed, gate TOTAL 105** (baseline 120),
-`bridge.py` 2713 lines / 37 fails (was 52), 119/119 slots present
+Measured review state: **551 passed, gate TOTAL 103** (baseline 120),
+`bridge.py` 2713 lines / 36 fails (was 52), 119/119 slots present
 (76 in `bridge.py`, 43 in 4 panels), **0 fails on all Area A new files**.
+
+Note: the gate uses `radon cc -s` when installed (else an AST approx that
+under-counts comprehension-`for`). All R1+ numbers are radon-based
+(stricter). This caught one latent CC 11 (`delete_action_block`, fixed in
+R1 via `_remove_block`).
 
 ## 1. Review verdict per step
 
@@ -86,10 +91,10 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   delete `_restore_*`, `_cooldowns_path` after flipping to run_state
   (verify callers). Kills 0 fails, deletes ~100 LOC.
 - **R7 — `browser_tabs` (7).** Move tab slots; split `_do_connect_tab`
-  (phases), `_do_find_tab`, `_report_auto_plan`; auto-plan helpers →
-  module funcs (reuse `app/services/auto_connect.py`); flip
-  `_schedule_coro` sites to `run_state.schedule_coro`; delete
-  `_resolve_tab_info`, `_pooled_ids` after last flip. Kills 5.
+  (phases), `_do_find_tab`, `_report_auto_plan`, `_do_diagnose_chrome` (CC);
+  auto-plan helpers → module funcs (reuse `app/services/auto_connect.py`);
+  flip `_schedule_coro` sites to `run_state.schedule_coro`; delete
+  `_resolve_tab_info`, `_pooled_ids` after last flip. Kills 6.
 - **R8 — `cdp_tools` (9).** Move CDP config/test/highlight slots; split
   `set_cdp_config` (per-key), `_do_highlight`, `cdp_attach_image_test`;
   `_do_cdp_*`, highlight demo → module funcs; flip `_schedule_coro` sites.
@@ -98,8 +103,8 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   (gate checks); F8 `JobAction` redesign (`_emit_job_action_status` →
   delegation); `enabled_urls(urls)` pure helper in url_queue, imported;
   flip last `_schedule_coro` sites; **delete** `_ensure_bg_loop`,
-  `_schedule_coro` (run_state owns). Kills 8 (start_run + emit_job×3 +
-  bg-loop×2 + schedule×2).
+  `_schedule_coro` (run_state owns). Kills 6 (start_run + emit_job×3 +
+  bg-loop loc + schedule loc; their CC passes under radon).
 - **R10 — A6 `BridgeContext`.** `app/ui/bridge_context.py`: dataclass +
   `build_context()` + `wire_cdp/wire_watcher/wire_page_pool/wire_thumb`
   (≤15 LOC); `Bridge.__init__` ≤20 (attach same attrs, init
@@ -111,5 +116,5 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   implementation log; SYSTEM_OF_RECORD.md §7 + docs/README.md (RULE 17);
   (f) RULE 18 audit table (every deviation reasoned); full gate + suite.
 
-Expected end state: TOTAL ≈ 105 − 37 = **68** (all `bridge.py` fails gone),
+Expected end state: TOTAL ≈ 103 − 36 = **67** (all `bridge.py` fails gone),
 suite green, Bridge ≈ 300 lines / 10 methods, 12 panels + 8 ui-services.
