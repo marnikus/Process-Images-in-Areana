@@ -24,7 +24,7 @@ from app.services.cooldown_service import (
     reset_cooldown,
     tab_has_live_job,
 )
-from app.services.run_state import cooldowns_path, restore_page_state
+from app.services.run_state import cooldowns_path, resolve_tab_info, restore_page_state
 from app.ui.qt_compat import Slot
 
 
@@ -86,7 +86,7 @@ async def do_connect_page_pool(bridge, ws_url: str):
         if client is None:
             return
         ctrl = CDPArenaController(client, log_callback=lambda msg: bridge._log(msg, "info"))
-        live_title, live_url = await bridge._resolve_tab_info(tab_id, ws_url)
+        live_title, live_url = await resolve_tab_info(bridge, tab_id, ws_url)
         info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
         finish_pool_join(bridge, info, client, ctrl)
     except Exception as e:

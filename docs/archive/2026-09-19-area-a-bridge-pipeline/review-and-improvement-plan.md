@@ -138,13 +138,25 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   slots, mixin 139 LOC, all funcs ≤20/CC ≤7, 551 green, gate 82→82
   (kills 0 by design), Bridge methods 83→66, bridge −276 lines.
   Deliberate changes: none.
-- **R7 — `browser_tabs` (7).** Move tab slots; split `_do_connect_tab`
-  (phases), `_do_find_tab`, `_report_auto_plan`, `_do_diagnose_chrome` (CC);
-  auto-plan helpers → module funcs (reuse `app/services/auto_connect.py`);
-  flip `_schedule_coro` sites to `run_state.schedule_coro`; delete
-  `_resolve_tab_info`, `_pooled_ids` after last flip. Kills 7
-  (connect×3: cc+loc+nesting under radon, find, report, diagnose,
-  resolve).
+- **R7 — `browser_tabs` (7).** ✅ done. 7 slots moved (get/diagnose/
+  auto-scan/popup/ensure/connect/find); `_do_connect_tab` (84) → 9 phase
+  funcs (`cached_tab_identity` added beyond plan: or-chain CC 9 → 5+6,
+  genuine cached-vs-live split); `_do_find_tab` (35) → 4 funcs;
+  `_report_auto_plan` → `plan_has_changes` predicate + 4-param report
+  (presence tuple, honest); `claim_connect_slot`/`claim_find_slot`
+  debounces (+`find_dupe_recent`, `claim_auto_rows`, `popup_row_title`
+  predicate extracts — every new split ≤7 CC); 7 `_schedule_coro` sites
+  → `run_state.schedule_coro`; `_resolve_tab_info` deleted after
+  flipping both callers to run_state (page_pool flip + panel identity;
+  `_pooled_ids` already died in R6); first acyclic panel→panel imports
+  (url_queue/page_pool single-source); `__init__` exports all 10.
+  Behavior script caught + fixed a real bug: restore-on-reuse (original
+  restores only on dedicated/fallback — port now faithful). Verified:
+  119/119 slots, mixin 76 LOC/7 methods, all funcs ≤20/CC ≤7, 87/87
+  behavior checks + literal-multiset diff clean, 551 green, gate 82→75
+  (bridge 20→13, exactly the planned 7), Bridge methods 66→43, bridge
+  −418 lines. Deliberate changes: none (schedule flip names the real
+  owner in the outer-fail log now).
 - **R8 — `cdp_tools` (9).** Move CDP config/test/highlight slots; split
   `set_cdp_config` (per-key), `_do_highlight`, `cdp_attach_image_test`;
   `_do_cdp_*`, highlight demo → module funcs; flip `_schedule_coro` sites.
@@ -155,18 +167,131 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   flip last `_schedule_coro` sites; **delete** `_ensure_bg_loop`,
   `_schedule_coro` (run_state owns). Kills 6 (start_run + emit_job×3 +
   bg-loop loc + schedule loc; their CC passes under radon).
-- **R10 — A6 `BridgeContext`.** `app/ui/bridge_context.py`: dataclass +
-  `build_context()` + `wire_cdp/wire_watcher/wire_page_pool/wire_thumb`
-  (≤15 LOC); `Bridge.__init__` ≤20 (attach same attrs, init
-  `_batch_future=None`); `_log_build_version`/`_on_cdp_error` → module
-  funcs. Kills 3 (`__init__`×2 + Bridge `[methods]`).
-- **R11 — A7 sweep.** (a) vulture + unused-import sweep, Area A clean;
-  (b) F5 frozen-119 test; (c) F6 packing test; (d) branch coverage ≥80/75,
-  no uncovered new funcs (dialog-fake tests as needed); (e) finish
-  implementation log; SYSTEM_OF_RECORD.md §7 + docs/README.md (RULE 17);
-  (f) RULE 18 audit table (every deviation reasoned); full gate + suite.
+- **R10/R11 (renumbered — see §4).** Old R10 (A6) is now **R11**, old R11
+  (A7) is now **R12**; new **R10** is the ideals sweep. §4 is authoritative.
 
 Expected end state: TOTAL ≈ 97 − 35 = **62** (all `bridge.py` fails gone),
 suite green, Bridge ≈ 300 lines / 10 methods, 12 panels + 8 ui-services.
-Kill-map check: R3 7 + R4 7 + R5 1 + R7 7 + R8 4 + R9 6 + R10 3 = 35 ✓
-(R2/R6 kill 0 by design).
+Kill-map check: R3 7 + R4 7 + R5 1 + R7 7 + R8 4 + R9 6 + R11 3 (A6) = 35 ✓
+(R2/R6/R10 kill 0 by design).
+
+## 3. Second review pass (post-R6, pre-R7)
+
+Re-read of design §§0–9 against the R6 tree (`3713414`), per the standing
+instruction (review full Area A vs spec → plan DOC first → implement).
+Fresh state: **551 green, gate TOTAL 82** (bridge 20, 0 on Area A files),
+`bridge.py` 1329 lines / 66 methods / 26 direct `@Slot`, 9/12 panels cut
+(119 = 26 bridge + 93 panel), slots test scans panels
+(`test_bridge_slots.py:52-61`), remaining 26 = 7 + 9 + 10 exactly as
+planned (R7/R8/R9). Contract §1.2 ✅ (all four API methods on Bridge:
+`_log:332`, `_emit_pool_status:231`, `_captcha_service:529`,
+`_persist_cooldowns:259`); §1.3 ✅ (re-exports intact); §1.4 ✅ (zero
+binding refs in `test_grid_layout.py`); direction ✅ (panels import only
+services/core/browser/qt_compat/stdlib; no panel→panel; no NEW
+services→Qt). New findings:
+
+- **F9 — F4 was incomplete.** Fresh radon sweep (53 B-grade funcs, no C+)
+  found 12 more ideals misses F4 never listed (first sweep only showed
+  `head -20` — same trap). Verdicts: FIX the 8 with genuine splits,
+  TABLE the 3 that would scatter, 1 already fixed (see R10 design).
+- **F10 — F4 staleness.** `_move_to_tab` CC 8 → now B(6) (R1's `_pool_ws`
+  extract resolved it); `save_preset_doc` 4 params → now 3 (R1 folded
+  `stored_ws`). Both F4 rows closed, no action.
+- **F11 — 4 mixins exceed the 120-class ideal with no in-code reason**
+  (RULE 18.5): blocks_stack 135/10m, layout_state 148/14m, page_pool
+  134/9m, watcher_captcha 127/10m (queue_scan/app_settings already carry
+  reasons). R10 adds `ideal-size:` class-docstring reasons (all RULE
+  16-legal; frozen slot surfaces, extraction already done — verified at
+  implement time).
+- **F12 — `panels/__init__.py` stale**: exports 4/9 mixins (R2–R6 never
+  updated it). Harmless today (bridge imports submodules directly) but
+  wrong. R10 exports all 9 (+3 as R7–R9 land).
+- **F13 — §1.5 bypass**: `queue_scan._qt_clipboard_handle` /
+  `try_qt_clipboard_copy` hold the ONLY Area A `PySide6` imports outside
+  the shim (3 lazy sites; `bridge.py` itself is now at ZERO `PySide6`
+  refs). R10 centralizes into `qt_compat.get_clipboard` /
+  `clipboard_copy`, making "panels import Qt via one guarded shim" TRUE.
+- **F14 — Qt-site truth table** (rest of `app/ui`, both NOT Area A, both
+  correctly untouched): `main_window.py` top-level Qt (the real window
+  owner — must construct widgets; the shim contract governs
+  panels/services, not it); `captcha_recordings_bridge.py` guarded Qt
+  (R0-grandfathered recordings UI).
+- **F15 — vulture flags every `@Slot` method as unused** (JS-called,
+  invisible to static analysis). A7 must run vulture with a slot
+  whitelist, not bare (tooling note for R12).
+- **F16 — A5 end-state trajectory.** Bridge 1329 lines / 66 methods after
+  R6; R7–R9 remove 26 slots + ~15 helpers; A6 (R11) shrinks `__init__`
+  + context. The §6 "≤10 methods per panel" target needs the same
+  adjust-with-reason treatment packing got (layout_state 14,
+  queue_scan 12 — both reasoned).
+
+Radon-artifact note (F9 context): `_window_filter` CC 8 (6 lines) and
+`_page_identity` CC 9 (10 lines, 1 if) are boolean-op/comprehension
+counting artifacts on trivially simple code. The R10 fixes are genuine
+dedups (shared predicates), NOT metric-gaming — and where no genuine
+split exists (registry literal, flat mapping, linear legacy flow) the
+honest verdict is TABLE with reason.
+
+## 4. New steps R10–R12 (planned from second pass)
+
+Old R10 (A6) → **R11**; old R11 (A7) → **R12** (bullets above kept for
+history; this section is authoritative). Kill-map unchanged (R10 kills 0
+by design — all targets already RULE 16-legal).
+
+- **R10 — Ideals sweep.** 8 fixes + reasons + shim centralization:
+  1. `run_state._page_identity` (CC 9) → extract `_cdp_attr(cdp, name)`
+     (one `getattr-or-""` read); main → CC ~5. Suite covers via
+     pool-ensure paths.
+  2. `blocks_library.save_custom_block` (CC 8) → extract
+     `_custom_block_list(raw)` normalizer, SHARED with
+     `delete_custom_block` (kills duplicated normalize); save → 7.
+  3. `layout_state._window_filter` (CC 8) → extract `_known_ids(items)`
+     (kills duplicated predicate); main → ~4. Covered by
+     `test_layout_state.py`.
+  4. `layout_state.import_preset_file` (LOC 21) → extract
+     `_preset_grid_error(doc)` validator; main → ~18. NEW direct unit
+     test for the pure helper (dialog branches stay F7-covered at R12).
+  5. `window_preset.parse_preset_input` (CC 8) → extract
+     `_raw_tree_result(parsed, grid_json)` (raw-{v,tree} branch);
+     main → ~5. Covered by `test_layout_state.py:56-69` ✅ existing.
+  6. `single_job_runner.wait_for_output` (LOC 25, CC 9, legacy body) →
+     extract `_poll_generation(ctx, timeout_ms)` core (poll + cancelled
+     mark + src route); main (overlay/revival/cleanup scaffolding) →
+     ~17/CC ~4. Golden coverage verified at implement; behavior-diff
+     script if no golden covers it.
+  7. `single_job_runner._run_one_checked` (LOC 23, A2 +2) → extract
+     `_block_skip_reason(ctx, block)` (cancelled/disabled guards);
+     main → 19. Covered by cancel/disabled goldens (verify at implement).
+  8. `single_job_runner.check_security` (LOC 24, legacy body) → extract
+     `_run_security_captcha(ctx)` tail (closures + handler invoke);
+     main (visibility gate) → ~10. Covered by `captcha.json` (verify).
+  9. TABLE with in-code/audit reasons (no split — would scatter):
+     `_handler_map` (flat registry literal, A2 +3 entries),
+     `_handle_wait` CC 9 (3 readable ternaries + single-level ifs, no
+     nesting; legacy body preserved verbatim by A2 converge),
+     `settings_to_js` LOC 21/CC 1 (flat 12-key view mapping).
+  10. `ideal-size:` class-docstring reasons on the F11 four (DRAFT
+      wording, verified against code at implement): frozen JS slot
+      surface + module-level helpers already extracted; remaining LOC
+      is per-slot validate/wire that cannot move without scattering.
+  11. `panels/__init__.py` → export all 9 mixins (+3 as R7–R9 land).
+  12. Clipboard → shim: `qt_compat.get_clipboard()` (handle chain,
+      headless → None) + `qt_compat.clipboard_copy(text)` (exact
+      `try_qt_clipboard_copy` behavior incl. lazy `QClipboard` import
+      inside the try); panel deletes both funcs, call site imports from
+      shim. qt_compat 35 → ~70 lines (still <150 ✅). Headless test:
+      returns `(False, None)`.
+  Each fix: implement → targeted tests/behavior-diff → gate (0 new) →
+  suite. Single commit. Kills 0 by design.
+- **R11 — A6 `BridgeContext`** (= old R10): `app/ui/bridge_context.py`
+  dataclass + `build_context()` + `wire_cdp/wire_watcher/wire_page_pool/
+  wire_thumb` (≤15 LOC); `Bridge.__init__` ≤20 (same attrs,
+  `_batch_future=None`); `_log_build_version`/`_on_cdp_error` → module
+  funcs. Kills 3 (`__init__`×2 + Bridge `[methods]`).
+- **R12 — A7 sweep** (= old R11 + F15): (a) vulture with @Slot whitelist
+  + unused-import sweep, Area A clean; (b) F5 frozen-119 test; (c) F6
+  packing test; (d) branch coverage ≥80/75, no uncovered new funcs
+  (dialog-fake tests; R10 helpers covered); (e) finish implementation
+  log; SYSTEM_OF_RECORD.md §7 + docs/README.md (RULE 17); (f) RULE 18
+  audit table (F9 TABLEs + F11 reasons + every deviation reasoned);
+  full gate + suite.
