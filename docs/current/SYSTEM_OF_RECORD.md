@@ -208,10 +208,10 @@ except (json.JSONDecodeError, ValidationError):
 
 | Layer | Files | Responsibility | Imports allowed |
 |---|---|---|---|
-| **core** | `app/core/action_blocks.py`, `correlation.py`, `naming.py`, `image_saver.py` | Domain logic, no Qt, no CDP | stdlib, PIL |
+| **core** | `app/core/action_blocks.py`, `correlation.py`, `naming.py`, `image_saver.py`, `layout_service.py`, `scanner.py`, `persistence.py` | Domain logic, no Qt, no CDP | stdlib, PIL |
 | **services** | `app/services/folder_scanner.py`, `url_validator.py` | Folder scan, URL validation, filtering (RULE 6) | core, stdlib |
-| **browser** | `app/browser/cdp_client.py`, `cdp_arena.py`, `dom_highlight.py`, `site_adapter.py` | CDP connection with lock, visual runner (RULE 1), selector map (RULE 21) | core, services, stdlib, websockets |
-| **persistence** | `app/persistence/app_state.py`, `config_manager.py`, `layout_service.py`, `undo_service.py` | JSON persistence, grid layout validation (RULE 13), undo timeline (RULE 12) | core, stdlib |
+| **browser** | `app/browser/cdp_client.py`, `cdp_arena.py`, `dom_highlight.py`, `site_adapter.py` (generated map — RULE 21, `tools/generate_selectors.py`), `selector.py` | CDP connection with lock, visual runner (RULE 1), selector map (RULE 21) | core, services, stdlib, websockets |
+| **persistence** | `app/persistence/json_store.py` (canonical atomic write / tolerant load), `config_manager.py`, `preset_store.py`, `undo_store.py`, `cooldown_store.py` | JSON persistence via `json_store` (RULE 13), undo timeline (RULE 12), cooldown (RULE 6) | core, stdlib |
 | **ui** | `app/ui/bridge.py`, `main_window.py`, `panels/*.js`, `web/js/*.js`, `web/css/variables.css` | PyQt6 + WebChannel, sash-grid, win-grip, dark mode, rect overlay | all below via bridge |
 | **pipeline** | `app/pipeline/runner.py` (if exists) or `bridge._do_run_batch()` | Batch loop, state machine 00-22, stop honour (RULE 7), progress (RULE 5) | core, browser, persistence |
 

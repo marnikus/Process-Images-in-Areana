@@ -19,9 +19,9 @@ echo "=== Arena Quality Gate — pre-push check (RULE 16) ==="
 echo "Docs: docs/current/AGENT_RULES.md RULE 16"
 echo ""
 
-# 1. Python syntax compile
+# 1. Python syntax compile — whole production tree (app/ + tools/)
 echo "▶ Checking Python syntax..."
-$PY -m py_compile app/browser/dom_highlight.py app/browser/probe_requests.py app/browser/visual_click.py app/core/action_blocks.py app/ui/bridge.py app/browser/cdp_arena.py app/core/layout_service.py
+find app tools -name "*.py" -print0 | xargs -0 $PY -m py_compile
 echo "  ✅ Syntax ok"
 echo ""
 

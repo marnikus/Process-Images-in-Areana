@@ -270,7 +270,7 @@ Media follows same ownership: bytes saved beside source that was processed, neve
 
 Mandatory for every change to production Python. Numbers, scopes, tools and exceptions frozen here. Origin: Old App `docs/current/AGENT_RULES.md` §16 and `CODE_QUALITY_GATES_DESIGN`.
 
-Executable form: `tools/verify_quality.py` (run it; do not re-derive). Legacy baseline: `tools/quality_baseline.json`. Full verification workflow: `docs/current/CODE_VERIFICATION.md` — **must be run before every push** (`bash tools/pre_push_check.sh` or `python tools/verify_quality.py --changed --allow-legacy` + `pytest` + coverage). Pre-push git hook `.git/hooks/pre-push` enforces it automatically.
+Executable form: `tools/verify_quality.py` (run it; do not re-derive). Legacy baseline: `tools/quality_baseline.json`. Full verification workflow: `docs/current/CODE_VERIFICATION.md` — **must be run before every push** (`bash tools/pre_push_check.sh` = syntax whole tree + `verify_quality.py --changed --allow-legacy` + **RULE 21 selector sync** `tools/generate_selectors.py --check` + **RULE 16.4 dead-module closure** `tools/import_graph.py --dead` + `pytest` + coverage report). Pre-push git hook `.git/hooks/pre-push` enforces it automatically. _(Amendment 2026-09-19: selector-sync and dead-module gates added to the push flow — Batch B.)_
 
 ### 16.0 When this applies
 
