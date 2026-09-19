@@ -238,6 +238,7 @@ Deleted 2026-09-19 (Area B, proven dead): `app/browser/controller.py` (Playwrigh
 | `tests/unit/test_preset_store.py`, `tests/unit/test_undo_store.py`, `tests/unit/test_config_manager.py` | Persistence contracts: preset families/dedup/deep copy, undo clamp/branch/dedup, session+window-preset stores, facade (RULE 13) | Never brick; store contracts |
 | `tests/unit/test_output_state.py`, `tests/unit/test_cooldown_store_edges.py` | `flatten_diagnostics` normaliser; cooldown junk-entry/stats/idle-drop edge branches (RULE 4) | Diag + cooldown robustness |
 | `tests/js/test_composer_probes.mjs`, `tests/js/test_output_probes.mjs` | JS probe payloads extracted from the real Python sources and executed against a stub DOM (RULE 8) | Insert/send state, output v4 verify |
+| `tests/test_verify_quality_tool.py` | Gate behaviour lanes as subprocess tests: loud no-merge-base fallback, changed-file subset, coverage ratchet pass/fail, refuse-to-lower floor, error lanes, per-symbol legacy ratchet (new symbol / growth in a legacy file fails) | The gate itself is under test (RULE 8) |
 | `tools/verify_quality.py` + `tools/quality_baseline.json` | Code-quality gate: LOC 30/150, params 4, methods 15, CC 10, cognitive 15, nesting 4, coverage 80%/75% final (ratchet mid-round: fail only on decrease vs baseline `coverage` key) (RULE 16) | Gate every change |
 | `tools/pre_push_check.sh` | One-command pre-push: syntax → pytest → fresh coverage → gate (`--changed --base`, legacy-allowed, coverage ratchet; loud warning if base ref has no merge-base) | Push safety |
 

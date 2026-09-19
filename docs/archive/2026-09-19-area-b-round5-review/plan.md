@@ -18,3 +18,17 @@ coverage ≥44.31/35.10, vulture @90 = 0, no production `app/` change
 (B19's proof commit is created and reset within the step), anti-gaming
 §16.2 respected (no `foo_part1`; the growth check is a named
 responsibility, not a dodge).
+
+---
+
+## Amendment (during B19 implementation)
+
+Research disproved the planned mechanism before it shipped: "loc breaches
+with value > baseline `max_func_loc`" can never catch the D6 exploit
+(a new 36-LOC function does not exceed bridge's baseline max of 1209).
+B19 therefore implements **per-symbol grandfathering** instead: the
+baseline gains a `funcs` {symbol: LOC} map per file (merged, existing
+maxima preserved); a known symbol may not exceed its own baseline LOC
+(`[LEGACY GROWTH]` fail) and an unknown symbol is new code in a legacy
+file (`[LEGACY-NEW]` fail). Exit criterion unchanged and met: the
+identical exploit commit now fails the pre-push lane (exit 1).
