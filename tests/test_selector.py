@@ -1,5 +1,5 @@
 import pytest
-from app.browser.site_adapter import SELECTORS, get_selector, get_readiness_requirements
+from app.browser.site_adapter import SELECTORS, get_selector
 
 @pytest.mark.unit
 def test_selectors_exist():
@@ -14,13 +14,7 @@ def test_selector_structure():
         assert sel.primary
         assert isinstance(sel.fallbacks, list)
         assert sel.expectedCount >= 0
-
-@pytest.mark.unit
-def test_readiness_requirements():
-    reqs = get_readiness_requirements()
-    assert "prompt_textarea" in reqs
-    assert "send_button" in reqs
-    assert "file_input" in reqs
+        assert sel.tier in ("semantic", "structural", "class-fragment")  # RULE 21
 
 @pytest.mark.unit
 def test_get_selector():

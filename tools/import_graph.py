@@ -113,28 +113,36 @@ def pkgs_of(mods: dict[str, Path]) -> set[str]:
     return {m for m in mods if mods[m].name == "__init__.py"}
 
 
+def _production_modules(mods: dict) -> list:
+    return [m for m in sorted(mods)
+            if m.startswith(APP + ".") and m not in ENTRY_POINTS and mods[m].name != "__init__.py"]
+
+
+def _verdict_line(mod: str, dead: set, dead_only: bool, imports: dict, mods: dict):
+    """(line, is_dead). line None = suppressed in --dead mode."""
+    importers = sorted(imports.get(mod, set()))
+    if mod in dead:
+        if mod in DOCUMENTED_TEST_ONLY:
+            return f"doc-kept   {mod:55s} test-only by design (SYSTEM_OF_RECORD §8)", False
+        direct = "no importers" if not importers else "only via dead/test modules"
+        return f"DEAD       {mod:55s} {direct}; importers={importers or '—'}", True
+    if dead_only:
+        return None, False
+    verdict = classify(mod, imports, mods)
+    return f"{verdict:10s} {mod:55s} importers={importers or '—'}", False
+
+
 def main() -> int:
     dead_only = "--dead" in sys.argv
     mods, pkgs = find_modules()
     imports = import_graph(mods, pkgs)
     dead = dead_closure(mods, imports)
     bad = 0
-    for mod in sorted(mods):
-        if not mod.startswith(APP + ".") or mod in ENTRY_POINTS or mods[mod].name == "__init__.py":
-            continue
-        importers = sorted(imports.get(mod, set()))
-        if mod in dead:
-            if mod in DOCUMENTED_TEST_ONLY:
-                print(f"doc-kept   {mod:55s} test-only by design (SYSTEM_OF_RECORD §8)")
-            else:
-                direct = "no importers" if not importers else "only via dead/test modules"
-                print(f"DEAD       {mod:55s} {direct}; importers={importers or '—'}")
-                bad += 1
-        elif dead_only:
-            continue
-        else:
-            verdict = classify(mod, imports, mods)
-            print(f"{verdict:10s} {mod:55s} importers={importers or '—'}")
+    for mod in _production_modules(mods):
+        line, is_dead = _verdict_line(mod, dead, dead_only, imports, mods)
+        if line:
+            print(line)
+        bad += int(is_dead)
     if dead_only and bad:
         print(f"\n{bad} DEAD module(s) (production closure) — remove or wire (RULE 16.4)")
         return 1

@@ -19,20 +19,3 @@ class SelectorObject:
 
     def all_selectors(self) -> List[str]:
         return [self.primary] + self.fallbacks
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "primary": self.primary,
-            "fallbacks": self.fallbacks,
-            "scope": self.scope,
-            "mustBeVisible": self.mustBeVisible,
-            "mustBeEnabled": self.mustBeEnabled,
-            "expectedCount": self.expectedCount,
-            "textCondition": self.textCondition,
-            "textConditionType": self.textConditionType,
-            "verification": self.verification,
-            "evidence": self.evidence,
-            "lastVerified": self.lastVerified,
-            "tier": self.tier,
-        }

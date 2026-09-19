@@ -765,7 +765,3 @@ def build_check_js(old_srcs, correlation_id, old_outputs) -> str:
 
 def is_layout_reverse_js() -> str:
     return "!!document.querySelector('ol.flex-col-reverse')"
-
-
-def get_selectors() -> list:
-    return SELECTORS_V3.copy()

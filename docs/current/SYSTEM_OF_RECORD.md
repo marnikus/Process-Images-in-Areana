@@ -229,9 +229,10 @@ except (json.JSONDecodeError, ValidationError):
 | `tests/test_correlation.py` | `generate_correlation_id()` uniqueness, `build_final_prompt()` | Token verification (RULE 22) |
 | `tests/test_state_transitions.py` | State machine 00-22, stop/pause/resume | RULE 7 |
 | `tests/test_verification.py` | Baseline capture, new output detection, validation (not HTML, dimensions >0) | RULE 15 |
-| `tests/test_selectors.py` | Selector map primary+fallbacks, visibility, count, evidence | RULE 21 + DOM_SELECTORS.md |
-| `tests/test_rule16_new_code.py` | Code-quality gates: LOC 30/150, params 4, methods 15, CC 10, cognitive 15, nesting 4, coverage 80%/75% | RULE 16 |
-| `tests/js_harness.js` | JS probes against DOM stub (real execution) | RULE 8 |
+| `tests/test_selector.py` | Selector map primary+fallbacks, visibility, count, RULE 21 tier, evidence | RULE 21 + DOM_SELECTORS.md |
+| `tests/test_json_store.py` | Atomic JSON write (format, 0600 mode, no temp leftover) + missing/corrupt/wrong-type load → deep-copied default | RULE 13 (never brick) |
+| `tools/verify_quality.py` (+ `tools/quality_baseline.json`, pre-push hook) | Code-quality gates: LOC 30/150, params 4, methods 15, CC 10, cognitive 15, nesting 4, coverage 80%/75%; `--changed --allow-legacy` operational mode; `tools/pre_push_check.sh` adds selector-sync (`generate_selectors.py --check`) + dead-module (`import_graph.py --dead`) gates | RULE 16 |
+| `tests/js/*.mjs` (run via `node --test tests/js/`) | JS probes against DOM stub (real execution of the actual probe strings) | RULE 8 |
 
 **Coverage command (copy-paste, same as Old App adapted):**
 

@@ -35,6 +35,17 @@ def test_atomic_write_no_corruption():
         assert len(loaded.urls) == 2
 
 @pytest.mark.integration
+def test_load_state_corrupt_returns_empty():
+    # RULE 13: a bricked state file costs one failed load, never a crash
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "app_state.json"
+        path.write_text("{corrupt json", encoding="utf-8")
+        state = load_state(path)
+        assert len(state.urls) == 0
+        assert len(state.images) == 0
+
+
+@pytest.mark.integration
 def test_preset_save_load():
     with tempfile.TemporaryDirectory() as tmp:
         state_path = Path(tmp) / "state.json"

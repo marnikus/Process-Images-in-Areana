@@ -48,7 +48,6 @@ RE_ARRAY = re.compile(r"const\s+sels\s*=\s*\[(.+?)\];", re.S)
 RE_QUERY = re.compile(r"""querySelector(?:All)?\(\s*(?:'([^']*)'|"([^"]*)")\s*\)""")
 RE_CHECKS = re.compile(r"\{sel:\s*'([^']*)'\s*,\s*name:\s*'([^']*)'")
 RE_CLOSEST = re.compile(r"""closest\(\s*(?:'([^']*)'|"([^"]*)")\s*\)""")
-RE_TRIPLE = re.compile(r'"""')
 
 
 # ---------------------------------------------------------------- extraction
@@ -148,6 +147,17 @@ def _block_defaults(tree: ast.AST) -> list[tuple[str, str]]:
 def collect() -> dict[str, list[tuple[str, str]]]:
     """context_id -> ordered (slot, selector) pairs (raw, before excludes)."""
     ctx: dict[str, list[tuple[str, str]]] = {}
+    _collect_arena(ctx)
+    _collect_newchat(ctx)
+    _collect_output_probes(ctx)
+    _collect_cdp_client(ctx)
+    _collect_action_blocks(ctx)
+    _collect_captcha_js(ctx)
+    return ctx
+
+
+def _collect_arena(ctx: dict) -> None:
+    """The 8 JS probe constants in cdp_arena.py (region-scoped by const name)."""
     arena = (ROOT / "app/browser/cdp_arena.py").read_text(encoding="utf-8")
     regions = {
         "arena_find": ("JS_FIND_TEXTAREA", "array"),
@@ -163,24 +173,33 @@ def collect() -> dict[str, list[tuple[str, str]]]:
     for cid, (const, kind) in regions.items():
         ctx[cid] = extract_pairs(_triple_quoted(arena, const), kind)
 
-    newchat = (ROOT / "app/browser/new_chat.py").read_text(encoding="utf-8")
-    ctx["newchat_queries"] = extract_pairs(newchat, "query")
-    ctx["newchat_candidates"] = [(str(i), s) for i, s in
-                                 enumerate(_ast_tuples_first(_ast_file(ROOT / "app/browser/new_chat.py"), "NEW_CHAT_CANDIDATES"))]
 
+def _collect_newchat(ctx: dict) -> None:
+    newchat = ROOT / "app/browser/new_chat.py"
+    ctx["newchat_queries"] = extract_pairs(newchat.read_text(encoding="utf-8"), "query")
+    ctx["newchat_candidates"] = [(str(i), s) for i, s in
+                                 enumerate(_ast_tuples_first(_ast_file(newchat), "NEW_CHAT_CANDIDATES"))]
+
+
+def _collect_output_probes(ctx: dict) -> None:
     outp = ROOT / "app/browser/output_probes.py"
-    out_src = outp.read_text(encoding="utf-8")
-    ctx["out_queries"] = extract_pairs(out_src, "query")
-    ctx["out_closest"] = extract_pairs(out_src, "closest")
+    ctx["out_queries"] = extract_pairs(outp.read_text(encoding="utf-8"), "query")
+    ctx["out_closest"] = extract_pairs(outp.read_text(encoding="utf-8"), "closest")
     ctx["out_list"] = [(str(i), s) for i, s in
                        enumerate(_ast_list_const(_ast_file(outp), "SELECTORS_V3"))]
 
+
+def _collect_cdp_client(ctx: dict) -> None:
     cdp = _ast_file(ROOT / "app/browser/cdp_client.py")
     ctx["attach_defaults"] = [(str(i), s) for i, s in enumerate(_attach_defaults(cdp))]
 
+
+def _collect_action_blocks(ctx: dict) -> None:
     ab = _ast_file(ROOT / "app/core/action_blocks.py")
     ctx["block_defaults"] = _block_defaults(ab)
 
+
+def _collect_captcha_js(ctx: dict) -> None:
     jsdir = ROOT / "app/browser/captcha_js"
     detect = (jsdir / "detect.js").read_text(encoding="utf-8")
     ctx["detect_consts"] = (extract_pairs(detect, "const:IFRAME") + extract_pairs(detect, "const:WIDGET"))
@@ -194,7 +213,6 @@ def collect() -> dict[str, list[tuple[str, str]]]:
             pairs = extract_pairs(src, kind)
             if pairs:
                 ctx[f"{name}_{kind}"] = pairs
-    return ctx
 
 
 def visible(ctx: dict[str, list[tuple[str, str]]]) -> dict[str, list[tuple[str, str]]]:
@@ -333,8 +351,7 @@ def build_chains(ctx: dict[str, list[tuple[str, str]]]) -> tuple[dict[str, list[
     """name -> chain (deduped, live order) + coverage errors."""
     slots: dict[str, dict[str, str]] = {c: {s: sel for s, sel in pairs} for c, pairs in ctx.items()}
     refs_seen: set[tuple[str, str]] = set()
-    chains: dict[str, list[str]] = {}
-    errors: list[str] = []
+    chains, errors = {}, []
     for name, refs, _meta in ENTRIES:
         chain: list[str] = []
         for cid, slot in refs:
@@ -348,13 +365,20 @@ def build_chains(ctx: dict[str, list[tuple[str, str]]]) -> tuple[dict[str, list[
             if sel not in chain:
                 chain.append(sel)
         chains[name] = chain
+    errors.extend(_coverage_errors(ctx, refs_seen))
+    return chains, errors
+
+
+def _coverage_errors(ctx: dict, refs_seen: set) -> list[str]:
+    """Every non-excluded extracted selector must be owned by exactly one entry."""
+    errors = []
     for cid, pairs in ctx.items():
         for slot, sel in pairs:
             if sel in EXCLUDES or "${" in sel:
                 continue
             if (cid, slot) not in refs_seen:
                 errors.append(f"UNCOVERED {cid}[{slot}] = {sel!r}")
-    return chains, errors
+    return errors
 
 
 # --------------------------------------------------------------- rendering
@@ -366,28 +390,31 @@ def render_block(chains: dict[str, list[str]], date: str) -> str:
              "# tests/js/*.mjs execute the real probe strings (RULE 8).",
              "SELECTORS: Dict[str, SelectorObject] = {"]
     for name, refs, meta in ENTRIES:
-        chain = chains[name]
-        m = {**META_DEFAULT, **meta}
-        lines.append(f"    {name!r}: SelectorObject(")
-        lines.append(f"        name={name!r},")
-        lines.append(f"        primary={chain[0]!r},")
-        if len(chain) > 1:
-            lines.append(f"        fallbacks={chain[1:]!r},")
-        lines.append(f"        scope={m['scope']!r},")
-        lines.append(f"        mustBeVisible={m['mustBeVisible']},")
-        lines.append(f"        mustBeEnabled={m['mustBeEnabled']},")
-        lines.append(f"        expectedCount={m['expectedCount']},")
-        lines.append(f"        textCondition={m['textCondition']!r},")
-        tct = "contains" if m["textCondition"] else "equals"
-        lines.append(f"        textConditionType={tct!r},")
-        lines.append(f"        verification={m['verification']!r},")
-        ev = "; ".join(dict.fromkeys(cid for cid, _ in refs))
-        lines.append(f"        evidence={ev!r},")
-        lines.append(f"        lastVerified={date!r},")
-        lines.append(f"        tier={tier_of(chain[0])!r},")
-        lines.append("    ),")
+        lines.extend(_render_entry(name, chains[name], meta, refs, date))
     lines += ["}", ""]
     return "\n".join(lines) + END_MARK + "\n"
+
+
+def _render_entry(name: str, chain: list[str], meta: dict, refs: list, date: str) -> list:
+    m = {**META_DEFAULT, **meta}
+    tct = "contains" if m["textCondition"] else "equals"
+    ev = "; ".join(dict.fromkeys(cid for cid, _ in refs))
+    lines = [f"    {name!r}: SelectorObject(", f"        name={name!r},",
+             f"        primary={chain[0]!r},"]
+    if len(chain) > 1:
+        lines.append(f"        fallbacks={chain[1:]!r},")
+    lines += [f"        scope={m['scope']!r},",
+              f"        mustBeVisible={m['mustBeVisible']},",
+              f"        mustBeEnabled={m['mustBeEnabled']},",
+              f"        expectedCount={m['expectedCount']},",
+              f"        textCondition={m['textCondition']!r},",
+              f"        textConditionType={tct!r},",
+              f"        verification={m['verification']!r},",
+              f"        evidence={ev!r},",
+              f"        lastVerified={date!r},",
+              f"        tier={tier_of(chain[0])!r},",
+              "    ),"]
+    return lines
 
 
 def write_site_adapter(block: str) -> None:
@@ -453,21 +480,29 @@ def main() -> int:
         print(f"extraction failed: {e}")
         return 1
     if "--dump" in args:
-        for cid, pairs in sorted(ctx.items()):
-            print(f"== {cid}")
-            for slot, sel in pairs:
-                print(f"   [{slot}] {sel}")
-        return 0
+        return _dump(ctx)
     if "--write" in args:
-        chains, errors = build_chains(ctx)
-        if errors:
-            print("\n".join(f"  ✗ {e}" for e in errors))
-            return 1
-        write_site_adapter(render_block(chains, date_str()))
-        print(f"written — {len(chains)} entries")
-        return check(ctx)
+        return _write(ctx)
     if "--report" in args:
         return report(ctx)
+    return check(ctx)
+
+
+def _dump(ctx: dict) -> int:
+    for cid, pairs in sorted(ctx.items()):
+        print(f"== {cid}")
+        for slot, sel in pairs:
+            print(f"   [{slot}] {sel}")
+    return 0
+
+
+def _write(ctx: dict) -> int:
+    chains, errors = build_chains(ctx)
+    if errors:
+        print("\n".join(f"  ✗ {e}" for e in errors))
+        return 1
+    write_site_adapter(render_block(chains, date_str()))
+    print(f"written — {len(chains)} entries")
     return check(ctx)
 
 
