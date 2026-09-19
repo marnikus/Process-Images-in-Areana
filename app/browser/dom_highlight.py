@@ -1,4 +1,6 @@
-"""DOM highlight — C6 refactor with HighlightSpec param objects and small helpers."""
+"""DOM highlight — C6 refactor with HighlightSpec param objects and small helpers.
+# ideal-size: 476 lines reason=single JS payload probe + watcher overlay CSS/JS literals per RULE16.1.5; splitting string literal would break in-page agent contract
+"""
 from __future__ import annotations
 
 import json

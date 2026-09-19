@@ -4,6 +4,7 @@ In both situations it draws rectangle msg on left center page with msg "wait for
 or "wait for user. Captcha" and sleeps circle run and waits it solve.
 
 Time to solve timeout is user configurable in win settings.
+# ideal-size: 324 lines reason=WatcherService orchestrates async loop + state + overlay + job pause/resume; class LOC 287 baseline legacy, file contains config/state dataclasses + service; split would break cohesion
 """
 
 import asyncio

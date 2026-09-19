@@ -1,7 +1,8 @@
 /* action-blocks.js — facade (C7)
    Delegates to block-store, block-render, block-config, block-listeners.
    RULE18: file 150-300 ideal, ≤500 hard limit, func ≤30, CC≤10 via helpers
-*/
+   ideal-size: 434 lines reason=facade must keep getter/setter proxies + lifecycle + pause overlay + bridge binding in one place for App compatibility; further split would create circular deps with store/render
+ */
 'use strict';
 
 const ActionBlocksPanel = {

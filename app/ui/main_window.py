@@ -34,33 +34,25 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Arena Image Processor — Modern UI")
         self.resize(1600, 1000)
-
-        # config manager for layout + presets + window geometry
-        self.config_manager = ConfigManager(config_dir="config")
-
-        # Restore window geometry if valid — position and size storable automatically
+        self._build_services(state_path)
+        self._build_ui()
         self._restore_window_geometry()
+        self._load_index()
 
-        # state path for arena (legacy app_state)
+    def _build_services(self, state_path: Path):
+        self.config_manager = ConfigManager(config_dir="config")
         self.state_path = Path(state_path)
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-
         self._init_cdp_client()
 
-        # Web view
+    def _build_ui(self):
         self.view = QWebEngineView(self)
         self.setCentralWidget(self.view)
-
         self._configure_web_settings()
-
-        # Bridge
         self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, cdp_client=self.cdp_client, parent=self)
         manager = self.bridge._captcha_service().recordings
         self.recordings_bridge = CaptchaRecordingsBridge(manager, self)
-
         self._attach_web_channel()
-
-        self._load_index()
 
     def _init_cdp_client(self) -> None:
         # CDP client for Chrome remote debugging — host/port from config so user can choose

@@ -284,7 +284,7 @@
   },
   "app/browser/dom_highlight.py": {
     "coverage": 35.13513513513514,
-    "file_lines": 476,
+    "file_lines": 478,
     "func_count": 25,
     "max_cc": 10,
     "max_class_loc": 8,
@@ -344,7 +344,7 @@
   },
   "app/browser/output_wait.py": {
     "coverage": 11.69811320754717,
-    "file_lines": 310,
+    "file_lines": 312,
     "func_count": 27,
     "max_cc": 9,
     "max_class_loc": 4,
@@ -956,7 +956,7 @@
   },
   "app/services/watcher.py": {
     "coverage": 27.40740740740741,
-    "file_lines": 324,
+    "file_lines": 325,
     "func_count": 25,
     "max_cc": 7,
     "max_class_loc": 287,
@@ -1003,13 +1003,13 @@
   },
   "app/ui/main_window.py": {
     "coverage": 0.0,
-    "file_lines": 162,
-    "func_count": 9,
+    "file_lines": 154,
+    "func_count": 11,
     "max_cc": 6,
-    "max_class_loc": 131,
+    "max_class_loc": 123,
     "max_cog": 6,
-    "max_func_loc": 31,
-    "max_methods": 8,
+    "max_func_loc": 26,
+    "max_methods": 10,
     "max_nest": 1,
     "max_params": 1
   },
@@ -1116,7 +1116,7 @@
     "max_params": 2
   },
   "app/ui/web/js/panels/action-blocks.js": {
-    "file_lines": 435,
+    "file_lines": 436,
     "func_count": 120,
     "js": true,
     "max_cc": 10,

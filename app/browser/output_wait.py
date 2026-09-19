@@ -1,4 +1,6 @@
-"""Output wait loop — C6 refactor with WaitSpec and small helpers."""
+"""Output wait loop — C6 refactor with WaitSpec and small helpers.
+# ideal-size: 310 lines reason=WaitSpec+LoopState polling branches + fallback + mismatch handling; file contains many ≤20 LOC helpers, split would scatter polling decision cohesion
+"""
 from __future__ import annotations
 
 import asyncio
