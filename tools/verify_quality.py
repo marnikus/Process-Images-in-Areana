@@ -587,6 +587,14 @@ def collect_breaches(args, files: List[Path], baseline_data: Dict,
         all_breaches.extend(breaches)
     cov_path = Path(args.coverage_file) if args.coverage_file else None
     all_breaches.extend(check_coverage(cov_path=cov_path, ratchet=ratchet))
+    if args.coverage_ratchet and ratchet is None:
+        all_breaches.append({
+            "file": "coverage.json", "type": "coverage",
+            "metric": "ratchet-unavailable", "fail": False,
+            "message": "--coverage-ratchet: baseline 'coverage' key missing or "
+                       "unreadable — ratchet floor unavailable, absolute D4 "
+                       "lanes applied (seed with --update-coverage-baseline)",
+        })
     return all_breaches
 
 
@@ -660,16 +668,7 @@ def main():
         except Exception:
             baseline_data = {}
     files, changed_fallback = select_files(args)
-    ratchet = ratchet_floor(args)
-    all_breaches = collect_breaches(args, files, baseline_data, ratchet)
-    if args.coverage_ratchet and ratchet is None:
-        all_breaches.append({
-            "file": "coverage.json", "type": "coverage",
-            "metric": "ratchet-unavailable", "fail": False,
-            "message": "--coverage-ratchet: baseline 'coverage' key missing or "
-                       "unreadable — ratchet floor unavailable, absolute D4 "
-                       "lanes applied (seed with --update-coverage-baseline)",
-        })
+    all_breaches = collect_breaches(args, files, baseline_data, ratchet_floor(args))
     fails = [b for b in all_breaches if b.get("fail")]
     warns = [b for b in all_breaches if not b.get("fail")]
     if args.json:
