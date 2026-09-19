@@ -10,6 +10,7 @@ from app.ui.panels.app_settings import AppSettingsMixin
 from app.ui.panels.blocks_library import BlocksLibraryMixin
 from app.ui.panels.blocks_stack import BlocksStackMixin
 from app.ui.panels.browser_tabs import BrowserTabsMixin
+from app.ui.panels.cdp_tools import CdpToolsMixin
 from app.ui.panels.layout_state import LayoutStateMixin
 from app.ui.panels.page_pool import PagePoolMixin
 from app.ui.panels.queue_scan import QueueScanMixin
@@ -22,6 +23,7 @@ __all__ = [
     "BlocksLibraryMixin",
     "BlocksStackMixin",
     "BrowserTabsMixin",
+    "CdpToolsMixin",
     "LayoutStateMixin",
     "PagePoolMixin",
     "QueueScanMixin",

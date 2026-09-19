@@ -24,9 +24,6 @@ from app.core.persistence import load_state
 from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
-from app.browser.dom_highlight import build_highlight_js, build_clear_js, build_highlight_probe, build_find_probe, build_click_probe
-from app.browser.probe_requests import FindProbeSpec, ClickProbeSpec, HighlightSpec, COLOR_FIND, COLOR_CLICK, COLOR_COLLECT
-from app.browser.visual_click import ClickRequest, find_and_click
 from app.ui.panels import blocks_stack, layout_state
 from app.ui.panels.queue_scan import push_queue_undo, selected_images
 from app.ui.panels.watcher_captcha import (
@@ -51,6 +48,7 @@ from app.ui.panels.app_settings import AppSettingsMixin
 from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
 from app.ui.panels.page_pool import PagePoolMixin
 from app.ui.panels.browser_tabs import BrowserTabsMixin
+from app.ui.panels.cdp_tools import CdpToolsMixin
 from app.ui.services import arena_serialize, undo_entries
 from app.core.action_blocks import (
     default_stack,
@@ -69,7 +67,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin, BrowserTabsMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, PagePoolMixin, BrowserTabsMixin, CdpToolsMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -513,37 +511,6 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
         # Seam for main_window + app/services/captcha (watcher_captcha owns the factory).
         return captcha_service(self)
 
-    @Slot(str, result=str)
-    def highlight_image(self, img_id: str):
-        self._emit_highlight_demo()
-        if self.cdp and self.cdp.is_connected:
-            self._schedule_coro(self._do_highlight_demo_cdp(img_id))
-        return json.dumps({"ok": True})
-
-    async def _do_highlight_demo_cdp(self, img_id: str):
-        try:
-            duration = self.config.get_state("highlight_duration", 3)
-            duration_ms = int(duration * 1000) if duration else 2000
-            from app.browser.cdp_arena import CDPArenaController
-            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
-            await ctrl.highlight_selector('textarea[name="message"]', color="#FF0000", duration_ms=duration_ms, caption=f"Image {img_id[:8]}" if img_id else "Clicked element")
-            self.highlight_rect.emit(json.dumps({"x":200,"y":200,"width":320,"height":180,"duration":duration,"label":f"Image {img_id}" if img_id else "Clicked element"}))
-        except Exception as e:
-            self._log(f"Highlight failed: {e}", "warn")
-
-    # ---- undo system ----
-    def _emit_highlight_demo(self):
-        duration = self.config.get_state("highlight_duration", 3)
-        rect = {
-            "x": 200,
-            "y": 200,
-            "width": 320,
-            "height": 180,
-            "duration": duration,
-            "label": "Clicked element"
-        }
-        self.highlight_rect.emit(json.dumps(rect))
-
     # ---- CDP Chrome connection (robust, non-blocking to avoid UI freeze) ----
     # Persistent background asyncio loop to keep CDP websocket receive_task alive.
     # Previous short-lived asyncio.run() closed loop immediately after connect(),
@@ -663,249 +630,3 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
                 coro.close()
             except Exception:
                 pass
-
-
-    # URL bookmarks (from old app, now using arena_presets)
-    # Arena presets (full)
-    # Prompt presets
-    # Highlight via CDP
-    @Slot(str, str, int, str, result=str)
-    def highlight_selector(self, selector: str, color: str, duration_ms: int, caption: str):
-        if not self.cdp or not self.cdp.is_connected:
-            # fallback to UI overlay
-            rect = {
-                "x": 200, "y": 200, "width": 320, "height": 180,
-                "duration": duration_ms / 1000 if duration_ms>0 else 2,
-                "label": caption or selector,
-                "color": color
-            }
-            self.highlight_rect.emit(json.dumps(rect))
-            return json.dumps({"ok": True, "fallback": True})
-        # schedule async highlight
-        self._schedule_coro(self._do_highlight(selector, color, duration_ms, caption))
-        return json.dumps({"ok": True})
-
-    async def _do_highlight(self, selector: str, color: str, duration_ms: int, caption: str):
-        try:
-            js = build_highlight_js(selector, color or "#FF0000", duration_ms or 2000, caption or selector, clear_first=True)
-            result_json = await self.cdp.evaluate(js)
-            if result_json:
-                try:
-                    data = json.loads(result_json) if isinstance(result_json, str) else result_json
-                    if data.get("found") and data.get("rect"):
-                        r = data["rect"]
-                        rect = {
-                            "x": r.get("x",0), "y": r.get("y",0),
-                            "width": r.get("width",100), "height": r.get("height",100),
-                            "duration": (duration_ms or 2000)/1000,
-                            "label": caption or selector,
-                            "color": color
-                        }
-                        self.highlight_rect.emit(json.dumps(rect))
-                        self._log(f"🔍 Highlighted {selector} at {r}", "success")
-                    else:
-                        self._log(f"⚠ Highlight not found: {selector}", "warn")
-                except Exception as e:
-                    self._log(f"Highlight parse failed: {e}", "warn")
-        except Exception as e:
-            self._log(f"Highlight failed: {e}", "error")
-
-    @Slot(result=str)
-    def clear_highlights(self):
-        if not self.cdp or not self.cdp.is_connected:
-            return json.dumps({"ok": True})
-        self._schedule_coro(self._do_clear_highlights())
-        return json.dumps({"ok": True})
-
-    async def _do_clear_highlights(self):
-        try:
-            js = build_clear_js()
-            await self.cdp.evaluate(js)
-            self._log("Highlights cleared", "info")
-        except Exception as e:
-            self._log(f"Clear highlights failed: {e}", "error")
-
-    # ---- CDP config user decides port and user-data-dir ----
-    @Slot(result=str)
-    def get_cdp_config(self):
-        try:
-            host = self.config.get_state("cdp_host", "127.0.0.1")
-            port = self.config.get_state("cdp_port", 9222)
-            user_data_dir = self.config.get_state("cdp_user_data_dir", "C:\\arena-images-chrome")
-            extra = self.config.get_state("cdp_extra_args", "")
-            url_pattern = self.config.get_state("url_pattern", "arena.ai")
-            payload = {
-                "host": host,
-                "port": int(port),
-                "user_data_dir": user_data_dir,
-                "extra_args": extra,
-                "url_pattern": url_pattern,
-                "base_url": f"http://{host}:{port}",
-                "is_connected": bool(self.cdp and self.cdp.is_connected),
-                "current_host": self.cdp._host if self.cdp else host,
-                "current_port": self.cdp._port if self.cdp else int(port),
-            }
-            return json.dumps(payload, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"error": str(e)}, ensure_ascii=False)
-
-    @Slot(str, result=str)
-    def set_cdp_config(self, config_json: str):
-        try:
-            data = json.loads(config_json or "{}")
-            host = data.get("host") or data.get("cdp_host") or "127.0.0.1"
-            port = data.get("port") or data.get("cdp_port") or 9222
-            user_data_dir = data.get("user_data_dir") or data.get("cdp_user_data_dir") or "C:\\arena-images-chrome"
-            extra = data.get("extra_args") or data.get("cdp_extra_args") or ""
-            url_pattern = data.get("url_pattern", self.config.get_state("url_pattern", "arena.ai"))
-            url_pattern = url_pattern.strip() if isinstance(url_pattern, str) else "arena.ai"
-            # validate
-            try:
-                port_i = int(port)
-                if not (1 <= port_i <= 65535):
-                    return json.dumps({"ok": False, "error": "port must be 1-65535"})
-            except:
-                return json.dumps({"ok": False, "error": "invalid port"})
-            # save to session
-            self.config.set_state(cdp_host=host, cdp_port=port_i, cdp_user_data_dir=user_data_dir, cdp_extra_args=extra,
-                                  url_pattern=url_pattern)
-            # update cdp client
-            if self.cdp:
-                try:
-                    self.cdp.set_host_port(host, port_i)
-                except Exception:
-                    pass
-            if self._page_pool:
-                try:
-                    self._page_pool._host = str(host)
-                    self._page_pool._port = int(port_i)
-                except Exception:
-                    pass
-            self._log(f"CDP config saved: {host}:{port_i} dir={user_data_dir}", "success")
-            return json.dumps({"ok": True, "host": host, "port": port_i, "user_data_dir": user_data_dir})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
-
-    @Slot(result=str)
-    def get_chrome_launch_command(self):
-        try:
-            host = self.config.get_state("cdp_host", "127.0.0.1")
-            port = self.config.get_state("cdp_port", 9222)
-            user_data_dir = self.config.get_state("cdp_user_data_dir", "C:\\arena-images-chrome")
-            extra = self.config.get_state("cdp_extra_args", "")
-            # Windows command
-            win_cmd = f'"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port={port} --user-data-dir="{user_data_dir}"'
-            if extra:
-                win_cmd += f" {extra}"
-            # Also with URL placeholder
-            win_cmd_with_url = win_cmd + " https://arena.ai"
-            # Linux/Mac
-            linux_cmd = f'google-chrome --remote-debugging-port={port} --user-data-dir="{user_data_dir}"'
-            if extra:
-                linux_cmd += f" {extra}"
-            payload = {
-                "host": host,
-                "port": int(port),
-                "user_data_dir": user_data_dir,
-                "extra_args": extra,
-                "windows": win_cmd,
-                "windows_with_url": win_cmd_with_url,
-                "linux": linux_cmd,
-                "test_url": f"http://{host}:{port}/json/list",
-            }
-            return json.dumps(payload, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"error": str(e)}, ensure_ascii=False)
-
-    @Slot(str, result=str)
-    def cdp_attach_image_test(self, image_id: str):
-        if not self.cdp or not self.cdp.is_connected:
-            return json.dumps({"ok": False, "error": "CDP not connected"})
-        # Find image
-        img = None
-        for im in self.state.images:
-            if im.id == image_id or (not image_id and im.selected):
-                img = im
-                break
-        if not img:
-            # fallback first selected
-            sel = [i for i in self.state.images if i.selected]
-            if sel:
-                img = sel[0]
-        if not img:
-            return json.dumps({"ok": False, "error": "No image found, select one in queue"})
-        self._log(f"🧪 Testing attach for {img.absolute_path}", "info")
-        self._schedule_coro(self._do_cdp_attach_test(img.absolute_path))
-        return json.dumps({"ok": True, "path": img.absolute_path})
-
-    async def _do_cdp_attach_test(self, image_path: str):
-        try:
-            from app.browser.cdp_arena import CDPArenaController
-            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
-            ok, reason = await ctrl.attach_image(image_path)
-            if ok:
-                self._log(f"✅ Attach test success: {reason}", "success")
-            else:
-                self._log(f"❌ Attach test failed: {reason}", "error")
-        except Exception as e:
-            self._log(f"Attach test exception: {e}", "error")
-
-    @Slot(str, result=str)
-    def cdp_insert_prompt_test(self, prompt_text: str):
-        if not self.cdp or not self.cdp.is_connected:
-            return json.dumps({"ok": False, "error": "CDP not connected"})
-        txt = prompt_text or self.state.prompt.get("user_prompt","") or "Test prompt [JOB-ID: test123]"
-        self._log(f"🧪 Testing prompt insert: {txt[:80]}...", "info")
-        self._schedule_coro(self._do_cdp_prompt_test(txt))
-        return json.dumps({"ok": True})
-
-    async def _do_cdp_prompt_test(self, prompt_text: str):
-        try:
-            from app.browser.cdp_arena import CDPArenaController
-            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
-            ok, reason = await ctrl.insert_prompt(prompt_text)
-            if ok:
-                self._log(f"✅ Prompt insert success: {reason}", "success")
-                verified, vreason = await ctrl.verify_prompt(prompt_text)
-                self._log(f"Verify prompt: {verified} {vreason}", "info" if verified else "warn")
-            else:
-                self._log(f"❌ Prompt insert failed: {reason}", "error")
-        except Exception as e:
-            self._log(f"Prompt test exception: {e}", "error")
-
-    @Slot(result=str)
-    def cdp_test_full_flow(self):
-        if not self.cdp or not self.cdp.is_connected:
-            return json.dumps({"ok": False, "error": "CDP not connected"})
-        sel = [i for i in self.state.images if i.selected]
-        if not sel:
-            return json.dumps({"ok": False, "error": "No selected image"})
-        prompt = self.state.prompt.get("user_prompt","")
-        if not prompt:
-            return json.dumps({"ok": False, "error": "Empty prompt"})
-        self._log(f"🧪 Testing full flow: attach + prompt + submit (without waiting)", "info")
-        self._schedule_coro(self._do_cdp_full_flow_test(sel[0].absolute_path, prompt))
-        return json.dumps({"ok": True})
-
-    async def _do_cdp_full_flow_test(self, image_path: str, prompt_template: str):
-        try:
-            from app.browser.cdp_arena import CDPArenaController
-            from app.utils.correlation import generate_correlation_id, build_final_prompt
-            ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
-            baseline = await ctrl.capture_baseline()
-            self._log(f"Baseline {baseline.get('output_count')} outputs", "info")
-            ok, reason = await ctrl.attach_image(image_path)
-            self._log(f"Attach: {ok} {reason}", "success" if ok else "error")
-            if not ok:
-                return
-            cid = generate_correlation_id()
-            final = build_final_prompt(cid, prompt_template)
-            ok, reason = await ctrl.insert_prompt(final)
-            self._log(f"Insert prompt [{cid}]: {ok} {reason}", "success" if ok else "error")
-            if not ok:
-                return
-            ok, reason = await ctrl.submit()
-            self._log(f"Submit: {ok} {reason}", "success" if ok else "error")
-        except Exception as e:
-            self._log(f"Full flow test exception: {e}", "error")
-

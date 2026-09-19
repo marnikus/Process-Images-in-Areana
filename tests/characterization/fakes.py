@@ -196,21 +196,20 @@ def make_handle_captcha(status: str = "solved"):
 def install_patches(monkeypatch, ctrl_script: Optional[dict] = None,
                     click_script: Optional[dict] = None,
                     captcha_status: Optional[str] = None):
-    """Patch controller factory + visual runner (+captcha) for both pipelines.
+    """Patch controller factory + visual runner (+captcha) for the run pipeline.
 
-    Both the legacy loop and the new runner import these names lazily from
-    the same modules, so one patch covers old and new code paths.
+    The converged runner binds find_and_click as its own module global;
+    the legacy-loop bridge patch died with the loop in A4 (R8 removed the
+    last bridge-side visual_click import).
     """
     import app.browser.cdp_arena as arena_mod
     import app.services.captcha as captcha_mod
     import app.services.single_job_runner as runner_mod
-    import app.ui.bridge as bridge_mod
 
     ctrl = FakeCtrl(ctrl_script)
     monkeypatch.setattr(arena_mod, "CDPArenaController",
                         lambda *a, **k: ctrl)
     clicks = make_find_and_click(click_script)
-    monkeypatch.setattr(bridge_mod, "find_and_click", clicks)
     monkeypatch.setattr(runner_mod, "find_and_click", clicks)
     captcha = None
     if captcha_status is not None:

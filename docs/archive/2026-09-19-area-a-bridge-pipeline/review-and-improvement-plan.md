@@ -157,10 +157,22 @@ commit. Full suite at R1 end, every 2 panels, and R10/R11.
   (bridge 20→13, exactly the planned 7), Bridge methods 66→43, bridge
   −418 lines. Deliberate changes: none (schedule flip names the real
   owner in the outer-fail log now).
-- **R8 — `cdp_tools` (9).** Move CDP config/test/highlight slots; split
-  `set_cdp_config` (per-key), `_do_highlight`, `cdp_attach_image_test`;
-  `_do_cdp_*`, highlight demo → module funcs; flip `_schedule_coro` sites.
-  Kills 4.
+- **R8 — `cdp_tools` (9).** ✅ done. 9 slots moved (highlight×2, clear,
+  get/set-cfg, launch-cmd, 3 test flows); `HighlightArgs` parameter object
+  kills the 5-param problem honestly (`_do_highlight` → evaluate +
+  `report_highlight_result`); `set_cdp_config` → `first_present` /
+  `parse_cdp_port` (ValueError → identical error JSON via outer except) /
+  `parse_cdp_config` / `apply_cdp_config`; shared `read_cdp_config`
+  (launch reuses it — dedup by design); `build_chrome_commands`,
+  `test_image_match`+`find_test_image`, `run_flow_prompt` phases; 6
+  `_schedule_coro` sites → run_state (only `start_run` left); dropped all
+  3 dead browser import lines (11/13 names unused; panel lazy-imports 2).
+  Fixed a stale harness patch: `fakes.py` patched `bridge.find_and_click`
+  for the A4-deleted legacy loop — runner patch is the live one.
+  Verified: 119/119 slots, mixin 104 LOC/9 methods, all funcs ≤20/CC ≤7,
+  70/70 behavior checks + literal diff clean (shortfalls = deliberate
+  dedups), 551 green, gate 75→71 (bridge 13→9, exactly the planned 4),
+  Bridge methods 43→27, bridge −279 lines. Deliberate changes: none.
 - **R9 — `run_control` (10).** Move run-lifecycle slots; split `start_run`
   (gate checks); F8 `JobAction` redesign (`_emit_job_action_status` →
   delegation); `enabled_urls(urls)` pure helper in url_queue, imported;
