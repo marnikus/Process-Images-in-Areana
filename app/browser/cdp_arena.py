@@ -18,22 +18,31 @@ from .captcha_probes import build_visible_js
 from .output_probes import build_baseline_js, build_check_js
 from .output_state import flatten_diagnostics, build_order_check_text
 from .output_wait import wait_for_new_output_loop
+from .probe_selectors import (
+    attachment_preview_selectors,
+    readiness_checks,
+    security_dialog_check,
+    send_click_selectors,
+    send_presence_selector,
+    spinner_selector,
+    textarea_primary,
+    textarea_selectors,
+)
 from ..utils.page_errors import PageErrorAbort, build_error_scan_js, match_page_error
 
 log = logging.getLogger("arena")
 
-JS_FIND_TEXTAREA = """
-(() => {
-  const sels = ['textarea[name="message"]','textarea[placeholder^="Describe"]','textarea[rows="1"]'];
-  for (const sel of sels) { const el=document.querySelector(sel); if(el&&el.offsetParent!==null) return sel; }
-  return null;
-})
-"""
 
-JS_INSERT_PROMPT = """
+def _inject(js: str, **payloads: str) -> str:
+    """Fill __NAME__ placeholders with JSON selector payloads (RULE 21)."""
+    for key, value in payloads.items():
+        js = js.replace(f"__{key.upper()}__", value)
+    return js
+
+JS_INSERT_PROMPT = _inject("""
 ((promptText) => {
   try {
-    const sels=['textarea[name="message"]','textarea[placeholder^="Describe"]','textarea[rows="1"]'];
+    const sels=__TEXTAREA_SELECTORS__;
     let el=null;
     for(const sel of sels){
       const els=document.querySelectorAll(sel);
@@ -53,12 +62,12 @@ JS_INSERT_PROMPT = """
     return {ok:true,len:el.value.length};
   } catch(e){return {ok:false,error:String(e)};}
 })
-"""
+""", TEXTAREA_SELECTORS=json.dumps(textarea_selectors()))
 
-JS_SEND_STATE = """
+JS_SEND_STATE = _inject("""
 (() => {
   try{
-    const els=document.querySelectorAll('button[aria-label="Send message"]');
+    const els=document.querySelectorAll(__SEND_PRESENCE_SELECTOR__);
     if(!els.length) return {found:false,visible:false,enabled:false};
     let visible=false, enabled=false;
     for(const el of els){
@@ -69,22 +78,22 @@ JS_SEND_STATE = """
     return {found:true,visible:visible,enabled:enabled};
   }catch(e){return {found:false,visible:false,enabled:false};}
 })
-"""
+""", SEND_PRESENCE_SELECTOR=json.dumps(send_presence_selector()))
 
-JS_VERIFY_PROMPT = """
+JS_VERIFY_PROMPT = _inject("""
 ((expected)=>{
   try{
-    const el=document.querySelector('textarea[name="message"]');
+    const el=document.querySelector(__TEXTAREA_PRIMARY__);
     if(!el) return {ok:false,error:'not found'};
     return {ok:el.value===expected,actual:el.value};
   }catch(e){return {ok:false,error:String(e)};}
 })
-"""
+""", TEXTAREA_PRIMARY=json.dumps(textarea_primary()))
 
-JS_CLICK_SEND = """
+JS_CLICK_SEND = _inject("""
 (() => {
   try{
-    const sels=['button[aria-label="Send message"]:not([disabled])','form button[aria-label="Send message"]','button[aria-label="Send message"]'];
+    const sels=__SEND_CLICK_SELECTORS__;
     let btn=null; let used=null;
     for(const sel of sels){
       const els=document.querySelectorAll(sel);
@@ -101,12 +110,12 @@ JS_CLICK_SEND = """
     return {ok:true,sel:used};
   }catch(e){return {ok:false,error:String(e)};}
 })
-"""
+""", SEND_CLICK_SELECTORS=json.dumps(send_click_selectors()))
 
-JS_VERIFY_ATTACHMENT = """
+JS_VERIFY_ATTACHMENT = _inject("""
 ((expectedFilename)=>{
   try{
-    const sels=['div.flex.flex-wrap.gap-2 img[alt]','div.flex.flex-wrap.gap-2 img[src^="blob:"]','form img[src^="blob:"]'];
+    const sels=__ATTACHMENT_SELECTORS__;
     for(const sel of sels){
       const els=document.querySelectorAll(sel);
       for(const el of els){
@@ -120,7 +129,7 @@ JS_VERIFY_ATTACHMENT = """
     return {found:false};
   }catch(e){return {found:false,error:String(e)};}
 })
-"""
+""", ATTACHMENT_SELECTORS=json.dumps(attachment_preview_selectors()))
 
 JS_DOWNLOAD_IMAGE = """
 async (src) => {
@@ -172,33 +181,39 @@ async (src) => {
 }
 """
 
-JS_PAGE_READY = """
+_SECURITY_DIALOG = security_dialog_check()
+
+JS_PAGE_READY = _inject("""
 ;(() => {
   const reasons=[];
-  const checks=[{sel:'textarea[name="message"]',name:'prompt'},{sel:'button[aria-label="Send message"]',name:'send'},{sel:'input[type="file"]',name:'file'},{sel:'div.no-scrollbar',name:'output'}];
+  const checks=__READINESS_CHECKS__;
   for(const c of checks){
     const el=document.querySelector(c.sel);
     if(!el) reasons.push(c.name+' not found');
     else if(el.offsetParent===null) reasons.push(c.name+' not visible');
   }
-  const dialogs=document.querySelectorAll('div[role="dialog"][data-state="open"]');
-  for(const d of dialogs){ if(d.innerText&&d.innerText.includes('Security Verification')) reasons.push('Security dialog'); }
+  const dialogs=document.querySelectorAll(__SECURITY_DIALOG_SEL__);
+  for(const d of dialogs){ if(d.innerText&&d.innerText.includes(__SECURITY_DIALOG_TEXT__)) reasons.push('Security dialog'); }
   return {ready:reasons.length===0,reasons};
 })()
-"""
+""",
+    READINESS_CHECKS=json.dumps(readiness_checks()),
+    SECURITY_DIALOG_SEL=json.dumps(_SECURITY_DIALOG["sel"]),
+    SECURITY_DIALOG_TEXT=json.dumps(_SECURITY_DIALOG["text"]),
+)
 
 JS_SECURITY_DIALOG = build_visible_js()
 
-JS_IS_GENERATING = """
+JS_IS_GENERATING = _inject("""
 ;(() => {
   let spinning=false; let count=0; let details=[];
   try{
-    const spinners=document.querySelectorAll('div.animate-spin');
+    const spinners=document.querySelectorAll(__SPINNER_SELECTOR__);
     for(const s of spinners){ if(s.offsetParent!==null){spinning=true;count++;details.push({label:'generating'});} }
   }catch(e){}
   return {spinning:spinning,spinCount:count,details:details,isGenerating:spinning};
 })()
-"""
+""", SPINNER_SELECTOR=json.dumps(spinner_selector()))
 
 
 async def _run_resume_gate(ctrl, diag):
@@ -273,7 +288,7 @@ class CDPArenaController:
         if not await self.ensure_connected():
             return False, "Not connected"
         try:
-            await self.highlight_selector('textarea[name="message"]', color="#00AAFF", duration_ms=1000, caption="Prompt")
+            await self.highlight_selector(textarea_primary(), color="#00AAFF", duration_ms=1000, caption="Prompt")
         except Exception:
             pass
         js = f";({JS_INSERT_PROMPT})({json.dumps(prompt_text)})"
@@ -299,7 +314,7 @@ class CDPArenaController:
         if not await self.ensure_connected():
             return False, "Not connected"
         try:
-            await self.highlight_selector('button[aria-label="Send message"]', color="#FFAA00", duration_ms=1000, caption="Send")
+            await self.highlight_selector(send_presence_selector(), color="#FFAA00", duration_ms=1000, caption="Send")
         except Exception:
             pass
         js = f";({JS_CLICK_SEND})()"

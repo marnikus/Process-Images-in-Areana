@@ -12,12 +12,18 @@ class SelectorObject:
     expectedCount: int = 1
     textCondition: Optional[str] = None  # exact or contains text
     textConditionType: str = "equals"  # equals, contains, regex
+    # Broad selector matching instances regardless of enabled/visible state,
+    # for presence/state scans (readiness gate, send-state poll). None = primary.
+    presenceSelector: Optional[str] = None
     verification: Optional[str] = None
     evidence: Optional[str] = None
     lastVerified: Optional[str] = None
 
     def all_selectors(self) -> List[str]:
         return [self.primary] + self.fallbacks
+
+    def presence(self) -> str:
+        return self.presenceSelector or self.primary
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +36,7 @@ class SelectorObject:
             "expectedCount": self.expectedCount,
             "textCondition": self.textCondition,
             "textConditionType": self.textConditionType,
+            "presenceSelector": self.presenceSelector,
             "verification": self.verification,
             "evidence": self.evidence,
             "lastVerified": self.lastVerified,

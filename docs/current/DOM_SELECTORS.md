@@ -9,6 +9,8 @@ All selectors below are **extracted from actual HTML** or verified via CDP. The 
 
 **Rule:** Prefer semantic selectors (RULE 21) — aria-label, name, type, placeholder, role — over generated IDs or long utility class chains. Every selector has primary + fallbacks, centralized in `app/browser/site_adapter.py`.
 
+**Single source (2026-09-19):** every live JS probe payload (`cdp_arena.py`, `output_probes.py`, `new_chat.py`) receives its selectors from `site_adapter.py` via `app/browser/probe_selectors.py` — no selector literal may appear in a probe file. Enforced by `tests/test_probe_selectors.py`; editing `site_adapter.py` is the only way to change what a probe queries. Rows below that list *probe lists* describe `all_selectors()` (primary + fallbacks); `presenceSelector` is the broad form used by state/readiness scans (matches disabled/hidden instances too).
+
 ---
 
 ## A. Prompt Textarea — Primary Input
@@ -22,11 +24,9 @@ All selectors below are **extracted from actual HTML** or verified via CDP. The 
 | Field | Value |
 |---|---|
 | **Primary** | `textarea[name="message"]` |
-| **Strong combined** | `textarea[name="message"][autocomplete="off"]` |
-| **Placeholder fallback 1** | `textarea[placeholder="Describe the image you want to generate…"]` |
-| **Placeholder fallback 2** | `textarea[placeholder^="Describe how you want to edit"]` |
-| **Placeholder fallback 3** | `textarea[placeholder^="Describe"]` |
-| **Other attributes** | `textarea[rows="1"]`, `textarea[data-gtm-form-interact-field-id]` |
+| **Probe fallback 1** | `textarea[placeholder^="Describe"]` |
+| **Probe fallback 2** | `textarea[rows="1"]` |
+| **Historic (not probed)** | `textarea[name="message"][autocomplete="off"]`, `textarea[placeholder^="Describe how you want to edit"]`, `textarea[data-gtm-form-interact-field-id]` |
 | **Scope** | Inside `form` that also contains file input and send button |
 | **mustBeVisible** | true |
 | **mustBeEnabled** | true, not readonly |
@@ -92,9 +92,9 @@ form.flex.w-full.flex-col
 |---|---|
 | **Container Primary** | `div.flex.flex-wrap.gap-2` |
 | **Tile Primary** | `div.group.relative.overflow-hidden.rounded-lg.h-16.w-16` |
-| **Image Primary** | `div.flex.flex-wrap.gap-2 img[alt="<expected filename>"]` (dynamic alt) |
-| **Image Fallback 1** | `div.flex.flex-wrap.gap-2 img[src^="blob:"]` |
-| **Image Fallback 2** | `div.flex.flex-wrap.gap-2 img[alt]` |
+| **Image Primary (probe)** | `div.flex.flex-wrap.gap-2 img[alt]` |
+| **Image Fallback 1 (probe)** | `div.flex.flex-wrap.gap-2 img[src^="blob:"]` |
+| **Image Fallback 2 (probe)** | `form img[src^="blob:"]` |
 | **Scope** | Inside same `form` as textarea, above textarea |
 | **mustBeVisible** | true |
 | **expectedCount** | 1 per attached file (MVP single) |
@@ -109,15 +109,11 @@ form.flex.w-full.flex-col
 
 | Field | Value |
 |---|---|
-| **Primary** | `button[aria-label="Send message"]:not([disabled])` — must exclude disabled |
-| **Fallback 1** | `form button[aria-label="Send message"]:not([disabled])` |
-| **Fallback 2** | `form:has(textarea[name="message"]) button[aria-label="Send message"]:not([disabled])` |
-| **Fallback 3** | `div.flex.items-center.gap-2 button[aria-label="Send message"]:not([disabled])` |
-| **Fallback 4** | `button[type="button"][aria-label="Send message"]:not([disabled])` |
-| **Fallback 5** | `form div.flex.items-center.gap-2 button:last-child:not([disabled])` |
-| **Fallback 6** | `form button:has(svg):not([disabled])` — more specific than generic `button:has(svg)` which matched 32 nodes |
-| **Fallback 7** | `button.inline-flex.h-8.w-8[aria-label="Send message"]` |
-| **Fallback 8 (controller)** | `button[type="submit"][aria-label="Send message"]`, `form button[type="submit"]` — last resort via `CDPArenaController.submit()` |
+| **Primary (probe)** | `button[aria-label="Send message"]:not([disabled])` — must exclude disabled |
+| **Probe fallback 1** | `form button[aria-label="Send message"]` |
+| **Probe fallback 2** | `button[aria-label="Send message"]` |
+| **presenceSelector** | `button[aria-label="Send message"]` — state scans/readiness see disabled instances too |
+| **Historic (not probed)** | `form:has(textarea[name="message"]) button[aria-label="Send message"]:not([disabled])`, `div.flex.items-center.gap-2 …:not([disabled])`, `button[type="button"]…`, `form div.flex.items-center.gap-2 button:last-child:not([disabled])`, `form button:has(svg):not([disabled])`, `button.inline-flex.h-8.w-8[aria-label="Send message"]` |
 | **Accessible query** | role=button, name="Send message" |
 | **Scope** | Inside same `form` as textarea, in `div.flex.items-center.gap-2` (not just `flex.justify-between` — new UI uses gap-2) |
 | **mustBeVisible** | true |
@@ -295,7 +291,12 @@ form.flex.w-full.flex-col
 
 ## H. Page Readiness Composite — When URL is READY
 
-URL READY only when all pass (same as Old App's readiness, adapted):
+URL READY only when all pass (same as Old App's readiness, adapted).
+Probe (`JS_PAGE_READY` in `cdp_arena.py`) is generated from
+`site_adapter.get_readiness_requirements()` + each key's `presenceSelector`:
+prompt `textarea[name="message"]`, send `button[aria-label="Send message"]`,
+file `input[type="file"]`, output `div.no-scrollbar`, plus the
+`security_dialog` selector + "Security Verification" text marker.
 
 1. Exactly one visible `textarea[name="message"]` in intended composer
 2. Exactly one visible `button[aria-label="Send message"]` in that composer

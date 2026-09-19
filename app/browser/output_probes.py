@@ -9,25 +9,13 @@ Per RULE 21 selector priority, RULE 22 correlation token.
 """
 
 import json
-from typing import List
 
-SELECTORS_V3: List[str] = [
-    'div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',
-    'div.no-scrollbar img[src*="messages-prod."]',
-    'div.no-scrollbar img[loading="lazy"].aspect-square',
-    'img.aspect-square.cursor-pointer',
-    'img.cursor-pointer',
-    'div.flex img[src*=".r2.cloudflarestorage.com/"]',
-    'main img[src*=".r2.cloudflarestorage.com/"]',
-    'div.no-scrollbar img[src^="https://"]',
-    'img.aspect-square.w-full',
-    'img[src*=".r2.cloudflarestorage.com/"]',
-    'img[src*="messages-prod"]',
-    'img.h-\\[50vh\\]',
-    'img.w-\\[50vh\\]',
-    'ol img[src^="https://"]',
-    'main img',
-]
+from .probe_selectors import model_label_probe, output_image_selectors, spinner_selector
+
+# Single source is site_adapter via probe_selectors (RULE 21).
+SELECTORS_V3 = output_image_selectors()
+_SPINNER_SEL = json.dumps(spinner_selector())
+_MODEL_LABEL = model_label_probe()
 
 JS_BASELINE_V3 = """
 (() => {
@@ -63,7 +51,7 @@ JS_BASELINE_V3 = """
     }
     let spinning = false;
     try {
-      const spinners = document.querySelectorAll('div.animate-spin');
+      const spinners = document.querySelectorAll(__SPINNER_SELECTOR__);
       for (const s of spinners) { if (s.offsetParent !== null) { spinning = true; break; } }
     } catch(e) {}
     return {
@@ -78,7 +66,7 @@ JS_BASELINE_V3 = """
     return {output_count:0, output_srcs:[], error:String(e), timestamp:Date.now(), spinning:false};
   }
 })
-""".replace("__SELECTORS__", json.dumps(SELECTORS_V3))
+""".replace("__SELECTORS__", json.dumps(SELECTORS_V3)).replace("__SPINNER_SELECTOR__", _SPINNER_SEL)
 
 JS_CHECK_NEW_OUTPUT_V3 = """
 ((oldSrcs, correlationId, oldOutputs) => {
@@ -87,15 +75,15 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     let spinCount = 0;
     let spinDetails = [];
     try {
-      const spinners = document.querySelectorAll('div.animate-spin');
+      const spinners = document.querySelectorAll(__SPINNER_SELECTOR__);
       for (const s of spinners) {
         if (s.offsetParent !== null) {
           spinning = true;
           spinCount++;
-          let parent = s.closest('div.flex.min-w-0.flex-1.items-center.gap-2');
+          let parent = s.closest(__MODEL_ROW_SCOPE__);
           let label = '';
           if (parent) {
-            const trunc = parent.querySelector('span.truncate');
+            const trunc = parent.querySelector(__MODEL_LABEL__);
             if (trunc) label = trunc.textContent.trim();
           }
           spinDetails.push({label: label || 'unknown', visible: true});
@@ -752,7 +740,9 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), validBelow: validBelow.length, validAbove: validAbove.length, allNew: allNew.length, jobId: correlationId, expectedJobId: correlationId, mismatchDetails: mismatchDetails.slice(0,10), layoutReverse: layoutReverse, orderCheck: `No new images at all, oldSrcs ${oldSrcs.length} expected ${correlationId}`, debugAllImgs: debugAllImgs.slice(0,10), debugFiltered: debugFiltered.slice(0,10), oldSrcsSample: oldSrcs.slice(0,3).map(s=>s.slice(0,80))};
   } catch(e) { return {ready:false, reason:String(e), spinning: false}; }
 })
-""".replace("__SELECTORS__", json.dumps(SELECTORS_V3))
+""".replace("__SELECTORS__", json.dumps(SELECTORS_V3)).replace("__SPINNER_SELECTOR__", _SPINNER_SEL) \
+    .replace("__MODEL_ROW_SCOPE__", json.dumps(_MODEL_LABEL["scope"])) \
+    .replace("__MODEL_LABEL__", json.dumps(_MODEL_LABEL["label"]))
 
 
 def build_baseline_js() -> str:
@@ -761,11 +751,3 @@ def build_baseline_js() -> str:
 
 def build_check_js(old_srcs, correlation_id, old_outputs) -> str:
     return f";({JS_CHECK_NEW_OUTPUT_V3})({json.dumps(old_srcs)}, {json.dumps(correlation_id) if correlation_id else 'null'}, {json.dumps(old_outputs)})"
-
-
-def is_layout_reverse_js() -> str:
-    return "!!document.querySelector('ol.flex-col-reverse')"
-
-
-def get_selectors() -> list:
-    return SELECTORS_V3.copy()
