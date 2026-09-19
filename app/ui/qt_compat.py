@@ -10,20 +10,20 @@ try:
     from PySide6.QtWidgets import QFileDialog
 except ImportError:  # headless/test: duck-type dummies
     class QObject:
-        def __init__(self, *a, **kw):
+        def __init__(self, *_a, **_kw):
             pass
 
-    def Signal(*a, **kw):
+    def Signal(*_a, **_kw):
         class _Sig:
-            def emit(self, *a, **kw):
+            def emit(self, *_a, **_kw):
                 pass
 
-            def connect(self, *a, **kw):
+            def connect(self, *_a, **_kw):
                 pass
 
         return _Sig()
 
-    def Slot(*a, **kw):
+    def Slot(*_a, **_kw):
         def deco(fn):
             return fn
 

@@ -334,3 +334,38 @@ by design — all targets already RULE 16-legal).
   log; SYSTEM_OF_RECORD.md §7 + docs/README.md (RULE 17); (f) RULE 18
   audit table (F9 TABLEs + F11 reasons + every deviation reasoned);
   full gate + suite.
+  ✅ done. (a) Vulture clean (see log A7). (b) F5 frozen-119 test. (c) F6
+  packing + Bridge-cap tests. (d) Coverage baseline line 59.1 / branch
+  50.1 + zero unhit new-scope funcs + 5 dialog-fake tests. (e) Log
+  finished (A1–A4 SHAs corrected to the R0 re-commits), SOR §7 rewritten,
+  docs map entry. (f) Audit table below. Verified: 590 green, gate 62
+  (bridge 0), Bridge 159 lines / 10 methods.
+
+## 5. RULE 18 audit (R12 — every deviation reasoned)
+
+Sweep: radon 6.0.1 CC + AST span/params scan over all Area A files
+(`app/ui/bridge*.py`, `qt_compat.py`, 12 panels, `run_state.py`,
+`batch_orchestrator.py`, `single_job_runner.py`, 7 ui-services).
+No C+ anywhere; no gate fail on any Area A file (TOTAL 62, bridge 0).
+
+| # | Deviation | Verdict + constraint reason |
+|---|---|---|
+| CC-1 | `_handle_wait` CC 9 | TABLED R10.9: 3 readable ternaries + single-level ifs, no nesting; A2-converged legacy body stays verbatim. All other funcs ≤7. |
+| LOC-1 | `_handler_map` 26 LOC | TABLED R10.9: flat 20-entry registry literal; splitting scatters the converge map. All other funcs ≤20. |
+| LOC-2 | `settings_to_js` 23 LOC / CC 1 | TABLED R10.9: flat 12-key view mapping, one key per line; any split scatters the wire view. |
+| P-1 | `_emit_action` 4 params | TABLE: the runner's single emit choke point (ctx/block/status/msg = host/what/state/detail); ~40 callers — wrapping would scatter. |
+| P-2 | `_captcha_job_line` 4 params | TABLE: failed+error travel as the job-outcome pair through 3 layers to one caller; bundling invents a concept for one chain. |
+| P-3 | `Bridge.__init__` 4 params | TABLE: constructor injection — Qt parent + config + state + client are 4 independent axes. |
+| P-4 | `report_auto_plan` 4 params | TABLE: R7-honest presence tuple (bridge/plan/presence/source); the split already happened around it. |
+| P-5 | `plan_auto_sync` 4 params | TABLE: host + live tabs + the two sync sides (pattern/rows); R7 extracted plan/apply/report around it. |
+| P-6 | `highlight_selector` slot 4 params | TABLE: frozen JS slot signature (wire-format constraint, contract §1 item 1). |
+| P-7 | `finish_pool_join` 4 params | TABLE: R6-documented join phase (bridge/info/client/ctrl); connect-client/finish-join split already done. |
+| P-8/9 | `folder_ai_worker` / `submit_folder_ai` 4 params | TABLE: bridge-opaque worker + trampoline submitter share the (root/exts/mode) job triple; a request object threaded through 3 layers for 2 uses = scatter. |
+| P-10 | `save_preset_doc` 4 params | TABLE: name/grid/fallback/ws are 4 distinct inputs with no unifying concept; bundling = gaming (§16.2). F10 erratum: R1 folded `build_preset_doc` → 3, never this one — the "now 3" claim misattributed; it was always 4. |
+| C-1..4 | F11 class LOC (blocks_stack 140, layout_state 153, page_pool 139, watcher_captcha 132) | Reasoned R10.10: frozen JS slot surfaces, helpers module-level, per-slot bodies cannot move without scattering. |
+| C-5 | `LayoutStateMixin` 14 methods | Pre-existing file-level reason (frozen surface; accessors serialize layout-owned stores). All other classes ≤10. |
+| M-1..6 | Module size (runner ~830, orchestrator ~480, run_state ~380, undo_entries ~400, queue_scan ~380, app_settings ~350) | Each carries a file-head `ideal-size:` reason (single lifecycle/vocabulary/surface that changes together, RULE 18.2). `bridge_context.py` 196 ≤ 200 needs none. |
+
+Rejected gaming (recorded per §16.2): Outcome/params-object tuples for
+P-2/P-8/P-10 (invented concepts, single chains); splitting LOC-1/LOC-2
+registries (no seam); splitting M-modules by handler (scatters lifecycles).

@@ -208,14 +208,15 @@ except (json.JSONDecodeError, ValidationError):
 
 | Layer | Files | Responsibility | Imports allowed |
 |---|---|---|---|
-| **core** | `app/core/action_blocks.py`, `correlation.py`, `naming.py`, `image_saver.py` | Domain logic, no Qt, no CDP | stdlib, PIL |
-| **services** | `app/services/folder_scanner.py`, `url_validator.py` | Folder scan, URL validation, filtering (RULE 6) | core, stdlib |
-| **browser** | `app/browser/cdp_client.py`, `cdp_arena.py`, `dom_highlight.py`, `site_adapter.py` | CDP connection with lock, visual runner (RULE 1), selector map (RULE 21) | core, services, stdlib, websockets |
-| **persistence** | `app/persistence/app_state.py`, `config_manager.py`, `layout_service.py`, `undo_service.py` | JSON persistence, grid layout validation (RULE 13), undo timeline (RULE 12) | core, stdlib |
-| **ui** | `app/ui/bridge.py`, `main_window.py`, `panels/*.js`, `web/js/*.js`, `web/css/variables.css` | PyQt6 + WebChannel, sash-grid, win-grip, dark mode, rect overlay | all below via bridge |
-| **pipeline** | `app/pipeline/runner.py` (if exists) or `bridge._do_run_batch()` | Batch loop, state machine 00-22, stop honour (RULE 7), progress (RULE 5) | core, browser, persistence |
+| **core** | `app/core/action_blocks.py`, `correlation.py`, `naming.py`, `image_saver.py`, `layout_service.py`, `folder_ai.py` | Domain logic, no Qt, no CDP | stdlib, PIL |
+| **services** | `app/services/single_job_runner.py`, `batch_orchestrator.py`, `run_state.py`, `watcher.py`, `captcha/`, `auto_connect.py` | Converged block handlers (20 types), batch orchestration, bg-loop/schedule/pool/cooldown seam, captcha, auto-connect | core, browser, stdlib |
+| **browser** | `app/browser/cdp_client.py`, `cdp_arena.py`, `dom_highlight.py`, `site_adapter.py`, `page_pool.py` | CDP connection with lock, visual runner (RULE 1), selector map (RULE 21), steady/busy pool | core, services, stdlib, websockets |
+| **persistence** | `app/persistence/app_state.py`, `config_manager.py`, `undo_service.py` | JSON persistence (RULE 13), undo timeline (RULE 12) | core, stdlib |
+| **ui-services** | `app/ui/services/arena_serialize.py`, `window_preset_service.py`, `file_service.py`, `folder_ai_service.py`, `scan_service.py`, `thumbnail_service.py`, `undo_entries.py` | Qt-free panel helpers: JS serialization, preset docs, OS reveal/clipboard, folder-AI worker, scan merge, thumbnails, undo rows | core, services, stdlib — never Qt, never panels |
+| **ui/panels** | `app/ui/panels/*.py` (12 mixins, 119 `@Slot`) + `app/ui/qt_compat.py` shim | QWebChannel slot surface; slots only, helpers module-level | services, core, browser, qt_compat; acyclic sibling reuse only |
+| **ui/root** | `app/ui/bridge.py` (159 lines, 10 methods), `bridge_context.py`, `main_window.py` | `Bridge` = signals + 10 API methods + compat re-exports; construction context; real window owner (only top-level Qt) | panels, ui-services, services, core |
 
-**Import direction:** `ui` → `browser` → `services` → `core` → stdlib. No cycles. No `browser.*` import from `ui/` except via bridge. No Qt in `core/`.
+**Import direction:** `ui` → `ui-services`/`browser` → `services` → `core` → stdlib. No cycles. Qt enters panels only via `app/ui/qt_compat.py` (single guarded shim); services never import Qt or panels. The 119 JS slot names are frozen (contract §1 item 1; `tests/test_bridge_slots.py` exact-match). Batch runs through `batch_orchestrator.run_batch` (the legacy `bridge._do_run_batch` loop was deleted in A4); run control + `JobAction` events live in `panels/run_control.py`.
 
 ---
 

@@ -26,3 +26,12 @@ def test_clipboard_copy_headless_returns_false_none():
 def test_shim_exports_clipboard_helpers():
     assert "get_clipboard" in qt_compat.__all__
     assert "clipboard_copy" in qt_compat.__all__
+
+
+@needs_no_qt
+def test_dummy_signal_wire_smoke():
+    sig = qt_compat.Signal()
+    sig.connect(lambda: None)
+    sig.emit("x")
+    obj = qt_compat.QObject()
+    assert obj is not None and qt_compat.QFileDialog is None

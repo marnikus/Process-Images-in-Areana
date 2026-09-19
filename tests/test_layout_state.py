@@ -142,3 +142,13 @@ def test_preset_grid_error_validator():
     assert panel._preset_grid_error(good) is None
     bad = {"grid": {"payload": "junk"}}
     assert panel._preset_grid_error(bad).startswith("invalid grid: ")
+
+
+def test_parse_legacy_payload_shape():
+    tree = default_grid_tree()
+    raw = json.dumps({"v": 4, "tree": tree})
+    tp, err = __import__("app.core.layout_service", fromlist=["canonical_grid_payload"]).canonical_grid_payload(raw)
+    assert err is None
+    doc = {"grid": {"payload": tp}}
+    t, payload, ws, out_doc, err = presets.parse_preset_input(json.dumps(doc))
+    assert err is None and payload == tp and leaf_ids(t) == leaf_ids(tree)

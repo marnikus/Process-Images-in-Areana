@@ -11,14 +11,9 @@ import json
 import logging
 from pathlib import Path
 
-from app.ui.qt_compat import QObject, Signal, Slot
+from app.ui.qt_compat import QObject, Signal
 
-from app.core.layout_service import (
-    canonical_grid_payload, default_payload,
-)
-from app.core.models import AppState
 from app.core.persistence import load_state
-from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
 from app.ui.panels import blocks_stack, layout_state
 from app.ui.panels.watcher_captcha import captcha_service
@@ -45,11 +40,6 @@ from app.ui.panels.page_pool import PagePoolMixin
 from app.ui.panels.browser_tabs import BrowserTabsMixin
 from app.ui.panels.cdp_tools import CdpToolsMixin
 from app.ui.panels.run_control import RunControlMixin, emit_job_action_status
-from app.ui.services import arena_serialize, undo_entries
-from app.core.action_blocks import (
-    default_stack,
-    stack_to_dicts,
-)
 
 log = logging.getLogger("arena")
 

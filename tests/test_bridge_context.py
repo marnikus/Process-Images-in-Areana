@@ -85,7 +85,7 @@ def test_service_failure_degrades_to_none(tmp_path, monkeypatch):
     import app.browser.page_pool as pool_mod
     import app.services.watcher as watcher_mod
 
-    def boom(*a, **kw):
+    def boom(*_a, **_kw):
         raise RuntimeError("init exploded")
     monkeypatch.setattr(pool_mod, "PagePool", boom)
     monkeypatch.setattr(watcher_mod, "WatcherService", boom)
@@ -118,3 +118,9 @@ def test_log_build_version_best_effort():
     fake = SimpleNamespace(_log=lambda m, l="info": logs(m, l))
     ctx.log_build_version(fake)  # never raises (git/network absent ok)
     assert all("Build" in m for m, _ in logs.calls)
+
+
+def test_captcha_service_seam_delegates(tmp_path):
+    b, _ = make_bridge(tmp_path)
+    svc = b._captcha_service()
+    assert svc is not None

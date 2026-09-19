@@ -408,3 +408,58 @@ async def test_cancel_error_text_matches_legacy(tmp_path):
     ctx = make_ctx(bridge, make_ctrl(), make_client(), make_img(tmp_path))
     failed, err, stop = await sjr._run_one_checked(ctx, make_block("SUBMIT"))
     assert (failed, err, stop) == (True, "Cancelled by user", True)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_output_timeout_and_unfinished_paths(tmp_path):
+    async def _timeout(*a, **k):
+        return "timeout", {"error": "timed out"}
+
+    async def _unfinished(*a, **k):
+        return "uploading", {"new_src": "https://x/part.png"}
+
+    for script, want in [(_timeout, (None, None, "timed out")),
+                         (_unfinished, ("https://x/part.png", None, "not downloadable"))]:
+        ctx = make_ctx(make_bridge(), make_ctrl(wait_for_new_output=script),
+                       make_client(), make_img(tmp_path))
+        assert await sjr.wait_for_output(ctx, 1000) == want
+
+
+@pytest.mark.asyncio
+async def test_settle_and_note_stamps_policy(tmp_path, monkeypatch):
+    import app.services.captcha as cap_mod
+    seen = []
+
+    async def fake_handle(cctx):
+        seen.append(cctx)
+        return SimpleNamespace(status="solved", reason="")
+    monkeypatch.setattr(cap_mod, "handle_captcha", fake_handle)
+
+    async def _visible():
+        return True
+    ctrl = make_ctrl(is_security_dialog_visible=_visible)
+    ctrl._resume_policy = SimpleNamespace(settled_at=None)
+    ctx = make_ctx(make_bridge(), ctrl, make_client(), make_img(tmp_path))
+    assert await sjr._settle_and_note(ctx) is True
+    assert seen and seen[0].source == "check-security"
+    assert ctrl._resume_policy.settled_at is not None
+
+
+@pytest.mark.asyncio
+async def test_security_stop_closure_honours_cancel(tmp_path, monkeypatch):
+    import app.services.captcha as cap_mod
+    stops = []
+
+    async def fake_handle(cctx):
+        stops.append(cctx.stop())
+        return SimpleNamespace(status="solved", reason="")
+    monkeypatch.setattr(cap_mod, "handle_captcha", fake_handle)
+
+    async def _visible():
+        return True
+    for cancel, want in [(False, False), (True, True)]:
+        ctx = make_ctx(make_bridge(cancel=cancel),
+                       make_ctrl(is_security_dialog_visible=_visible),
+                       make_client(), make_img(tmp_path))
+        assert await sjr.check_security(ctx) is True
+    assert stops == [want for _, want in [(False, False), (True, True)]]
