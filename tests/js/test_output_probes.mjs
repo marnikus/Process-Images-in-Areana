@@ -151,15 +151,17 @@ describe('output probes v4 — Tier A (no browser)', () => {
     assert.match(res.orderCheck, /CORRECT KEY MATCH/);
   });
 
+  // Page-reset shape: current job JOB1 is the LAST message (top 600);
+  // the new-to-us image sits between old jobs JOB2 (100) and JOB3 (500),
+  // so JOB1 is not among its nearby jobs -> strict mismatch, never download.
+  const mismatchGeometry = () => runCheck({
+    'div, span, p, pre': [jobTextEl('JOB2', 100), jobTextEl('JOB3', 500), jobTextEl('JOB1', 600)],
+    [SELECTORS[0]]: [outputImg('https://r2/other.png', 400)],
+    [SPINNER]: [],
+  }, [], 'JOB1');
+
   test('check MISMATCH: image belongs to another job -> error, not download', () => {
-    // Page-reset shape: current job JOB1 is the LAST message (top 600);
-    // the new-to-us image sits between old jobs JOB2 (100) and JOB3 (500),
-    // so JOB1 is not among its nearby jobs -> strict mismatch, never download.
-    const res = runCheck({
-      'div, span, p, pre': [jobTextEl('JOB2', 100), jobTextEl('JOB3', 500), jobTextEl('JOB1', 600)],
-      [SELECTORS[0]]: [outputImg('https://r2/other.png', 400)],
-      [SPINNER]: [],
-    }, [], 'JOB1');
+    const res = mismatchGeometry();
     assert.equal(res.ready, false);
     assert.equal(res.reason, 'job_id_mismatch_no_matching_image');
     assert.equal(res.mismatchDetails.length, 1);
@@ -185,6 +187,110 @@ describe('output probes v4 — Tier A (no browser)', () => {
     }, ['https://r2/out-old.png'], 'JOB123');
     assert.equal(res.ready, false);
     assert.equal(res.reason, 'no_new');
+  });
+
+  test('check MISMATCH key-set lock: after-reset variant field set is frozen', () => {
+    // Same geometry as the mismatch test above (image above the current job
+    // -> excluded from pools -> the allNew/after-reset mismatch return).
+    const res = mismatchGeometry();
+    assert.equal(res.reason, 'job_id_mismatch_no_matching_image');
+    // B10: exact key-set lock for the reachable (after-reset) mismatch
+    // return — refactors must not change the payload field set.
+    assert.deepEqual(Object.keys(res).sort(), [
+      'aboveCount', 'allJobs', 'allNew', 'allNewDetails', 'belowCount',
+      'debugAllImgs', 'debugFiltered', 'expectedJobId', 'jobFound', 'jobId',
+      'jobIndex', 'jobTop', 'layoutReverse', 'mismatchDetails', 'nextJobTop',
+      'orderCheck', 'prevJobTop', 'ready', 'reason', 'spinCount',
+      'spinDetails', 'spinning', 'validAbove', 'validBelow',
+    ]);
+  });
+
+  test('check VISUAL-NEXT RESCUE: expected job below the image still matches', () => {
+    // Reverse-ish layout: the image sits visually above the expected job,
+    // but the expected job IS its visualNext -> the matched() rescue path
+    // associates it correctly and the download may proceed from validAbove.
+    // Needs real DOM ordering (compareDocumentPosition), so local builders.
+    let order = 0;
+    const oel = (o = {}) => {
+      const mine = order++;
+      return el({
+        ...o,
+        compareDocumentPosition(other) { return other._order > mine ? 4 : 2; },
+        _order: mine,
+      });
+    };
+    const ojob = (id, top) => oel({
+      tagName: 'SPAN', textContent: `[JOB-ID: ${id}] make it blue`, className: 'flex',
+      getBoundingClientRect: () => ({ left: 10, top, width: 300, height: 40, right: 310, bottom: top + 40 }),
+      querySelector: () => null,
+    });
+    const oimg = (src, top) => oel({
+      tagName: 'IMG', src, className: 'aspect-square cursor-pointer', complete: true,
+      naturalWidth: 1024, naturalHeight: 1024, offsetParent: {},
+      parentElement: oel({ className: 'justify-start' }),
+      getBoundingClientRect: () => ({ left: 10, top, width: 500, height: 500, right: 510, bottom: top + 500 }),
+    });
+    // DOM order: JOB2 (prev) -> image -> JOB1 (expected, below the image
+    // visually) — the image lands in validAbove via beforeCurrent/afterPrev.
+    const prevJob = ojob('JOB2', 100);
+    const image = oimg('https://r2/rescued.png', 300);
+    const curJob = ojob('JOB1', 500);
+    const res = runCheck({
+      'div, span, p, pre': [prevJob, curJob],
+      [SELECTORS[0]]: [image],
+      [SPINNER]: [],
+    }, [], 'JOB1');
+    assert.equal(res.ready, true);
+    assert.equal(res.src, 'https://r2/rescued.png');
+    assert.equal(res.associatedJobId, 'JOB1');
+    assert.equal(res.visualPrevJobId, 'JOB2');
+  });
+
+  test('check GATE INVARIANT: no geometry yields a mismatched download or pool-mismatch return', () => {
+    // B10 characterization: the strict per-image gate (expected may pass via
+    // domPrev/domNext/visualPrev/visualNext) is a SUPERSET of the final
+    // pool filter, so the poolDetails mismatch return is a defensive branch
+    // no current geometry reaches. If a future edit narrows either side
+    // independently, this sweep catches it (a poolDetails result or a
+    // ready-with-wrong-associated download appears).
+    const tops = [100, 300, 500, 700];
+    let checked = 0;
+    for (const j1 of tops) for (const j2 of tops) {
+      if (j1 === j2) continue;
+      for (const it of tops) for (const exp of ['A', 'B']) {
+        const res = runCheck({
+          'div, span, p, pre': [jobTextEl('A', j1), jobTextEl('B', j2)],
+          [SELECTORS[0]]: [outputImg('https://r2/sweep.png', it)],
+          [SPINNER]: [],
+        }, [], exp);
+        checked++;
+        assert.equal(res.poolDetails, undefined,
+          `poolDetails return reached at jobs ${j1}/${j2} img ${it} exp ${exp}`);
+        if (res.ready === true) {
+          // null association is the designed position-verified rescue; a
+          // NON-null wrong id must never be downloaded.
+          assert.ok(res.associatedJobId === exp || res.associatedJobId == null,
+            `wrong-id download (${res.associatedJobId}) at jobs ${j1}/${j2} img ${it} exp ${exp}`);
+        }
+      }
+    }
+    assert.ok(checked >= 96, 'sweep matrix unexpectedly small');
+  });
+
+  test('PAYLOAD SHAPE: both mismatch returns share one core builder', () => {
+    // The poolDetails variant is a defensive branch no current geometry
+    // reaches (proved by the gate-invariant sweep above: the per-image gate
+    // is a superset of the final pool filter), so it cannot be executed in
+    // a test. Lock its construction instead: both mismatch returns must be
+    // built by the same mismatchReturn core, the reachable one carrying
+    // exactly {allNewDetails, belowCount, aboveCount} and the defensive one
+    // exactly {poolDetails} on top of the core field set frozen above.
+    const body = fill(extract('JS_CHECK_NEW_OUTPUT_V3'));
+    const coreUses = body.split('mismatchReturn(').length - 1;
+    assert.equal(coreUses, 2, 'expected exactly two mismatchReturn call sites');
+    assert.match(body, /\{poolDetails: pool\.slice\(0,5\)/);
+    assert.match(body, /\{allNewDetails: allNewDetails, belowCount: belowCandidates\.length, aboveCount: aboveCandidates\.length\}/);
+    assert.doesNotMatch(body, /reason:'job_id_mismatch_no_matching_image'[^}]*poolDetails/);
   });
 
   test('check OLD-NOT-READY: old src reappearing still not ready is re-pooled', () => {
