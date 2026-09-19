@@ -172,6 +172,10 @@ class FakeWS:
         self.closed = False
 
     async def send(self, raw):
+        if self.closed:
+            # Real websockets raises ConnectionClosed on send after close —
+            # a reply would otherwise sit in a queue nobody reads (30 s timeout).
+            raise ConnectionError("ConnectionClosed: fake ws closed")
         self._server.handle(self, raw)
 
     def push(self, raw):

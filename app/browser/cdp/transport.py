@@ -50,6 +50,8 @@ class CDPTransport(QObject):
         self._connected = False
         self._current_ws_url = ""
         self._current_tab_id = ""
+        self.last_error = ""       # B8: why the last evaluate() answered None
+        self.last_error_kind = ""  # "" | "js" | "protocol" | "transport"
 
     @property
     def base_url(self) -> str:
@@ -141,11 +143,59 @@ class CDPTransport(QObject):
                 "Runtime.evaluate",
                 {"expression": expression, "returnByValue": True, "awaitPromise": await_promise},
             )
-            res = r.get("result", {})
-            if res.get("exceptionDetails"):
-                log.warning(f"evaluate exception: {res.get('exceptionDetails')}")
-                return None
-            return res.get("result", {}).get("value")
         except Exception as e:
-            log.warning(f"evaluate failed: {e}")
+            _note_eval_error(self, "transport", _exc_text(e))
             return None
+        kind, text, value = _decode_reply(r)
+        if kind:
+            _note_eval_error(self, kind, text)
+            return None
+        self.last_error = ""
+        self.last_error_kind = ""
+        return value
+
+
+def _note_eval_error(transport, kind: str, text: str) -> None:
+    """Remember + log why evaluate() returns None (callers only see None)."""
+    transport.last_error_kind = kind
+    transport.last_error = text[:300]
+    log.warning(f"evaluate {kind} error: {transport.last_error}")
+
+
+def _decode_reply(r) -> tuple:
+    """Runtime.evaluate reply → (error_kind, error_text, value); kind '' = ok.
+
+    Chrome answers a protocol failure as {"error": {...}} with no "result"
+    at all — the old reader took result={} and returned None silently (B8).
+    """
+    reply = r if isinstance(r, dict) else {}
+    err = reply.get("error")
+    if err:
+        return "protocol", _protocol_text(err), None
+    res = reply.get("result", {}) or {}
+    if res.get("exceptionDetails"):
+        return "js", _exception_text(res.get("exceptionDetails")), None
+    return "", "", res.get("result", {}).get("value")
+
+
+def _exc_text(exc: BaseException) -> str:
+    """`ConnectionClosed` and friends often stringify empty — keep the type."""
+    text = str(exc)
+    name = type(exc).__name__
+    return f"{name}: {text}" if text else name
+
+
+def _protocol_text(err) -> str:
+    """CDP error object → its message (Chrome: {"code": -32000, "message": ...})."""
+    if isinstance(err, dict):
+        return str(err.get("message") or err)
+    return str(err)
+
+
+def _exception_text(details) -> str:
+    """Short human text for Runtime.evaluate exceptionDetails."""
+    try:
+        exc = details.get("exception") or {}
+        return str(exc.get("description") or details.get("text") or exc.get("value") or details)
+    except Exception:
+        return str(details)

@@ -1,7 +1,7 @@
 {
   "coverage": {
-    "line": 85.64,
-    "branch": 81.32
+    "line": 86.09,
+    "branch": 82.01
   },
   "app/__init__.py": {
     "max_func_loc": 0,
@@ -194,10 +194,15 @@
   },
   "app/browser/cdp/transport.py": {
     "max_func_loc": 28,
-    "max_class_loc": 116,
-    "func_count": 13,
+    "max_class_loc": 120,
+    "func_count": 18,
     "funcs": {
-      "__init__": 12,
+      "_note_eval_error": 5,
+      "_decode_reply": 14,
+      "_exc_text": 5,
+      "_protocol_text": 5,
+      "_exception_text": 7,
+      "__init__": 14,
       "base_url": 2,
       "is_connected": 2,
       "set_host_port": 10,
@@ -205,7 +210,7 @@
       "disconnect": 17,
       "send": 14,
       "_receive_loop": 28,
-      "evaluate": 14,
+      "evaluate": 16,
       "Signal": 11,
       "emit": 2,
       "connect": 2
@@ -215,8 +220,8 @@
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 4,
-    "file_lines": 151,
-    "coverage": 89.36
+    "file_lines": 201,
+    "coverage": 90.45
   },
   "app/browser/cdp_arena/__init__.py": {
     "max_func_loc": 0,
@@ -265,10 +270,11 @@
   "app/browser/cdp_arena/download.py": {
     "max_func_loc": 13,
     "max_class_loc": 0,
-    "func_count": 4,
+    "func_count": 5,
     "funcs": {
       "_sync_fetch": 13,
       "_python_download": 13,
+      "_no_result": 3,
       "_js_download": 13,
       "download_image": 11
     },
@@ -277,8 +283,8 @@
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 72,
-    "coverage": 90.14
+    "file_lines": 78,
+    "coverage": 90.54
   },
   "app/browser/cdp_arena/highlight.py": {
     "max_func_loc": 18,
@@ -525,7 +531,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 320,
-    "coverage": 88.34
+    "coverage": 90.18
   },
   "app/browser/dom_highlight_js.py": {
     "max_func_loc": 4,
@@ -692,6 +698,26 @@
     "file_lines": 207,
     "coverage": 88.78
   },
+  "app/browser/page_recovery.py": {
+    "max_func_loc": 21,
+    "max_class_loc": 0,
+    "func_count": 6,
+    "funcs": {
+      "_noop": 2,
+      "evaluate_failure": 3,
+      "is_transient_loss": 11,
+      "_reconnect_if_closed": 15,
+      "_document_answers": 7,
+      "recover_page_context": 21
+    },
+    "max_methods": 0,
+    "max_cc": 8,
+    "max_cog": 0,
+    "max_nest": 2,
+    "max_params": 4,
+    "file_lines": 121,
+    "coverage": 94.52
+  },
   "app/browser/page_status.py": {
     "max_func_loc": 22,
     "max_class_loc": 79,
@@ -831,14 +857,16 @@
   "app/browser/visual_click.py": {
     "max_func_loc": 25,
     "max_class_loc": 56,
-    "func_count": 15,
+    "func_count": 17,
     "funcs": {
       "_report": 12,
       "_parse": 6,
-      "find_phase": 20,
+      "_empty_reason": 3,
+      "_probe_json": 17,
+      "find_phase": 19,
       "click_phase": 25,
-      "_stage": 19,
-      "_dispatch": 10,
+      "_stage": 18,
+      "_dispatch": 12,
       "run_click": 12,
       "find_and_click": 2,
       "find_and_click_exact": 3,
@@ -852,10 +880,10 @@
     "max_methods": 6,
     "max_cc": 10,
     "max_cog": 0,
-    "max_nest": 1,
+    "max_nest": 2,
     "max_params": 4,
-    "file_lines": 229,
-    "coverage": 48.59
+    "file_lines": 257,
+    "coverage": 78.68
   },
   "app/core/__init__.py": {
     "max_func_loc": 0,
@@ -2293,7 +2321,7 @@
   "app/services/single_job_runner.py": {
     "max_func_loc": 26,
     "max_class_loc": 18,
-    "func_count": 74,
+    "func_count": 76,
     "funcs": {
       "_emit_action": 6,
       "_get_blocks": 6,
@@ -2362,7 +2390,9 @@
       "_is_cancelled": 2,
       "_block_skip_reason": 9,
       "_run_one_checked": 20,
-      "_loop_blocks": 13,
+      "_output_secured": 3,
+      "_post_download_warning": 13,
+      "_loop_blocks": 16,
       "_reset_captcha_reports": 6,
       "_captcha_job_line": 8,
       "_emit_captcha_job_lines": 15,
@@ -2375,8 +2405,8 @@
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 4,
-    "file_lines": 875,
-    "coverage": 82.7
+    "file_lines": 902,
+    "coverage": 83.45
   },
   "app/services/verification.py": {
     "max_func_loc": 16,

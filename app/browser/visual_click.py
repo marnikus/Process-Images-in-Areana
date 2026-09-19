@@ -31,6 +31,7 @@ from app.browser.dom_highlight import (
     interpret_click_target,
     interpret_find,
 )
+from app.browser import page_recovery
 from app.browser.probe_requests import (
     MATCH_CONTAINS,
     MATCH_EXACT,
@@ -41,6 +42,9 @@ from app.browser.probe_requests import (
 log = logging.getLogger("arena")
 
 CLICK_PAUSE_MS = 250
+# B8: an empty FIND/stage answer caused by a transient page-context loss
+# (reload, navigation, closed socket) is recovered and re-probed this often.
+PROBE_ATTEMPTS = 3
 
 
 def _report(engine, message: str, level: str = "info") -> None:
@@ -124,17 +128,40 @@ class ClickRequest:
         )
 
 
+def _empty_reason(cdp) -> str:
+    """Why the page answered nothing — the transport's record, else the old guess."""
+    return page_recovery.evaluate_failure(cdp) or "page context unavailable?"
+
+
+async def _probe_json(cdp, js: str, engine: Optional[object]) -> Optional[dict]:
+    """Evaluate a JSON-returning probe; recover + retry on transient page loss.
+
+    B8: one empty answer used to fail the block outright, even when the page
+    was merely mid-reload for a second. Non-transient empties (the probe
+    threw) still fail on the first answer — see page_recovery.is_transient_loss.
+    """
+    for attempt in range(1, PROBE_ATTEMPTS + 1):
+        res = _parse(await cdp.evaluate(js))
+        if res is not None:
+            return res
+        if attempt == PROBE_ATTEMPTS or not page_recovery.is_transient_loss(cdp):
+            return None
+        if not await page_recovery.recover_page_context(
+                cdp, lambda m, lvl="info": _report(engine, m, lvl)):
+            return None
+    return None
+
+
 async def find_phase(cdp, request: ClickRequest, engine: Optional[object] = None) -> Optional[dict]:
     _report(engine, f"🔍 FIND phase: searching {request.label}", "info")
     try:
-        raw = await cdp.evaluate(request.find_probe())
+        res = await _probe_json(cdp, request.find_probe(), engine)
     except Exception as exc:
         _report(engine, f"❌ FIND failed: CDP error during element search: {exc}", "error")
         log.error("visual_click CDP error (find): %s", exc)
         return None
-    res = _parse(raw)
     if res is None:
-        _report(engine, f"❌ FIND failed: {request.label} — no data returned from the page (page context unavailable?)", "error")
+        _report(engine, f"❌ FIND failed: {request.label} — no data returned from the page ({_empty_reason(cdp)})", "error")
         return None
     _report(engine, f"🔍 Selector matched {int(res.get('total', 0) or 0)} node(s)", "info")
     msg, level = interpret_find(res, request.label)
@@ -175,13 +202,12 @@ async def click_phase(cdp, request: ClickRequest, found: dict, engine: Optional[
 
 async def _stage(cdp, request, engine) -> Optional[dict]:
     try:
-        raw = await cdp.evaluate(request.staged_probe())
+        pre = await _probe_json(cdp, request.staged_probe(), engine)
     except Exception as exc:
         _report(engine, f"❌ CLICK failed: CDP error while resolving click target: {exc}", "error")
         return None
-    pre = _parse(raw)
     if pre is None:
-        _report(engine, "❌ CLICK failed: no data returned while resolving click target", "error")
+        _report(engine, f"❌ CLICK failed: no data returned while resolving click target ({_empty_reason(cdp)})", "error")
         return None
     if pre.get("error"):
         _report(engine, f"❌ CLICK failed: {pre['error']}", "error")
@@ -202,7 +228,9 @@ async def _dispatch(cdp, request, engine) -> Optional[dict]:
         return None
     done = _parse(raw)
     if done is None:
-        _report(engine, "❌ CLICK failed: no data returned from the click", "error")
+        # Deliberately no recovery/retry here: the click may already have
+        # landed before the context vanished — re-dispatching could double it.
+        _report(engine, f"❌ CLICK failed: no data returned from the click ({_empty_reason(cdp)})", "error")
     return done
 
 

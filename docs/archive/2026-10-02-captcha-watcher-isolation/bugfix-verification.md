@@ -164,6 +164,117 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
   `test_url_list_listeners.mjs`, `test_arena_presets_actions.mjs` (added on
   2026-10-02 but never wired into the script) and the two new files.
 
+## B7 — URL row disappears ~1 s after Add (`url-list/actions.js`, `undo_entries.py`)
+
+* **Saw:** typing a URL and pressing Add/Enter showed the row for about a
+  second, then the table re-rendered without it; `arena.json` did not keep
+  it either. (Latent before B6: `_onAdd`'s deferred callback threw on the
+  undefined `window.App`, so pre-B6 nothing was rendered at all.)
+* **Did:** `add_url` (Python) appends the row and runs `commit_urls()` — the
+  single write path: `_save_arena()` emits `arena_state_updated` and
+  `push_urls_undo()` records the global undo entry. The JS side applies
+  `arena_state_updated` after a **250 ms debounce**
+  (`arena-app/listeners.js::_handleArenaState`). `_onAdd` (and `_applyEdit`)
+  additionally scheduled, **100 ms** after the ok reply,
+  `ArenaHistory.recordGlobal('urls', window.App.state.urls)` — a snapshot
+  taken *before* the debounced apply, i.e. the list **without** the new row.
+  `recordGlobal` calls `bridge.push_global_history('urls', …)` →
+  `undo_entries._remember_urls` **replaces** `bridge.state.urls` with that
+  stale list, saves, and emits `arena_state_updated` again → 250 ms later the
+  table renders the old list. The push was redundant anyway (Python already
+  recorded the undo entry; `history_changed` → `_syncGlobalHistory()` pulls
+  it into the client timeline) and, when the timing happened to be right, it
+  would have created a duplicate entry. Side finding: `url_rows_from_js` /
+  `arena_url_rows_from_js` dropped `tab_id`, so every urls undo/redo/push
+  silently unlinked the rows from their tabs.
+* **Change:** removed both deferred `recordGlobal('urls', …)` push-backs —
+  the client never echoes URL rows to Python; `url_rows_from_js` and
+  `arena_url_rows_from_js` keep `tab_id`.
+* **Pinned by:** `tests/js/test_url_list_add_persists.mjs` (real
+  `arena-history.js` + `url-list/actions.js`; the bridge fake commits rows
+  like the slots and applies `push_global_history('urls')` like
+  `_remember_urls`: Add and Edit leave the committed row in place with **zero**
+  push-backs, failed Add keeps the typed text, a *regression replay* shows the
+  old push-back erased the row, and a static guard rejects any
+  `recordGlobal('urls'` / `push_global_history('urls'` under
+  `panels/url-list/`); on the pre-fix file 3 of the 5 cases fail.
+  `tests/test_undo_history.py::test_url_rows_from_js_keep_tab_link`,
+  `::test_remember_and_apply_urls_keep_tab_link`.
+
+## B8 — Image generated + downloaded, then every page probe answered nothing (`cdp/transport.py`, `page_recovery.py`, `visual_click.py`, `single_job_runner.py`)
+
+* **Saw:** the generation finished and the app pulled the image
+  (`📥 Python download 940228 bytes image/png`), then the very next block
+  (a user-added **Find & Click** with the default selector `button`, placed
+  after DOWNLOAD) logged `❌ FIND failed: button — no data returned from the
+  page (page context unavailable?)`, the job ended **failed** without the
+  image, and the automatic New-chat reset failed the same way three times
+  inside one second ("cooling anyway"). The next job on the same tab worked
+  again — the tab was never dead for long.
+* **Did (three defects, one incident):**
+  1. `CDPTransport.evaluate()` returned `None` for *every* failure class and
+     told nobody why. A CDP **protocol error** reply
+     (`{"error": {"message": "Execution context was destroyed."}}` — what
+     Chrome answers while a page is between two documents) was read as
+     `result={}` → `None` **without even a log line**; JS exceptions and
+     transport errors (`ConnectionClosed`, "CDP not connected") only went to
+     the `arena` Python logger, which has no file handler in the app
+     (`app/utils/logging.py` writes `arena_processor`). The UI could only guess
+     ("page context unavailable?").
+  2. The shared click runner (`visual_click.find_phase`, `_stage`) failed the
+     block on the **first** empty answer. A page mid-reload/navigation is a
+     ~1 s condition; a closed DevTools socket is recoverable by re-attaching
+     to the same tab — neither was ever retried, so one transient blip failed
+     the block, the job and the reset. No app code reloads/navigates the tab
+     (`reload_page` has no callers; nothing writes `location.*`), so the
+     loss came from the page/Chrome itself — it must be tolerated, not
+     assumed away.
+  3. Pipeline policy: `_loop_blocks` marked the job failed on **any** block
+     failure, and a `required` block failure broke the stack **before
+     VALIDATE/SAVE** — so a failing post-download page action threw away an
+     already-downloaded (paid) generation.
+* **Change:** (1) `transport.evaluate()` now records `last_error` /
+  `last_error_kind ∈ {js, protocol, transport}` (cleared on success) and logs
+  every class; (2) new `app/browser/page_recovery.py` classifies the record
+  (`is_transient_loss`: protocol "Execution context was destroyed" /
+  "Cannot find default execution context" / …, or any transport loss except
+  timeouts) and `recover_page_context()` waits up to 3 × 1 s for
+  `document.readyState` to answer again, **re-connecting the same ws URL when
+  the socket closed** (never re-picks tabs), then settles 1 s so a reloaded
+  SPA can mount; (3) `visual_click._probe_json` runs FIND and click-target
+  staging through that recovery (≤ 3 probe rounds) and every "no data"
+  message now carries the transport's real reason — the click dispatch itself
+  is deliberately **never** re-sent (it may already have landed); New-chat
+  reset goes through the same runner and inherits the recovery;
+  (4) `single_job_runner._loop_blocks`: once the output bytes are secured
+  (`_output_secured`, same > 100-byte rule as DOWNLOAD), a later failure of any
+  block other than VALIDATE/SAVE is logged as
+  `⚠ <block> failed after the image was downloaded (<err>) — continuing so
+  the image is saved` and the stack continues to VALIDATE/SAVE/ADVANCE; the
+  block still shows red in the stack UI. VALIDATE/SAVE failures,
+  pre-download failures (golden `nonreq_fail`) and cancellation keep the
+  legacy semantics. `download.py` reports the same reason when the in-page
+  download attempt answers nothing.
+* **Pinned by:** `tests/test_cdp_client.py::test_evaluate_records_{js_exception,protocol_error}_reason`,
+  `::test_evaluate_success_clears_last_error`,
+  `::test_evaluate_records_transport_loss_after_socket_close` (the shared
+  fake ws now raises on send-after-close like real `websockets`, instead of
+  parking the reply in a queue for the 30 s timeout);
+  `tests/test_page_recovery.py` (classification table, wait-until-document
+  answers, give-up after N, reconnect to the same tab, reconnect failure
+  reported not raised); `tests/test_visual_click_recovery.py` (FIND recovers
+  after "Execution context was destroyed" and succeeds, real reason in the
+  failure line, JS errors never retried, closed socket → reconnect → success,
+  legacy fakes unchanged, stage recovers but the click is dispatched exactly
+  once); `tests/test_job_output_policy.py` (post-download Find & Click
+  failure — required or not — keeps the image, job completes with the
+  warning; pre-download optional failure still "failed"; SAVE / VALIDATE
+  failures still fail the job; cancellation and VALIDATE/SAVE never
+  downgraded). Characterization goldens unchanged.
+* **Operator note:** a **Find & Click** with the bare default selector
+  `button` after DOWNLOAD clicks the first button on the page — configure the
+  block (selector / text) or remove it; the job no longer depends on it.
+
 ## Gate evidence (2026-10-02)
 
 | Gate | Result |
@@ -183,3 +294,13 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 | `tools/verify_quality.py --js` | PASSED — 0 fails (no new symbol over any hard limit) |
 | `--changed --base origin/main --allow-legacy --coverage-ratchet` | 20 NO-GROWTH `file_lines` fails (+3 lines per panel export) → reviewed `--record-baseline`, then PASSED; coverage 85.65 % line / 81.33 % branch (floor 85.64 / 81.32 kept) |
 | `compileall` / pyflakes undefined names / vulture @90 | clean |
+
+## Gate evidence (2026-10-04, B7 + B8)
+
+| Gate | Result |
+|---|---|
+| `pytest -q` (CI-like, no PySide6) | 1,433 passed, 1 skipped, same 2 pre-existing environmental failures (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message); characterization goldens unchanged |
+| `npm run test:js` | 174 pass / 0 fail (169 + `test_url_list_add_persists.mjs`, wired into `test:js`) |
+| `tools/verify_quality.py --js` | PASSED — 0 fails (new symbols: `page_recovery.py` max CC 8 / nest 2 / func ≤21 LOC; `transport` class 120 LOC, 9 methods) |
+| `--changed --base origin/<branch> --allow-legacy --coverage-ratchet --js` | 2 in-limit growth deltas (`transport` class 116→120, `visual_click` nest 1→2) → reviewed `--record-baseline` (`docs/current/QUALITY_RECHECK.md`), then PASSED; coverage 86.09 % line / 82.01 % branch (floor raised from 85.65 / 81.33) |
+| `compileall` / pyflakes on touched files / vulture | clean |

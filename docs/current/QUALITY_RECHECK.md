@@ -51,6 +51,19 @@ All 20 rejected deltas were `file_lines` / `func_count` NO-GROWTH entries;
 no symbol crossed a hard limit (`--js` full lane 0 fails). Fresh coverage
 85.65 % line / 81.33 % branch — the floor 85.64 / 81.32 is kept.
 
+### 2026-10-04 follow-up re-record (B8 — downloaded image lost to a transient page-context loss)
+
+Re-recorded for the B8 fix (`bugfix-verification.md` §B8). Reviewed deltas:
+`app/browser/cdp/transport.py` `max_class_loc` 116 → 120 (two `last_error`
+attributes + the `_decode_reply` call in `evaluate`; the decoding itself
+lives in module functions so the class stays at 9 methods),
+`app/browser/visual_click.py` `max_nest` 1 → 2 (the recovery loop in
+`_probe_json` is a `for` with early returns — inherent to a retry),
+new `app/browser/page_recovery.py` (6 functions, max CC 8, max nest 2).
+`download.py` kept CC 7 by extracting `_no_result`. Full lane `--js` 0 fails.
+Fresh coverage **86.09 % line / 82.01 % branch** (floor raised from
+85.65 / 81.33; `visual_click.py` 48.6 % → 78.7 % from the new runner tests).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).
