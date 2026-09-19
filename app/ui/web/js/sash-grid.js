@@ -115,5 +115,8 @@ UIHelpers.mergeParts(SashGrid,
   SashGridTree, SashGridWindowStore, SashGridWindows, SashGridMenus,
   SashGridPresets, SashGridDrag, SashGridSpec, SashGridResize);
 
+// Global-name contract (see boot.js): publish the lexical const for window.SashGrid readers.
+if (typeof window !== 'undefined') window.SashGrid = SashGrid;
+
 (window.BridgeReady || { ready: (fn) => document.addEventListener('DOMContentLoaded', () => fn(null)) })
   .ready(() => SashGrid.init());

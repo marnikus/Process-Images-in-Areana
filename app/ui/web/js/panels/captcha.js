@@ -132,3 +132,6 @@ const CaptchaPanel = {
     set('capStatManual', r.manual_solved ?? 0);
   },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.CaptchaPanel = CaptchaPanel;

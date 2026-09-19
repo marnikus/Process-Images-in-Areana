@@ -171,3 +171,6 @@ const CaptchaRecordingsPanel = {
     return seconds < 60 ? `${seconds.toFixed(1)}s` : `${(seconds / 60).toFixed(1)}m`;
   },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.CaptchaRecordingsPanel = CaptchaRecordingsPanel;

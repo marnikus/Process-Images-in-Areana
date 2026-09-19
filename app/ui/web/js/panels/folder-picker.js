@@ -157,3 +157,6 @@ const FolderPicker = {
     if (typeof confirm !== 'function' || confirm(text)) this._startNewBatch();
   }
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.FolderPicker = FolderPicker;

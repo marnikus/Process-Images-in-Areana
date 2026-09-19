@@ -64,3 +64,6 @@ const ArenaPresets = {
 
   esc(s) { return this._store.esc(s); },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.ArenaPresets = ArenaPresets;

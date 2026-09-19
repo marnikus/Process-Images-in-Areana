@@ -94,6 +94,10 @@ describe('Boot.bootPanels', () => {
     Boot.bootPanels(['A', 'C']);                          // second boot pass → no double init
     assert.deepEqual(order, ['A', 'C']);
     assert.ok(warnings.some((w) => w.includes('B.init failed')));
+    // 2026-10-03: a panel that never published itself (lexical const) is reported, not skipped
+    assert.equal(warnings.filter((w) => w.includes('panel not found on window: Missing')).length, 1);
+    Boot.bootPanels(['Missing']);                         // warned once, not per pass
+    assert.equal(warnings.filter((w) => w.includes('panel not found on window: Missing')).length, 1);
     Boot._reset();
     Boot.bootPanels(['A']);
     assert.deepEqual(order, ['A', 'C', 'A']);

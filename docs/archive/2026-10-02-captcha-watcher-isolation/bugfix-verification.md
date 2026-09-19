@@ -1,7 +1,10 @@
 # Bugfix verification — 2026-10-02 release
 
-Five UI defects shipped with the Captcha Watcher isolation. Each row: what
+Six UI defects shipped with the Captcha Watcher isolation. Each row: what
 the user saw → what the code did → what changed → the test that pins it.
+B6 (2026-10-03) is the follow-up found when the user reported "Browse still
+does nothing" after B4 — it is the **actual** root cause behind most of the
+dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 
 ## B5 — Boot ordering (`app/ui/web/js/core/boot.js`)
 
@@ -110,7 +113,58 @@ the user saw → what the code did → what changed → the test that pins it.
   shapes, blank path, dialog ok/cancel/missing, model normalisation),
   updated `tests/test_file_dialogs.py`.
 
-## Gate evidence
+## B6 — Global-name contract: panels never initialised (`arena-app.js`, `boot.js`, every panel module)
+
+* **Saw:** after B1–B5 shipped, the Folder Picker's **Browse** still did nothing
+  — no dialog, no toast, no log line, nothing in the console.
+* **Did:** every panel (and `App` itself) is declared as a top-level
+  `const X = {...}` in a classic `<script>`. That creates a **lexical** global
+  binding — it is *not* a `window` property. `Boot.bootPanels(_PANEL_INITS)`
+  (and the pre-existing `_initIfExists`) resolved panels through
+  `window[name]`, so only the three panels that already exported themselves
+  (`CDPPanel`, `ActionBlocksPanel`, `WindowPresets`) ever ran `init()`; the
+  other **14 panels never bound a single listener** (Browse / Scan / New
+  Batch, URL add, Run controls, …). `_restoreArenaPanels` skipped the same
+  panels, and `window.App` — read by **22 modules** to reach the bridge
+  (`window.App.bridge`, `window.App.state = data` in the arena-state listener)
+  — was `undefined`. Verified in V8 (`node:vm` context == Chromium semantics):
+  `window["FolderPicker"] === undefined`, `typeof FolderPicker === "object"`.
+  The Python side was healthy: `pick_folder` / `set_folder_path` are present in
+  the real `Bridge` `QMetaObject` (checked with PySide6 6.11 offscreen) and
+  `set_folder_path` round-trips.
+* **Change:** (1) `arena-app.js` publishes `window.App = App` right after the
+  `const`; (2) every `const` panel module ends with
+  `if (typeof window !== 'undefined') window.X = X;` (the convention the
+  three working panels already used) — `UrlList`, `FolderPicker`,
+  `ImageQueue`, `PromptEditor`, `RunControls`, `ProgressPanel`,
+  `WatcherPanel`, `PagePoolPanel`, `SettingsPanel`, `CaptchaPanel`,
+  `CaptchaRecordingsPanel`, `BrowserPreview`, `HighlightOverlay`,
+  `ArenaPresets`, plus `SashGrid` (read as `window.SashGrid` by
+  `block-ui.js`); (3) `Boot.panel(name)` resolves by name and warns ONCE
+  (`[Boot] panel not found on window: X`) instead of skipping silently —
+  `bootPanels` and `_restoreArenaPanels` go through it; (4) `initApp()` wraps
+  `setupHeader()` in `try/catch` so a header failure can no longer abort the
+  panel boot that follows it.
+* **Pinned by:** `tests/test_ui_wiring.py::test_every_boot_panel_is_published_on_window`
+  (every `_PANEL_INITS` name + `App` has a `window.X =` writer),
+  `::test_every_window_dot_name_read_is_published_somewhere` (no `window.X`
+  read of a const-only name anywhere in `web/js`),
+  `::test_panel_export_lines_match_their_const`;
+  `tests/js/test_folder_picker.mjs` (real `boot.js` + `folder-picker.js`:
+  publish → boot → Browse click → `pick_folder(startDir)` → display/input
+  updated; cancel/error replies; bindOnce on double boot; missing slot
+  reported; Scan / New Batch / Enter-to-set);
+  `tests/js/test_boot_all_panels.mjs` (loads **every** `index.html` script in
+  page order into one V8 sandbox with a fake QWebChannel: all 17 panels
+  init without throwing, `window.App === App` with the bridge, Browse reaches
+  `pick_folder` exactly once). Before the fix that harness reports **3 / 17**
+  panels booted and 0 Browse listeners; after it 17 / 17.
+  `tests/js/test_boot.mjs` gained the "unpublished panel warns once" case.
+  `package.json` `test:js` now also runs `test_boot.mjs`,
+  `test_url_list_listeners.mjs`, `test_arena_presets_actions.mjs` (added on
+  2026-10-02 but never wired into the script) and the two new files.
+
+## Gate evidence (2026-10-02)
 
 | Gate | Result |
 |---|---|
@@ -118,3 +172,14 @@ the user saw → what the code did → what changed → the test that pins it.
 | `npm run test:js` | 142 pass / 0 fail |
 | `tools/verify_quality.py --js` | PASSED — 0 fails; `--changed --base origin/main --allow-legacy --coverage-ratchet` PASSED after the reviewed baseline re-record (`docs/current/QUALITY_RECHECK.md`); coverage 85.64 % line / 81.32 % branch |
 | `tests/test_bridge_slots.py` | frozen surface 134 slots, packing table updated |
+
+## Gate evidence (2026-10-03, B6)
+
+| Gate | Result |
+|---|---|
+| `pytest -q` (CI-like, no PySide6) | 1,399 passed, 1 skipped, same 2 pre-existing environmental failures (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message) |
+| `pytest -q -n 4` with **real PySide6 6.11** (offscreen) | 1,394 passed, 3 skipped; 5 failures all in pre-existing `tests/test_panel_slots.py` — identical on `origin/main` (plain fake hosts carry a class-level `Signal()`, which has no `.emit` outside a `QObject`); `tests/test_action_blocks_defaults.py` was made env-independent (`_Sig` stand-in) |
+| `npm run test:js` | 169 pass / 0 fail (142 → 169: 3 previously un-wired files + 12 new cases) |
+| `tools/verify_quality.py --js` | PASSED — 0 fails (no new symbol over any hard limit) |
+| `--changed --base origin/main --allow-legacy --coverage-ratchet` | 20 NO-GROWTH `file_lines` fails (+3 lines per panel export) → reviewed `--record-baseline`, then PASSED; coverage 85.65 % line / 81.33 % branch (floor 85.64 / 81.32 kept) |
+| `compileall` / pyflakes undefined names / vulture @90 | clean |

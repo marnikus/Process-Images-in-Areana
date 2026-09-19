@@ -22,25 +22,35 @@ from app.core.action_blocks_defaults import (
 from app.persistence.config_manager import ConfigManager
 from app.ui.panels import blocks_stack
 from app.ui.panels.blocks_stack import BlocksStackMixin
-from app.ui.qt_compat import Signal
 
 pytestmark = pytest.mark.unit
 
 
-class Host(BlocksStackMixin):
-    action_blocks_updated = Signal(str)
+class _Sig:
+    """Env-independent stand-in for a bound Qt signal (a class-level `Signal()` on a
+    plain non-QObject host has no `.emit` when real PySide6 is installed)."""
 
+    def __init__(self):
+        self.slots = []
+
+    def connect(self, fn):
+        self.slots.append(fn)
+
+    def emit(self, *args):
+        for fn in self.slots:
+            fn(*args)
+
+
+class Host(BlocksStackMixin):
     def __init__(self, cfg):
         self.config = cfg
         self.logs = []
         self._log = lambda m, l="info": self.logs.append((m, l))
         self.emitted = []
+        self.action_blocks_updated = _Sig()
         self.undo_service = type("U", (), {"push": lambda s, k, v: None, "history": lambda s: ([], 0),
                                            "set_stack_projection": lambda s, h, i: None})()
-        try:
-            self.action_blocks_updated.connect(self.emitted.append)
-        except Exception:  # qt_compat fallback signal without connect
-            pass
+        self.action_blocks_updated.connect(self.emitted.append)
 
 
 @pytest.fixture

@@ -62,3 +62,6 @@ const BrowserPreview = {
     if (frame) frame.innerHTML = '<span>No preview</span>';
   }
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.BrowserPreview = BrowserPreview;

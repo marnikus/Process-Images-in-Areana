@@ -132,3 +132,6 @@ const UrlList = {
   _fillCoolCell(tr, page) { return this._render?.fillCoolCell(tr, page); },
   _fillJobsCell(tr, page) { return this._render?.fillJobsCell(tr, page); },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.UrlList = UrlList;

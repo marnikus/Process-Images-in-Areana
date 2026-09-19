@@ -41,6 +41,16 @@ best-covered slots to `queue_scan_folder.py` at 97 %), the global floor rose.
 Removed files (`captcha/solver.py`, `captcha/api_client.py`) dropped out of
 the baseline.
 
+### 2026-10-03 follow-up re-record (B6 — global-name contract)
+
+Re-recorded once more for the B6 fix (`bugfix-verification.md` §B6): 14
+panel modules + `sash-grid.js` each grew by exactly the 3-line
+`window.X = X` export, `boot.js` gained `panel(name)` (+21 LOC, 1 function),
+`arena-app.js` gained `_panel()` + `window.App = App` (+10 LOC, 1 function).
+All 20 rejected deltas were `file_lines` / `func_count` NO-GROWTH entries;
+no symbol crossed a hard limit (`--js` full lane 0 fails). Fresh coverage
+85.65 % line / 81.33 % branch — the floor 85.64 / 81.32 is kept.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

@@ -134,3 +134,6 @@ const ImageQueue = {
   excludeOne(id) { this._actions.excludeOne(id); },
   previewOne(id) { this._actions.previewOne(id); },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.ImageQueue = ImageQueue;

@@ -50,3 +50,6 @@ const ProgressPanel = {
     this._updateStatus(prog);
   },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.ProgressPanel = ProgressPanel;

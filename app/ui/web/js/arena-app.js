@@ -13,6 +13,9 @@ const App = {
   globalHistoryIndex: -1,
   UNDO_KINDS: ['grid', 'urls', 'folder', 'queue', 'prompt', 'settings', 'window_states', 'arena'],
 };
+// `const App` is a lexical global and never becomes window.App by itself; 22 modules
+// reach the bridge through `window.App.bridge` (2026-10-03 fix — they all saw undefined).
+window.App = App;
 
 App.recordGlobal = function(kind, value, options) {
   if (typeof ArenaHistory !== 'undefined' && ArenaHistory.recordGlobal) {
@@ -30,8 +33,14 @@ const _PANEL_INITS = [
   'CDPPanel','ArenaPresets','ActionBlocksPanel'
 ];
 
+// Panels are looked up BY NAME on window — every panel module must publish itself
+// (`window.X = X`); see boot.js "Global-name contract" and tests/test_ui_wiring.py.
+function _panel(name) {
+  return window.Boot?.panel ? window.Boot.panel(name) : (window[name] || null);
+}
+
 function _initIfExists(name) {
-  const obj = window[name];
+  const obj = _panel(name);
   if (obj?.init) obj.init();
 }
 
@@ -43,7 +52,8 @@ function _bootPanels() {
 }
 
 function initApp() {
-  setupHeader();
+  // Header wiring must never take the panels down with it (isolation, like bootPanels).
+  try { setupHeader(); } catch (e) { console.error('[App] setupHeader failed', e); }
   _bootPanels();
   document.getElementById('clearLogBtn')?.addEventListener('click', () => LogConsole.clear());
   if (App.bridge) initWithBridge();
@@ -110,7 +120,7 @@ function _loadUndoHistory() {
 function _restoreArenaPanels(data) {
   const panels = ['UrlList','FolderPicker','ImageQueue','PromptEditor','ProgressPanel','SettingsPanel'];
   panels.forEach(name => {
-    const obj = window[name];
+    const obj = _panel(name);
     if (obj?.restore) obj.restore(data);
   });
 }
