@@ -35,9 +35,16 @@ function _initIfExists(name) {
   if (obj?.init) obj.init();
 }
 
+function _bootPanels() {
+  // Boot.bootPanels inits each panel ONCE and isolates a throwing init()
+  // (2026-10-02: one broken panel used to abort every panel after it).
+  if (window.Boot?.bootPanels) window.Boot.bootPanels(_PANEL_INITS);
+  else _PANEL_INITS.forEach(_initIfExists);
+}
+
 function initApp() {
   setupHeader();
-  _PANEL_INITS.forEach(_initIfExists);
+  _bootPanels();
   document.getElementById('clearLogBtn')?.addEventListener('click', () => LogConsole.clear());
   if (App.bridge) initWithBridge();
 }
@@ -149,8 +156,10 @@ function setupBridgeListeners() {
   if (window.ArenaAppListeners) window.ArenaAppListeners.bindBridge(b);
 }
 
-(window.BridgeReady || { ready: (fn) => document.addEventListener('DOMContentLoaded', () => fn(null)) })
-  .ready((bridge) => {
+// Boot.onBridgeReady → BridgeReady.ready (single QWebChannel handshake); panels
+// therefore init AFTER App.bridge exists — never against a null bridge.
+(window.Boot || { onBridgeReady: (fn) => document.addEventListener('DOMContentLoaded', () => fn(null)) })
+  .onBridgeReady((bridge) => {
     if (bridge) { App.bridge = bridge; App.ready = true; }
     initApp();
   });

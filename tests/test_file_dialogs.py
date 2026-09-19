@@ -4,7 +4,7 @@ import json
 from types import SimpleNamespace
 
 from app.core.layout_service import default_grid_tree
-from app.ui.panels import app_settings, blocks_stack, layout_state, queue_scan
+from app.ui.panels import app_settings, blocks_stack, layout_state, queue_scan, queue_scan_folder
 
 
 class FakeDialog:
@@ -105,17 +105,19 @@ def test_app_settings_import_dialog_ok_and_cancel(tmp_path, monkeypatch):
 
 
 def test_pick_folder_dialog_ok_cancel_headless(tmp_path, monkeypatch):
-    monkeypatch.setattr(queue_scan, "QFileDialog", FakeDialog)
+    # pick_folder lives in queue_scan_folder.FolderPickMixin (2026-10-02); QueueScanMixin inherits it
+    monkeypatch.setattr(queue_scan_folder, "QFileDialog", FakeDialog)
     FakeDialog.existing_dir = str(tmp_path)
     state = SimpleNamespace(folder={"root_path": ""})
     fake = SimpleNamespace(state=state, _save_arena=Rec())
     res = json.loads(queue_scan.QueueScanMixin.pick_folder(fake, ""))
-    assert res == {"ok": True, "path": str(tmp_path)}
+    assert res["ok"] is True and res["path"] == str(tmp_path)
+    assert res["folder"]["root_path"] == str(tmp_path)  # normalised folder echoed back
     assert state.folder["root_path"] == str(tmp_path)
     assert fake._save_arena.calls
     FakeDialog.existing_dir = ""
     res = json.loads(queue_scan.QueueScanMixin.pick_folder(fake, ""))
     assert res == {"ok": False, "cancelled": True}
-    monkeypatch.setattr(queue_scan, "QFileDialog", None)
+    monkeypatch.setattr(queue_scan_folder, "QFileDialog", None)
     res = json.loads(queue_scan.QueueScanMixin.pick_folder(fake, ""))
     assert res == {"ok": False, "error": "No file dialog"}

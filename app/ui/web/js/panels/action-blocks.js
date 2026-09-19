@@ -22,8 +22,20 @@ const ActionBlocksPanel = {
     this._ui = window.ActionBlocksUI;
     this._status = window.ActionBlocksStatus;
     this._io = window.ActionBlocksIO;
-    this._store.loadBuiltin(); this._store.loadCustom(); this._store.loadStackPresets(); this._store.load();
+    this._store.loadBuiltin(); this._store.loadCustom(); this._store.loadStackPresets();
+    this._store.load(() => this.render());
     this.bindUI(); this.ensurePauseOverlay(); this.tryBindBridge(); this.attachGlobalHandlers(); this.render();
+  },
+
+  _confirm(text, onYes) {
+    if (window.Dialog?.confirm) { window.Dialog.confirm('Action Blocks', text, 'OK', onYes); return; }
+    if (typeof confirm !== 'function' || confirm(text)) onYes();
+  },
+
+  _prompt(title, initial, onOk) {
+    if (window.Dialog?.promptEdit) { window.Dialog.promptEdit(title, initial || '', 'OK', onOk); return; }
+    const v = typeof prompt === 'function' ? prompt(title, initial) : initial;
+    if (v) onOk(v);
   },
 
   tryBindBridge() {
@@ -61,7 +73,9 @@ const ActionBlocksPanel = {
     };
     Object.keys(map).forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.addEventListener('click', map[id]);
+      if (!el) return;
+      if (window.Boot) window.Boot.bindOnce(el, 'click', map[id], `action-blocks:${id}`);
+      else el.addEventListener('click', map[id]);
     });
   },
 
@@ -80,7 +94,7 @@ const ActionBlocksPanel = {
   loadBuiltin() { this._store.loadBuiltin(); this.renderAddMenu(); },
   loadCustom() { this._store.loadCustom(); this.renderCustomChips(); },
   loadStackPresets() { this._store.loadStackPresets(); this.renderStackChips(); },
-  load() { this._store.load(); this.render(); },
+  load() { this._store.load(() => this.render()); this.render(); },
   getDefaultBlocks() { return this._store.getDefaultBlocks(); },
 
   onBlocksUpdated(payload) {
@@ -170,8 +184,7 @@ const ActionBlocksPanel = {
   deleteBlock(blockId) {
     const b = this.blocks.find(x=>x.id===blockId);
     if (b?.required) return;
-    if (!confirm(`Delete block ${b ? (b.custom_name||b.name) : blockId}?`)) return;
-    this._store.deleteBlock(blockId); this.render();
+    this._confirm(`Delete block ${b ? (b.custom_name||b.name) : blockId}?`, () => { this._store.deleteBlock(blockId); this.render(); });
   },
   addBuiltinBlock(blockId) {
     const bridge = window.App?.bridge;
@@ -185,20 +198,12 @@ const ActionBlocksPanel = {
     const existing = new Set(this.blocks.map(b=>b.block_id));
     const avail = this.builtinCatalog.length ? this.builtinCatalog : this.getDefaultBlocks().map(b=>({ block_id:b.block_id, name:b.name, allow_duplicate:['CUSTOM_FIND','PAUSE','HIGHLIGHT','AWAIT_PROCESSING_IMAGE'].includes(b.block_id) }));
     const choices = avail.filter(bt=>bt.allow_duplicate || !existing.has(bt.block_id));
-    if (!choices.length) { alert('All types already in stack'); return; }
-    const list = choices.map(c=>`${c.block_id} — ${c.name}`).join('\n');
-    const bt = prompt(`Add block type:\n${list}\n\nEnter block_id:`, choices[0].block_id);
-    if (!bt) return;
-    this.addBuiltinBlock(bt.trim().toUpperCase());
+    if (!choices.length) { LogConsole.log('Action Blocks: all block types are already in the stack', 'warn'); return; }
+    const list = choices.map(c=>c.block_id).join(', ');
+    this._prompt(`Add block — one of: ${list}`, choices[0].block_id, (bt) => this.addBuiltinBlock(bt.trim().toUpperCase()));
   },
   resetToDefault() {
-    if (!confirm('Reset action blocks to default?')) return;
-    const bridge = window.App?.bridge;
-    if (bridge?.reset_action_blocks) {
-      try { const res=bridge.reset_action_blocks(); if (typeof res==='string') { this.load(); return; } } catch {}
-      try { bridge.reset_action_blocks(()=>this.load()); return; } catch {}
-    }
-    this.blocks=this.getDefaultBlocks(); this.save(); this.render();
+    this._confirm('Reset action blocks to default?', () => this._store.restoreDefaults(() => this.render()));
   },
 
   save() { this._io.save(this); },
@@ -208,22 +213,20 @@ const ActionBlocksPanel = {
   import() { this._io.importBlocks(this, (data)=>{ this.blocks=data; this.save(); this.render(); }); },
 
   addCustomBlock(entry) { this._store.addCustomBlock(entry); this.render(); },
-  deleteCustomBlock(name) { if (!confirm(`Delete custom block \"${name}\"?`)) return; this._store.deleteCustomBlock(name); this.renderCustomChips(); },
+  deleteCustomBlock(name) { this._confirm(`Delete custom block "${name}"?`, () => { this._store.deleteCustomBlock(name); this.renderCustomChips(); }); },
   saveBlockAsCustom(block) {
     if (!block) return;
-    const name = prompt('Save custom block as preset — name:', block.custom_name||block.name||'Custom');
-    if (!name) return;
-    this._store.saveBlockAsCustom(block,name); this.renderCustomChips();
+    this._prompt('Save custom block as preset — name:', block.custom_name||block.name||'Custom',
+      (name) => { this._store.saveBlockAsCustom(block,name); this.renderCustomChips(); });
   },
   saveSelectedAsCustom() { if (this.selectedIdx<0) return; this.saveBlockAsCustom(this.blocks[this.selectedIdx]); },
   saveAsPreset() {
     if (!this.blocks.length) return;
-    const name = prompt('Save full stack as preset — name:', this._store._lastStackPreset||'My stack');
-    if (!name) return;
-    this._store.saveStackPreset(name); this.renderStackChips();
+    this._prompt('Save full stack as preset — name:', this._store._lastStackPreset||'My stack',
+      (name) => { this._store.saveStackPreset(name); this.renderStackChips(); });
   },
   loadStackPreset(entry) { this._store.loadStackPreset(entry); this.render(); },
-  deleteStackPreset(name) { if (!confirm(`Delete stack preset \"${name}\"?`)) return; this._store.deleteStackPreset(name); this.renderStackChips(); },
+  deleteStackPreset(name) { this._confirm(`Delete stack preset "${name}"?`, () => { this._store.deleteStackPreset(name); this.renderStackChips(); }); },
   esc(s) { return this._render.esc(s); },
   badgeClassForBlock(b) { return this._render.badgeClassForBlock(b); },
 };

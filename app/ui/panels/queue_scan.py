@@ -1,7 +1,9 @@
-# ideal-size: ~380 lines reason=frozen 12-slot JS queue surface plus the module funcs each slot delegates to; splitting would scatter slot<->helper pairs that always change together (RULE 18.2)
+# ideal-size: ~350 lines reason=frozen 10-slot JS queue surface plus the module funcs each slot delegates to; splitting would scatter slot<->helper pairs that always change together (RULE 18.2)
 """Queue + scan panel — image queue, folder scan, queue file tools, folder-AI.
 
-Owns the 12 scan/queue slots (R3): thin slots delegate to module funcs;
+Owns 10 of the 12 scan/queue slots (R3) — `pick_folder`/`set_folder_path`
+live in `queue_scan_folder.FolderPickMixin` (2026-10-02 bugfix: folder
+shape normalisation) and are inherited here; thin slots delegate to module funcs;
 OS/disk work lives in ui/services (file_service, folder_ai_service,
 scan_service, thumbnail_service). `selected_images` is the run-scope read
 model (`Bridge._get_selected_images` delegates to it; run_control imports
@@ -15,7 +17,8 @@ import json
 import threading
 from pathlib import Path
 
-from app.ui.qt_compat import QFileDialog, Slot, clipboard_copy
+from app.ui.qt_compat import Slot, clipboard_copy
+from app.ui.panels.queue_scan_folder import FolderPickMixin, as_folder_dict, push_folder_undo, resolve_pick_start  # noqa: F401 — compat re-exports
 from app.ui.services import arena_serialize, undo_entries
 from app.ui.services import file_service, folder_ai_service
 from app.ui.services.scan_service import merge_scanned, scan_folder_pure
@@ -48,22 +51,13 @@ def apply_bulk_selection(images, selected: bool, filter_status: str) -> int:
 
 def resolve_scan_root(folder) -> tuple:
     """Picker folder or (None, error); shared scan/folder-AI guard."""
-    root = folder.get("root_path", "")
+    root = as_folder_dict(folder).get("root_path", "")
     if not root:
         return None, "No folder set"
     root_path = Path(root)
     if not root_path.exists():
         return None, "Folder does not exist"
     return root_path, ""
-
-
-def resolve_pick_start(folder, start_dir: str) -> str:
-    """Dialog seed: explicit dir, else last root, else ""."""
-    start = (start_dir or "").strip()
-    if not start or not Path(start).is_dir():
-        last = (folder.get("root_path", "") or "").strip()
-        start = last if last and Path(last).is_dir() else ""
-    return start
 
 
 def run_off_ui_thread(bridge, fn, *args) -> None:
@@ -82,15 +76,6 @@ def push_queue_undo(bridge) -> None:
     try:
         js_images = arena_serialize.arena_to_js(bridge.state)["images"]
         bridge.undo_service.push("queue", js_images)
-        undo_entries.emit_undo_state(bridge)
-    except Exception:
-        pass
-
-
-def push_folder_undo(bridge) -> None:
-    """Snapshot folder config to undo (best effort)."""
-    try:
-        bridge.undo_service.push("folder", bridge.state.folder.copy())
         undo_entries.emit_undo_state(bridge)
     except Exception:
         pass
@@ -242,7 +227,7 @@ def request_thumbnail(bridge, img_id: str) -> str:
         return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
 
 
-class QueueScanMixin:
+class QueueScanMixin(FolderPickMixin):
     """Image queue, folder scan, queue file tools, folder-AI slots."""
 
     @Slot(str, result=str)
@@ -259,29 +244,6 @@ class QueueScanMixin:
     def copy_path_to_clipboard(self, path_str: str):
         """Copy file path to clipboard — Qt first, subprocess fallback."""
         return copy_path_text(self, path_str)
-
-    @Slot(str, result=str)
-    def pick_folder(self, start_dir: str):
-        if QFileDialog is None:
-            return json.dumps({"ok": False, "error": "No file dialog"})
-        folder = QFileDialog.getExistingDirectory(
-            None, "Select image folder", resolve_pick_start(self.state.folder, start_dir))
-        if not folder:
-            return json.dumps({"ok": False, "cancelled": True})
-        self.state.folder["root_path"] = folder
-        self._save_arena()
-        push_folder_undo(self)
-        return json.dumps({"ok": True, "path": folder})
-
-    @Slot(str, result=str)
-    def set_folder_path(self, path: str):
-        p = Path(path)
-        if not p.exists() or not p.is_dir():
-            return json.dumps({"ok": False, "error": "Folder does not exist"})
-        self.state.folder["root_path"] = str(p)
-        self._save_arena()
-        push_folder_undo(self)
-        return json.dumps({"ok": True, "path": str(p)})
 
     @Slot(result=str)
     def scan_folder(self):

@@ -2,7 +2,9 @@
 
 Owns the I-33 row<->tab helpers (single source; `app.ui.bridge` keeps
 compat re-exports used by `tests/test_url_selection.py`) plus the 9 slots.
-Imports go panels -> services/core only.
+Imports go panels -> services/core only. Every slot returns a JSON string
+(QWebChannel callbacks never fire for `None`), and every row mutation goes
+through `commit_urls` (persist + emit + undo) — 2026-10-02 bugfix.
 """
 
 import json
@@ -93,14 +95,35 @@ def push_urls_undo(bridge) -> None:
         pass
 
 
+MAX_URL_LEN = 2048  # browsers/CDP choke on longer; keeps the arena.json row sane
+
+
 def _valid_new_url(url: str):
-    """Trimmed URL or an error string (add-gate)."""
+    """Trimmed URL or an error string (add/edit gate)."""
     url = (url or "").strip()
     if not url:
         return None, "empty URL"
     if not (url.startswith("http://") or url.startswith("https://")):
         return None, "URL must start with http:// or https://"
+    if len(url) > MAX_URL_LEN:
+        return None, f"URL too long (>{MAX_URL_LEN} chars)"
     return url, ""
+
+
+def _duplicate_url(urls, url: str, skip_id: str = "") -> bool:
+    """Same URL already on another row (case-sensitive, trailing-slash exact)."""
+    return any(u.url == url and u.id != skip_id for u in urls)
+
+
+def commit_urls(bridge) -> None:
+    """The ONE write path for URL rows: persist + emit state + undo snapshot.
+
+    Bug 2026-10-02: slots that saved without emitting left the table stale
+    until the next unrelated refresh; `_save_arena` emits `arena_state_updated`
+    and `push_urls_undo` records the global undo entry (RULE 12).
+    """
+    bridge._save_arena()
+    push_urls_undo(bridge)
 
 
 def _find_url(urls, url_id: str):
@@ -112,20 +135,21 @@ def _find_url(urls, url_id: str):
 
 
 class UrlQueueMixin:
-    """URL rows and URL preset slots."""
+    """URL rows and URL preset slots — every slot returns JSON (never None)."""
+
+    def _commit_urls(self) -> None:
+        commit_urls(self)
 
     @Slot(str, result=str)
     def add_url(self, url: str):
         url, err = _valid_new_url(url)
         if err:
             return json.dumps({"ok": False, "error": err})
-        for u in self.state.urls:
-            if u.url == url:
-                return json.dumps({"ok": False, "error": "URL already exists"})
+        if _duplicate_url(self.state.urls, url):
+            return json.dumps({"ok": False, "error": "URL already exists"})
         item = UrlRow.create(url, enabled=True)
         self.state.urls.append(item)
-        self._save_arena()
-        push_urls_undo(self)
+        self._commit_urls()
         return json.dumps({"ok": True, "id": item.id})
 
     @Slot(str, result=str)
@@ -134,8 +158,7 @@ class UrlQueueMixin:
         self.state.urls = [u for u in self.state.urls if u.id != url_id]
         if len(self.state.urls) == before:
             return json.dumps({"ok": False, "error": "not found"})
-        self._save_arena()
-        push_urls_undo(self)
+        self._commit_urls()
         return json.dumps({"ok": True})
 
     @Slot(str, result=str)
@@ -144,24 +167,24 @@ class UrlQueueMixin:
         if row is None:
             return json.dumps({"ok": False, "error": "not found"})
         row.enabled = not row.enabled
-        self._save_arena()
-        push_urls_undo(self)
+        self._commit_urls()
         return json.dumps({"ok": True, "enabled": row.enabled})
 
     @Slot(str, str, result=str)
     def edit_url(self, url_id: str, new_url: str):
-        new_url = (new_url or "").strip()
-        if not new_url:
-            return json.dumps({"ok": False, "error": "empty URL"})
+        new_url, err = _valid_new_url(new_url)
+        if err:
+            return json.dumps({"ok": False, "error": err})
         row = _find_url(self.state.urls, url_id)
         if row is None:
             return json.dumps({"ok": False, "error": "not found"})
+        if _duplicate_url(self.state.urls, new_url, skip_id=url_id):
+            return json.dumps({"ok": False, "error": "URL already exists"})
         row.url = new_url
         row.last_status = "unchecked"
         row.error = None
-        self._save_arena()
-        push_urls_undo(self)
-        return json.dumps({"ok": True})
+        self._commit_urls()
+        return json.dumps({"ok": True, "url": new_url})
 
     @Slot(str, result=str)
     def test_url(self, url_id: str):
@@ -186,38 +209,43 @@ class UrlQueueMixin:
         except Exception:
             return "[]"
 
-    @Slot(str)
+    def _emit_url_presets(self) -> str:
+        payload = json.dumps(self.config.presets.get_url_presets(), ensure_ascii=False)
+        self.url_presets_updated.emit(payload)
+        self.presets_changed.emit("urls", payload)
+        return payload
+
+    @Slot(str, result=str)
     def add_url_preset(self, url: str):
         url = (url or "").strip()
         if not url:
             self._log("⚠ URL field empty — nothing added", "warn")
-            return
+            return json.dumps({"ok": False, "error": "empty URL"})
         try:
-            if self.config.presets.add_url_preset(url):
-                self._log(f"💾 URL bookmark added: {url}", "success")
-            else:
-                self._log(f"ℹ URL bookmark already exists: {url}", "info")
-            payload = json.dumps(self.config.presets.get_url_presets(), ensure_ascii=False)
-            self.url_presets_updated.emit(payload)
-            self.presets_changed.emit("urls", payload)
+            added = bool(self.config.presets.add_url_preset(url))
+            self._log(f"💾 URL bookmark added: {url}" if added
+                      else f"ℹ URL bookmark already exists: {url}", "success" if added else "info")
+            return json.dumps({"ok": True, "added": added, "presets": json.loads(self._emit_url_presets())})
         except Exception as e:
             self._log(f"Add bookmark failed: {e}", "error")
+            return json.dumps({"ok": False, "error": str(e)})
 
-    @Slot(str)
+    @Slot(str, result=str)
     def remove_url_preset(self, url: str):
         try:
-            if self.config.presets.remove_url_preset(url):
+            removed = bool(self.config.presets.remove_url_preset(url))
+            if removed:
                 self._log(f"🗑 URL bookmark removed: {url}", "warn")
-            payload = json.dumps(self.config.presets.get_url_presets(), ensure_ascii=False)
-            self.url_presets_updated.emit(payload)
-            self.presets_changed.emit("urls", payload)
+            return json.dumps({"ok": True, "removed": removed, "presets": json.loads(self._emit_url_presets())})
         except Exception as e:
             self._log(f"Remove bookmark failed: {e}", "error")
+            return json.dumps({"ok": False, "error": str(e)})
 
-    @Slot(str)
+    @Slot(str, result=str)
     def set_last_url_preset(self, url: str):
         url = (url or "").strip()
         if not url:
-            return
+            return json.dumps({"ok": False, "error": "empty URL"})
         self.config.set_state(last_url_preset=url)
         self._log(f"🔖 Bookmark remembered: {url}", "info")
+        return json.dumps({"ok": True})

@@ -127,6 +127,13 @@
     <div class="panel" id="winPrompt" data-window="prompt">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">edit_note</span> Prompt Editor <span class="spacer"></span><button id="promptSaveBtn" class="btn-small btn-primary">Save</button></h3>
       <textarea id="promptTextarea" class="prompt-textarea" placeholder="Enter your prompt for image generation... e.g. 'Enhance this image, keep style'"></textarea>
+      <div class="preset-bar" id="promptPresetBar" style="margin-top:8px;">
+        <input id="promptPresetName" type="text" placeholder="prompt preset name" style="flex:1; min-width:120px;">
+        <button id="promptPresetSaveBtn" class="btn-small btn-primary" title="Save the textarea as a named prompt preset">Save</button>
+        <select id="promptPresetSelect" style="min-width:140px;" title="Saved prompt presets"></select>
+        <button id="promptPresetLoadBtn" class="btn-small" title="Load the selected preset into the textarea">Load</button>
+        <button id="promptPresetDeleteBtn" class="btn-small" title="Delete the selected preset">Delete</button>
+      </div>
       <div id="promptPreview" class="prompt-preview">Preview will appear here with [JOB-ID: ...] token highlighted</div>
       <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Token format: [JOB-ID: &lt;unique&gt;] will be appended automatically. Saved as preset JSON.</div>
     </div>
@@ -552,8 +559,8 @@
       <div style="margin-top:8px;">
         <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">Prompt Presets</div>
         <div style="display:flex; gap:6px; margin-bottom:6px;">
-          <input id="promptPresetNameInput" type="text" placeholder="prompt preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:11px;">
-          <button id="promptPresetSaveBtn" class="btn-small">Save Prompt</button>
+          <input id="arenaPromptPresetNameInput" type="text" placeholder="prompt preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:11px;">
+          <button id="arenaPromptPresetSaveBtn" class="btn-small" title="Save the Prompt Editor text as a named prompt preset">Save Prompt</button>
         </div>
         <div id="promptPresetsList" style="border:1px solid var(--border); border-radius:4px; padding:4px; max-height:150px; overflow:auto;"></div>
       </div>
@@ -641,6 +648,7 @@
 </div>
 
 <script src="js/core/bridge-ready.js"></script>
+<script src="js/core/boot.js"></script>
 <script src="js/core/ui-helpers.js"></script>
 <script src="js/core/dialog.js"></script>
 <script src="js/sash-core/constants.js"></script>
@@ -670,6 +678,7 @@
 <script src="js/panels/url-list/matching.js"></script>
 <script src="js/panels/url-list/cooldown.js"></script>
 <script src="js/panels/url-list/actions.js"></script>
+<script src="js/panels/url-list/listeners.js"></script>
 <script src="js/panels/url-list.js"></script>
 <script src="js/panels/folder-picker.js"></script>
 <script src="js/panels/image-queue/store.js"></script>

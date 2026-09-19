@@ -2,7 +2,12 @@
 
 Module functions own load/save/emit (Bridge delegates `_get_action_blocks`
 and `_emit_action_blocks` here for the orchestrator/runner seam); the mixin
-holds the 10 slots. Imports go panels -> services/core only.
+holds the 11 slots. Imports go panels -> services/core only.
+
+2026-10-02 bugfix: an empty persisted stack is healed to the defaults on
+read (and the heal is persisted, so the runner and the UI agree), an
+empty save is rejected, and `restore_default_blocks` gives the UI an
+explicit, callback-style way back to the defaults.
 """
 
 import json
@@ -20,23 +25,44 @@ from app.core.action_blocks import (
     upsert_stack_preset,
     validate_stack,
 )
+from app.core.action_blocks_defaults import build_default_stack, is_empty_stack
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import undo_entries
 
 log = logging.getLogger("arena")
 
 
+def _parse_saved_stack(raw):
+    if isinstance(raw, list):
+        return load_stack_from_dicts(raw)
+    if isinstance(raw, str):
+        return parse_stack_json(raw)
+    return default_stack()
+
+
+def _heal_empty(bridge, raw, reason: str):
+    """Persist + announce the default stack when the saved one is unusable."""
+    stack = build_default_stack()
+    try:
+        bridge.config.set_state(action_blocks=stack_to_dicts(stack))
+        bridge._log(f"Action blocks: {reason} — restored the default stack ({len(stack)} blocks)", "warn")
+    except Exception:
+        pass
+    return stack
+
+
 def get_action_blocks(bridge):
-    """Load action blocks from session or default."""
+    """Load action blocks from session; an empty/corrupt stack heals to defaults."""
     try:
         raw = bridge.config.get_state("action_blocks", None)
         if raw is None:
             return default_stack()
-        if isinstance(raw, list):
-            return load_stack_from_dicts(raw)
-        if isinstance(raw, str):
-            return parse_stack_json(raw)
-        return default_stack()
+        if is_empty_stack(raw):
+            return _heal_empty(bridge, raw, "saved stack was empty")
+        stack = _parse_saved_stack(raw)
+        if not stack:
+            return _heal_empty(bridge, raw, "saved stack had no readable blocks")
+        return stack
     except Exception as e:
         log.warning(f"Failed to load action blocks: {e}")
         return default_stack()
@@ -80,6 +106,19 @@ def emit_action_blocks(bridge) -> None:
         log.warning(f"emit action blocks failed: {e}")
 
 
+def restore_defaults(bridge) -> str:
+    """Persist the default stack and reply with it (JSON, never raises)."""
+    try:
+        stack = build_default_stack()
+        if not save_action_blocks(bridge, stack):
+            return json.dumps({"ok": False, "error": "save failed"})
+        bridge._log(f"Action blocks restored to defaults ({len(stack)} blocks)", "info")
+        return json.dumps({"ok": True, "count": len(stack), "blocks": stack_to_dicts(stack)},
+                          ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"ok": False, "error": str(e)})
+
+
 def export_stack_file(bridge, blocks) -> str:
     """Write the stack JSON to disk (dialog, else headless fallback)."""
     try:
@@ -104,7 +143,7 @@ def export_stack_file(bridge, blocks) -> str:
 class BlocksStackMixin:
     """Action-block stack and stack-preset slots.
 
-    ideal-size: 10 frozen JS slots; validate/wire helpers already live at
+    ideal-size: 11 frozen JS slots; validate/wire helpers already live at
     module level — remaining per-slot bodies cannot move without
     scattering slot+helper pairs (R10.10).
     """
@@ -125,6 +164,8 @@ class BlocksStackMixin:
             data = json.loads(blocks_json or "[]")
             if not isinstance(data, list):
                 return json.dumps({"ok": False, "error": "must be array"})
+            if not data:
+                return json.dumps({"ok": False, "error": "refusing to save an empty stack — use restore_default_blocks"})
             stack = load_stack_from_dicts(data)
             ok, err = validate_stack(stack)
             if not ok:
@@ -162,6 +203,11 @@ class BlocksStackMixin:
             return json.dumps({"ok": False, "error": "save failed"})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(result=str)
+    def restore_default_blocks(self):
+        """Defaults + the payload in one reply (UI renders without a second round-trip)."""
+        return restore_defaults(self)
 
     @Slot(str, result=str)
     def delete_action_block(self, block_id: str):

@@ -22,6 +22,7 @@ REQUIRED_SLOTS = (
     "drop_ai_suffix", "keep_only_ai_files",
     "get_stack_presets", "save_stack_preset", "delete_stack_preset", "export_action_blocks",
     "set_captcha_settings", "get_captcha_status", "get_captcha_stats",
+    "restore_default_blocks",
     "watcher_start", "watcher_stop", "watcher_status",
     "set_captcha_api_key", "get_captcha_api_key", "captcha_balance",
     "get_recordings_list", "get_recording_detail", "get_recording_snapshot",
@@ -202,6 +203,8 @@ FROZEN_SLOTS = frozenset({
     'undo',
     'undo_grid_layout',
     'undo_stack',
+    # 2026-10-02 bugfix release
+    'restore_default_blocks',
     # 2026-10-02 Captcha Watcher isolation (panels/watcher_solver.py)
     'watcher_start',
     'watcher_stop',
@@ -216,12 +219,13 @@ FROZEN_SLOTS = frozenset({
 EXPECTED_PACKING = {
     'app_settings': 10,
     'blocks_library': 9,
-    'blocks_stack': 10,
+    'blocks_stack': 11,
     'browser_tabs': 7,
     'cdp_tools': 9,
     'layout_state': 14,
     'page_pool': 9,
-    'queue_scan': 12,
+    'queue_scan': 10,
+    'queue_scan_folder': 2,
     'recording_sessions': 8,
     'run_control': 10,
     'undo_history': 10,
@@ -263,7 +267,7 @@ def test_frozen_slot_surface_exact():
 def test_panel_packing():
     counts = _panel_slot_counts()
     assert counts == EXPECTED_PACKING, f"packing drift: {counts}"
-    assert sum(counts.values()) == 133  # 127 + 6 Captcha Watcher slots (2026-10-02)
+    assert sum(counts.values()) == 134  # 127 + 6 Captcha Watcher + restore_default_blocks (2026-10-02)
 
 
 @pytest.mark.unit

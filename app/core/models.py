@@ -204,6 +204,17 @@ def _build_progress_counts(images: List[ImageItem]) -> Dict[str, int]:
     return counts
 
 
+def _folder_from_saved(value: Any) -> Dict[str, Any]:
+    """Saved `folder` → dict (null / bare path string in legacy files never brick the picker)."""
+    folder: Dict[str, Any] = {"root_path": "", "supported_types": [".png", ".jpg", ".jpeg", ".webp"],
+                              "ignore_ai_suffix": True}
+    if isinstance(value, dict):
+        folder.update(value)
+    elif isinstance(value, str):
+        folder["root_path"] = value.strip()
+    return folder
+
+
 @dataclass
 class AppState:
     version: str = "1.0.0"
@@ -270,7 +281,7 @@ class AppState:
         return AppState(
             version=d.get("version", "1.0.0"),
             urls=urls,
-            folder=d.get("folder", {"root_path": "", "supported_types": [".png", ".jpg", ".jpeg", ".webp"], "ignore_ai_suffix": True}),
+            folder=_folder_from_saved(d.get("folder")),
             prompt=d.get("prompt", {"user_prompt": "", "preview_with_token": ""}),
             settings=settings,
             images=images,
