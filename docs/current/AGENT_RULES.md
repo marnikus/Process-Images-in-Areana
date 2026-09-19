@@ -475,12 +475,18 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
 ## RULE 20 — CAPTCHA policy (default manual; opt-in owner-authorized 2Captcha), respect ToS, user-authorized URLs only
 
 * **Default (OFF): do not bypass/defeat/solve CAPTCHA** — pause with `USER_ACTION_REQUIRED`, let the user solve manually.
-* **Opt-in (owner-authorized):** if the user enables the 2Captcha integration in Settings and stores
-  their own API key, the visible Security-Verification captcha MAY be submitted to 2Captcha
-  (`RecaptchaV2EnterpriseTaskProxyless`). Every solver failure (bad key, no credit, unsolvable,
-  timeout, user stop) falls back to the manual flow — a job is never lost to a solver failure.
-  Auto-solved captchas still stack the cooldown penalty. Amendment 2026-09-17, user-requested;
-  design: `docs/archive/2026-09-17-2captcha-integration/design.md` §4.
+* **Opt-in (owner-authorized) = the Watcher switch (amendment 2026-10-02):** the job pipeline
+  itself NEVER solves — `handle_captcha` only detects, pauses and waits for the dialog to clear.
+  Solving is the exclusive job of the Captcha Watcher (`app/services/captcha_watcher/`), which
+  runs only while the user turns the Watcher ON, has stored their own API key in the Captcha
+  window, and talks to 2Captcha only through the official SDK (`2captcha-python`,
+  `AsyncTwoCaptcha.recaptcha`). It scans page-pool tabs only (pages the app attached to),
+  spends at most 2 paid attempts per challenge, and every failure (no key, SDK missing, bad key,
+  no credit, unsolvable kind, timeout) fails open — the paused job simply keeps waiting for the
+  user. No other module may submit a captcha anywhere (RULE 8 test: `tests/test_captcha_service.py`
+  asserts the pipeline never evaluates `inject.js`). Cleared captchas still stack the cooldown
+  penalty. Earlier amendment 2026-09-17 (in-pipeline auto-solve, `solver.py`/`api_client.py`) is
+  superseded; design: `docs/archive/2026-10-02-captcha-watcher-isolation/design.md`.
 * **Key hygiene (non-negotiable even when opt-in is ON):** the key lives only in
   `config/2captcha.json` (git-ignored, 0600 best-effort); the WebChannel/UI carries the masked
   form (`abcd****7890`) only; the raw key never appears in logs, payloads, presets, or error
