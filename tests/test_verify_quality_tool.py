@@ -117,3 +117,21 @@ def test_update_coverage_baseline_round_trip(tmp_path: Path):
     stored = json.loads(base.read_text(encoding="utf-8"))
     assert stored["coverage"] == {"line": 44.31, "branch": 33.76}
     assert "app/example.py" in stored, "existing per-file baseline keys must survive"
+
+
+@pytest.mark.unit
+def test_pre_push_script_has_syntax_valid_shell():
+    """bash -n parses the pre-push script (RULE 8: the gate itself is tested)."""
+    result = subprocess.run(["bash", "-n", str(ROOT / "tools" / "pre_push_check.sh")],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.unit
+def test_pre_push_script_gates_node_and_skips_loudly():
+    """The node lane exists and its skip path is loud, never silent (F-10)."""
+    script = (ROOT / "tools" / "pre_push_check.sh").read_text(encoding="utf-8")
+    assert "npm run test:js" in script, "node lane missing from pre-push gate"
+    assert "NODE LANE SKIPPED" in script, "skip path must warn loudly"
+    # pytest lanes must not dirty the worktree mid-push (F-11)
+    assert "-p no:cacheprovider" in script

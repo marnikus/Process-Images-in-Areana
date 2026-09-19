@@ -6,6 +6,7 @@
 #   - picks .venv/bin/python when present (no bare `python` assumption)
 #   - --changed gets an explicit --base and the gate now WARNs LOUDLY on
 #     stderr instead of silently falling back to all files
+#   - node lane: npm run test:js gates the JS production code too
 #   - coverage is generated FRESH before the single gate pass and uses the
 #     RATCHET lane mid-round (fail only on decrease vs the baseline
 #     'coverage' key; the absolute 80/75 stays the final D4 target and only
@@ -38,7 +39,7 @@ echo ""
 
 # 2. Tests (fast lane — plain pytest, fails early with readable output)
 echo "▶ Running pytest..."
-if QT_QPA_PLATFORM=offscreen "$PY" -m pytest tests -q; then
+if QT_QPA_PLATFORM=offscreen "$PY" -m pytest tests -q -p no:cacheprovider; then
   echo "  ✅ Tests passed"
 else
   echo "  ❌ Tests FAILED"
@@ -46,11 +47,28 @@ else
 fi
 echo ""
 
+# 2b. Node lane (RULE 16: JS in app/ui/web/js is production code too).
+# Loud graceful skip when the runner is unavailable — never a silent pass.
+if command -v npm > /dev/null 2>&1 && [ -d "$ROOT/node_modules" ]; then
+  echo "▶ Running node tests (npm run test:js)..."
+  if npm run test:js --silent; then
+    echo "  ✅ Node tests passed"
+  else
+    echo "  ❌ Node tests FAILED"
+    exit 1
+  fi
+else
+  echo "⚠⚠ NODE LANE SKIPPED: npm or node_modules unavailable —"
+  echo "    JS production code (app/ui/web/js) was NOT gated. Install Node +"
+  echo "    run 'npm ci' before trusting this push for JS changes."
+fi
+echo ""
+
 # 3. Coverage (fresh, branch-aware) — generated BEFORE the gate so the
 #    gate's coverage lanes always judge current data, never a stale file.
 if "$PY" -m coverage --version > /dev/null 2>&1; then
   echo "▶ Generating fresh coverage..."
-  QT_QPA_PLATFORM=offscreen "$PY" -m coverage run --branch --source=app -m pytest tests -q
+  QT_QPA_PLATFORM=offscreen "$PY" -m coverage run --branch --source=app -m pytest tests -q -p no:cacheprovider
   "$PY" -m coverage json -o coverage.json
   echo "  ✅ Coverage report generated (coverage.json)"
 else
