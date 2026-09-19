@@ -81,6 +81,13 @@ Each step: ≤20 LOC funcs, CC ≤7 ideal / ≤10 fail, cognitive ≤10/15, nest
 
 | Step | Action | Priority | Metric |
 |---|---|---|---|
+**STATUS UPDATE (2026-09-19, worst-first roadmap):** D1 is ALREADY DONE —
+`network.py` uses a lock-protected deque with the exact regression test
+requested (`tests/test_captcha_recorder.py::test_network_collector_no_loss_across_threads`).
+D6's gate-integrity core is done (B12–B19: ratchet, per-symbol legacy
+check, negative test proven). Execution order for the remaining items is
+superseded by `archive/2026-09-19-worst-first-remediation/design.md`.
+
 | D1 | Fix silent loss `network.py`: replace check-then-get with lock-protected deque or `call_soon_threadsafe`, add `dropped_events` counter, worker-thread regression test hammers `on_event` while `drain` | P0 live bug | `network.py` cov ≥90%, bug density 0.79→0.74 |
 | D2 | Persist bounded milestones (F-B): task-created offset+id, poll count, token-ready offset, page/challenge identity detect vs token, response-field count/scope pre/post, callback source+result, continue result, page-error offset, dialog-clear offset, acceptance-candidate offset, final job result joined by eid. No raw tokens (I-29/I-32 assert) | P1 | Golden test synthetic session, size bounds asserted |
 | D3 | Independent labels (F-C): `result_label: unknown\|passed\|failed` next to actor, allow `mixed`, history timestamps, viewer wording fix (actor≠outcome), exclude unknown/mixed from cohort stats | P1 | Model/store tests, snapshot test |

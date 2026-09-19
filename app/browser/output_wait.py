@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from dataclasses import dataclass
 from typing import Callable, Awaitable
 
 
@@ -22,24 +23,26 @@ def is_cancelled(cancel_check: Callable | None) -> bool:
         return False
 
 
+def _has_unmatched_pool(diag: dict) -> bool:
+    """New images exist but none landed in a valid pool."""
+    return (diag.get("allNew", 0) > 0
+            and diag.get("validBelow", 0) == 0
+            and diag.get("validAbove", 0) == 0)
+
+
 def should_fallback(elapsed: float, diag: dict) -> bool:
     if elapsed < 10:
         return False
-    # Never fallback to mismatched JOB-ID image
+    # Never fallback to a mismatched JOB-ID image
     if diag.get("reason") == "job_id_mismatch_no_matching_image":
         return False
-    if diag.get("mismatchDetails"):
-        if len(diag.get("mismatchDetails", [])) > 0 and diag.get("allNew", 0) > 0:
-            # Has only mismatched images, do not fallback
-            if diag.get("validBelow", 0) == 0 and diag.get("validAbove", 0) == 0:
-                return False
-    if diag.get("allNew", 0) > 0 and diag.get("validBelow", 0) == 0 and diag.get("validAbove", 0) == 0:
+    if diag.get("mismatchDetails") and _has_unmatched_pool(diag):
+        return False  # only mismatched images — keep waiting
+    if _has_unmatched_pool(diag):
         return True
-    if diag.get("allNew", 0) > 0 and diag.get("spinning") is False:
-        # Only fallback if no mismatch
-        if not diag.get("mismatchDetails"):
-            return True
-    return False
+    return (diag.get("allNew", 0) > 0
+            and diag.get("spinning") is False
+            and not diag.get("mismatchDetails"))
 
 
 def is_mismatch_reason(reason: str) -> bool:
@@ -133,6 +136,25 @@ def _reraise_abort(exc: Exception) -> None:
         raise exc
 
 
+async def _recheck_after_stabilize(diag: dict, check_fn: Callable, log_cb: Callable) -> tuple[bool, dict | None]:
+    """3s re-check after a ready result. (confirmed, rd): confirmed=False
+    means the re-check flipped to a mismatch — drop the ready result."""
+    await asyncio.sleep(3.0)
+    try:
+        from .output_state import flatten_diagnostics
+        rd = flatten_diagnostics(await check_fn())
+        r_assoc = rd.get("associatedJobId")
+        r_exp = rd.get("expectedJobId") or rd.get("jobId")
+        if r_exp and r_assoc and r_assoc != r_exp:
+            log_cb(f"❌ Re-check after 3s mismatch: associated {r_assoc} != expected {r_exp} — NOT downloading")
+            return False, None
+        if rd.get("ready"):
+            return True, rd
+    except Exception:
+        pass
+    return True, None
+
+
 async def _process_ready(diag: dict, check_fn: Callable, log_cb: Callable) -> dict | None:
     assoc = diag.get("associatedJobId")
     exp = diag.get("expectedJobId") or diag.get("jobId")
@@ -140,21 +162,10 @@ async def _process_ready(diag: dict, check_fn: Callable, log_cb: Callable) -> di
         await handle_mismatch(diag, log_cb)
         return None
     await handle_ready_result(diag, log_cb)
-    await asyncio.sleep(3.0)
-    try:
-        recheck = await check_fn()
-        from .output_state import flatten_diagnostics
-        rd = flatten_diagnostics(recheck)
-        r_assoc = rd.get("associatedJobId")
-        r_exp = rd.get("expectedJobId") or rd.get("jobId")
-        if r_exp and r_assoc and r_assoc != r_exp:
-            log_cb(f"❌ Re-check after 3s mismatch: associated {r_assoc} != expected {r_exp} — NOT downloading")
-            return None
-        if rd.get("ready"):
-            return rd
-    except Exception:
-        pass
-    return diag
+    confirmed, rd = await _recheck_after_stabilize(diag, check_fn, log_cb)
+    if not confirmed:
+        return None
+    return rd if rd is not None else diag
 
 
 async def _process_spinner(diag: dict, log_cb: Callable, was_visible: bool) -> bool:
@@ -192,43 +203,78 @@ async def _process_fallback(diag: dict, elapsed: float, log_cb: Callable):
     return None
 
 
-async def wait_for_new_output_loop(check_fn, log_cb, cancel_check, timeout, poll_interval=2.0) -> dict:
+@dataclass
+class WaitSpec:
+    """Inputs of the output wait loop (params object, W0.2)."""
+
+    check_fn: Callable
+    log_cb: Callable
+    timeout: float
+    cancel_check: Callable | None = None
+    poll_interval: float = 2.0
+
+
+async def _timeout_exit(last: dict, elapsed: float, timeout: float, log_cb: Callable) -> dict:
+    """Terminal result once the timeout budget is spent."""
+    fb = await _handle_timeout_fallback(last, timeout, log_cb)
+    if fb:
+        return fb
+    if last.get("reason") == "job_id_mismatch_no_matching_image":
+        last["elapsed"] = elapsed
+        return last
+    return {"ready": False, "reason": "timeout", "last": last, "elapsed": elapsed}
+
+
+async def _handle_ready_cycle(diag: dict, spec: WaitSpec) -> dict | None:
+    """Process a ready result; None = keep waiting (mismatch), else terminal."""
+    ready = await _process_ready(diag, spec.check_fn, spec.log_cb)
+    if ready:
+        return ready
+    assoc, exp = diag.get("associatedJobId"), diag.get("expectedJobId")
+    if is_mismatch_reason(diag.get("reason", "")) or (assoc and exp and assoc != exp):
+        await handle_mismatch(diag, spec.log_cb)
+        await asyncio.sleep(spec.poll_interval)
+        return None
+    return diag
+
+
+async def _poll_once(diag: dict, spec: WaitSpec, elapsed: float, spin_visible: bool):
+    """One non-ready iteration: spinner tracking, wait/mismatch notes, fallback."""
+    spin_visible = await _process_spinner(diag, spec.log_cb, spin_visible)
+    if diag.get("reason") in ("no_exact_below_found_wait_next", "job_id_mismatch_no_matching_image"):
+        await handle_no_exact_below(diag, spec.log_cb)
+        if is_mismatch_reason(diag.get("reason", "")):
+            await handle_mismatch(diag, spec.log_cb)
+    fb = await _process_fallback(diag, elapsed, spec.log_cb)
+    return (fb or None), spin_visible
+
+
+async def _run_wait(spec: WaitSpec) -> dict:
     start = time.monotonic()
     last = {"ready": False, "reason": "not_started"}
     spin_visible = False
     while True:
-        if is_cancelled(cancel_check):
+        if is_cancelled(spec.cancel_check):
             return {"ready": False, "reason": "cancelled", "last": last}
         elapsed = time.monotonic() - start
-        if elapsed > timeout:
-            fb = await _handle_timeout_fallback(last, timeout, log_cb)
-            if fb:
-                return fb
-            if last.get("reason") == "job_id_mismatch_no_matching_image":
-                last["elapsed"] = elapsed
-                return last
-            return {"ready": False, "reason": "timeout", "last": last, "elapsed": elapsed}
-        diag, err = await _poll_check(check_fn, poll_interval)
+        if elapsed > spec.timeout:
+            return await _timeout_exit(last, elapsed, spec.timeout, spec.log_cb)
+        diag, err = await _poll_check(spec.check_fn, spec.poll_interval)
         if diag is None:
             last = err
             continue
         last = diag
         if is_ready_result(diag):
-            ready = await _process_ready(diag, check_fn, log_cb)
-            if ready:
-                return ready
-            # If ready was rejected due to mismatch, continue waiting
-            if is_mismatch_reason(diag.get("reason", "")) or (diag.get("associatedJobId") and diag.get("expectedJobId") and diag.get("associatedJobId") != diag.get("expectedJobId")):
-                await handle_mismatch(diag, log_cb)
-                await asyncio.sleep(poll_interval)
-                continue
-            return diag
-        spin_visible = await _process_spinner(diag, log_cb, spin_visible)
-        if diag.get("reason") in ("no_exact_below_found_wait_next", "job_id_mismatch_no_matching_image"):
-            await handle_no_exact_below(diag, log_cb)
-            if is_mismatch_reason(diag.get("reason", "")):
-                await handle_mismatch(diag, log_cb)
-        fb = await _process_fallback(diag, elapsed, log_cb)
-        if fb:
-            return fb
-        await asyncio.sleep(poll_interval)
+            result = await _handle_ready_cycle(diag, spec)
+            if result is not None:
+                return result
+            continue
+        result, spin_visible = await _poll_once(diag, spec, elapsed, spin_visible)
+        if result is not None:
+            return result
+        await asyncio.sleep(spec.poll_interval)
+
+
+async def wait_for_new_output_loop(spec: WaitSpec) -> dict:
+    """Poll for a new output image until ready/timeout/cancel (public seam)."""
+    return await _run_wait(spec)

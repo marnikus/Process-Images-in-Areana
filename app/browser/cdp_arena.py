@@ -17,7 +17,7 @@ from .cdp_client import CDPClient
 from .captcha_probes import build_visible_js
 from .output_probes import build_baseline_js, build_check_js
 from .output_state import flatten_diagnostics
-from .output_wait import wait_for_new_output_loop
+from .output_wait import WaitSpec, wait_for_new_output_loop
 from .probe_requests import COLOR_PROMPT, COLOR_SUBMIT
 from .probe_selectors import (
     attachment_preview_selectors,
@@ -401,13 +401,12 @@ class CDPArenaController:
             first_err = match_page_error(self._err_base)
             if first_err:
                 return "failed", {"error": first_err}
-            result = await wait_for_new_output_loop(
+            result = await wait_for_new_output_loop(WaitSpec(
                 check_fn=check_fn,
                 log_cb=log_cb,
                 cancel_check=cancel_check,
                 timeout=timeout_ms / 1000.0,
-                poll_interval=2.0,
-            )
+            ))
             return await self._map_wait_result(result, baseline, timeout_ms)
         except Exception as e:
             return "failed", {"error": str(e)}
