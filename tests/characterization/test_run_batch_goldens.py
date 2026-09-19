@@ -27,7 +27,10 @@ def run_batch(bridge: "bd.RecordingBridge") -> list:
 
 
 def patch_ctrl(monkeypatch, bridge):
+    # patch BOTH the cdp_arena export and the orchestrator's module-level
+    # import — the batch pipeline may enter through either
     monkeypatch.setattr("app.browser.cdp_arena.CDPArenaController", bridge.make_ctrl)
+    monkeypatch.setattr("app.services.batch_orchestrator.CDPArenaController", bridge.make_ctrl)
 
 
 @pytest.fixture
@@ -138,3 +141,68 @@ def test_golden_captcha_pause_then_resume(no_sleep, monkeypatch, one_image):
     assert ("signal", "job_started") in [t[:2] for t in actions]
     assert ("signal", "job_finished") in [t[:2] for t in actions]
     assert one_image.status == ImageStatus.COMPLETED.value
+
+
+# ---- W1.5 insurance goldens: signal-heavy uncovered paths ------------------
+
+def test_golden_wait_download_retries_then_succeeds(no_sleep, monkeypatch, one_image):
+    """WAIT_OUTPUT's verification download fails small once (still
+    generating), a second wait returns the real output, then DOWNLOAD's
+    first attempt succeeds — exercising the retry/extend-cycle paths."""
+    calls = {"wait": 0, "download": 0}
+
+    def wait(ctrl, *a, **kw):
+        calls["wait"] += 1
+        cid = kw.get("correlation_id") or "J"
+        if calls["wait"] == 1:
+            return ("completed", {**bd.completed_wait_result(cid)[1],
+                                  "new_src": "https://r2/early.png"})
+        return bd.completed_wait_result(cid, src="https://r2/final.png")
+
+    def download(ctrl, src, *a, **kw):
+        calls["download"] += 1
+        if calls["download"] == 1:
+            return (True, b"tiny", "image/png")  # < 100 bytes: not ready
+        return (True, b"\x89PNG-good-" * 20, "image/png")
+
+    script = dict(HAPPY_SCRIPT)
+    script["wait_for_new_output"] = wait
+    script["download_image"] = download
+    script["is_generating"] = (True, {"spinning": True})
+    bridge = bd.RecordingBridge(images=[one_image], ctrl_script=script)
+    patch_ctrl(monkeypatch, bridge)
+    trace = run_batch(bridge)
+
+    assert calls["wait"] >= 2 and calls["download"] >= 2
+    assert one_image.status == ImageStatus.COMPLETED.value
+    statuses = [(a[1], a[2]) for a in bd.action_trace(trace) if a[0] == "action"]
+    # extend-cycle notice lands on the first wait-type block (AWAIT runs first)
+    assert ("AWAIT_PROCESSING_IMAGE", "waiting") in statuses or ("WAIT_OUTPUT", "waiting") in statuses
+    assert ("SAVE", "success") in statuses
+
+
+def test_golden_download_retries_after_reload(no_sleep, monkeypatch, one_image):
+    """WAIT succeeds with a small download already stored is NOT the case
+    here: wait returns completed with no usable bytes, so the DOWNLOAD
+    block runs its attempt/reload cycles and finally succeeds."""
+    calls = {"download": 0, "reload": 0}
+
+    def download(ctrl, src, *a, **kw):
+        calls["download"] += 1
+        if calls["download"] <= 2:
+            return (True, b"tiny", "image/png")  # too small twice
+        return (True, b"\x89PNG-late-" * 20, "image/png")
+
+    script = dict(HAPPY_SCRIPT)
+    script["download_image"] = download
+    script["is_generating"] = (False, {})
+    script["reload_page"] = lambda ctrl, *a, **kw: calls.__getitem__("reload") or calls.update(reload=calls["reload"] + 1) or (True, "reloaded")
+    bridge = bd.RecordingBridge(images=[one_image], ctrl_script=script)
+    patch_ctrl(monkeypatch, bridge)
+    trace = run_batch(bridge)
+
+    assert calls["download"] >= 3
+    assert one_image.status == ImageStatus.COMPLETED.value
+    statuses = [(a[1], a[2]) for a in bd.action_trace(trace) if a[0] == "action"]
+    assert ("DOWNLOAD", "success") in statuses
+    assert ("ADVANCE", "success") in statuses
