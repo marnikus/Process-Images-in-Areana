@@ -9,7 +9,9 @@ from pathlib import Path
 
 import pytest
 
-BRIDGE = Path(__file__).parent.parent / "app" / "ui" / "bridge.py"
+UI = Path(__file__).parent.parent / "app" / "ui"
+BRIDGE = UI / "bridge.py"
+PANELS = UI / "panels"
 
 # Methods the web UI calls that must stay slots (extend with new slots).
 REQUIRED_SLOTS = (
@@ -47,12 +49,17 @@ def _slot_names(path: Path) -> set:
 @pytest.mark.unit
 def test_required_slots_registered():
     names = _slot_names(BRIDGE)
+    if PANELS.exists():
+        for panel in PANELS.glob("*.py"):
+            names |= _slot_names(panel)
     missing = [s for s in REQUIRED_SLOTS if s not in names]
     assert not missing, f"lost @Slot decorator: {missing}"
 
 
 @pytest.mark.unit
 def test_helpers_never_slots():
-    names = _slot_names(BRIDGE)
-    stolen = [s for s in NEVER_SLOTS if s in names]
-    assert not stolen, f"helper captured @Slot: {stolen}"
+    paths = [BRIDGE] + (list(PANELS.glob("*.py")) if PANELS.exists() else [])
+    for path in paths:
+        names = _slot_names(path)
+        stolen = [s for s in NEVER_SLOTS if s in names]
+        assert not stolen, f"helper captured @Slot in {path.name}: {stolen}"
