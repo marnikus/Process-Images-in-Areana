@@ -12,10 +12,12 @@ import base64
 import threading
 from collections import deque
 from typing import Any, Awaitable, Callable
+from urllib.parse import urlsplit
 
 from .sanitize import redact_text, safe_url, textual_mime
 
 EventSink = Callable[[str, dict[str, Any], bool], Awaitable[None]]
+MAX_QUEUED_EVENTS = 5_000
 
 
 class NetworkCollector:
@@ -58,13 +60,15 @@ class NetworkCollector:
 
     async def _request(self, request_id: str, params: dict[str, Any]) -> None:
         request = params.get("request") or {}
-        payload = {"request_id": request_id, "url": safe_url(request.get("url", "")),
+        url = safe_url(request.get("url", ""))
+        payload = {"request_id": request_id, "url": url, "category": _category(url),
                    "method": request.get("method", ""), "resource_type": params.get("type", "")}
         await self.sink("network_request", payload, True)
 
     async def _response(self, request_id: str, params: dict[str, Any]) -> None:
         response = params.get("response") or {}
-        payload = {"request_id": request_id, "url": safe_url(response.get("url", "")),
+        url = safe_url(response.get("url", ""))
+        payload = {"request_id": request_id, "url": url, "category": _category(url),
                    "status": response.get("status"), "mime": response.get("mimeType", ""),
                    "resource_type": params.get("type", ""),
                    "from_cache": bool(response.get("fromDiskCache"))}
@@ -97,3 +101,16 @@ class NetworkCollector:
         except Exception as exc:
             message = f"response body unavailable: {type(exc).__name__}"
             await self.sink("warning", {"message": message}, False)
+
+
+def _category(url: str) -> str:
+    """Safe endpoint class for comparisons; never inspect URL queries."""
+    parts = urlsplit(url)
+    value = f"{parts.hostname or ''}{parts.path}".lower()
+    if "recaptcha" in value or "captcha" in value:
+        return "captcha"
+    if any(word in parts.path.lower() for word in ("verify", "challenge", "security")):
+        return "verification"
+    if any(word in parts.path.lower() for word in ("generate", "image", "completion")):
+        return "generation"
+    return "page_api" if "/api/" in parts.path.lower() else "other"

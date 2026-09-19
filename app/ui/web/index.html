@@ -439,7 +439,7 @@
         </label>
         <div id="captchaRecordsEmpty" class="captcha-record-empty">No captcha sessions recorded yet.</div>
         <table class="captcha-record-table">
-          <thead><tr><th>Started</th><th>Page</th><th>Method</th><th>Outcome</th><th>Time</th><th title="Mutations / network events / snapshots">M/N/S</th><th>Ground truth</th></tr></thead>
+          <thead><tr><th>Started</th><th>Page</th><th>Method</th><th>Outcome</th><th>Time</th><th title="Mutations / network events / snapshots">M/N/S</th><th>Ground truth / Compare</th></tr></thead>
           <tbody id="captchaRecordsBody"></tbody>
         </table>
         <div class="captcha-compare-title">Side-by-side evidence — use A/B on labeled manual and bot rows</div>
@@ -447,6 +447,7 @@
           <section id="captchaCompareA" class="captcha-compare-pane">Select comparison A</section>
           <section id="captchaCompareB" class="captcha-compare-pane">Select comparison B</section>
         </div>
+        <pre id="captchaComparisonReport" class="captcha-comparison-report">Select both A and B to calculate common evidence and the first divergence.</pre>
       </div>
     </div>
 

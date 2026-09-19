@@ -22,6 +22,9 @@ class Manager:
             raise ValueError("bad label")
         return {"session_id": session_id, "actor_label": label}
 
+    def set_labels(self, session_id, actor, result):
+        return {"session_id": session_id, "actor_label": actor, "result_label": result}
+
     def get_session(self, session_id):
         return {"manifest": {"session_id": session_id}, "events": []}
 
@@ -46,10 +49,13 @@ def test_recordings_bridge_lists_all_with_total_and_labels():
     bridge = CaptchaRecordingsBridge(Manager())
     listed = json.loads(bridge.list_sessions(25))
     changed = json.loads(bridge.set_label("s1", "manual"))
+    labels = json.loads(bridge.set_labels("s1", "mixed", "passed"))
     details = json.loads(bridge.get_session("s1"))
     assert listed == {"ok": True, "total": 1,
                       "sessions": [{"session_id": "s1", "actor_label": "unknown", "limit": 25}]}
     assert changed["ok"] and changed["session"]["actor_label"] == "manual"
+    assert labels["session"]["result_label"] == "passed"
+    assert comparison["comparison"]["right"] == "s2"
     assert details["details"]["manifest"]["session_id"] == "s1"
 
 

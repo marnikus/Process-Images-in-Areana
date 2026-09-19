@@ -1,4 +1,4 @@
-"""Bounded read model for the local recording comparison UI."""
+"""Bounded, schema-normalized read model for recording comparison."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .retention import find_session_folder
 
 
 class EvidenceReader:
-    """Read already-redacted evidence without returning unbounded artifacts."""
+    """Read redacted artifacts and normalize schema-v1/v2 details."""
 
     def __init__(self, root: Path):
         self.root = root
@@ -19,11 +19,12 @@ class EvidenceReader:
     def details(self, session_id: str) -> dict[str, Any]:
         folder = self.folder(session_id)
         manifest = self._json(folder / "manifest.json")
-        return {
-            "manifest": manifest,
-            "events": self._events(folder / "events.jsonl"),
-            "latest_snapshot": self._snapshot(folder / "snapshots"),
-        }
+        manifest.setdefault("result_label", "unknown")
+        events = _events(folder / "events.jsonl")
+        snapshots = _snapshots(folder / "snapshots")
+        return {"manifest": manifest, "events": events, "snapshots": snapshots,
+                "latest_snapshot": snapshots[-1] if snapshots else {},
+                "evidence_complete": not bool(manifest.get("truncated"))}
 
     def folder(self, session_id: str) -> Path:
         if not session_id or Path(session_id).name != session_id:
@@ -40,20 +41,6 @@ class EvidenceReader:
             raise ValueError("recording document is not an object")
         return value
 
-    @staticmethod
-    def _events(path: Path) -> list[dict[str, Any]]:
-        if not path.exists():
-            return []
-        lines = path.read_text(encoding="utf-8").splitlines()[-200:]
-        rows = []
-        for line in lines:
-            try:
-                value = json.loads(line)
-                if isinstance(value, dict):
-                    rows.append(value)
-            except (json.JSONDecodeError, TypeError):
-                continue
-        return rows
 
     @staticmethod
     def _snapshot(folder: Path) -> dict[str, Any]:

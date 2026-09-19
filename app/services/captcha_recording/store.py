@@ -101,7 +101,9 @@ class RecordingStore:
             raise ValueError("label must be unknown, bot, or manual")
         folder = self.session_folder(session_id)
         manifest = self._read_manifest(folder)
-        manifest["actor_label"] = label
+        manifest["actor_label"] = actor
+        if result is not None:
+            manifest["result_label"] = result
         manifest["label_updated_at"] = utc_now()
         self._write_manifest(folder, manifest)
         return self._summary(folder)
@@ -129,6 +131,7 @@ class RecordingStore:
             "reason": "",
             "method": "",
             "actor_label": "unknown",
+            "result_label": "unknown",
             "elapsed_ms": 0,
             "event_count": 0,
             "mutation_count": 0,
@@ -144,10 +147,13 @@ class RecordingStore:
         keys = (
             "session_id", "eid", "tab", "source", "url", "kind", "started_at",
             "ended_at", "status", "outcome", "reason", "method", "actor_label",
-            "elapsed_ms", "event_count", "mutation_count", "network_count",
+            "result_label", "elapsed_ms", "event_count", "mutation_count", "network_count",
             "snapshot_count", "truncated",
         )
-        return {key: manifest.get(key) for key in keys}
+        summary = {key: manifest.get(key) for key in keys}
+        summary["actor_label"] = summary.get("actor_label") or "unknown"
+        summary["result_label"] = summary.get("result_label") or "unknown"
+        return summary
 
     @staticmethod
     def _read_manifest(folder: Path, tolerate: bool = False) -> dict[str, Any]:

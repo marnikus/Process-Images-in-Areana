@@ -132,8 +132,8 @@ def test_default_payload_valid_with_captcha():
 def test_default_tree_mirrors_js_captcha_column():
     col = col_with(default_grid_tree(), "captcha")
     assert col is not None
-    assert [k.get("id") for k in col["children"]] == ["prompt", "run", "settings", "captcha", "captcha_records"]
-    assert col["sizes"] == [35, 20, 20, 12, 13]
+    assert [k.get("id") for k in col["children"]] == ["prompt", "run", "settings", "captcha"]
+    assert col["sizes"] == [40, 22, 26, 12]
 
 
 @pytest.mark.unit
@@ -154,12 +154,29 @@ def test_legacy_13_window_payload_migrates():
     col = col_with(tree, "captcha")
     idx = [k.get("id") for k in col["children"]].index("captcha")
     del col["children"][idx]
-    col["sizes"] = [35, 20, 20, 25]  # renormalized, sums to 100
+    col["sizes"] = [44, 24, 32]  # renormalized, sums to 100
     assert "captcha" not in leaf_ids(tree)
     out, err = canonical_grid_payload(json.dumps({"v": 4, "tree": tree}))
     assert err is None
     ids = leaf_ids(json.loads(out)["tree"])
     assert sorted(ids) == sorted(WINDOW_IDS)  # captcha appended
+
+
+@pytest.mark.unit
+def test_legacy_14_window_payload_gains_recordings():
+    """Old 14-window layouts predate the Recordings window (#15): migration
+    appends it instead of rejecting or default-substituting (RULE 13)."""
+    tree = default_grid_tree()
+    col = col_with(tree, "recordings")
+    idx = [k.get("id") for k in col["children"]].index("recordings")
+    del col["children"][idx]
+    col["sizes"] = [30, 25, 22, 23]  # renormalized, sums to 100
+    assert "recordings" not in leaf_ids(tree)
+    out, err = canonical_grid_payload(json.dumps({"v": 4, "tree": tree}))
+    assert err is None
+    ids = leaf_ids(json.loads(out)["tree"])
+    assert sorted(ids) == sorted(WINDOW_IDS)  # recordings appended
+    assert "recordings" in ids
 
 
 @pytest.mark.unit

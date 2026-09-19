@@ -350,7 +350,7 @@
       "assigned_url_id": "url_2c2ff2d7",
       "attempt_count": 1,
       "output_path": null,
-      "error": "Wait failed: Page error: Something went wrong while generating the response. Please try again.",
+      "error": null,
       "content_hash": null
     },
     {

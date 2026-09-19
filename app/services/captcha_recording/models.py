@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import secrets
 
-VALID_LABELS = frozenset({"unknown", "bot", "manual"})
+VALID_ACTOR_LABELS = frozenset({"unknown", "bot", "manual", "mixed"})
+VALID_RESULT_LABELS = frozenset({"unknown", "passed", "failed"})
+VALID_LABELS = VALID_ACTOR_LABELS  # compatibility for schema-v1 callers
 FINAL_OUTCOMES = frozenset({
     "solved", "manual", "page_error", "token_stale", "auto_failed",
     "stopped", "interrupted",

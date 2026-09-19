@@ -88,6 +88,8 @@ def test_store_rejects_bad_label_and_path(tmp_path):
     with pytest.raises(ValueError):
         store.set_label(session_id, "robot")
     with pytest.raises(ValueError):
+        store.set_labels(session_id, "bot", "maybe")
+    with pytest.raises(ValueError):
         store.set_label("../escape", "bot")
 
 

@@ -1,7 +1,8 @@
-/* Bounded two-pane reader for already-redacted captcha evidence. */
+/* Two-session evidence viewer plus deterministic first-divergence report. */
 'use strict';
 
 const CaptchaRecordingComparison = {
+  ids: [null, null],
   button(item, slot) {
     const button = document.createElement('button');
     button.className = 'captcha-compare-btn';
@@ -18,7 +19,9 @@ const CaptchaRecordingComparison = {
       try {
         const result = JSON.parse(raw);
         if (!result.ok) throw new Error(result.error);
+        this.ids[slot] = sessionId;
         this.render(slot, result.details);
+        this.compare();
       } catch (error) { LogConsole.log('Captcha recording detail failed: ' + error, 'error'); }
     });
   },

@@ -1,0 +1,19 @@
+{
+  "detected_total": 70,
+  "auto_solved": 44,
+  "auto_failed": 7,
+  "manual_solved": 3,
+  "tasks_created": 70,
+  "tasks_deleted": 0,
+  "last_error": "Expecting value: line 1 column 1 (char 0)",
+  "last_balance": 4.5322,
+  "balance_at": "2026-09-18 15:49:01",
+  "per_site": {
+    "arena.ai": {
+      "detected": 70,
+      "auto_solved": 44,
+      "auto_failed": 7,
+      "manual_solved": 3
+    }
+  }
+}

@@ -23,6 +23,7 @@ class CaptchaRecorder:
         self.store = store
         self.ctrl = ctrl
         self.limits = limits or RecordingLimits()
+        self.encounter = encounter
         self.manifest = store.create(encounter)
         self.session_id = self.manifest["session_id"]
         self.started = time.monotonic()
@@ -41,21 +42,28 @@ class CaptchaRecorder:
         if router is not None:
             router.add(self.network.on_event)
         self.active = True
-        await self._event("state", {"state": "recording_started"})
+        evidence = {key: self.encounter.get(key) for key in (
+            "source", "kind", "integration", "invisible", "anchor", "challenge",
+            "response_fields", "sitekey_source", "page_identity")}
+        await self._event("state", {"state": "detected", "evidence": evidence})
         await self._checkpoint("detected", force=True)
         self._task = asyncio.create_task(self._run())
 
-    async def finish(self, outcome: Any) -> dict[str, Any]:
+    async def finish(self, outcome: Any,
+                     report: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         self.active = False
         if self._task is not None:
             await self._join_worker()
         await self._drain_mutations()
         await self.network.drain()
         await self._checkpoint("resolved", force=True)
+        if report:
+            await self._event("solve_report", _semantic_report(report))
         await self._event("state", self._outcome_payload(outcome))
         await self.ctrl.cdp.evaluate(stop_probe())
         self._detach_listener()
-        return self.store.finish(self.session_id, self._finish_updates(outcome))
+        updates = _finish_updates(outcome, self.started, self._counts, self._truncated)
+        return self.store.finish(self.session_id, updates)
 
     async def note_outcome(self, phase: str, outcome: Any) -> None:
         payload = self._outcome_payload(outcome)
@@ -111,7 +119,8 @@ class CaptchaRecorder:
         digest = hashlib.sha256(html.encode("utf-8")).hexdigest()
         if digest == self._last_hash and not force:
             return
-        data.update({"html": html, "sha256": digest, "reason": reason, "at": utc_now()})
+        data.update({"html": html, "sha256": digest, "reason": reason, "at": utc_now(),
+                     "offset_ms": round((now - self.started) * 1000)})
         self.store.write_snapshot(self.session_id, self._counts["snapshot"], clean_mapping(data))
         self._counts["snapshot"] += 1
         self._last_hash, self._last_checkpoint = digest, now
@@ -163,3 +172,28 @@ class CaptchaRecorder:
             return data if isinstance(data, dict) else {}
         except Exception:
             return {}
+
+
+def _finish_updates(outcome: Any, started: float, counts: dict[str, int],
+                    truncated: set[str]) -> dict[str, Any]:
+    status = str(getattr(outcome, "status", "interrupted"))
+    return {"status": status, "outcome": status,
+            "reason": redact_text(getattr(outcome, "reason", ""), 500),
+            "method": str(getattr(outcome, "method", "")),
+            "elapsed_ms": round((time.monotonic() - started) * 1000),
+            "event_count": counts["event"], "mutation_count": counts["mutation"],
+            "network_count": counts["network"], "snapshot_count": counts["snapshot"],
+            "truncated": sorted(truncated)}
+
+
+def _semantic_report(report: dict[str, Any]) -> dict[str, Any]:
+    """Keep diagnostic milestones while excluding raw/public token identifiers."""
+    keys = ("status", "reason", "method", "task_type", "polls", "detect_to_solve_s",
+            "dialog_at_token", "inject", "page_error", "acceptance", "stale",
+            "solve_total_s", "integration", "anchor", "challenge", "sitekey_source",
+            "page_identity", "invisible")
+    payload = {key: report.get(key) for key in keys}
+    payload["field_evidence"] = report.get("response_fields")
+    token = report.get("token")
+    payload["solution_ready_at_s"] = token.get("at_s") if isinstance(token, dict) else None
+    return payload

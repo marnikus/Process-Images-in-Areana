@@ -15,7 +15,7 @@ const read = (f) => fs.readFileSync(path.join(WEB, 'js', f), 'utf-8');
 
 export const ALL_WINDOW_IDS = [
   'url_list', 'folder', 'queue', 'prompt', 'run', 'progress', 'watcher', 'log',
-  'settings', 'captcha', 'captcha_records', 'browser', 'action_blocks', 'block_config', 'arena_presets',
+  'settings', 'captcha', 'browser', 'action_blocks', 'block_config', 'arena_presets', 'recordings',
 ];
 
 export function panelIdOf(id) {
@@ -34,14 +34,14 @@ export const TITLE_SECONDARIES = {
   log: { pre: [], post: ['clearLogBtn'] },
   settings: { pre: [], post: ['settingsSaveBtn'] },
   captcha: { pre: [], post: ['captchaSaveBtn', 'captchaStatsBtn'] },
-  captcha_records: { pre: [], post: ['captchaRecordsSummary', 'captchaRecordsRefreshBtn'] },
+  recordings: { pre: [], post: ['recRefreshBtn'] },
   browser: { pre: [], post: ['browserClearBtn'] },
   action_blocks: { pre: [], post: ['actionBlocksCount'] },
   block_config: { pre: [], post: ['closeBlockConfigBtn'] },
   arena_presets: { pre: [], post: ['arenaPresetsCount'] },
 };
 const BADGE_LIKE = new Set(['urlCount', 'queueCount', 'watcherStatusBadge',
-  'actionBlocksCount', 'arenaPresetsCount', 'captchaRecordsSummary']);
+  'actionBlocksCount', 'arenaPresetsCount']);
 
 function makePanel(id) {
   const p = new El('div');

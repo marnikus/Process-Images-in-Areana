@@ -40,6 +40,7 @@ class ResumePolicy:
     settled_at: Optional[float] = None
     spinner_seen: bool = False
     dead_since: Optional[float] = None
+    gen_error: str = ""  # dead-generation toast text (authoritative death proof)
     cancelled: Optional[Callable[[], bool]] = None
     report: Optional[Callable[[str, str], None]] = None
 
@@ -98,17 +99,27 @@ def _cancelled(policy: ResumePolicy) -> bool:
 
 def _note_activity(policy: ResumePolicy, diag: Dict[str, Any], now: float) -> None:
     """Live signals stand the triggers down; dead polls start the window."""
+    if diag.get("dead_generation_error"):
+        # The site's toast IS the death proof ("Please try again.") — no
+        # grace window to wait out; the trigger matures this same poll.
+        policy.spinner_seen = True
+        policy.dead_since = now - policy.grace_sec
+        policy.gen_error = str(diag["dead_generation_error"])[:160]
+        return
     if diag.get("spinning"):
         policy.spinner_seen = True
     if diag.get("spinning") or int(diag.get("allNew", 0) or 0) > 0:
         policy.dead_since = None
         policy.settled_at = None
+        policy.gen_error = ""  # a live request stands the death proof down
     elif policy.spinner_seen and policy.dead_since is None:
         policy.dead_since = now
 
 
 def _revive_reason(policy: ResumePolicy, now: float) -> str:
     """Matured trigger label, or '' when nothing is due yet."""
+    if policy.gen_error:
+        return f"Generation request died ({policy.gen_error[:80]}) — retrying as the page instructs"
     if policy.settled_at is not None and now - policy.settled_at >= policy.grace_sec:
         return "Captcha settled but the generation died (no spinner, no output)"
     if (policy.spinner_seen and policy.dead_since is not None
@@ -139,6 +150,7 @@ async def _maybe_resume(ctrl: Any, diag: Dict[str, Any]) -> Dict[str, Any]:
     policy.resubmits += 1
     policy.settled_at = None
     policy.dead_since = None
+    policy.gen_error = ""
     await _resubmit(ctrl, policy, reason)
     return diag
 
