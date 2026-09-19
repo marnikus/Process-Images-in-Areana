@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import List, Set
-import os
 from .naming import is_ai_generated_filename
 from ..utils.hashing import fingerprint_from_path_stat
 

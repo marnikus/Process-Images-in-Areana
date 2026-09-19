@@ -560,6 +560,8 @@ class CDPClient(QObject):
     async def attach_image_cdp(self, image_path: str, selectors: List[str] = None) -> tuple[bool, str]:
         """Attach image via CDP: find file input and set files."""
         if selectors is None:
+            # scope-first chain, bare input last — registered in the RULE 21 map
+            # (site_adapter, invariant I-18) by tools/generate_selectors.py
             selectors = [
                 'form input[type="file"][accept*="image"]',
                 'input[type="file"][accept*="image"]',

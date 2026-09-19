@@ -1,9 +1,8 @@
 import json
-import os
-import tempfile
 from pathlib import Path
-from typing import Optional
+
 from .models import AppState
+from ..persistence.json_store import atomic_write_json
 
 def load_state(path: Path) -> AppState:
     path = Path(path)
@@ -18,22 +17,8 @@ def load_state(path: Path) -> AppState:
         return AppState()
 
 def save_state(state: AppState, path: Path) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = state.to_dict()
-    # Atomic write: write to temp file in same dir, then replace
-    fd, tmp_path_str = tempfile.mkstemp(prefix=path.stem + "_", suffix=".json.tmp", dir=str(path.parent))
-    tmp_path = Path(tmp_path_str)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        tmp_path.replace(path)
-    finally:
-        if tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except Exception:
-                pass
+    """Atomic write: temp file in same dir + replace (json_store)."""
+    atomic_write_json(Path(path), state.to_dict())
 
 def save_preset(state: AppState, preset_path: Path) -> None:
     """Save preset JSON containing UI params (urls, prompt, settings, folder) without jobs/images."""
@@ -46,18 +31,7 @@ def save_preset(state: AppState, preset_path: Path) -> None:
         "prompt": state.prompt,
         "settings": state.settings.__dict__,
     }
-    fd, tmp_path_str = tempfile.mkstemp(prefix=preset_path.stem + "_", suffix=".json.tmp", dir=str(preset_path.parent))
-    tmp_path = Path(tmp_path_str)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        tmp_path.replace(preset_path)
-    finally:
-        if tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except Exception:
-                pass
+    atomic_write_json(preset_path, data)
 
 def load_preset(preset_path: Path) -> dict:
     preset_path = Path(preset_path)

@@ -190,9 +190,7 @@ class AppState:
     def recalculate_progress(self):
         total = len(self.images)
         selected = sum(1 for img in self.images if img.selected)
-        pending = sum(1 for img in self.images if img.status == ImageStatus.PENDING.value and img.selected)
-        # Also count selected that are pending status? Let's treat SELECTED as pending if not processed
-        # For simplicity, pending includes both PENDING and SELECTED
+        # pending includes both PENDING and SELECTED (selected but not yet processed)
         pending_selected = sum(1 for img in self.images if img.selected and img.status in [ImageStatus.PENDING.value, ImageStatus.SELECTED.value])
         processing = sum(1 for img in self.images if img.status == ImageStatus.PROCESSING.value)
         completed = sum(1 for img in self.images if img.status == ImageStatus.COMPLETED.value)

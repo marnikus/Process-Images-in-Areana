@@ -13,7 +13,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from .config_manager import _atomic_write, _load_json
+from .json_store import atomic_write_json as _atomic_write
+from .json_store import load_json as _load_json
 
 _VERSION = 1
 _MAX_ENTRIES = 25

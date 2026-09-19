@@ -74,11 +74,6 @@
     "max_class_loc": 0,
     "func_count": 4
   },
-  "app/browser/controller.py": {
-    "max_func_loc": 90,
-    "max_class_loc": 625,
-    "func_count": 22
-  },
   "app/browser/cdp_client.py": {
     "max_func_loc": 106,
     "max_class_loc": 472,
@@ -118,11 +113,6 @@
     "max_func_loc": 42,
     "max_class_loc": 108,
     "func_count": 6
-  },
-  "app/services/job_runner.py": {
-    "max_func_loc": 207,
-    "max_class_loc": 316,
-    "func_count": 9
   },
   "app/ui/__init__.py": {
     "max_func_loc": 0,

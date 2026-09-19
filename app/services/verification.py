@@ -2,7 +2,6 @@
 Verification service for attachments, submissions, outputs.
 """
 from typing import Dict, Any, Tuple
-import time
 
 class VerificationService:
     def __init__(self, browser_controller):
@@ -59,7 +58,6 @@ class VerificationService:
         if not found:
             return False, data, f"No new output: {data.get('reason')}"
 
-        new_output = data.get("new_output")
         # Additional correlation: check if new output appears after baseline timestamp
         # For MVP, we already ensured src not in baseline and loaded
         # Further checks: DOM order, timestamp

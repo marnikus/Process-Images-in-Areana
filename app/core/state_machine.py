@@ -1,5 +1,5 @@
 from typing import Dict, Set
-from .enums import UrlStatus, ImageStatus, JobStatus, RunState
+from .enums import ImageStatus, JobStatus, RunState
 
 # Valid transitions for Image
 IMAGE_TRANSITIONS: Dict[str, Set[str]] = {

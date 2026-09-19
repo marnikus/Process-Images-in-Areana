@@ -17,6 +17,8 @@ from typing import Any, Callable, Optional
 from .visual_click import ClickRequest, find_and_click
 
 # (selector, label_selector, match_text) — semantic href first, no classes.
+# Chain is registered in the RULE 21 map (site_adapter, invariant I-18) by
+# tools/generate_selectors.py — keep the two in lockstep (pre-push check).
 NEW_CHAT_CANDIDATES = (
     ('a[href="/image/direct"]', "span", "New Chat"),
     ('li[data-sidebar="menu-item"] a[href="/image/direct"]', "span", "New Chat"),

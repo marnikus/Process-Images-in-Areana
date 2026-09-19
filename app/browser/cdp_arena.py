@@ -16,8 +16,9 @@ from typing import Optional, List, Dict, Any, Tuple, Callable
 from .cdp_client import CDPClient
 from .captcha_probes import build_visible_js
 from .output_probes import build_baseline_js, build_check_js
-from .output_state import flatten_diagnostics, build_order_check_text
+from .output_state import flatten_diagnostics
 from .output_wait import wait_for_new_output_loop
+from .site_adapter import get_selector
 from ..utils.page_errors import PageErrorAbort, build_error_scan_js, match_page_error
 
 log = logging.getLogger("arena")
@@ -273,7 +274,7 @@ class CDPArenaController:
         if not await self.ensure_connected():
             return False, "Not connected"
         try:
-            await self.highlight_selector('textarea[name="message"]', color="#00AAFF", duration_ms=1000, caption="Prompt")
+            await self.highlight_selector(get_selector("prompt_textarea").primary, color="#00AAFF", duration_ms=1000, caption="Prompt")
         except Exception:
             pass
         js = f";({JS_INSERT_PROMPT})({json.dumps(prompt_text)})"
@@ -299,7 +300,7 @@ class CDPArenaController:
         if not await self.ensure_connected():
             return False, "Not connected"
         try:
-            await self.highlight_selector('button[aria-label="Send message"]', color="#FFAA00", duration_ms=1000, caption="Send")
+            await self.highlight_selector(get_selector("send_button").primary, color="#FFAA00", duration_ms=1000, caption="Send")
         except Exception:
             pass
         js = f";({JS_CLICK_SEND})()"
@@ -463,7 +464,7 @@ class CDPArenaController:
     async def highlight_selector(self, selector: str, color: str = "#FF0000", duration_ms: int = 2000, caption: str = "") -> dict | None:
         # ideal-size: 14 lines reason=highlight via dom_highlight probe
         try:
-            from .dom_highlight import build_highlight_probe, build_highlight_js, build_clear_js
+            from .dom_highlight import build_highlight_probe, build_highlight_js
             from .probe_requests import HighlightSpec
             spec = HighlightSpec(color=color, caption=caption or selector[:40], highlight_ms=duration_ms, clear_first=True)
             js = build_highlight_probe(selector, spec)

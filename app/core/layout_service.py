@@ -5,7 +5,6 @@ Based on Old App layout_service but with arena WINDOW_IDS.
 
 import json
 import logging
-from typing import Any
 
 log = logging.getLogger("arena")
 

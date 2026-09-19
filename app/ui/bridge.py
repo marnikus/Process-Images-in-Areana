@@ -35,14 +35,13 @@ from app.core.layout_service import (
     WINDOW_IDS,
     canonical_grid_payload, default_payload, leaf_ids,
 )
-from app.core.models import AppState, UrlRow, ImageItem
+from app.core.models import UrlRow, ImageItem
 from app.core.persistence import load_state, save_state, save_preset, load_preset
-from app.core.scanner import scan_folder
 from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
 from app.browser.tab_matcher import best_matches
-from app.browser.dom_highlight import build_highlight_js, build_clear_js, build_highlight_probe, build_find_probe, build_click_probe
-from app.browser.probe_requests import FindProbeSpec, ClickProbeSpec, HighlightSpec, COLOR_FIND, COLOR_CLICK, COLOR_COLLECT
+from app.browser.dom_highlight import build_highlight_js, build_clear_js
+from app.browser.probe_requests import HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.core.action_blocks import (
     default_stack,
@@ -51,9 +50,7 @@ from app.core.action_blocks import (
     parse_stack_json,
     validate_stack,
     create_default_block,
-    BUILTIN_BLOCKS,
     get_builtin_blocks_json,
-    BLOCK_DEFINITIONS,
 )
 
 log = logging.getLogger("arena")
@@ -2233,7 +2230,6 @@ class Bridge(QObject):
     def clear_watcher_overlay(self):
         try:
             if self._watcher:
-                import asyncio
                 # Schedule clear
                 cdp = self._get_watcher_cdp_controller()
                 if cdp:

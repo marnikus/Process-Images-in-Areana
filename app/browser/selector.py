@@ -15,6 +15,7 @@ class SelectorObject:
     verification: Optional[str] = None
     evidence: Optional[str] = None
     lastVerified: Optional[str] = None
+    tier: str = ""  # RULE 21: semantic | structural | class-fragment
 
     def all_selectors(self) -> List[str]:
         return [self.primary] + self.fallbacks
@@ -33,4 +34,5 @@ class SelectorObject:
             "verification": self.verification,
             "evidence": self.evidence,
             "lastVerified": self.lastVerified,
+            "tier": self.tier,
         }

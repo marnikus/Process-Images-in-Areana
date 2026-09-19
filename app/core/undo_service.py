@@ -1,10 +1,8 @@
 """UndoService — global undo timeline for Arena."""
 
-import copy
-import json
-from typing import Any, Optional
+from typing import Any
 
-from app.persistence.undo_store import UndoStore, MAX_HISTORY
+from app.persistence.undo_store import UndoStore
 
 VALID_KINDS = ("grid", "urls", "folder", "queue", "prompt", "settings", "window_states", "arena")
 

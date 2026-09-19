@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from app.browser.page_pool import PagePool
 from app.core.enums import ImageStatus

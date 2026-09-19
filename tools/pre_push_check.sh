@@ -32,7 +32,27 @@ else
 fi
 echo ""
 
-# 3. Tests
+# 3. RULE 21 selector sync — site_adapter.SELECTORS must match live probes
+echo "▶ Running tools/generate_selectors.py (selector drift check)..."
+if python tools/generate_selectors.py; then
+  echo "  ✅ Selectors in lockstep with live probes"
+else
+  echo "  ❌ Selector map drifted from live probes — run: python tools/generate_selectors.py --write"
+  exit 1
+fi
+echo ""
+
+# 4. Dead-code closure — no new production-dead modules (RULE 16.4)
+echo "▶ Running tools/import_graph.py --dead ..."
+if python tools/import_graph.py --dead; then
+  echo "  ✅ No dead modules"
+else
+  echo "  ❌ Dead modules found — delete or wire (see docs/archive/2026-09-19-dead-code-quality-batch/design.md)"
+  exit 1
+fi
+echo ""
+
+# 5. Tests
 echo "▶ Running pytest..."
 if python -m pytest tests -q; then
   echo "  ✅ Tests passed"
@@ -42,7 +62,7 @@ else
 fi
 echo ""
 
-# 4. Coverage (if coverage installed)
+# 6. Coverage (if coverage installed)
 if python -m coverage --version > /dev/null 2>&1; then
   echo "▶ Running coverage..."
   QT_QPA_PLATFORM=offscreen python -m coverage run --branch --source=app -m pytest tests -q

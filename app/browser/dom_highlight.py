@@ -26,9 +26,6 @@ import json
 from typing import Optional
 
 from app.browser.probe_requests import (
-    COLOR_CLICK,
-    COLOR_COLLECT,
-    COLOR_FIND,
     ClickProbeSpec,
     FindProbeSpec,
     HighlightSpec,

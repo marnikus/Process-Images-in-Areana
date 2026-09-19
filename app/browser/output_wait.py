@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import Callable, Awaitable
+from typing import Callable
 
 
 def should_continue_after_spinner(reason: str) -> bool:

@@ -10,12 +10,11 @@ Design ("not exposed publicly"):
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
+
+from ...persistence.json_store import atomic_write_json, load_json
 
 DEFAULT_TIMEOUT_SEC = 180
 MIN_TIMEOUT_SEC = 30
@@ -46,13 +45,8 @@ class CaptchaKeyStore:
         self._path = Path(config_dir) / self.FILENAME
 
     def load(self) -> CaptchaSettings:
-        if not self._path.exists():
-            return CaptchaSettings()
-        try:
-            data = json.loads(self._path.read_text(encoding="utf-8"))
-        except Exception:
-            return CaptchaSettings()
-        return self._from_dict(data if isinstance(data, dict) else {})
+        # corrupt/missing/wrong-type -> default settings (RULE 13, json_store)
+        return self._from_dict(load_json(self._path, {}))
 
     def _from_dict(self, data: Dict[str, Any]) -> CaptchaSettings:
         key = data.get("api_key", "")
@@ -63,16 +57,8 @@ class CaptchaKeyStore:
         )
 
     def save(self, settings: CaptchaSettings) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=self._path.stem + "_", suffix=".tmp",
-                                   dir=str(self._path.parent))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(self._to_dict(settings), f, indent=2, ensure_ascii=False)
-            Path(tmp).replace(self._path)
-        finally:
-            self._cleanup_tmp(tmp)
-        self._lock_mode(self._path)
+        # atomic write + 0600 (RULE 20 credential hygiene), via json_store
+        atomic_write_json(self._path, self._to_dict(settings), mode=0o600)
 
     @staticmethod
     def _to_dict(s: CaptchaSettings) -> Dict[str, Any]:
@@ -81,20 +67,6 @@ class CaptchaKeyStore:
             "api_key": s.api_key,
             "solve_timeout_sec": clamp_timeout(s.solve_timeout_sec),
         }
-
-    @staticmethod
-    def _cleanup_tmp(tmp: str) -> None:
-        try:
-            Path(tmp).unlink(missing_ok=True)
-        except Exception:
-            pass
-
-    @staticmethod
-    def _lock_mode(path: Path) -> None:
-        try:
-            os.chmod(path, 0o600)  # best effort (no-op failure on some FS)
-        except Exception:
-            pass
 
     @staticmethod
     def mask(key: str) -> str:
