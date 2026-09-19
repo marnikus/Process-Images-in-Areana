@@ -10,10 +10,10 @@
 
 | Metric | Before |
 |---|---|
-| verify_quality fails (global) | **278** |
+| verify_quality fails (global, coverage lane active) | **280** |
 | pytest | 459 passed |
 | node tests | 105 pass, 0 fail |
-| Line coverage | **63.46%** (10,599/16,703) |
+| Line coverage (gate `percent_covered`) | **59.33%**; statements 63.46% (10,599/16,703) |
 | Branch coverage | **37.78%** (1,209/3,200) |
 | jscpd (app+tests, min-tokens 60) | 56 clones, 607 dup lines, **1.517%** |
 | vulture @90 | 2 unused imports (`build_order_check_text`, `_is_cooling`) |
@@ -90,4 +90,4 @@ Payload equivalence: same selectors, same order, same JS logic — only quote st
 
 ## Verification per step (checklist template)
 
-Each commit: `pytest tests -q` green; `npm run test:js` green; `verify_quality` global fails strictly lower (278 → 260); coverage never below Before (63.46% → 63.63% line, 37.78% → 37.82% branch). Final: Before→After table in the implementation record.
+Each commit: `pytest tests -q` green; `npm run test:js` green; `verify_quality` global fails strictly lower (280 → 262); coverage never below Before (59.33% → 59.50% line, 37.78% → 37.82% branch; statements 63.46% → 63.63%). Final: Before→After table in the implementation record.

@@ -208,12 +208,15 @@ except (json.JSONDecodeError, ValidationError):
 
 | Layer | Files | Responsibility | Imports allowed |
 |---|---|---|---|
-| **core** | `app/core/action_blocks.py`, `correlation.py`, `naming.py`, `image_saver.py` | Domain logic, no Qt, no CDP | stdlib, PIL |
-| **services** | `app/services/folder_scanner.py`, `url_validator.py` | Folder scan, URL validation, filtering (RULE 6) | core, stdlib |
-| **browser** | `app/browser/cdp_client.py`, `cdp_arena.py`, `dom_highlight.py`, `site_adapter.py` | CDP connection with lock, visual runner (RULE 1), selector map (RULE 21) | core, services, stdlib, websockets |
-| **persistence** | `app/persistence/app_state.py`, `config_manager.py`, `layout_service.py`, `undo_service.py` | JSON persistence, grid layout validation (RULE 13), undo timeline (RULE 12) | core, stdlib |
-| **ui** | `app/ui/bridge.py`, `main_window.py`, `panels/*.js`, `web/js/*.js`, `web/css/variables.css` | PyQt6 + WebChannel, sash-grid, win-grip, dark mode, rect overlay | all below via bridge |
-| **pipeline** | `app/pipeline/runner.py` (if exists) or `bridge._do_run_batch()` | Batch loop, state machine 00-22, stop honour (RULE 7), progress (RULE 5) | core, browser, persistence |
+| **core** | `app/core/{action_blocks,models,naming,persistence,scanner,state_machine,undo_service,layout_service,enums,cooldown,folder_ai}.py` | Domain logic, no Qt, no CDP | stdlib, PIL |
+| **services** | `app/services/{single_job_runner,multi_page_dispatcher,watcher,verification,cooldown_service,auto_connect}.py`, `app/services/captcha/**`, `app/services/captcha_recording/**` | Job pipeline, watcher, captcha solve/record | core, browser, stdlib |
+| **browser** | `app/browser/{cdp_client,cdp_arena,dom_highlight,visual_click,new_chat,page_pool,page_status,tab_matcher,output_probes,output_state,output_wait,captcha_probes}.py` | CDP transport + probes, visual runner (RULE 1) | core, stdlib, websockets |
+| **browser selectors** | `app/browser/site_adapter.py` + `app/browser/probe_selectors.py` | SINGLE selector source (RULE 21): site_adapter holds primary+fallbacks+presence per element; probe_selectors feeds every JS payload | same layer only |
+| **persistence** | `app/persistence/{config_manager,preset_store,undo_store,cooldown_store}.py` + `app/persistence/json_store.py` | Named JSON stores; json_store owns atomic load/save for all of them (RULE 13/23) | core, stdlib |
+| **ui** | `app/ui/bridge.py`, `app/ui/main_window.py`, `app/ui/services/**`, `web/js/*.js`, `web/css/*` | PySide6 + WebChannel, sash-grid, win-grip, dark mode, rect overlay | all below via bridge |
+| **pipeline** | `app/ui/bridge.py::_do_run_batch()` (unification into services planned, Area A) | Batch loop, state machine 00-22, stop honour (RULE 7), progress (RULE 5) | core, browser, persistence |
+
+Deleted 2026-09-19 (Area B, proven dead): `app/browser/controller.py` (Playwright legacy), `app/browser/output_detector.py`, `app/services/job_runner.py`, `app/services/job_state_machine.py` — proof + design: `docs/archive/2026-09-19-area-b-dead-code-purge/design.md`.
 
 **Import direction:** `ui` → `browser` → `services` → `core` → stdlib. No cycles. No `browser.*` import from `ui/` except via bridge. No Qt in `core/`.
 
@@ -225,19 +228,24 @@ except (json.JSONDecodeError, ValidationError):
 |---|---|---|
 | `tests/test_scanner.py` | Folder scan recursive, ignore `*_AI`, supported types, empty vs broken (RULE 4,6) | Scanner correctness |
 | `tests/test_naming.py` | `get_output_path()` + unique suffix + atomic write | No overwrite without flag (RULE 23) |
-| `tests/test_persistence.py` | `AppState` load/save atomic, corrupt JSON handling (RULE 13), queue persistence | Never brick |
+| `tests/test_persistence.py` + `tests/unit/test_json_store.py` | `AppState` + atomic JSON store: corrupt/non-dict/missing → default, no tmp residue (RULE 13) | Never brick |
 | `tests/test_correlation.py` | `generate_correlation_id()` uniqueness, `build_final_prompt()` | Token verification (RULE 22) |
 | `tests/test_state_transitions.py` | State machine 00-22, stop/pause/resume | RULE 7 |
 | `tests/test_verification.py` | Baseline capture, new output detection, validation (not HTML, dimensions >0) | RULE 15 |
-| `tests/test_selectors.py` | Selector map primary+fallbacks, visibility, count, evidence | RULE 21 + DOM_SELECTORS.md |
-| `tests/test_rule16_new_code.py` | Code-quality gates: LOC 30/150, params 4, methods 15, CC 10, cognitive 15, nesting 4, coverage 80%/75% | RULE 16 |
-| `tests/js_harness.js` | JS probes against DOM stub (real execution) | RULE 8 |
+| `tests/test_selector.py` | Selector map primary+fallbacks, presence, count, evidence | RULE 21 + DOM_SELECTORS.md |
+| `tests/test_probe_selectors.py` | RULE 21 enforcement: no selector literal in probe sources + payloads wired to site_adapter lists | Single selector source |
+| `tests/js/*.mjs` (14 suites, `npm run test:js`) | JS panels + probe payloads against `tests/js/fake_dom.mjs` stub (real execution) | RULE 8 |
+| `tests/js/test_composer_probes.mjs`, `tests/js/test_output_probes.mjs` | JS probe payloads extracted from the real Python sources and executed against a stub DOM (RULE 8) | Insert/send state, output v4 verify |
+| `tools/verify_quality.py` + `tools/quality_baseline.json` | Code-quality gate: LOC 30/150, params 4, methods 15, CC 10, cognitive 15, nesting 4, coverage 80%/75% (RULE 16) | Gate every change |
 
 **Coverage command (copy-paste, same as Old App adapted):**
 
 ```bash
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m coverage run --branch --source=app -m pytest tests -q
-COVERAGE_FILE=.coverage .venv/bin/python -m coverage json -o coverage.json
+QT_QPA_PLATFORM=offscreen python3 -m pytest tests -q --cov --cov-branch --cov-report=term
+python3 -m coverage json -o coverage.json   # required by tools/verify_quality.py
+python3 tools/verify_quality.py             # RULE 16 gate (size/complexity + JS + ratchet + coverage)
+npm run test:js                             # node --test tests/js/*.mjs (needs npm ci)
+python3 -m vulture app tools/vulture_whitelist.py --min-confidence 90
 ```
 
 ---
@@ -256,7 +264,7 @@ COVERAGE_FILE=.coverage .venv/bin/python -m coverage json -o coverage.json
 | Line coverage | ≥80% | <80% or below baseline | `pytest --cov` |
 | Branch coverage | ≥75% | <75% | `coverage json` |
 
-Baseline if exists: `reports/CODE_QUALITY_METRICS_*.md`. Never decrease.
+Baseline: `tools/quality_baseline.json` (regenerated 2026-09-19 after Area B). Never decrease.
 
 Override format: `# quality-override: metric=value reason=...` with metric ∈ `loc, class-loc, params, methods, cc, cognitive, nesting, coverage, vulture, dup`, reason ≥20 chars naming constraint.
 
@@ -289,6 +297,8 @@ Remediation order: nesting → cyclomatic → cognitive → size (RULE 19).
 * `docs/archive/2026-09-18-recaptcha-page-mechanics/research-design.md` — follow-up research/design: CAPTCHA is layered (Enterprise bootstrap, anchor, challenge, response field, callback, page/backend acceptance, generation output); callback + dialog gone is not whole-job success
 * `docs/archive/2026-09-18-recaptcha-verification-architecture/design.md` — round 11 architecture: evidence-rich probe, page-error/stale-token terminal outcomes, callback acceptance candidate separated from output completion, no penalty for stale/page-failed attempts
 * `docs/archive/2026-09-18-recaptcha-verification-architecture/implementation-2026-09-18.md` — implemented identity gate: page URL + performance.timeOrigin and bounded challenge-frame identity are re-probed before token injection; mismatch deletes provider task and returns token_stale; `SolveOutcome` carries the lifecycle (polls, token fp, dialog state, inject, mid-solve error)
+* `docs/archive/2026-09-19-code-quality-implementation-plan/` — round plan (design, prioritized steps, area plans A–D, verification checklist) + implementation record (`implementation-2026-09-19.md`, Area B filled)
+* `docs/archive/2026-09-19-area-b-dead-code-purge/design.md` — Area B (dead code purge + RULE 21 single selector source): 3-detector deadness proof for 4 deleted modules, site_adapter → probe_selectors payload generation, json_store extraction, vulture triage
 * Selector research: `docs/selector_map.md` (detailed), `docs/research_summary.md`, `docs/current/DOM_SELECTORS.md` (living reference)
 * Workflow: `docs/workflow_diagram.md`, `docs/data_model.md`, `docs/implementation_plan.md`
 
