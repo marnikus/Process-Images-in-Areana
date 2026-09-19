@@ -19,9 +19,39 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOL = ROOT / "tools" / "verify_quality.py"
-# A ref that shares ancestry with HEAD and predates Area B: diffing against
-# it yields a real changed-file list (no fallback).
-GOOD_BASE = "8529d6b"
+
+
+def _usable_base():
+    """Most recent ancestor whose diff to HEAD changes a gated app file.
+
+    Derived from git at runtime — no hardcoded hashes, survives history
+    rewrites (F-16). None when no such ancestor exists (tiny histories)."""
+    try:
+        ancestors = subprocess.run(
+            ["git", "rev-list", "HEAD", "-n", "40"],
+            capture_output=True, text=True, cwd=str(ROOT), timeout=30,
+        ).stdout.split()
+        for anc in ancestors[1:]:
+            diff = subprocess.run(
+                ["git", "diff", "--name-only", f"{anc}...HEAD"],
+                capture_output=True, text=True, cwd=str(ROOT), timeout=30,
+            ).stdout.splitlines()
+            if any(line.startswith("app/") and line.endswith(".py") for line in diff):
+                return anc
+    except Exception:
+        pass
+    return None
+
+
+GOOD_BASE = _usable_base()
+_needs_base = pytest.mark.skipif(not GOOD_BASE, reason="no ancestor with gated app-file changes")
+
+# The full gated set, from the tool itself (no magic file counts — F-16).
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location("verify_quality_under_test", TOOL)
+_vq = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_vq)
+GATED_ALL = len(_vq.all_app_files())
 
 
 def run_tool(*args: str) -> subprocess.CompletedProcess:
@@ -59,18 +89,20 @@ def test_changed_with_unusable_base_warns_loudly_not_silently():
     assert "no merge-base" in data["changed_fallback"] or "failed" in data["changed_fallback"]
     assert "GATE HONESTY" in result.stderr
     assert "ALL" in result.stderr
-    # and the fallback is real: all app files were gated
-    assert data["files_checked"] > 50
+    # and the fallback is real: ALL gated app files were checked
+    assert data["files_checked"] == GATED_ALL
 
 
+@_needs_base
 @pytest.mark.unit
 def test_changed_with_valid_base_no_fallback():
     result = run_tool("--changed", "--base", GOOD_BASE, "--json")
     data = json.loads(result.stdout)
     assert data["changed_fallback"] is None
-    assert 0 < data["files_checked"] < 50, "expected a real subset of changed files"
+    assert 0 < data["files_checked"] < GATED_ALL, "expected a real subset of changed files"
 
 
+@_needs_base
 @pytest.mark.unit
 def test_coverage_ratchet_passes_when_above_baseline(tmp_path: Path):
     cov = coverage_file(tmp_path, 50.0, 400, 1000)
@@ -84,6 +116,7 @@ def test_coverage_ratchet_passes_when_above_baseline(tmp_path: Path):
     assert any("D4" in b["message"] for b in lanes)
 
 
+@_needs_base
 @pytest.mark.unit
 def test_coverage_ratchet_fails_on_decrease(tmp_path: Path):
     cov = coverage_file(tmp_path, 50.0, 400, 1000)
@@ -97,6 +130,7 @@ def test_coverage_ratchet_fails_on_decrease(tmp_path: Path):
     assert "never decrease" in ratchet_fails[0]["message"]
 
 
+@_needs_base
 @pytest.mark.unit
 def test_coverage_absolute_mode_still_fails(tmp_path: Path):
     cov = coverage_file(tmp_path, 50.0, 400, 1000)
@@ -156,6 +190,7 @@ def test_update_baseline_refuses_to_lower_the_ratchet_floor(tmp_path: Path):
     assert json.loads(base.read_text(encoding="utf-8"))["coverage"]["branch"] > 35.10
 
 
+@_needs_base
 @pytest.mark.unit
 def test_ratchet_with_missing_baseline_key_warns_not_silent(tmp_path: Path):
     """F-17a: no usable ratchet floor -> explicit warn lane + absolute fails."""
@@ -170,6 +205,7 @@ def test_ratchet_with_missing_baseline_key_warns_not_silent(tmp_path: Path):
     assert {b["metric"] for b in lanes if b["fail"]} == {"line", "branch"}
 
 
+@_needs_base
 @pytest.mark.unit
 def test_missing_coverage_file_is_a_warn_not_a_fail():
     result = run_tool("--changed", "--base", GOOD_BASE, "--json",
@@ -178,6 +214,7 @@ def test_missing_coverage_file_is_a_warn_not_a_fail():
     assert len(cov) == 1 and cov[0]["metric"] == "missing" and not cov[0]["fail"]
 
 
+@_needs_base
 @pytest.mark.unit
 def test_corrupt_coverage_file_reports_parse_error(tmp_path: Path):
     bad = tmp_path / "bad.json"

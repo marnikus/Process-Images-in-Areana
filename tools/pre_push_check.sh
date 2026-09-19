@@ -4,7 +4,9 @@
 #
 # F-6 fixes (2026-09-19):
 #   - picks .venv/bin/python when present (no bare `python` assumption)
-#   - --changed gets an explicit --base and the gate now WARNs LOUDLY on
+#   - --changed resolves its base (env -> origin/<branch> -> origin/main)
+#     so the changed-file lane gates exactly the unpushed commits;
+#     unusable bases WARN LOUDLY on stderr instead of silently
 #     stderr instead of silently falling back to all files
 #   - node lane: npm run test:js gates the JS production code too
 #   - coverage is generated FRESH before the single gate pass and uses the
@@ -82,7 +84,21 @@ echo ""
 #    absolute 80/75 = final D4 target, warns mid-round).
 #    If BASE shares no ancestry with HEAD the gate prints a LOUD stderr
 #    warning and gates ALL files — no silent fallback.
-BASE="${VERIFY_QUALITY_BASE:-origin/main}"
+# Base for the changed-file lane: gate exactly what is being pushed.
+# Resolution order: explicit env override -> origin/<current-branch>
+# (diff = the unpushed commits; merge-base always exists) -> origin/main
+# (loud GATE HONESTY warning when it shares no ancestry, gates ALL files).
+resolve_base() {
+  if [ -n "$VERIFY_QUALITY_BASE" ]; then echo "$VERIFY_QUALITY_BASE"; return; fi
+  local branch
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  if [ -n "$branch" ] && git merge-base HEAD "origin/$branch" > /dev/null 2>&1; then
+    echo "origin/$branch"
+  else
+    echo "origin/main"
+  fi
+}
+BASE="$(resolve_base)"
 echo "▶ Running tools/verify_quality.py --changed --base $BASE --allow-legacy --coverage-ratchet..."
 if "$PY" tools/verify_quality.py --changed --base "$BASE" --allow-legacy --coverage-ratchet; then
   echo "  ✅ Quality gate passed (changed files vs $BASE, coverage ratchet)"
