@@ -28,6 +28,11 @@ def send_click_selectors() -> List[str]:
     return get_selector("send_button").all_selectors()
 
 
+def send_click_primary() -> str:
+    """Enabled-first send selector — visual click / highlight fallback."""
+    return get_selector("send_button").primary
+
+
 def send_presence_selector() -> str:
     """Un-narrowed send selector — state scans and highlights see disabled too."""
     return get_selector("send_button").presence()

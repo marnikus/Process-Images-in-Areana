@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.enums import ImageStatus
 from app.core.naming import atomic_write_bytes, get_output_path
+from app.browser.probe_selectors import send_presence_selector
 from app.browser.visual_click import ClickRequest, find_and_click
 
 log = logging.getLogger("arena")
@@ -153,7 +154,7 @@ async def submit_job(ctx: JobCtx, block: Any) -> tuple[bool, str]:
 async def _submit_fallback(ctx: JobCtx, block: Any) -> tuple[bool, str]:
     """Fallback click."""
     try:
-        sel = getattr(block, "selector", "") or 'button[aria-label="Send message"]'
+        sel = getattr(block, "selector", "") or send_presence_selector()
         req = ClickRequest(selector=sel, highlight_enabled=False, label="Submit")
         res = await find_and_click(ctx.client, req, engine=None)
         if res == "ok":

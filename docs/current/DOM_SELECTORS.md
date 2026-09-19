@@ -173,6 +173,12 @@ form.flex.w-full.flex-col
 
 ## E. Output / Generated Image — Detection (Original)
 
+> **Historical snapshot (2026-09-16).** The authoritative, live inventory of
+> every selector is `app/browser/site_adapter.py` (`SELECTORS` dict); this
+> document describes it. When they disagree, site_adapter wins. The probe
+> payload selector lists are generated from it via
+> `app/browser/probe_selectors.py` (RULE 21 single source).
+
 **Purpose:** Detect genuinely new output image, not old one. User report 2026-09-16: image was created but download failed "Fetch failed {ok: False, 'error': 'TypeEr" — indicates fetch CORS issue, need canvas fallback.
 
 | Field | Value |
@@ -226,6 +232,16 @@ form.flex.w-full.flex-col
 ---
 
 ## F. Model / Processing Indicator — Response A/B Spinner
+
+> **Action-block interplay (documented 2026-09-19, RULE 10 decision pending —
+> Area A):** the `CHECK_SECURITY` and `WAIT_OUTPUT` action blocks expose a
+`selector` setting in the UI, but the live handlers currently ignore it and
+always use the shared site_adapter-driven probes. Their catalog defaults
+also still contain Playwright-only syntax (`div:has-text(...)`) that the CDP
+path cannot evaluate. Both facts are pinned by
+`tests/test_action_block_defaults.py` (frozen divergent list) so no silent
+drift is possible; changing either is a deliberate Area A behaviour
+decision, not a cleanup.
 
 **Purpose:** Identify model and active processing state. User report 2026-09-16: app should understand when to wait — see icon of processing.
 
@@ -327,11 +343,17 @@ For every element store (same as Old App, adapted):
   "mustBeEnabled": true,
   "expectedCount": 1,
   "textCondition": null,
+  "presenceSelector": null,
   "verification": "read back value equals expected",
   "evidence": "Directly Chat...html line 74",
   "lastVerified": "2026-09-15"
 }
 ```
+
+`presenceSelector` (optional): un-narrowed variant used by state scans and
+readiness gates — unlike `primary` it must NOT filter on `:not([disabled])`,
+so disabled controls are still detected (see `send_button` for the canonical
+example, and `probe_selectors.send_presence_selector()`).
 
 If no selector matches, capture sanitized diagnostics (screenshot path, limited HTML snapshot, attempted selectors) and stop step. Never guess-click.
 

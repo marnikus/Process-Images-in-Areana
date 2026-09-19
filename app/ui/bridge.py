@@ -42,6 +42,7 @@ from app.persistence.config_manager import ConfigManager
 from app.core.undo_service import UndoService
 from app.browser.tab_matcher import best_matches
 from app.browser.dom_highlight import build_highlight_js, build_clear_js, build_highlight_probe, build_find_probe, build_click_probe
+from app.browser.probe_selectors import send_click_primary, send_presence_selector, textarea_primary
 from app.browser.probe_requests import FindProbeSpec, ClickProbeSpec, HighlightSpec, COLOR_FIND, COLOR_CLICK, COLOR_COLLECT
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.core.action_blocks import (
@@ -2525,7 +2526,7 @@ class Bridge(QObject):
             duration_ms = int(duration * 1000) if duration else 2000
             from app.browser.cdp_arena import CDPArenaController
             ctrl = CDPArenaController(self.cdp, log_callback=lambda m: self._log(m, "info"))
-            await ctrl.highlight_selector('textarea[name="message"]', color="#FF0000", duration_ms=duration_ms, caption=f"Image {img_id[:8]}" if img_id else "Clicked element")
+            await ctrl.highlight_selector(textarea_primary(), color="#FF0000", duration_ms=duration_ms, caption=f"Image {img_id[:8]}" if img_id else "Clicked element")
             self.highlight_rect.emit(json.dumps({"x":200,"y":200,"width":320,"height":180,"duration":duration,"label":f"Image {img_id}" if img_id else "Clicked element"}))
         except Exception as e:
             self._log(f"Highlight failed: {e}", "warn")
@@ -2807,7 +2808,7 @@ class Bridge(QObject):
                             # Highlight first
                             if block.highlight_enabled:
                                 try:
-                                    await ctrl.highlight_selector(block.selector or 'textarea[name="message"]', color=block.color, duration_ms=block.highlight_ms, caption=block.display_name)
+                                    await ctrl.highlight_selector(block.selector or textarea_primary(), color=block.color, duration_ms=block.highlight_ms, caption=block.display_name)
                                 except Exception:
                                     pass
                             ok, reason = await ctrl.insert_prompt(prompt_to_type)
@@ -2847,7 +2848,7 @@ class Bridge(QObject):
 
                         elif btype in ("HIGHLIGHT_ATTACH", "HIGHLIGHT_PROMPT", "HIGHLIGHT_SUBMIT"):
                             try:
-                                sel = block.selector or ('input[type="file"]' if "ATTACH" in btype else 'textarea[name="message"]' if "PROMPT" in btype else 'button[aria-label="Send message"]')
+                                sel = block.selector or ('input[type="file"]' if "ATTACH" in btype else textarea_primary() if "PROMPT" in btype else send_presence_selector())
                                 rect = await ctrl.highlight_selector(sel, color=block.color, duration_ms=block.highlight_ms or block.highlight_duration_ms, caption=block.display_name)
                                 rd = rect if isinstance(rect, dict) else None
                                 if isinstance(rect, dict) and rect.get("rect"):
@@ -2910,7 +2911,7 @@ class Bridge(QObject):
                             self._log(f"[{correlation_id}] Inserting prompt with token [{correlation_id}]", "info")
                             if block.highlight_enabled:
                                 try:
-                                    await ctrl.highlight_selector(block.selector or 'textarea[name="message"]', color=block.color, duration_ms=block.highlight_ms or 1000, caption=block.display_name)
+                                    await ctrl.highlight_selector(block.selector or textarea_primary(), color=block.color, duration_ms=block.highlight_ms or 1000, caption=block.display_name)
                                 except Exception:
                                     pass
                             ok, reason = await ctrl.insert_prompt(final_prompt)
@@ -2939,7 +2940,7 @@ class Bridge(QObject):
                                 pass
                             # Use visual runner for submit with fallback list (comma-separated)
                             req = ClickRequest(
-                                selector=block.selector or 'button[aria-label="Send message"]:not([disabled])',
+                                selector=block.selector or send_click_primary(),
                                 label_selector=block.label_selector or "",
                                 match_text=block.match_text or "",
                                 click_enabled=block.click_enabled,
