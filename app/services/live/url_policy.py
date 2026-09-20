@@ -11,6 +11,10 @@ Pure functions over the planner's row dicts (`{id, url, tab_id, enabled}`):
   (the panel keeps 2-line delegations); `add_rows` restores the checkbox a
   closed tab's row had (`remember` / `restore_enabled`, bounded memory).
 * `removal_lines` — one log line per removal (RULE 2 vocabulary).
+* `mark_receivers` / `receiver_reason` (S7, I-53) — the ONE writer of
+  `UrlRow.receiver`: a checked row, linked to a connected pooled tab with no
+  job in flight, can receive a job; every other row carries its reason. The
+  run gate itself is read from `auto_connect.enabled_tab_ids`, never redone.
 
 Layer: services → services/core only.
 """
@@ -21,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from app.core.models import UrlRow
-from app.services.auto_connect import dedupe_linked_rows, matches_pattern
+from app.services.auto_connect import dedupe_linked_rows, enabled_tab_ids, matches_pattern
 
 MISS_THRESHOLD = 2      # consecutive fetches without the tab before its row goes
 MEMORY_MAX = 200        # remembered checkbox states (url → enabled), oldest out first
@@ -159,3 +163,41 @@ def restore_enabled(memory: dict, url: str, default: bool = True) -> bool:
 def removal_lines(removals: Iterable[Removal]) -> List[str]:
     """One line per removed row, naming the reason (RULE 2)."""
     return [f"🤖 URL row removed: {r.url} — {REASON_TEXT.get(r.reason, r.reason)}" for r in removals]
+
+
+RECEIVER_REASONS = ("unchecked", "not linked", "offline", "busy")
+
+
+def pooled_pages(pool: Any) -> Dict[str, dict]:
+    """Pool snapshot keyed by tab id (empty when there is no pool)."""
+    try:
+        return {p.get("tab_id"): p for p in pool.status_snapshot()["pages"]}
+    except Exception:
+        return {}
+
+
+def receiver_reason(row: Any, allowed: set, pooled: Dict[str, dict]) -> str:
+    """"" when the row can take a job now, else why not (the icon's title, S9's counters)."""
+    if row.tab_id not in allowed:
+        return "unchecked" if row.tab_id else "not linked"
+    page = pooled.get(row.tab_id)
+    if page is None or not page.get("is_connected"):
+        return "offline"
+    return "busy" if page.get("current_image") else ""
+
+
+def mark_receivers(rows: Iterable, allowed: set, pooled: Dict[str, dict]) -> int:
+    """Write `receiver` / `receiver_reason` on every row; returns how many rows changed."""
+    changed = 0
+    for row in rows:
+        reason = receiver_reason(row, allowed, pooled)
+        if (row.receiver, row.receiver_reason) != (reason == "", reason):
+            row.receiver, row.receiver_reason = reason == "", reason
+            changed += 1
+    return changed
+
+
+def mark_state_receivers(bridge: Any) -> int:
+    """The bridge-level call both writers use: rows + the run gate + the pool snapshot."""
+    urls = bridge.state.urls
+    return mark_receivers(urls, enabled_tab_ids(urls), pooled_pages(getattr(bridge, "_page_pool", None)))

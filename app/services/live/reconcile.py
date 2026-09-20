@@ -178,7 +178,7 @@ async def reconcile_once(bridge: Any, deps: LiveDeps, source: str) -> Report:
     live = ac.live_tab_keys(tabs)
     report.removals, report.deferred = _remove(bridge, tabs, live, rows)
     report.removed = len(report.removals) + dupes
-    if report.changed():
+    if report.changed() or up.mark_state_receivers(bridge):   # S7: the flag follows every pass
         deps.commit(bridge)
         live_bus(bridge).wake("urls")
     report.joined = await _join(deps, plan.connect)

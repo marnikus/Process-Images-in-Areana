@@ -37,6 +37,12 @@
   font-weight: 600;
 }
 .url-status-pending { background: var(--bg-card); color: var(--text-muted); }
+.url-not-receiver {           /* S7: Python says this row cannot take a job right now (title = why) */
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: help;
+}
 .url-status-ok { background: rgba(74,222,128,.15); color: var(--green); }
 .url-status-error { background: rgba(248,113,113,.15); color: var(--red); }
 .url-status-checking { background: rgba(250,204,21,.15); color: var(--yellow); }

@@ -23,6 +23,8 @@ class UrlRow:
     last_checked: Optional[str] = None
     error: Optional[str] = None
     tab_id: str = ""
+    receiver: bool = False        # S7 (I-53): decided by live.url_policy.mark_receivers only
+    receiver_reason: str = ""     # "" | unchecked | not linked | offline | busy
 
     @staticmethod
     def create(url: str, enabled: bool = True, tab_id: str = "") -> "UrlRow":

@@ -12,7 +12,7 @@ from datetime import datetime
 
 from app.core.models import UrlRow
 from app.services.auto_connect import claim_unlinked_from_pool, enabled_tab_ids
-from app.services.live.url_policy import add_rows, dedupe_rows, tab_owned
+from app.services.live.url_policy import add_rows, dedupe_rows, mark_state_receivers, tab_owned
 from app.ui.qt_compat import Slot
 from app.ui.services import arena_serialize, undo_entries
 
@@ -103,6 +103,7 @@ def commit_urls(bridge) -> None:
     until the next unrelated refresh; `_save_arena` emits `arena_state_updated`
     and `push_urls_undo` records the global undo entry (RULE 12).
     """
+    mark_state_receivers(bridge)  # S7 (I-53): the ⊘ flag follows the checkbox instantly
     bridge._save_arena()
     push_urls_undo(bridge)
 

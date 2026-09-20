@@ -118,7 +118,7 @@ async def test_a_closed_tab_is_removed_with_a_reason_and_wakes_the_loop(tmp_path
     assert second.removed == 1 and [r.reason for r in second.removals] == ["tab_gone"]
     assert bridge.state.urls == [kept]
     assert bridge.state.images[0].assigned_url_id is None                     # dangling assignment cleared
-    assert calls.commits == 1 and "urls" in live_bus(bridge).reasons()
+    assert calls.commits == 2 and "urls" in live_bus(bridge).reasons()        # pass 1 wrote the receiver flags (S7)
     assert any("https://arena.ai/c/1" in m and "tab closed" in m for m in calls.logs)
     # the tab comes back: its row returns unchecked, as the user left it
     back, _ = make_deps([tab("t1", "https://arena.ai/c/1"), tab("t2", "https://arena.ai/c/2")])
