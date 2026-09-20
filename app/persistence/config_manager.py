@@ -23,6 +23,7 @@ DEFAULT_SESSION = {
     "watcher_enabled": False,
     "watcher_interval_ms": 2000,
     "watcher_captcha_timeout_sec": 300,
+    "url_reconcile_interval_ms": 5000,  # S6: Python-owned URL row cadence (500…60000)
     "watcher_generation_timeout_sec": 600,
     "watcher_auto_pause": True,
     "cooldown_enabled": True,

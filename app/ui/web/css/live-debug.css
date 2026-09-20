@@ -1,0 +1,13 @@
+/* live-debug.css — the Live Worker & Queue Debug window (S8 shell; S9 strips) */
+.live-debug { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--text-primary); }
+.live-debug .ld-strip { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: var(--bg-card); }
+.live-debug .ld-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.live-debug .ld-head b { font-size: 13px; }
+.live-debug .ld-muted { color: var(--text-muted); }
+.live-debug .ld-workers { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow: auto; }
+.live-debug .ld-worker { display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
+.live-debug .ld-worker .ld-tab { font-family: monospace; color: var(--text-muted); }
+.live-debug .ld-worker .ld-busy { color: var(--warning, #fbbf24); }
+.live-debug .ld-worker .ld-captcha { color: var(--red, #ff6b6b); }
+.live-debug .ld-worker .ld-free { color: var(--green, #4ade80); }
+.live-debug .ld-cadence { display: flex; gap: 10px; align-items: center; }

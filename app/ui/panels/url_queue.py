@@ -11,11 +11,8 @@ import json
 from datetime import datetime
 
 from app.core.models import UrlRow
-from app.services.auto_connect import (
-    claim_unlinked_from_pool,
-    dedupe_linked_rows,
-    enabled_tab_ids,
-)
+from app.services.auto_connect import claim_unlinked_from_pool, enabled_tab_ids
+from app.services.live.url_policy import add_rows, dedupe_rows, mark_state_receivers, tab_owned
 from app.ui.qt_compat import Slot
 from app.ui.services import arena_serialize, undo_entries
 
@@ -55,34 +52,18 @@ def _urls_gate_error(bridge, urls) -> str:
 
 
 def _dedupe_state_rows(state_urls) -> tuple[list, int]:
-    """Repair legacy N-rows-per-tab state; returns (plan rows, removed)."""
-    rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id, "enabled": u.enabled}
-            for u in state_urls]
-    kept, dropped = dedupe_linked_rows(rows)
-    if not dropped:
-        return rows, 0
-    drop = {r["id"] for r in dropped}
-    state_urls[:] = [u for u in state_urls if u.id not in drop]
-    return kept, len(dropped)
+    """Repair legacy N-rows-per-tab state; returns (plan rows, removed). Owner: live.url_policy (S6)."""
+    return dedupe_rows(state_urls)
 
 
 def _tab_already_owned(urls, tab_id: str) -> bool:
-    """One row per tab (I-33): never add a second."""
-    for u in urls:
-        if u.tab_id == tab_id:
-            return True
-    return False
+    """One row per tab (I-33): never add a second. Owner: live.url_policy (S6)."""
+    return tab_owned(urls, tab_id)
 
 
 def _add_missing_rows(urls, adds) -> int:
-    """Append rows for tabs none owns yet; returns count added."""
-    added = 0
-    for url, tab_id in adds:
-        if _tab_already_owned(urls, tab_id):
-            continue
-        urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
-        added += 1
-    return added
+    """Append rows for tabs none owns yet; returns count added. Owner: live.url_policy (S6)."""
+    return add_rows(urls, adds)
 
 
 def push_urls_undo(bridge) -> None:
@@ -122,6 +103,7 @@ def commit_urls(bridge) -> None:
     until the next unrelated refresh; `_save_arena` emits `arena_state_updated`
     and `push_urls_undo` records the global undo entry (RULE 12).
     """
+    mark_state_receivers(bridge)  # S7 (I-53): the ⊘ flag follows the checkbox instantly
     bridge._save_arena()
     push_urls_undo(bridge)
 

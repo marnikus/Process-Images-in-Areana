@@ -24,7 +24,7 @@ from app.services.cooldown_service import (
     reset_cooldown,
     tab_has_live_job,
 )
-from app.services.run_state import cooldowns_path, resolve_tab_info, restore_page_state
+from app.services.run_state import cooldowns_path, resolve_tab_info, restore_page_state, schedule_coro
 from app.ui.qt_compat import Slot
 
 
@@ -144,7 +144,7 @@ class PagePoolMixin:
             if not ws_url:
                 return json.dumps({"ok": False, "error": "empty ws_url"})
             self._log(f"🔗 Adding tab to pool {ws_url[:80]}… steady", "info")
-            self._schedule_coro(do_connect_page_pool(self, ws_url))
+            schedule_coro(self, do_connect_page_pool(self, ws_url))
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})

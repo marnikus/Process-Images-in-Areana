@@ -57,3 +57,8 @@ arena webpages/
 
 # D5 mutation testing scratch (mutmut working dir)
 mutants/
+
+# Runtime artifacts
+__pycache__/
+*.py[cod]
+config/*.json

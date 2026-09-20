@@ -395,11 +395,16 @@ def compute_cc_simple(node: ast.AST) -> int:
     return 1 + sum(node_complexity(n) for n in ast.walk(node))
 
 def try_radon_cc(file_path: Path) -> Optional[Dict[str, int]]:
-    """Try to use radon if installed, return func_name -> cc."""
+    """Try to use radon if installed, return func_name -> cc.
+
+    Runs radon under the SAME interpreter as the gate (sys.executable, like
+    tools/metrics_report.py) so the CC instrument is deterministic: a bare
+    `python` picked whatever was first on PATH, and the ratchet then compared
+    radon numbers against an AST-approximation baseline (S0, 2026-09-21)."""
     try:
         import subprocess
         out = subprocess.check_output(
-            ["python", "-m", "radon", "cc", "-s", "-j", str(file_path)],
+            [sys.executable, "-m", "radon", "cc", "-s", "-j", str(file_path)],
             text=True,
             stderr=subprocess.DEVNULL,
             timeout=10,

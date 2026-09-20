@@ -51,7 +51,15 @@ def test_schedule_coro_runs_and_tracks_batch():
     async def run_batch():
         return None
 
-    fut2 = rs.schedule_coro(bridge, run_batch())
+    # S4: tracking is deliberate (schedule_batch), never by coroutine name
+    fut_named = rs.schedule_coro(bridge, run_batch())
+    fut_named.result(timeout=5)
+    assert getattr(bridge, "_batch_future", None) is not fut_named
+
+    async def any_name():
+        return None
+
+    fut2 = rs.schedule_batch(bridge, any_name())
     assert bridge._batch_future is fut2
     fut2.result(timeout=5)
     deadline = time.time() + 5

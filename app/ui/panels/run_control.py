@@ -13,8 +13,10 @@ import logging
 from datetime import datetime
 
 from app.core.run_scope import run_scope
-from app.services.batch_orchestrator import run_batch
-from app.services.run_state import batch_active, schedule_coro
+from app.services.live.bus import live_bus
+from app.services.live.feed import commit_queue, eligible_images, requeue_for_start
+from app.services.live.supervisor import run_live, set_run_state
+from app.services.run_state import batch_active, schedule_batch
 from app.ui.panels.queue_scan import push_queue_undo
 from app.ui.panels.url_queue import _URL_GATE_MSG, _urls_gate_error, enabled_urls
 from app.ui.qt_compat import Slot
@@ -39,15 +41,14 @@ def clear_image_state(bridge) -> int:
     count = len(bridge.state.images)
     bridge.state.images = []
     bridge.state.jobs = []
-    bridge.state.recalculate_progress()
-    bridge._save_arena()
+    commit_queue(bridge, "clear")
     return count
 
 
-def reset_image_state(img, selected: bool) -> None:
-    """Return one image to pending (run-scope selection as given)."""
+def reset_image_state(img) -> None:
+    """Return one image to pending AND re-queue it (selected=True — D-16/I-54, no other option)."""
     img.status = "pending"
-    img.selected = selected
+    img.selected = True
     img.error = None
     img.output_path = None
     img.assigned_url_id = None
@@ -72,17 +73,25 @@ def check_start_inputs(bridge):
 
 
 def check_start_ready(bridge):
-    """CDP/run-state gates; error JSON when blocked, else None."""
+    """CDP gate + the untracked-run guard; error JSON when blocked, else None.
+
+    A live run (its future alive) never reaches this: `start_run` wakes it instead
+    (D-5). `running` with no future means a detached run — still refused."""
     if not bridge.cdp or not bridge.cdp.is_connected:
         bridge._log("❌ Chrome not connected — click Diagnose, Refresh, Connect first. CDP must be connected to automate.", "error")
         return json.dumps({"ok": False, "error": "cdp not connected"})
     if bridge._run_state == "running":
         bridge._log("⚠ Already running", "warn")
         return json.dumps({"ok": False, "error": "already running"})
-    if batch_active(bridge):
-        bridge._log("⚠ A batch is still active (paused / stopping / unwinding) — Resume or Cancel it first", "warn")
-        return json.dumps({"ok": False, "error": "batch still active"})
     return None
+
+
+def wake_live_run(bridge) -> str:
+    """Start while the run is live (D-5 / I-45): no refusal, no flag reset — re-check the queue and wake."""
+    queued = len(eligible_images(bridge.state.images))
+    live_bus(bridge).wake("start")
+    bridge._log(f"🟢 Run already live — queue re-checked ({queued} queued)", "info")
+    return json.dumps({"ok": True, "live": True, "queued": queued})
 
 
 def cancel_batch_future(bridge) -> None:
@@ -168,9 +177,7 @@ class RunControlMixin:
     @Slot(result=str)
     def retry_failed(self):
         count = revive_failed_images(self.state.images)
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        commit_queue(self, "retry_failed", undo=push_queue_undo)
         return json.dumps({"ok": True, "count": count})
 
     @Slot(result=str)
@@ -191,12 +198,11 @@ class RunControlMixin:
     @Slot(result=str)
     def reset_all(self):
         for img in self.state.images:
-            reset_image_state(img, False)
+            reset_image_state(img)
         self.state.jobs = []
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
-        return json.dumps({"ok": True})
+        count = commit_queue(self, "reset_all", undo=push_queue_undo)
+        self._log(f"↻ Reset all: {count} images re-queued (pending + selected — a live run picks them up)", "info")
+        return json.dumps({"ok": True, "count": count})
 
     @Slot(str, result=str)
     def retry_image(self, img_id: str):
@@ -205,9 +211,7 @@ class RunControlMixin:
                 img.status = "pending"
                 img.selected = True
                 img.error = None
-                self.state.recalculate_progress()
-                self._save_arena()
-                push_queue_undo(self)
+                commit_queue(self, "retry", undo=push_queue_undo)
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
 
@@ -215,36 +219,36 @@ class RunControlMixin:
     def reset_image(self, img_id: str):
         for img in self.state.images:
             if img.id == img_id:
-                reset_image_state(img, False)
-                self.state.recalculate_progress()
-                self._save_arena()
-                push_queue_undo(self)
+                reset_image_state(img)
+                commit_queue(self, "reset", undo=push_queue_undo)
+                self._log(f"↻ Reset {img.relative_path}: re-queued (pending + selected)", "info")
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
 
     @Slot(result=str)
     def start_run(self):
+        if batch_active(self):  # already live: wake, never a second loop (D-5, I-45)
+            return wake_live_run(self)
         err = check_start_inputs(self) or check_start_ready(self)
         if err:
             return err
         prompt = self.state.prompt.get("user_prompt", "").strip()
+        requeue_for_start(self)  # leftovers + selected failures become fresh work (I-44)
         selected = run_scope(self.state.images)
         urls = enabled_urls(self.state.urls)
-        self._run_state = "running"
+        set_run_state(self, "running")
         self._cancel_requested = False
         self._pause_requested = False
         self._stop_after = False
-        self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
+        self._log(f"🚀 Run started (live): {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
         self._emit_arena_state()
-        fut = schedule_coro(self, run_batch(self))
-        if fut:
-            self._batch_future = fut
+        schedule_batch(self, run_live(self))
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def pause_run(self):
         self._pause_requested = True
-        self._run_state = "paused"
+        set_run_state(self, "paused")
         self._log("⏸ Paused — will pause after current step", "warn")
         self._emit_arena_state()
         return json.dumps({"ok": True})
@@ -252,7 +256,7 @@ class RunControlMixin:
     @Slot(result=str)
     def resume_run(self):
         self._pause_requested = False
-        self._run_state = "running"
+        set_run_state(self, "running")
         self._log("▶ Resumed", "info")
         self._emit_arena_state()
         return json.dumps({"ok": True})
@@ -260,7 +264,7 @@ class RunControlMixin:
     @Slot(result=str)
     def stop_after_current(self):
         self._stop_after = True
-        self._run_state = "stopping"
+        set_run_state(self, "stopping")
         self._log("⏹ Will stop after current image", "warn")
         self._emit_arena_state()
         return json.dumps({"ok": True})
@@ -268,7 +272,7 @@ class RunControlMixin:
     @Slot(result=str)
     def cancel_current(self):
         self._cancel_requested = True
-        self._run_state = "idle"
+        set_run_state(self, "idle")
         self._pause_requested = False
         self._stop_after = False
         self._log("✖ Cancel requested — stopping immediately", "error")

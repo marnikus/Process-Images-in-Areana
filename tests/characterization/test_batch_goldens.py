@@ -124,7 +124,7 @@ async def test_stop_after_current(tmp_path, monkeypatch):
 async def test_captcha_pause_resume(tmp_path, monkeypatch):
     patched = install_patches(monkeypatch, ctrl_script={"visible_times": 2},
                               captcha_status="solved")
-    env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1)
+    env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1, watcher_on=True)
     await _run(env)
     trace = _trace(env, patched)
     check_golden("captcha", trace)

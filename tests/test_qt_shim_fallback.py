@@ -9,6 +9,7 @@ QObject/Signal/Slot surface is sane. Real modules are restored afterwards.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import sys
 
 import pytest
@@ -110,3 +111,43 @@ def test_qt_widgets_import_success_arc():
         else:
             sys.modules["PySide6.QtWidgets"] = saved
         importlib.reload(importlib.import_module("app.ui.qt_compat"))
+
+
+# --- S0 (2026-09-21): the CDP transport carries the services-side guarded Qt
+# import (services must never import ui/qt_compat). Its ImportError arc is
+# environment-dependent: it runs only where PySide6.QtCore is absent, which is
+# how tools/quality_baseline.json recorded the file's coverage floor. The
+# probe below executes that arc in every environment by loading the SAME
+# source file under a probe name with PySide6.QtCore blocked — no reload of
+# the real module, so live CDPTransport classes are never swapped out.
+
+def _load_transport_with_qt_blocked(monkeypatch):
+    import app.browser.cdp.transport as real
+    monkeypatch.setitem(sys.modules, "PySide6.QtCore", None)  # -> ImportError
+    spec = importlib.util.spec_from_file_location(
+        "app.browser.cdp._transport_headless_probe", real.__file__)
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    return probe
+
+
+@pytest.mark.unit
+def test_transport_imports_without_qt(monkeypatch):
+    """Headless: transport falls back to its own dummy QObject/Signal."""
+    probe = _load_transport_with_qt_blocked(monkeypatch)
+    assert probe.QObject.__module__ == probe.__name__, "real QObject leaked in"
+    transport = probe.CDPTransport("127.0.0.1", 9333)
+    assert transport.get_host_port() == ("127.0.0.1", 9333)
+    assert transport.is_connected is False
+
+
+@pytest.mark.unit
+def test_transport_dummy_signal_is_inert(monkeypatch):
+    """The fallback Signal accepts connect/emit and delivers nothing."""
+    probe = _load_transport_with_qt_blocked(monkeypatch)
+    delivered = []
+    sig = probe.Signal(str)
+    sig.connect(delivered.append)
+    sig.emit("x")
+    assert delivered == [], "dummy Signal must not deliver (no event loop)"
+    probe.QObject("positional", parent=None)  # dummy ctor swallows Qt args

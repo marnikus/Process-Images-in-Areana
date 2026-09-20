@@ -22,6 +22,8 @@ from app.browser.site_adapter import get_selector
 from app.browser.probe_requests import FindProbeSpec, HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.services.await_processing import handle_await_processing
+from app.core.pause_clock import PauseClock
+from app.services.captcha.policy import captcha_in_scope, pause_cap_seconds
 from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
@@ -73,12 +75,26 @@ async def capture_baseline(ctrl) -> Dict[str, Any]:
         return {"output_count": 0, "output_srcs": []}
 
 
+_CAPTCHA_FAILURES = {  # status → job-failure text (RuntimeError ⇒ the normal retryable path)
+    "stopped": "Cancelled during CAPTCHA",
+    "page_error": "Page error during CAPTCHA",
+    "wait_timeout": "Captcha wait hit the cap",   # D-14R: no penalty, cooldown as usual
+}
+
+
+def _captcha_failure_text(outcome: Any) -> Optional[str]:
+    """The failure text for a failing captcha outcome (None = not a failure); stop keeps its fixed text."""
+    default = _CAPTCHA_FAILURES.get(outcome.status)
+    if default is None or outcome.status == "stopped":
+        return default
+    return outcome.reason or default
+
+
 def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
     """Map security outcomes without mistaking manual supersession for failure."""
-    if outcome.status == "stopped":
-        raise RuntimeError("Cancelled during CAPTCHA")
-    if outcome.status == "page_error":
-        raise RuntimeError(outcome.reason or "Page error during CAPTCHA")
+    failure = _captcha_failure_text(outcome)
+    if failure:
+        raise RuntimeError(failure)
     if outcome.status == "token_stale":
         try:
             ctx.bridge._log("⚠️ CAPTCHA API token stale; continuing page flow", "warn")
@@ -106,7 +122,9 @@ async def _run_security_captcha(ctx: JobCtx) -> None:
 
 
 async def check_security(ctx: JobCtx) -> bool:
-    """Captcha gate: auto-solve (2Captcha, opt-in) else wait for user (RULE 20)."""
+    """Captcha gate (RULE 20): out of scope while the Watcher is OFF, else wait."""
+    if not captcha_in_scope(ctx.bridge):
+        return False
     try:
         visible = await ctx.ctrl.is_security_dialog_visible()
     except Exception:
@@ -242,12 +260,29 @@ async def _poll_generation(ctx: JobCtx, timeout_ms: int):
     return status, data, src
 
 
+def _install_wait_hooks(ctx: JobCtx) -> None:
+    """Captcha inside the wait — Watcher ON only (I-48): the settler + the capped pause clock (D-14R)."""
+    if not captcha_in_scope(ctx.bridge):
+        return
+    ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)
+    ctx.ctrl.pause_clock = PauseClock(pause_cap_seconds(ctx.bridge))
+
+
+def _uninstall_wait_hooks(ctx: JobCtx) -> None:
+    """Drop the per-wait ctrl hooks (absent on the OFF path — nothing to drop)."""
+    for name in ("security_settler", "pause_clock"):
+        try:
+            delattr(ctx.ctrl, name)
+        except Exception:
+            pass
+
+
 async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], Optional[bytes], str]:
     """Wait output."""
     try:
         await _show_gen_overlay(ctx, timeout_ms)
         _arm_revival(ctx)  # bounded resubmit if the blocked generation died
-        ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
+        _install_wait_hooks(ctx)
         status, data, src = await _poll_generation(ctx, timeout_ms)
         if status == "completed" and src:
             return await _verify_download(ctx, src)
@@ -256,10 +291,7 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
         await _hide_overlay(ctx)
         return None, None, str(e)
     finally:
-        try:
-            delattr(ctx.ctrl, "security_settler")
-        except Exception:
-            pass
+        _uninstall_wait_hooks(ctx)
         _clear_revival(ctx)
 
 
@@ -402,6 +434,9 @@ async def _handle_baseline(ctx: JobCtx, block: Any):
 
 async def _handle_security(ctx: JobCtx, block: Any):
     """Handle security (announce while solving, like the legacy loop)."""
+    if not captcha_in_scope(ctx.bridge):
+        _emit_action(ctx, block, "success", "Skipped (Watcher off)")
+        return
     try:
         visible = await ctx.ctrl.is_security_dialog_visible()
     except Exception:

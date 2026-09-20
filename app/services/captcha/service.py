@@ -30,6 +30,8 @@ from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 from app.services.captcha_recording import RecordingManager
 
 from .key_store import CaptchaKeyStore, clamp_timeout
+from .policy import (WaitDeadline, captcha_in_scope, out_of_scope, pause_budget,
+                     solver_running, wait_reason)
 from .signals import CaptchaSignal, SolveOutcome, host_of
 from .stats import CaptchaStatsStore
 
@@ -187,13 +189,6 @@ def _emit_report(ctx: CaptchaCtx, rep: Dict[str, Any]) -> None:
     _stash_encounter(ctx, str(rep.get("eid", "")))
 
 
-def _wait_timeout(ctx: CaptchaCtx) -> int:
-    try:
-        return int(ctx.bridge.config.get_state("watcher_captcha_timeout_sec", 300))
-    except Exception:
-        return 300
-
-
 async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
     """Kind + sitekey probe; probe error → probe_error (fail open, RULE 9)."""
     try:
@@ -208,6 +203,13 @@ async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
 
 
 async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
+    """The choke point: out of scope while the Watcher is OFF, else one encounter (I-48)."""
+    if not captcha_in_scope(ctx.bridge):
+        return out_of_scope()
+    return await _handle_captcha_scoped(ctx)
+
+
+async def _handle_captcha_scoped(ctx: CaptchaCtx) -> SolveOutcome:
     """Detect, record, resolve, and close one visible captcha encounter."""
     signal = await detect_signal(ctx)
     if not signal.visible:
@@ -233,48 +235,49 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
                            svc: Optional["CaptchaService"], rep: Dict[str, Any]) -> SolveOutcome:
     """Wait-only policy: the pipeline never solves; the Watcher (when ON) or
     the user clears the dialog. `svc` is kept for the call contract (stats)."""
-    watcher_on = _watcher_running(ctx)
-    reason = ("Captcha Watcher is solving it (2Captcha SDK)" if watcher_on
-              else "solve in Chrome — or turn the Watcher ON to auto-solve")
-    return await _manual_wait(ctx, signal, reason, rep)
+    return await _manual_wait(ctx, signal, wait_reason(ctx.bridge), rep)
 
 
 def _watcher_running(ctx: CaptchaCtx) -> bool:
     """Is the isolated Captcha Watcher loop running on this bridge? (fail closed)."""
-    try:
-        watcher = getattr(ctx.bridge, "_captcha_watcher", None)
-        return bool(watcher is not None and watcher.running)
-    except Exception:
-        return False
+    return solver_running(ctx.bridge)
 
 
 async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
                        rep: Dict[str, Any]) -> SolveOutcome:
-    """Overlay (with the why-not-solving flag) + poll until the dialog clears."""
-    timeout = _wait_timeout(ctx)
-    _log(ctx, f"🛡️ FLAG CAPTCHA_WAITING — captcha on screen (tab {str(ctx.tab_id)[:12]}, {host_of(signal.page_url)}) — awaiting your solve in Chrome", "error")
+    """Overlay (with the why-not-solving flag) + poll until the dialog clears or the cap (D-14R)."""
+    timeout = int(pause_budget(ctx.bridge, ctx.ctrl))
+    deadline = WaitDeadline(timeout)
+    _log(ctx, f"🛡️ FLAG CAPTCHA_WAITING — captcha on screen (tab {str(ctx.tab_id)[:12]}, {host_of(signal.page_url)}) — awaiting your solve in Chrome (cap {timeout}s)", "error")
     try:
         await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha",
                                             timeout_sec=timeout, sub=reason)
     except Exception:
         pass
     from app.services.cooldown_service import wait_captcha_cleared
-    solved = await wait_captcha_cleared(ctx.ctrl, _stop_pred(ctx), timeout,
+    solved = await wait_captcha_cleared(ctx.ctrl, deadline.stop_or(_stop_pred(ctx)), timeout,
                                         lambda m, l="info": _log(ctx, m, l))
     try:
         await ctx.ctrl.hide_watcher_overlay()
     except Exception:
         pass
-    if not solved:
-        out = SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
-    else:
-        _record_stats(ctx, "manual_solved", host_of(signal.page_url))
-        _record_penalty(ctx)
-        method = "watcher" if _watcher_running(ctx) else "manual"
-        out = SolveOutcome(status="manual", method=method)
+    out = _wait_outcome(ctx, signal, solved, deadline)
     _finish_resolution(rep, out)
     _emit_report(ctx, rep)
     return out
+
+
+def _wait_outcome(ctx: CaptchaCtx, signal: CaptchaSignal, solved: bool,
+                  deadline: WaitDeadline) -> SolveOutcome:
+    """Cleared ⇒ manual (+stat +penalty); user stop ⇒ stopped; the cap ⇒ wait_timeout (no penalty)."""
+    if solved:
+        _record_stats(ctx, "manual_solved", host_of(signal.page_url))
+        _record_penalty(ctx)
+        return SolveOutcome(status="manual", method="watcher" if _watcher_running(ctx) else "manual")
+    if _stop_pred(ctx)() or not deadline.expired():
+        return SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
+    return SolveOutcome(status="wait_timeout",
+                        reason=f"Captcha not cleared in {deadline.cap_s:.0f}s — job failed (retryable)")
 
 
 class CaptchaService:

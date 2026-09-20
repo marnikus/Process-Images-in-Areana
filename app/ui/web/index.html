@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="css/sash-layout.css">
 <link rel="stylesheet" href="css/stack-drag.css">
 <link rel="stylesheet" href="css/arena.css">
+  <link rel="stylesheet" href="css/live-debug.css">
 <link rel="stylesheet" href="css/captcha-recordings.css">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
@@ -71,6 +72,8 @@
         <span title="Extra wait when the site shows a rate-limit / limit-reached banner (0 = off)">⛔ +<input id="urlCooldownRateLimit" type="number" min="0" max="1440" placeholder="30" style="width:52px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">m/limit</span>
         <label style="display:flex; align-items:center; gap:3px;"><input id="urlCooldownEnabled" type="checkbox" checked> on</label>
         <button id="urlCooldownSaveBtn" class="btn-small">Save</button>
+        <span title="How often Python re-reads Chrome's tabs and reconciles the URL rows (500–60000 ms)">🔁 every <input id="urlIntervalMs" type="number" min="500" max="60000" step="100" placeholder="5000" style="width:64px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">ms</span>
+        <button id="urlIntervalSaveBtn" class="btn-small" title="Save the reconcile interval">Save</button>
       </div>
       <div style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px;">
         <table class="url-table">
@@ -259,10 +262,15 @@
       </div>
     </div>
 
-    <!-- PAGE POOL — multi-page steady/busy tracking -->
-    <div class="panel" id="winPagePool" data-window="page_pool">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tab</span> Page Pool — Multi-Tab Parallel <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
+    <!-- LIVE WORKER & QUEUE DEBUG (window 16, S8) — hosts the rescued Page Pool markup (L-5) -->
+    <div class="panel" id="winLiveDebug" data-window="live_debug">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">monitor_heart</span> Live Worker &amp; Queue Debug <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
       <div style="display:flex; flex-direction:column; gap:10px; padding:4px;">
+        <div id="liveDebugRoot" class="live-debug">
+          <div class="ld-strip ld-head" id="ldQueueHead">queue —</div>
+          <div class="ld-strip"><div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;"><b>Workers</b><span class="ld-muted">live job per connected tab</span><span class="spacer"></span><button id="ldRefreshBtn" class="btn-small" title="Re-read the page pool">Refresh</button></div><div class="ld-workers" id="ldWorkers">no pool yet</div></div>
+          <div class="ld-strip ld-cadence" id="ldCadence">reconcile —</div>
+        </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
           <button id="poolRefreshBtn" class="btn-small" title="Refresh pool status"><span class="material-icons" style="font-size:14px;">refresh</span> Refresh</button>
           <button id="poolConnectBtn" class="btn-small btn-primary" title="Add selected Chrome tab to pool as steady page"><span class="material-icons" style="font-size:14px;">add_link</span> Add Selected Tab to Pool</button>
@@ -691,7 +699,12 @@
 <script src="js/panels/url-list/cooldown.js"></script>
 <script src="js/panels/url-list/actions.js"></script>
 <script src="js/panels/url-list/listeners.js"></script>
+<script src="js/panels/url-list/interval.js"></script>
 <script src="js/panels/url-list.js"></script>
+<script src="js/panels/live-debug/store.js"></script>
+<script src="js/panels/live-debug/render.js"></script>
+<script src="js/panels/live-debug/actions.js"></script>
+<script src="js/panels/live-debug.js"></script>
 <script src="js/panels/folder-picker.js"></script>
 <script src="js/panels/image-queue/store.js"></script>
 <script src="js/panels/image-queue/thumbs.js"></script>

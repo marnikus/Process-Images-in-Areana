@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.core.models import UrlRow
 from app.core.persistence import load_preset, save_preset
+from app.services.live.feed import commit_queue
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import arena_serialize, undo_entries
 
@@ -98,6 +99,18 @@ def apply_watcher_timeouts(bridge, data: dict) -> None:
                 bridge._log(f"{label} set to {v}s (user win setting)", "info")
             except Exception:
                 pass
+
+
+def apply_url_interval(bridge, data: dict) -> None:
+    """URL reconcile interval (S6, D-11): one clamp owner, written here only, wakes the reconciler."""
+    if "url_reconcile_interval_ms" not in data:
+        return
+    from app.services.live.debug_view import clamp_interval_ms
+    from app.services.live.reconcile import url_bus
+    ms = clamp_interval_ms(data["url_reconcile_interval_ms"])
+    bridge.config.set_state(url_reconcile_interval_ms=ms)
+    url_bus(bridge).wake("interval")
+    bridge._log(f"URL reconcile interval set to {ms} ms (URL List bar)", "info")
 
 
 def apply_preset_settings(state, s: dict, include_folder_types: bool = False) -> None:
@@ -267,6 +280,7 @@ class AppSettingsMixin:
             apply_simple_key(self.state, data, _OVERWRITE_SPEC)
             apply_highlight_duration(self.state, self.config, data)
             apply_watcher_timeouts(self, data)
+            apply_url_interval(self, data)
             self._save_arena()
             push_settings_undo(self)
             return json.dumps({"ok": True})
@@ -294,8 +308,7 @@ class AppSettingsMixin:
             restore_import_sections(self.state, data)
             if "settings" in data:
                 apply_preset_settings(self.state, data["settings"])
-            self.state.recalculate_progress()
-            self._save_arena()
+            commit_queue(self, "preset")
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -335,8 +348,7 @@ class AppSettingsMixin:
             restore_preset_cdp(self, doc)
             restore_preset_action_blocks(self, doc)
             restore_preset_cooldown(self, doc)
-            self.state.recalculate_progress()
-            self._save_arena()
+            commit_queue(self, "preset")
             self._log(f"Arena preset loaded: {name}", "success")
             return json.dumps({"ok": True, "name": name})
         except Exception as e:

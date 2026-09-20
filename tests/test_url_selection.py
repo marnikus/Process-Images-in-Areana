@@ -119,6 +119,7 @@ def test_claim_unlinked_skips_disabled_and_garbage():
 # ── Bridge module-level gating helpers (I-33 glue, headless-safe import) ──
 
 import app.ui.bridge as bridge_mod  # noqa: E402
+from app.ui.panels import url_queue  # noqa: E402  (S10: the row helpers' owner, not the bridge re-export)
 
 
 class _FakePool:
@@ -165,9 +166,9 @@ def test_dedupe_state_rows_repairs_and_counts():
     r1 = UrlRow.create(URL_A, tab_id="t1")
     r2 = UrlRow.create(URL_A, tab_id="t1")
     state_urls = [r1, r2]
-    rows, removed = bridge_mod._dedupe_state_rows(state_urls)
+    rows, removed = url_queue._dedupe_state_rows(state_urls)
     assert removed == 1 and len(rows) == 1 and state_urls == [r1]
-    rows2, removed2 = bridge_mod._dedupe_state_rows(state_urls)
+    rows2, removed2 = url_queue._dedupe_state_rows(state_urls)
     assert removed2 == 0 and len(rows2) == 1  # idempotent
 
 
@@ -175,8 +176,8 @@ def test_dedupe_state_rows_repairs_and_counts():
 def test_add_missing_rows_never_doubles_a_tab():
     from app.core.models import UrlRow
     urls = [UrlRow.create(URL_A, tab_id="t1")]
-    added = bridge_mod._add_missing_rows(urls, [(URL_A, "t1"), (URL_A, "t2")])
+    added = url_queue._add_missing_rows(urls, [(URL_A, "t1"), (URL_A, "t2")])
     assert added == 1 and len(urls) == 2
     assert urls[1].tab_id == "t2" and urls[1].enabled is True
-    assert bridge_mod._tab_already_owned(urls, "t1") is True
-    assert bridge_mod._tab_already_owned(urls, "t9") is False
+    assert url_queue._tab_already_owned(urls, "t1") is True
+    assert url_queue._tab_already_owned(urls, "t9") is False

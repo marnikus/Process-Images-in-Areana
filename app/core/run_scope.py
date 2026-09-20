@@ -27,9 +27,24 @@ RUNNABLE_STATUSES = frozenset({
 })
 
 
+# A live pass (S4/S5, I-49) claims fresh work only. Start still counts every
+# runnable image as part of the run and `live.feed.requeue_for_start` turns
+# them into fresh work explicitly (a `processing` crash leftover, a selected
+# `failed` / `needs_review`) — but a pass never re-claims an image that just
+# failed (no retry storm: a failure waits for Retry / Reset / Start) and never
+# an image another worker is running right now. Derived, not copied.
+CLAIMABLE_STATUSES = frozenset({ImageStatus.PENDING.value, ImageStatus.SELECTED.value})
+RETRY_ON_START = frozenset({ImageStatus.FAILED.value, ImageStatus.NEEDS_REVIEW.value})
+
+
 def is_runnable(status: str) -> bool:
     """A status a loop may claim; `completed` / `skipped` / `deselected` never are."""
     return status in RUNNABLE_STATUSES
+
+
+def is_claimable(status: str) -> bool:
+    """Fresh work — what a live pass may pick up next (never in flight, never a fresh failure)."""
+    return status in CLAIMABLE_STATUSES
 
 
 def in_run_scope(img) -> bool:
@@ -40,6 +55,11 @@ def in_run_scope(img) -> bool:
 def run_scope(images: Iterable) -> List:
     """Images a batch may send, in queue order."""
     return [img for img in images if in_run_scope(img)]
+
+
+def claim_scope(images: Iterable) -> List:
+    """Images a live pass may claim now (selected + claimable), in queue order — a fresh list."""
+    return [img for img in images if bool(img.selected) and is_claimable(img.status)]
 
 
 def claim_denied(img, log: Callable[[str, str], None]) -> bool:

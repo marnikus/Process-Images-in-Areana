@@ -252,7 +252,7 @@ async def test_dispatch_parallel_runs_all_images(runner_fakes):
     imgs = [make_img("a.png", id="i1"), make_img("b.png", id="i2")]
     await mpd.dispatch_parallel(bridge, pool, imgs, make_urls(["t1", "t2"]))
     assert all(img.status == ImageStatus.COMPLETED.value for img in imgs)
-    assert bridge._run_state == "idle"
+    assert bridge._run_state == "running"   # S5: the parallel tail logs + emits; the supervisor owns run state
     assert bridge.arena_emits >= 1
     assert any("Parallel batch complete" in msg for _, msg in bridge.logs if isinstance(msg, str))
 
@@ -293,7 +293,7 @@ async def test_dispatch_parallel_honours_stop_after(runner_fakes):
     img = make_img()
     await mpd.dispatch_parallel(bridge, pool, [img], make_urls(["t1"]))
     assert runner_fakes["calls"] == 0 and img.status != ImageStatus.PROCESSING.value
-    assert bridge._run_state == "idle"  # finalization still runs
+    assert bridge._run_state == "running"  # finalization still runs (line + emits), run state untouched (S5)
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ Every assertion checks real slot output, so gutting a slot body fails it.
 """
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -137,6 +138,11 @@ def test_url_queue_add_remove_toggle_edit_test(cfg):
     assert json.loads(host.edit_url(row_id, ""))["error"] == "empty URL"
     assert json.loads(host.test_url(row_id))["status"] == "ready"
     assert json.loads(host.test_url("ghost"))["error"] == "not found"
+    host.state.urls[0].url = "not a url"                     # a row edited into garbage tests as invalid
+    assert json.loads(host.test_url(row_id)) == {"ok": False, "error": "Invalid URL"}
+    assert host.state.urls[0].last_status == "error"
+    host.config = SimpleNamespace(presets=None)              # a broken preset store answers []
+    assert host.get_url_presets() == "[]"
     assert json.loads(host.remove_url(row_id))["ok"] is True
     assert json.loads(host.remove_url(row_id))["error"] == "not found"
     assert json.loads(host.toggle_url("ghost"))["error"] == "not found"
@@ -182,8 +188,12 @@ def test_run_control_start_run_ok_schedules_batch(cfg, monkeypatch):
 
     def fake_schedule(self, coro):
         scheduled.append(coro)
+        coro.close()
         return coro
-    monkeypatch.setattr(rc_mod, "schedule_coro", fake_schedule)
+    # S4: the panel calls the real run_state.schedule_batch; only the loop submit is faked,
+    # so the assertion below proves schedule_batch itself tracks the future (no name sniffing)
+    from app.services import run_state as rs_mod
+    monkeypatch.setattr(rs_mod, "schedule_coro", fake_schedule)
     img = make_img(); img.selected = True; img.status = "pending"
     host, _ = make_host((RunControlMixin,), config=cfg, cdp=make_cdp(connected=True),
                         state=make_state(images=[img], urls=[UrlRow.create("https://arena.ai/c",
@@ -303,11 +313,11 @@ def _layout_host(cfg):
 
 def test_layout_state_grid_validation_rejects_unreadable(cfg):
     host, logs = _layout_host(cfg)
-    from app.core.layout_service import default_payload
+    from app.core.layout_service import GRID_VERSION, default_payload
     assert host.get_grid_layout() == ""  # nothing stored yet
     assert host.save_grid_layout("{not json") is False  # RULE 13: unreadable rejected
     assert host.save_grid_layout(default_payload()) is True
-    assert json.loads(host.get_grid_layout())["v"] == 5  # canonical round trip
+    assert json.loads(host.get_grid_layout())["v"] == GRID_VERSION  # canonical round trip (6 since S8)
     assert host.save_grid_layout(json.dumps({"v": 999, "tree": {}})) is False
     assert any("rejected" in msg for _, msg in logs)
     assert isinstance(host.reset_grid_layout(), str)  # slot returns JSON payload
