@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="css/sash-layout.css">
 <link rel="stylesheet" href="css/stack-drag.css">
 <link rel="stylesheet" href="css/arena.css">
+<link rel="stylesheet" href="css/live-debug.css">
 <link rel="stylesheet" href="css/captcha-recordings.css">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
@@ -260,9 +261,9 @@
       </div>
     </div>
 
-    <!-- PAGE POOL — multi-page steady/busy tracking -->
-    <div class="panel" id="winPagePool" data-window="page_pool">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tab</span> Page Pool — Multi-Tab Parallel <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
+    <!-- LIVE DEBUG — Page Pool + Worker Debug (L-5 rescue) -->
+    <div class="panel" id="winLiveDebug" data-window="live_debug">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tab</span> Live Worker & Queue Debug <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
       <div style="display:flex; flex-direction:column; gap:10px; padding:4px;">
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
           <button id="poolRefreshBtn" class="btn-small" title="Refresh pool status"><span class="material-icons" style="font-size:14px;">refresh</span> Refresh</button>
@@ -736,6 +737,7 @@
 <script src="js/panels/page-pool/render.js"></script>
 <script src="js/panels/page-pool/actions.js"></script>
 <script src="js/panels/page-pool.js"></script>
+<script src="js/panels/live-debug.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app/listeners.js"></script>
 <script src="js/arena-app.js"></script>

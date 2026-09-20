@@ -1,0 +1,9 @@
+/* S8 shell: the registered window retains the existing Page Pool controls.
+   ideal-size: scoped shell only; sash-grid owns sizing and title-bar layout. */
+#winLiveDebug {
+  min-height: 0;
+}
+#winLiveDebug > div {
+  min-height: 0;
+  overflow: auto;
+}

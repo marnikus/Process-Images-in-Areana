@@ -1,78 +1,116 @@
-"""S8 RED: window contract 15->16 + L-5 rescue — window_catalog + JS parity."""
+"""S8 contract: ordered registry, real layout migration and complete re-exports."""
+import importlib
 import json
-import pathlib
+from html.parser import HTMLParser
+from pathlib import Path
 import re
 
+import pytest
+
+from app.core import layout_service as layout
+
+WEB = Path(__file__).resolve().parents[1] / "app/ui/web"
+
+
 def test_python_and_js_tables_identical():
-    from app.core.window_catalog import WINDOW_IDS, WINDOW_TITLES, WINDOWS
-    # parse JS constants.js like test_grid_layout.js_windows does
-    js = pathlib.Path("app/ui/web/js/sash-core/constants.js").read_text()
-    # extract WINDOWS array
-    m = re.search(r"WINDOWS\s*:\s*\[(.*?)\]", js, re.DOTALL)
-    assert m, "WINDOWS not found in constants.js"
-    # simple check: count ids
-    assert len(WINDOW_IDS) == 16
-    assert len(WINDOWS) == 16
-    # order
-    assert WINDOW_IDS == [w["id"] for w in WINDOWS]
-    assert set(WINDOW_TITLES.keys()) == set(WINDOW_IDS)
+    from app.core import window_catalog as catalog
+    js = (WEB / "js/sash-core/constants.js").read_text()
+    pairs = re.findall(r"\{\s*id:\s*'([^']+)',\s*title:\s*'([^']+)'\s*\}", js)
+    assert [wid for wid, _ in pairs] == catalog.WINDOW_IDS
+    assert dict(pairs) == catalog.WINDOW_TITLES
+    assert catalog.WINDOW_IDS == [w["id"] for w in catalog.WINDOWS]
+
 
 def test_every_registered_window_has_a_mountable_element():
     from app.core.window_catalog import WINDOW_IDS
-    html = pathlib.Path("app/ui/web/index.html").read_text()
-    for wid in WINDOW_IDS:
-        assert f'data-window="{wid}"' in html, f"missing mount for {wid}"
+
+    class Panels(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.panels = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if "data-window" in attrs:
+                self.panels.append((attrs["data-window"], attrs.get("id")))
+
+    parser = Panels()
+    parser.feed((WEB / "index.html").read_text())
+    assert sorted(wid for wid, _ in parser.panels) == sorted(WINDOW_IDS)
+    for wid, element in parser.panels:
+        expected = "winCaptchaRecords" if wid == "recordings" else "win" + "".join(p.title() for p in wid.split("_"))
+        assert element == expected
+
 
 def test_ids_and_titles_have_no_duplicates_and_no_legacy_names():
     from app.core.window_catalog import WINDOW_IDS, WINDOW_TITLES
-    assert len(WINDOW_IDS) == len(set(WINDOW_IDS))
+    assert len(WINDOW_IDS) == len(set(WINDOW_IDS)) == 16
+    assert len(set(WINDOW_TITLES.values())) == 16
     assert "captcha_records" not in WINDOW_IDS
-    assert "recordings" in WINDOW_IDS
-    assert len(WINDOW_TITLES) == 16
+    assert "page_pool" not in WINDOW_IDS
+    assert {"recordings", "live_debug"} <= set(WINDOW_IDS)
+
 
 def test_default_tree_leaf_set_equals_the_registry():
     from app.core.window_catalog import WINDOW_IDS, default_grid_tree
-    from app.core.layout_service import leaf_ids
     tree = default_grid_tree()
-    got = sorted([i for i in leaf_ids(tree) if i])
-    assert got == sorted(WINDOW_IDS)
-    # sizes sum to 100
-    import json as _j
-    # check via leaf_ids only, not sizes
-    assert len(got) == 16
+    assert sorted(layout.leaf_ids(tree)) == sorted(WINDOW_IDS)
+    assert layout.validate_grid_tree(tree) is None
+
+    def check_sizes(node):
+        if node["t"] == "split":
+            assert len(node["sizes"]) == len(node["children"])
+            assert sum(node["sizes"]) == pytest.approx(100)
+            for child in node["children"]:
+                check_sizes(child)
+    check_sizes(tree)
+
+
+def old_tree():
+    # Fixed pre-S8 registry: independent of the subject's current window list.
+    ids = ["url_list", "folder", "queue", "prompt", "run", "progress", "watcher", "log",
+           "settings", "captcha", "recordings", "browser", "action_blocks", "block_config", "arena_presets"]
+    return {"t": "split", "dir": "col", "children": [{"t": "leaf", "id": i} for i in ids],
+            "sizes": [16] + [6] * 14}
+
 
 def test_grid_version_is_six_and_v5_layouts_migrate():
     from app.core.window_catalog import GRID_VERSION
-    from app.core.layout_service import parse_grid_payload, default_grid_tree, WINDOW_IDS
     assert GRID_VERSION == 6
-    # v5 payload with 15 leaves should migrate to 16
-    import json as _j
-    from app.core.layout_service import GRID_VERSION as LV
-    # build v5 tree missing live_debug
-    v5_ids = [i for i in WINDOW_IDS if i != "live_debug"]
-    # simple v5 payload: use default_grid_tree but remove live_debug leaf
-    # Instead, craft a minimal v5 payload with 15 leaves
-    # Use the old default (without live_debug) — we can just test that parse of v5 with missing leaf migrates
-    # For RED, just check version is 6
-    assert True
+    tree = old_tree()
+    assert layout.parse_grid_payload(json.dumps({"v": 5, "tree": tree}))[1] == "window set mismatch"
+    migrated, error = layout.canonical_grid_payload(json.dumps({"v": 5, "tree": tree}))
+    assert error is None
+    payload = json.loads(migrated)
+    assert payload["v"] == 6
+    assert payload["tree"]["children"] == [tree, {"t": "leaf", "id": "live_debug"}]
+    assert payload["tree"]["sizes"] == [91, 9]
+    assert layout.parse_grid_payload(migrated)[1] is None
+    assert layout.canonical_grid_payload(migrated) == (migrated, None)
+
 
 def test_legacy_rename_still_works():
     from app.core.window_catalog import LEGACY_WINDOW_IDS
     assert LEGACY_WINDOW_IDS == {"captcha_records": "recordings"}
-    from app.core.layout_service import _rename_legacy_windows
-    node = {"t": "leaf", "id": "captcha_records"}
-    out = _rename_legacy_windows(node)
-    assert out["id"] == "recordings"
+    tree = old_tree()
+    tree["children"][10]["id"] = "captcha_records"
+    migrated, error = layout.canonical_grid_payload(json.dumps({"v": 5, "tree": tree}))
+    assert error is None
+    original_column = json.loads(migrated)["tree"]["children"][0]
+    assert original_column["sizes"] == tree["sizes"]
+    assert original_column["children"][10] == {"t": "leaf", "id": "recordings"}
+
 
 def test_the_layout_service_reexport_is_complete():
-    import app.core.layout_service as ls
-    import app.core.window_catalog as wc
-    assert ls.WINDOW_IDS is wc.WINDOW_IDS
-    assert ls.WINDOW_TITLES is wc.WINDOW_TITLES
-    assert ls.WINDOWS is wc.WINDOWS
-    assert ls.GRID_VERSION == wc.GRID_VERSION
-    # importers still resolve
-    import app.ui.panels.layout_state
-    import app.ui.services.undo_entries
-    import app.services.window_preset_service
-    assert True
+    from app.core import window_catalog as catalog
+    for name in ("WINDOW_IDS", "WINDOW_TITLES", "WINDOWS", "GRID_VERSION", "LEGACY_WINDOW_IDS", "default_grid_tree"):
+        assert getattr(layout, name) is getattr(catalog, name)
+    for name in ("app.ui.panels.layout_state", "app.ui.services.undo_entries", "app.ui.services.window_preset_service"):
+        importlib.import_module(name)
+
+
+def test_legacy_tree_walkers_tolerate_unknown_nodes_without_mutating_them():
+    node = {"t": "unknown", "children": [{"t": "leaf", "id": "recordings"}]}
+    assert layout.leaf_ids(node) == []
+    assert layout._rename_legacy_windows(node) is node
+    assert layout._try_migrate('[1,2]', 'window set mismatch') == (None, 'window set mismatch')
