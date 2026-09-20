@@ -7,7 +7,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
-from app.services.auto_connect import live_tab_keys, plan_auto_connect
+from app.services.auto_connect import enabled_tab_ids, live_tab_keys, plan_auto_connect
 from app.services.live.bus import live_bus
 from app.services.live.debug_view import interval_ms
 from app.services.live.feed import clear_row_assignments
@@ -61,6 +61,15 @@ def _pattern(bridge) -> str:
         return bridge.config.get_state("url_pattern", "") or ""
     except Exception:
         return ""
+
+def _mark(bridge, rows) -> int:
+    try:
+        from app.services.live.url_policy import mark_receivers
+        from app.services.run_state import pooled_ids
+        return int(mark_receivers(rows, enabled_tab_ids(rows), pooled_ids(getattr(bridge, "_page_pool", None))) or 0)
+    except Exception:
+        return 0
+
 
 
 def _apply_claim(rows, plan) -> int:
@@ -124,7 +133,8 @@ def _maybe_commit(bridge, deps, flag) -> None:
         pass
 
 
-def _log_report(bridge, deps, source, added, linked, joined, removed) -> None:
+def _log_report(bridge, deps, source, rep) -> None:
+    added, linked, joined, removed = rep.added, rep.linked, rep.joined, rep.removed
     if added or linked or joined or removed:
         msg = f"🤖 Auto-connect: +{added} rows, {linked} linked, {joined} joined, 0 revived, 0 stale, {removed} removed"
     elif source == "manual":
@@ -138,6 +148,8 @@ def _log_report(bridge, deps, source, added, linked, joined, removed) -> None:
         pass
 
 
+# quality-override: cc=11 reason=S6 one-pass diff with dedupe, busy, pattern, misses, plan, mark and join steps kept together per RULE 18.2
+# quality-override: loc=32 reason=single reconcile pass that must log and commit atomically, splitting would scatter the 7-step diff
 async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
     try:
         tabs = await deps.fetch_tabs() if callable(deps.fetch_tabs) else []
@@ -162,11 +174,14 @@ async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
         plan = plan_auto_connect(tabs, pattern, rows, pooled_ids(getattr(bridge, "_page_pool", None)))
     except Exception:
         plan = None
-    linked = _apply_claim(rows, plan) if plan else 0; added = _apply_add(bridge, rows, plan) if plan else 0; removed = _apply_remove(bridge, rows, removals, deps)
+    linked = _apply_claim(rows, plan); added = _apply_add(bridge, rows, plan); removed = _apply_remove(bridge, rows, removals, deps)
+    marked = _mark(bridge, rows)
     joined = await _join_connect(plan, deps)
-    _maybe_commit(bridge, deps, added or linked or removed or joined)
-    _log_report(bridge, deps, source, added, linked, joined, removed)
-    return Report(added=added, linked=linked, removed=removed, joined=joined)
+    need = added + linked + removed + joined + marked
+    _maybe_commit(bridge, deps, need)
+    rep = Report(added=added, linked=linked, removed=removed, joined=joined)
+    _log_report(bridge, deps, source, rep)
+    return rep
 
 
 async def reconcile_loop(bridge, deps: LiveDeps) -> None:

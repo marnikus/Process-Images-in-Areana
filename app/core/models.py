@@ -23,6 +23,7 @@ class UrlRow:
     last_checked: Optional[str] = None
     error: Optional[str] = None
     tab_id: str = ""
+    receiver: bool = False
 
     @staticmethod
     def create(url: str, enabled: bool = True, tab_id: str = "") -> "UrlRow":
@@ -34,6 +35,7 @@ class UrlRow:
             last_checked=None,
             error=None,
             tab_id=tab_id,
+            receiver=False,
         )
 
     def link_tab(self, tab_id: str) -> bool:

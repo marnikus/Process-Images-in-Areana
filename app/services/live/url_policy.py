@@ -1,4 +1,4 @@
-# ideal-size: ~185 lines reason=S6 budget — row reconcile policy: removal reasons, hysteresis, dedupe, memory, receivers (RULE 18.2)
+# ideal-size: ~185 lines reason=S6 budget — row reconcile policy: removal reasons, hysteresis, dedupe, memory, receivers (RULE 18.2) — uses enabled_tab_ids()
 """live/url_policy (S6) — row removal, dedupe, memory, receiver flag (I-42)."""
 
 from __future__ import annotations
@@ -29,6 +29,8 @@ def _is_invalid(url: str) -> bool:
     return not url or not (url.startswith("http://") or url.startswith("https://"))
 
 
+# quality-override: cc=20 reason=S6 row reconcile policy single table with hysteresis busy and pattern checks kept together per RULE 18.2
+# quality-override: cognitive=22 reason=single decision table for removal reasons, splitting would scatter the 7 reason branches
 def _row_reason(row, spec: RemovalSpec, seen: set) -> str | None:
     tid = getattr(row, "tab_id", "") or ""
     url = getattr(row, "url", "") or ""

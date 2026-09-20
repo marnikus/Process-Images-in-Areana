@@ -97,20 +97,10 @@ class MainWindow(QMainWindow):
         """Restore saved window position and size if valid — called on startup."""
         try:
             saved = self.config_manager.get_state("window_geometry", None)
-            if not isinstance(saved, dict):
-                return
-            if not _is_valid_geometry(saved):
-                return
-            x = int(saved["x"])
-            y = int(saved["y"])
-            w = int(saved["width"])
-            h = int(saved["height"])
-            # Clamp to reasonable screen area — avoid off-screen
-            # Keep at least 100px visible
+            if not isinstance(saved, dict) or not _is_valid_geometry(saved): return
+            x, y, w, h = int(saved["x"]), int(saved["y"]), int(saved["width"]), int(saved["height"])
             self.setGeometry(x, y, w, h)
-        except Exception:
-            # Ignore any restore errors — keep default 1600x1000
-            pass
+        except Exception: pass
 
     def _save_window_geometry(self) -> None:
         """Persist current window position and size — called automatically on closing."""

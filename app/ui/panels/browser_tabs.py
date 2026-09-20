@@ -291,26 +291,21 @@ async def do_diagnose_chrome(bridge) -> None:
 
 def live_deps(bridge):
     """Wiring for the Python-owned reconciler (S6)."""
-    async def fetch_tabs():
-        return await bridge.cdp.fetch_tabs()
-    async def join_tab(ws_url):
-        await do_connect_page_pool(bridge, ws_url)
+    async def fetch_tabs(): return await bridge.cdp.fetch_tabs()
+    async def join_tab(ws_url): await do_connect_page_pool(bridge, ws_url)
     def commit():
-        bridge._save_arena()
-        bridge._emit_arena_state()
+        bridge._save_arena(); bridge._emit_arena_state()
         try:
             from app.services.live.bus import live_bus
             live_bus(bridge).wake("urls")
-        except Exception:
-            pass
+        except Exception: pass
     def log(msg):
         try: bridge._log(msg, "info")
         except Exception: pass
     try:
         from app.services.live.reconcile import LiveDeps as LD
         return LD(fetch_tabs=fetch_tabs, join_tab=join_tab, commit=commit, log=log)
-    except Exception:
-        return None
+    except Exception: return None
 
 
 def start_url_reconciler(bridge) -> None:
