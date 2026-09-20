@@ -17,7 +17,7 @@ import json
 import threading
 from pathlib import Path
 
-from app.services.live.feed import commit_queue
+from app.services.live.feed import PROCESSING_REFUSAL, commit_queue, in_flight
 from app.ui.qt_compat import Slot, clipboard_copy
 from app.ui.panels.queue_scan_folder import FolderPickMixin, as_folder_dict
 from app.ui.services import arena_serialize, undo_entries
@@ -120,9 +120,9 @@ def run_scan_new_batch(bridge, root_path: Path, cleared: int) -> None:
 
 
 def run_folder_ai_request(bridge, mode: str) -> str:
-    """Disk _AI op guards + submit; refuses mid-run/mid-scan. Pending JSON."""
-    if getattr(bridge, "_run_state", "idle") != "idle":
-        return json.dumps({"ok": False, "error": "stop the run first"})
+    """Disk _AI op guards + submit; refuses while an image is processing or a scan runs (D-5). Pending JSON."""
+    if in_flight(bridge.state.images):
+        return json.dumps({"ok": False, "error": PROCESSING_REFUSAL})
     if getattr(bridge, "_scan_in_progress", False):
         return json.dumps({"ok": False, "pending": True, "error": "scan already in progress"})
     root_path, err = resolve_scan_root(bridge.state.folder)

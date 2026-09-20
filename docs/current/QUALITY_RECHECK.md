@@ -419,6 +419,83 @@ the same commit: SYSTEM_OF_RECORD rows 3 + 6, new **I-49** + **I-54**
 (numbers per merge-note §1), services / core module rows,
 `docs/README.md` footer.
 
+### 2026-09-20 S5 (always-live run — `live/supervisor.run_live`, one run-state writer, D-5 / D-8 / I-47) — same chain
+
+**RED first.** `tests/test_live_supervisor.py` (12 — the plan's 9 plus the
+retry-cap rule, a `Start while live` gate test and the `stop after → pass
+finishes` case) failed to import (`ModuleNotFoundError:
+app.services.live.supervisor`). The loop is driven with a 5 ms bus poll, a
+fake throttle clock and a yield-only `asyncio.sleep`; the tests themselves
+wait real time through `env.sleep`.
+
+**Design deviations from the plan, recorded.** (1) *Retry cap* — the plan's
+`ELIGIBLE` includes `failed`, which under a run that never ends means an
+image failing for a real reason would be re-sent forever; `core/run_scope.
+in_live_scope(img, max_attempts)` reads the existing knob
+`settings.retries.max_attempts` (RULE 10: the knob existed, unused), a
+`failed` image rests once its attempts are spent, Retry / Reset return it to
+`pending` which always runs. Positive control: `max_attempts=2`, a `failed`
+image at 2 attempts is out, at 1 in, a `pending` image at 9 in. (2) *Pass
+tail* — `🏁 Batch complete` / `🏁 Batch cancelled by user` stay pinned for
+Stop-after / Cancel; a normal pass logs `🏁 Pass complete — run stays live
+(N queued)`. (3) *Goldens* — the 12 scenarios run through
+`RUNNERS["supervisor"]` and are **byte-identical without `UPDATE_GOLDENS`**;
+the harness arms `_stop_after` when the first pass has finished every planned
+image or the loop enters a wait state (that is exactly what the old
+one-batch run did by itself). (4) *`all cooling`* — a COOLDOWN page with
+`cooldown_remaining > 0` or a busy-like page counts; an expired cooldown does
+not (`add_page` registers a steady page — the S5 test builds its cooling
+page on the live object).
+
+**GREEN.** `app/services/live/supervisor.py` 181 lines, 13 funcs, max 21 loc
+(`run_live`, CC 7 ≤ 8, nest 3), `plan_pass` CC 7, params ≤ 3, `PassPlan`
+span 8, no bridge reference in the plan. `set_run_state` writes the
+attribute **and** `AppState.run_state` (L-2) then emits. `batch_orchestrator.py`
+489 → **433** lines / 37 → 32 funcs (`run_batch`, `_run_guarded`,
+`_cancel_batch`, `_crash_batch`, `_finish_batch`, `_abort_no_tab` gone;
+`run_pass(bridge, plan)` 7 loc; `prepare_batch(bridge, plan)` copies the
+plan; `_await_batch_gate` no longer writes state; `pool_summary` public,
+reused by the wait lines; **no `_run_state` in the file**).
+`multi_page_dispatcher._finalize_batch` log + emits only, `max_func_loc`
+stays **29**. `run_control` 273 → 274 lines (+`run_is_live`, 21 funcs; the
+five run slots route through `set_run_state`; `check_start_ready` lost its
+`already running` branch; class 108 → 106). `queue_scan` guard →
+`in_flight` + `PROCESSING_REFUSAL` (same size). `core/run_scope.py` 66 → 81
+lines (+`in_live_scope`, `_attempts_left`; max CC 4). `feed.py` 102 → 127
+(+`retry_cap`, `queued_images`, `in_flight`; `commit_queue` counts under the
+cap). `live/__init__.py` facade re-exports the supervisor. Mutation
+controls: no-work ends the run → 1 fail; persisted `run_state` not written →
+1 fail; retry cap ignored → 1 fail; Start while live reschedules → 1 fail;
+throttle removed → 1 fail.
+
+**Existing tests that changed (reasons in-file).** `test_batch_orchestrator`:
+13 lifecycle assertions — `_run_state == "idle"` after a pass body became
+`"running"` (a pass never writes state, D-8); `test_finish_batch_lines` /
+`test_cancel_and_crash_batch` / `test_run_batch_shell` → one lock that the
+tails are gone and the file has no `_run_state`; `prepare_batch` /
+`_load_run_settings` / `_run_guarded` tests follow the new plan-taking
+signatures; `_pool_summary` → `pool_summary`. `test_multi_page_dispatcher_run`
+2 assertions (tail logs + emits only). `test_run_control_gate::
+test_running_label_still_wins…` → `test_start_while_live_wakes_the_loop_
+instead_of_refusing`. The `app_settings.py` coverage lane (72.43 → 72.0 %,
+a −1-line rounding artefact of S4's shorter `import_preset`) is restored by
+a real test of `export_preset` / `refresh_users` (`test_panel_slots`),
+not by a baseline edit.
+
+**Lane after S5.** pytest serial **1,693 passed · 4 skipped · 0 failed**
+(+10 net; then +1 = 1,694 with the `export_preset` test); `npm run test:js`
+240 / 0; `pyflakes` clean on every touched file; `vulture @90` clean.
+Coverage **87.48 % line / 84.11 % branch** (S4: 87.33 / 83.82; `app_settings.py` back to 74.67;
+`supervisor.py` 93.65, `feed.py` 93.18, `run_scope.py` 100,
+`batch_orchestrator.py` 92.65, `run_control.py` 89.57). jscpd `app/`
+**1.101 %** (23 groups). `verify_quality.py --changed-files` on the eight
+touched app files: **no** ratchet maximum moved (`multi_page_dispatcher.py`
+29 / 8 / 4 unchanged; `batch_orchestrator.py` 17 / 7 unchanged and 56 lines
+shorter); the only fails are the same environment facts (`max_cog 0→N`,
+two `libGL` coverage floors). Docs in the same commit: SYSTEM_OF_RECORD row
+6, §3 state 22 + flow, module rows, **I-47**; AGENT_RULES RULE 7 / 10 / 13
+corollaries; `docs/README.md` footer.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

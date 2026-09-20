@@ -11,6 +11,11 @@
 * `recover_stale_processing` returns crash leftovers (`processing` on no
   live tab) to `pending` + `selected`; `clear_row_assignments` drops
   dangling `assigned_url_id`s when URL rows go (S6).
+* S5 read model for the supervisor: `queued_images(bridge)` (the rule under
+  `settings.retries.max_attempts`, read by `retry_cap` — a live run never
+  ends, so a `failed` image rests once its attempts are spent; Retry /
+  Reset → `pending` always run), `in_flight` (`processing` now) and
+  `PROCESSING_REFUSAL` (the disk-op guard text, D-5).
 
 Thread rules: `state_lock(bridge)` (an RLock) guards the sync part of a
 commit — worker threads (scan) and the UI thread both write through here;
@@ -23,7 +28,7 @@ from __future__ import annotations
 
 import os
 import threading
-from typing import Iterable, Set
+from typing import Iterable, List, Set
 
 from app.core.run_scope import LIVE_STATUSES, live_scope
 
@@ -31,6 +36,26 @@ from .bus import live_bus
 
 ELIGIBLE = LIVE_STATUSES
 eligible_images = live_scope
+PROCESSING_REFUSAL = "an image is processing — Stop the run or wait for it to finish"
+
+
+def retry_cap(bridge) -> int:
+    """`settings.retries.max_attempts` — the one place the knob is read (0 = unlimited)."""
+    retries = getattr(getattr(bridge.state, "settings", None), "retries", None) or {}
+    try:
+        return int(retries.get("max_attempts", 0) or 0)
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
+def queued_images(bridge) -> List:
+    """What the live loop dispatches next pass: the eligibility rule under the retry cap."""
+    return eligible_images(bridge.state.images, retry_cap(bridge))
+
+
+def in_flight(images: Iterable) -> List:
+    """Images a tab is working on right now (`processing`)."""
+    return [img for img in images if img.status == "processing"]
 
 
 def state_lock(bridge) -> threading.RLock:
@@ -49,7 +74,7 @@ def commit_queue(bridge, reason: str, undo: bool = True) -> int:
         bridge._save_arena()
         if undo:
             _push_undo(bridge)
-        queued = len(eligible_images(bridge.state.images))
+        queued = len(queued_images(bridge))
     live_bus(bridge).wake(reason)
     return queued
 

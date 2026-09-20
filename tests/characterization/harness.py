@@ -206,12 +206,41 @@ def assert_markers(trace: Dict[str, Any], markers: List[str]) -> None:
         assert m in joined, f"log marker missing: {m!r}"
 
 
-async def run_orchestrator(env) -> None:
-    from app.services.batch_orchestrator import run_batch
-    await run_batch(env.bridge)
+async def run_supervisor(env) -> None:
+    """S5: the live loop is the entry; `_stop_after` is the stop lever (a live run never ends by itself)."""
+    from app.services.live.supervisor import run_live
+    stop_after_one_pass(env)
+    await run_live(env.bridge)
 
 
-RUNNERS: Dict[str, Callable] = {"orchestrator": run_orchestrator}
+def stop_after_one_pass(env) -> None:
+    """Arm Stop-after when the first pass is done (every planned image finished)
+    or the loop enters a wait state — the goldens characterize ONE pass, which
+    is exactly what the old one-batch run did on its own."""
+    from app.services.live.bus import live_bus
+    from app.services.live.feed import queued_images
+    from app.services.live.supervisor import REASON_LINES
+    bridge = env.bridge
+    planned = len(queued_images(bridge))
+    heads = tuple(t.split("{")[0] for t, _lvl in REASON_LINES.values())
+    fin_rec, log_rec = env.recs["job_finished"], env.recs["arena_log"]
+    orig_fin, orig_log = fin_rec.emit, log_rec.emit
+
+    def emit_fin(*args):
+        orig_fin(*args)
+        if len(fin_rec.calls) >= planned:
+            bridge._stop_after = True
+
+    def emit_log(msg, level="info"):
+        orig_log(msg, level)
+        if msg.startswith(heads):
+            bridge._stop_after = True
+            live_bus(bridge).wake("harness")
+
+    fin_rec.emit, log_rec.emit = emit_fin, emit_log
+
+
+RUNNERS: Dict[str, Callable] = {"supervisor": run_supervisor}
 
 
 def arm_hooks(env, after_event: Optional[Dict[tuple, Callable]] = None,

@@ -281,6 +281,21 @@ def test_app_settings_theme_prompt_and_save(cfg):
     assert isinstance(json.loads(host.list_arena_presets()), list)
 
 
+def test_app_settings_export_preset_and_refresh_users(cfg, tmp_path, monkeypatch):
+    """`export_preset` writes the state as a preset doc (the ok/error pair); `refresh_users` re-emits."""
+    monkeypatch.chdir(tmp_path)
+    from app.core.models import AppState
+    emitted = []
+    host, _ = make_host((AppSettingsMixin,), config=cfg, state=AppState(), _watcher=None,
+                        _emit_arena_state=lambda: emitted.append(1))
+    res = json.loads(host.export_preset("p"))
+    assert res["ok"] is True and (tmp_path / "config" / "p.json").exists()
+    host.state = None  # save_preset raises → the slot answers with the error, never raises
+    assert json.loads(host.export_preset("p"))["ok"] is False
+    host.refresh_users()
+    assert emitted == [1]
+
+
 def test_app_settings_arena_preset_round_trip(cfg):
     host, _ = make_host((AppSettingsMixin,), config=cfg, state=make_state(),
                         presets_changed=Signal(str, str), _watcher=None, cdp=None)

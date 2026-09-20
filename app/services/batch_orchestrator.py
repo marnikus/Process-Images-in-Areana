@@ -1,20 +1,22 @@
-# ideal-size: ~490 lines reason=single per-batch lifecycle owns prepare/parallel-gate/sequential/finish sharing BatchCtx; splitting would scatter one batch flow that always changes together (RULE 18.2)
-"""Batch orchestrator — the sequential run loop extracted from Bridge (A3).
+# ideal-size: ~450 lines reason=single per-pass body owns prepare/parallel-gate/sequential sharing BatchCtx; splitting would scatter one pass flow that always changes together (RULE 18.2)
+"""Batch orchestrator — one pass of the live run (A3, S5).
 
-Owns the per-batch lifecycle: prepare (tab + settings + stack announce),
-parallel-dispatch probe, pooled cooldown gates, per-image execute/finish,
-and batch finalization. Per-image block execution is delegated to
-`single_job_runner.run_blocks_for_image` (the converged pipeline).
+Owns the pass body: prepare (controller + settings + stack announce from the
+supervisor's `PassPlan`), parallel-dispatch probe, pooled cooldown gates,
+per-image execute/finish. Per-image block execution is delegated to
+`single_job_runner.run_blocks_for_image` (the converged pipeline). It has
+no lifecycle opinion: `live.supervisor.run_live` plans each pass, decides
+when to wait and is the only writer of the run state (D-8).
 """
 
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from app.core.enums import ImageStatus
-from app.core.run_scope import claim_denied, run_scope
+from app.core.run_scope import claim_denied
 from app.services import auto_connect as ac
 from app.services.job_events import job_finished_payload
 from app.services.cooldown_service import (
@@ -62,8 +64,8 @@ def _pool_of(bridge):
     return getattr(bridge, "_page_pool", None)
 
 
-def _pool_summary(pool) -> str:
-    """One-line pool state for run decisions."""
+def pool_summary(pool) -> str:
+    """One-line pool state for run decisions (the supervisor's wait lines reuse it)."""
     try:
         pages = pool.status_snapshot().get("pages", [])
     except Exception:
@@ -87,7 +89,7 @@ def _log_stay_reason(bridge, tab_id: str) -> None:
         page = pool.get_page(tab_id)
         if page is None or page.is_free():
             return
-        bridge._log(f"⏳ No ready tab — staying on {tab_id[:12]} ({page.status}) — pool: {_pool_summary(pool)}", "warn")
+        bridge._log(f"⏳ No ready tab — staying on {tab_id[:12]} ({page.status}) — pool: {pool_summary(pool)}", "warn")
     except Exception:
         pass
 
@@ -106,9 +108,9 @@ async def _move_to_tab(bridge, tab_id: str, want: str) -> str:
         if ws and bridge.cdp and await bridge.cdp.connect(ws):
             bridge._log(f"🔀 Run moved to ready tab {want[:12]}", "info")
             return want
-        bridge._log(f"⚠ Reconnect to ready tab {want[:12]} failed — staying on {(tab_id or '?')[:12]} — pool: {_pool_summary(pool)}", "warn")
+        bridge._log(f"⚠ Reconnect to ready tab {want[:12]} failed — staying on {(tab_id or '?')[:12]} — pool: {pool_summary(pool)}", "warn")
     except Exception as e:
-        bridge._log(f"⚠ Primary move failed ({e}) — pool: {_pool_summary(_pool_of(bridge))}", "warn")
+        bridge._log(f"⚠ Primary move failed ({e}) — pool: {pool_summary(_pool_of(bridge))}", "warn")
     return tab_id
 
 
@@ -333,16 +335,6 @@ async def _run_one_image(ctx: BatchCtx, img: Any) -> str:
     return done
 
 
-def _finish_batch(ctx: BatchCtx) -> None:
-    """Batch tail: cancelled/complete line + idle + emit."""
-    if getattr(ctx.bridge, "_cancel_requested", False):
-        ctx.bridge._log("🏁 Batch cancelled by user", "warn")
-    else:
-        ctx.bridge._log("🏁 Batch complete", "success")
-    ctx.bridge._run_state = "idle"
-    ctx.bridge._emit_arena_state()
-
-
 async def _run_sequential(ctx: BatchCtx) -> None:
     """Per-image loop (settled images skipped at claim time, I-44); cancel settles the tab."""
     try:
@@ -354,14 +346,6 @@ async def _run_sequential(ctx: BatchCtx) -> None:
     except asyncio.CancelledError:
         _settle_stuck(ctx)
         raise
-    _finish_batch(ctx)
-
-
-def _abort_no_tab(bridge) -> None:
-    """No usable checked tab: loud error + idle + emit."""
-    bridge._log(f"❌ No usable checked tab in pool — check a URL row linked to a live tab — pool: {_pool_summary(_pool_of(bridge))}", "error")
-    bridge._run_state = "idle"
-    bridge._emit_arena_state()
 
 
 async def _warn_unready(bridge, ctrl) -> None:
@@ -375,8 +359,7 @@ async def _warn_unready(bridge, ctrl) -> None:
 
 
 def _load_run_settings(ctx: BatchCtx) -> None:
-    """Images (run scope, I-44) + prompt template for this batch."""
-    ctx.images = run_scope(ctx.bridge.state.images)
+    """Prompt template for this pass (the images came with the plan)."""
     ctx.prompt_template = ctx.bridge.state.prompt.get("user_prompt", "")
 
 
@@ -388,18 +371,13 @@ def _announce_stack(ctx: BatchCtx) -> None:
     ctx.bridge._log(f"📦 Action blocks stack: {len(stack)} blocks — {head}{'...' if len(stack) > 6 else ''}", "info")
 
 
-async def prepare_batch(bridge) -> Optional[BatchCtx]:
-    """Controller + tab + settings; None when already finalized."""
+async def prepare_batch(bridge, plan) -> BatchCtx:
+    """Controller + settings + stack announce from the supervisor's plan (no re-snapshot)."""
     from app.browser.cdp_arena import CDPArenaController
     ctrl = CDPArenaController(bridge.cdp, log_callback=lambda m: bridge._log(m, "info"))
-    urls = [u for u in bridge.state.urls if u.enabled]
-    allowed = ac.enabled_tab_ids(urls)
-    tab_id = await resolve_and_claim_tab(bridge, getattr(bridge.cdp, "_current_tab_id", "") or "", allowed)
-    if not tab_id:
-        _abort_no_tab(bridge)
-        return None
     await _warn_unready(bridge, ctrl)
-    ctx = BatchCtx(bridge=bridge, ctrl=ctrl, urls=urls, allowed=allowed, tab_id=tab_id)
+    ctx = BatchCtx(bridge=bridge, ctrl=ctrl, urls=list(plan.urls), allowed=set(plan.allowed),
+                   tab_id=plan.tab_id, images=list(plan.images))
     _load_run_settings(ctx)
     _announce_stack(ctx)
     return ctx
@@ -439,51 +417,17 @@ async def _await_batch_gate(ctx: BatchCtx) -> bool:
             await ensure_pool_page(ctx.bridge, ctx.tab_id)
             if not await wait_for_batch_ready(pool, [ctx.tab_id], ctx.bridge):
                 ctx.bridge._log("Batch start aborted during cooldown wait", "warn")
-                ctx.bridge._run_state = "idle"
-                ctx.bridge._emit_arena_state()
                 return False
     except Exception as e:
         ctx.bridge._log(f"Batch-start cooldown wait skipped: {e}", "warn")
     return True
 
 
-async def _run_guarded(bridge) -> None:
-    """Prepare → parallel? → gate → sequential (None/False finalize inside)."""
-    ctx = await prepare_batch(bridge)
-    if ctx is None:
-        return
+async def run_pass(bridge, plan) -> None:
+    """One pass: prepare → parallel? → gate → sequential (the supervisor owns the loop)."""
+    ctx = await prepare_batch(bridge, plan)
     if await _try_parallel(ctx):
         return
     if not await _await_batch_gate(ctx):
         return
     await _run_sequential(ctx)
-
-
-def _cancel_batch(bridge) -> None:
-    """Cancelled future: line + idle + emit (settle happens per-image)."""
-    bridge._log("🏁 Batch cancelled", "warn")
-    bridge._run_state = "idle"
-    bridge._emit_arena_state()
-
-
-def _crash_batch(bridge, error: Exception) -> None:
-    """Unexpected crash: cancelled-vs-crash line + idle + emit."""
-    if "Cancelled" in str(error) or getattr(bridge, "_cancel_requested", False):
-        bridge._log(f"🏁 Batch cancelled: {error}", "warn")
-    else:
-        bridge._log(f"Batch runner crashed: {error}", "error")
-    import traceback
-    traceback.print_exc()
-    bridge._run_state = "idle"
-    bridge._emit_arena_state()
-
-
-async def run_batch(bridge) -> None:
-    """Run the batch (scheduled by start_run; tracked for cancel)."""
-    try:
-        await _run_guarded(bridge)
-    except asyncio.CancelledError:
-        _cancel_batch(bridge)
-        raise
-    except Exception as e:
-        _crash_batch(bridge, e)

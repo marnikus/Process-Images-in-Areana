@@ -54,10 +54,14 @@ def test_start_allowed_once_the_future_is_done(monkeypatch):
         coro.close()
 
 
-def test_running_label_still_wins_with_its_own_message(monkeypatch):
+def test_start_while_live_wakes_the_loop_instead_of_refusing(monkeypatch):
+    """S5 (D-5): a live run is never restarted — Start wakes it and re-announces the queue."""
     host, logs, scheduled = ready_host("running", Future(), monkeypatch)
-    assert json.loads(host.start_run())["error"] == "already running"
+    assert json.loads(host.start_run()) == {"ok": True, "live": True}
     assert scheduled == []
+    assert (host._pause_requested, host._stop_after) == (True, True)  # nothing reset under the live loop
+    assert any("Run already live" in msg and "(1 queued)" in msg for _, msg in logs)
+    assert not any("Already running" in msg for _, msg in logs)
 
 
 def test_check_start_ready_gate_order():
