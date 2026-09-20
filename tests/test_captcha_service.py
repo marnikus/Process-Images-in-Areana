@@ -66,7 +66,8 @@ def make_bridge(pool, config_dir=None, with_service=True):
         _page_pool=pool,
         _log=lambda m, l="info": logs.append((m, l)),
         _emit_pool_status=lambda: logs.append(("emit", "")),
-        config=SimpleNamespace(get_state=lambda k, d=None: ({"watcher_captcha_timeout_sec": 300}).get(k, d)),
+        config=SimpleNamespace(get_state=lambda k, d=None: ({"watcher_captcha_timeout_sec": 300,
+                                                             "watcher_enabled": True}).get(k, d)),
         _logs=logs,
     )
     if with_service and config_dir is not None:
@@ -248,7 +249,14 @@ async def test_every_helper_absorbs_failures(monkeypatch, isolated_config_dir):
     pool.get_page = boom  # after we captured `page`
     bridge = make_bridge(pool, isolated_config_dir)
     bridge._emit_pool_status = boom
-    bridge.config.get_state = boom
+    # S2 (D-23): a broken SWITCH is fail-closed OFF — pinned in test_captcha_scope.py.
+    # Here the switch must stay legible so the chaos still rains on the SCOPED path.
+    def boom_unless_switch(key, default=None):
+        if key == "watcher_enabled":
+            return True
+        raise RuntimeError("boom")
+
+    bridge.config.get_state = boom_unless_switch
     bridge._captcha_watcher = SimpleNamespace()  # no `running` attr → fail closed
     svc = CaptchaService(str(isolated_config_dir))
     svc.stats.record = boom

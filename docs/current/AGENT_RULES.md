@@ -493,6 +493,13 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
   asserts the pipeline never evaluates `inject.js`). Cleared captchas still stack the cooldown
   penalty. Earlier amendment 2026-09-17 (in-pipeline auto-solve, `solver.py`/`api_client.py`) is
   superseded; design: `docs/archive/2026-10-02-captcha-watcher-isolation/design.md`.
+* **Watcher OFF = zero captcha activity (amendment 2026-09-21, D-23):** with the Watcher OFF
+  there is no captcha activity of any kind: no probe, overlay, pool mark, stats, recording,
+  penalty, log line or pause. The one scope predicate is `app/services/captcha/policy.py`
+  (`captcha_in_scope`), asked at every captcha site (`handle_captcha`'s gate, `check_security`,
+  the gen-wait settler install, the CHECK_SECURITY block) — the switch and nothing else;
+  a broken config reads as OFF (fail-closed). With the Watcher ON the pipeline still never
+  solves; it detects and waits, exactly as the 2026-10-02 isolation contract says.
 * **Key hygiene (non-negotiable even when opt-in is ON):** the keys live only in
   `config/captcha_solvers.json` (one per provider — 2Captcha | CapMonster Cloud — git-ignored,
   0600 best-effort; the older single-provider `config/2captcha.json` is folded in on first save);

@@ -30,6 +30,7 @@ from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 from app.services.captcha_recording import RecordingManager
 
 from .key_store import CaptchaKeyStore, clamp_timeout
+from .policy import captcha_in_scope, out_of_scope, solver_running
 from .signals import CaptchaSignal, SolveOutcome, host_of
 from .stats import CaptchaStatsStore
 
@@ -208,6 +209,20 @@ async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
 
 
 async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
+    """Scope gate in front of the one choke point (D-23, RULE 20).
+
+    Watcher OFF ⇒ `out_of_scope` with zero side effects: the pipeline behaves as
+    if captcha did not exist (no probe, overlay, mark, stats, recording, penalty
+    or log line). `SolveOutcome.status` is a free-form str (signals.py), so the
+    new status word needs no enum change; callers raise only on
+    `stopped`/`page_error`/`wait_timeout` and let this fall through as "no failure".
+    """
+    if not captcha_in_scope(ctx.bridge):
+        return out_of_scope()
+    return await _handle_captcha_scoped(ctx)
+
+
+async def _handle_captcha_scoped(ctx: CaptchaCtx) -> SolveOutcome:
     """Detect, record, resolve, and close one visible captcha encounter."""
     signal = await detect_signal(ctx)
     if not signal.visible:
@@ -240,12 +255,8 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
 
 
 def _watcher_running(ctx: CaptchaCtx) -> bool:
-    """Is the isolated Captcha Watcher loop running on this bridge? (fail closed)."""
-    try:
-        watcher = getattr(ctx.bridge, "_captcha_watcher", None)
-        return bool(watcher is not None and watcher.running)
-    except Exception:
-        return False
+    """Amber reason line + `method` label only (D-3: scope is the switch)."""
+    return solver_running(ctx.bridge)
 
 
 async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,

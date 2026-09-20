@@ -24,7 +24,7 @@ def make_info(tab_id):
 
 def make_bridge(pool, session=None):
     state = {"cooldown_enabled": True, "cooldown_min_seconds": 300,
-             "cooldown_captcha_penalty_seconds": 900}
+             "cooldown_captcha_penalty_seconds": 900, "watcher_enabled": True}
     if session:
         state.update(session)
     logs = []

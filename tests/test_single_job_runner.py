@@ -25,7 +25,7 @@ def make_bridge(stack=None, pool=None, cancel=False):
     return SimpleNamespace(
         _cancel_requested=cancel,
         _page_pool=pool,
-        config=SimpleNamespace(get_state=lambda k, d=None: d),
+        config=SimpleNamespace(get_state=lambda k, d=None: {"watcher_enabled": True}.get(k, d)),
         state=state,
         _log=lambda m, l="info": logs.append((m, l)),
         _emit_job_action_status=lambda action: events.append(

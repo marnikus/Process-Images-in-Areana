@@ -105,8 +105,14 @@ def _recorders(bridge: Bridge) -> Dict[str, Recorder]:
 
 def build_bridge(tmp_path: Path, stack: List[ActionBlock], n_images: int = 1,
                  tab_ids: Optional[List[str]] = None,
-                 pool=None, cdp: Optional[FakeCDP] = None):
-    """Real Bridge wired to tmp dirs + recorders (pool None = single mode)."""
+                 pool=None, cdp: Optional[FakeCDP] = None,
+                 watcher_on: bool = False):
+    """Real Bridge wired to tmp dirs + recorders (pool None = single mode).
+
+    watcher_on: arm the Watcher switch (D-23). The harness builds a REAL
+    Bridge/ConfigManager and never arms the Watcher otherwise, so captcha
+    cases must pass True or they would silently stop testing captcha.
+    """
     cfg = ConfigManager(str(tmp_path / "cfg"))
     cdp = cdp or FakeCDP()
     bridge = Bridge(config_manager=cfg, state_path=tmp_path / "arena.json",
@@ -117,6 +123,8 @@ def build_bridge(tmp_path: Path, stack: List[ActionBlock], n_images: int = 1,
     bridge.state.urls = make_urls(tab_ids if tab_ids is not None else ["tab1"])
     bridge.state.prompt["user_prompt"] = "a red circle"
     bridge._page_pool = pool
+    if watcher_on:
+        cfg.set_state(watcher_enabled=True)
     return SimpleNamespace(bridge=bridge, recs=recs, cdp=cdp, cfg=cfg,
                            root=tmp_path)
 
