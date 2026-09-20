@@ -80,6 +80,12 @@ Headroom facts that shape the fix (baseline maxima, `tools/quality_baseline.json
 
 ### 2.1 What the cap must be built from (owner correction: *"D-14 should be capped"*, *"no activity at all if off"*)
 
+> **CLOSED by S3 (2026-09-21):** landed exactly as surveyed — `core/pause_clock.PauseClock` (+ `WaitSpec.pause`,
+> `_check_timeout` paused-elapsed + `paused_s`/`pause_note`), `policy.WaitDeadline` composed into the caller's
+> stop (`wait_captcha_cleared` + its pinned test untouched), `_settle_timed` charging, `wait_timeout` outcome,
+> `policy.wait_reason` (D-15, the "turn the Watcher ON" lie removed). Implementation note: the clock rides
+> `ctrl.pause_clock` (the object itself, per `tdd-interfaces.md` §S3), not the earlier draft's `pause_cap_s`.
+
 | Fact | Evidence |
 |---|---|
 | The knob already exists, is user-settable and is read **per wait**: `watcher_captcha_timeout_sec`, default 300 | `app/persistence/config_manager.py:25`; read by `_wait_timeout` `app/services/captcha/service.py:190-195`; clamped 10…3600 on write `app/ui/panels/watcher_captcha.py:65-73`; persisted `:88-98`; surfaced in the Watcher window (SYSTEM_OF_RECORD row 12) |

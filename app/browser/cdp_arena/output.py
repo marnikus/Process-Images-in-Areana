@@ -5,6 +5,7 @@ RULE18: file 150-300, func ≤20, CC≤10, params≤4 (C6 WaitSpec).
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, Tuple, Callable, List
 
@@ -112,6 +113,16 @@ async def _poll_output_diag(cdp, ctx: PollContext, ctrl) -> Dict[str, Any]:
     return diag
 
 
+async def _settle_timed(settler, clock) -> None:
+    """Charge the settle's wall time onto the wait's pause clock (D-14R)."""
+    if clock is None:
+        await settler()
+        return
+    t0 = time.monotonic()
+    await settler()
+    clock.note(time.monotonic() - t0)
+
+
 async def _security_gate(cdp, ctrl) -> None:
     settler = getattr(ctrl, "security_settler", None)
     if settler is None:
@@ -119,9 +130,15 @@ async def _security_gate(cdp, ctrl) -> None:
     try:
         from .state import is_security_dialog_visible
         if await is_security_dialog_visible(cdp):
-            await settler()
+            await _settle_timed(settler, getattr(ctrl, "pause_clock", None))
     except Exception as e:
         log.debug(f"security gate settle failed {e}")
+
+
+def _timeout_text(result, timeout_ms) -> str:
+    """The failure sentence; a charged pause clock is reported, never silent."""
+    note = result.get("pause_note") or ""
+    return f"Timeout after {timeout_ms}ms" + (f" ({note})" if note else "")
 
 
 async def _map_wait_result(cdp, result, baseline, timeout_ms):
@@ -132,7 +149,8 @@ async def _map_wait_result(cdp, result, baseline, timeout_ms):
     if result.get("reason") == "cancelled":
         return "failed", {"error": "Cancelled", "cancelled": True}
     final_baseline = await capture_baseline(cdp)
-    return "failed", {"error": f"Timeout after {timeout_ms}ms",
+    return "failed", {"error": _timeout_text(result, timeout_ms),
+                      "paused_s": result.get("paused_s", 0),
                       "last_baseline": final_baseline, "last_check": result}
 
 
@@ -166,7 +184,8 @@ async def _run_wait(cdp, spec: WaitSpec, ctx: PollContext) -> Tuple[str, Dict[st
         if spec.log_cb:
             spec.log_cb(msg)
 
-    poll = PollSpec(timeout=spec.timeout_ms / 1000.0, poll_interval=2.0)
+    poll = PollSpec(timeout=spec.timeout_ms / 1000.0, poll_interval=2.0,
+                    pause=getattr(spec.ctrl, "pause_clock", None))
     result = await wait_for_new_output_with_spec(check_fn, _log, spec.cancel_check, poll)
     return await _map_wait_result(cdp, result, spec.baseline, spec.timeout_ms)
 

@@ -128,7 +128,10 @@ async def test_pipeline_waits_and_records_never_solves(monkeypatch, isolated_con
     d = bridge._captcha_service().stats.to_dict()
     assert d["detected_total"] == 1 and d["manual_solved"] == 1
     assert any("CAPTCHA_WAITING" in m and "awaiting your solve" in m for m, _ in bridge._logs)
-    assert ctrl.overlay_calls and "turn the Watcher ON" in ctrl.overlay_calls[-1]["sub"]
+    # S3/D-15: no-key wording names the paused timeout and never says "turn ON" (2026-09-21)
+    assert ctrl.overlay_calls and "no 2Captcha key" in ctrl.overlay_calls[-1]["sub"]
+    assert "timeout is paused" in ctrl.overlay_calls[-1]["sub"]
+    assert "turn the Watcher ON" not in ctrl.overlay_calls[-1]["sub"]
     assert all("findCfgCallback" not in js for js in probe_payloads(ctrl))  # never injects
 
 
@@ -152,12 +155,13 @@ async def test_key_present_does_not_make_pipeline_solve(monkeypatch, isolated_co
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_watcher_running_labels_the_wait(monkeypatch, isolated_config_dir):
-    """Watcher ON → the overlay says who is solving; outcome method = watcher."""
+    """Watcher ON + key → the overlay says who is solving; method = watcher (D-15)."""
     instant_sleep(monkeypatch)
     pool = PagePool()
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
-    bridge._captcha_watcher = SimpleNamespace(running=True)
+    CaptchaKeyStore(isolated_config_dir).save(CaptchaSettings(api_key="K" * 16))
+    bridge._captcha_watcher = SimpleNamespace(running=True)  # a running solver HAS a key
     ctrl = FakeCtrl(visible_seq=[True, False])
     outcome = await handle_captcha(CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1"))
     assert outcome.status == "manual" and outcome.method == "watcher"

@@ -21,8 +21,9 @@ from app.browser.probe_selectors import (
 from app.browser.site_adapter import get_selector
 from app.browser.probe_requests import FindProbeSpec, HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
+from app.core.pause_clock import PauseClock
 from app.services.await_processing import handle_await_processing
-from app.services.captcha.policy import captcha_in_scope
+from app.services.captcha.policy import captcha_in_scope, pause_cap_seconds
 from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
@@ -80,6 +81,8 @@ def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
         raise RuntimeError("Cancelled during CAPTCHA")
     if outcome.status == "page_error":
         raise RuntimeError(outcome.reason or "Page error during CAPTCHA")
+    if outcome.status == "wait_timeout":
+        raise RuntimeError(outcome.reason or "Captcha wait timed out")  # retryable failure
     if outcome.status == "token_stale":
         try:
             ctx.bridge._log("⚠️ CAPTCHA API token stale; continuing page flow", "warn")
@@ -245,16 +248,25 @@ async def _poll_generation(ctx: JobCtx, timeout_ms: int):
     return status, data, src
 
 
+def _drop_wait_handles(ctx: JobCtx) -> None:
+    """Remove the per-wait captcha handles (settler + pause clock); never raise (RULE 7)."""
+    for attr in ("security_settler", "pause_clock"):
+        try:
+            delattr(ctx.ctrl, attr)
+        except Exception:
+            pass
+
+
 async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], Optional[bytes], str]:
-    """Wait output."""
+    """Wait output. Settler + pause clock ONLY in scope (D-23): `_security_gate`
+    never evaluates the dialog predicate on the OFF path at all, and the pause
+    clock (D-14R) caps the timeout's free pass at `watcher_captcha_timeout_sec`."""
     try:
         await _show_gen_overlay(ctx, timeout_ms)
         _arm_revival(ctx)  # bounded resubmit if the blocked generation died
         if captcha_in_scope(ctx.bridge):
-            # install the settler ONLY in scope, so `_security_gate` never evaluates
-            # the dialog predicate: one CDP round-trip less per poll, and Watcher-OFF
-            # silence is guaranteed by construction, not by a branch in the loop (D-23)
             ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
+            ctx.ctrl.pause_clock = PauseClock(pause_cap_seconds(ctx.bridge))
         status, data, src = await _poll_generation(ctx, timeout_ms)
         if status == "completed" and src:
             return await _verify_download(ctx, src)
@@ -263,10 +275,7 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
         await _hide_overlay(ctx)
         return None, None, str(e)
     finally:
-        try:
-            delattr(ctx.ctrl, "security_settler")
-        except Exception:
-            pass
+        _drop_wait_handles(ctx)
         _clear_revival(ctx)
 
 

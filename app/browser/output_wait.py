@@ -7,8 +7,9 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional
 
+from ..core.pause_clock import PauseClock
 from .output_wait_fallback import (
     _handle_timeout_fallback,
     _recheck_after_delay,
@@ -24,6 +25,7 @@ from .output_wait_fallback import (
 class WaitSpec:
     timeout: float
     poll_interval: float = 2.0
+    pause: Optional[PauseClock] = None
 
 
 @dataclass
@@ -148,17 +150,25 @@ async def _check_cancelled(cancel_check, state: LoopState) -> dict | None:
     return None
 
 
+def _pause_evidence(spec: WaitSpec) -> dict:
+    """Report keys for a charged clock (D-13); Watcher OFF ⇒ no vocabulary."""
+    if not spec.pause or not spec.pause.total:
+        return {}
+    return {"paused_s": spec.pause.total, "pause_note": spec.pause.describe()}
+
+
 async def _check_timeout(state: LoopState, spec: WaitSpec, log_cb: Callable) -> dict | None:
-    elapsed = time.monotonic() - state.start
+    elapsed = spec.pause.paused_elapsed(state.start) if spec.pause else time.monotonic() - state.start
     if elapsed <= spec.timeout:
         return None
     fb = await _handle_timeout_fallback(state.last, spec.timeout, log_cb)
     if fb:
         return fb
+    evidence = _pause_evidence(spec)
     if state.last.get("reason") == "job_id_mismatch_no_matching_image":
-        state.last["elapsed"] = elapsed
+        state.last.update({"elapsed": elapsed, **evidence})
         return state.last
-    return {"ready": False, "reason": "timeout", "last": state.last, "elapsed": elapsed}
+    return {"ready": False, "reason": "timeout", "last": state.last, "elapsed": elapsed, **evidence}
 
 
 async def _handle_ready_branch(diag: dict, check_fn: Callable, log_cb: Callable, spec: WaitSpec):

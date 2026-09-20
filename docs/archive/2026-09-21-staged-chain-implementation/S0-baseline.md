@@ -57,6 +57,16 @@ The clone's initial commit tracked runtime data although `.gitignore` lists it:
 They were removed from tracking with `git rm --cached` (the files stay on disk). Without this, base
 is red (`test_repo_hygiene.py::test_no_runtime_data_is_tracked`) and the pre-push hygiene lane fails.
 
+## 2c. S1 deferred floor re-anchor pair (landed in the S3 commit as promised)
+
+While gating S1, two per-file coverage floors proved unmeasurable in this environment
+(`QT_QPA_PLATFORM=offscreen`, no display): `app/browser/cdp/transport.py` floor 90.45 → **84.26**
+and `app/ui/qt_compat.py` floor 60.71 → **39.28**. Both are *environment* artifacts (Qt-exercising
+lines cannot be covered offscreen), not regressions; both are **rise-only** (a later measurement
+that exceeds them resets the floor upward via the coverage ratchet, as intended). No other
+baseline entry was touched by that operation — the full `--record-baseline --refresh` path stays
+reserved for S10 per RULE 16 §16.5.
+
 ## 3. Rules this chain runs under
 
 * **RULE 16.6**: tests first, then measure (`radon cc -s` on every new module).

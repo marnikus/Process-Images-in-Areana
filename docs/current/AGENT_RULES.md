@@ -499,7 +499,13 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
   (`captcha_in_scope`), asked at every captcha site (`handle_captcha`'s gate, `check_security`,
   the gen-wait settler install, the CHECK_SECURITY block) — the switch and nothing else;
   a broken config reads as OFF (fail-closed). With the Watcher ON the pipeline still never
-  solves; it detects and waits, exactly as the 2026-10-02 isolation contract says.
+  solves; it detects and waits, exactly as the 2026-10-02 isolation contract says — and
+  bounded (amendment 2026-09-21, D-14R): the wait itself ends at
+  `watcher_captcha_timeout_sec` (one knob, also the overlay's countdown), where the job
+  fails honestly as retryable `wait_timeout` (no penalty) instead of hanging; while a page
+  waits, its generation timeout is paused for exactly the settle time, capped at the same
+  value per wait (`app/core/pause_clock.py` rides `WaitSpec.pause`; the absorbed pause and
+  the cap appear in the timeout text, never silent). Watcher OFF ⇒ no pause at all.
 * **Key hygiene (non-negotiable even when opt-in is ON):** the keys live only in
   `config/captcha_solvers.json` (one per provider — 2Captcha | CapMonster Cloud — git-ignored,
   0600 best-effort; the older single-provider `config/2captcha.json` is folded in on first save);
