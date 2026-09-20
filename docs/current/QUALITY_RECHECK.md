@@ -286,6 +286,73 @@ Docs in the same commit: RULE 20 amendment (scope paragraph),
 SYSTEM_OF_RECORD row 12 + I-19 / I-34 wording + new **I-48** + services
 module row, `docs/README.md` footer.
 
+### 2026-09-20 S3 (captcha ⇄ generation timeout — the capped pause, D-14R / I-52) — same chain
+
+**RED first.** `tests/test_pause_clock.py` (8) and
+`tests/test_output_wait_timeout_pause.py` (5) could not collect
+(`ModuleNotFoundError: app.core.pause_clock`); `tests/test_captcha_wait_reason.py`
+(4) failed on the missing `policy.wait_reason` / `pause_cap_seconds`;
+`tests/test_captcha_wait_cap.py` (6) failed on the missing `policy.time`
+seam and `DID NOT RAISE RuntimeError` for `wait_timeout` — with the wait
+unbounded the cap tests are wrapped in `asyncio.wait_for(..., 5)`, so at base
+they end in `TimeoutError`, which *is* the defect. One assertion was
+corrected in RED (`"cap" in "captcha"` — the uncapped `describe()` check now
+asserts `"(cap"`).
+
+**GREEN.** New `app/core/pause_clock.py` (55 lines, one class, 6 methods,
+max 9 loc / CC 4, 100 % covered). `policy.py` 54 → 99 lines:
+`pause_cap_seconds` (one knob, 10…3600, default 300), `wait_reason` (a
+2-row lookup keyed on `has_solver_key`, RULE 19), `WaitDeadline`
+(`expired`, `stop_or`). `output_wait.WaitSpec` gains `pause` (class span
+**4** = the recorded file maximum, `LoopState` untouched,
+`wait_for_new_output_with_spec` byte-identical); `_check_timeout` 11 → 12
+loc / CC 4 → 6 (file max 8) and stamps `paused_s` + `pause_note`.
+`cdp_arena/output.py`: `_settle_timed` (CC 2) keeps `_security_gate` at
+CC **4** / nest 1; `_timeout_text` keeps `_map_wait_result` at 4 params;
+`_run_wait` passes `pause=` on the existing `PollSpec` line.
+`captcha/service.py`: `_manual_wait` **27 → 22** loc (file `max_func_loc`
+drops), `_wait_outcome` (3 branches: manual / wait_timeout / stopped),
+`_wait_timeout` + `_stop_pred` deleted (the deadline owns the `None` stop),
+`_resolve_captcha` now takes its wording from `policy.wait_reason`.
+`single_job_runner.py`: the clock is installed next to the settler **only
+in scope** and both leave through `_drop_wait_hooks` in the same `finally`;
+`_handle_captcha_outcome`'s growing `if` chain became the
+`_CAPTCHA_FAILURES` status → error lookup — CC **6 → 4** (the plan allowed
+≤7). Mutation controls: loop ignores the clock → 1 fail; cap not composed
+into `stop` → 4 fail; settle not charged → the new
+`test_cdp_arena.py::test_settle_inside_the_wait_is_charged_to_the_pause_clock`
+fails (the four RED files alone could not see that mutant — it was added
+for exactly that reason, through the real `CDPArenaController` and the
+real loop, RULE 8).
+
+**Existing tests.** Two D-15 wording assertions in `test_captcha_service.py`
+followed the new rule (no key ⇒ “solve it in Chrome”, never “solving”; the
+watcher-labels test now stores a key because the wording follows the key,
+not the loop). `cooldown_service.py` and its pinned never-gives-up test
+(`tests/test_cooldown_service.py:604-618`) are **unedited**;
+`test_wait_captcha_cleared_is_called_unchanged` locks the 4-positional-arg
+call. Goldens byte-identical (no golden contains `Timeout`; the harness ctrl
+stubs `wait_for_new_output`).
+
+**Lane after S3.** pytest serial **1,662 passed · 4 skipped · 0 failed**
+(+24 new); `npm run test:js` 240 / 0; `pyflakes` on every touched file
+clean (the two unused re-exports at `output_wait.py:13` pre-exist at base);
+`vulture @90` clean. Coverage **87.11 % line / 83.51 % branch** (S2: 87.02 /
+83.39; `pause_clock.py` + `policy.py` 100 %, `service.py` 94.84 → 95.24,
+`single_job_runner.py` 84.84 → 85.71, `output_wait.py` 94.95 → 95.02,
+`cdp_arena/output.py` 91.56 → 91.52 — within the per-file lane, no
+ratchet raised). `verify_quality.py --changed-files` on the seven touched
+app files: **no** size / class / CC / nesting / params maximum moved
+(`output_wait.py` 23 / **4** / 8 / 3 / 4; `cdp_arena/output.py` 16 / 7 /
+**4** / 1 / 4; `service.py` max_func_loc **22**; `single_job_runner.py`
+max_cc 8, 956 lines under its ideal-size header); the only fails are the
+same three environment facts (`max_cog 0→N`, equal to the base tree's
+values by measurement; the two `libGL` coverage floors). Docs in the same
+commit: RULE 20 amendment (bounded wait, capped pause), SYSTEM_OF_RECORD
+rows 8 + 12, core/services module rows, new **I-52**, `docs/README.md`
+footer. `evidence.md` §2.1 lives in an archived plan folder and is
+therefore not edited (archived plan docs are never caught up).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

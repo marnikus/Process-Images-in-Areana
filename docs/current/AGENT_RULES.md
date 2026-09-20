@@ -491,6 +491,14 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
   *wording* only, never its scope (RULE 10). The switch is read on every call — live in both directions.
 * **Watcher ON = detect and wait only:** the job pipeline itself NEVER solves — `handle_captcha`
   only detects, pauses and waits for the dialog to clear (`USER_ACTION_REQUIRED` semantics).
+* **The wait is bounded and the pause is capped (amendment 2026-09-20, S3, I-52).** The one knob
+  `watcher_captcha_timeout_sec` (`policy.pause_cap_seconds`, 10…3600 s, default 300, read per call)
+  bounds the captcha wait (`policy.WaitDeadline` composed into the `stop` predicate —
+  `cooldown_service.wait_captcha_cleared` stays untouched) **and** caps how long a mid-generation
+  captcha settle may pause the generation timeout (`core/pause_clock.PauseClock`, one per generation
+  wait, cumulative). At the cap the job fails honestly as `wait_timeout` — retryable, no captcha
+  penalty, normal cooldown — never a silent stall and never a free pass. The overlay countdown shows
+  the same number; its WHY line (`policy.wait_reason`) names the Watcher as solver only when a key exists.
   Solving is the exclusive job of the Captcha Watcher (`app/services/captcha_watcher/`), which
   runs only while the user turns the Watcher ON, has stored their own API key in the Captcha
   window, and talks to 2Captcha only through the official SDK (`2captcha-python`,

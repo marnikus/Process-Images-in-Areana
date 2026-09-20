@@ -22,7 +22,8 @@ from app.browser.site_adapter import get_selector
 from app.browser.probe_requests import FindProbeSpec, HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.services.await_processing import handle_await_processing
-from app.services.captcha.policy import captcha_in_scope
+from app.core.pause_clock import PauseClock
+from app.services.captcha.policy import captcha_in_scope, pause_cap_seconds
 from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
@@ -74,12 +75,19 @@ async def capture_baseline(ctrl) -> Dict[str, Any]:
         return {"output_count": 0, "output_srcs": []}
 
 
+# captcha outcome status → job error text (RULE 19: a lookup, not a chain); all retryable
+_CAPTCHA_FAILURES = {
+    "stopped": lambda o: "Cancelled during CAPTCHA",
+    "page_error": lambda o: o.reason or "Page error during CAPTCHA",
+    "wait_timeout": lambda o: o.reason or "Captcha wait exceeded its cap",  # S3: cooldown still applies
+}
+
+
 def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
     """Map security outcomes without mistaking manual supersession for failure."""
-    if outcome.status == "stopped":
-        raise RuntimeError("Cancelled during CAPTCHA")
-    if outcome.status == "page_error":
-        raise RuntimeError(outcome.reason or "Page error during CAPTCHA")
+    fail = _CAPTCHA_FAILURES.get(outcome.status)
+    if fail is not None:
+        raise RuntimeError(fail(outcome))
     if outcome.status == "token_stale":
         try:
             ctx.bridge._log("⚠️ CAPTCHA API token stale; continuing page flow", "warn")
@@ -252,6 +260,7 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
         _arm_revival(ctx)  # bounded resubmit if the blocked generation died
         if captcha_in_scope(ctx.bridge):
             ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
+            ctx.ctrl.pause_clock = PauseClock(pause_cap_seconds(ctx.bridge))  # S3: capped pause
         status, data, src = await _poll_generation(ctx, timeout_ms)
         if status == "completed" and src:
             return await _verify_download(ctx, src)
@@ -260,11 +269,17 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
         await _hide_overlay(ctx)
         return None, None, str(e)
     finally:
+        _drop_wait_hooks(ctx)
+        _clear_revival(ctx)
+
+
+def _drop_wait_hooks(ctx: JobCtx) -> None:
+    """One wait, one settler, one clock: both leave with the wait."""
+    for name in ("security_settler", "pause_clock"):
         try:
-            delattr(ctx.ctrl, "security_settler")
+            delattr(ctx.ctrl, name)
         except Exception:
             pass
-        _clear_revival(ctx)
 
 
 async def _settle_and_note(ctx: JobCtx):
