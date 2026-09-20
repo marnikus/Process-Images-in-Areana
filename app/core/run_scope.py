@@ -32,6 +32,17 @@ def is_runnable(status: str) -> bool:
     return status in RUNNABLE_STATUSES
 
 
+# The batch-planning set (S4, I-49): runnable minus `processing`. Crash
+# leftovers re-enter through `live.feed.recover_stale_processing` before
+# planning; live `processing` is never double-dispatched.
+ELIGIBLE_STATUSES = RUNNABLE_STATUSES - {ImageStatus.PROCESSING.value}
+
+
+def eligible_images(images: Iterable) -> List:
+    """Images the next pass may plan, in queue order (selected + eligible)."""
+    return [img for img in images if bool(img.selected) and img.status in ELIGIBLE_STATUSES]
+
+
 def in_run_scope(img) -> bool:
     """The single predicate: selected AND a runnable status (RULE 10)."""
     return bool(img.selected) and is_runnable(img.status)

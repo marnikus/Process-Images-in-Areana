@@ -6,11 +6,13 @@ Every assertion checks real slot output, so gutting a slot body fails it.
 """
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from app.core.models import UrlRow
 from app.persistence.config_manager import ConfigManager
+from app.services import run_state as rs_mod
 from app.ui.panels import queue_scan as qs_mod
 from app.ui.panels import run_control as rc_mod
 from app.ui.panels.app_settings import AppSettingsMixin
@@ -180,10 +182,12 @@ def test_run_control_start_run_guards(cfg):
 def test_run_control_start_run_ok_schedules_batch(cfg, monkeypatch):
     scheduled = []
 
-    def fake_schedule(self, coro):
+    def fake_schedule(bridge, coro):
         scheduled.append(coro)
         return coro
-    monkeypatch.setattr(rc_mod, "schedule_coro", fake_schedule)
+    # S4 armed: start_run goes through schedule_batch, which always tracks the
+    # future returned by schedule_coro (patched at the source module).
+    monkeypatch.setattr(rs_mod, "schedule_coro", fake_schedule)
     img = make_img(); img.selected = True; img.status = "pending"
     host, _ = make_host((RunControlMixin,), config=cfg, cdp=make_cdp(connected=True),
                         state=make_state(images=[img], urls=[UrlRow.create("https://arena.ai/c",
@@ -380,3 +384,26 @@ def test_watcher_captcha_config_and_state_slots(cfg):
     assert json.loads(host.clear_watcher_overlay())["ok"] in (True, False)
     check = json.loads(host.check_watcher_now())
     assert "ok" in check or "status" in check
+
+
+# ── coverage floor: settings preset error paths + scan-worker error paths (S4) ──
+
+def test_app_settings_preset_error_paths_and_compat_emit():
+    host, _ = make_host((AppSettingsMixin,), config=SimpleNamespace(presets=None),
+                        state=make_state(), _emit_arena_state=lambda: None)
+    assert json.loads(host.list_arena_presets()) == []
+    assert json.loads(host.save_arena_preset("p"))["ok"] is False
+    assert json.loads(host.load_arena_preset("p"))["ok"] is False
+    assert host.refresh_users() is None  # compat slot: just emits arena state
+
+
+def test_queue_scan_worker_error_paths(tmp_path):
+    logs = []
+    bridge = SimpleNamespace(state=SimpleNamespace(images=[], folder=None),
+                             _log=lambda *a: logs.append(a), _scan_in_progress=True)
+    qs_mod.run_scan_merge(bridge, tmp_path)
+    assert bridge._scan_in_progress is False
+    qs_mod.run_scan_new_batch(bridge, tmp_path, 3)
+    assert bridge._scan_in_progress is False
+    assert any("Scan failed" in str(l) for l in logs)
+    assert any("New batch scan failed" in str(l) for l in logs)

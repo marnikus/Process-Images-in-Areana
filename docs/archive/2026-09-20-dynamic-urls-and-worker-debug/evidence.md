@@ -105,6 +105,14 @@ Headroom facts that shape the fix (baseline maxima, `tools/quality_baseline.json
 
 ## 3. Item 03 — URL rows, the receiver gate, and reset semantics
 
+> **LANDED — S4 (2026-09-20), reset half only:** the reset re-queue evidence below (D-6R) is now
+> code — `reset_image_state` lost its `selected` parameter, both resets return images to
+> `pending` + `selected=True` and end in `live.feed.commit_queue` (recalc → save → undo →
+> emit → `LiveBus.wake`), with a `↻ … re-queued` count line; stale `processing` is recovered at
+> Start (`recover_stale_processing`); the single eligibility rule is `core/run_scope.eligible_images`
+> (the two clones this section cites were already deleted by B13). The URL-row / receiver facts
+> below remain plan evidence for S6/S7. Status marker only, original evidence kept verbatim.
+
 **Row model & serialization**
 
 | Fact | Evidence |

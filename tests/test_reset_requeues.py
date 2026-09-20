@@ -70,7 +70,7 @@ def test_reset_is_undoable(tmp_path):
     bridge.reset_image(img.id)
     assert img.status == "pending"
 
-    bridge.undo_service.undo()
+    bridge.undo()  # the real undo slot: store step + apply
 
     assert img.status == "completed"  # reset undone — work not lost
 

@@ -5,11 +5,14 @@ inline, flags + services built here. All attrs identical to the pre-A6
 inline version, plus `_batch_future = None` (was lazily created).
 """
 
+import threading as _threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from app.core.undo_service import UndoService
+from app.services.live.bus import LiveBus
+from app.ui.panels.queue_scan import push_queue_undo
 from app.ui.panels.watcher_captcha import (
     get_watcher_cdp_controller, on_watcher_state)
 
@@ -25,13 +28,16 @@ class BridgeContext:
 
 
 def init_run_state(bridge) -> None:
-    """Run-lifecycle flags + per-run stores."""
+    """Run-lifecycle flags + per-run stores (+ the S4 live-queue seam)."""
     bridge._run_state = "idle"
     bridge._cancel_requested = False
     bridge._pause_requested = False
     bridge._stop_after = False
     bridge._batch_future = None
     bridge._exported_paths = {}
+    bridge._live_bus = LiveBus()  # one wake event per bridge (S4, I-49)
+    bridge._state_lock = _threading.RLock()  # queue-mutation serialization (S5 reads)
+    bridge._queue_undo_push = push_queue_undo  # funnel undo step, duck-typed
 
 
 def init_tracking_state(bridge) -> None:
