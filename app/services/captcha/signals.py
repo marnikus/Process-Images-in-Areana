@@ -95,7 +95,9 @@ class SolveOutcome:
     """Result of one handle_captcha flow (RULE 4: reason distinguishes broken).
 
     status vocabulary: none | manual | stopped | page_error | token_stale |
-    out_of_scope (Watcher OFF — `policy.out_of_scope()`, no captcha activity).
+    out_of_scope (Watcher OFF — `policy.out_of_scope()`, no captcha activity) |
+    wait_timeout (the cap `watcher_captcha_timeout_sec` passed with the dialog
+    still up — retryable job failure, no penalty; D-14R).
     """
 
     status: str = "none"

@@ -7,8 +7,9 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional
 
+from ..core.pause_clock import PauseClock
 from .output_wait_fallback import (
     _handle_timeout_fallback,
     _recheck_after_delay,
@@ -24,6 +25,7 @@ from .output_wait_fallback import (
 class WaitSpec:
     timeout: float
     poll_interval: float = 2.0
+    pause: Optional[PauseClock] = None  # S3: captcha-wait seconds the timeout must not count
 
 
 @dataclass
@@ -148,9 +150,29 @@ async def _check_cancelled(cancel_check, state: LoopState) -> dict | None:
     return None
 
 
+def _counted_elapsed(state: LoopState, spec: WaitSpec) -> float:
+    """Seconds that count against the timeout — captcha pauses excluded when a clock rides along (S3)."""
+    if spec.pause is None:
+        return time.monotonic() - state.start
+    return spec.pause.paused_elapsed(state.start)
+
+
+def _pause_exhausted(spec: WaitSpec) -> bool:
+    """The pause budget is spent while the dialog was still up ⇒ the wait ends now (D-14R)."""
+    return spec.pause is not None and spec.pause.expired()
+
+
+def _pause_evidence(spec: WaitSpec) -> dict:
+    """What the clock absorbed, for an honest timeout post-mortem (empty when nothing was paused)."""
+    clock = spec.pause
+    if clock is None or clock.total <= 0:
+        return {}
+    return {"paused_s": round(clock.total, 3), "pause_note": clock.describe()}
+
+
 async def _check_timeout(state: LoopState, spec: WaitSpec, log_cb: Callable) -> dict | None:
-    elapsed = time.monotonic() - state.start
-    if elapsed <= spec.timeout:
+    elapsed = _counted_elapsed(state, spec)
+    if elapsed <= spec.timeout and not _pause_exhausted(spec):
         return None
     fb = await _handle_timeout_fallback(state.last, spec.timeout, log_cb)
     if fb:
@@ -158,7 +180,8 @@ async def _check_timeout(state: LoopState, spec: WaitSpec, log_cb: Callable) -> 
     if state.last.get("reason") == "job_id_mismatch_no_matching_image":
         state.last["elapsed"] = elapsed
         return state.last
-    return {"ready": False, "reason": "timeout", "last": state.last, "elapsed": elapsed}
+    return {"ready": False, "reason": "timeout", "last": state.last, "elapsed": elapsed,
+            **_pause_evidence(spec)}
 
 
 async def _handle_ready_branch(diag: dict, check_fn: Callable, log_cb: Callable, spec: WaitSpec):

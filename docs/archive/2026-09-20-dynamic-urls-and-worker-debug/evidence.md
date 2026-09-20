@@ -80,6 +80,8 @@ Headroom facts that shape the fix (baseline maxima, `tools/quality_baseline.json
 
 ### 2.1 What the cap must be built from (owner correction: *"D-14 should be capped"*, *"no activity at all if off"*)
 
+> **Closed by S3 (2026-09-21, I-52).** Built exactly as tabled: the cap rides `_stop_pred` through `policy.WaitDeadline.stop_or` (`cooldown_service.py` and `tests/test_cooldown_service.py:604-618` untouched), the pause is `app/core/pause_clock.PauseClock` on `WaitSpec.pause` (D-25) charged by `cdp_arena/output._settle_timed` (D-26), `wait_timeout` is a new free-form status, the overlay still counts the same number down. One drift: the pinned invariant landed as **I-52** (I-44 was already taken by run scope), and the `_wait_timeout` reader in `service.py` was deleted in favour of `policy.pause_cap_seconds`.
+
 | Fact | Evidence |
 |---|---|
 | The knob already exists, is user-settable and is read **per wait**: `watcher_captcha_timeout_sec`, default 300 | `app/persistence/config_manager.py:25`; read by `_wait_timeout` `app/services/captcha/service.py:190-195`; clamped 10…3600 on write `app/ui/panels/watcher_captcha.py:65-73`; persisted `:88-98`; surfaced in the Watcher window (SYSTEM_OF_RECORD row 12) |

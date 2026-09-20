@@ -511,6 +511,19 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
   `_watcher_running` → `policy.solver_running`). With the Watcher ON the pipeline still never
   solves: it detects and waits (with or without a key). Proof: `tests/test_watcher_off_zero_activity.py`
   (all-zero counters + the positive control), `tests/test_captcha_scope.py`.
+* **Bounded wait, capped pause (S3, 2026-09-21, I-52):** with the Watcher ON the wait is bounded by
+  ONE knob, `watcher_captcha_timeout_sec` (`policy.pause_cap_seconds`, clamped 10…3600, default 300,
+  read per call). `policy.WaitDeadline` composes it into the `stop` predicate
+  `cooldown_service.wait_captcha_cleared` already takes (that module and its never-gives-up test are
+  untouched); at the cap the encounter ends `wait_timeout` — a plain retryable `RuntimeError`, **no
+  penalty, no stat**, cooldown as usual. While the dialog is up inside a generation wait the
+  generation timeout is **paused**: `app/core/pause_clock.PauseClock` rides on `WaitSpec.pause`, is
+  charged by `cdp_arena/output._settle_timed` around the settler only, is cumulative per generation
+  wait (a second captcha gets only what is left — `policy.pause_budget`), and an exhausted budget ends
+  the wait; the timeout text quotes it (`Timeout after 180000ms (+300s captcha wait (cap 300s, 0s
+  left))`). The overlay's wording is `policy.wait_reason` (D-15): ON + key ⇒ *"Captcha Watcher is
+  solving it"*, otherwise *"solve it in Chrome; this job's timeout is paused"* — never *"turn the
+  Watcher ON"* while it is ON. Watcher OFF installs no clock (D-23).
 * Respect target site terms, permissions, rate limits; only use user-authorized URLs.
 * Credentials out of logs, session in browser profile dir, upload only to user-configured URLs.
 * Same as old app's security rules, adapted to Arena.
