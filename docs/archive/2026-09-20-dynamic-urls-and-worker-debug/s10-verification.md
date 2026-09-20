@@ -54,3 +54,22 @@ planner receives standard dataclass serialization; no duplicated planner rule.
 Dedupe's removed count contributes to the existing commit condition. No other
 planner/receiver decisions change. Remaining replacement tests: **22 Python and
 7 real jsdom equivalence passes**, not claimed as new-feature RED.
+
+## Repair and equivalence results (before full gate)
+
+RED `1682da6`: 4 documentation/runner failures; 7 real reconcile failures and
+1 receiver-commit failure, plus 27 Python and 7 jsdom equivalence passes. The
+reconcile disconnect fixture now sets `is_connected=False` **after** add_page
+(the real pool marks new additions connected); the commit-path RED already
+set it after addition. This fixture correction is not a new production defect.
+
+Minimal repairs: `asdict` serialization at the existing planner boundary;
+`len(dropped)` in the existing commit condition; one `connected_tab_ids(pool)`
+projection shared by both receiver writers. `pooled_ids` is unchanged. Targeted
+real bridge/policy/cadence/boundary suite: **44 passed**. No JS production changes.
+
+Current docs fix I-50 and rows 8/11/21, preserve existing S2–S5/S8–S9 contracts,
+and name the actual supervisor/pass bodies and 135-slot surface. Long historical
+quality snapshots moved verbatim to `quality-history-before-s10.md`; current
+QUALITY_RECHECK is a concise summary with a pointer, per RULE 18.4. The original
+design/tdd/quality-budget documents are unchanged historical records (RULE 17).

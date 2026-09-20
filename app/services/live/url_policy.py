@@ -148,3 +148,11 @@ def mark_receivers(rows: Any, allowed: set | None, pooled: set | None) -> int:
             except Exception: setattr(r, "receiver", want)
             changed += 1
     return changed
+
+
+def connected_tab_ids(pool) -> set:
+    """Receiver projection: registered-but-disconnected pages cannot receive."""
+    if pool is None:
+        return set()
+    return {page["tab_id"] for page in pool.status_snapshot()["pages"]
+            if page["is_connected"]}

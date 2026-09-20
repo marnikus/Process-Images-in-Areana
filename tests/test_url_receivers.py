@@ -63,3 +63,15 @@ def test_commit_urls_recomputes_and_publishes_real_pool_connection_changes(tmp_p
     pool.get_page('t1').is_connected = True
     commit_urls(env.bridge)
     assert row.receiver is False
+
+
+def test_connected_id_projection_has_an_empty_positive_control():
+    from app.services.live.url_policy import connected_tab_ids
+    pool = PagePool()
+    assert connected_tab_ids(None) == set()
+    assert connected_tab_ids(pool) == set()
+    pool.add_page(PageInfo(tab_id='one'))
+    pool.add_page(PageInfo(tab_id='two'))
+    pool.get_page('two').is_connected = False
+    assert connected_tab_ids(pool) == {'one'}
+    assert pooled_ids(pool) == {'one', 'two'}  # preserve the distinct legacy meaning

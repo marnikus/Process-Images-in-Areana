@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from app.services.auto_connect import enabled_tab_ids, live_tab_keys, plan_auto_connect
 from app.services.live.bus import live_bus
@@ -65,9 +65,8 @@ def _pattern(bridge) -> str:
 
 def _mark(bridge, rows) -> int:
     try:
-        from app.services.live.url_policy import mark_receivers
-        from app.services.run_state import pooled_ids
-        return int(mark_receivers(rows, enabled_tab_ids(rows), pooled_ids(getattr(bridge, "_page_pool", None))) or 0)
+        from app.services.live.url_policy import connected_tab_ids, mark_receivers
+        return int(mark_receivers(rows, enabled_tab_ids(rows), connected_tab_ids(getattr(bridge, "_page_pool", None))) or 0)
     except Exception:
         return 0
 
@@ -172,13 +171,13 @@ async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
     misses = dict(getattr(bridge, "_reconcile_misses", {}) or {}); removals = removable_rows(RemovalSpec(rows=list(rows), live_keys=live_keys, pattern=pattern, busy_tabs=busy, misses=misses))
     try:
         bridge._reconcile_misses = advance_misses(rows, live_keys, misses)
-        plan = plan_auto_connect(tabs, pattern, rows, pooled_ids(getattr(bridge, "_page_pool", None)))
+        plan = plan_auto_connect(tabs, pattern, list(map(asdict, rows)), pooled_ids(getattr(bridge, "_page_pool", None)))
     except Exception:
         plan = None
     linked = _apply_claim(rows, plan); added = _apply_add(bridge, rows, plan); removed = _apply_remove(bridge, rows, removals, deps)
     marked = _mark(bridge, rows)
     joined = await _join_connect(plan, deps)
-    need = added + linked + removed + joined + marked
+    need = added + linked + removed + joined + marked + len(dropped)
     _maybe_commit(bridge, deps, need)
     rep = Report(added=added, linked=linked, removed=removed, joined=joined)
     _log_report(bridge, deps, source, rep)

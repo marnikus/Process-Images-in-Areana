@@ -107,10 +107,9 @@ def _duplicate_url(urls, url: str, skip_id: str = "") -> bool:
 
 def _recompute_receivers(bridge) -> int:
     try:
-        from app.services.live.url_policy import mark_receivers
-        from app.services.run_state import pooled_ids
+        from app.services.live.url_policy import connected_tab_ids, mark_receivers
         rows = getattr(bridge.state, "urls", [])
-        return int(mark_receivers(rows, enabled_tab_ids(rows), pooled_ids(getattr(bridge, "_page_pool", None))) or 0)
+        return int(mark_receivers(rows, enabled_tab_ids(rows), connected_tab_ids(getattr(bridge, "_page_pool", None))) or 0)
     except Exception:
         return 0
 

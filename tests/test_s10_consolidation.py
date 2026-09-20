@@ -36,3 +36,16 @@ def test_current_readme_marks_the_chain_integrated():
             assert 'planning only' not in line
             assert 'no production code yet' not in line
     assert 'S10' in readme
+
+
+def test_invariant_enforcement_files_exist_and_window_count_matches_code():
+    import re
+    from app.core.window_catalog import WINDOW_IDS
+    sor = (ROOT / 'docs/current/SYSTEM_OF_RECORD.md').read_text()
+    assert f'{len(WINDOW_IDS)} windows:' in sor
+    for number in range(47, 55):
+        line = next(line for line in sor.splitlines() if line.startswith(f'| I-{number} |'))
+        paths = re.findall(r'`((?:tests|app)/[^`]+\.(?:py|mjs))(?::[^`]*)?`', line)
+        assert paths, f'I-{number} needs executable enforcement pointers'
+        for path in paths:
+            assert (ROOT / path).is_file(), (number, path)

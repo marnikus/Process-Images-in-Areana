@@ -155,7 +155,8 @@ async def test_reconcile_does_not_advertise_a_disconnected_pool_page_as_receiver
     row = UrlRow.create('https://arena.ai/one', tab_id='one')
     row.receiver = True
     env.bridge.state.urls = [row]
-    env.bridge._page_pool.add_page(PageInfo(tab_id='one', is_connected=False))
+    env.bridge._page_pool.add_page(PageInfo(tab_id='one'))
+    env.bridge._page_pool.get_page('one').is_connected = False
     deps = deps_for(env, [tab('one')])
     await reconcile_once(env.bridge, deps, 'auto')
     assert row.receiver is False
