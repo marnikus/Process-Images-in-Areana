@@ -29,7 +29,7 @@ async function bootPage(t, options = {}) {
         calls.push({ name, args });
         const cb = args.find(a => typeof a === 'function');
         if (options.deferPool && name === 'get_page_pool_status') return;
-        const replies = { get_action_blocks: [], get_page_pool_status: { total: 0, steady: 0, busy: 0, cooling: 0, free: 0, pages: [], waits_in_scope: false } };
+        const replies = { get_arena_state: {progress: {live: options.initialLive || livePayload()}}, get_action_blocks: [], get_page_pool_status: { total: 0, steady: 0, busy: 0, cooling: 0, free: 0, pages: [], waits_in_scope: false } };
         cb?.(JSON.stringify(replies[name] || {}));
       };
       slots[name].connect = fn => { (signals[name] ||= []).push(fn); };
@@ -197,7 +197,7 @@ test('S9 cadence ticker is local, read-only and bound exactly once', async t => 
   assert.match(bar.textContent, /last pass 7s ago/);
   assert.equal(h.calls.length, 0);
   assert.equal(bar.querySelector('input,select'), null);
-  assert.equal(fs.readFileSync(path.join(WEB, 'js/arena-app/listeners.js'), 'utf8').split('\n').length, 168);
+  assert.equal(fs.readFileSync(path.join(WEB, 'js/arena-app/listeners.js'), 'utf8').split('\n').length, 194);
 });
 
 test('S9 Refresh calls only get_page_pool_status once; failures remain distinct from an empty pool', async t => {

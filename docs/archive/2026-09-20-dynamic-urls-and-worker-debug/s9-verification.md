@@ -48,3 +48,19 @@ Before any production edit: `pytest tests/test_live_debug_view.py` → **11 fail
 all existing S8 tests stay green; new cases fail on missing real DOM content.
 Tests drive actual bridge methods and real index.html script order. Clock/signal/
 CDP test doubles are boundaries, not the functions under test.
+
+### Additional RED: idle freshness
+
+Initial GREEN work exposed one more S6 assumption: the loop stamps pass time/count
+**after** any mutation-driven emission and emits nothing on idle passes. A real
+loop + real UI deps test fails with no progress event on an empty scan. Before
+fixing it, add optional `LiveDeps.publish` (default None), invoked after stamping.
+The UI supplies a read-only progress+pool publisher; no commit/save/joins/probes,
+no change to scan or wait decisions. This also refreshes OFF scope on the existing
+cadence. `reconcile_once`, its overrides and the four existing deps stay unchanged.
+
+Two test-fixture corrections: frozen listeners has 193 physical lines plus final
+newline (168 is the quality gate's effective LOC, not split length); the boot fake
+now returns a valid live getter reply rather than `{}`. Initial getter must copy
+progress before augmenting: its legacy serializer shares the state progress dict.
+The read-only test now snapshots independently and checks for this mutation.

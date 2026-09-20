@@ -71,7 +71,8 @@ def test_cadence_and_run_state_are_typed_and_json_safe(env):
 
 
 def test_progress_push_and_initial_getter_agree_without_changing_arena_push(env):
-    expected_arena = arena_to_js(env.bridge.state)
+    expected_arena = copy.deepcopy(arena_to_js(env.bridge.state))
+    before = copy.deepcopy(env.bridge.state.to_dict())
     emit_arena_state(env.bridge)
     prog = json.loads(env.recs['progress_updated'].calls[-1][0])
     assert prog['live']['queued'] == 6
@@ -81,6 +82,7 @@ def test_progress_push_and_initial_getter_agree_without_changing_arena_push(env)
     assert initial['progress']['live'] == prog['live']
     del initial['progress']['live']
     assert initial == expected_arena
+    assert env.bridge.state.to_dict() == before
 
 
 def test_off_payload_has_no_captcha_wording_or_probe(env):
@@ -158,3 +160,27 @@ def test_uncapped_and_disappearing_controller_telemetry_is_json_safe(env, monkey
     json.dumps(snap, allow_nan=False)
     monkeypatch.setattr(pool, 'get_clients', Mock(side_effect=RuntimeError('disconnected')))
     assert 'pause' not in pool_snapshot(env.bridge)['pages'][0]
+
+
+@pytest.mark.asyncio
+async def test_idle_reconcile_publishes_fresh_cadence_without_a_commit(env, monkeypatch):
+    from app.services.live.reconcile import reconcile_loop
+    from app.services.live.bus import live_bus
+    from app.ui.panels.browser_tabs import live_deps
+    from unittest.mock import AsyncMock
+    bridge = env.bridge
+    bridge.state.urls = []
+    bridge.cdp.fetch_tabs = AsyncMock(return_value=[])
+    saved = Mock()
+    monkeypatch.setattr(bridge, '_save_arena', saved)
+
+    async def wait_once(timeout):
+        bridge._stop_reconcile = True
+        return ''
+
+    monkeypatch.setattr(live_bus(bridge), 'wait', wait_once)
+    await reconcile_loop(bridge, live_deps(bridge))
+    assert bridge._reconcile_passes == 1
+    assert json.loads(env.recs['progress_updated'].calls[-1][0])['live']['passes'] == 1
+    assert json.loads(env.recs['page_pool_updated'].calls[-1][0])['pages'] == []
+    saved.assert_not_called()
