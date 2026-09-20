@@ -455,6 +455,87 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
   `tests/js/page_harness.mjs` is the shared whole-page boot used by both new
   suites.
 
+## B11 — Action Blocks window: header says `16 BLOCKS`, the block list is empty (`block-render.js`, `block-config.js`, `block-store.js`, `block-listeners.js`, `action-blocks.js`, new `block-views.js` / `block-fields.js`, `arena.css`, `core/action_blocks.py`)
+
+* **Saw:** the ACTION BLOCKS — STACKING JOBS window rendered its toolbar,
+  the "Reorder Blocks…" hint and the counter `16 BLOCKS`, but the stack
+  area between them stayed empty. Block Config never showed a form either.
+* **Root cause (verified in the whole-page harness — real `index.html`
+  scripts, real Python default stack, fake QWebChannel; pre-fix result
+  `0 !== 16` rows):** the C7 split rewrote `block-render.js` and
+  `block-config.js` against a DOM that **never existed in `index.html`** —
+  `#panel-action-blocks`, `#ab-block-list`, `#ab-add-menu`,
+  `#ab-custom-chips`, `#ab-stack-presets`, `#ab-pause-indicator`,
+  `#ab-block-count`, `#ab-config-form`. Every renderer began with
+  `root.querySelector('#ab-…'); if (!container) return;` — a silent no-op —
+  while the facade's `updateFooter` used the real ids (`#actionBlocksCount`,
+  `#abTotalSteps`), so the counters updated and nothing else did. The real
+  page (`#actionBlocksStack`, `#blockConfigHead` / `#blockConfigForm`,
+  `#jobActionStack`, `#allJobsStack`, `#customBlockChips`,
+  `#stackPresetChips`) and `css/arena.css` (`.action-block`,
+  `.ab-drag-handle`, `.ab-block-info/-title/-meta`, `.ab-block-controls`,
+  `.ab-check`, `.ab-edit-btn`, `.ab-delete-btn`, `.bc-*` Block Config
+  design) still described the intended "target screenshot" UI; the later
+  C12 modules (`block-ui.js`, `block-status.js`) already used those ids.
+  Before B6 the panel never initialised, so the mismatch was invisible;
+  after B6 the store loaded 16 blocks and the counter exposed it.
+  Secondary defects found on the same path: `flushSave` read the form via
+  `document.getElementById('panel-action-blocks')` → `null.querySelector`
+  (would throw on the first edit); `bindFormEvents` re-bound the form
+  listeners on every render; `loadBuiltin` / `loadCustom` /
+  `loadStackPresets` still called the QWebChannel slots synchronously
+  (always `undefined` — the B2 bug class) so catalog labels, custom-block
+  chips and stack-preset chips never loaded; `block-listeners.js` bound
+  `job_started` / `job_action_status` / `job_finished` a second time next
+  to `ArenaAppListeners` (double processing, `job_action_status` with one
+  argument); `job_action_status` payloads are objects (`{status, message,
+  rect, …}`) but the renderer used them as class-name strings
+  (`ab-block--[object Object]`); and on the Python side the three lookup
+  tables `_DEFN_DEFAULTS` / `_CTOR_RAW` / `_CTOR_FROM_DEFN` were
+  `tuple`-annotated attributes on the `@dataclass` → dataclass **fields** →
+  `asdict()` serialised them into every saved / pushed block (3 junk keys
+  per block, ~3× payload; `from_dict` ignored them on the way back).
+* **Change — the render layer now speaks the page's DOM contract, and the
+  contract is written down in each module header:**
+  * `block-render.js` (stack list only): rows are `.action-block` DOM nodes
+    (no innerHTML) with drag handle, coloured icon (`ICON_ALIASES` for the
+    two names Material Icons lacks), title/meta, category / `REQ` / live
+    status badges and `.ab-act[data-action]` controls; states `.selected`
+    `.ab-disabled` `.dragging` `.drag-over` `.ab-status-<status>`;
+    `markRowStatus` / `clearRowStatuses` update a row in place (no focus
+    loss); empty stack shows a hint instead of nothing.
+  * `block-views.js` (new): Current Job Stack (`.job-block-row.jb-<status>`
+    with message + rect re-highlight), All Jobs tabs (`.ab-job-tab`), footer
+    counters, preset chips via the shared `UIHelpers.chip`.
+  * `block-fields.js` (new) + `block-config.js`: Block Config head
+    (`.bc-title-row` icon / name / `block_id` / category / required) and form
+    (`.bc-card > .bc-row*`), rows ordered by the block type's catalog
+    `labels` (Old App "Tune" wording) then the generic fields, `extra.*`
+    keys supported, colour rows with swatch + picker; events bound **once**
+    (`Boot.bindOnce`); the form is rebuilt only when the shown block changes,
+    so the backend's `action_blocks_updated` echo after each autosave no
+    longer eats a half-typed edit.
+  * `block-store.js`: catalog / custom / stack-preset loads go through the
+    same callback-or-sync-shim path as `load()`; `block-listeners.js` binds
+    only the signals `ArenaAppListeners` does not own.
+  * `action-blocks.js`: wires the modules, `highlightBlock` (double-click /
+    rect button → `HighlightOverlay.highlightViaCDP`), dead passthroughs
+    removed; `index.html` loads the two new scripts; `arena.css` gains the
+    state / badge / job-view rules the renderer emits.
+  * `core/action_blocks.py`: the tables are `ClassVar[tuple]` — `to_dict()`
+    is exactly the 25 dataclass fields again.
+* **Proof:** `tests/js/test_action_blocks_render.mjs` (10, whole-page harness
+  with the **executed** Python `build_default_dicts()` /
+  `get_builtin_blocks_json()` as bridge replies — 16 rows with the contract
+  classes, required blocks locked, empty reply → healed 16, push → 17, select
+  → head + form → edit → `save_action_blocks`, toggle persists `enabled:false`,
+  drag reorder saves the new order, `job_action_status` marks the row and the
+  job view (routed exactly once), catalog labels order the form, custom /
+  stack chips load through the async path and act on the stack; **pre-fix:
+  7/8 of the original assertions fail with `0 !== 16`**),
+  `tests/test_action_blocks_defaults.py` +2 (no leaked class tables, dict
+  round-trip stable).
+
 ## Gate evidence (2026-10-02)
 
 | Gate | Result |
@@ -507,3 +588,13 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 | `tests/test_bridge_slots.py` | frozen surface **135** slots (+`set_captcha_provider`), packing table updated |
 | `compileall` / pyflakes (whole `app/`, no undefined names) | clean |
 
+## Gate evidence (2026-10-07, B11)
+
+| Gate | Result |
+|---|---|
+| `pytest -q -n 4` (CI-like, no PySide6) | 1,536 passed, 1 skipped, same 2 pre-existing environmental failures (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message) |
+| `npm run test:js` | 228 pass / 0 fail (218 + `test_action_blocks_render.mjs` 10) |
+| `tools/verify_quality.py --allow-legacy --coverage-ratchet --js` | PASSED — 0 fails / 0 warns (the B11 comment on the `ClassVar` tables sits above the class, so `action_blocks.py` keeps its class-LOC maximum); coverage 86.37 % line / 82.34 % branch against the 86.36 / 82.33 floor; `--changed --base origin/<branch>` lane on the committed diff: PASSED |
+| JS ratchet (`tools/js_metrics.js` vs `quality_baseline.json`) | every touched `action-blocks/*.js` stays at or under its recorded maxima (`block-render` 188 lines / 33 funcs / func ≤14 LOC, `block-config` 110 / 19 / CC 5, `block-store` 326 / 46 / CC 8, facade 220 / 116); new `block-views.js` (138) and `block-fields.js` (154) meet the hard limits |
+| `tests/test_bridge_slots.py` | frozen surface **135** slots — unchanged (pure UI fix) |
+| `compileall` / pyflakes | clean |

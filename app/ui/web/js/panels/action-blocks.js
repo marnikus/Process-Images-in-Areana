@@ -1,8 +1,11 @@
-/* action-blocks.js — facade C14 ≤300 LOC, delegates to store/render/config/listeners/ui/status/io */
+/* action-blocks.js — facade C14 ≤300 LOC, delegates to store/fields/render/views/config/listeners/ui/status/io
+   B11 (2026-10-07): render/config modules now speak the real index.html DOM
+   (#actionBlocksStack, #blockConfigHead/#blockConfigForm, #jobActionStack,
+   #allJobsStack, #customBlockChips, #stackPresetChips). */
 'use strict';
 
 const ActionBlocksPanel = {
-  _store: null, _render: null, _config: null, _listeners: null, _ui: null, _status: null, _io: null,
+  _store: null, _render: null, _config: null, _listeners: null, _ui: null, _status: null, _io: null, _views: null,
   _bridgeUnsubs: [], _dragSrc: null, _isPaused: false, _pauseReason: '', _saveTimer: null,
 
   get blocks() { return this._store.blocks; }, set blocks(v) { this._store.blocks = v; },
@@ -15,15 +18,12 @@ const ActionBlocksPanel = {
   get selectedIdx() { return this._store.selectedIdx; }, set selectedIdx(v) { this._store.selectedIdx = v; },
 
   init() {
-    this._store = window.ActionBlocksStore;
-    this._render = window.ActionBlocksRender;
-    this._config = window.ActionBlocksConfig;
-    this._listeners = window.ActionBlocksListeners;
-    this._ui = window.ActionBlocksUI;
-    this._status = window.ActionBlocksStatus;
-    this._io = window.ActionBlocksIO;
-    this._store.loadBuiltin(); this._store.loadCustom(); this._store.loadStackPresets();
+    this._store = window.ActionBlocksStore; this._render = window.ActionBlocksRender; this._views = window.ActionBlocksViews;
+    this._config = window.ActionBlocksConfig; this._listeners = window.ActionBlocksListeners; this._ui = window.ActionBlocksUI;
+    this._status = window.ActionBlocksStatus; this._io = window.ActionBlocksIO;
+    this.loadBuiltin(); this.loadCustom(); this.loadStackPresets();
     this._store.load(() => this.render());
+    this._config.bindFormEvents(() => this.blocks[this.selectedIdx], () => this.save());
     this.bindUI(); this.ensurePauseOverlay(); this.tryBindBridge(); this.attachGlobalHandlers(); this.render();
   },
 
@@ -48,16 +48,8 @@ const ActionBlocksPanel = {
   },
 
   attachGlobalHandlers() { this._ui.attachGlobalHandlers(this); },
-  _cleanSashLeftovers() { this._ui._cleanSashLeftovers(); },
-  _cleanupDragState() { this._ui._cleanupDragState(this); },
   ensurePauseOverlay() { this._ui.ensurePauseOverlay(); },
-  _updateBadge(p,r) { this._status._updateBadge(p,r); },
-  _updateCorner(p,r) { this._status._updateCorner(p,r); },
-  _updateStatus(p,r) { this._status._updateStatus(p,r); },
   setPaused(p,r) { this._status.setPaused(this,p,r); },
-  _isCaptchaStatus(s) { return this._status._isCaptchaStatus(s); },
-  detectPause(s) { this._status.detectPause(this,s); },
-  _ensureJob(id) { this._status._ensureJob(this,id); },
   handleKeydown(e) { this._ui.handleKeydown(this,e); },
 
   bindUI() {
@@ -91,9 +83,9 @@ const ActionBlocksPanel = {
     try { if (this._listeners) this._bridgeUnsubs = this._listeners.bindBridge(this); } catch (e) { console.warn('bindBridge failed', e); }
   },
 
-  loadBuiltin() { this._store.loadBuiltin(); this.renderAddMenu(); },
-  loadCustom() { this._store.loadCustom(); this.renderCustomChips(); },
-  loadStackPresets() { this._store.loadStackPresets(); this.renderStackChips(); },
+  loadBuiltin() { this._store.loadBuiltin(() => this.showConfig(this.selectedIdx, true)); },
+  loadCustom() { this._store.loadCustom(() => this.renderCustomChips()); },
+  loadStackPresets() { this._store.loadStackPresets(() => this.renderStackChips()); },
   load() { this._store.load(() => this.render()); this.render(); },
   getDefaultBlocks() { return this._store.getDefaultBlocks(); },
 
@@ -106,77 +98,73 @@ const ActionBlocksPanel = {
     } catch {}
   },
 
-  onJobStarted(id) { this._status.onJobStarted(this,id); },
-  onJobActionStatus(j,b,s) { this._status.onJobActionStatus(this,j,b,s); },
+  onJobStarted(id) { this._status.onJobStarted(this,id); this._render.clearRowStatuses(); },
+  onJobActionStatus(j,b,s) { this._status.onJobActionStatus(this,j,b,s); this._render.markRowStatus(b, this._statusOf(j,b)); },
   onJobFinished(id) { this._status.onJobFinished(this,id); },
   onJobPaused(r) { this._status.onJobPaused(this,r); },
   onJobResumed() { this._status.onJobResumed(this); },
   onJobFailed(id) { this._status.onJobFailed(this,id); },
   onCustomBlocksUpdated() { this.loadCustom(); },
   onStackPresetsUpdated() { this.loadStackPresets(); },
+  _statusOf(jobId, blockId) {
+    const st = (this.jobStatuses[jobId] || {})[blockId];
+    return st ? (typeof st === 'string' ? st : st.status) : null;
+  },
 
-  _renderList(root, storeState) {
-    this._render.renderBlockList(root, this.blocks, storeState, {
+  _listHandlers() {
+    return {
       onSelect: (idx) => this.selectBlock(idx),
       onToggle: (id,en) => this.toggleBlock(id,en),
       onConfig: (idx) => this.selectBlock(idx),
       onDelete: (id) => this.deleteBlock(id),
-      onDragStart: (e,idx) => { this._dragSrc=idx; e.dataTransfer.effectAllowed='move'; },
+      onHighlight: (b) => this.highlightBlock(b),
+      onDragStart: (e,idx) => { this._dragSrc=idx; if (e.dataTransfer) e.dataTransfer.effectAllowed='move'; },
       onDragOver: (e) => { e.preventDefault(); },
       onDrop: (e,idx) => { e.preventDefault(); if (this._dragSrc!==null && this._dragSrc!==idx) this.moveBlock(this._dragSrc,idx); this._dragSrc=null; },
       onDragEnd: () => { this._dragSrc=null; },
-    });
+    };
   },
 
   render() {
-    const root = document.getElementById('panel-action-blocks') || document;
-    const storeState = { selectedIdx: this.selectedIdx, jobStatuses: this.jobStatuses, currentJobId: this.currentJobId, blocks: this.blocks, _isPaused: this._isPaused, _pauseReason: this._pauseReason };
-    this._renderList(root, storeState);
-    this.renderAddMenu(); this.renderCustomChips(); this.renderStackChips(); this.updateFooter();
-    if (this.selectedIdx >=0) this.showConfig(this.selectedIdx); else this.showConfig(null);
-    if (this.currentJobId) { this.renderJobStack(this.currentJobId); this.renderAllJobs(); } else this.renderAllJobs();
+    const state = { selectedIdx: this.selectedIdx, jobStatuses: this.jobStatuses, currentJobId: this.currentJobId, blocks: this.blocks };
+    this._render.renderBlockList(this.blocks, state, this._listHandlers());
+    this.renderCustomChips(); this.renderStackChips(); this.updateFooter();
+    this.showConfig(this.selectedIdx, false);
+    this.renderJobStack(this.currentJobId); this.renderAllJobs();
   },
 
-  renderAddMenu() {
-    const root = document.getElementById('panel-action-blocks') || document;
-    this._render.renderAddMenu(root, this.builtinCatalog, (bid) => this.addBuiltinBlock(bid));
+  highlightBlock(block) {
+    if (!block || !block.selector || !window.HighlightOverlay?.highlightViaCDP) return;
+    window.HighlightOverlay.highlightViaCDP(block.selector, block.color, block.highlight_ms, this._render.displayName(block));
   },
   renderCustomChips() {
-    const root = document.getElementById('panel-action-blocks') || document;
-    this._render.renderCustomChips(root, this.customBlocks, (e)=>this.addCustomBlock(e), (n)=>this.deleteCustomBlock(n));
+    this._views.renderChips('customBlockChips', this.customBlocks, { emptyText: 'No custom presets yet — select a CUSTOM_FIND block and press "Save Custom preset"',
+      meta: (e) => (e.block && e.block.block_id) || '', tooltip: 'Click to add to stack', onLoad: (e)=>this.addCustomBlock(e), onDelete: (n)=>this.deleteCustomBlock(n) });
   },
   renderStackChips() {
-    const root = document.getElementById('panel-action-blocks') || document;
-    this._render.renderStackChips(root, this.stackPresets, (e)=>this.loadStackPreset(e), (n)=>this.deleteStackPreset(n));
+    this._views.renderChips('stackPresetChips', this.stackPresets, { emptyText: 'No stack presets yet — press Save to store the current stack',
+      meta: (e) => `${(e.blocks || []).length} blocks`, tooltip: 'Click to load (replaces current stack)', onLoad: (e)=>this.loadStackPreset(e), onDelete: (n)=>this.deleteStackPreset(n) });
   },
   renderJobStack(jobId) {
-    const root = document.getElementById('panel-action-blocks') || document;
-    this._render.renderJobStack({ root, jobId, blocks: this.blocks, statuses: this.jobStatuses, onBlockClick: ()=>{} });
+    this._views.renderJobStack({ jobId, blocks: this.blocks, statuses: this.jobStatuses, onRect: (b)=>this.highlightBlock(b) });
   },
   renderAllJobs() {
-    const root = document.getElementById('panel-action-blocks') || document;
-    this._render.renderAllJobs({ root, jobOrder: this.jobOrder, currentJobId: this.currentJobId, jobStatuses: this.jobStatuses, onSelectJob: (jid)=>{ this.currentJobId=jid; this.render(); } });
+    this._views.renderAllJobs({ jobOrder: this.jobOrder, currentJobId: this.currentJobId, jobStatuses: this.jobStatuses, onSelectJob: (jid)=>{ this.currentJobId=jid; this.render(); } });
   },
-  updateFooter() {
-    const root = document.getElementById('panel-action-blocks') || document;
-    this._render.updateFooter(root, { blocks: this.blocks, _isPaused: this._isPaused, _pauseReason: this._pauseReason });
-    const totalEl = document.getElementById('abTotalSteps');
-    const selEl = document.getElementById('abSelectedSteps');
-    const countEl = document.getElementById('actionBlocksCount');
-    if (totalEl) totalEl.textContent = `Total: ${this.blocks.length} steps`;
-    if (selEl) selEl.textContent = `Selected: ${this.blocks.filter(b=>b.enabled!==false).length} steps`;
-    if (countEl) countEl.textContent = `${this.blocks.length} blocks`;
-  },
+  updateFooter() { this._views.updateFooter(this.blocks); },
 
   selectBlock(idx) {
-    if (idx===null || idx<0 || idx>=this.blocks.length) { this.selectedIdx=-1; this.showConfig(null); this.render(); return; }
-    this.selectedIdx=idx; this.render(); this.showConfig(idx);
+    if (idx===null || idx<0 || idx>=this.blocks.length) { this.deselect(); return; }
+    this.selectedIdx=idx; this.render(); this.showConfig(idx, true);
   },
-  deselect() { this.selectedIdx=-1; this.showConfig(null); this.render(); },
-  showConfig(idx) {
-    const root = document.getElementById('panel-action-blocks') || document;
-    this._config.showConfig(root, idx, this.blocks);
-    if (idx!==null) this._config.bindFormEvents(root, ()=>this.blocks[this.selectedIdx], ()=>this.save());
+  deselect() { this.selectedIdx=-1; this.showConfig(null, true); this.render(); },
+  _labelsFor(block) {
+    const entry = block ? this.builtinCatalog.find(c => c.block_id === block.block_id) : null;
+    return (entry && entry.labels) || {};
+  },
+  showConfig(idx, force) {
+    const block = idx === null || idx < 0 ? null : (this.blocks[idx] || null);
+    this._config.showConfig(block, this._labelsFor(block), !!force);
   },
 
   moveBlock(f,t) { this._store.moveBlock(f,t); this.render(); },
@@ -207,7 +195,6 @@ const ActionBlocksPanel = {
   },
 
   save() { this._io.save(this); },
-  saveDebounced() { this.save(); },
   saveDebouncedPush() { this._io.saveDebouncedPush(this); },
   export() { this._io.exportBlocks(this.blocks); },
   import() { this._io.importBlocks(this, (data)=>{ this.blocks=data; this.save(); this.render(); }); },
@@ -227,8 +214,6 @@ const ActionBlocksPanel = {
   },
   loadStackPreset(entry) { this._store.loadStackPreset(entry); this.render(); },
   deleteStackPreset(name) { this._confirm(`Delete stack preset "${name}"?`, () => { this._store.deleteStackPreset(name); this.renderStackChips(); }); },
-  esc(s) { return this._render.esc(s); },
-  badgeClassForBlock(b) { return this._render.badgeClassForBlock(b); },
 };
 
 if (typeof window !== 'undefined') window.ActionBlocksPanel = ActionBlocksPanel;

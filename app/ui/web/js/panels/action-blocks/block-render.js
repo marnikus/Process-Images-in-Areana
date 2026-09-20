@@ -1,194 +1,190 @@
-/* block-render.js — DOM rendering for Action Blocks (C7)
-   Pure render helpers, no bridge persistence.
+/* block-render.js — DOM rendering for the Action Blocks stack (C7)
+   DOM contract = index.html + css/arena.css ("target screenshot" design):
+     #actionBlocksStack > .action-block[data-block-id][data-index] rows with
+       .ab-drag-handle .ab-block-icon .ab-block-info(.ab-block-title .ab-block-meta)
+       .ab-badge.ab-badge-<category> [.ab-badge-required] [.ab-badge-status]
+       .ab-block-controls > .ab-check | .ab-edit-btn | .ab-delete-btn  (all .ab-act[data-action])
+     row states: .selected .ab-disabled .dragging .drag-over .ab-status-<status>
+     (footer counters, preset chips and job views live in block-views.js)
+   B11 (2026-10-07): the previous renderer targeted ids that never existed in
+   index.html (#panel-action-blocks, #ab-block-list, …) and returned silently —
+   the badge said "16 BLOCKS" while the list stayed empty. Containers are now
+   resolved by the real ids only; rows are built with DOM nodes (no innerHTML).
    RULE18: file 150-300, func ≤30, CC≤10
 */
 'use strict';
 
 window.ActionBlocksRender = {
-  esc(s) {
-    const h = window.UIHelpers && window.UIHelpers.esc;
-    if (h) return h(s);
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  STATUSES: ['running', 'waiting', 'success', 'failed', 'skipped'],
+  /* Block definitions name two icons Material Icons has no ligature for
+     (they would render as literal text). Presentation-only aliases. */
+  ICON_ALIASES: { captcha: 'security', await_result: 'hourglass_empty' },
+
+  el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null && text !== '') node.textContent = String(text);
+    return node;
   },
+
+  icon(name, cls, color) {
+    const i = this.el('span', `material-icons ${cls || ''}`.trim(), this.ICON_ALIASES[name] || name || 'extension');
+    if (color) i.style.color = color;
+    return i;
+  },
+
+  stackEl() { return document.getElementById('actionBlocksStack'); },
 
   badgeClassForBlock(block) {
     const cat = (block.category || 'action').toLowerCase();
-    const map = {
-      visual: 'ab-badge-visual',
-      highlight: 'ab-badge-visual',
-      observe: 'ab-badge-visual',
-      action: 'ab-badge-action',
-      verify: 'ab-badge-verify',
-      wait: 'ab-badge-wait',
-      process: 'ab-badge-wait',
-      persist: 'ab-badge-persist',
-      security: 'ab-badge-security',
-      control: 'ab-badge-control',
-    };
-    return map[cat] || 'ab-badge-action';
+    const known = ['visual', 'highlight', 'observe', 'action', 'verify', 'wait', 'process', 'persist', 'security', 'control'];
+    return `ab-badge-${known.includes(cat) ? cat : 'action'}`;
   },
 
-  _statusForBlock(block, state) {
-    const jobId = state.currentJobId;
-    if (!jobId) return null;
-    const statuses = state.jobStatuses[jobId];
-    if (!statuses) return null;
-    return statuses[block.id] || null;
+  displayName(block) { return block.custom_name || block.name || block.block_id || 'block'; },
+
+  metaText(block) {
+    const parts = [block.block_id || ''];
+    if (block.selector) parts.push(block.selector);
+    if (block.timeout_ms) parts.push(`${block.timeout_ms}ms`);
+    return parts.filter(Boolean).join(' · ');
   },
 
-  _classForBlock(block, idx, state, status) {
-    const parts = ['ab-block'];
-    if (block.enabled === false) parts.push('ab-block--disabled');
-    if (idx === state.selectedIdx) parts.push('ab-block--selected');
-    if (status) parts.push(`ab-block--${status}`);
+  /** Live status string for a block in the current job ('running' | … | null). */
+  statusOf(block, state) {
+    const perJob = state && state.jobStatuses && state.currentJobId ? state.jobStatuses[state.currentJobId] : null;
+    const st = perJob ? perJob[block.id] : null;
+    if (!st) return null;
+    return typeof st === 'string' ? st : (st.status || null);
+  },
+
+  _rowClass(block, idx, state, status) {
+    const parts = ['action-block'];
+    if (block.enabled === false) parts.push('ab-disabled');
+    if (idx === state.selectedIdx) parts.push('selected');
+    if (status) parts.push(`ab-status-${status}`);
     return parts.join(' ');
   },
 
-  _innerHtmlForBlock(block, status) {
-    const badgeClass = this.badgeClassForBlock(block);
-    const iconHtml = block.icon ? `<span class="material-icons ab-block__icon" style="color:${this.esc(block.color)}">${this.esc(block.icon)}</span>` : '';
-    const req = block.required ? '<span class="ab-badge ab-badge-required">REQ</span>' : '';
-    const st = status ? `<span class="ab-badge ab-badge-${this.esc(status)}">${this.esc(status)}</span>` : '';
-    const custom = block.custom_name ? ` <small>(${this.esc(block.custom_name)})</small>` : '';
-    return `
-      <div class="ab-block__main">
-        <span class="ab-block__drag">⋮⋮</span>
-        ${iconHtml}
-        <span class="ab-block__name">${this.esc(block.name)}${custom}</span>
-        <span class="ab-block__spacer"></span>
-        <span class="ab-badge ${badgeClass}">${this.esc(block.category || 'action')}</span>
-        ${req}${st}
-      </div>
-      <div class="ab-block__actions">
-        <label class="ab-toggle"><input type="checkbox" ${block.enabled !== false ? 'checked' : ''} ${block.required ? 'disabled' : ''} data-action="toggle" data-block-id="${this.esc(block.id)}" /> on</label>
-        <button class="ab-btn ab-btn--sm" data-action="config" data-block-id="${this.esc(block.id)}">⚙</button>
-        ${!block.required ? `<button class="ab-btn ab-btn--sm ab-btn--danger" data-action="delete" data-block-id="${this.esc(block.id)}">✕</button>` : ''}
-      </div>
-    `;
+  _info(block) {
+    const info = this.el('div', 'ab-block-info');
+    const title = this.el('div', 'ab-block-title');
+    title.appendChild(document.createTextNode(this.displayName(block)));
+    if (block.custom_name && block.name) title.appendChild(this.el('small', 'ab-block-orig', ` (${block.name})`));
+    info.appendChild(title);
+    info.appendChild(this.el('div', 'ab-block-meta', this.metaText(block)));
+    info.title = block.description || '';
+    return info;
+  },
+
+  _badges(block, status) {
+    const out = [this.el('span', `ab-badge ${this.badgeClassForBlock(block)}`, block.category || 'action')];
+    if (block.required) out.push(this.el('span', 'ab-badge ab-badge-required', 'REQ'));
+    if (status) out.push(this.el('span', 'ab-badge ab-badge-status', status));
+    return out;
+  },
+
+  /** spec = { cls, action, title, icon, label? } → <button class="… ab-act" data-action> */
+  _button(spec) {
+    const btn = this.el('button', `${spec.cls} ab-act`);
+    btn.dataset.action = spec.action;
+    btn.title = spec.title;
+    btn.appendChild(this.icon(spec.icon));
+    if (spec.label) btn.appendChild(this.el('span', '', spec.label));
+    return btn;
+  },
+
+  _controls(block) {
+    const box = this.el('div', 'ab-block-controls');
+    const check = this.el('input', 'ab-check ab-act');
+    check.type = 'checkbox';
+    check.checked = block.enabled !== false;
+    check.disabled = !!block.required;
+    check.title = block.required ? 'Required block — always on' : 'Enable / disable block';
+    check.dataset.action = 'toggle';
+    box.appendChild(check);
+    box.appendChild(this._button({ cls: 'ab-edit-btn', action: 'config', title: 'Edit in Block Config', icon: 'tune', label: 'Edit' }));
+    if (!block.required) box.appendChild(this._button({ cls: 'ab-delete-btn', action: 'delete', title: 'Delete block', icon: 'delete' }));
+    return box;
   },
 
   createBlockElement(block, idx, state) {
-    const status = this._statusForBlock(block, state);
-    const el = document.createElement('div');
-    el.className = this._classForBlock(block, idx, state, status);
-    el.draggable = true;
-    el.dataset.index = String(idx);
-    el.dataset.blockId = block.id;
-    el.innerHTML = this._innerHtmlForBlock(block, status);
-    return el;
+    const status = this.statusOf(block, state);
+    const row = this.el('div', this._rowClass(block, idx, state, status));
+    row.draggable = true;
+    row.dataset.index = String(idx);
+    row.dataset.blockId = block.id;
+    row.style.setProperty && row.style.setProperty('--block-color', block.color || '#888');
+    row.appendChild(this.icon('drag_indicator', 'ab-drag-handle'));
+    row.appendChild(this.icon(block.icon, 'ab-block-icon', block.color));
+    row.appendChild(this._info(block));
+    this._badges(block, status).forEach((b) => row.appendChild(b));
+    row.appendChild(this._controls(block));
+    return row;
   },
 
-  _chipElement(name, cls) {
-    const chip = document.createElement('span');
-    chip.className = cls;
-    chip.innerHTML = `<span class="ab-chip__name">${this.esc(name)}</span><button class="ab-chip__del" title="Delete">✕</button>`;
-    return chip;
+  _onRowClick(e, block, idx, handlers) {
+    const act = e.target && e.target.closest ? e.target.closest('.ab-act') : null;
+    if (!act) { handlers.onSelect(idx); return; }
+    const action = act.dataset.action;
+    if (action === 'toggle') handlers.onToggle(block.id, !!act.checked);
+    else if (action === 'config') handlers.onConfig(idx);
+    else if (action === 'delete') handlers.onDelete(block.id);
   },
 
-  renderStackChips(root, presets, onLoad, onDelete) {
-    const container = root.querySelector('#ab-stack-presets');
-    if (!container) return;
-    container.innerHTML = '';
-    presets.forEach(p => {
-      const chip = this._chipElement(p.name, 'ab-chip ab-chip--stack');
-      chip.querySelector('.ab-chip__name').addEventListener('click', () => onLoad(p));
-      chip.querySelector('.ab-chip__del').addEventListener('click', (e) => { e.stopPropagation(); onDelete(p.name); });
-      container.appendChild(chip);
-    });
-  },
-
-  renderCustomChips(root, customs, onAdd, onDelete) {
-    const container = root.querySelector('#ab-custom-chips');
-    if (!container) return;
-    container.innerHTML = '';
-    customs.forEach(entry => {
-      const chip = this._chipElement(entry.name, 'ab-chip ab-chip--custom');
-      chip.querySelector('.ab-chip__name').addEventListener('click', () => onAdd(entry));
-      chip.querySelector('.ab-chip__del').addEventListener('click', (e) => { e.stopPropagation(); onDelete(entry.name); });
-      container.appendChild(chip);
-    });
-  },
-
-  renderAddMenu(root, builtinCatalog, onAddBuiltin) {
-    const menu = root.querySelector('#ab-add-menu');
-    if (!menu) return;
-    menu.innerHTML = '';
-    builtinCatalog.forEach(b => {
-      const item = document.createElement('button');
-      item.className = 'ab-add-item';
-      item.dataset.blockType = b.block_id;
-      item.innerHTML = `<span class="material-icons" style="font-size:16px;color:${this.esc(b.defaults?.color || '#888')}">${this.esc(b.icon || 'extension')}</span> ${this.esc(b.name)} <small>${this.esc(b.category || '')}</small>`;
-      item.addEventListener('click', () => onAddBuiltin(b.block_id));
-      menu.appendChild(item);
-    });
+  _bindDrag(el, idx, handlers) {
+    el.addEventListener('dragstart', (e) => { el.classList.add('dragging'); handlers.onDragStart(e, idx); });
+    el.addEventListener('dragover', (e) => { el.classList.add('drag-over'); handlers.onDragOver(e, idx); });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', (e) => { el.classList.remove('drag-over'); handlers.onDrop(e, idx); });
+    el.addEventListener('dragend', () => { el.classList.remove('dragging'); handlers.onDragEnd(); });
   },
 
   _bindBlockItemEvents(el, block, idx, handlers) {
-    el.addEventListener('click', (e) => {
-      const actEl = e.target.closest('[data-action]');
-      if (!actEl) { handlers.onSelect(idx); return; }
-      const action = actEl.dataset.action;
-      if (action === 'toggle') handlers.onToggle(block.id, actEl.checked);
-      else if (action === 'config') handlers.onConfig(idx);
-      else if (action === 'delete') handlers.onDelete(block.id);
-    });
-    el.addEventListener('dragstart', (e) => handlers.onDragStart(e, idx));
-    el.addEventListener('dragover', (e) => handlers.onDragOver(e, idx));
-    el.addEventListener('drop', (e) => handlers.onDrop(e, idx));
-    el.addEventListener('dragend', () => handlers.onDragEnd());
+    el.addEventListener('click', (e) => this._onRowClick(e, block, idx, handlers));
+    el.addEventListener('dblclick', () => handlers.onHighlight && handlers.onHighlight(block));
+    this._bindDrag(el, idx, handlers);
   },
 
-  renderBlockList(root, blocks, storeState, handlers) {
-    const list = root.querySelector('#ab-block-list');
+  renderBlockList(blocks, state, handlers) {
+    const list = this.stackEl();
     if (!list) return;
     list.innerHTML = '';
-    blocks.forEach((block, idx) => {
-      const el = this.createBlockElement(block, idx, storeState);
-      this._bindBlockItemEvents(el, block, idx, handlers);
-      list.appendChild(el);
-    });
-  },
-
-  renderJobStack(spec) {
-    const { root, jobId, blocks, statuses, onBlockClick } = spec;
-    const container = root.querySelector('#ab-job-stack');
-    if (!container) return;
-    container.innerHTML = '';
-    const jobStatus = statuses[jobId] || {};
-    blocks.forEach(block => {
-      const status = jobStatus[block.id] || 'pending';
-      const item = document.createElement('div');
-      item.className = `ab-job-block ab-job-block--${this.esc(status)}`;
-      item.dataset.blockId = block.id;
-      item.innerHTML = `<span class="ab-job-block__icon">${this.esc(block.icon || '')}</span><span class="ab-job-block__name">${this.esc(block.name)}</span><span class="ab-job-block__status">${this.esc(status)}</span>`;
-      item.addEventListener('click', () => onBlockClick(block.id));
-      container.appendChild(item);
-    });
-  },
-
-  renderAllJobs(spec) {
-    const { root, jobOrder, currentJobId, jobStatuses, onSelectJob } = spec;
-    const container = root.querySelector('#ab-all-jobs');
-    if (!container) return;
-    container.innerHTML = '';
-    jobOrder.forEach(jid => {
-      const btn = document.createElement('button');
-      btn.className = `ab-job-tab${jid === currentJobId ? ' ab-job-tab--active' : ''}`;
-      btn.textContent = jid.slice(0, 8);
-      btn.addEventListener('click', () => onSelectJob(jid));
-      container.appendChild(btn);
-    });
-  },
-
-  updateFooter(root, state) {
-    const pauseEl = root.querySelector('#ab-pause-indicator');
-    if (pauseEl) {
-      if (state._isPaused) {
-        pauseEl.textContent = `⏸ Paused${state._pauseReason ? ': ' + state._pauseReason : ''}`;
-        pauseEl.style.display = '';
-      } else pauseEl.style.display = 'none';
+    if (!blocks.length) {
+      list.appendChild(this.el('div', 'ab-stack-empty', 'No blocks — press Reset to restore the default stack'));
+      return;
     }
-    const countEl = root.querySelector('#ab-block-count');
-    if (countEl) countEl.textContent = `${state.blocks.length} blocks`;
+    blocks.forEach((block, idx) => {
+      const row = this.createBlockElement(block, idx, state);
+      this._bindBlockItemEvents(row, block, idx, handlers);
+      list.appendChild(row);
+    });
+  },
+
+  rows() {
+    const list = this.stackEl();
+    return list ? Array.from(list.children) : [];
+  },
+
+  _rowFor(blockId) {
+    return this.rows().find((r) => r.dataset && r.dataset.blockId === blockId) || null;
+  },
+
+  /** Live per-row status without a full re-render (keeps focus/drag state). */
+  markRowStatus(blockId, status) {
+    const row = this._rowFor(blockId);
+    if (!row) return;
+    this.STATUSES.forEach((s) => row.classList.remove(`ab-status-${s}`));
+    if (status) row.classList.add(`ab-status-${status}`);
+    let badge = row.querySelector('.ab-badge-status');
+    if (!badge && status) {
+      badge = this.el('span', 'ab-badge ab-badge-status');
+      row.insertBefore(badge, row.querySelector('.ab-block-controls'));
+    }
+    if (badge) { badge.textContent = status || ''; badge.style.display = status ? '' : 'none'; }
+  },
+
+  clearRowStatuses() {
+    this.rows().forEach((row) => this.markRowStatus(row.dataset.blockId, null));
   },
 };

@@ -10,6 +10,8 @@
    (shape-checked, empty → defaults), (b) loads via callback when the
    bridge is async, (c) exposes `restoreDefaults(cb)` which calls the
    backend's restore_default_blocks (fallback reset_action_blocks) once.
+   B11 (2026-10-07): the catalog / custom-block / stack-preset loads take
+   the same callback path (they were still synchronous → always empty).
 */
 'use strict';
 
@@ -102,21 +104,6 @@ window.ActionBlocksStore = {
     return order.map((bt, idx) => this._makeDefaultBlock(bt, idx, defs));
   },
 
-  _tryLoadBuiltinFromBridge() {
-    const bridge = window.App && window.App.bridge;
-    if (!bridge || !bridge.get_builtin_blocks) return false;
-    try {
-      const res = bridge.get_builtin_blocks();
-      if (typeof res !== 'string') return false;
-      const data = JSON.parse(res);
-      if (!Array.isArray(data)) return false;
-      this.builtinCatalog = data;
-      return true;
-    } catch {
-      return false;
-    }
-  },
-
   _selectorDefaults(b) {
     return {
       selector: b.selector || '',
@@ -142,10 +129,6 @@ window.ActionBlocksStore = {
     };
   },
 
-  _catalogDefaults(b) {
-    return { ...this._selectorDefaults(b), ...this._visualDefaults(b) };
-  },
-
   _catalogEntryFromBlock(b) {
     return {
       block_id: b.block_id,
@@ -155,7 +138,7 @@ window.ActionBlocksStore = {
       category: b.category,
       required: !!b.required,
       allow_duplicate: ['CUSTOM_FIND', 'PAUSE', 'HIGHLIGHT', 'AWAIT_PROCESSING_IMAGE'].includes(b.block_id),
-      defaults: this._catalogDefaults(b),
+      defaults: { ...this._selectorDefaults(b), ...this._visualDefaults(b) },
       labels: {},
     };
   },
@@ -165,24 +148,33 @@ window.ActionBlocksStore = {
     this.builtinCatalog = this.getDefaultBlocks().map(b => this._catalogEntryFromBlock(b));
   },
 
-  loadBuiltin() {
-    this._tryLoadBuiltinFromBridge();
+  loadBuiltin(onLoaded) {
     this._buildFallbackCatalog();
+    this._loadJsonArray('get_builtin_blocks', 'builtinCatalog', onLoaded);
   },
 
-  _loadJsonArray(bridgeFnName, targetKey) {
+  /** Adopt a non-empty JSON array reply into this[targetKey]; cb(list) once adopted. */
+  _adoptList(res, targetKey, onLoaded) {
+    let data = res;
+    try { data = typeof res === 'string' ? JSON.parse(res) : res; } catch (e) { console.warn(`${targetKey} parse failed`, e); return; }
+    if (!Array.isArray(data) || !data.length) return;
+    this[targetKey] = data;
+    if (typeof onLoaded === 'function') onLoaded(data);
+  },
+
+  /** Async-safe list load: `slot(cb)` for QWebChannel, sync shim for tests. */
+  _loadJsonArray(bridgeFnName, targetKey, onLoaded) {
     const bridge = window.App && window.App.bridge;
     if (!bridge || !bridge[bridgeFnName]) return;
+    const adopt = (res) => this._adoptList(res, targetKey, onLoaded);
     try {
-      const res = bridge[bridgeFnName]();
-      if (typeof res !== 'string') return;
-      const data = JSON.parse(res);
-      if (Array.isArray(data)) this[targetKey] = data;
-    } catch {}
+      const res = bridge[bridgeFnName](adopt);
+      if (typeof res === 'string') adopt(res);
+    } catch (e) { console.warn(`${bridgeFnName} failed`, e); }
   },
 
-  loadCustom() { this._loadJsonArray('get_custom_blocks', 'customBlocks'); },
-  loadStackPresets() { this._loadJsonArray('get_stack_presets', 'stackPresets'); },
+  loadCustom(onLoaded) { this._loadJsonArray('get_custom_blocks', 'customBlocks', onLoaded); },
+  loadStackPresets(onLoaded) { this._loadJsonArray('get_stack_presets', 'stackPresets', onLoaded); },
 
   _looksValid(data) {
     return Array.isArray(data) && data.length > 0 &&

@@ -103,6 +103,29 @@ PASSED after the re-record. Fresh coverage **86.37 % line / 82.34 % branch**
 `tests/js/test_captcha_provider_panel.mjs` (5) on the shared
 `tests/js/page_harness.mjs`; `npm run test:js` 205 → 218; slot surface 134 → 135.
 
+### 2026-10-07 follow-up (B11 — Action Blocks list empty under a `16 BLOCKS` header)
+
+No re-record needed. The render layer of the Action Blocks window was
+rewritten against the real `index.html` / `arena.css` DOM contract
+(`bugfix-verification.md` §B11) and every touched file stays at or under
+its recorded maxima: `block-render.js` 188 lines / 33 funcs / max func 14
+LOC / CC 8 (was 195 / 33 / 22 / 9), `block-config.js` 110 / 19 / 13 / CC 5
+(was 158 / 21 / 20 / 5; `renderHead` split into `_titleRow` / `_titleText`
+to hold CC 5), `block-store.js` 326 / 46 / 23 / CC 8 (`_adoptList` extracted
+so the async list loader keeps CC 8; `_tryLoadBuiltinFromBridge` and
+`_catalogDefaults` folded), `action-blocks.js` 220 / 116 funcs (eleven dead
+passthroughs removed to pay for `_listHandlers` / `highlightBlock` /
+`_labelsFor` / `_statusOf`), `block-listeners.js` 61 / 16. Two new modules
+carry the moved responsibilities and meet the hard limits on their own:
+`block-views.js` (138 lines, 27 funcs, max func 13 LOC, CC 9 — job views,
+footer counters, preset chips) and `block-fields.js` (154 / 20 / 20 / CC 6 —
+field schema, input builders, form read/apply). Python: `action_blocks.py`
+only changed three annotations to `ClassVar[tuple]` (no metric moves).
+New lane: `tests/js/test_action_blocks_render.mjs` (10, whole page, the
+Python default stack and builtin catalog executed as bridge replies);
+`npm run test:js` 218 → 228; `tests/test_action_blocks_defaults.py` +2;
+slot surface unchanged (135).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

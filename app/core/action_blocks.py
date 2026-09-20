@@ -29,7 +29,7 @@ Blocks:
 # type, read as a unit) plus its compiler — splitting would scatter the catalog.
 
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 import copy
 import json
 import uuid
@@ -489,6 +489,9 @@ for _bid, _def in BLOCK_DEFINITIONS.items():
     )
 
 
+# The lookup tables inside ActionBlock are ClassVars: a bare `tuple` annotation
+# makes a dataclass FIELD, and asdict() then leaked _DEFN_DEFAULTS / _CTOR_RAW /
+# _CTOR_FROM_DEFN into every saved/pushed block (B11, 2026-10-07).
 @dataclass
 class ActionBlock:
     id: str
@@ -523,7 +526,7 @@ class ActionBlock:
         return d
 
     # Definition-provided defaults: (attr, defn key, raw fallback) — table, not if/elif (RULE 19)
-    _DEFN_DEFAULTS: tuple = (
+    _DEFN_DEFAULTS: ClassVar[tuple] = (
         ("label_selector", "default_label_selector", ""),
         ("match_text", "default_match_text", ""),
         ("match_mode", "default_match_mode", "contains"),
@@ -539,7 +542,7 @@ class ActionBlock:
     )
     # Constructor fallbacks — after _apply_definition_defaults these only fire for
     # fields the table never setdefaults (selector/enabled/custom_name)
-    _CTOR_RAW: tuple = (
+    _CTOR_RAW: ClassVar[tuple] = (
         ("enabled", True),
         ("selector", ""),
         ("label_selector", ""),
@@ -559,7 +562,7 @@ class ActionBlock:
         ("extra", {}),
     )
     # Constructor fallbacks that read the block definition itself when the key is absent
-    _CTOR_FROM_DEFN: tuple = (
+    _CTOR_FROM_DEFN: ClassVar[tuple] = (
         ("name", "name", ""),
         ("description", "description", ""),
         ("icon", "icon", ""),

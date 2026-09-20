@@ -149,3 +149,33 @@ def test_restore_defaults_degrades_to_error_json(cfg, monkeypatch):
 
     monkeypatch.setattr(blocks_stack, "build_default_stack", boom)
     assert json.loads(host.restore_default_blocks()) == {"ok": False, "error": "boom"}
+
+
+# --- B11 (2026-10-07): the UI payload is the dataclass fields, nothing else ---
+
+def test_block_dicts_carry_only_dataclass_fields_no_class_tables():
+    """`_DEFN_DEFAULTS` / `_CTOR_RAW` / `_CTOR_FROM_DEFN` were plain `tuple`-annotated
+    class attributes on a @dataclass → dataclass FIELDS → asdict() leaked the
+    lookup tables into every saved/pushed block (3 junk keys, 3× payload)."""
+    from dataclasses import fields
+
+    from app.core.action_blocks import ActionBlock
+
+    field_names = {f.name for f in fields(ActionBlock)}
+    assert not {n for n in field_names if n.startswith("_")}, field_names
+    for block in build_default_dicts():
+        leaked = sorted(k for k in block if k.startswith("_"))
+        assert leaked == [], f"{block['block_id']} serialises {leaked}"
+        assert set(block) == field_names
+    # The tables still drive from_dict — they are ClassVars, not gone.
+    assert ActionBlock._DEFN_DEFAULTS[0][0] == "label_selector"
+    assert ActionBlock._CTOR_RAW[0] == ("enabled", True)
+    assert ActionBlock._CTOR_FROM_DEFN[-1][0] == "category"
+
+
+def test_block_dict_round_trip_is_stable():
+    from app.core.action_blocks import ActionBlock
+
+    for block in build_default_dicts():
+        again = ActionBlock.from_dict(dict(block)).to_dict()
+        assert again == block

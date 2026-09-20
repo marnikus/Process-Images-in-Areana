@@ -5,23 +5,23 @@
 'use strict';
 
 window.ActionBlocksListeners = {
+  /* action_blocks_updated / job_started / job_action_status / job_finished are
+     owned by ArenaAppListeners (arena-app/listeners.js) which forwards them to
+     the panel with the full Qt argument list. B11: binding them here again
+     processed every job event twice (and job_action_status with one arg). */
   _coreEntries(panel) {
     return [
-      { signal: 'blocks_updated', handler: (p) => panel.onBlocksUpdated(p) },
-      { signal: 'job_started', handler: (p) => panel.onJobStarted(p) },
-      { signal: 'job_action_status', handler: (p) => panel.onJobActionStatus(p) },
       { signal: 'job_paused', handler: (p) => panel.onJobPaused(p) },
-      { signal: 'job_resumed', handler: (p) => panel.onJobResumed(p) },
+      { signal: 'job_resumed', handler: () => panel.onJobResumed() },
     ];
   },
 
   _extraEntries(panel) {
     return [
-      { signal: 'job_finished', handler: (p) => panel.onJobFinished(p) },
       { signal: 'job_failed', handler: (p) => panel.onJobFailed(p) },
-      { signal: 'custom_blocks_updated', handler: (p) => panel.onCustomBlocksUpdated(p) },
-      { signal: 'stack_presets_updated', handler: (p) => panel.onStackPresetsUpdated(p) },
-      { signal: 'exported', handler: (p) => panel._onExported(p) },
+      { signal: 'custom_blocks_updated', handler: () => panel.onCustomBlocksUpdated() },
+      { signal: 'stack_presets_updated', handler: () => panel.onStackPresetsUpdated() },
+      { signal: 'exported', handler: (p) => panel._io._onExported(p) },
     ];
   },
 
