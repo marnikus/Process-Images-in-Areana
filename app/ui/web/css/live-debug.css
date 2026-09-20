@@ -1,9 +1,15 @@
-/* S8 shell: the registered window retains the existing Page Pool controls.
-   ideal-size: scoped shell only; sash-grid owns sizing and title-bar layout. */
-#winLiveDebug {
-  min-height: 0;
-}
-#winLiveDebug > div {
-  min-height: 0;
-  overflow: auto;
-}
+/* Window sizing stays with sash-grid; the debug view never owns pool-table ids. */
+#winLiveDebug { min-height: 0; overflow: auto; }
+#winLiveDebug > div { flex-shrink: 0; }
+.live-debug-details { flex-shrink: 0; font-size: 12px; }
+.live-debug-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.live-debug-queue { margin-top: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); overflow-wrap: anywhere; }
+.live-debug-cadence, .live-debug-empty { color: var(--text-muted); font-size: 11px; margin: 8px 0; }
+.live-debug-error { color: var(--red, #ff6b6b); overflow-wrap: anywhere; }
+.live-debug-workers { display: grid; gap: 8px; margin: 8px 0 12px; }
+.live-debug-worker { border-left: 3px solid var(--accent); border-radius: 4px; padding: 8px; background: var(--bg-card); overflow-wrap: anywhere; }
+.live-debug-worker-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.live-debug-worker-status { font-size: 11px; color: var(--accent); }
+.live-debug-identity, .live-debug-timing { color: var(--text-muted); font-size: 11px; margin: 4px 0; }
+.live-debug-note, .live-debug-pause { font-size: 11px; color: var(--text-secondary); }
+.live-debug-note:empty, .live-debug-pause:empty { display: none; }

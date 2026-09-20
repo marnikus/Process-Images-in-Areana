@@ -1,7 +1,17 @@
-/* live-debug.js — Live Worker & Queue Debug panel (S8 stub, content in S9) */
+/* S9 lifecycle facade. ideal-size: only boot/binding; state and views live in parts. */
 'use strict';
 window.LiveDebugPanel = {
+  _initialized: false,
+  _timer: null,
+
   init() {
-    // S8: registration only; S9 adds pool/live wiring
+    if (this._initialized) return;
+    this._initialized = true;
+    window.Boot.bindOnceById('liveDebugRefreshBtn', 'click', () => this.refresh());
+    window.Boot.onBridgeReady(bridge => window.LiveDebugActions.connect(bridge));
+    this._timer = setInterval(() => window.LiveDebugStore.tick(), 1000);
+    window.LiveDebugStore.tick();
   },
+
+  refresh() { window.LiveDebugActions.refresh(); },
 };

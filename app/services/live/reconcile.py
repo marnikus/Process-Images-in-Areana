@@ -29,6 +29,7 @@ class LiveDeps:
     join_tab: object = None
     commit: object = None
     log: object = None
+    publish: object = None
 
 
 @dataclass
@@ -184,6 +185,15 @@ async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
     return rep
 
 
+def _publish(deps) -> None:
+    """Optional observation must never interrupt the reconciler."""
+    try:
+        if callable(deps.publish):
+            deps.publish()
+    except Exception:
+        pass
+
+
 async def reconcile_loop(bridge, deps: LiveDeps) -> None:
     bus = live_bus(bridge)
     try:
@@ -194,6 +204,7 @@ async def reconcile_loop(bridge, deps: LiveDeps) -> None:
         await reconcile_once(bridge, deps, "auto")
         bridge._last_reconcile_at = time.time()
         bridge._reconcile_passes = int(getattr(bridge, "_reconcile_passes", 0) or 0) + 1
+        _publish(deps)
         try:
             await bus.wait(interval_ms(bridge) / 1000.0)
         except asyncio.CancelledError:

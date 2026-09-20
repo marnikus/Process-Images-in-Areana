@@ -264,6 +264,13 @@
     <!-- LIVE DEBUG — Page Pool + Worker Debug (L-5 rescue) -->
     <div class="panel" id="winLiveDebug" data-window="live_debug">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tab</span> Live Worker & Queue Debug <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
+      <section id="liveDebugDetails" class="live-debug-details" aria-label="Live worker and queue status">
+        <div class="live-debug-toolbar"><strong id="liveDebugSummary">Workers — awaiting snapshot</strong><button id="liveDebugRefreshBtn" class="btn-small" title="Read current worker status">Refresh workers</button></div>
+        <div id="liveDebugQueue" class="live-debug-queue" aria-live="polite">Waiting for queue status…</div>
+        <div id="liveDebugCadence" class="live-debug-cadence">Waiting for reconcile status…</div>
+        <div id="liveDebugStatus" class="live-debug-error" role="status"></div>
+        <div id="liveDebugWorkers" class="live-debug-workers"><p class="live-debug-empty">Waiting for worker status…</p></div>
+      </section>
       <div style="display:flex; flex-direction:column; gap:10px; padding:4px;">
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
           <button id="poolRefreshBtn" class="btn-small" title="Refresh pool status"><span class="material-icons" style="font-size:14px;">refresh</span> Refresh</button>
@@ -737,6 +744,9 @@
 <script src="js/panels/page-pool/render.js"></script>
 <script src="js/panels/page-pool/actions.js"></script>
 <script src="js/panels/page-pool.js"></script>
+<script src="js/panels/live-debug/store.js"></script>
+<script src="js/panels/live-debug/render.js"></script>
+<script src="js/panels/live-debug/actions.js"></script>
 <script src="js/panels/live-debug.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app/listeners.js"></script>

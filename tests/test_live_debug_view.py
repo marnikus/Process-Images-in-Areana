@@ -184,3 +184,45 @@ async def test_idle_reconcile_publishes_fresh_cadence_without_a_commit(env, monk
     assert json.loads(env.recs['progress_updated'].calls[-1][0])['live']['passes'] == 1
     assert json.loads(env.recs['page_pool_updated'].calls[-1][0])['pages'] == []
     saved.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_failed_telemetry_cannot_interrupt_reconcile_or_its_wait(env, monkeypatch):
+    from app.services.live.reconcile import LiveDeps, reconcile_loop
+    from app.services.live.bus import live_bus
+    from unittest.mock import AsyncMock
+    bridge = env.bridge
+    publish = Mock(side_effect=RuntimeError('UI disconnected'))
+
+    async def stop_wait(timeout):
+        bridge._stop_reconcile = True
+        return ''
+
+    wait = AsyncMock(side_effect=stop_wait)
+    monkeypatch.setattr(live_bus(bridge), 'wait', wait)
+    await reconcile_loop(bridge, LiveDeps(fetch_tabs=AsyncMock(return_value=[]), publish=publish))
+    publish.assert_called_once()
+    wait.assert_awaited_once_with(5.0)
+    assert bridge._reconcile_passes == 1
+
+
+def test_debug_heartbeat_preserves_progress_and_has_no_save_side_effect(env, monkeypatch):
+    from app.ui.services.pool_debug import publish_debug
+    bridge = env.bridge
+    bridge.state.progress.update(total=9, completed=4)
+    bridge._run_state = 'waiting'
+    saved = Mock()
+    persisted = Mock()
+    monkeypatch.setattr(bridge, '_save_arena', saved)
+    monkeypatch.setattr(bridge, '_persist_cooldowns', persisted)
+    before = copy.deepcopy(bridge.state.to_dict())
+    publish_debug(bridge)
+    progress = json.loads(env.recs['progress_updated'].calls[-1][0])
+    assert progress['total'] == 9
+    assert progress['completed'] == 4
+    assert progress['run_state'] == progress['live']['run_state'] == 'waiting'
+    assert bridge.state.to_dict() == before
+    saved.assert_not_called()
+    persisted.assert_not_called()
+    bridge._persist_cooldowns()
+    persisted.assert_called_once()  # prove the persistence spy observes this seam

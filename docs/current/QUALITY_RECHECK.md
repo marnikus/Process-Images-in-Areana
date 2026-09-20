@@ -1,5 +1,20 @@
 # Quality re-check — 2026-10-02 (Captcha Watcher isolation + UI bugfixes)
 
+## 2026-09-20 — staged S9: live debug observability
+
+S9 adds real queue/worker views, one-read UI pause serialization (last-settled,
+not a countdown), and read-only idle-pass publication on existing signals.
+RED commits: `2adaa19`, `3487604`. No new slot, signal, pipeline decision,
+baseline override or golden recording. S10 consolidation is not included. Final pre-push: **1763 Python passed /
+4 skipped; 267 JS passed; 88.22% statement / 83.56% branch coverage;
+quality 0 failures / 0 warnings; duplication 1.079%**. Frozen contracts and
+goldens unchanged; four pre-existing Vulture import findings remain.
+Scope, amended interfaces, gate results and RULE 16/18 measurements:
+`docs/archive/2026-09-20-dynamic-urls-and-worker-debug/s9-verification.md`.
+
+## Earlier verification snapshots
+
+
 Snapshot of the RULE 16 gates after the round. Re-run the commands before
 every push (RULE 16 §16.6, `current/CODE_VERIFICATION.md`).
 

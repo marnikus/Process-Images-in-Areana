@@ -60,7 +60,84 @@ no change to scan or wait decisions. This also refreshes OFF scope on the existi
 cadence. `reconcile_once`, its overrides and the four existing deps stay unchanged.
 
 Two test-fixture corrections: frozen listeners has 193 physical lines plus final
-newline (168 is the quality gate's effective LOC, not split length); the boot fake
+newline (194 by the JS gate, 54 functions; 168/51 were stale pre-merge plan
+measurements, not the S8 base or current baseline); the boot fake
 now returns a valid live getter reply rather than `{}`. Initial getter must copy
 progress before augmenting: its legacy serializer shares the state progress dict.
 The read-only test now snapshots independently and checks for this mutation.
+
+## Implementation review
+
+- Initial arena augmentation moved to the same UI serialization leaf as pool
+  telemetry, rather than growing the >300-line layout panel. Existing accessors
+  and `emit_arena_state` retain their function lengths. Bridge/pool methods only
+  substitute the read serializer. Service->UI import direction is unchanged.
+- Shared `UIHelpers.esc` owns escaping; no duplicate pool-row template. Negative/
+  missing/non-finite timing inputs never render NaN/Infinity. Job elapsed and
+  cooldown may tick locally; pause values never do. A further executable RED
+  caught exhausted-cap wording; the view now says `pause cap exhausted`, not
+  `generation timeout paused`. Boot-read coverage is equivalence with the new
+  initial payload, not claimed as RED against the whole S8 stage.
+- Local focused results: **14 Python passed**, **16 JS passed** (6 S8 + 10 S9).
+  Idle-heartbeat tests assert no arena save/cooldown persistence and no mutation;
+  a throwing observation callback cannot stop the reconciler or its wait.
+- The JS suite already lists this test file from S8; no package.json churn or
+  S10 orphan-test adoption is necessary here.
+
+## Final RULE 16 / RULE 18 recheck
+
+`VERIFY_QUALITY_BASE=747e23c bash tools/pre_push_check.sh` **exit 0**, committed
+production diff (not an empty/fallback diff): **7 Python + 4 JS files** gated,
+**0 failures / 0 warnings**. No `--record-baseline`, new override, golden change,
+slot or signal. JS components stay cohesive leaves rather than padded files.
+`live/` remains 7 Python files; `ui/services/` is 10 including the new serializer.
+The >300-line existing panels only delegate with bounded edits; no extraction
+into dummy wrappers and no new decision tree. Existing `reconcile_once` is
+unchanged (gate CC11/LOC32 override; standalone radon reports CC12).
+
+| Python file | Gate file LOC | Max function LOC | Max gate CC |
+|---|---:|---:|---:|
+| live/debug_view | 61 | 9 | 5 |
+| live/reconcile | 224 | 32 (existing override) | 11 (existing override) |
+| ui/services/pool_debug | 53 | 12 | 4 |
+| ui/bridge | 153 | 15 | 3 |
+| ui/panels/page_pool | 235 | 16 | 7 |
+| ui/panels/layout_state | 313 | 19 | 6 |
+| ui/panels/browser_tabs | 560 | 20 | 7 |
+
+All new Python functions: radon CC <=4, <=12 LOC, <=2 parameters;
+changed `reconcile_loop` remains radon CC5. New serializer has **100% combined
+line/branch coverage**. Bridge's class95/method10 and pool class139/method9
+remain unchanged; no legacy maximum grows. Layout emitter remains the same size.
+
+| JS file | Gate file lines | Max function LOC | Max CC | Params | Nesting |
+|---|---:|---:|---:|---:|---:|
+| live-debug facade | 18 | 8 | 2 | 1 | 1 |
+| store | 61 | 12 | 6 | 1 | 1 |
+| render | 91 | 12 | 6 | 2 | 1 |
+| actions | 34 | 8 | 3 | 3 | 1 |
+
+`arena-app/listeners.js` remains **194 gate lines / 54 functions**, byte-identical
+to S8. The stale 168/51 plan measurement was corrected, not used to waive a growth.
+All URL-list JS and the S8 registration/grid sources remain byte-identical.
+
+### Final command results
+
+- Full plain pytest: **1763 passed, 4 skipped, 5 warnings** (196.88 s).
+- Fresh branch coverage pytest: **1763 passed, 4 skipped, 5 warnings** (198.91 s),
+  including all 12 golden traces and the supervisor byte-identity check.
+- `npm run test:js`: **267 passed**, 48 suites, 0 failed.
+- Explicit `node --test tests/js/test_title_fit.mjs`: **10 passed**, 0 failed.
+- Coverage: **88.2193% statements / 83.5600% branches** (12326/13972 statements,
+  2704/3236 branches), above stored floors; no baseline re-record.
+- jscpd: **1.079195%**, **23 groups / 399 lines**, below 1.240% baseline, no new group.
+- Syntax and hygiene passed. Optional pyflakes check skipped (not installed).
+  Vulture reports the same four pre-existing unused imports in bridge/browser_tabs;
+  not presented as a clean Vulture run. Pytest warnings remain the existing
+  unawaited test-coroutine warnings.
+- Frozen bridge-slot/metaobject/cooldown tests, all golden JSONs and quality
+  baseline byte-identical to S8; slot contract remains **135**. Diff whitespace
+  check fixed one trailing blank in the new serializer (no behavior change).
+- RULE 16 / RULE 18 reread and checked. Current docs land with the implementation;
+  the missing I-53 current-table entry now identifies the existing S7 owner and
+  its S9 read-only consumer. S10's whole-chain consolidation remains separate.

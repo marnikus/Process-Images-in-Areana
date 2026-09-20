@@ -10,6 +10,7 @@ at top level). Imports go panels -> services/core only.
 """
 
 import json
+from app.ui.services.pool_debug import pool_snapshot
 import re
 
 from app.core.cooldown import clamp_seconds, config_to_dict, format_remaining
@@ -111,7 +112,7 @@ class PagePoolMixin:
                     self._log(f"✅ Page {_tid[:12]} cooldown expired — STEADY ready", "success")
             except Exception:
                 pass
-            snap = self._page_pool.status_snapshot()
+            snap = pool_snapshot(self)
             self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
             self._persist_cooldowns()
             return json.dumps(snap, ensure_ascii=False)

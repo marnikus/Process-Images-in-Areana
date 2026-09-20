@@ -1,5 +1,5 @@
-# ideal-size: ~45 lines reason=S6 budget — interval + cadence for the debug window; grows to ~90 in S9 (RULE 18.2)
-"""live/debug_view (S6) — interval setting and cadence payload (I-42).
+# ideal-size: read-only projection leaf; queue eligibility stays in core and pool data stays on its own signal.
+"""Live queue projection and reconcile cadence; services import core, never UI.
 
 The reconciler's cadence is a user setting (500–60000 ms, default 5000)
 stored in `config/session.json` via `ConfigManager`. One clamp owner
@@ -8,6 +8,8 @@ writes through `save_settings` and reads through `progress_updated.live`.
 """
 
 from __future__ import annotations
+
+from .feed import eligible_images
 
 
 def clamp_interval_ms(value) -> int:
@@ -35,3 +37,25 @@ def cadence(bridge) -> dict:
         last = float(getattr(bridge, "_last_reconcile_at", 0) or 0)
     passes = int(getattr(bridge, "_reconcile_passes", 0) or 0)
     return {"url_interval_ms": interval_ms(bridge), "last_pass_at": last, "passes": passes}
+
+
+def next_queued(images) -> str:
+    """First eligible filename in queue order; never sort or invent a rule."""
+    pending = eligible_images(images)
+    return pending[0].filename if pending else ""
+
+
+def receiver_counts(rows) -> dict:
+    """Report the authoritative flag without recalculating eligibility."""
+    receiving = sum(bool(row.receiver) for row in rows)
+    return {"total": len(rows), "receivers": receiving,
+            "not_receivers": len(rows) - receiving}
+
+
+def live_view(bridge) -> dict:
+    """Read-only queue/cadence payload, independent of the pool snapshot."""
+    images = list(bridge.state.images)
+    rows = list(bridge.state.urls)
+    return {**cadence(bridge), "queued": len(eligible_images(images)),
+            "next_image": next_queued(images), "receivers": receiver_counts(rows),
+            "run_state": str(getattr(bridge, "_run_state", "idle"))}

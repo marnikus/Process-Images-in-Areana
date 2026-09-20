@@ -20,6 +20,7 @@ from app.core.layout_service import (
 from app.core.persistence import save_state
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import arena_serialize as js
+from app.ui.services.pool_debug import initial_arena_state
 from app.ui.services import undo_entries
 from app.ui.services import window_preset_service as presets
 
@@ -69,8 +70,8 @@ def emit_arena_state(bridge) -> None:
         prog = js_state.get("progress", {}).copy()
         prog["run_state"] = getattr(bridge, "_run_state", "idle")
         try:
-            from app.services.live.debug_view import cadence
-            prog["live"] = cadence(bridge)
+            from app.services.live.debug_view import live_view
+            prog["live"] = live_view(bridge)
         except Exception:
             pass
         bridge.progress_updated.emit(json.dumps(prog, ensure_ascii=False))
@@ -308,5 +309,5 @@ class LayoutStateMixin:
 
     @Slot(result=str)
     def get_arena_state(self):
-        js_state = js.arena_to_js(self.state)
+        js_state = initial_arena_state(self)
         return json.dumps(js_state, ensure_ascii=False)

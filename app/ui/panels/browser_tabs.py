@@ -304,7 +304,8 @@ def live_deps(bridge):
         except Exception: pass
     try:
         from app.services.live.reconcile import LiveDeps as LD
-        return LD(fetch_tabs=fetch_tabs, join_tab=join_tab, commit=commit, log=log)
+        from app.ui.services.pool_debug import publish_debug
+        return LD(fetch_tabs=fetch_tabs, join_tab=join_tab, commit=commit, log=log, publish=lambda: publish_debug(bridge))
     except Exception: return None
 
 

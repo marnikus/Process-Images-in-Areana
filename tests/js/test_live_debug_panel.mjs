@@ -252,3 +252,17 @@ test('S9 missing clock is unknown rather than fabricated and uncapped clocks sta
   assert.match(list.textContent, /uncapped/);
   assert.doesNotMatch(list.textContent, /NaN|Infinity/);
 });
+
+test('S9 exhausted pause cap never claims the generation timeout is still paused', async t => {
+  const h = await bootPage(t);
+  h.emit('page_pool_updated', poolPayload([worker('t1', {status:'waiting_captcha', pause:{absorbed_s:300,cap_s:300,remaining_s:0}})]));
+  const text = h.w.document.getElementById('liveDebugWorkers').textContent;
+  assert.match(text, /pause cap exhausted/);
+  assert.doesNotMatch(text, /generation timeout paused/);
+});
+
+test('S9 initial read mounts queue data before any progress push', async t => {
+  const h = await bootPage(t, {initialLive:{...livePayload(), queued:7, next_image:'boot.png'}});
+  assert.match(h.w.document.getElementById('liveDebugQueue').textContent, /7 pending.*boot.png/);
+  assert.equal(h.w.document.getElementById('liveDebugStatus').textContent, '');
+});

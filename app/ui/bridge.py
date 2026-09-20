@@ -8,6 +8,7 @@ Handles:
 """
 
 import json
+from app.ui.services.pool_debug import pool_snapshot
 import logging
 from pathlib import Path
 
@@ -101,7 +102,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
         try:
             if not self._page_pool:
                 return
-            snap = self._page_pool.status_snapshot()
+            snap = pool_snapshot(self)
             self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
             self._persist_cooldowns()
         except Exception:
