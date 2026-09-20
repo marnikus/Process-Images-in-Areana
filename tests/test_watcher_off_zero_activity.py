@@ -103,12 +103,12 @@ def test_watcher_off_never_installs_the_security_settler(event_loop, tmp_path, m
 
     async def wait_script(*_a, **_k):
         # runs INSIDE wait_for_output — captures whether a settler is armed mid-wait
-        seen["settler"] = getattr(wait_script.ctrl, "security_settler", "ABSENT")
+        seen["settler"] = getattr(seen_ctrl, "security_settler", "ABSENT")
         return "timeout", {"error": "timed out"}
 
-    wait_script.ctrl = make_ctrl(wait_for_new_output=wait_script)
+    seen_ctrl = make_ctrl(wait_for_new_output=wait_script)
     bridge = make_captcha_ctx(Spy(), False).bridge
-    ctx = make_ctx(bridge, wait_script.ctrl, make_client(), make_img(tmp_path))
+    ctx = make_ctx(bridge, seen_ctrl, make_client(), make_img(tmp_path))
 
     assert event_loop.run_until_complete(sjr.wait_for_output(ctx, 1000)) == (None, None, "timed out")
     assert seen["settler"] == "ABSENT"
@@ -121,11 +121,11 @@ def test_positive_control_watcher_on_installs_the_settler(event_loop, tmp_path):
     seen = {}
 
     async def wait_script(*_a, **_k):
-        seen["settler"] = getattr(wait_script.ctrl, "security_settler", "ABSENT")
+        seen["settler"] = getattr(seen_ctrl, "security_settler", "ABSENT")
         return "timeout", {"error": "timed out"}
 
-    wait_script.ctrl = make_ctrl(wait_for_new_output=wait_script)
-    ctx = make_ctx(make_bridge(), wait_script.ctrl, make_client(), make_img(tmp_path))
+    seen_ctrl = make_ctrl(wait_for_new_output=wait_script)
+    ctx = make_ctx(make_bridge(), seen_ctrl, make_client(), make_img(tmp_path))
 
     assert event_loop.run_until_complete(sjr.wait_for_output(ctx, 1000)) == (None, None, "timed out")
     assert callable(seen["settler"])

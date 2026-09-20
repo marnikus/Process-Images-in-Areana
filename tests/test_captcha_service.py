@@ -276,7 +276,7 @@ async def test_every_helper_absorbs_failures(monkeypatch, isolated_config_dir):
     ctrl = OverlayBoomCtrl(visible_seq=[True, False])
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", log=boom)
     outcome = await handle_captcha(ctx)
-    assert outcome.status == "manual"
+    assert outcome.status == "manual"   # Watcher ON ⇒ fully in scope (D-23 positive control)
     assert page.pending_penalty == 900  # penalty survives all the chaos
 
 
