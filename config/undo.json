@@ -2,118 +2,6 @@
   "history": [
     {
       "kind": "grid",
-      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28641780754457,35.713582192455426]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[44.99989022810599,17.062943204022044,37.93716656787196]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[19.999754709576138,56.33462519623234,23.66562009419152]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":4,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28641780754457,35.713582192455426]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.745987837274146,32.316845594853895,37.93716656787196]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]},{\"t\":\"leaf\",\"id\":\"settings\"}],\"sizes\":[19.999754709576138,56.33462519623234,23.66562009419152]}}"
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": []
-      }
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28641780754457,35.713582192455426]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.745987837274146,32.316845594853895,37.93716656787196]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[19.999754709576138,56.33462519623234,11.83281004709576,11.83281004709576]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28641780754457,35.713582192455426]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.745987837274146,32.316845594853895,37.93716656787196]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[77.2508038585209,22.7491961414791]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[19.999708862023404,36.81760899616685,11.83281004709576,31.349872094713987]}}"
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28641780754457,35.713582192455426]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.745987837274146,32.316845594853895,37.93716656787196]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[68.59504132231406,31.40495867768595]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[19.999708862023404,36.81760899616685,11.83281004709576,31.349872094713987]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28641780754457,35.713582192455426]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.746468832152562,43.25773440865006,26.995796759197372]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[68.59504132231406,31.40495867768595]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[19.999708862023404,36.81760899616685,11.83281004709576,31.349872094713987]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[64.28641780754457,35.713582192455426]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.746468832152562,43.25773440865006,26.995796759197372]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[68.59504132231406,31.40495867768595]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[19.999708862023404,48.9284867369504,11.83281004709576,19.23899435393044]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[73.33649438912597,26.663505610874033]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.746468832152562,43.25773440865006,26.995796759197372]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[68.59504132231406,31.40495867768595]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[19.999708862023404,48.9284867369504,11.83281004709576,19.23899435393044]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[73.33649438912597,26.663505610874033]}],\"sizes\":[57.10274877098753,42.89725122901246]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.746468832152562,43.25773440865006,26.995796759197372]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[68.59504132231406,31.40495867768595]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[19.999708862023404,48.9284867369504,11.83281004709576,19.23899435393044]}}"
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[73.33649438912597,26.663505610874033]}],\"sizes\":[57.10274877098753,42.89725122901246]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.746468832152562,43.25773440865006,26.995796759197372]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[68.59504132231406,31.40495867768595]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[19.999708862023404,42.007985170788366,11.83281004709576,26.159495920092468]}}"
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "grid",
-      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[73.33649438912597,26.663505610874033]}],\"sizes\":[57.10274877098753,42.89725122901246]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.746468832152562,43.25773440865006,26.995796759197372]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[68.59504132231406,31.40495867768595]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha_records\"}],\"sizes\":[19.999708862023404,48.305641595995816,11.83281004709576,19.86183949488502]}}"
-    },
-    {
-      "kind": "window_states",
-      "value": {
-        "closed": [
-          "progress",
-          "arena_presets",
-          "block_config",
-          "browser"
-        ],
-        "minimized": [
-          "settings"
-        ]
-      }
-    },
-    {
-      "kind": "grid",
       "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"}],\"sizes\":[73.33649438912597,26.663505610874033]}],\"sizes\":[57.10274877098753,42.89725122901246]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[29.746468832152562,43.25773440865006,26.995796759197372]}],\"sizes\":[62.37864077669902,37.62135922330097]},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[68.59504132231406,31.40495867768595]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"recordings\"}],\"sizes\":[19.999708862023404,48.305641595995816,11.83281004709576,19.86183949488502]}}"
     },
     {
@@ -24435,6 +24323,153 @@
           "arena_presets",
           "block_config",
           "browser"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "block_config"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha\"},{\"t\":\"leaf\",\"id\":\"recordings\"}],\"sizes\":[35.0,20.0,20.0,12.0,13.0]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[44.99975470957614,27.05676020408163,27.94348508634223]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.0,40.0,22.0]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[40.229885057471265,22.988505747126435,22.988505747126435,13.793103448275861]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[44.99975470957614,27.05676020408163,27.94348508634223]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.0,40.0,22.0]},{\"t\":\"leaf\",\"id\":\"recordings\"}],\"sizes\":[80.0,20.0]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[52.23880597014926,29.850746268656714,17.91044776119403]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[44.99975470957614,27.05676020408163,27.94348508634223]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.0,40.0,22.0]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"recordings\"}],\"sizes\":[80.0,10.0,10.0]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[52.23880597014926,29.850746268656714,17.91044776119403]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"leaf\",\"id\":\"block_config\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[44.99975470957614,27.05676020408163,27.94348508634223]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.0,40.0,22.0]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"recordings\"}],\"sizes\":[71.93877551020408,18.06134713500785,9.999877354788069]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "block_config",
+          "browser"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "block_config",
+          "browser",
+          "progress"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "block_config",
+          "browser",
+          "progress",
+          "arena_presets"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[52.23880597014926,29.850746268656714,17.91044776119403]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[44.99975470957614,27.05676020408163,27.94348508634223]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.0,40.0,22.0]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"recordings\"}],\"sizes\":[35.96938775510204,35.96938775510204,18.06134713500785,9.999877354788069]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[52.23880597014926,29.850746268656714,17.91044776119403]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[44.99975470957614,27.05676020408163,27.94348508634223]},{\"t\":\"leaf\",\"id\":\"log\"}],\"sizes\":[38.0,40.0,22.0]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"recordings\"}],\"sizes\":[35.96924192785007,35.96924192785007,18.061454677329138,10.000061466970724]}}"
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[52.23880597014926,29.850746268656714,17.91044776119403]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[44.99975470957614,27.05676020408163,27.94348508634223]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"leaf\",\"id\":\"recordings\"}],\"sizes\":[35.96924192785007,35.96924192785007,18.061454677329138,5.000030733485362,5.000030733485362]}}"
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "block_config",
+          "browser",
+          "progress",
+          "arena_presets",
+          "recordings"
+        ],
+        "minimized": []
+      }
+    },
+    {
+      "kind": "grid",
+      "value": "{\"v\":5,\"tree\":{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"action_blocks\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"url_list\"},{\"t\":\"leaf\",\"id\":\"folder\"}],\"sizes\":[55.0,45.0]},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"prompt\"},{\"t\":\"leaf\",\"id\":\"run\"},{\"t\":\"leaf\",\"id\":\"captcha\"}],\"sizes\":[52.23880597014926,29.850746268656714,17.91044776119403]}],\"sizes\":[60.0,40.0]},{\"t\":\"split\",\"dir\":\"row\",\"children\":[{\"t\":\"leaf\",\"id\":\"queue\"},{\"t\":\"leaf\",\"id\":\"block_config\"},{\"t\":\"split\",\"dir\":\"col\",\"children\":[{\"t\":\"leaf\",\"id\":\"browser\"},{\"t\":\"leaf\",\"id\":\"arena_presets\"},{\"t\":\"leaf\",\"id\":\"progress\"},{\"t\":\"leaf\",\"id\":\"watcher\"}],\"sizes\":[30.0,25.0,20.0,25.0]}],\"sizes\":[44.99975470957614,27.05676020408163,27.94348508634223]}],\"sizes\":[48.717948717948715,51.28205128205128]},{\"t\":\"leaf\",\"id\":\"settings\"},{\"t\":\"leaf\",\"id\":\"log\"},{\"t\":\"leaf\",\"id\":\"recordings\"}],\"sizes\":[35.96915733047773,35.96915733047773,10.51236844456454,12.54928616099464,5.000030733485362]}}"
+    },
+    {
+      "kind": "settings",
+      "value": {
+        "timeout_seconds": 30,
+        "generation_timeout": 180,
+        "max_retries": 3,
+        "naming_suffix": "_AI",
+        "supported_types": [
+          ".png",
+          ".jpg"
+        ],
+        "overwrite": false,
+        "highlight_duration": 3,
+        "max_concurrent": 1,
+        "browser": {
+          "user_data_dir": "./browser_profile",
+          "headless": false,
+          "slow_mo": 0
+        },
+        "output": {
+          "suffix": "_AI",
+          "preserve_format": true,
+          "overwrite": false,
+          "unique_suffix_template": "{base}_AI_{n}{ext}"
+        },
+        "highlight": {
+          "enabled": true,
+          "duration_seconds": 3,
+          "color": "#FF0000",
+          "border_width": 3
+        },
+        "timeouts": {
+          "page_load": 30,
+          "selector": 10,
+          "attachment": 15,
+          "generation": 180,
+          "download": 30
+        }
+      }
+    },
+    {
+      "kind": "window_states",
+      "value": {
+        "closed": [
+          "block_config",
+          "browser",
+          "progress",
+          "arena_presets",
+          "recordings"
         ],
         "minimized": []
       }

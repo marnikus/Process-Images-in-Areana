@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "urls": [
     {
-      "id": "url_8651d421",
+      "id": "url_3c66d2e3",
       "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
@@ -11,8 +11,8 @@
       "tab_id": "6FB785289163B50F95775A234DBFA988"
     },
     {
-      "id": "url_b653f308",
-      "url": "https://arena.ai/image/direct",
+      "id": "url_9706f0a1",
+      "url": "https://arena.ai/image/direct?model_a=max",
       "enabled": true,
       "last_status": "unchecked",
       "last_checked": null,
@@ -552,11 +552,11 @@
       "size": 53003,
       "mtime": 1789747168.8635502,
       "fingerprint": "6bc947defe5d2fc6",
-      "status": "pending",
+      "status": "completed",
       "selected": true,
-      "assigned_url_id": null,
-      "attempt_count": 0,
-      "output_path": null,
+      "assigned_url_id": "url_3c66d2e3",
+      "attempt_count": 1,
+      "output_path": "F:\\Stocks 2026\\icons testing\\single\\icon-camera-sparkle_AI_2.png",
       "error": null,
       "content_hash": null
     },
@@ -961,9 +961,9 @@
   "progress": {
     "total": 49,
     "selected": 9,
-    "pending": 3,
+    "pending": 2,
     "processing": 0,
-    "completed": 20,
+    "completed": 21,
     "skipped": 0,
     "failed": 2,
     "needs_review": 0
