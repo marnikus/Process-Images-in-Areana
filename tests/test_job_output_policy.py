@@ -4,8 +4,14 @@ Field case (bugfix-verification.md §B8): DOWNLOAD delivered 940 KB, then a
 user-added "Find & Click" block failed (page context gone for a second) and
 the job ended failed without saving the bytes. Policy now: once the output is
 secured, a later non-output block failure is a warning; the stack continues
-so VALIDATE/SAVE keep the image. VALIDATE/SAVE failures, pre-download
-failures and cancellation keep their legacy semantics (goldens unchanged).
+so VALIDATE/SAVE keep the image. VALIDATE/SAVE failures and cancellation keep
+their legacy semantics.
+
+B9 extension (§B9): a NON-REQUIRED block that failed BEFORE the download no
+longer fails a job whose image was then downloaded, validated and saved —
+field case: VERIFY_ATTACHMENT "preview not found" (a broken probe) marked
+every job failed although the image sat on disk. Required breaks, VALIDATE/
+SAVE failures and cancellation are never forgiven (goldens req_fail/cancel).
 
 RULE 8: real runner, real ActionBlocks; only CDP/bridge/click runner faked.
 """
@@ -67,15 +73,89 @@ async def test_post_download_custom_failure_keeps_image_and_completes(tmp_path, 
     assert len(warns) == 1 and "Find & Click failed for button" in warns[0]
 
 
-@pytest.mark.asyncio
-async def test_pre_download_optional_failure_keeps_legacy_failed_status(tmp_path, monkeypatch):
+def _soft_warnings(bridge):
+    return [m for m, lvl in bridge._logs if lvl == "warn" and "Completed with warnings" in m]
+
+
+def _pre_download_optional_stack(block):
     stack = [make_block(b) for b in CORE[:5]]
-    stack.append(make_block("CUSTOM_FIND", selector="button"))  # before WAIT/DOWNLOAD
+    stack.append(block)  # before WAIT/DOWNLOAD
     stack += [make_block(b) for b in CORE[5:] + TAIL]
+    return stack
+
+
+@pytest.mark.asyncio
+async def test_pre_download_optional_failure_completes_once_the_image_is_saved(tmp_path, monkeypatch):
+    stack = _pre_download_optional_stack(make_block("CUSTOM_FIND", selector="button"))
     bridge, img, failed, err, data = await _run(tmp_path, monkeypatch, stack)
+    assert failed is False and err == ""                 # B9: saved image → completed
+    assert img.output_path and img.status == "completed"
+    events = {(b, s) for b, s, _m in bridge._events}
+    assert ("CUSTOM_FIND", "failed") in events            # the block row still shows red
+    assert _warnings(bridge) == []                        # the B8 line is post-download only
+    warns = _soft_warnings(bridge)
+    assert len(warns) == 1 and "Find & Click failed for button" in warns[0]
+
+
+@pytest.mark.asyncio
+async def test_pre_download_optional_failure_stays_failed_when_nothing_was_saved(tmp_path, monkeypatch):
+    stack = _pre_download_optional_stack(make_block("CUSTOM_FIND", selector="button"))
+    stack = [b for b in stack if b.block_id != "SAVE"]
+    bridge, img, failed, err, _data = await _run(tmp_path, monkeypatch, stack)
     assert failed is True and "Find & Click failed for button" in err
-    assert img.output_path  # legacy: non-required → stack continued and saved
-    assert _warnings(bridge) == []  # the B8 warning is post-download only
+    assert not img.output_path and _soft_warnings(bridge) == []
+
+
+@pytest.mark.asyncio
+async def test_pre_download_required_failure_still_breaks_and_fails(tmp_path, monkeypatch):
+    stack = _pre_download_optional_stack(make_block("CUSTOM_FIND", selector="button", required=True))
+    bridge, img, failed, err, _data = await _run(tmp_path, monkeypatch, stack)
+    assert failed is True and "Find & Click failed for button" in err
+    assert not img.output_path
+    ran = [b for b, s, _m in bridge._events if s == "running"]
+    assert "WAIT_OUTPUT" not in ran and _soft_warnings(bridge) == []
+
+
+@pytest.mark.asyncio
+async def test_verify_attachment_not_found_is_a_warning_when_the_image_is_saved(tmp_path, monkeypatch):
+    """The §B9 field case: VERIFY_ATTACHMENT reported 'preview not found' and
+    the job ended failed although DOWNLOAD/SAVE had delivered the image."""
+    instant_sleep(monkeypatch)
+    stack = _pre_download_optional_stack(make_block("VERIFY_ATTACHMENT"))
+    bridge = make_bridge(stack)
+    img = make_img(tmp_path)
+    ctx = make_ctx(bridge, make_ctrl(), make_client(found=False), img)
+    failed, err, _src, data = await sjr.run_blocks_for_image(ctx)
+    assert failed is False and err == ""
+    assert img.output_path and img.status == "completed" and data
+    msgs = [m for b, s, m in bridge._events if b == "VERIFY_ATTACHMENT" and s == "failed"]
+    assert msgs == ["Verify attachment failed: preview not found div.flex.flex-wrap.gap-2 img"]
+    warns = _soft_warnings(bridge)
+    assert len(warns) == 1 and "preview not found" in warns[0]
+
+
+@pytest.mark.asyncio
+async def test_verify_attachment_found_reports_the_rect(tmp_path, monkeypatch):
+    instant_sleep(monkeypatch)
+    stack = _pre_download_optional_stack(make_block("VERIFY_ATTACHMENT"))
+    bridge = make_bridge(stack)
+    ctx = make_ctx(bridge, make_ctrl(), make_client(found=True), make_img(tmp_path))
+    failed, err, _src, _data = await sjr.run_blocks_for_image(ctx)
+    assert failed is False and err == ""
+    ok = [(s, m) for b, s, m in bridge._events if b == "VERIFY_ATTACHMENT" and s != "running"]
+    assert ok == [("success", "Attachment preview found div.flex.flex-wrap.gap-2 img")]
+    assert _soft_warnings(bridge) == []
+
+
+@pytest.mark.asyncio
+async def test_two_optional_failures_are_both_listed_in_the_warning(tmp_path, monkeypatch):
+    stack = [make_block(b) for b in CORE[:5]]
+    stack += [make_block("CUSTOM_FIND", selector="button.a"), make_block("CUSTOM_FIND", selector="button.b")]
+    stack += [make_block(b) for b in CORE[5:] + TAIL]
+    bridge, img, failed, err, _data = await _run(tmp_path, monkeypatch, stack)
+    assert failed is False and img.output_path
+    warns = _soft_warnings(bridge)
+    assert len(warns) == 1 and "button.a" in warns[0] and "button.b" in warns[0]
 
 
 @pytest.mark.asyncio

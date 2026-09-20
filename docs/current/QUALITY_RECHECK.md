@@ -64,6 +64,20 @@ new `app/browser/page_recovery.py` (6 functions, max CC 8, max nest 2).
 Fresh coverage **86.09 % line / 82.01 % branch** (floor raised from
 85.65 / 81.33; `visual_click.py` 48.6 % → 78.7 % from the new runner tests).
 
+### 2026-10-05 follow-up (B9 — broken FIND/HIGHLIGHT probe JS + saved-image outcome policy)
+
+No baseline re-record was needed (`bugfix-verification.md` §B9): the
+`_loop_blocks` change was split into `_absorb_block_result` /
+`_record_failure` / `_soft_failures_forgiven` so `single_job_runner.py`
+keeps its file maxima (max CC 9, max func 26 LOC); `dom_highlight_js.py`
+changed by one character. Full lane `--js` 0 fails; `--changed
+--coverage-ratchet` PASSED. Fresh coverage **86.15 % line / 82.14 % branch**
+(floor 86.09 / 82.01 kept). New lanes: `tests/test_js_payload_syntax.py`
+(every JS payload compiles — bracket scan always, `node --check` when
+available) and `tests/js/test_dom_probes.mjs` (real probes executed);
+`npm run test:js` 174 → 205 (the two existing un-wired probe suites are now
+wired as well).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

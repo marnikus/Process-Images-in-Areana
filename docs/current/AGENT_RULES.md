@@ -179,6 +179,8 @@ For Arena, we have `tests/` with scanner, naming, persistence, correlation, stat
 
 **Web-UI corollary (2026-10-03, I-35).** A test that pokes `FolderPicker.pickFolder()` directly proves nothing about the button: the page reaches panels *by name* (`Boot.bootPanels`, `window.X` readers) and a top-level `const X` is a lexical global that is **not** `window.X`. Every panel module therefore ends with `window.X = X`, and the boot path is tested the way the page runs it — `tests/js/test_boot_all_panels.mjs` loads every `index.html` script in order and asserts all panels init and a real click reaches the bridge slot. Add new panels to `_PANEL_INITS` **and** publish them; `tests/test_ui_wiring.py` fails otherwise.
 
+**Generated-JS corollary (2026-10-05, I-38).** A Python builder that returns page JavaScript is production code whose output must be *executed*, never merely string-matched: `tests/test_dom_highlight.py` asserted on the generated strings for months while every FIND/HIGHLIGHT probe was a `SyntaxError` (one missing `}` in `_LABEL_JS` — §B9). Every `build_*` JS function is registered in `tests/test_js_payload_syntax.py` (bracket-balance scan always, `node --check` when node exists — the meta-test fails for an unregistered builder), and DOM probes get a Node lane that generates the payload through the real Python builder and runs it in a `vm` context against a stub DOM (`tests/js/test_dom_probes.mjs`). A change to any `*_js.py` template without running `npm run test:js` is not done.
+
 ---
 
 ## RULE 9 — A guard that skips work must not stall the stack

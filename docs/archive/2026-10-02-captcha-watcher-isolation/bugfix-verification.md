@@ -274,6 +274,94 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 * **Operator note:** a **Find & Click** with the bare default selector
   `button` after DOWNLOAD clicks the first button on the page — configure the
   block (selector / text) or remove it; the job no longer depends on it.
+* **Correction (2026-10-05, see §B9):** defect 2 above was a wrong
+  hypothesis. The FIND probe did not fail because the page context was lost
+  for a second — it failed **every time**, because the generated probe JS was
+  syntactically invalid (§B9). The `last_error` contract added here is what
+  finally made the real reason visible in the next log
+  (`SyntaxError: Unexpected token 'catch'`); the recovery path (`page_recovery.py`)
+  stays as hardening for genuine context losses, but it never fired for this
+  incident (JS errors are — correctly — not retried). The "next job worked
+  again" observation was about the main pipeline (ATTACH/SUBMIT/WAIT use other
+  JS), not about the FIND probes, which had never worked since the import.
+
+## B9 — Every FIND / HIGHLIGHT probe was a `SyntaxError` since the import; a saved image still ended "failed" (`dom_highlight_js.py`, `single_job_runner.py`)
+
+* **Saw:** with the B8 diagnostics in place the next run showed the real
+  reason for every failing page probe: `❌ FIND failed: … — page JS error:
+  SyntaxError: Unexpected token 'catch'` for **Submit Once** (fell back to
+  the controller submit), the post-download **Find & Click**, and all three
+  **New Chat** reset attempts (→ tab cooled for 20 min). Every job also ended
+  `failed` with `Verify attachment failed: preview not found
+  div.flex.flex-wrap.gap-2 img` — although the ATTACH step had just logged
+  `Attachment verified: Found via blob` and the image was downloaded
+  (`📥 Python download 940228 bytes image/png`), validated and saved.
+* **Root cause 1 — one missing brace, since commit `0eeec39` ("upd", the
+  import; no earlier history):** `app/browser/dom_highlight_js.py`
+  `_LABEL_JS` — the `if (childSel) { var c = node.querySelector(childSel);
+  if (c) { … } ` line never closed the `if (childSel) {` block, so the
+  candidate `for` loop never closed and the following `} catch (err) {`
+  became a syntax error. `_LABEL_JS` is spliced into **both** `_FIND_BODY`
+  and `_HIGHLIGHT_BODY`, so every `build_find_probe()` /
+  `build_highlight_probe()` payload — visual click FIND phase (Submit Once,
+  Find & Click, New Chat reset, CUSTOM_FIND), `VERIFY_ATTACHMENT`, every
+  `HIGHLIGHT_*` marker block and the highlight-selector helper — was dead
+  on arrival; `Runtime.evaluate` answered with `exceptionDetails`, the
+  transport returned `None`, and every caller read that as "not found".
+  The click probe (`_CLICK_BODY`, no label splice) was fine, which is why
+  clicks worked once a FIND had been satisfied by other means. The
+  verify-attachment **selector was not stale**: `div.flex.flex-wrap.gap-2 img`
+  is the same container the successful blob check uses; the probe simply
+  never ran. Reproduced offline: `node --check` on the generated FIND /
+  HIGHLIGHT probes → `SyntaxError: Unexpected token 'catch'`; click probes
+  pass. Why no test caught it: `tests/test_dom_highlight.py` only asserted
+  on the *generated strings* — the exact anti-pattern RULE 8 names — and no
+  Node lane executed these probes (unlike the composer/output/recording
+  probes). (A suspected second defect — doubled backslashes in the
+  `/\s+/g` regexes — was a display artefact of the tool transport; the
+  generated files contain single backslashes, verified byte-wise.)
+* **Root cause 2 — job outcome policy:** `_loop_blocks` marked the job
+  `failed` on the **first** failure of any block, including a non-required
+  block that failed *before* the download; the stack then continued
+  (non-required ⇒ no break), downloaded, validated and saved the image, and
+  still reported `failed` with the stale early error. Golden `nonreq_fail`
+  pinned exactly this legacy outcome ("VERIFY_PROMPT failed → file saved →
+  status failed"). B8 only covered failures *after* the bytes were secured.
+* **Change:** (1) the missing `}` in `_LABEL_JS` — every generated probe
+  variant now compiles; (2) **B9 policy** in `single_job_runner`: the run
+  accumulates *soft* failures (non-required block, stack continued) apart
+  from *hard* ones (required break, VALIDATE/SAVE); when the SAVE block
+  succeeded and the bytes are secured, soft failures are downgraded to one
+  `⚠ Completed with warnings — the image was saved although non-required
+  block(s) failed: <block (error)>; …` line and the job completes (status
+  `completed`, `job_finished` completed, `Saved to …`). Required failures,
+  VALIDATE/SAVE failures, "nothing saved" and cancellation are unchanged;
+  the failed block row still shows red in the stack UI. (3) `package.json`
+  `test:js` now also runs the two existing but un-wired probe suites
+  (`test_output_probes.mjs`, `test_recording_probes.mjs`).
+* **Pinned by:** `tests/js/test_dom_probes.mjs` (13 cases — the **real**
+  Python builders are invoked through `child_process`, the payloads run in a
+  `vm` context against a stub DOM: every probe compiles; FIND by selector,
+  `label_selector` + contains/exact with whitespace-collapsed multi-line
+  labels, `match_text` without label, highlight box appended once + rect +
+  timed removal, probe exceptions reported not thrown; CLICK refuses without
+  stash / detached / disabled, stage never clicks, dispatch clicks once,
+  `click_selector` inner target; HIGHLIGHT + CLEAR). Mutation check: with the
+  pre-fix template 8/13 fail. `tests/test_js_payload_syntax.py` (64 cases):
+  **every** JS payload the app can send — 16 FIND variants, 8 CLICK
+  variants, HIGHLIGHT/CLEAR/watcher overlay, new-chat, output baseline/check,
+  captcha, recording, page-error scan and every `js_snippets.JS_*` — passes
+  a string/regex/comment-aware bracket-balance scan (always on; catches the
+  §B9 shape — 19 payloads failed on the pre-fix template) and `node --check`
+  when node exists; a meta-test fails when a new `build_*` is not in the
+  lane. `tests/test_job_output_policy.py` (+6: pre-download optional failure
+  now completes once saved, stays failed when nothing was saved, required
+  failure still breaks, VERIFY_ATTACHMENT not-found → warning + completed,
+  VERIFY_ATTACHMENT found → rect, two optional failures both listed);
+  golden `nonreq_fail` regenerated after review — only `status`, `error` and
+  the `job_finished` status changed (events / clicks / files identical);
+  `test_nonrequired_midfail_continues` now asserts `completed` + the warning
+  markers. Goldens `req_fail`, `cancel`, `abort` unchanged.
 
 ## Gate evidence (2026-10-02)
 
@@ -304,3 +392,15 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 | `tools/verify_quality.py --js` | PASSED — 0 fails (new symbols: `page_recovery.py` max CC 8 / nest 2 / func ≤21 LOC; `transport` class 120 LOC, 9 methods) |
 | `--changed --base origin/<branch> --allow-legacy --coverage-ratchet --js` | 2 in-limit growth deltas (`transport` class 116→120, `visual_click` nest 1→2) → reviewed `--record-baseline` (`docs/current/QUALITY_RECHECK.md`), then PASSED; coverage 86.09 % line / 82.01 % branch (floor raised from 85.65 / 81.33) |
 | `compileall` / pyflakes on touched files / vulture | clean |
+
+## Gate evidence (2026-10-05, B9)
+
+| Gate | Result |
+|---|---|
+| `pytest -q -n 4` (CI-like, no PySide6) | 1,504 passed, 1 skipped, same 2 pre-existing environmental failures (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message); golden `nonreq_fail` regenerated after review (§B9), all other goldens unchanged |
+| `npm run test:js` | 205 pass / 0 fail (174 + `test_dom_probes.mjs` 13 + the previously un-wired `test_output_probes.mjs` 10 / `test_recording_probes.mjs` 8) |
+| `node --check` on every generated probe variant | 27/27 pass (before the fix: all 18 FIND/HIGHLIGHT variants failed with `Unexpected token 'catch'`) |
+| `tools/verify_quality.py --js` | PASSED — 0 fails (`_loop_blocks` split into `_absorb_block_result` / `_record_failure` / `_soft_failures_forgiven`; file max CC stays 9) |
+| `--changed --base origin/<branch> --allow-legacy --coverage-ratchet --js` | PASSED without a baseline re-record; coverage 86.15 % line / 82.14 % branch (floor 86.09 / 82.01 kept) |
+| `compileall` / pyflakes on touched files | clean |
+

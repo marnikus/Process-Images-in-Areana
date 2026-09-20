@@ -840,22 +840,59 @@ def _post_download_warning(ctx: JobCtx, block: Any, err: str, secured: bool) -> 
     return True
 
 
+def _record_failure(block: Any, err: str, brk: bool, acc: Dict[str, Any]) -> bool:
+    """Classify one block failure into the run accumulator; True = stop the stack.
+
+    hard: a required break or a VALIDATE/SAVE failure (never forgiven);
+    soft: a non-required block that failed while the stack continued."""
+    acc["failed"], acc["error"] = True, err
+    if brk or getattr(block, "block_id", "") in _OUTPUT_BLOCKS:
+        acc["hard"] = True
+        return brk
+    acc["soft"].append(f"{_display(block)} ({err})")
+    return False
+
+
+def _soft_failures_forgiven(ctx: JobCtx, acc: Dict[str, Any]) -> bool:
+    """B9 policy: optional (`required=False`) blocks that failed BEFORE the
+    download do not fail a job whose image was then downloaded, validated
+    and SAVED — the paid generation is on disk and the block rows already
+    show the red status. Required breaks, VALIDATE/SAVE failures and
+    cancellation keep their failure semantics (goldens req_fail / cancel)."""
+    if not acc["failed"] or acc["hard"] or not acc["saved"] or not acc["soft"]:
+        return False
+    if _is_cancelled(ctx) or not _output_secured(ctx):
+        return False
+    _report_recovery(ctx, "⚠ Completed with warnings — the image was saved although "
+                          "non-required block(s) failed: " + "; ".join(acc["soft"]), "warn")
+    return True
+
+
+def _absorb_block_result(ctx: JobCtx, block: Any, result: tuple, acc: Dict[str, Any]) -> bool:
+    """Fold one block outcome into the run accumulator; True = stop the stack."""
+    failed, err, brk = result
+    if not failed:
+        if getattr(block, "block_id", "") == "SAVE":
+            acc["saved"] = True
+        return False
+    if _post_download_warning(ctx, block, err, acc["secured"]):
+        return False
+    return _record_failure(block, err, brk, acc)
+
+
 async def _loop_blocks(ctx: JobCtx, blocks: List[Any]) -> tuple[bool, str]:
-    failed = False
-    error = ""
+    acc: Dict[str, Any] = {"failed": False, "error": "", "hard": False, "soft": [],
+                           "saved": False, "secured": False}
     for block in blocks:
-        secured = _output_secured(ctx)
-        f, e, brk = await _run_one_checked(ctx, block)
-        if f and _post_download_warning(ctx, block, e, secured):
-            continue
-        if f:
-            failed = True
-            error = e
-            if brk:
-                break
-        if _is_cancelled(ctx) and failed:
+        acc["secured"] = _output_secured(ctx)  # before the block runs (B8)
+        result = await _run_one_checked(ctx, block)
+        if _absorb_block_result(ctx, block, result, acc):
             break
-    return failed, error
+        if _is_cancelled(ctx) and acc["failed"]:
+            break
+    if _soft_failures_forgiven(ctx, acc):
+        return False, ""
+    return acc["failed"], acc["error"]
 
 
 def _reset_captcha_reports(ctx: JobCtx):
