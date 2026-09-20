@@ -425,9 +425,9 @@ The full 25-file table is `tdd-interfaces.md` §D. The four that changed the des
 
 ### 9.5 Characterization-harness facts that decide S2 and S5
 
-> **S2 LANDED (2026-09-20):** the S2-relevant facts below are now proven by code — the armed
-> golden (`test_captcha_pause_resume`, `watcher_on=True`) stayed byte-identical exactly because
-> `FakeCtrl` dialog polls never touch `FakeCDP.evaluate`. Status marker only; S5 still pending.
+> **LANDED — S2 (2026-09-20) + S5 (2026-09-20):** the facts below are now proven by code.
+> S2 — the armed golden (`test_captcha_pause_resume`, `watcher_on=True`) stayed byte-identical exactly because `FakeCtrl` dialog polls never touch `FakeCDP.evaluate`.
+> S5 — the 12 goldens stay byte-identical under `live.supervisor.run_live`: `harness.RUNNERS` gains `supervisor` (`run_supervisor` — `run_live` + `arm_hooks` `_stop_after` stop lever), `collect_trace:158-172` logs are excluded so the new `🟢/🟡/🔴 Run live` / `🏁 Batch …` / `↻ Pass complete` lines are free, and `run_live`'s only writer `set_run_state` keeps `_run_state` honest (L-2). Status marker only; original evidence kept verbatim.
 
 * `tests/characterization/harness.py:105-121` `build_bridge` constructs a **real** `Bridge` + real
   `ConfigManager` and calls `cfg.set_state(action_blocks=…)` — it never arms the Watcher ⇒ **S2 must add

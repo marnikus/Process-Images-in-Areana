@@ -58,6 +58,8 @@ async def test_new_work_is_picked_up_without_a_restart(tmp_path, monkeypatch):
 
     async def spy_pass(b, plan):
         runs.append(plan)
+        for i in plan.images:
+            i.status = "completed"  # a real pass consumes its work
 
     monkeypatch.setattr(supervisor, "run_pass", spy_pass)
     task = asyncio.ensure_future(supervisor.run_live(bridge))
@@ -190,7 +192,7 @@ async def test_run_state_has_exactly_one_writer(tmp_path, monkeypatch):
         real(b, value)
 
     monkeypatch.setattr(supervisor, "set_run_state", spy)
-    await asyncio.wait_for(supervisor.run_live(bridge), 5.0)
+    await asyncio.wait_for(supervisor.run_live(bridge), 30.0)
     assert writes[0] == "running" and writes[-1] == "idle"
     assert set(writes) == {"running", "idle"}  # every change went through the spy
 

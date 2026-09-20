@@ -12,9 +12,10 @@ import json
 import logging
 from datetime import datetime
 
-from app.core.run_scope import run_scope
-from app.services.batch_orchestrator import run_batch
+from app.core.run_scope import eligible_images, run_scope
+from app.services.live.bus import live_bus
 from app.services.live.feed import commit_queue, recover_stale_processing
+from app.services.live.supervisor import run_live, set_run_state
 from app.services.run_state import batch_active, schedule_batch
 from app.ui.panels.queue_scan import push_queue_undo
 from app.ui.panels.url_queue import _URL_GATE_MSG, _urls_gate_error, enabled_urls
@@ -72,17 +73,24 @@ def check_start_inputs(bridge):
 
 
 def check_start_ready(bridge):
-    """CDP/run-state gates; error JSON when blocked, else None."""
+    """CDP gate — the live loop owns the run-state gates now (S5)."""
     if not bridge.cdp or not bridge.cdp.is_connected:
         bridge._log("❌ Chrome not connected — click Diagnose, Refresh, Connect first. CDP must be connected to automate.", "error")
         return json.dumps({"ok": False, "error": "cdp not connected"})
-    if bridge._run_state == "running":
-        bridge._log("⚠ Already running", "warn")
-        return json.dumps({"ok": False, "error": "already running"})
-    if batch_active(bridge):
-        bridge._log("⚠ A batch is still active (paused / stopping / unwinding) — Resume or Cancel it first", "warn")
-        return json.dumps({"ok": False, "error": "batch still active"})
     return None
+
+
+def _wake_live_or_none(bridge):
+    """Start while live: re-check the queue instead of a second run (S5)."""
+    if not batch_active(bridge):
+        return None
+    if getattr(bridge, "_cancel_requested", False):
+        bridge._log("⚠ A batch is still unwinding — Resume or Cancel it first", "warn")
+        return json.dumps({"ok": False, "error": "batch still active"})
+    queued = len(eligible_images(bridge.state.images))
+    live_bus(bridge).wake("start")
+    bridge._log(f"🟢 Run already live — queue re-checked ({queued} queued)", "success")
+    return json.dumps({"ok": True, "live": True})
 
 
 def cancel_batch_future(bridge) -> None:
@@ -221,52 +229,50 @@ class RunControlMixin:
         err = check_start_inputs(self) or check_start_ready(self)
         if err:
             return err
+        hit = _wake_live_or_none(self)
+        if hit:
+            return hit
         if recover_stale_processing(self):
             commit_queue(self, "start", undo=False)
-        prompt = self.state.prompt.get("user_prompt", "").strip()
         selected = run_scope(self.state.images)
         urls = enabled_urls(self.state.urls)
-        self._run_state = "running"
+        set_run_state(self, "running")
         self._cancel_requested = False
         self._pause_requested = False
         self._stop_after = False
-        self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
+        self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(self.state.prompt.get('user_prompt', '').strip())}", "success")
         self._emit_arena_state()
-        schedule_batch(self, run_batch(self))
+        schedule_batch(self, run_live(self))
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def pause_run(self):
         self._pause_requested = True
-        self._run_state = "paused"
+        set_run_state(self, "paused")
         self._log("⏸ Paused — will pause after current step", "warn")
-        self._emit_arena_state()
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def resume_run(self):
         self._pause_requested = False
-        self._run_state = "running"
+        set_run_state(self, "running")
         self._log("▶ Resumed", "info")
-        self._emit_arena_state()
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def stop_after_current(self):
         self._stop_after = True
-        self._run_state = "stopping"
+        set_run_state(self, "stopping")
         self._log("⏹ Will stop after current image", "warn")
-        self._emit_arena_state()
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def cancel_current(self):
         self._cancel_requested = True
-        self._run_state = "idle"
+        set_run_state(self, "idle")
         self._pause_requested = False
         self._stop_after = False
         self._log("✖ Cancel requested — stopping immediately", "error")
-        self._emit_arena_state()
         # Try to cancel running batch future immediately
         cancel_batch_future(self)
         fail_processing_images(self)

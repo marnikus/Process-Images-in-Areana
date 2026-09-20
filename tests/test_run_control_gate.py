@@ -1,10 +1,11 @@
-"""Start gate — one batch at a time (B13, I-45).
+"""Start gate — one batch at a time (B13, I-45; S5: the run is always-live).
 
-Before B13 `check_start_ready` refused only `_run_state == "running"`; after
-Pause (`paused`) or Stop-after-current (`stopping`) a second Start was
-accepted AND reset `_pause_requested` / `_stop_after`, which woke the old
-loop — two loops on one tab, completed images sent again. RULE 8: the real
-`RunControlMixin.start_run` slot runs on a stub host with a live Future.
+S5 armed (2026-09-20): `check_start_ready` now owns only the CDP gate —
+the run-state / batch-future gates moved to the always-live supervisor
+(S5, I-47). A second Start while live wakes the loop (`🟢 Run already
+live`) instead of `⚠ Already running`; only an unwinding cancel still
+refuses with `batch still active`. RULE 8: the real `RunControlMixin.
+start_run` slot runs on a stub host with a live Future.
 """
 
 import json
@@ -34,13 +35,28 @@ def ready_host(run_state, future, monkeypatch):
 
 
 @pytest.mark.parametrize("run_state", ["paused", "stopping", "idle"])
-def test_start_refused_while_batch_future_is_alive(run_state, monkeypatch):
+def test_start_wakes_when_live_instead_of_scheduling_second_batch(run_state, monkeypatch):
+    # S5 armed: a live future no longer refuses with "batch still active" —
+    # the always-live run is woken and the queue is re-checked (S5,
+    # I-47). Only an unwinding cancel still refuses.
     host, logs, scheduled = ready_host(run_state, Future(), monkeypatch)
     res = json.loads(host.start_run())
-    assert res == {"ok": False, "error": "batch still active"}
-    assert scheduled == [], "no second batch may be scheduled"
+    assert res == {"ok": True, "live": True}
+    assert scheduled == [], "no second batch may be scheduled — the live run is woken"
     # the old loop keeps seeing its flags — nothing was reset
     assert (host._pause_requested, host._stop_after, host._run_state) == (True, True, run_state)
+    assert any("Run already live" in msg for _, msg in logs)
+
+
+def test_start_refused_only_while_unwinding(monkeypatch):
+    # S5 armed: the ONLY refusal for a live future is an unwinding cancel
+    # (the bg loop is still joining). The wake path above handles every
+    # other live case.
+    host, logs, scheduled = ready_host("idle", Future(), monkeypatch)
+    host._cancel_requested = True
+    res = json.loads(host.start_run())
+    assert res == {"ok": False, "error": "batch still active"}
+    assert scheduled == []
     assert any("Resume or Cancel" in msg for _, msg in logs)
 
 
@@ -55,17 +71,28 @@ def test_start_allowed_once_the_future_is_done(monkeypatch):
         coro.close()
 
 
-def test_running_label_still_wins_with_its_own_message(monkeypatch):
+def test_running_label_now_wakes_instead_of_refusing(monkeypatch):
+    # S5 armed: `⚠ Already running` is replaced by `🟢 Run already live`
+    # — the run never ends on its own, so a second Start re-checks the
+    # queue instead of a second `run_live` (S5, I-47).
     host, logs, scheduled = ready_host("running", Future(), monkeypatch)
-    assert json.loads(host.start_run())["error"] == "already running"
+    res = json.loads(host.start_run())
+    assert res == {"ok": True, "live": True}
     assert scheduled == []
+    assert any("Run already live" in msg for _, msg in logs)
 
 
 def test_check_start_ready_gate_order():
-    """CDP first, then label, then the live future; None when all clear."""
+    """CDP is the only `check_start_ready` gate now (S5); the live gate
+    moved to `start_run` → `_wake_live_or_none` (I-47)."""
     host, _ = make_host((RunControlMixin,), cdp=None, _run_state="idle", _batch_future=Future())
     assert json.loads(rc.check_start_ready(host))["error"] == "cdp not connected"
     host.cdp = make_cdp(connected=True)
-    assert json.loads(rc.check_start_ready(host))["error"] == "batch still active"
+    # a live future no longer blocks `check_start_ready` — it is handled
+    # by `_wake_live_or_none` as a wake, not a refusal
+    assert rc.check_start_ready(host) is None
     host._batch_future = None
     assert rc.check_start_ready(host) is None
+
+
+

@@ -15,6 +15,7 @@ A4 switches it to the orchestrator with the SAME goldens.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -207,11 +208,57 @@ def assert_markers(trace: Dict[str, Any], markers: List[str]) -> None:
 
 
 async def run_orchestrator(env) -> None:
-    from app.services.batch_orchestrator import run_batch
-    await run_batch(env.bridge)
+    """One-shot pass body (S5: lifecycle-less — kept for lock-step compare)."""
+    from app.services.batch_orchestrator import dispatch_pass, prepare_batch
+    from app.services.live.supervisor import plan_pass
+
+    bridge = env.bridge
+    plan = plan_pass(bridge)
+    if plan.reason != "ok":
+        bridge._run_state = "idle"  # the one-shot runner cannot wait (S5 does)
+        return
+    ctx = await prepare_batch(bridge, plan)
+    if ctx is not None:
+        await dispatch_pass(ctx)
+        bridge._run_state = "idle"
 
 
-RUNNERS: Dict[str, Callable] = {"orchestrator": run_orchestrator}
+async def run_supervisor(env) -> None:
+    """Supervisor runner (S5): run_live + the harness stop lever.
+
+    The live run never ends on its own; the harness stops it when the
+    scenario's work is drained (or a wait state arrives before any job),
+    keeping `_stop_after` the stop lever — traces stay comparable.
+    """
+    from app.core.run_scope import eligible_images
+    from app.services.live import supervisor
+    from app.services.live.bus import live_bus
+
+    def plannable():
+        # mirrors supervisor.plan_pass: failed images wait for a manual Retry
+        return [i for i in eligible_images(bridge.state.images) if i.status != "failed"]
+
+    bridge = env.bridge
+    if not plannable() or bridge._stop_after or bridge._cancel_requested:
+        bridge._stop_after = True  # earlier runner drained it / hook fired
+        await supervisor.run_live(bridge)
+        return
+    task = asyncio.ensure_future(supervisor.run_live(bridge))
+    started = env.recs["job_started"]
+    while not task.done():
+        await asyncio.sleep(0.01)
+        busy = any(i.status == "processing" for i in bridge.state.images)
+        if not plannable() and not busy:
+            break
+        if not started.calls and any("Run live" in m for m, _ in env.recs["arena_log"].calls):
+            break  # waiting before any job (no tab / CDP down)
+    bridge._stop_after = True
+    live_bus(bridge).wake("harness")
+    await task
+
+
+RUNNERS: Dict[str, Callable] = {"orchestrator": run_orchestrator,
+                                "supervisor": run_supervisor}
 
 
 def arm_hooks(env, after_event: Optional[Dict[tuple, Callable]] = None,

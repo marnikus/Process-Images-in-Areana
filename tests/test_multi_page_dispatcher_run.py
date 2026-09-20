@@ -245,6 +245,9 @@ async def test_finish_page_safely_settles_on_error_and_reraises_cancel(monkeypat
 
 @pytest.mark.asyncio
 async def test_dispatch_parallel_runs_all_images(runner_fakes):
+    # S5 armed: the dispatcher no longer writes the run state — the
+    # supervisor's tails do (S5, D-8/L-2). The parallel pass just runs
+    # images and emits; the run stays live.
     pool = make_pool(["t1", "t2"])
     pool.register_client("t1", object(), object())
     pool.register_client("t2", object(), object())
@@ -252,7 +255,7 @@ async def test_dispatch_parallel_runs_all_images(runner_fakes):
     imgs = [make_img("a.png", id="i1"), make_img("b.png", id="i2")]
     await mpd.dispatch_parallel(bridge, pool, imgs, make_urls(["t1", "t2"]))
     assert all(img.status == ImageStatus.COMPLETED.value for img in imgs)
-    assert bridge._run_state == "idle"
+    assert bridge._run_state == "running"  # S5: dispatcher leaves the run live
     assert bridge.arena_emits >= 1
     assert any("Parallel batch complete" in msg for _, msg in bridge.logs if isinstance(msg, str))
 
@@ -293,7 +296,7 @@ async def test_dispatch_parallel_honours_stop_after(runner_fakes):
     img = make_img()
     await mpd.dispatch_parallel(bridge, pool, [img], make_urls(["t1"]))
     assert runner_fakes["calls"] == 0 and img.status != ImageStatus.PROCESSING.value
-    assert bridge._run_state == "idle"  # finalization still runs
+    assert bridge._run_state == "running"  # S5: stop-after is the supervisor's decision; dispatcher never idles
 
 
 @pytest.mark.asyncio
