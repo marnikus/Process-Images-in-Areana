@@ -112,17 +112,6 @@ def pick_primary_ws(pages) -> str:
     return ""
 
 
-def prunable_row_ids(rows: Any, live_keys) -> list:
-    """Ids of linked rows whose tabs vanished from the live keys."""
-    live = live_keys or set()
-    gone = []
-    for r in rows or []:
-        tid = r.get("tab_id", "")
-        if tid and tid not in live:
-            gone.append(r.get("id", ""))
-    return gone
-
-
 def plan_auto_connect(tabs: Any, pattern: Any, rows: Any, pooled: Any) -> AutoConnectPlan:
     """Pure plan: rows to add/claim, sockets to join, ids gone stale."""
     pooled = set(pooled or [])

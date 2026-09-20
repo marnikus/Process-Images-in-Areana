@@ -117,13 +117,10 @@ def test_live_tab_keys_skips_devtools_and_keyless():
     assert ac.live_tab_keys(None) == set()
 
 
-@pytest.mark.unit
-def test_prunable_row_ids_only_linked_gone():
-    rows = [row("r1", A1, "t1"), row("r2", A2, "gone"),
-            row("r3", A2), row("r4", "https://other.example/", "t9")]
-    assert ac.prunable_row_ids(rows, {"t1", "t9"}) == ["r2"]
-    assert ac.prunable_row_ids(rows, None) == ["r1", "r2", "r4"]
-    assert ac.prunable_row_ids(None, {"t1"}) == []
+# S6: prunable_row_ids deleted — instant prune replaced by miss hysteresis.
+# Covered by test_removable_rows_names_a_reason_for_every_removal[tab_gone]
+# and test_misses_give_hysteresis_and_reset_on_reappearance in
+# tests/test_url_policy.py.
 
 
 @pytest.mark.unit

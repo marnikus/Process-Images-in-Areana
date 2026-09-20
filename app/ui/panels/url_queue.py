@@ -13,8 +13,13 @@ from datetime import datetime
 from app.core.models import UrlRow
 from app.services.auto_connect import (
     claim_unlinked_from_pool,
-    dedupe_linked_rows,
     enabled_tab_ids,
+)
+from app.services.live import url_policy
+from app.services.live.url_policy import (
+    MAX_URL_LEN,
+    _tab_already_owned,
+    _valid_new_url,
 )
 from app.ui.qt_compat import Slot
 from app.ui.services import arena_serialize, undo_entries
@@ -55,34 +60,13 @@ def _urls_gate_error(bridge, urls) -> str:
 
 
 def _dedupe_state_rows(state_urls) -> tuple[list, int]:
-    """Repair legacy N-rows-per-tab state; returns (plan rows, removed)."""
-    rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id, "enabled": u.enabled}
-            for u in state_urls]
-    kept, dropped = dedupe_linked_rows(rows)
-    if not dropped:
-        return rows, 0
-    drop = {r["id"] for r in dropped}
-    state_urls[:] = [u for u in state_urls if u.id not in drop]
-    return kept, len(dropped)
-
-
-def _tab_already_owned(urls, tab_id: str) -> bool:
-    """One row per tab (I-33): never add a second."""
-    for u in urls:
-        if u.tab_id == tab_id:
-            return True
-    return False
+    """Repair legacy N-rows-per-tab state; S6: delegates to url_policy."""
+    return url_policy.dedupe_rows(state_urls)
 
 
 def _add_missing_rows(urls, adds) -> int:
-    """Append rows for tabs none owns yet; returns count added."""
-    added = 0
-    for url, tab_id in adds:
-        if _tab_already_owned(urls, tab_id):
-            continue
-        urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
-        added += 1
-    return added
+    """Append rows for tabs none owns yet; S6: delegates (fresh memory)."""
+    return url_policy.add_rows(urls, adds, {})
 
 
 def push_urls_undo(bridge) -> None:
@@ -95,35 +79,22 @@ def push_urls_undo(bridge) -> None:
         pass
 
 
-MAX_URL_LEN = 2048  # browsers/CDP choke on longer; keeps the arena.json row sane
-
-
-def _valid_new_url(url: str):
-    """Trimmed URL or an error string (add/edit gate)."""
-    url = (url or "").strip()
-    if not url:
-        return None, "empty URL"
-    if not (url.startswith("http://") or url.startswith("https://")):
-        return None, "URL must start with http:// or https://"
-    if len(url) > MAX_URL_LEN:
-        return None, f"URL too long (>{MAX_URL_LEN} chars)"
-    return url, ""
-
-
 def _duplicate_url(urls, url: str, skip_id: str = "") -> bool:
     """Same URL already on another row (case-sensitive, trailing-slash exact)."""
     return any(u.url == url and u.id != skip_id for u in urls)
 
 
-def commit_urls(bridge) -> None:
+def commit_urls(bridge, undo: bool = True) -> None:
     """The ONE write path for URL rows: persist + emit state + undo snapshot.
 
     Bug 2026-10-02: slots that saved without emitting left the table stale
     until the next unrelated refresh; `_save_arena` emits `arena_state_updated`
     and `push_urls_undo` records the global undo entry (RULE 12).
+    S6: system passes (undo=False) skip the snapshot — reproducible by re-scan.
     """
     bridge._save_arena()
-    push_urls_undo(bridge)
+    if undo:
+        push_urls_undo(bridge)
 
 
 def _find_url(urls, url_id: str):

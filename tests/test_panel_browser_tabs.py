@@ -378,82 +378,115 @@ async def test_fetch_tabs_slot_and_diagnose(cdp_server, cfg, monkeypatch):
 
 
 async def test_auto_scan_plan_apply_report(cfg):
-    from app.services.auto_connect import AutoConnectPlan
+    """S6 migration: claim/add/report/prune via reconcile_once + Report.
+
+    plan_auto_sync/apply_auto_plan/plan_has_changes/report_auto_plan/
+    prune_auto_rows moved into live/reconcile.py (Report carries the counts).
+    """
+    from app.services.live.reconcile import LiveDeps, Report, reconcile_once
     tabs = [tab("t1", "A", "https://arena.ai/c/direct")]
     row = UrlRow.create("https://arena.ai/c/direct")  # unlinked row for the tab
     bridge = make_bridge(cdp=None, config=cfg, urls=[row])
-    # planner works on row dicts (the _dedupe_state_rows shape)
-    rows = [{"id": row.id, "url": row.url, "tab_id": None, "enabled": True}]
-    plan = bt_mod.plan_auto_sync(bridge, tabs, "arena.ai", rows)
-    assert plan.add or plan.claim or plan.connect  # something to do
-    changed = bt_mod.apply_auto_plan(bridge, plan)
-    assert changed is True
-    linked = [u for u in bridge.state.urls if u.tab_id]
-    assert any(u.tab_id == "t1" for u in linked)  # claimed or added
-    # presence + report
-    presence = (0, [])
-    assert bt_mod.plan_has_changes(plan, *presence) is True
-    bridge._emit_pool_status = lambda: bridge.logs.append(("pool", "emitted"))
-    bt_mod.report_auto_plan(bridge, plan, presence, "manual")
+    commits = []
+
+    async def fetch():
+        return tabs
+
+    async def join(ws):
+        pass
+
+    deps = LiveDeps(fetch_tabs=fetch, join_tab=join,
+                    commit=lambda: commits.append(1),
+                    log=lambda m, level="info": bridge.logs.append((level, m)))
+    report = await reconcile_once(bridge, deps, "manual")
+    assert isinstance(report, Report)
+    assert (report.added, report.linked) != (0, 0)  # claimed or added
+    assert any(u.tab_id == "t1" for u in bridge.state.urls)
+    assert commits == [1]
     assert any("Auto-connect:" in msg for _, msg in bridge.logs)
-    # no changes → manual still logs, auto stays quiet
+    # no changes → manual still logs, auto stays quiet, nothing commits
     quiet = []
-    b2 = make_bridge(cdp=None, config=cfg, urls=[UrlRow.create(
+    pool2 = PagePool()
+    pool2.add_page(PageInfo(tab_id="t1", ws_url=tabs[0].ws_url, title="A",
+                            url="https://arena.ai/c/direct"))
+    pool2.get_page("t1").is_connected = True
+    b2 = make_bridge(cdp=None, config=cfg, pool=pool2, urls=[UrlRow.create(
         "https://arena.ai/c/direct", tab_id="t1")])
-    empty_plan = AutoConnectPlan()
-    assert bt_mod.apply_auto_plan(b2, empty_plan) is False
-    assert bt_mod.plan_has_changes(empty_plan, 0, []) is False
-    b2._log = lambda m, l="info": quiet.append(m)
-    bt_mod.report_auto_plan(b2, empty_plan, (0, []), "manual")
+
+    async def fetch_t1():
+        return tabs
+
+    deps2 = LiveDeps(fetch_tabs=fetch_t1, join_tab=join,
+                     commit=lambda: commits.append(1),
+                     log=lambda m, level="info": quiet.append(m))
+    r2 = await reconcile_once(b2, deps2, "manual")
+    assert (r2.added, r2.linked, r2.removed, r2.joined, r2.revived, r2.stale) == (0, 0, 0, 0, 0, 0)
+    assert commits == [1]
     assert any("no changes" in m for m in quiet)
-    b3 = make_bridge(cdp=None, config=cfg)
-    b3._log = lambda m, l="info": quiet.append(m)
     quiet_before = len(quiet)
-    bt_mod.report_auto_plan(b3, AutoConnectPlan(), (0, []), "auto")
+    await reconcile_once(b2, deps2, "auto")
     assert len(quiet) == quiet_before  # auto source stays silent on no-change
-    # prune: plan.remove holds row ids whose tabs vanished
+    # prune with a reason: two banked misses + a third makes tab_gone
     gone_row = UrlRow.create("https://arena.ai/c/direct", tab_id="t1")
     b4 = make_bridge(cdp=None, config=cfg, urls=[gone_row])
-    gone_plan = AutoConnectPlan()
-    gone_plan.remove = [gone_row.id]
-    assert bt_mod.prune_auto_rows(b4, gone_plan) == 1
+    b4._reconcile_misses = {"t1": 2}
+
+    async def fetch_none():
+        return []
+
+    deps4 = LiveDeps(fetch_tabs=fetch_none, join_tab=join,
+                     commit=lambda: commits.append(1),
+                     log=lambda m, level="info": b4.logs.append((level, m)))
+    r4 = await reconcile_once(b4, deps4, "auto")
+    assert r4.removed == 1
     assert b4.state.urls == []
-    assert bt_mod.prune_auto_rows(b4, AutoConnectPlan()) == 0
+    assert any("tab_gone" in msg for _, msg in b4.logs)
 
 
 async def test_auto_prune_allowed_and_join(cdp_server, cfg, monkeypatch):
+    """S6 migration: hysteresis replaces the run-state prune gate.
+
+    auto_prune_allowed/join_new_tabs deleted — reconcile runs in every run
+    state (see test_reconcile_runs_in_every_run_state) and skips empty sockets.
+    """
+    from app.services.live.reconcile import LiveDeps, reconcile_once
     pool = PagePool()
     client = make_client(cdp_server)
     bridge = make_bridge(cdp=client, config=cfg, pool=pool)
-    tabs = [tab("t1", "A", "https://arena.ai/c")]
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is True
-    bridge._run_state = "running"
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is False
-    bridge._run_state = "idle"
-    assert bt_mod.auto_prune_allowed(bridge, []) is False
-    # join skips empty sockets
+    bridge._run_state = "running"  # the old gate would refuse; hysteresis allows
+    tabs = [SimpleNamespace(id="t1", title="A", url="https://arena.ai/c",
+                            ws_url="", type="page"),  # the helper never yields ""
+            tab("t2", "B", "https://arena.ai/c/x")]
     joined = []
 
-    async def fake_join(b, ws):
+    async def fetch():
+        return tabs
+
+    async def fake_join(ws):
         joined.append(ws)
-    monkeypatch.setattr(bt_mod, "do_connect_page_pool", fake_join)
-    await bt_mod.join_new_tabs(bridge, ["ws://a/1", "", "ws://a/2"])
-    assert joined == ["ws://a/1", "ws://a/2"]
+
+    deps = LiveDeps(fetch_tabs=fetch, join_tab=fake_join, commit=lambda: None,
+                    log=lambda m, level="info": None)
+    report = await reconcile_once(bridge, deps, "auto")
+    assert report.added == 2  # reconciled while running
+    assert joined == [tabs[1].ws_url]  # the empty socket was skipped
+    assert report.joined == 1
 
 
-async def test_auto_scan_pass_end_to_end(cdp_server, cfg):
+async def test_do_auto_connect_scan_end_to_end(cdp_server, cfg):
+    """S6 migration: auto_scan_pass moved into live/reconcile.py; the slot path is do_auto_connect_scan."""
     pool = PagePool()
     client = make_client(cdp_server)
     client.fetch_tabs = fake_fetch([tab("t1", "A", "https://arena.ai/c/direct"),
                                     tab("t2", "B", "https://other.example.com/x")])
     bridge = make_bridge(cdp=client, config=cfg, pool=pool)
-    await bt_mod.auto_scan_pass(bridge, "manual")
+    await bt_mod.do_auto_connect_scan(bridge, "manual")
     # arena.ai row added + pool joined; non-matching tab ignored
     assert any(u.url == "https://arena.ai/c/direct" for u in bridge.state.urls)
     assert pool.get_page("t1") is not None and pool.get_page("t2") is None
     assert any("Auto-connect:" in msg for _, msg in bridge.logs)
     # second scan: no changes, pool presence kept
-    await bt_mod.auto_scan_pass(bridge, "manual")
+    await bt_mod.do_auto_connect_scan(bridge, "manual")
     assert any("no changes" in msg for _, msg in bridge.logs)
     # busy guard + exception path
     bridge._auto_scan_running = True

@@ -9,6 +9,7 @@ from PySide6.QtWebChannel import QWebChannel
 
 from app.persistence.config_manager import ConfigManager
 from app.ui.bridge import Bridge
+from app.ui.panels.browser_tabs import start_url_reconciler
 from app.ui.services.captcha_recordings_bridge import CaptchaRecordingsBridge
 
 try:
@@ -53,6 +54,7 @@ class MainWindow(QMainWindow):
         manager = self.bridge._captcha_service().recordings
         self.recordings_bridge = CaptchaRecordingsBridge(manager, self)
         self._attach_web_channel()
+        start_url_reconciler(self.bridge)
 
     def _init_cdp_client(self) -> None:
         # CDP client for Chrome remote debugging — host/port from config so user can choose
