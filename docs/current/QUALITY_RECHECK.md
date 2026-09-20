@@ -789,6 +789,22 @@ above 120 LOC; params ≤ 4 everywhere (S6's `_Pass` context object). Latent
 defects: **L-1, L-5, L-6, L-7, L-8 all closed**; L-2 (run-state writer) closed
 by S5, L-3/L-4 by S4/S6.
 
+### 2026-09-20 review of the chain (RULE 16 / 18 / 19, real tools)
+
+Full per-file statistics: `current/metrics_report_2026-09-20-s0-s10-chain.md`.
+radon / cognitive-complexity / vulture installed in the sandbox for the first
+time; the chain's new Python averages radon **A (2.8)**, max CC 10
+(`reconcile._remove_rows`, at the line), max cognitive 8, max nesting 3, max
+params 4, max function 22 lines, max class 57 lines / 6 methods; jscpd
+1.119 → 1.078 % with 0 clones touching new files; vulture 0 new (2 hits at
+`bridge.py:24` pre-exist at `528af87`). One §16.3 defect found and fixed:
+`supervisor._crash_tail` had zero hits — `test_live_supervisor.py` gained
+`test_a_crashing_pass_ends_the_loop_loudly_and_idles` (verified to fail when
+the log line is removed); `supervisor.py` is now 100 % line. Lane: pytest
+**1,773 / 0**, JS 275 / 0, coverage 87.83 / 84.48. Debt named: this file is
+795 lines against RULE 18.4's 200 — recommended S11 housekeeping moves the
+per-stage entries to the archive and leaves the ten-stage table here.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

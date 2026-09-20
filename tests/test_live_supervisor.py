@@ -151,6 +151,26 @@ async def test_stop_is_the_only_way_out(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_crashing_pass_ends_the_loop_loudly_and_idles(tmp_path, monkeypatch):
+    """RULE 4: an unexpected exception inside a pass is named in the log, the loop ends, run_state is idle.
+
+    Would fail if `_crash_tail` were deleted (no `Batch runner crashed` line) or if the
+    `except Exception` branch were dropped (the task would raise instead of finishing)."""
+    env = live_env(tmp_path, monkeypatch)
+
+    async def boom(_bridge, _plan):
+        raise RuntimeError("pipeline exploded")
+    monkeypatch.setattr(sv, "run_pass", boom)
+    task = asyncio.ensure_future(sv.run_live(env.bridge))
+    await settle(task)
+    assert task.done() and task.exception() is None
+    crash = [m for m in logs(env) if "Batch runner crashed" in m]
+    assert crash == ["Batch runner crashed: pipeline exploded"]
+    assert env.bridge._run_state == "idle" and env.bridge.state.run_state == "idle"
+    assert not any("🏁 Batch cancelled" in m for m in logs(env))  # a crash is not a cancel
+
+
+@pytest.mark.asyncio
 async def test_stop_after_current_finishes_the_pass_then_ends(tmp_path, monkeypatch):
     env = live_env(tmp_path, monkeypatch, n_images=2)
     arm_hooks(env, after_finish=lambda e: setattr(e.bridge, "_stop_after", True))
