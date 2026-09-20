@@ -153,26 +153,55 @@ cognitive ≤8, edited/new symbols ≤7 (limit 15). No JS touched. Slots 135.
 Docs: RULE 20 amendment, I-19/I-34 amended, I-48 landed (plan I-40), SoR row 12,
 QUALITY_RECHECK S2 entry, this record.
 
-## S3 — Capped captcha pause clock — NEXT (S2 green)
+## S3 — Capped captcha pause clock — DONE (2026-09-20)
 
 Boundary: only the per-page generation hard timeout pauses while an in-scope captcha
-settle runs. The capped pause is per generation wait.
-Interfaces: `core.pause_clock.PauseClock` + `paused_elapsed` (D-25: NOT in
-output_wait.py — max_class_loc 4); `WaitSpec.pause` carrier; `captcha.policy`
-cap trio (`pause_cap_seconds`, `wait_reason`, `WaitDeadline`).
-RED: unit tests (zero/negative note, cap saturation, cumulative settles, paused
-elapsed, expiry, timeout mapping) + browser-layer test with a real polling loop and
-an OFF positive control whose clock stays zero.
-GREEN: build PauseClock from `ctrl.pause_cap_s`, time only the settler through
-`_settle_timed` (D-26 extraction), pass through PollSpec; subtract paused total only
-in the hard timeout check. Cap expiry ⇒ `wait_timeout` ⇒ honest retryable failure.
-REFACTOR/EQUIVALENCE: preserve `cooldown_service.wait_captcha_cleared` signature and
-its pinned never-gives-up test. Do not widen CDPArenaController/WaitSpec signatures.
-Gate: pause-clock, output wait, CDP integration, coverage ratchet for the touched files.
-Docs: RULE 20 (bounded wait + capped pause), row 8 (knob doubles as cap), row 12.
-Lands plan I-44 as **I-52**.
+settle runs; the capped pause is per generation wait (D-14R). The wait itself is
+bounded by the same knob (D-14R); the overlay WHY line is a 2-row lookup (D-15).
+Interfaces as built: new `app/core/pause_clock.py` (`PauseClock`:
+note/expired/remaining/paused_elapsed/describe, 100% covered — D-25: NOT in
+output_wait.py, max_class_loc 4); `WaitSpec.pause` carrier (span 3→4, exactly at
+ceiling); `captcha.policy` cap trio (`pause_cap_seconds` clamped 10…3600 for the
+pause clock, `wait_reason`, `WaitDeadline` composed into the wait's stop predicate).
+RED (observed): the 4 new files failed collection (`ModuleNotFoundError: pause_clock`
++ `ImportError` for the trio); after GREEN they pass 23/23.
+GREEN: `output_wait._check_timeout` → 16 lines (CC 6, at budget; stamps elapsed/
+paused_s/pause_note on the timeout + mismatch shapes only — the fallback-owned dict
+is never touched); `cdp_arena/output` + D-26 `_settle_timed` (times ONLY the settler)
++ `_timeout_text` (pause evidence rides inside `result`: params stay 4) + 3
+same-line wiring edits; `captcha/service` `_manual_wait` → 21 (deadline reuse via
+`getattr(ctx.stop, "deadline")` so sjr and service share ONE deadline — no
+two-deadline race; overlay call folded 2 lines→1 to meet the ≤21 budget) +
+`_wait_outcome` (solved ⇒ manual, cap ⇒ wait_timeout, else stopped — no None-check:
+private, deadline guaranteed); sjr `wait_for_output` installs
+`PauseClock(pause_cap_seconds)` + shared-try `delattr` (22/CC6, exact), the
+CHECK_SECURITY path builds `WaitDeadline(_wait_timeout)` on the RAW knob (clamp
+conflict resolved: the WAIT deadline uses the raw knob while the PAUSE clock uses the
+clamped cap), `wait_timeout` ⇒ `RuntimeError(reason)` (CC 7→8: the `or`-default
+BoolOp the plan's count missed; recorded max is 9).
+REFACTOR/EQUIVALENCE: `wait_captcha_cleared` untouched (pinned never-gives-up test
+green unedited); the cap is enforced by the stop closure + `_wait_outcome`. Armed
+with recorded reason: `:130` (D-15 rewrites the no-key wording to the pause sentence)
+and `:163` (solving words now need the keystore key AND the loop — an
+`apply_settings` line). No golden contains `Timeout`; all 12 goldens byte-identical;
+the OFF positive control (test 13) keeps its clock at zero.
+Gate: new files 23/23 (real short sleeps for timing — RULE 16; no mocks); full
+pytest **1662 passed / 1 skipped** (incl. 15 hygiene); coverage **87.19 / 83.40**
+(baseline 86.36/82.33 — ratchet passes; pause_clock + policy 100, output_wait +
+cdp_arena missing-lines shifted uniformly ⇒ every new line covered); Python gate
+**0 fails** (the 1 JS fail on untouched `captcha.js` is pre-existing —
+stash-proven); output_wait maxima byte-identical (23/4/8/3/4), cdp_arena identical
+(16/7/4/1/4), service file max 21 (recorded 27), cognitive ≤8 (gate max_cog 0 on
+all 6 touched files). No JS touched. Slots 135 (untouched).
+Deviations from tdd-interfaces §S3: §S3.6 "from `ctrl.pause_cap_s`" refined — the
+clock is built in `wait_for_output` (the only site knowing bridge+scope) via
+`pause_cap_seconds(bridge)` and carried on `ctrl.pause_clock`; no signature widened.
+`evidence.md` §2.1 NOT marked closed in the archive (RULE 17, S1 precedent) —
+closure recorded here instead.
+Docs: RULE 20 amendment (bounded wait + capped pause), row 8 (knob doubles as cap),
+row 12, I-52 landed (plan I-44), QUALITY_RECHECK S3 entry.
 
-## S4 — Live queue feed and wake funnel — PENDING (needs S1 green; S2/S3 independent)
+## S4 — Live queue feed and wake funnel — NEXT (S3 green)
 
 Boundary: one eligibility read model (EXTEND `core/run_scope.py` — no second rule)
 and one queue mutation funnel feed a live run. Claim-time recheck prevents stale,

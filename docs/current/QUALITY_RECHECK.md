@@ -213,6 +213,22 @@ Full pytest **1,639 / 1 skipped** (goldens byte-identical), coverage
 structure counts, cognitive ≤8 (edited/new ≤7), slots **135**.
 SoR row 12 + I-19/I-34 amended, I-48 landed (plan I-40). No JS touched.
 
+### 2026-09-20 S3 Capped captcha pause clock (branch `arena/01a0bf4d-…`)
+
+New `app/core/pause_clock.py` (`PauseClock`, 100% covered) + `WaitSpec.pause` carrier
+(span 3→4, at ceiling) + policy cap trio (`pause_cap_seconds` clamped 10…3600,
+`wait_reason`, `WaitDeadline`) + `_wait_outcome` (solved ⇒ manual, cap ⇒ wait_timeout,
+else stopped). RED observed (4 collection errors), then green: new files 23/23
+(real short sleeps, no mocks; OFF positive control keeps its clock at zero).
+Armed with recorded reason: `:130` (D-15 rewrites the no-key wording) + `:163`
+(solving words need the keystore key AND the loop).
+Full pytest **1,662 / 1 skipped** (incl. 15 hygiene; goldens byte-identical), coverage
+**87.19 / 83.40** (baseline 86.36/82.33; pause_clock + policy 100), Python gate
+**0 fails** (1 JS fail on untouched `captcha.js` is pre-existing — stash-proven),
+output_wait maxima byte-identical (23/4/8/3/4), cdp_arena identical, service file max
+21 (recorded 27), cognitive ≤8, slots **135**.
+SoR rows 8 + 12, I-52 landed (plan I-44). No JS touched.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

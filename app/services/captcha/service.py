@@ -30,7 +30,7 @@ from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 from app.services.captcha_recording import RecordingManager
 
 from .key_store import CaptchaKeyStore, clamp_timeout
-from .policy import captcha_in_scope, out_of_scope, solver_running
+from .policy import WaitDeadline, captcha_in_scope, out_of_scope, solver_running, wait_reason
 from .signals import CaptchaSignal, SolveOutcome, host_of
 from .stats import CaptchaStatsStore
 
@@ -241,9 +241,7 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
                            svc: Optional["CaptchaService"], rep: Dict[str, Any]) -> SolveOutcome:
     """Wait-only policy: the pipeline never solves; the Watcher (when ON) or
     the user clears the dialog. `svc` is kept for the call contract (stats)."""
-    watcher_on = _watcher_running(ctx)
-    reason = ("Captcha Watcher is solving it (2Captcha SDK)" if watcher_on
-              else "solve in Chrome — or turn the Watcher ON to auto-solve")
+    reason = wait_reason(ctx.bridge)
     return await _manual_wait(ctx, signal, reason, rep)
 
 
@@ -256,29 +254,37 @@ async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
                        rep: Dict[str, Any]) -> SolveOutcome:
     """Overlay (with the why-not-solving flag) + poll until the dialog clears."""
     timeout = _wait_timeout(ctx)
+    deadline = getattr(ctx.stop, "deadline", None) or WaitDeadline(timeout)
     _log(ctx, f"🛡️ FLAG CAPTCHA_WAITING — captcha on screen (tab {str(ctx.tab_id)[:12]}, {host_of(signal.page_url)}) — awaiting your solve in Chrome", "error")
     try:
-        await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha",
-                                            timeout_sec=timeout, sub=reason)
+        await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha", timeout_sec=timeout, sub=reason)
     except Exception:
         pass
     from app.services.cooldown_service import wait_captcha_cleared
-    solved = await wait_captcha_cleared(ctx.ctrl, _stop_pred(ctx), timeout,
+    solved = await wait_captcha_cleared(ctx.ctrl, deadline.stop_or(_stop_pred(ctx)), timeout,
                                         lambda m, l="info": _log(ctx, m, l))
     try:
         await ctx.ctrl.hide_watcher_overlay()
     except Exception:
         pass
-    if not solved:
-        out = SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
-    else:
-        _record_stats(ctx, "manual_solved", host_of(signal.page_url))
-        _record_penalty(ctx)
-        method = "watcher" if _watcher_running(ctx) else "manual"
-        out = SolveOutcome(status="manual", method=method)
+    out = await _wait_outcome(ctx, signal, solved, deadline)
     _finish_resolution(rep, out)
     _emit_report(ctx, rep)
     return out
+
+
+async def _wait_outcome(ctx: CaptchaCtx, signal: CaptchaSignal, solved: bool,
+                        deadline: WaitDeadline) -> SolveOutcome:
+    """Map the wait end: solved ⇒ manual, cap ⇒ wait_timeout, else stopped."""
+    if solved:
+        _record_stats(ctx, "manual_solved", host_of(signal.page_url))
+        _record_penalty(ctx)
+        method = "watcher" if _watcher_running(ctx) else "manual"
+        return SolveOutcome(status="manual", method=method)
+    if deadline.expired():
+        return SolveOutcome(status="wait_timeout",
+                            reason=f"Captcha wait timed out at the {deadline.cap_s:g}s cap")
+    return SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
 
 
 class CaptchaService:

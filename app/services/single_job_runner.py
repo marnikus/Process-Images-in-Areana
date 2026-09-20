@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.enums import ImageStatus
 from app.core.naming import OutputSpec, atomic_write_bytes, get_output_path
+from app.core.pause_clock import PauseClock
 from app.browser.dom_highlight import build_find_probe, build_highlight_probe
 from app.browser.probe_selectors import (
     send_click_primary,
@@ -22,7 +23,7 @@ from app.browser.site_adapter import get_selector
 from app.browser.probe_requests import FindProbeSpec, HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.services.await_processing import handle_await_processing
-from app.services.captcha.policy import captcha_in_scope
+from app.services.captcha.policy import WaitDeadline, captcha_in_scope, pause_cap_seconds
 from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
@@ -80,6 +81,8 @@ def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
         raise RuntimeError("Cancelled during CAPTCHA")
     if outcome.status == "page_error":
         raise RuntimeError(outcome.reason or "Page error during CAPTCHA")
+    if outcome.status == "wait_timeout":
+        raise RuntimeError(outcome.reason or "Captcha wait timed out")
     if outcome.status == "token_stale":
         try:
             ctx.bridge._log("⚠️ CAPTCHA API token stale; continuing page flow", "warn")
@@ -90,6 +93,7 @@ def _handle_captcha_outcome(ctx: JobCtx, outcome: Any) -> None:
 async def _run_security_captcha(ctx: JobCtx) -> None:
     """Solve/handle the visible security dialog (closures + outcome)."""
     from app.services.captcha import CaptchaCtx, handle_captcha
+    from app.services.captcha.service import _wait_timeout
 
     def log(msg, level="info"):
         try:
@@ -100,9 +104,10 @@ async def _run_security_captcha(ctx: JobCtx) -> None:
     def stop():
         return bool(getattr(ctx.bridge, "_cancel_requested", False)) or _tab_aborted(ctx)
 
+    deadline = WaitDeadline(_wait_timeout(ctx))
     outcome = await handle_captcha(CaptchaCtx(ctrl=ctx.ctrl, pool=getattr(ctx.bridge, "_page_pool", None),
                                               bridge=ctx.bridge, tab_id=ctx.tab_id,
-                                              source="check-security", stop=stop, log=log))
+                                              source="check-security", stop=deadline.stop_or(stop), log=log))
     _handle_captcha_outcome(ctx, outcome)
 
 
@@ -252,6 +257,7 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
         _arm_revival(ctx)  # bounded resubmit if the blocked generation died
         if captcha_in_scope(ctx.bridge):
             ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
+            ctx.ctrl.pause_clock = PauseClock(pause_cap_seconds(ctx.bridge))
         status, data, src = await _poll_generation(ctx, timeout_ms)
         if status == "completed" and src:
             return await _verify_download(ctx, src)
@@ -262,6 +268,7 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     finally:
         try:
             delattr(ctx.ctrl, "security_settler")
+            delattr(ctx.ctrl, "pause_clock")  # installed together above; one try covers both
         except Exception:
             pass
         _clear_revival(ctx)

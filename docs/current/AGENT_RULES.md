@@ -509,6 +509,16 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
   `tests/test_captcha_scope.py` (8) + `tests/test_watcher_off_zero_activity.py` (3,
   incl. the ON positive control); the golden harness arms `watcher_on=True` for the
   captcha golden so all 12 goldens stay byte-identical.
+* **Bounded wait + capped pause (amendment 2026-09-20, S3):** the in-scope captcha
+  wait ends at one knob — `watcher_captcha_timeout_sec` (default 300) — which doubles as
+  the per-generation-wait pause cap (D-14R, RULE 10: one control per decision). The pause
+  side clamps the knob to 10…3600 (`pause_cap_seconds`); the wait side uses it raw. At the
+  cap the wait ends as `wait_timeout`, the job fails retryable with the honest reason, the
+  tab keeps its normal cooldown, and no penalty is recorded. The overlay WHY line is a
+  2-row lookup (`wait_reason`, D-15): solving words only with a stored key AND a running
+  loop, otherwise "solve it in Chrome — the generation timeout is paused while you solve".
+  Tests: `tests/test_pause_clock.py` (8) + `tests/test_output_wait_timeout_pause.py` (5) +
+  `tests/test_captcha_wait_cap.py` (6) + `tests/test_captcha_wait_reason.py` (4).
 * **Key hygiene (non-negotiable even when opt-in is ON):** the keys live only in
   `config/captcha_solvers.json` (one per provider — 2Captcha | CapMonster Cloud — git-ignored,
   0600 best-effort; the older single-provider `config/2captcha.json` is folded in on first save);

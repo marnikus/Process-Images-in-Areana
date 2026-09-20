@@ -7,6 +7,7 @@ services never import panels.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from .signals import SolveOutcome
@@ -44,3 +45,43 @@ def captcha_in_scope(bridge: Any) -> bool:
 def out_of_scope() -> SolveOutcome:
     """The OFF outcome: callers map statuses, never None."""
     return SolveOutcome(status="out_of_scope", reason="watcher off")
+
+
+def pause_cap_seconds(bridge: Any) -> int:
+    """The captcha cap knob for the pause budget, clamped 10…3600 (default 300)."""
+    try:
+        raw = int(bridge.config.get_state("watcher_captcha_timeout_sec", 300))
+    except Exception:
+        return 300
+    return max(10, min(3600, raw))
+
+
+def wait_reason(bridge: Any) -> str:
+    """Overlay WHY line: solving words only with a key AND a running loop (D-15)."""
+    if has_solver_key(bridge) and solver_running(bridge):
+        return "Captcha Watcher is solving it (2Captcha SDK)"
+    return "solve it in Chrome — the generation timeout is paused while you solve"
+
+
+class WaitDeadline:
+    """Cap deadline composed into the wait's stop predicate (D-14R)."""
+
+    def __init__(self, cap_s: float) -> None:
+        self.cap_s = float(cap_s)
+        self.start = time.monotonic()
+
+    def expired(self) -> bool:
+        """True once cap_s seconds have elapsed since construction."""
+        return time.monotonic() - self.start >= self.cap_s
+
+    def stop_or(self, stop):
+        """stop OR the cap, with this deadline attached for outcome mapping."""
+        deadline = self
+
+        def wrapped() -> bool:
+            if stop is not None and stop():
+                return True
+            return deadline.expired()
+
+        wrapped.deadline = self
+        return wrapped
