@@ -375,10 +375,37 @@ async def test_wait_announces_watching_state(tmp_path, monkeypatch):
     ctx = make_ctx(bridge, make_ctrl(), make_client(), make_img(tmp_path))
     await sjr._handle_wait(ctx, make_block("WAIT_OUTPUT", timeout_ms=1000))
     assert bridge._events[0][1] == "running"
+    assert bridge._events[-1][1] == "success"
+
+
+@pytest.mark.asyncio
+async def test_await_processing_is_not_the_new_output_wait(tmp_path, monkeypatch):
+    """B12: AWAIT_PROCESSING_IMAGE used to run `_handle_wait` (wait for a NEW
+    output image + generation overlay) — before ATTACH_IMAGE that burned the
+    whole 120 s timeout on every idle page. It now has its own handler and an
+    idle page passes through without touching the new-output machinery."""
+    from app.services import await_processing
+    instant_sleep(monkeypatch)
+    assert sjr._handler_map()["AWAIT_PROCESSING_IMAGE"] is await_processing.handle_await_processing
+    waits = []
+
+    async def _wait(*a, **k):
+        waits.append(1)
+        return "failed", {"error": "Timeout after 120000ms"}
+
+    bridge = make_bridge()
+    ctrl = make_ctrl(wait_for_new_output=_wait)
+    ctx = make_ctx(bridge, ctrl, make_client(), make_img(tmp_path))
+    block = make_block("AWAIT_PROCESSING_IMAGE", timeout_ms=120000)
+    await sjr._handler_map()[block.block_id](ctx, block)
+    assert waits == [], "the idle page must not enter the new-output wait"
+    assert [e[1] for e in bridge._events] == ["success"]
+    assert "idle" in bridge._events[0][2]
+    # and WAIT_OUTPUT still fails honestly when nothing arrives (no is_await leniency left)
     bridge2 = make_bridge()
-    ctx2 = make_ctx(bridge2, make_ctrl(), make_client(), make_img(tmp_path))
-    await sjr._handle_wait(ctx2, make_block("AWAIT_PROCESSING_IMAGE", timeout_ms=1000))
-    assert bridge2._events[0][1] == "waiting"
+    ctx2 = make_ctx(bridge2, make_ctrl(wait_for_new_output=_wait), make_client(), make_img(tmp_path))
+    with pytest.raises(RuntimeError, match="Wait failed"):
+        await sjr._handle_wait(ctx2, make_block("WAIT_OUTPUT", timeout_ms=1000))
 
 
 @pytest.mark.asyncio

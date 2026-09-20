@@ -536,6 +536,88 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
   `tests/test_action_blocks_defaults.py` +2 (no leaked class tables, dict
   round-trip stable).
 
+## B12 — First run "starts without pasting image and prompt and waits for a generation that never starts" (`services/single_job_runner.py`, new `services/await_processing.py`, new `browser/processing_probe.py`)
+
+* **Saw (user, after B11):** the run began, nothing was attached or
+  inserted into the composer, Chrome showed the "wait for finish
+  generation" overlay and the block rows sat in *waiting*; "second run
+  after wait is working". Nothing in the Action Blocks list had been
+  touched (rows rendered, no chip / drag / edit).
+* **Not the cause (checked first, because B11 was the last change):** the
+  saved stack. The B11 UI writes nothing at boot or on select (whole-page
+  jsdom run: 0 `save_action_blocks` calls until a field is edited, and an
+  edit changes exactly that field, order kept); the `ClassVar` change has
+  no `dataclasses.fields()` consumer and every dict round-trips; the runner
+  reads the stack through the same `get_action_blocks` on every run. The
+  attach / insert steps themselves (`ctrl.attach_image`, `ctrl.insert_prompt`)
+  do not even read the block fields.
+* **Root cause — `AWAIT_PROCESSING_IMAGE` was wired to the WAIT_OUTPUT
+  handler:** `_handler_map()` mapped both `WAIT_OUTPUT` and
+  `AWAIT_PROCESSING_IMAGE` to `_handle_wait`, i.e. `wait_for_output()` — the
+  *new output image* wait: generation overlay (`wait for finish generation`,
+  600 s countdown), pool row `waiting generation`, revival arming, poll of
+  `JS_CHECK_NEW_OUTPUT_V3` against the baseline until a NEW image appears or
+  `timeout_ms` (120 000) elapses; the only `is_await` difference was "do not
+  raise on timeout". The default stack (`DEFAULT_STACK_ORDER`, since the
+  import `0eeec39`) places the block at position 4 — **before**
+  `ATTACH_IMAGE` / `INSERT_PROMPT` / `SUBMIT`. On an idle page nothing has
+  been submitted, so no new image can ever appear: the block waited the
+  full 120 s with the generation overlay up, then emitted `success` and the
+  stack went on to attach, insert, submit and download — exactly the
+  observed "paste nothing, wait for a generation, then it works". The
+  block's own configuration was never read: its default selector
+  `div:has-text("Processing"), …` is Playwright syntax (never valid CSS)
+  and no probe in the tree ever received it or `match_text`. The definition
+  text ("waiting block when the system detects awaiting elements … shows
+  waiting state, not error") describes an indicator poll, not an output
+  wait. B11 did not introduce this; the user's first close look at the
+  block rows (they render since B11) made the 2-minute dead wait visible
+  and attributable.
+* **Change:**
+  * `browser/processing_probe.py` (new, RULE 21 — spinner from
+    `probe_selectors.spinner_selector()`, file listed in the selector-literal
+    lint): `build_processing_probe(selector, match_text)` → JS answering
+    `{processing, indicators, skipped}`: the site spinner
+    (`processing_spinner`, `div.animate-spin`), each comma-separated part of
+    the block selector (`x:has-text("T")` → `x` + own/short-text filter;
+    parts the browser rejects are reported in `skipped`, never fatal;
+    `[aria-busy="true"]`, `.spinner`, … as plain CSS), and `match_text` as a
+    short text node (≤ 40 chars) that **starts** with it — only *visible*
+    elements count (`offsetParent` / computed style / non-empty rect), so
+    hidden spinners and the word "processing" inside the user's own prompt
+    bubble never do. `interpret_processing()` reads no reply / unparseable
+    replies as idle (a broken probe must not stall the run).
+  * `services/await_processing.py` (new): `handle_await_processing` — one
+    probe; idle → `success "Page idle — nothing to wait for"` immediately
+    (no overlay, no sleep); busy → `waiting "Page busy (spinner
+    div.animate-spin) — waiting up to N ms"`, overlay "waiting for the
+    running generation to finish" + pool row `waiting generation`, poll
+    every `extra.poll_interval_ms` (default 1 s, clamped 250–5000) until
+    idle (`success "Processing finished after …"`), timeout (`success
+    "Still busy after N ms — continuing"` + warn log — the block never
+    fails a job) or cancel / tab abort (`skipped`); overlay hidden and pool
+    row back to busy in `finally`.
+  * `single_job_runner.py`: the map entry points at the new handler;
+    `_handle_wait` is WAIT_OUTPUT only again (no `is_await` leniency —
+    an empty wait raises `Wait failed` as before).
+* **Proof:** `tests/js/test_processing_probe.mjs` (12, the **generated**
+  probe executed in jsdom: idle page with old outputs + "processing" inside
+  the prompt + hidden spinners → `false`; visible spinner / `div` label /
+  small wrapper / `aria-busy` / `match_text` prefix → `true` with the
+  indicator; hidden ancestors excluded; rejected selector part skipped),
+  `tests/test_await_processing.py` (13: default stack really puts the block
+  before ATTACH; idle → 1 eval, 0 sleeps, no overlay; busy → waiting →
+  success with overlay show/hide and pool marks; timeout never raises; cancel
+  and tab abort → skipped; raising / empty / non-JSON probe replies → idle;
+  poll clamps; `:has-text` translation; top-level comma split),
+  `tests/test_single_job_runner.py::test_await_processing_is_not_the_new_output_wait`
+  (the handler map + an idle page never enters `wait_for_new_output`;
+  WAIT_OUTPUT still fails honestly), `tests/test_js_payload_syntax.py` and
+  `tests/test_probe_selectors.py` cover the new builder. **Golden
+  re-recorded on purpose:** `happy_full` — `AWAIT_PROCESSING_IMAGE` now
+  `running → success` (the fake page is idle, so no `waiting` row) and one
+  more `evaluate` (the indicator probe); every other golden unchanged.
+
 ## Gate evidence (2026-10-02)
 
 | Gate | Result |
@@ -597,4 +679,15 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 | `tools/verify_quality.py --allow-legacy --coverage-ratchet --js` | PASSED — 0 fails / 0 warns (the B11 comment on the `ClassVar` tables sits above the class, so `action_blocks.py` keeps its class-LOC maximum); coverage 86.37 % line / 82.34 % branch against the 86.36 / 82.33 floor; `--changed --base origin/<branch>` lane on the committed diff: PASSED |
 | JS ratchet (`tools/js_metrics.js` vs `quality_baseline.json`) | every touched `action-blocks/*.js` stays at or under its recorded maxima (`block-render` 188 lines / 33 funcs / func ≤14 LOC, `block-config` 110 / 19 / CC 5, `block-store` 326 / 46 / CC 8, facade 220 / 116); new `block-views.js` (138) and `block-fields.js` (154) meet the hard limits |
 | `tests/test_bridge_slots.py` | frozen surface **135** slots — unchanged (pure UI fix) |
+| `compileall` / pyflakes | clean |
+
+## Gate evidence (2026-10-08, B12)
+
+| Gate | Result |
+|---|---|
+| `pytest -q -n 4` (CI-like, no PySide6) | 1,554 passed, 1 skipped, same 2 pre-existing environmental failures (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message) |
+| `npm run test:js` | 240 pass / 0 fail (228 + `test_processing_probe.mjs` 12) |
+| `tools/verify_quality.py --allow-legacy --coverage-ratchet --js` | PASSED — 0 fails / 0 warns; coverage 86.55 % line / 82.63 % branch against the 86.36 / 82.33 floor (both new modules 100 % line + branch); `--changed --base origin/<branch>` lane on the committed diff: PASSED |
+| Goldens | `happy_full` re-recorded (documented in §B12); the other 11 scenario goldens byte-identical |
+| `tests/test_bridge_slots.py` | frozen surface **135** slots — unchanged (no new slot) |
 | `compileall` / pyflakes | clean |

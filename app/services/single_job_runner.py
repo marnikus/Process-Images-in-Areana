@@ -1,4 +1,4 @@
-# ideal-size: ~830 lines reason=single converged block-runner owns all 20 block handlers sharing JobCtx; splitting handlers across files would scatter one per-image lifecycle that always changes together (RULE 18.2)
+# ideal-size: ~830 lines reason=single converged block-runner owns the block handlers sharing JobCtx; splitting handlers across files would scatter one per-image lifecycle that always changes together (RULE 18.2). AWAIT_PROCESSING_IMAGE lives in services/await_processing.py (B12): it is a different mechanism (indicator poll, never fails), not a variant of the new-output wait.
 """Single job runner — small helpers per RULE 18/16."""
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from app.browser.probe_selectors import (
 from app.browser.site_adapter import get_selector
 from app.browser.probe_requests import FindProbeSpec, HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
+from app.services.await_processing import handle_await_processing
 from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
@@ -466,22 +467,21 @@ async def _handle_submit(ctx: JobCtx, block: Any):
 
 
 async def _handle_wait(ctx: JobCtx, block: Any):
-    """Handle wait (announce watching state first, like the legacy loop)."""
-    # ideals-TABLED (R10.9): CC 9 is 3 readable ternaries + single-level
-    # ifs with no nesting; the A2-converged legacy body stays verbatim.
-    is_await = getattr(block, "block_id", "") == "AWAIT_PROCESSING_IMAGE"
-    label = "Waiting for image to finish generating" if is_await else "Waiting for generation"
+    """WAIT_OUTPUT: announce, then wait for the NEW output image (legacy loop).
+
+    B12: AWAIT_PROCESSING_IMAGE no longer shares this handler — the new-output
+    wait can only end by timeout on an idle page (services/await_processing)."""
     timeout = getattr(block, "timeout_ms", 0) or ctx.bridge.state.settings.timeouts.get("generation", 180) * 1000
-    _emit_action(ctx, block, "waiting" if is_await else "running", f"{label} — timeout {timeout}ms")
+    _emit_action(ctx, block, "running", f"Waiting for generation — timeout {timeout}ms")
     src, fbytes, err = await wait_for_output(ctx, timeout)
     if src:
         ctx.new_src = src
     if fbytes:
         ctx.file_bytes = fbytes
         ctx.ctype = "image"
-    if not ctx.new_src and not is_await:
+    if not ctx.new_src:
         raise RuntimeError(f"Wait failed: {err}")
-    _emit_action(ctx, block, "success", f"Output {ctx.new_src[:60] if ctx.new_src else 'done'}")
+    _emit_action(ctx, block, "success", f"Output {ctx.new_src[:60]}")
 
 
 async def _handle_download(ctx: JobCtx, block: Any):
@@ -733,7 +733,7 @@ def _handler_map():
         "HIGHLIGHT_SUBMIT": _handle_marker_highlight,
         "SUBMIT": _handle_submit,
         "WAIT_OUTPUT": _handle_wait,
-        "AWAIT_PROCESSING_IMAGE": _handle_wait,
+        "AWAIT_PROCESSING_IMAGE": handle_await_processing,
         "DOWNLOAD": _handle_download,
         "VALIDATE": _handle_validate,
         "SAVE": _handle_save,

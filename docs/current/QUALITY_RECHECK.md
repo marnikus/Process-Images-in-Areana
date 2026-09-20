@@ -126,6 +126,27 @@ Python default stack and builtin catalog executed as bridge replies);
 `npm run test:js` 218 → 228; `tests/test_action_blocks_defaults.py` +2;
 slot surface unchanged (135).
 
+### 2026-10-08 follow-up (B12 — first run waited 120 s under "wait for finish generation" before pasting anything)
+
+No re-record needed. `AWAIT_PROCESSING_IMAGE` left the WAIT_OUTPUT handler
+(`bugfix-verification.md` §B12) for two new modules that meet the hard
+limits on their own — `app/browser/processing_probe.py` (171 lines, 7
+functions, one JS literal, max func 17 LOC, max CC 4, nesting 2 after
+`split_selector_list` was split into `_mask_quotes` / `_split_depth0`; the
+first cut was CC 11 / nesting 5 and the gate refused it) and
+`app/services/await_processing.py` (156 lines, 12 functions, max func 17
+LOC, max CC 6, params ≤ 4) — both **100 % line and branch** in the new
+lanes. `single_job_runner.py` did not grow: `_handle_wait` lost its
+`is_await` ternaries (file max CC 9 → 7), the AWAIT entry of the handler
+map points at the new module, 939 lines / 79 functions as recorded. New lanes:
+`tests/test_await_processing.py` (14), `tests/js/test_processing_probe.mjs`
+(12, the generated probe executed in jsdom with a stubbed layout), one new
+runner test; `npm run test:js` 228 → 240; pytest 1,536 → 1,554.
+Characterization golden `happy_full` re-recorded deliberately (the block's
+row is `running → success` on an idle fake page and the probe adds one
+`evaluate`); the other eleven goldens are byte-identical. Slot surface
+unchanged (135).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

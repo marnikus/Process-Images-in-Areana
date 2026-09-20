@@ -130,10 +130,6 @@
   ],
   [
    "AWAIT_PROCESSING_IMAGE",
-   "waiting"
-  ],
-  [
-   "AWAIT_PROCESSING_IMAGE",
    "success"
   ],
   [
@@ -174,7 +170,7 @@
   "button.open",
   "button[aria-label=\"Send message\"]:not([disabled])"
  ],
- "evals": 2,
+ "evals": 3,
  "signals": [
   [
    "job_started",

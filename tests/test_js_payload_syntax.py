@@ -27,6 +27,7 @@ from app.browser import captcha_probes
 from app.browser import dom_highlight as dh
 from app.browser import new_chat
 from app.browser import output_probes
+from app.browser import processing_probe
 from app.browser import recording_probes
 from app.browser.cdp_arena import js_snippets
 from app.utils import page_errors
@@ -72,6 +73,9 @@ def payloads() -> dict:
     out["new_chat.composer_empty"] = new_chat.build_composer_empty_js()
     out["output.baseline"] = output_probes.build_baseline_js()
     out["output.check"] = output_probes.build_check_js(["https://x/old.png"], "20260920-000000-ABCD", [])
+    out["processing.default"] = processing_probe.build_processing_probe(
+        'div:has-text("Processing"), [aria-busy="true"], .spinner', "Processing")
+    out["processing.bare"] = processing_probe.build_processing_probe("", "")
     out["captcha.detect"] = captcha_probes.build_detect_js()
     out["captcha.visible"] = captcha_probes.build_visible_js()
     out["captcha.inject"] = captcha_probes.build_inject_js("tok'en", "site\"key")
@@ -100,6 +104,7 @@ _BUILDERS_COVERED = {
          "build_watcher_overlay_js", "build_watcher_overlay_js_from_spec", "build_watcher_clear_js"},
     new_chat: {"build_page_loaded_js", "build_composer_empty_js"},
     output_probes: {"build_baseline_js", "build_check_js"},
+    processing_probe: {"build_processing_probe"},
     captcha_probes: {"build_detect_js", "build_visible_js", "build_inject_js"},
     recording_probes: {"build_observer_js", "build_netwrap_js", "build_flush_js", "build_snapshot_js"},
     page_errors: {"build_error_scan_js"},
