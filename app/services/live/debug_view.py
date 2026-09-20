@@ -1,14 +1,21 @@
-"""Read-only views of the live loops for the UI (S6: the URL reconcile cadence).
+"""Read-only views of the live loops for the UI (S6 cadence, S9 live view).
 
 One clamp owner for the reconcile interval (`clamp_interval_ms`): the setting
 slot and the JS control both mirror these bounds; the loop reads
 `interval_ms` every pass, so a saved value applies without a restart.
+`live_view` is the Live Worker & Queue Debug payload (rides
+`progress_updated.live`, D-22): queue head from the ONE eligibility rule,
+receiver counts from S7's flag (never recomputed), the captcha cap only while
+the Watcher is ON (D-23). Workers ride `page_pool_updated`; nothing here reads
+the pool. Pure reads — no state, no slot, no signal.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from app.core.run_scope import live_scope
+from app.services.captcha.policy import captcha_in_scope, pause_cap_seconds
 from app.services.live.url_policy import receiver_title
 
 INTERVAL_KEY = "url_reconcile_interval_ms"
@@ -49,3 +56,29 @@ def annotate_receivers(bridge, js_urls: List[Dict[str, Any]]) -> None:
     for js_row in js_urls:
         row = rows.get(js_row.get("id"))
         js_row["receiver_title"] = receiver_title(row, pool) if row is not None else ""
+
+
+def next_queued(images: List) -> str:
+    """The file name the live loop dispatches next (`""` when nothing is eligible)."""
+    queue = live_scope(images)
+    return queue[0].filename if queue else ""
+
+
+def receiver_counts(rows: List) -> Dict[str, int]:
+    """`{total, receivers, not_receivers}` from S7's flag — never recomputed here."""
+    n = len(rows)
+    k = sum(1 for r in rows if getattr(r, "receiver", False))
+    return {"total": n, "receivers": k, "not_receivers": n - k}
+
+
+def live_view(bridge) -> Dict[str, Any]:
+    """`cadence` + queue head + receiver counts + run state (+ `captcha_cap_sec` only while the Watcher is ON)."""
+    images = getattr(bridge.state, "images", None) or []
+    view = {**cadence(bridge),
+            "queued": len(live_scope(images)),
+            "next_image": next_queued(images),
+            "receivers": receiver_counts(getattr(bridge.state, "urls", None) or []),
+            "run_state": str(getattr(bridge, "_run_state", "idle"))}
+    if captcha_in_scope(bridge):
+        view["captcha_cap_sec"] = pause_cap_seconds(bridge)
+    return view

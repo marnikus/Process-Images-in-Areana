@@ -56,8 +56,8 @@ def test_the_value_is_published_in_progress_updated(tmp_path):
     env.bridge._emit_arena_state()
     prog = json.loads(env.recs["progress_updated"].calls[-1][0])
     assert prog["live"]["url_interval_ms"] == 1200
-    assert set(prog["live"]) == {"url_interval_ms", "last_pass_at", "passes"}
-    assert dv.cadence(env.bridge) == prog["live"]
+    assert {"url_interval_ms", "last_pass_at", "passes"} <= set(prog["live"])  # S9 grows the payload (live_view)
+    assert dv.cadence(env.bridge).items() <= prog["live"].items()
 
 
 @pytest.mark.asyncio

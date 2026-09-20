@@ -266,7 +266,14 @@
          data-window="page_pool" panel was unregistered and destroyed by the first grid render) -->
     <div class="panel live-debug-panel" id="winLiveDebug" data-window="live_debug">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">monitor_heart</span> Live Worker &amp; Queue Debug <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
-      <div style="display:flex; flex-direction:column; gap:10px; padding:4px;">
+      <div class="live-debug-body">
+        <div class="live-debug-strip live-debug-head">
+          <span class="material-icons" style="font-size:14px;">playlist_play</span><span id="liveQueueHead">0 pending · queue empty</span>
+          <span class="spacer"></span><span id="liveReceivers">no URL rows</span>
+          <button id="liveRefreshBtn" class="btn-small" title="Re-read the worker snapshot"><span class="material-icons" style="font-size:14px;">refresh</span></button>
+        </div>
+        <div id="liveWorkers" class="live-debug-workers"><div class="live-debug-empty">no worker tabs — add arena.ai tabs to the pool</div></div>
+        <div id="liveCadence" class="live-debug-strip live-debug-cadence">reconcile every 5.0 s · last pass never · 0 passes · run idle</div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
           <button id="poolRefreshBtn" class="btn-small" title="Refresh pool status"><span class="material-icons" style="font-size:14px;">refresh</span> Refresh</button>
           <button id="poolConnectBtn" class="btn-small btn-primary" title="Add selected Chrome tab to pool as steady page"><span class="material-icons" style="font-size:14px;">add_link</span> Add Selected Tab to Pool</button>
@@ -739,6 +746,9 @@
 <script src="js/panels/page-pool/render.js"></script>
 <script src="js/panels/page-pool/actions.js"></script>
 <script src="js/panels/page-pool.js"></script>
+<script src="js/panels/live-debug/store.js"></script>
+<script src="js/panels/live-debug/render.js"></script>
+<script src="js/panels/live-debug/actions.js"></script>
 <script src="js/panels/live-debug.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app/listeners.js"></script>

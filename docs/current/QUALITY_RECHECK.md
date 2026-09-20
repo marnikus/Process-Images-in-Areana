@@ -668,6 +668,51 @@ the two sandbox `libGL` floors. Docs in the same commit: SYSTEM_OF_RECORD
 row 19, module row, **I-51**; AGENT_RULES RULE 10 corollary;
 `docs/README.md` footer.
 
+### 2026-09-20 S9 (Live Worker & Queue Debug — the window's content, D-20 / D-22) — same chain
+
+**RED first.** `tests/test_live_debug_view.py` (7) failed with
+`AttributeError: module … has no attribute 'live_view'`;
+`tests/js/test_live_debug_panel.mjs` part 2 (6 appended — allowed for test
+files, D-24a) 0 / 6 (the S8 stub had no strips, no listeners).
+
+**GREEN — no new slot, no new signal, no Python file added.**
+`live/debug_view.py` 55 → 92 lines, still **100 % covered**: `next_queued`
+(pure, over `core/run_scope.live_scope` — the ONE rule), `receiver_counts`
+(reads S7's flag; a monkeypatched `mark_receivers` proves it is never
+recomputed), `live_view` (`cadence` + `queued` / `next_image` / `receivers`
+/ `run_state`, `captcha_cap_sec` only while the Watcher is ON — D-23's
+observability half; `max_func_loc` 11, CC 3). `layout_state.emit_arena_state`
+is a same-line swap `cadence` → `live_view` (**10 lines, unchanged**;
+`arena_state_updated` carries no new key — locked by test). Four new JS
+files, complete inside the stage (D-24): `panels/live-debug.js` 52 lines /
+13 funcs (self-connects to `progress_updated` + `page_pool_updated` through
+`Boot.onBridgeReady`; idempotent `init`; `arena-app/listeners.js` frozen at
+193 lines — asserted), `live-debug/store.js` 54 (the two payloads + a 1 s
+ticker that never calls the bridge), `live-debug/render.js` 64 (strips; the
+worker line is job-centric, no template shared with `page-pool/render.js` —
+jscpd fell 1.086 → **1.079 %**), `live-debug/actions.js` 15 (the window's
+only bridge traffic: the Refresh button's `get_page_pool_status` read; a
+source lock forbids `save_settings` — D-12R). Refactor before the gate:
+`store.workerLines` and `render._jobText` first measured **CC 11** (fail
+> 10) → split into `_workerLine` / `_captchaText` / `_idleText`; max CC in
+the four files is now 7. Markup: three strips inside `#winLiveDebug` above
+the rescued pool table (no `<input>` — asserted); `live-debug.css` +22 lines.
+
+**Existing tests adapted.** `tests/test_url_interval_setting.py` pinned the
+exact key set of `progress_updated.live`; S9 grows it, so the assertion is
+now a superset check (S6's three keys ⊆ the payload, `cadence` ⊆ `live`).
+`test_live_debug_panel.mjs` test 4 (S8) loads the three submodules the
+facade now needs.
+
+**Lane after S9.** pytest serial **1,772 passed · 4 skipped · 0 failed**
+(+7); `npm run test:js` **275 / 0** (+6); coverage **87.82 % line / 84.48 %
+branch** (S8: 87.80 / 84.47); jscpd `app/` **1.079 %**; goldens (12) and
+`test_bridge_slots` (135, Σ unchanged) green. `verify_quality.py
+--allow-legacy --changed-files` on the six touched app files: **0 fails**;
+`--coverage-ratchet` adds only the two sandbox `libGL` floors. Docs in the
+same commit: SYSTEM_OF_RECORD row 19 (what the window shows), I-52 / I-53
+enforcement pointers, module row; `docs/README.md` footer.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).
