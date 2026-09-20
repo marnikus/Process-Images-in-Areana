@@ -180,6 +180,53 @@ run_state files, +1 naming; pytest 1,554 → 1,621;
 `npm run test:js` unchanged (240); coverage 86.55 / 82.63 → **87.03 / 83.25**.
 Goldens byte-identical; slot surface unchanged (135).
 
+### 2026-09-20 S0 baseline + S1 (L-1 pool join) — chain `…dynamic-urls-and-worker-debug/tdd-interfaces.md`
+
+**S0 (measured at base `528af87`, branch `arena/01a0bfba-…`, Python 3.11.2,
+Node 22.22.3, fresh `.venv` + `npm ci`, no baseline refresh, no override).**
+`pytest -q -n 4`: **1,612 passed · 11 skipped · 1 failed** — the failure is
+`tests/test_repo_hygiene.py::test_no_runtime_data_is_tracked`: the root
+commit tracks `config/{app_state,captcha_stats,cooldowns,undo}.json` and two
+`.pyc` (I-43 regression; no key material inside — grepped). `npm run test:js`
+**240 pass / 0 fail** (29 of 35 `.mjs` listed; the two unlisted tests
+`test_captcha_saved_page.mjs` + `test_title_fit.mjs` pass when run by hand —
+L-7 stays open for S10). Coverage **86.89 % line / 83.21 % branch** (floor
+86.36 / 82.33). Slot surface 135. `verify_quality.py --changed --allow-legacy
+--coverage-ratchet` at base: `main` shares no diff → full-file fallback,
+**119 `ratchet-max_cog 0→N` fails** because every `max_cog` in
+`tools/quality_baseline.json` is `0` (the baseline was recorded without
+`cognitive-complexity` installed); plus 2 per-file coverage floors below
+baseline **at the untouched base tree** (`qt_compat.py` 60.7 → 39.3 %:
+`PySide6.QtWidgets` needs `libGL.so.1`, absent in this sandbox;
+`cdp/transport.py` 90.5 → 84.3 %). Both are environment facts, recorded, not
+gamed — no baseline was refreshed. RED proof of L-1 at base:
+`tests/test_page_pool_join.py` 3 failed / 1 passed
+(`{'ok': False, 'error': "'Host' object has no attribute '_schedule_coro'"}`).
+
+**S1 GREEN.** `app/ui/panels/page_pool.py`: import `schedule_coro` on the
+existing `run_state` import line and `self._schedule_coro(...)` →
+`schedule_coro(self, ...)` — 2 lines, no new symbol; `current_maxima`
+byte-identical to base (func 16 / class 139 / methods 9 / CC 7 / cog 6 /
+nest 1 / params 4 / 234 lines / 14 funcs). L-6 de-masked:
+`tests/test_panel_browser_tabs.py` lost its five `_schedule_coro=` host
+attributes; `test_pool_slots_connect_and_cooldowns` spies on the real
+`page_pool.schedule_coro`. Control: with the production edit reverted the
+new file + the de-masked test fail 4 / pass 1; with it 74 pass across
+`test_page_pool_join`, `test_panel_browser_tabs`, `test_panel_slots`,
+`test_page_pool`, `test_run_state`, `test_bridge_slots`,
+`test_bridge_metaobject`. Hygiene: the six tracked runtime files were
+`git rm --cached` (files stay on disk) → `test_repo_hygiene` 15 pass.
+Full lane after S1: pytest serial **1,617 passed · 11 skipped · 0 failed**
+(under `-n 4` only the already-documented xdist flake
+`test_verify_quality_tool::…warns_loudly` — passes alone); `npm run test:js`
+240 / 0; `compileall` + `pyflakes` clean; `vulture @90` clean; radon
+`connect_page_pool` A (4). Coverage **86.91 % line / 83.25 % branch**
+(page_pool.py 82.24 → 83.18 %). `verify_quality.py --changed --base main
+--allow-legacy --coverage-ratchet` on the one changed app file: no size,
+CC, nesting or params movement; the only remaining lanes are the three
+environment facts above (`max_cog 0→6` = base value, and the two untouched
+files' `libGL` coverage floors). Goldens untouched; slots 135.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).
