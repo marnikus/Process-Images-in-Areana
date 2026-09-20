@@ -1,8 +1,8 @@
 {
-  "detected_total": 76,
+  "detected_total": 83,
   "auto_solved": 44,
   "auto_failed": 7,
-  "manual_solved": 9,
+  "manual_solved": 16,
   "tasks_created": 70,
   "tasks_deleted": 0,
   "last_error": "Expecting value: line 1 column 1 (char 0)",
@@ -10,10 +10,10 @@
   "balance_at": "2026-09-18 15:49:01",
   "per_site": {
     "arena.ai": {
-      "detected": 76,
+      "detected": 83,
       "auto_solved": 44,
       "auto_failed": 7,
-      "manual_solved": 9
+      "manual_solved": 16
     }
   }
 }
