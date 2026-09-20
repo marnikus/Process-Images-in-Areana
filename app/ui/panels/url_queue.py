@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 
 from app.core.models import UrlRow
-from app.services.live.url_policy import add_rows, dedupe_rows
+from app.services.live.url_policy import add_rows, dedupe_rows, mark_receivers
 from app.services.auto_connect import claim_unlinked_from_pool, enabled_tab_ids
 from app.ui.qt_compat import Slot
 from app.ui.services import arena_serialize, undo_entries
@@ -98,12 +98,14 @@ def commit_urls(bridge) -> None:
     until the next unrelated refresh; `_save_arena` emits `arena_state_updated`
     and `push_urls_undo` records the global undo entry (RULE 12).
     """
+    mark_receivers(bridge.state.urls, getattr(bridge, "_page_pool", None))
     bridge._save_arena()
     push_urls_undo(bridge)
 
 
 def commit_urls_system(bridge) -> None:
     """`commit_urls` for SYSTEM changes (the reconciler): persist + emit, no undo entry (I-37)."""
+    mark_receivers(bridge.state.urls, getattr(bridge, "_page_pool", None))
     bridge._save_arena()
 
 

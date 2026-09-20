@@ -66,6 +66,7 @@ def emit_arena_state(bridge) -> None:
     """Emit arena + progress payloads (Bridge._emit_arena_state delegates)."""
     try:
         js_state = js.arena_to_js(bridge.state)
+        debug_view.annotate_receivers(bridge, js_state["urls"])
         bridge.arena_state_updated.emit(json.dumps(js_state, ensure_ascii=False))
         prog = js_state.get("progress", {}).copy()
         prog["run_state"] = getattr(bridge, "_run_state", "idle")

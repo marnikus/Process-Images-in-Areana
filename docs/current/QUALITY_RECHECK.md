@@ -578,6 +578,50 @@ override. Docs in the same commit: SYSTEM_OF_RECORD rows 8 / 11 / 21, module
 row, **I-50**, archive pointer; AGENT_RULES RULE 10 corollary;
 `docs/README.md` footer.
 
+### 2026-09-20 S7 (receiver flag + the ⊘ icon — one Python owner, D-18 / I-53) — same chain
+
+**RED first.** `tests/test_url_receivers.py` (14 — the plan's 8 plus the
+`busy` reason, the reconciler-marks-after-presence case and a legacy-file
+load) failed with `AttributeError: 'UrlRow' object has no attribute
+'receiver'` / `module … has no attribute 'mark_receivers'`;
+`tests/js/test_url_list_receiver_icon.mjs` 0 / 6 (the class never appeared).
+
+**GREEN — no new production file.** `UrlRow.receiver: bool = False`
+appended **last** (`models.py` `max_class_loc` 74 unchanged, positional
+constructors survive, old `arena.json` loads with `False`).
+`url_policy.receiver_reason` (a guard ladder over the four gates — CC 4;
+reads `enabled_tab_ids`, source-locked against re-implementing the run
+gate), `receiver_title` (the `RECEIVER_TITLES` lookup) and `mark_receivers`
+(the one writer, returns the changed count so nothing is spammed) — file
+171 → 231 lines, still `max_func_loc` 11 / CC 4 / **100 % covered**.
+`urls_to_js` + `"receiver"` (14 → 15 ≤ file max 23); both undo builders +
+`receiver=` (11 → 12, 7 → 8 ≤ 17); `debug_view.annotate_receivers` adds the
+`receiver_title` tooltip to the pushed rows at emit (`emit_arena_state`
+11 → 12 ≤ 19); `commit_urls` / `commit_urls_system` call `mark_receivers`
+first, so a checkbox flip is instant; `reconcile._commit` marks after
+`sync_pool_presence` and commits when only receivers changed (`_pass` split
+into `_sync_rows` + `_pass` to keep the pass ≤ 12 LOC; an empty fetch still
+never touches rows). JS: one `${u.receiver === false ? … : ''}` inside the
+existing single `rowHtml` template line — `render.js` **74 lines / 12
+functions unchanged** (`test_render_js_did_not_grow` counts with
+`tools/js_metrics.js` itself, not a regex); `.url-not-receiver` (3 lines) in
+the existing `arena.css`. No new slot (135).
+
+**Existing tests adapted.** None — the field is additive. The S7 test
+helper `pool_with(connected=False)` flips `is_connected` after `add_page`
+(which always connects), the same order `sync_pool_presence` produces at
+runtime.
+
+**Lane after S7.** pytest serial **1,757 passed · 4 skipped · 0 failed**
+(+14); `npm run test:js` **253 / 0** (+6); coverage **87.77 % line / 84.38 %
+branch** (S6: 87.73 / 84.33; `models.py`, `arena_serialize.py`,
+`url_policy.py`, `debug_view.py` 100); jscpd `app/` **1.086 %**.
+`verify_quality.py --allow-legacy --changed-files` on the nine touched app
+files: **0 fails**; `--coverage-ratchet` adds only the two sandbox `libGL`
+floors. Docs in the same commit: SYSTEM_OF_RECORD rows 19 / 21, module row,
+**I-53**, archive pointer; AGENT_RULES RULE 13 corollary; `docs/README.md`
+footer.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

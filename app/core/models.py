@@ -23,6 +23,7 @@ class UrlRow:
     last_checked: Optional[str] = None
     error: Optional[str] = None
     tab_id: str = ""
+    receiver: bool = False  # S7: can receive a job now (one owner: live/url_policy.mark_receivers)
 
     @staticmethod
     def create(url: str, enabled: bool = True, tab_id: str = "") -> "UrlRow":

@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, Iterable, List, Set, Tuple
 
 from app.core.enums import UrlStatus
 from app.core.models import UrlRow
-from app.services.auto_connect import dedupe_linked_rows, matches_pattern
+from app.services.auto_connect import dedupe_linked_rows, enabled_tab_ids, matches_pattern
 
 MEMORY_LIMIT = 200
 MISS_THRESHOLD = 2
@@ -169,3 +169,48 @@ _REASON_TEXT = {
 def removal_lines(removals: Iterable[Removal], pattern: str = "", threshold: int = MISS_THRESHOLD) -> List[str]:
     """One log line per removal, reason included (RULE 2)."""
     return [f"🔻 URL removed {r.url} — {_REASON_TEXT[r.reason](pattern, threshold)}" for r in removals]
+
+
+# ── Receiver flag (S7, D-18 / I-53): one owner, the web UI only reflects it ──
+
+RECEIVER_TITLES = {
+    "unchecked": "Not used as job receiver — row unchecked",
+    "not linked": "Not used as job receiver — no Chrome tab linked",
+    "offline": "Not used as job receiver — tab not connected",
+    "busy": "Not used as job receiver — tab busy with a job",
+}
+
+
+def _connected_tabs(pool: Any) -> Set[str]:
+    """Pooled + connected tab ids (empty without a pool)."""
+    try:
+        return {p["tab_id"] for p in pool.status_snapshot()["pages"] if p.get("is_connected")}
+    except (AttributeError, KeyError, TypeError):
+        return set()
+
+
+def receiver_reason(row: Any, pool: Any) -> str:
+    """'' when the row can receive a job now, else the first failing gate."""
+    if not row.enabled:
+        return "unchecked"
+    if not row.tab_id:
+        return "not linked"
+    if row.tab_id not in _connected_tabs(pool) or row.tab_id not in enabled_tab_ids([row]):
+        return "offline"
+    return "busy" if busy_tabs(pool, [row.tab_id]) else ""
+
+
+def receiver_title(row: Any, pool: Any) -> str:
+    """The icon's tooltip (the reason's wording; '' for a receiver)."""
+    return RECEIVER_TITLES.get(receiver_reason(row, pool), "")
+
+
+def mark_receivers(rows: Iterable[Any], pool: Any) -> int:
+    """The ONE writer of `UrlRow.receiver`; returns how many rows changed."""
+    changed = 0
+    for row in rows:
+        value = receiver_reason(row, pool) == ""
+        if row.receiver != value:
+            row.receiver = value
+            changed += 1
+    return changed

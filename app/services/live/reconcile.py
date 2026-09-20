@@ -172,7 +172,8 @@ def _commit(p: _Pass) -> None:
         cleared = clear_row_assignments(p.bridge, report.removed_ids)
         if cleared:
             p.deps.log(f"↩ {cleared} image(s) unassigned — their URL row was removed", "info")
-    if report.added or report.linked or report.removed:
+    receivers = up.mark_receivers(p.urls, getattr(p.bridge, "_page_pool", None))  # after presence (S7)
+    if report.added or report.linked or report.removed or receivers:
         p.deps.commit()
         live_bus(p.bridge).wake("urls")
 
@@ -211,13 +212,8 @@ async def _fetch(p: _Pass) -> bool:
     return True
 
 
-async def _pass(p: _Pass) -> Report:
-    """fetch → dedupe → plan → apply → remove → join → commit; an empty fetch never removes."""
-    if not await _fetch(p):
-        return p.report
-    if not p.tabs:
-        _summary(p)
-        return p.report
+def _sync_rows(p: _Pass) -> ac.AutoConnectPlan:
+    """Rows follow the fetched tabs: dedupe → plan → claim/add → remove (with reasons)."""
     p.pattern = p.bridge.config.get_state(PATTERN_KEY, DEFAULT_PATTERN)
     rows, duplicates = up.dedupe_rows(p.urls)
     if duplicates:
@@ -226,6 +222,14 @@ async def _pass(p: _Pass) -> Report:
     _apply_plan(p, plan)
     _remove_rows(p, _removal_spec(p))
     p.report.removed += duplicates
+    return plan
+
+
+async def _pass(p: _Pass) -> Report:
+    """fetch → rows (only when Chrome answered tabs) → join + presence → commit → summary."""
+    if not await _fetch(p):
+        return p.report
+    plan = _sync_rows(p) if p.tabs else ac.AutoConnectPlan()  # an empty fetch never touches rows
     await _join_and_sync(p, plan)
     _commit(p)
     _summary(p)

@@ -245,6 +245,8 @@ For Arena, also applies to `AppState` persistence: `load_state()` must handle co
 
 Corollary (S5, 2026-09-20, L-2) — a persisted field must have a writer: `AppState.run_state` was saved on every write but never assigned (always `idle`); `supervisor.set_run_state` now writes it together with `bridge._run_state`, so what is read back is what the run was.
 
+Corollary (S7, 2026-09-20, I-53) — a persisted flag needs every builder to carry it: `UrlRow.receiver` is appended last on the dataclass (positional constructors survive), defaults to `False` (an unmarked row never flashes healthy), and both undo builders (`url_rows_from_js`, `arena_url_rows_from_js`) read it back — `tab_id` was once lost exactly there (B7).
+
 Corollary (B10, 2026-10-06) — **the UI is not a side effect of the disk write.** `save_arena_state` saves in its own `try` and ALWAYS emits the live state afterwards; a failed write is logged (once per distinct error per 10 s) and never skips the push. The atomic replace retries transient Windows sharing violations. The same shape applies in JS: a live-state apply restores each panel in isolation and reports the failing one — `try { a(); b(); c(); } catch (e) {}` around several panels is banned (one throw froze the Image Queue at `pending` for a whole run). Invariant I-39.
 
 ---

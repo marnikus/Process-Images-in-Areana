@@ -7,7 +7,9 @@ slot and the JS control both mirror these bounds; the loop reads
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
+
+from app.services.live.url_policy import receiver_title
 
 INTERVAL_KEY = "url_reconcile_interval_ms"
 MIN_MS = 500
@@ -38,3 +40,12 @@ def cadence(bridge) -> Dict[str, Any]:
     return {"url_interval_ms": interval_ms(bridge),
             "last_pass_at": float(stats.get("last_pass_at", 0.0)),
             "passes": int(stats.get("passes", 0))}
+
+
+def annotate_receivers(bridge, js_urls: List[Dict[str, Any]]) -> None:
+    """Add `receiver_title` (the ⊘ tooltip) to pushed rows — same predicate as the flag, read at emit."""
+    pool = getattr(bridge, "_page_pool", None)
+    rows = {u.id: u for u in getattr(bridge.state, "urls", None) or []}
+    for js_row in js_urls:
+        row = rows.get(js_row.get("id"))
+        js_row["receiver_title"] = receiver_title(row, pool) if row is not None else ""

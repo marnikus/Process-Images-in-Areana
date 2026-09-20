@@ -36,6 +36,9 @@
   font-size: 10px;
   font-weight: 600;
 }
+.url-not-receiver { /* S7: Python-computed "not a job receiver" marker (D-18); absence = healthy */
+  margin-left: 4px; font-size: 11px; color: var(--text-muted); cursor: help; user-select: none;
+}
 .url-status-pending { background: var(--bg-card); color: var(--text-muted); }
 .url-status-ok { background: rgba(74,222,128,.15); color: var(--green); }
 .url-status-error { background: rgba(248,113,113,.15); color: var(--red); }
