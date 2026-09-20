@@ -496,6 +496,88 @@ two `libGL` coverage floors). Docs in the same commit: SYSTEM_OF_RECORD row
 6, §3 state 22 + flow, module rows, **I-47**; AGENT_RULES RULE 7 / 10 / 13
 corollaries; `docs/README.md` footer.
 
+### 2026-09-20 S6 (dynamic URLs — Python-owned reconciler + interval setting, D-4 / D-10 / D-12R / I-50) — same chain
+
+**RED first.** Four new test files failed to import / run before any
+production line: `tests/test_url_policy.py` (25 — the plan's 9 branches, two
+of them parametrised: the 4-reason table, dedupe shapes, the S7 seam
+`owns_run_tab ≡ enabled_tab_ids`), `tests/test_live_reconcile.py` (11 — real
+`Bridge` from `tests/characterization/harness.build_bridge`, fakes only behind
+the `LiveDeps` seam; includes the source lock `test_the_js_timer_is_gone`),
+`tests/test_url_interval_setting.py` (11) and
+`tests/js/test_url_interval_control.mjs` (7, incl. the frozen url-list
+line-count guard 38 / 73 / 105 / 48 / 166 / 62 / 137).
+`ModuleNotFoundError: app.services.live.url_policy` / `…reconcile` /
+`…debug_view`; JS 0 / 7.
+
+**GREEN.** `app/services/live/url_policy.py` (171 lines, 16 functions, max
+func 11 LOC, CC 4, **100 % covered**): `REMOVAL_RULES` is a tuple of four
+`(reason, predicate)` pairs — `duplicate` / `invalid` / `pattern_mismatch` /
+`tab_gone` — and `removable_rows` has no `elif` (source-locked); busy tabs
+(`cooldown_service.tab_has_live_job`) are deferred, never-linked rows kept,
+`advance_misses` gives a closed tab two reconciles, `remember` /
+`restore_enabled` bounded at 200; `dedupe_rows` / `add_rows` moved from
+`panels/url_queue` (2-line delegations stay for `bridge_mod._dedupe_state_rows`
+/ `_add_missing_rows` callers; the private `_tab_already_owned` folded into
+`add_rows`). `app/services/live/reconcile.py` (232 lines, 17 functions, max
+func 19 LOC, CC 6, params ≤3, 96.5 %): `LiveDeps` (4 callables), `Report`,
+`start_reconciler` (idempotent, mirrors `solver_start`), `reconcile_loop`
+(reads `interval_ms` **every pass**; `bus.wait` so `interval` / `start` wake
+it), `reconcile_once` (owns the `_auto_scan_running` flag; a `_Pass` object
+carries the step context instead of 5-arg helpers — the gate's `max_params 4`
+caught the first draft). `app/services/live/debug_view.py` (40 lines, 100 %):
+`clamp_interval_ms` = the one clamp owner, `interval_ms`, `cadence`.
+
+**UI land (thin).** `browser_tabs.live_deps` / `start_url_reconciler` /
+`auto_scan_pass` (2-line delegation); `do_auto_connect_scan`, `plan_auto_sync`,
+`auto_prune_allowed` (the idle-only prune), `prune_auto_rows`,
+`claim_auto_rows`, `apply_auto_plan`, `plan_has_changes`, `report_auto_plan`,
+`join_new_tabs` deleted — **544 → 458 lines, 41 → 36 functions**, `max_cc` 7
+untouched. `url_queue.commit_urls_system` (persist + emit, no undo — I-37).
+`app_settings.apply_url_interval` (7 LOC, CC 2; `save_settings` 16 → 17 ≤
+file max 18). `layout_state.emit_arena_state` + `prog["live"] =
+debug_view.cadence(bridge)` (10 → 11). `config_manager.DEFAULT_SESSION` +
+`url_reconcile_interval_ms: 5000`. `main_window._build_ui` + 1 call (the
+recordings-bridge temp folded so `max_class_loc` 123 stays — the ratchet
+caught the +1). No new `@Slot` (D-20: `app_settings` stays at 10, surface
+135). JS: `cdp.js` `setInterval(autoConnectScan, 15000)` deleted (135 → 134
+lines, 55 → 54 funcs — both down); `arena-app.js` `'UrlInterval'` appended to
+the last `_PANEL_INITS` line (175 lines / 28 funcs unchanged); new
+`url-list/interval.js` (58 lines, 7 methods, max CC 3) binds its own ids via
+`Boot.bindOnce*`, loads from the pushed `progress_updated.live` (no slot
+round-trip), respects focus, saves through `Boot.needBridge('save_settings')`;
+`index.html` mounts `🔁 every [ ] ms  Save` inside `urlCooldownBar`.
+
+**Existing tests adapted, with reasons.** `test_panel_browser_tabs.py`:
+`test_auto_scan_plan_apply_report` + `test_auto_prune_allowed_and_join`
+replaced by `test_live_deps_wires_the_ui_seam` (their subjects no longer
+exist — the plan/apply/report body is now covered by
+`test_live_reconcile.py` against a real bridge); `test_auto_scan_pass_end_to_end`
+asserts the new log vocabulary (`🤖 Reconcile:` / `Reconcile skipped`) and that
+a failed fetch keeps the row; `test_browser_tab_slot_guards` unchanged (the
+slot still answers `pending` while a pass is in flight).
+`test_url_selection.py`: `_tab_already_owned` assertions → `_add_missing_rows`
+returning 0 for owned tabs (same fact, public helper). `test_bridge_slots.py`
+`_do_auto_connect_scan` stays in `NEVER_SLOTS` (a guard against a name, not a
+dependency on it). Two coverage-only additions where the ratchet showed the
+moved-out lines had been carrying the file: `test_popup_and_primary_guards`
+(browser_tabs — popup with no targets / raise failure / broken pool / primary
+tick guards) and two lines in `test_url_queue_add_remove_toggle_edit_test`
+(`test_url` non-http branch, `get_url_presets` failure).
+
+**Lane after S6.** pytest serial **1,743 passed · 4 skipped · 0 failed**
+(+49 net vs S5); `npm run test:js` **247 / 0** (+7); coverage **87.73 % line /
+84.33 % branch** (S5: 87.48 / 84.11; `url_queue.py` 100, `browser_tabs.py`
+89.83 ≥ its 89.1 floor);
+jscpd `app/` **1.088 %** (23 groups, S5 1.101). `verify_quality.py
+--allow-legacy --changed-files` on the 13 touched app files: **0 fails** on
+the size/complexity/JS lanes; with `--coverage-ratchet` the only fails were
+the two sandbox `libGL` floors (`transport.py`, `qt_compat.py`) plus the two
+moved-code dips fixed by the coverage tests above — no baseline touched, no
+override. Docs in the same commit: SYSTEM_OF_RECORD rows 8 / 11 / 21, module
+row, **I-50**, archive pointer; AGENT_RULES RULE 10 corollary;
+`docs/README.md` footer.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

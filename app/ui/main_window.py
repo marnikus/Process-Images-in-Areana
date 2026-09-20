@@ -9,6 +9,7 @@ from PySide6.QtWebChannel import QWebChannel
 
 from app.persistence.config_manager import ConfigManager
 from app.ui.bridge import Bridge
+from app.ui.panels.browser_tabs import start_url_reconciler
 from app.ui.services.captcha_recordings_bridge import CaptchaRecordingsBridge
 
 try:
@@ -50,8 +51,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.view)
         self._configure_web_settings()
         self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, cdp_client=self.cdp_client, parent=self)
-        manager = self.bridge._captcha_service().recordings
-        self.recordings_bridge = CaptchaRecordingsBridge(manager, self)
+        self.recordings_bridge = CaptchaRecordingsBridge(self.bridge._captcha_service().recordings, self)
+        start_url_reconciler(self.bridge)  # S6: Python owns the URL reconcile cadence (I-50)
         self._attach_web_channel()
 
     def _init_cdp_client(self) -> None:

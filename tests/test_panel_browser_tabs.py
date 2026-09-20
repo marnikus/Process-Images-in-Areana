@@ -377,68 +377,36 @@ async def test_fetch_tabs_slot_and_diagnose(cdp_server, cfg, monkeypatch):
     assert json.loads(none_host.diagnose_chrome())["error"] == "CDP not available"
 
 
-async def test_auto_scan_plan_apply_report(cfg):
-    from app.services.auto_connect import AutoConnectPlan
-    tabs = [tab("t1", "A", "https://arena.ai/c/direct")]
-    row = UrlRow.create("https://arena.ai/c/direct")  # unlinked row for the tab
-    bridge = make_bridge(cdp=None, config=cfg, urls=[row])
-    # planner works on row dicts (the _dedupe_state_rows shape)
-    rows = [{"id": row.id, "url": row.url, "tab_id": None, "enabled": True}]
-    plan = bt_mod.plan_auto_sync(bridge, tabs, "arena.ai", rows)
-    assert plan.add or plan.claim or plan.connect  # something to do
-    changed = bt_mod.apply_auto_plan(bridge, plan)
-    assert changed is True
-    linked = [u for u in bridge.state.urls if u.tab_id]
-    assert any(u.tab_id == "t1" for u in linked)  # claimed or added
-    # presence + report
-    presence = (0, [])
-    assert bt_mod.plan_has_changes(plan, *presence) is True
-    bridge._emit_pool_status = lambda: bridge.logs.append(("pool", "emitted"))
-    bt_mod.report_auto_plan(bridge, plan, presence, "manual")
-    assert any("Auto-connect:" in msg for _, msg in bridge.logs)
-    # no changes → manual still logs, auto stays quiet
-    quiet = []
-    b2 = make_bridge(cdp=None, config=cfg, urls=[UrlRow.create(
-        "https://arena.ai/c/direct", tab_id="t1")])
-    empty_plan = AutoConnectPlan()
-    assert bt_mod.apply_auto_plan(b2, empty_plan) is False
-    assert bt_mod.plan_has_changes(empty_plan, 0, []) is False
-    b2._log = lambda m, l="info": quiet.append(m)
-    bt_mod.report_auto_plan(b2, empty_plan, (0, []), "manual")
-    assert any("no changes" in m for m in quiet)
-    b3 = make_bridge(cdp=None, config=cfg)
-    b3._log = lambda m, l="info": quiet.append(m)
-    quiet_before = len(quiet)
-    bt_mod.report_auto_plan(b3, AutoConnectPlan(), (0, []), "auto")
-    assert len(quiet) == quiet_before  # auto source stays silent on no-change
-    # prune: plan.remove holds row ids whose tabs vanished
-    gone_row = UrlRow.create("https://arena.ai/c/direct", tab_id="t1")
-    b4 = make_bridge(cdp=None, config=cfg, urls=[gone_row])
-    gone_plan = AutoConnectPlan()
-    gone_plan.remove = [gone_row.id]
-    assert bt_mod.prune_auto_rows(b4, gone_plan) == 1
-    assert b4.state.urls == []
-    assert bt_mod.prune_auto_rows(b4, AutoConnectPlan()) == 0
-
-
-async def test_auto_prune_allowed_and_join(cdp_server, cfg, monkeypatch):
+async def test_popup_and_primary_guards(cfg, monkeypatch):
+    """Popup: no targets warns; raise failure counts 0. Primary: a broken pool answers '' and the tick never raises."""
+    bridge = make_bridge(cdp=None, config=cfg)
+    await bt_mod.do_popup_url_tabs(bridge)
+    assert any("no active URL tabs" in m for _, m in bridge.logs)
     pool = PagePool()
-    client = make_client(cdp_server)
-    bridge = make_bridge(cdp=client, config=cfg, pool=pool)
-    tabs = [tab("t1", "A", "https://arena.ai/c")]
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is True
-    bridge._run_state = "running"
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is False
-    bridge._run_state = "idle"
-    assert bt_mod.auto_prune_allowed(bridge, []) is False
-    # join skips empty sockets
-    joined = []
+    pool.add_page(PageInfo(tab_id="t1", ws_url="ws://x/t1", title="Arena", url="https://arena.ai", is_connected=True))
+    bridge = make_bridge(cdp=None, config=cfg, pool=pool, urls=[UrlRow.create("https://arena.ai", tab_id="t1")])
+    monkeypatch.setattr(bt_mod, "raise_window_titles", lambda titles: (_ for _ in ()).throw(RuntimeError("no desktop")))
+    await bt_mod.do_popup_url_tabs(bridge)
+    assert any("0/1 windows" in m for _, m in bridge.logs)
+    bridge._page_pool = SimpleNamespace(_pages=None)  # `.values()` on None → guarded ''
+    assert bt_mod.primary_ws(bridge) == ""
+    bridge.cdp = SimpleNamespace(is_connected=False)
+    bridge._ensure_running = False
+    await bt_mod.do_ensure_primary(bridge)  # ws '' → nothing to connect, no exception
+    assert bridge._ensure_running is False
+    host = make_host((BrowserTabsMixin,), cdp=None, _page_pool=None)[0]
+    assert json.loads(host.popup_url_tabs())["error"] == "pool not initialized"
+    assert json.loads(host.ensure_primary_connected()) == {"ok": False}
 
-    async def fake_join(b, ws):
-        joined.append(ws)
-    monkeypatch.setattr(bt_mod, "do_connect_page_pool", fake_join)
-    await bt_mod.join_new_tabs(bridge, ["ws://a/1", "", "ws://a/2"])
-    assert joined == ["ws://a/1", "ws://a/2"]
+
+def test_live_deps_wires_the_ui_seam(cfg):
+    """S6: the reconciler's callables come from ui land — fetch via cdp, join via the pool, commit without undo."""
+    from app.services.live.reconcile import LiveDeps
+    bridge = make_bridge(cdp=None, config=cfg)
+    deps = bt_mod.live_deps(bridge)
+    assert isinstance(deps, LiveDeps) and deps.log is bridge._log
+    assert deps.commit.func.__name__ == "commit_urls_system"
+    assert deps.fetch_tabs.__name__ == "fetch_tabs" and deps.join_tab.__name__ == "join_tab"
 
 
 async def test_auto_scan_pass_end_to_end(cdp_server, cfg):
@@ -451,22 +419,23 @@ async def test_auto_scan_pass_end_to_end(cdp_server, cfg):
     # arena.ai row added + pool joined; non-matching tab ignored
     assert any(u.url == "https://arena.ai/c/direct" for u in bridge.state.urls)
     assert pool.get_page("t1") is not None and pool.get_page("t2") is None
-    assert any("Auto-connect:" in msg for _, msg in bridge.logs)
+    assert any("Reconcile:" in msg for _, msg in bridge.logs)
     # second scan: no changes, pool presence kept
     await bt_mod.auto_scan_pass(bridge, "manual")
     assert any("no changes" in msg for _, msg in bridge.logs)
-    # busy guard + exception path
+    # busy guard + exception path (the pass owns the `_auto_scan_running` flag)
     bridge._auto_scan_running = True
-    await bt_mod.do_auto_connect_scan(bridge, "auto")  # no-op
+    await bt_mod.auto_scan_pass(bridge, "auto")  # no-op
     assert bridge._auto_scan_running is True
     bridge._auto_scan_running = False
 
     async def boom():
         raise RuntimeError("scan down")
     client.fetch_tabs = boom
-    await bt_mod.do_auto_connect_scan(bridge, "auto")
+    await bt_mod.auto_scan_pass(bridge, "auto")
     assert bridge._auto_scan_running is False
-    assert any("scan skipped" in msg for _, msg in bridge.logs)
+    assert any("Reconcile skipped" in msg for _, msg in bridge.logs)
+    assert len(bridge.state.urls) == 1  # a failed fetch never removes
 
 
 # ── browser_tabs: popup / primary / slots ──

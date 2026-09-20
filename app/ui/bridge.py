@@ -25,7 +25,6 @@ from app.ui.panels.url_queue import (
     _add_missing_rows,
     _checked_tabs_ready,
     _dedupe_state_rows,
-    _tab_already_owned,
     _urls_gate_error,
 )  # compat: single source lives in panels/url_queue.py
 from app.ui.panels.layout_state import LayoutStateMixin

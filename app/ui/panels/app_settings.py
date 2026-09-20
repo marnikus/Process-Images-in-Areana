@@ -14,6 +14,8 @@ from pathlib import Path
 
 from app.core.models import UrlRow
 from app.core.persistence import load_preset, save_preset
+from app.services.live import debug_view
+from app.services.live.bus import live_bus
 from app.services.live.feed import commit_queue
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import arena_serialize, undo_entries
@@ -85,6 +87,16 @@ def apply_highlight_duration(state, config, data: dict) -> None:
     if "highlight_duration" in data:
         state.settings.highlight["duration_seconds"] = int(data["highlight_duration"])
         config.set_state(highlight_duration=int(data["highlight_duration"]))
+
+
+def apply_url_interval(bridge, data: dict) -> None:
+    """URL reconcile interval: clamp, persist, wake the loop so the next pass uses it (S6)."""
+    if debug_view.INTERVAL_KEY not in data:
+        return
+    ms = debug_view.clamp_interval_ms(data[debug_view.INTERVAL_KEY])
+    bridge.config.set_state(**{debug_view.INTERVAL_KEY: ms})
+    live_bus(bridge).wake("interval")
+    bridge._log(f"🔁 URL reconcile interval set to {ms} ms (URL window setting)", "info")
 
 
 def apply_watcher_timeouts(bridge, data: dict) -> None:
@@ -268,6 +280,7 @@ class AppSettingsMixin:
             apply_simple_key(self.state, data, _OVERWRITE_SPEC)
             apply_highlight_duration(self.state, self.config, data)
             apply_watcher_timeouts(self, data)
+            apply_url_interval(self, data)
             self._save_arena()
             push_settings_undo(self)
             return json.dumps({"ok": True})
