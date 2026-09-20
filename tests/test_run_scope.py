@@ -57,3 +57,17 @@ def test_claim_denied_logs_once_for_settled_only():
     assert rsc.claim_denied(img("gone.png", "skipped"), log) is True
     assert lines == [("⏭ Skipping done.png — already completed", "info"),
                      ("⏭ Skipping gone.png — already skipped", "info")]
+
+
+def test_claim_and_start_share_one_predicate():
+    """RULE 10 (V1): what Start filters out, the claim-time check refuses too — deselection included."""
+    deselected = img("off.png", "pending", selected=False)
+    settled_but_selected = img("done.png", "completed", selected=True)
+    live = img("go.png", "failed", selected=True)
+    assert [rsc.in_run_scope(i) for i in (deselected, settled_but_selected, live)] == [False, False, True]
+    assert rsc.run_scope([deselected, settled_but_selected, live]) == [live]
+    lines = []
+    log = lambda m, level="info": lines.append((m, level))  # noqa: E731
+    assert rsc.claim_denied(deselected, log) is True
+    assert rsc.claim_denied(live, log) is False
+    assert lines == [("⏭ Skipping off.png — deselected", "info")]

@@ -65,7 +65,7 @@ Core rule: **observe baseline -> execute one action -> verify effect -> persist 
 
 ### Run scope — a completed image is never sent again
 - One predicate decides what runs: `app/core/run_scope.py` — an image is in scope when it is **selected** and its status is `pending`, `selected`, `failed` or `processing`. `completed` and `skipped` are never in scope.
-- The predicate is re-checked **at claim time** in both the sequential loop and the parallel dispatcher, so a stale list, a parallel → sequential fallback or a second loop cannot resend a finished image (log: `⏭ Skipping <file> — already completed`).
+- The **same** predicate is re-checked **at claim time** in both the sequential loop and the parallel dispatcher, so a stale list, a parallel → sequential fallback, a second loop or a checkbox you clear mid-run cannot send an image (log: `⏭ Skipping <file> — already completed` / `— deselected`).
 - **One batch at a time:** while a batch is paused, stopping or still unwinding after Cancel, Start answers `batch still active` — Resume or Cancel it first.
 - **Resume on scan:** when a scan adds a source that already has a sibling output (`name_AI.png`, or the highest `name_AI_<n>.<ext>`), it enters the queue as `completed` with that output path and stays out of the run — handy after *Clear list*, *New batch* or on another machine. Only **Reset** / **Retry** put an image back into scope; a rescan never changes the status of an image already in the queue.
 

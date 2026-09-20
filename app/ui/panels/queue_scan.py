@@ -95,7 +95,7 @@ def run_scan_merge(bridge, root_path: Path) -> None:
         added = merge_scanned(bridge.state.images, scanned)
         bridge.state.recalculate_progress()
         bridge._save_arena()
-        bridge._log(scan_summary(scanned, added), "success")
+        bridge._log(*scan_summary(scanned, added))
     except Exception as e:
         bridge._log(f"Scan failed: {e}", "error")
     finally:
@@ -113,7 +113,8 @@ def run_scan_new_batch(bridge, root_path: Path, cleared: int) -> None:
         added = merge_scanned(bridge.state.images, scanned)
         bridge.state.recalculate_progress()
         bridge._save_arena()
-        bridge._log(f"🗑 New batch: cleared {cleared} old — {scan_summary(scanned, added)}", "warn")
+        summary, _level = scan_summary(scanned, added)  # a new batch is destructive: always warn
+        bridge._log(f"🗑 New batch: cleared {cleared} old — {summary}", "warn")
     except Exception as e:
         bridge._log(f"New batch scan failed: {e}", "error")
     finally:

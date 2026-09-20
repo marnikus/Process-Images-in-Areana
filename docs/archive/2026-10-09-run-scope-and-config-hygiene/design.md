@@ -152,33 +152,37 @@ Delivered as planned, with three deviations worth recording:
 | `scan_folder` "one walk + output map" | Same, but split into `_checked_root` / `_image_files` / `_output_rank` / `_outputs_by_source` | first cut hit CC 9 in `scan_folder` (fail-lane is >10, prefer ≤7); the split leaves `scan_folder` at CC 5 and every helper ≤ 12 LOC |
 | Resume-on-scan for *every* scanned source | Newcomers only (`merge_scanned` never overrides an in-app status) | otherwise *Reset → Scan* would flip the image straight back to `completed`; boundary pinned by `test_rescan_keeps_in_app_status_of_known_items` |
 
-### Final recheck — RULE 18 (ideal sizes) and RULE 16 (gates)
+### Final recheck — RULE 18 (ideal sizes) and RULE 16 (gates) — measured on the final code (after the validation pass)
 
-Every new or edited production function (measured with the gate's own AST counters; radon is not installed in the sandbox, `verify_quality.py` falls back to the same counting rules):
+Every new or edited production function since `54cb501` (measured with the gate's own AST counters; radon is not installed in the sandbox, `verify_quality.py` falls back to the same counting rules):
 
 | File | Function | LOC | CC | Nesting | Params | RULE 18 verdict |
 |---|---|---:|---:|---:|---:|---|
-| `core/run_scope.py` | `is_runnable` | 3 | 1 | 0 | 1 | < 4 by design — predicate used in several places (18.1) |
-| | `run_scope` | 3 | 3 | 0 | 1 | < 4 by design — predicate used in several places (18.1) |
-| | `claim_denied` | 6 | 2 | 1 | 2 | in band |
+| `core/run_scope.py` | `is_runnable` / `in_run_scope` / `run_scope` | 3 / 3 / 3 | 1 / 2 / 2 | 0 | 1 | < 4 by design — predicates used in several places (18.1) |
+| | `claim_denied` | 7 | 3 | 1 | 2 | in band |
+| `core/naming.py` | `_ai_family_re` | 3 | 1 | 0 | 1 | cached compile keyed by suffix — the cache is its job, not a re-host |
+| | `parse_ai_output` | 7 | 3 | 1 | 2 | in band |
+| | `is_ai_generated_filename` | 2 | 1 | 0 | 2 | < 4 — public predicate kept for its 20 callers/tests |
+| `core/folder_ai.py` | `strip_ai_name` | 8 | 4 | 1 | 1 | in band (was 7 / 3 with its own regex) |
 | `core/scanner.py` | `_build_item` | 22 | 3 | 0 | 3 | 21 → 22 (one dict key); `# ideal-size: 22 lines reason=one scan-item dict literal …` |
-| | `_checked_root` | 6 | 3 | 1 | 1 | in band |
-| | `_output_rank` | 4 | 2 | 0 | 1 | in band |
-| | `_outputs_by_source` | 11 | 5 | 2 | 1 | in band |
+| | `_checked_root` / `_output_rank` | 6 / 3 | 3 / 2 | 1 / 0 | 1 | in band / < 4 named ranking rule |
+| | `_outputs_by_source` | 12 | 5 | 2 | 1 | in band |
 | | `scan_folder` | 14 | 6 | 1 | 2 | in band (first cut CC 9 rejected; the one-expression `_image_files` helper was inlined — a 3-line helper that only re-hosts a comprehension is the 18.1 anti-pattern) |
 | `core/models.py` | `_discovered_status` | 5 | 3 | 1 | 2 | in band |
 | | `from_scan_dict` | 20 | 3 | 0 | 2 | at the top of the band |
-| `ui/services/scan_service.py` | `scan_summary` | 5 | 3 | 0 | 2 | in band |
-| `ui/panels/queue_scan.py` | `run_scan_merge` / `run_scan_new_batch` | 14 / 16 | 2 / 2 | 0 | 2 / 3 | in band; `selected_images` alias **deleted** (one call re-hosted under another name, 18.1) |
+| | `recalculate_progress` | 2 | 1 | 0 | 1 | delegates to `progress.build_progress_counts` |
+| `core/progress.py` | `count_selected` / `count_by_status` / `count_pending_selected` | 2 / 2 / 3 | 2 / 2 / 3 | 0 | 1 / 2 / 1 | < 4 — named predicates of the table |
+| | `build_progress_counts` | 10 | 2 | 1 | 1 | in band |
+| `ui/services/scan_service.py` | `scan_summary` | 7 | 4 | 1 | 2 | in band |
+| `ui/panels/queue_scan.py` | `run_scan_merge` / `run_scan_new_batch` | 14 / 17 | 2 / 2 | 0 | 2 / 3 | in band; `selected_images` alias **deleted** (one call re-hosted under another name, 18.1) |
 | `ui/panels/run_control.py` | `check_start_ready` | 12 | 5 | 1 | 1 | in band; `check_start_inputs` / `fail_processing_images` / `start_run` only changed the callee name |
 | `services/run_state.py` | `batch_active` | 4 | 2 | 0 | 1 | in band |
-| `services/batch_orchestrator.py` | `_run_sequential` | 12 | 5 | 2 | 1 | in band |
-| | `_load_run_settings` | 4 | 1 | 0 | 1 | in band |
+| `services/batch_orchestrator.py` | `_run_sequential` / `_load_run_settings` | 12 / 4 | 5 / 1 | 2 / 0 | 1 | in band |
 | `services/multi_page_dispatcher.py` | `_run_with_sem` | 6 | 2 | 1 | 2 | in band |
 
-Files: `run_scope.py` 44 (leaf, fine under 150), `scanner.py` 134 → 169, `models.py` 292 → **300** (top of the band; the next `ImageItem` addition splits the file), `scan_service.py` 87 → 94, `queue_scan.py` 315 → 309, `run_control.py` 275 → 279; `run_state.py` 417 → 423, `batch_orchestrator.py` 492 → 489, `multi_page_dispatcher.py` 398 → 402 — the last three were outside the band before B13 and carry their module `# ideal-size:` reason (numbers refreshed to ~420 / ~490 / ~400). Module `core/` stays at 13 files (18.3 band 5–15). Context files: `QUALITY_RECHECK.md` 176 lines (band 60–200); `SYSTEM_OF_RECORD.md` was already over 200 before this round (pre-existing debt, not grown by a new section — three invariant rows and the dated paragraph).
+Files: `run_scope.py` 51, `progress.py` 49 (leaves, fine under 150), `naming.py` 104 → 116, `folder_ai.py` 71 → 69, `scanner.py` 134 → 164, `models.py` 292 → **272** (back inside the band after V6), `scan_service.py` 87 → 96, `queue_scan.py` 315 → 310, `run_control.py` 275 → 279; `run_state.py` 417 → 423, `batch_orchestrator.py` 492 → 489, `multi_page_dispatcher.py` 398 → 402 — the last three were outside the band before B13 and carry their module `# ideal-size:` reason (numbers refreshed to ~420 / ~490 / ~400). Module `core/` is at 15 files (top of the 18.3 band 5–15 — the next core module goes into a sub-package). Context files: `QUALITY_RECHECK.md` ≈ 185 lines (band 60–200); `SYSTEM_OF_RECORD.md` was already over 200 before this round (pre-existing debt, not grown by a new section — invariant rows and the dated paragraph).
 
-RULE 16.7 checklist, walked:
+RULE 16.7 checklist, walked on the final code:
 
 ```text
 [x] No new function >30 physical LOC                  max new/edited 22 (_build_item, legacy 21 → 22, ideal-size note)
@@ -186,13 +190,33 @@ RULE 16.7 checklist, walked:
 [x] No new function with >4 params                    max 3
 [x] CC ≤10, cognitive ≤15, nesting ≤4                 max CC 6 (scan_folder), max nesting 2
 [x] coverage ≥80 % and not below baseline; branch ≥75 %  see gate evidence (§B13) — ratchet floor 86.36 / 82.33
-[x] every new function has a test that fails if deleted  verified by removing the orchestrator skip (2 fail), the Start gate (4 fail), the scanner map / model adoption (test_scan_resume fails)
-[x] no new vulture/pyflakes findings; no duplication  pyflakes clean on all touched files; the duplicated predicate was removed, none added
+[x] every new function has a test that fails if deleted  verified by removing the orchestrator skip (2 fail), the Start gate (4 fail), the scanner map / model adoption (test_scan_resume fails); V1–V3 and V6 were written red first
+[x] no new vulture/pyflakes findings; no duplication  pyflakes clean on all touched files; two duplicated predicates and three `_AI` regexes removed, none added
 [x] quality-override comments                         none added
 [x] no dummy helpers                                  `_image_files` and `selected_images` removed for exactly that reason
 [x] RULE 18 ideals                                    table above; deviations carry ideal-size reasons
-[x] RULE 19 order                                     scan_folder: nesting first (validation out), then CC (AI filter as comprehension), size last
-[x] SYSTEM_OF_RECORD.md + docs updated                §2 rows 2/3/6, I-44…I-46, §7 core list, §8 test rows, dated paragraph; README run-scope section; QUALITY_RECHECK follow-up; §B13 record
+[x] RULE 19 order                                     scan_folder: nesting first (validation out), then CC (AI filter as comprehension), size last; models.py: size fixed by extracting a concept, not by trimming lines
+[x] SYSTEM_OF_RECORD.md + docs updated                §2 rows 2/3/6, I-44…I-46, §7 core list, §8 test rows, dated paragraph; README run-scope section; QUALITY_RECHECK follow-up; §B13 record + validation addendum; docs/README map
 ```
 
-Tests added: `test_run_scope.py` 14, `test_run_control_gate.py` 6, `test_scan_resume.py` 11, `test_queue_thumbnails.py` 8 (per-file coverage floor of `queue_scan.py` after the alias deletion — covered by the real thumbnail contract, not by keeping the alias), 5 across `test_batch_orchestrator.py` / `test_multi_page_dispatcher_run.py` / `test_run_state.py`; each was checked to fail with its fix removed.
+Tests added over the round: `test_run_scope.py` 15, `test_run_control_gate.py` 6, `test_scan_resume.py` 13, `test_queue_thumbnails.py` 8 (per-file coverage floor of `queue_scan.py` after the alias deletion — covered by the real thumbnail contract, not by keeping the alias), `test_progress.py` 3, 6 across `test_batch_orchestrator.py` / `test_multi_page_dispatcher_run.py` / `test_run_state.py`, 1 in `test_naming.py`, 1 in `test_folder_ai.py` (the per-file error contract; `folder_ai.py` had slipped 0.09 pp under its coverage floor when its regex lines went — met with behaviour, as with `queue_scan.py`); each was checked to fail with its fix removed.
+
+---
+
+## Validation pass (2026-10-09, after B13b `3a5ee06`) — every rule re-read, code re-audited
+
+Method: `AGENT_RULES.md` read in full (RULE 1–23 + §16.x / §18.x), then the production diff of `3a5ee06` walked file by file against each rule. Findings and the redesign before any edit (RULE 16.6 step 2):
+
+| # | Rule | Finding in the shipped code | Redesign |
+|---|---|---|---|
+| V1 | RULE 10, I-44 as documented | Two predicates for one decision: batch start filters `selected ∧ runnable` (`run_scope`), the claim-time re-check tested **status only** (`claim_denied`). An image the user deselects mid-run (`set_image_selected(False)` flips the flag, not the status) was still sent — the SoR row already promised "deselected … never sent again" | `in_run_scope(img)` is the one predicate; `run_scope` and `claim_denied` both call it. Skip reason: `already <status>` for a settled image, `deselected` for a cleared flag |
+| V2 | RULE 16.4 duplication, RULE 10 vocabulary | `scanner._AI_FAMILY_RE` was the **fourth** definition of the `_AI` output family (`naming.is_ai_generated_filename`, `folder_ai._STRIP_RE`, `OutputSpec.suffix` / `unique_template` literals) — the exact copy-paste-of-vocabulary §16.4 forbids | `naming.AI_SUFFIX` + `naming.parse_ai_output(stem, suffix) -> (base, n) | None` in the owning layer; `is_ai_generated_filename`, `folder_ai.strip_ai_name` and `scanner._outputs_by_source` consume it. Behaviour-preserving: `base` may be empty exactly as today's `endswith`/`search` allow; the existing naming / folder_ai / scanner suites are the equivalence gate |
+| V3 | RULE 4 | `scan_summary` produced `Scanned 0 images, 0 new` at **success** level — a no-op path with a success-looking log (RULE 4 names "scan found 0" explicitly). Pre-existing text, but the new function owns the line now | `scan_summary` returns `(line, level)`: 0 found → `Scanned 0 images — no supported files under this folder (check supported types / ignore _AI)` at `warn`; otherwise the existing line at `success` |
+| V4 | readability (RULE 18.2 reader budget) | `_discovered_status` separated from `UrlRow` by one blank line; `existing_output` untyped | two blank lines, `str | None` |
+| V5 | import layering readability | `run_control.py` imported `app.core.run_scope` after `app.services` | core import first (same order the layer table in SoR §7 reads) |
+
+Numbers now → target (RULE 16.6 step 2): `is_ai_generated_filename` 8 LOC / CC 3 → 2 / 1; `strip_ai_name` 7 / 3 → 7 / 3; `scanner._outputs_by_source` 11 / 5 → 12 / 5 (`_output_rank` takes the parsed counter); `scan_summary` 5 / 3 → 7 / 4; `claim_denied` 6 / 2 → 7 / 3. No file maximum grows; `naming.py` gains 2 functions (≈ 120 lines, still a leaf under 150).
+
+| V6 | RULE 18.2 | V4's blank line took `models.py` to **301** — over the band ("stop and look for a second responsibility before adding the next feature") | The second responsibility was already there: progress counting (`_count_*`, `_build_progress_counts`, a predicate table over statuses) changes when statuses / progress keys change, the dataclasses when the queue shape changes. Extracted by concept (RULE 19 step 4) to `core/progress.py` (49 lines, 4 functions ≤ 10 LOC); `AppState.recalculate_progress` is the only caller; `models.py` 272 |
+
+Rejected: a `selected` check duplicated inside each loop (`if not img.selected: continue` — a second copy of the predicate, the very bug B13 fixed); keeping `_AI_FAMILY_RE` "because it is local" (the suffix would drift silently from `OutputSpec.suffix`); logging the empty scan at `error` (an empty folder is empty, not broken — RULE 4 distinguishes the two).

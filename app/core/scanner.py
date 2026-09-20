@@ -7,19 +7,14 @@ discovered image whose output exists enters the queue as `completed`
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Set
 
-from .naming import is_ai_generated_filename
+from .naming import is_ai_generated_filename, parse_ai_output
 from ..utils.hashing import fingerprint_from_path_stat
 
 SUPPORTED_EXTS_DEFAULT = {".png", ".jpg", ".jpeg", ".webp"}
-
-# `<base>_AI` or `<base>_AI_<n>` — the output family `naming.get_output_path`
-# writes and `folder_ai.strip_ai_name` renames (same `_AI` literal, RULE 6).
-_AI_FAMILY_RE = re.compile(r"^(?P<base>.+)_AI(?:_(?P<n>\d+))?$")
 
 
 @dataclass
@@ -90,20 +85,20 @@ def _checked_root(root_path: Path) -> Path:
     return root_path
 
 
-def _output_rank(family_match: re.Match) -> tuple:
+def _output_rank(counter: int | None) -> tuple:
     """Exact `_AI` before counters; among counters the highest (= the last save)."""
-    n = family_match.group("n")
-    return (0, 0) if n is None else (1, -int(n))
+    return (0, 0) if counter is None else (1, -counter)
 
 
 def _outputs_by_source(images: List[Path]) -> Dict[Path, Path]:
     """`<dir>/<base>` → its best existing `_AI` sibling, any supported extension (I-46)."""
     best: Dict[Path, tuple] = {}
     for p in images:
-        m = _AI_FAMILY_RE.match(p.stem)
-        if not m:
+        parsed = parse_ai_output(p.stem)  # the one family definition (naming, RULE 10)
+        if parsed is None:
             continue
-        key, rank = p.parent / m.group("base"), _output_rank(m)
+        base, counter = parsed
+        key, rank = p.parent / base, _output_rank(counter)
         if key not in best or rank < best[key][0]:
             best[key] = (rank, p)
     return {key: path for key, (_, path) in best.items()}

@@ -95,9 +95,25 @@ def test_rescan_keeps_in_app_status_of_known_items():
 
 
 def test_scan_summary_names_the_already_done():
-    assert scan_summary([scan_dict("a.png"), scan_dict("b.png")], 2) == "Scanned 2 images, 2 new"
-    line = scan_summary([scan_dict("a.png", "/x/a_AI.png"), scan_dict("b.png")], 1)
-    assert line == "Scanned 2 images, 1 new, 1 already have _AI output (Reset to redo)"
+    assert scan_summary([scan_dict("a.png"), scan_dict("b.png")], 2) == ("Scanned 2 images, 2 new", "success")
+    line, level = scan_summary([scan_dict("a.png", "/x/a_AI.png"), scan_dict("b.png")], 1)
+    assert line == "Scanned 2 images, 1 new, 1 already have _AI output (Reset to redo)" and level == "success"
+
+
+def test_scan_summary_reports_an_empty_scan_as_empty_not_success():
+    """RULE 4 (V3): a scan that found nothing must not end with a success-looking line."""
+    line, level = scan_summary([], 0)
+    assert level == "warn" and line.startswith("Scanned 0 images — no supported files")
+    assert "0 new" not in line
+
+
+def test_scan_worker_logs_an_empty_folder_as_a_warning(tmp_path):
+    (tmp_path / "notes.txt").write_text("x", encoding="utf-8")  # unsupported type only
+    bridge = make_bridge(tmp_path)
+    queue_scan.run_scan_merge(bridge, tmp_path)
+    assert bridge.state.images == []
+    levels = {level for _, level in bridge._logs}
+    assert "success" not in levels and any(m.startswith("Scanned 0 images — ") for m, _ in bridge._logs)
 
 
 def make_bridge(root: Path):

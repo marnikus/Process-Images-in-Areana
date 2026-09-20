@@ -338,6 +338,25 @@ async def test_sequential_skips_settled_images_at_claim_time(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_sequential_skips_an_image_deselected_mid_run(monkeypatch):
+    """V1 / RULE 10: the flag the user clears during a run is part of the same predicate."""
+    instant_sleep(monkeypatch)
+    urls = [UrlRow.create("https://arena.ai/a", enabled=True, tab_id="tab1")]
+    first, second = make_img("first.png"), make_img("second.png")
+    bridge = make_bridge(images=[first, second], urls=urls)
+    started = bridge.job_started.emit
+
+    def deselect_second_on_first_start(job, path):  # the user clicks the checkbox while job 1 runs
+        second.selected = False
+        started(job, path)
+    bridge.job_started.emit = deselect_second_on_first_start
+    await bo._run_sequential(make_ctx(bridge, images=[first, second]))
+    assert (first.status, second.status, second.attempt_count) == ("completed", "pending", 0)
+    assert len(bridge._started) == 1
+    assert ("⏭ Skipping second.png — deselected", "info") in bridge._logs
+
+
+@pytest.mark.asyncio
 async def test_parallel_fallback_does_not_redo_completed(monkeypatch):
     """B13 door 2: parallel dispatch dies mid-way → sequential fallback must not re-run its wins."""
     instant_sleep(monkeypatch)

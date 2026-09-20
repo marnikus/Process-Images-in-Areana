@@ -159,19 +159,25 @@ gated by `run_state.batch_active` in `check_start_ready` (12 LOC, CC 5).
 C: `scanner.scan_folder` grew one responsibility (outputs per source) and
 was split rather than fattened — `_checked_root` / `_output_rank` /
 `_outputs_by_source` (max 11 LOC, CC 5), `scan_folder` 14 LOC / CC 6; the
-first cut at CC 9 was rejected. `models.py` sits at exactly 300 lines (top of
-the RULE 18 band — the next `ImageItem` addition splits the file). No ratchet
-maximum grew in any of the 9 touched files; `queue_scan.py` lost its
-`selected_images` alias (one call re-hosted, RULE 18.1) and 6 lines. New
-lanes: `tests/test_run_scope.py` (14), `tests/test_run_control_gate.py` (6,
-real `start_run` against a live `Future`), `tests/test_scan_resume.py` (11,
+first cut at CC 9 was rejected. The same-day validation pass (every rule
+re-read, the diff re-audited) unified the claim-time check with the Start
+predicate (`in_run_scope`, RULE 10), collapsed the `_AI` family vocabulary
+into `naming.parse_ai_output` (RULE 16.4 — `scanner._AI_FAMILY_RE` and
+`folder_ai._STRIP_RE` deleted), made an empty scan log as empty (RULE 4)
+and, when `models.py` touched 301 lines, moved progress counting to
+`core/progress.py` (49 lines, 4 functions; `models.py` 272). No ratchet
+maximum grew in any touched file; `queue_scan.py` lost its
+`selected_images` alias (one call re-hosted, RULE 18.1). New
+lanes: `tests/test_run_scope.py` (15), `tests/test_run_control_gate.py` (6,
+real `start_run` against a live `Future`), `tests/test_scan_resume.py` (13,
 real files through scanner → model → merge → scan workers),
+`tests/test_progress.py` (3),
 `tests/test_queue_thumbnails.py` (8 — the never-blocking thumbnail contract,
 real PNGs; added when deleting the covered alias pushed `queue_scan.py`
 under its per-file coverage floor: the floor is met with behaviour, not by
 keeping dead lines), 5 tests across the orchestrator / dispatcher /
-run_state files; pytest 1,554 → 1,612;
-`npm run test:js` unchanged (240); coverage 86.55 / 82.63 → **86.99 / 83.25**.
+run_state files, +1 naming; pytest 1,554 → 1,621;
+`npm run test:js` unchanged (240); coverage 86.55 / 82.63 → **87.03 / 83.25**.
 Goldens byte-identical; slot surface unchanged (135).
 
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)

@@ -654,7 +654,8 @@ Design record: [`docs/archive/2026-10-09-run-scope-and-config-hygiene/design.md`
 
 | Test | Executes | Pins |
 |---|---|---|
-| `tests/test_run_scope.py` (14) | `is_runnable` table over every `ImageStatus`, `run_scope`, `queue_scan.selected_images ≡ run_scope`, `claim_denied` logging | one predicate, every status placed explicitly |
+| `tests/test_run_scope.py` (15) | `is_runnable` table over every `ImageStatus`, `in_run_scope` / `run_scope`, `run_control` uses the core predicate (no panel alias), `claim_denied` logging incl. `— deselected` | one predicate, every status placed explicitly, Start and claim agree |
+| `…::test_sequential_skips_an_image_deselected_mid_run` | real `_run_sequential`; the checkbox is cleared from inside `job_started` of image 1 | image 2 never claimed, `⏭ … — deselected` |
 | `tests/test_batch_orchestrator.py::test_sequential_skips_settled_images_at_claim_time` | real `_run_sequential` + runner with `completed`/`skipped`/`pending` in the list | one job started, `⏭` lines, settled items untouched, batch reaches `idle` |
 | `…::test_parallel_fallback_does_not_redo_completed` | `_try_parallel` whose dispatch completes image A then raises → `_run_sequential` | A not re-sent (attempt 1), B processed |
 | `…::test_load_run_settings_uses_the_one_run_scope_predicate` | `_load_run_settings` | scope list; `_selected_images` stays deleted |
@@ -664,8 +665,16 @@ Design record: [`docs/archive/2026-10-09-run-scope-and-config-hygiene/design.md`
 | `tests/test_scan_resume.py` (11) | real files in `tmp_path` through `scan_folder`, `from_scan_dict`, `merge_scanned`, both scan workers | output reported, exact-then-highest, same-folder only, newcomers-only boundary, summary line |
 | `tests/test_repo_hygiene.py` (15) | real `git ls-files` | no runtime path / key literal tracked; scanner finds a planted key |
 | `tests/test_queue_thumbnails.py` (8) | real PNGs through `request_thumbnail` / `start_thumb_job` / `thumb_job_done` | cached → pending ticket → emit, slot always released (kept `queue_scan.py` above its coverage floor after the `selected_images` alias was deleted) |
+| `tests/test_naming.py::test_parse_ai_output_is_the_one_family_definition` + existing naming / folder_ai / scanner suites | `parse_ai_output` table (counter, suffix param, case, the degenerate `_AI` stem) | one `_AI` vocabulary; `scanner._AI_FAMILY_RE` and `folder_ai._STRIP_RE` gone; Drop _AI and the scan filter behave exactly as before (equivalence gate) |
+| `tests/test_scan_resume.py` (+2: `…empty_scan_as_empty_not_success`, `…worker_logs_an_empty_folder_as_a_warning`) | `scan_summary` and the real scan worker on a folder with no supported file | RULE 4 — `warn`, never a success line |
+| `tests/test_progress.py` (3) | `core/progress.py` table + `AppState.recalculate_progress` | counts per key from a real mixed queue; pending = selected ∧ untouched |
+| `tests/test_folder_ai.py::test_os_errors_are_reported_per_file_and_never_stop_the_sweep` | real tmp tree, `Path.rename` / `Path.unlink` refusing one file | the `errors` contract names the file, the sweep finishes the rest (RULE 4 / RULE 9); added when `folder_ai.py` lost its regex lines and slipped 0.09 pp under its per-file floor |
 
 Goldens: unchanged (no block behaviour touched); slot surface unchanged (135).
+
+### B13 validation pass (same day) — all 23 rules re-read, `3a5ee06` re-audited
+
+Findings and fixes (design + numbers: [`design.md` → *Validation pass*](../2026-10-09-run-scope-and-config-hygiene/design.md)): **V1** RULE 10 — the claim-time check tested status only while Start filtered `selected ∧ runnable`; an image deselected mid-run was still sent → `in_run_scope` is the one predicate for both. **V2** RULE 16.4 — `scanner._AI_FAMILY_RE` was the fourth definition of the `_AI` family → `naming.AI_SUFFIX` + `naming.parse_ai_output`, consumed by the scan filter, the output map and `folder_ai.strip_ai_name`. **V3** RULE 4 — `Scanned 0 images, 0 new` was logged at success → `scan_summary` returns `(line, level)`, empty = `warn`. **V4/V5** readability — blank lines / type hint in `models.py`, core import first in `run_control.py`. **V6** RULE 18.2 — `models.py` reached 301 lines → progress counting extracted to `core/progress.py` (models 272, progress 49; `AppState.recalculate_progress` is the only caller). Fixture correction: `tests/test_multi_page_dispatcher_run.make_img` now builds *selected* images (a batch list never holds a deselected one); two `test_panel_slots.py` tests that wanted an unselected image say so explicitly.
 
 ## Gate evidence (2026-10-02)
 
@@ -745,9 +754,9 @@ Goldens: unchanged (no block behaviour touched); slot surface unchanged (135).
 
 | Gate | Result |
 |---|---|
-| `pytest -q -n 4` (CI-like, no PySide6) | 1,612 passed, 1 skipped, same 2 pre-existing environmental failures deselected (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message) |
+| `pytest -q -n 4` (CI-like, no PySide6) | 1,621 passed, 1 skipped, same 2 pre-existing environmental failures deselected (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message); one timing flake seen once under the coverage tracer (`test_cooldown_service.py::test_wait_for_batch_ready_waits_for_zero`, untouched since the root commit, 3/3 green re-run) |
 | `npm run test:js` | 240 pass / 0 fail (unchanged — no JS touched) |
-| `tools/verify_quality.py --allow-legacy --coverage-ratchet --js` | PASSED — 0 fails / 0 warns; coverage **86.99 % line / 83.25 % branch** against the 86.36 / 82.33 floor (`run_scope.py`, `models.py` 100 % line; `queue_scan.py` 52.24 → 74.81 %); `--changed-files` on the 9 touched production files: 0 fails, no ratchet maximum grown; `--changed --base origin/<branch>` lane on the committed diff: PASSED (see commit) |
+| `tools/verify_quality.py --allow-legacy --coverage-ratchet --js` | PASSED — 0 fails / 0 warns; coverage **87.03 % line / 83.25 % branch** against the 86.36 / 82.33 floor (`run_scope.py`, `progress.py`, `models.py`, `folder_ai.py` 100 % line; `queue_scan.py` 52.24 → 74.91 %); `--changed-files` on the 12 touched production files: 0 fails, no ratchet maximum grown; `--changed --base origin/<branch>` lane on the committed diff: PASSED (see commit) |
 | Goldens | all 12 scenario goldens byte-identical |
 | `tests/test_bridge_slots.py` | frozen surface **135** slots — unchanged |
 | `compileall` / pyflakes | clean |

@@ -62,7 +62,9 @@ def make_img(name="a.png", **kw):
             "absolute_path": f"/tmp/{name}", "filename": name,
             "base_name": name.rsplit(".", 1)[0], "extension": "." + name.rsplit(".", 1)[1],
             "size": 1, "mtime": 0.0, "fingerprint": "fp-" + name}
-    return ImageItem.from_scan_dict(data)
+    item = ImageItem.from_scan_dict(data)
+    item.selected = kw.get("selected", True)  # a batch list only ever holds selected images (run_scope)
+    return item
 
 
 def make_pool(tab_ids, busy=()):
