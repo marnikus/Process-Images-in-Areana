@@ -14,8 +14,8 @@ from datetime import datetime
 
 from app.core.run_scope import run_scope
 from app.services.batch_orchestrator import run_batch
-from app.services.run_state import batch_active, schedule_coro
-from app.ui.panels.queue_scan import push_queue_undo
+from app.services.live.feed import commit_queue, push_queue_undo, recover_stale_processing
+from app.services.run_state import batch_active, schedule_batch
 from app.ui.panels.url_queue import _URL_GATE_MSG, _urls_gate_error, enabled_urls
 from app.ui.qt_compat import Slot
 
@@ -44,10 +44,10 @@ def clear_image_state(bridge) -> int:
     return count
 
 
-def reset_image_state(img, selected: bool) -> None:
-    """Return one image to pending (run-scope selection as given)."""
+def reset_image_state(img) -> None:
+    """Return one image to pending AND selected (D-6R: re-queued)."""
     img.status = "pending"
-    img.selected = selected
+    img.selected = True
     img.error = None
     img.output_path = None
     img.assigned_url_id = None
@@ -168,9 +168,7 @@ class RunControlMixin:
     @Slot(result=str)
     def retry_failed(self):
         count = revive_failed_images(self.state.images)
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        commit_queue(self, "retry_failed")
         return json.dumps({"ok": True, "count": count})
 
     @Slot(result=str)
@@ -191,11 +189,10 @@ class RunControlMixin:
     @Slot(result=str)
     def reset_all(self):
         for img in self.state.images:
-            reset_image_state(img, False)
+            reset_image_state(img)
         self.state.jobs = []
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        count = commit_queue(self, "reset_all")
+        self._log(f"↻ Reset all: {count} images re-queued", "info")
         return json.dumps({"ok": True})
 
     @Slot(str, result=str)
@@ -205,9 +202,7 @@ class RunControlMixin:
                 img.status = "pending"
                 img.selected = True
                 img.error = None
-                self.state.recalculate_progress()
-                self._save_arena()
-                push_queue_undo(self)
+                commit_queue(self, "retry_image")
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
 
@@ -215,10 +210,9 @@ class RunControlMixin:
     def reset_image(self, img_id: str):
         for img in self.state.images:
             if img.id == img_id:
-                reset_image_state(img, False)
-                self.state.recalculate_progress()
-                self._save_arena()
-                push_queue_undo(self)
+                reset_image_state(img)
+                count = commit_queue(self, "reset_image")
+                self._log(f"↻ Reset image: {count} images re-queued", "info")
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
 
@@ -236,9 +230,8 @@ class RunControlMixin:
         self._stop_after = False
         self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
         self._emit_arena_state()
-        fut = schedule_coro(self, run_batch(self))
-        if fut:
-            self._batch_future = fut
+        recover_stale_processing(self)
+        schedule_batch(self, run_batch(self))
         return json.dumps({"ok": True})
 
     @Slot(result=str)

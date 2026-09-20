@@ -37,7 +37,8 @@ def test_ensure_bg_loop_reuses_running():
     assert rs.ensure_bg_loop(bridge) is loop
 
 
-def test_schedule_coro_runs_and_tracks_batch():
+def test_schedule_coro_runs_without_tracking_and_schedule_batch_tracks():
+    """S4: generic schedule never tracks (sniff deleted); schedule_batch always does."""
     bridge = make_bridge()
     done = threading.Event()
 
@@ -47,13 +48,21 @@ def test_schedule_coro_runs_and_tracks_batch():
     fut = rs.schedule_coro(bridge, work())
     assert fut is not None
     assert done.wait(timeout=5)
+    assert bridge._batch_future is None  # generic path: no tracking
 
     async def run_batch():
         return None
 
     fut2 = rs.schedule_coro(bridge, run_batch())
-    assert bridge._batch_future is fut2
+    assert bridge._batch_future is None  # the name no longer matters (sniff deleted)
     fut2.result(timeout=5)
+
+    async def batch_work():
+        return None
+
+    fut3 = rs.schedule_batch(bridge, batch_work())
+    assert bridge._batch_future is fut3
+    fut3.result(timeout=5)
     deadline = time.time() + 5
     while bridge._batch_future is not None and time.time() < deadline:
         time.sleep(0.01)

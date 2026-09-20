@@ -17,9 +17,9 @@ import json
 import threading
 from pathlib import Path
 
+from app.services.live.feed import commit_queue, push_queue_undo
 from app.ui.qt_compat import Slot, clipboard_copy
 from app.ui.panels.queue_scan_folder import FolderPickMixin, as_folder_dict
-from app.ui.services import arena_serialize, undo_entries
 from app.ui.services import file_service, folder_ai_service
 from app.ui.services.scan_service import merge_scanned, scan_folder_pure, scan_summary
 from app.ui.services.thumbnail_service import generate_thumbnail_data_url
@@ -65,24 +65,13 @@ def run_off_ui_thread(bridge, fn, *args) -> None:
         threading.Thread(target=fn, args=(bridge, *args), daemon=True).start()
 
 
-def push_queue_undo(bridge) -> None:
-    """Snapshot image queue to undo (best effort)."""
-    try:
-        js_images = arena_serialize.arena_to_js(bridge.state)["images"]
-        bridge.undo_service.push("queue", js_images)
-        undo_entries.emit_undo_state(bridge)
-    except Exception:
-        pass
-
-
 def clear_queue_images(bridge) -> int:
     """Empty images+jobs (undoable); returns cleared count. No log/JSON."""
     count = len(bridge.state.images)
     push_queue_undo(bridge)
     bridge.state.images = []
     bridge.state.jobs = []
-    bridge.state.recalculate_progress()
-    bridge._save_arena()
+    commit_queue(bridge, "clear", undo=False)
     return count
 
 
@@ -93,8 +82,7 @@ def run_scan_merge(bridge, root_path: Path) -> None:
         ignore_ai = bridge.state.folder.get("ignore_ai_suffix", True)
         scanned = scan_folder_pure(root_path, supported, ignore_ai)
         added = merge_scanned(bridge.state.images, scanned)
-        bridge.state.recalculate_progress()
-        bridge._save_arena()
+        commit_queue(bridge, "scan", undo=False)
         bridge._log(*scan_summary(scanned, added))
     except Exception as e:
         bridge._log(f"Scan failed: {e}", "error")
@@ -111,8 +99,7 @@ def run_scan_new_batch(bridge, root_path: Path, cleared: int) -> None:
         # Queue was cleared by the slot: merge appends all (selected=False),
         # identical to the original inline loop.
         added = merge_scanned(bridge.state.images, scanned)
-        bridge.state.recalculate_progress()
-        bridge._save_arena()
+        commit_queue(bridge, "scan", undo=False)
         summary, _level = scan_summary(scanned, added)  # a new batch is destructive: always warn
         bridge._log(f"🗑 New batch: cleared {cleared} old — {summary}", "warn")
     except Exception as e:
@@ -281,17 +268,13 @@ class QueueScanMixin(FolderPickMixin):
         img.selected = bool(selected)
         if selected and img.status == "skipped":
             img.status = "pending"
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        commit_queue(self, "select")
         return json.dumps({"ok": True})
 
     @Slot(bool, str, result=str)
     def bulk_select(self, selected: bool, filter_status: str):
         count = apply_bulk_selection(self.state.images, bool(selected), filter_status)
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        commit_queue(self, "select")
         return json.dumps({"ok": True, "count": count})
 
     @Slot(result=str)

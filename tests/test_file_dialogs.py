@@ -1,6 +1,7 @@
 """File-dialog branch tests (R12/F7): fake QFileDialog, Qt absent in CI."""
 
 import json
+import threading
 from types import SimpleNamespace
 
 from app.core.layout_service import default_grid_tree
@@ -91,9 +92,10 @@ def test_app_settings_import_dialog_ok_and_cancel(tmp_path, monkeypatch):
     preset.write_text(json.dumps({"folder": {"root_path": "/z"},
                                   "prompt": {"user_prompt": "hi"}}))
     FakeDialog.open_file = (str(preset), "JSON (*.json)")
-    state = SimpleNamespace(urls=[], folder={}, prompt={},
+    state = SimpleNamespace(urls=[], images=[], folder={}, prompt={},
                             recalculate_progress=Rec())
-    fake = SimpleNamespace(state=state, _save_arena=Rec())
+    fake = SimpleNamespace(state=state, _save_arena=Rec(),  # S4: preset tails commit
+                           _emit_arena_state=lambda: None, _state_lock=threading.RLock())
     res = json.loads(app_settings.AppSettingsMixin.import_preset(fake))
     assert res == {"ok": True}
     assert state.folder == {"root_path": "/z"}

@@ -6,6 +6,7 @@ Every assertion checks real slot output, so gutting a slot body fails it.
 """
 
 import json
+import threading
 
 import pytest
 
@@ -44,6 +45,8 @@ def make_host(mixins, **attrs):
         host._emit_arena_state = lambda: None
     if not hasattr(host, "_emit_pool_status"):
         host._emit_pool_status = lambda: None
+    if not hasattr(host, "_state_lock"):
+        host._state_lock = threading.RLock()  # S4: the queue funnel locks state
     return host, logs
 
 
@@ -182,8 +185,9 @@ def test_run_control_start_run_ok_schedules_batch(cfg, monkeypatch):
 
     def fake_schedule(self, coro):
         scheduled.append(coro)
+        self._batch_future = coro  # S4: schedule_batch always tracks (deliberate)
         return coro
-    monkeypatch.setattr(rc_mod, "schedule_coro", fake_schedule)
+    monkeypatch.setattr(rc_mod, "schedule_batch", fake_schedule)
     img = make_img(); img.selected = True; img.status = "pending"
     host, _ = make_host((RunControlMixin,), config=cfg, cdp=make_cdp(connected=True),
                         state=make_state(images=[img], urls=[UrlRow.create("https://arena.ai/c",

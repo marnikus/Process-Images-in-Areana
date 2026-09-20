@@ -5,11 +5,13 @@ inline, flags + services built here. All attrs identical to the pre-A6
 inline version, plus `_batch_future = None` (was lazily created).
 """
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from app.core.undo_service import UndoService
+from app.services.live.bus import LiveBus
 from app.ui.panels.watcher_captcha import (
     get_watcher_cdp_controller, on_watcher_state)
 
@@ -32,6 +34,8 @@ def init_run_state(bridge) -> None:
     bridge._stop_after = False
     bridge._batch_future = None
     bridge._exported_paths = {}
+    bridge._live_bus = LiveBus()
+    bridge._state_lock = threading.RLock()
 
 
 def init_tracking_state(bridge) -> None:

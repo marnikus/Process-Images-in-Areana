@@ -229,6 +229,23 @@ output_wait maxima byte-identical (23/4/8/3/4), cdp_arena identical, service fil
 21 (recorded 27), cognitive ≤8, slots **135**.
 SoR rows 8 + 12, I-52 landed (plan I-44). No JS touched.
 
+### 2026-09-20 S4 Live queue feed and wake funnel (branch `arena/01a0bf4d-…`)
+
+New `app/services/live/` (`LiveBus` + `live_bus`, `feed` with `ELIGIBLE` /
+`eligible_images` / `commit_queue` / `recover_stale_processing` /
+`clear_row_assignments`, both 100% covered) + `schedule_batch` (sniff deleted) +
+`init_run_state` `_live_bus`/`_state_lock`. D-6R: `reset_image_state(img)` —
+both resets re-queue selected, log the count, stay undoable. RED observed
+(3 collection errors + behavioral probe), then green: new files 20/20
+(real thread wake, real throttle window, recording-lock stress, no mocks).
+Armed with recorded reason: shared `make_host`, both scheduling seams,
+the sniff test (rewritten), scan/file-dialog factories.
+Full pytest **1,682 / 1 skipped** (incl. 15 hygiene; goldens byte-identical),
+coverage **87.41 / 83.71** (baseline 86.36/82.33), jscpd 1.108 < 1.24,
+Python gate **0 fails** (1 JS fail pre-existing), run_control 279→272,
+queue_scan 310→293, app_settings max 18→17, cognitive ≤8, slots **135**.
+SoR rows 6/3/4, I-49 (plan I-41) + I-54 (plan I-46) landed. No JS touched.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

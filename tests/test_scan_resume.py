@@ -5,6 +5,7 @@ RULE 8: real files in tmp_path through the real scanner, ImageItem factory,
 merge and the scan workers; nothing is stubbed but the bridge surface.
 """
 
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -122,6 +123,8 @@ def make_bridge(root: Path):
                             recalculate_progress=lambda: None)
     return SimpleNamespace(state=state, _log=lambda m, l="info": logs.append((m, l)),
                            _save_arena=lambda: saves.append(1), _scan_in_progress=True,
+                           _emit_arena_state=lambda: None,  # S4: scan tails commit
+                           _state_lock=threading.RLock(),  # S4: the funnel locks state
                            _logs=logs, _saves=saves)
 
 

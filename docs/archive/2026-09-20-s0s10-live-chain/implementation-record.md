@@ -201,26 +201,65 @@ closure recorded here instead.
 Docs: RULE 20 amendment (bounded wait + capped pause), row 8 (knob doubles as cap),
 row 12, I-52 landed (plan I-44), QUALITY_RECHECK S3 entry.
 
-## S4 — Live queue feed and wake funnel — NEXT (S3 green)
+## S4 — Live queue feed and wake funnel — DONE (2026-09-20)
 
-Boundary: one eligibility read model (EXTEND `core/run_scope.py` — no second rule)
-and one queue mutation funnel feed a live run. Claim-time recheck prevents stale,
-deselected, completed, or already-processing images from dispatching.
-Interfaces: `live.bus.LiveBus` + `live_bus(bridge)`; run_scope extension
-(predicate excluding live-`processing` + `recover_stale_processing` beside it);
-`commit_queue(bridge, reason, undo)`; `run_state.schedule_batch` (replaces
-coroutine-name sniffing).
-RED: `tests/test_live_bus.py` (cross-thread wake, drained reasons, timeout, throttle),
-`tests/test_live_feed.py` (eligibility incl. claim-time recheck), `tests/test_reset_requeues.py`
-(reset single/all ⇒ pending + selected + wake + count line + undoable).
-GREEN: route scan/select/retry/reset mutations through `commit_queue`; both resets
-re-queue and log the count; delete `reset_image_state`'s `selected` parameter.
-REFACTOR/EQUIVALENCE: keep output files separate from queue data; preserve undo
-semantics; never dispatch a processing image twice. Goldens byte-identical.
-Gate: queue panel, run-control, characterization tests.
-Docs: rows 6/8/11. Lands plan I-41 as **I-49**, I-46 as **I-54**.
+Boundary: one eligibility rule, one queue-write funnel, one wake event (D-6R:
+both resets return images to `pending` AND `selected=True`).
+Interfaces as built: new `app/services/live/` — `bus.LiveBus` (6 methods:
+attach/wake/wait/throttle/reasons + init; wait joins drained reasons with `+`,
+`""` on timeout) + `live_bus(bridge)` (one per bridge); `feed` (`ELIGIBLE`,
+`eligible_images` = run scope minus processing, `commit_queue` =
+recalc → save → undo → emit → wake returning the pending count,
+`recover_stale_processing` via the row→tab join + `tab_has_live_job`,
+`clear_row_assignments` for S6); `run_state.schedule_batch` (5 lines,
+delegates submit/callback to `schedule_coro` + always tracks); `init_run_state`
++ `_live_bus`/`_state_lock` (top-level imports, func 8→10).
+RED (observed): the 3 new files failed collection (`ModuleNotFoundError:
+app.services.live`); behavioral probe at base: `reset_all` ⇒ selected
+`[False, False]`, no `_live_bus`/`_state_lock`. After GREEN: 20/20.
+GREEN: `reset_image_state(img)` (param deleted — `False` can never come back);
+4 run_control tails → funnel (both resets log the count; retries bare —
+`retry_image` fits ≤9 exactly); `start_run` + `recover_stale_processing` and
+`schedule_batch(self, run_batch(self))` (16 lines); queue_scan tails (select/
+bulk/clear/scan×2) + `push_queue_undo` MOVED to feed (services can't statically
+import UI — `ui.services` lazy inside; queue_scan re-exports the name, drops the
+dead import); preset tails → `commit_queue(self, "preset", undo=False)` (system
+changes stay out of history, I-37); `_track_batch_future` deleted (sniffing gone).
+Clear keeps its PRE-push outside the funnel (post-snapshot undo would be wrong).
+REFACTOR/EQUIVALENCE: panels shrink (run_control 279→272 = plan's −7 exact;
+queue_scan 310→293); goldens byte-identical; the OFF-style equivalence pins hold
+(`wait_captcha_cleared` untouched, never-gives-up green). Armed with recorded
+reason: shared `make_host` (+ `_state_lock`), `ready_host` + the start_run test
+(seam moved to `schedule_batch`; the fake implements the track contract),
+`test_schedule_coro_runs…` rewritten (generic path never tracks now),
+scan_resume factory + file_dialogs fake (+ `_state_lock`/`_emit_arena_state`/
+`images`). jscpd 1.108% < 1.24% floor.
+Gate: new files 20/20 (no mocks; real thread wake, real 100 ms throttle window,
+recording-lock stress); full pytest **1682 passed / 1 skipped** (incl. 15
+hygiene); coverage **87.41 / 83.71** (baseline 86.36/82.33; live/bus + live/feed
+100); Python gate **0 fails** (the 1 JS fail on untouched `captcha.js` is
+pre-existing — S3 stash-proven); run_control maxima 19/10/6, queue_scan 19/10/7,
+app_settings max 18→17 (shrink), cognitive ≤8. No JS touched. Slots 135.
+Deviations from tdd-interfaces §S4: (1) L-4 already dead — `queue_scan.
+selected_images` doesn't exist (run_scope killed it; pinned by `test_run_scope`
++ `test_batch_orchestrator:426`), so T13 pins eligible == run_scope-minus-
+processing instead and `_load_run_settings` is untouched (switching the batch to
+status-only eligibility would send deselected images — I-44). (2) `eligible_
+images` composes `in_run_scope` (selected-aware): status-only would make S5's
+`plan_pass` disagree with the dispatch filter on phantom work. (3) `fake_clock`
+unusable again (S3 finding): T1 needs no clock, T4 uses a real window. (4) T12's
+"coroutine boundary" is N/A — `commit_queue` is sync (asserted). (5) `set_image_
+selected` 9 / `clear_queue_images` 8 (plan undercounted by one; both < file max).
+(6) I-47 does NOT land here despite I-48's parenthetical — it is plan I-39
+(S5's stop semantics); I-47 stays empty until S5. (7) SoR rows: the plan's "row 11"
+is the CDP row now and "row 8" is Settings — funnel content went to rows 6/3/4
+where it belongs. (8) `threading.RLock` is a factory here, not subclassable —
+the T12 spy wraps by composition. (9) `run_state` file 423→420 (−3; baseline 417
+is stale, file_lines unenforced).
+Docs: rows 6/3/4, I-49 (plan I-41) + I-54 (plan I-46) landed, QUALITY_RECHECK S4
+entry. No AGENT_RULES change (§S4.4 lists none).
 
-## S5 — Always-live supervisor and one run-state writer — PENDING (needs S4 green)
+## S5 — Always-live supervisor and one run-state writer — NEXT (S4 green)
 
 Boundary: a started run waits for work or a usable tab until the user stops it.
 No batch tail self-ends the run.
