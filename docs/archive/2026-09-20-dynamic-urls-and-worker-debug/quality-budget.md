@@ -66,18 +66,18 @@ deletes a JS interval), coverage **up** (new logic in new fully-tested files), J
 | `app/ui/panels/layout_state.py` | func_loc 19, methods 14, class_loc 136 | `emit_arena_state` 10 → **11** | 85.34 | 281 → 283 |
 | `app/ui/panels/run_control.py` | func_loc 19, methods 10, cc 6 | `reset_image_state` 8 → **8** (param deleted); `reset_all` 9 → 10 (log line); `reset_image` 11 → 11 | 82.77 | 275 → ~274 (round-1 `commit_queue` tail shrinks 8 slots) |
 | `app/ui/panels/page_pool.py` | func_loc 16, params **4**, methods 9 | `connect_page_pool` 13 → **13** (one word) | 82.24 | 234 → 235 (import) |
-| `app/browser/output_wait.py` | func_loc **23**, cc 8, nest 3, params 4 | `_check_timeout` 11 → **11** (line replaced); `wait_for_new_output_with_spec` 23 → 23; new `PauseClock.note` **6**, `paused_elapsed` **5**, `describe` **5**, `_paused_elapsed` **4** (all new symbols ≤ 30 / CC ≤ 10); `WaitSpec` +1 field | 94.95 | 211 → **~245** |
-| `app/browser/cdp_arena/output.py` | func_loc **16**, params **4**, cc 4 | `_run_wait` 14 → **15**; `_security_gate` 10 → **12**; `_map_wait_result` 10 → **11**; imports `PauseClock` from `..output_wait` (edge already exists) | 91.56 | 182 → ~187 |
-| `app/services/captcha/service.py` | func_loc **27**, cc 7, params 4 | `_manual_wait` **27 → 27 (untouched)**; `_resolve_captcha` 8 → 9; `handle_captcha` 20 → 22 (round-1 scope gate) | 94.69 | 310 → ~313 |
+| `app/browser/output_wait.py` | func_loc **23**, cc 8, nest 3, params 4 | `_check_timeout` 11 → **11** (line replaced); `wait_for_new_output_with_spec` 23 → 23; new `PauseClock.note` **8** (charges `min(seconds, cap − total)`, D-14R), `PauseClock.expired` **3**, `PauseClock.describe` **5**, `paused_elapsed` **5**, `_paused_elapsed` **4** (all new symbols ≤ 30 / CC ≤ 10); `WaitSpec` +1 field | 94.95 | 211 → **~250** |
+| `app/browser/cdp_arena/output.py` | func_loc **16**, params **4**, cc 4 | `_run_wait` 14 → **15** (builds `PauseClock(cap=getattr(spec.ctrl, "pause_cap_s", 0.0))`); `_security_gate` 10 → **12**; `_map_wait_result` 10 → **11** and its params drop **4 → 3** (`(cdp, result, spec)`); `WaitSpec:29-35` and `mixins.wait_for_new_output:139-146` signatures **unchanged** (the cap rides `ctrl`) | 91.56 | 182 → ~187 |
+| `app/services/captcha/service.py` | func_loc **27**, cc 7, params 4 | `_manual_wait` **27 → ~21** (the 7-line solved/stopped `if/else` at `:269-275` is extracted; the cap rides the existing `stop` argument at `:262`); new `_wait_outcome` **~14**; `_resolve_captcha` 8 → 9 (D-15 reason); `handle_captcha` 20 → 22 (round-1 scope gate) | 94.69 | 310 → ~316 |
 | `app/persistence/config_manager.py` | class_loc 44, func_loc 13 | `DEFAULT_SESSION` module dict +1 key | 95.24 | 124 → 125 |
-| `app/services/single_job_runner.py` | func_loc **26**, cc 9, nest 3 | round-1 gate edits: `check_security` 10 → 11, `wait_for_output` 19 → 20, `_handle_security` unchanged | 83.45 | 902 → ~900 |
+| `app/services/single_job_runner.py` | func_loc **26**, cc 9, nest 3 | round-1 gate edits: `check_security` 10 → 11, `_handle_security` unchanged; `wait_for_output` 19 → **20** (installs `ctrl.pause_cap_s` next to `security_settler:249`, cleared in the same `finally:257-261`); `_handle_captcha_outcome` 11 → **13** (maps `wait_timeout` → `RuntimeError(reason)`) | 83.45 | 902 → ~900 |
 | `app/services/batch_orchestrator.py` | func_loc 17, cc 7 | round-1 §6.3 surgery (tail calls deleted, `_selected_images` deleted) | 92.51 | 492 → **~445** |
 | `app/services/run_state.py` | func_loc 18, cc 7 | round-1: `_track_batch_future` deleted, `schedule_batch` added (**≤ 18**) | 82.09 | 417 → ~410 |
 | `app/ui/panels/queue_scan.py` | func_loc 19, methods 10 | round-1: `selected_images` → 2-line delegation; 3 slot tails → `commit_queue` | 52.24 | 315 → ~305 |
 | `app/ui/panels/browser_tabs.py` | func_loc 20, methods 7, class_loc 76 | round-1 D-10: reconciler + row helpers move out, delegations left | 89.13 | 544 → **~440** |
 | `app/ui/panels/url_queue.py` | func_loc 14, methods **11** | round-1: `_dedupe_state_rows`/`_add_missing_rows` → delegations (methods count must not grow) | 96.88 | 251 → ~245 |
 | `app/services/auto_connect.py` | **coverage 100**, nest **4**, cc 9 | **read-only reuse** (`enabled_tab_ids:203-209`) — no edit | 100.0 | 286 → 286 |
-| `app/services/cooldown_service.py` | func_loc 22, cc **10** | `wait_captcha_cleared:446-463` **unchanged** (D-14 keeps it wait-only); `set_tab_image:158` unchanged | 93.64 | 787 → 787 |
+| `app/services/cooldown_service.py` | func_loc 22, cc **10**, params **4** | **untouched**: `wait_captcha_cleared:446-463` keeps its 4-param signature (at the file maximum) and its wait-only contract — the cap (D-14R) is composed into the `stop` predicate by `captcha/policy.WaitDeadline`, so `tests/test_cooldown_service.py:604-618` stays green **unedited**; `set_tab_image:158` unchanged | 93.64 | 787 → **787** |
 | `app/browser/page_pool.py` | func_loc 23, class_loc 143, methods **15**, params 5(!) | unchanged (L-1 is in the *panel*, not the pool) | 88.78 | 207 → 207 |
 
 ### 3.2 JS — **net-zero ledger** (every baselined `.js` file: `file_lines` and `func_count` may not grow, `verify_quality.py:252-270`)
@@ -113,7 +113,7 @@ deletes a JS interval), coverage **up** (new logic in new fully-tested files), J
 | `app/services/live/reconcile.py` (round 1 + interval/receivers) | 215 | `reconcile_once` ≤ 28 / CC ≤ 9 / params ≤ 3 (spec object); `reconcile_loop` ≤ 16 / CC ≤ 5 | `tests/test_live_reconcile.py::test_interval_read_every_pass` |
 | `app/services/live/url_policy.py` (round 1 + receivers) | 185 | `removable_rows` ≤ 20 / CC ≤ 8 (predicate table, not if/elif); `mark_receivers` ≤ 10 / CC ≤ 4; `receiver_reason` ≤ 8 / CC ≤ 4 | `tests/test_url_policy.py::test_mark_receivers_flags_unchecked_and_offline` |
 | `app/services/live/__init__.py` (round 1) | 30 | re-export facade (RULE 16.0 waiver) | import in every live test |
-| `app/services/captcha/policy.py` (round 1 + `wait_reason`) | 55 | `captcha_in_scope` ≤ 6 / CC 2; `wait_reason` ≤ 10 / CC ≤ 4; `has_key` ≤ 6 / CC 2 | `tests/test_captcha_scope.py`, `tests/test_captcha_wait_reason.py::test_no_key_wording_names_the_paused_timeout` |
+| `app/services/captcha/policy.py` (round 1 + D-14R/D-15/D-23) | 75 | `captcha_in_scope` ≤ 6 / CC 2; `wait_reason` ≤ 10 / CC ≤ 4; `has_key` ≤ 6 / CC 2; `pause_cap_seconds` ≤ 8 / CC 3; `WaitDeadline.stop_or_expired` ≤ 8 / CC 3, `WaitDeadline.expired` ≤ 3 | `tests/test_captcha_scope.py`, `tests/test_captcha_wait_reason.py::test_no_key_wording_names_the_paused_timeout`, `tests/test_captcha_wait_cap.py::test_deadline_ends_the_wait_at_the_cap` |
 | `js/panels/live-debug.js` | 90 | `init` ≤ 20 LOC / CC ≤ 6 / params ≤ 1; ends `window.LiveDebugPanel = LiveDebugPanel` (I-35) | `tests/js/test_live_debug_panel.mjs::publishes itself` |
 | `js/panels/live-debug/store.js` | 80 | `tick` ≤ 12 / CC ≤ 4; `cache` setters ≤ 8 | `…::ticker recomputes elapsed without a bridge call` |
 | `js/panels/live-debug/render.js` | 130 | `workers` ≤ 24 / CC ≤ 8 / params ≤ 2; `queueHead` ≤ 14 / CC ≤ 4; `interval` ≤ 12 | `…::renders paused worker line + first image name` |
@@ -147,9 +147,11 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 |---|---|
 | `tests/test_page_pool_join.py` | **L-1**: `connect_page_pool` schedules via `run_state.schedule_coro` on a host **without** `_schedule_coro` (fails on `6bbaf8b`); the coroutine reaches the pool |
 | `tests/test_window_catalog.py` | Python ≡ JS window tables (ids, order, titles, version); every id has an element id in `_collectPanels`; `live_debug` present; `default_grid_tree` leaf set ≡ `WINDOW_IDS` |
-| `tests/test_pause_clock.py` | `PauseClock.note` accumulates, ignores ≤ 0, never raises; `paused_elapsed` subtracts; `describe` wording (lives in `output_wait.py`) |
+| `tests/test_pause_clock.py` | `note` accumulates, ignores ≤ 0, never raises; **charges at most `cap − total`** so a second settle in the same wait adds nothing (R22); `expired()`; `paused_elapsed` subtracts; `describe` wording (all in `output_wait.py`) |
 | `tests/test_output_wait_timeout_pause.py` | a settle that blocks longer than `timeout` **does not** time out (clock charged); the same wait **without** a clock times out (Watcher-OFF equivalence); the failure text carries `+Ns captcha wait` and `paused_s` |
-| `tests/test_captcha_wait_reason.py` | three-way `wait_reason` (ON+key / ON+no-key / OFF-unreachable); `_resolve_captcha` passes it through; `_manual_wait` unchanged |
+| `tests/test_captcha_wait_reason.py` | three-way `wait_reason` (ON+key / ON+no-key / OFF-unreachable); `_resolve_captcha` passes it through; the overlay still receives `timeout_sec` |
+| `tests/test_captcha_wait_cap.py` | **D-14R**: a dialog that never clears ends the wait at `watcher_captcha_timeout_sec` ⇒ `SolveOutcome(status="wait_timeout")` ⇒ `_handle_captcha_outcome` raises ⇒ job FAILED (retryable), no penalty recorded, cooldown as usual; a Stop before the cap still yields `stopped`; a smaller/larger config value moves the cap with no restart; `wait_captcha_cleared` itself is called unchanged (spy asserts 4 args) |
+| `tests/test_watcher_off_zero_activity.py` | **D-23**: with the switch OFF a visible dialog produces **zero** side effects — counted on spies: 0 detect probes, 0 `is_security_dialog_visible` polls, 0 overlays, 0 `mark_waiting`, 0 stats writes, 0 recordings, 0 penalties, 0 `🛡`/`CAPTCHA_*` log lines, `PauseClock.total == 0`, no `pause_cap_s` on the controller, and no captcha wording in `live_view` |
 | `tests/test_url_interval_setting.py` | default 5000; clamp 500/60000; `save_settings` persists only when the key is present; `interval_ms` re-read per pass (a fake bridge whose value changes between passes changes the sleep); published in `progress_updated.live` |
 | `tests/test_url_receivers.py` | `mark_receivers` flags unchecked / unlinked / offline rows; connected+enabled ⇒ receiver; `urls_to_js` publishes the flag; undo builders keep it; `commit_urls` recomputes |
 | `tests/test_reset_requeues.py` | `reset_image` and `reset_all` ⇒ `pending` + `selected=True` + `commit_queue` + the count log line; undo restores prior statuses |
@@ -172,6 +174,8 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 | `tests/test_panel_slots.py:220` | none | `reset_all()["ok"] is True` still holds (D-16 changes semantics, not the reply) |
 | `tests/test_bridge_slots.py` | **none** | no slot is added, removed or renamed (D-20): `reset_all`, `save_settings`, `connect_page_pool` all exist |
 | `tests/test_bridge_metaobject.py` | **none** | no signal added; `bridge.py` unchanged |
+| `tests/test_cooldown_service.py:604-618` | **none** | the cap is composed by the caller (D-14R) — `wait_captcha_cleared` keeps its "never gives up on its own" contract and its 4-param signature |
+| `tests/test_captcha_service.py` (never injects) | **none** expected | the pipeline stays wait-only; only the wait's *end* is now bounded — if an assertion pins the unbounded behaviour it is updated **by name** in the commit message, never silently |
 | `package.json` → `scripts["test:js"]` | append the 2 new `.mjs` files (25 → 27) | the JS lane is an explicit list |
 | characterization goldens (`tests/goldens/*`) | expected **unchanged**; regenerate only with a reviewed diff (`UPDATE_GOLDENS=1`) | no golden arms captcha-wait + timeout together; pinned log strings kept (round-1 R7) |
 
@@ -185,6 +189,10 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 * Grid persistence: a stored v5 15-window layout still loads, migrated to 16 leaves
   (`test_layout_service_full.py:264-289` already covers the mechanism; `test_title_fit.mjs:186` the JS side).
 * Undo kinds: no new kind; `settings` undo covers the interval, `queue` undo covers both resets.
+* `wait_captcha_cleared` contract: unchanged (still stop-honoured, still returns `True` when the dialog
+  clears or the probe errors) — the bound is added **outside** it (D-14R).
+* Watcher ON with a fast solve: identical outcome, logs and penalty as `6bbaf8b` — the cap only bites
+  when the wait exceeds it.
 
 ---
 
@@ -194,11 +202,12 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 |---|---|
 | `docs/current/SYSTEM_OF_RECORD.md` row 8 (Settings) | add "URL update interval (`url_reconcile_interval_ms`, 500-60000 ms, default 5000) — control in the Live Worker & Queue Debug window" |
 | row 11 (CDP connection) | replace "scan on start + every 15 s" with the Python reconciler at the user-set interval + immediate passes on wake; JS 15 s interval deleted |
-| row 12 (Security / CAPTCHA) | Watcher OFF = out of scope (round-1 D-1); Watcher ON = detect + wait + **generation timeout paused for that page**; no-key wording (D-15) |
+| row 12 (Security / CAPTCHA) | Watcher OFF = **zero captcha activity** (round-1 D-1 + D-23); Watcher ON = detect + wait + **generation timeout paused for that page, capped at `watcher_captcha_timeout_sec`** ⇒ at the cap the wait ends and the job fails retryable as `wait_timeout` (D-13/D-14R); no-key wording (D-15); `wait_captcha_cleared` itself unchanged |
+| row 8 (Settings) / Watcher window | note that `watcher_captcha_timeout_sec` now doubles as the pause cap (one knob, RULE 10) and is read per wait ⇒ no restart |
 | row 19 (Modern UI) | **15 → 16 windows**, add `live_debug` ("Live Worker & Queue Debug"), fix the stale `captcha_records` name (the id is `recordings`, `LEGACY_WINDOW_IDS`), note the L-5 rescue |
 | row 21 (Job cycle & cooldown) | receiver flag = the row-level view of the existing run gate; reset semantics (D-16) |
 | §5 invariants | amend I-19 / I-33 / I-34 / I-35 / I-37 / I-42; **add I-43…I-46** (`design.md` §10) |
-| `docs/current/AGENT_RULES.md` RULE 20 | append: the wait-only rule now includes *"the waiting page's generation timeout is paused for the wait; the pause is reported, never silent"* (round-1 D-2 amendment + D-13/D-14) |
+| `docs/current/AGENT_RULES.md` RULE 20 | append (round-1 D-2 + D-13/**D-14R**/D-23): *"…the pipeline still never solves; with the Watcher ON it waits, and the waiting page's generation timeout is paused for that wait — bounded by `watcher_captcha_timeout_sec`, at which the job fails honestly (`wait_timeout`) instead of hanging. With the Watcher OFF there is no captcha activity of any kind: no probe, overlay, pool mark, stats, recording, penalty, log line or pause."* |
 | `docs/current/QUALITY_RECHECK.md` | refresh with the step-12 numbers (tests, JS lane, size/complexity, slot contract 134, window contract 16, coverage, duplication) |
 | `docs/README.md` | this folder's bullet (added with the plan) + the "current truth" line that says "UI 15 windows" → 16 |
 | `docs/current/DOM_SELECTORS.md` | untouched (no arena.ai selector changes in this wave) |
@@ -216,14 +225,21 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 - [ ] `npm run test:js` green with the 2 new files listed in `package.json`
 - [ ] jscpd ≤ 1.240 %; `radon cc app -n C` shows no new C-or-worse symbol; cognitive ≤ 15
 - [ ] Goldens unchanged (or the reviewed diff is pasted into the commit message)
+- [ ] **Cap proven**: one image's worst case is `generation_timeout + watcher_captcha_timeout_sec`;
+      a second captcha in the same generation absorbs no extra pause (R22); a cap-reached job fails as
+      `wait_timeout` with the knob named in the reason
+- [ ] **Watcher OFF proven to be silent**: `tests/test_watcher_off_zero_activity.py` counts zero side
+      effects (D-23), including `PauseClock.total == 0`
 - [ ] RULE 18 recheck table (§5) filled with the measured numbers, deviations carry `# ideal-size:` reasons
 - [ ] RULE 17: every doc row in §7 updated **in the same commit series** as the code
 - [ ] `bash tools/pre_push_check.sh` clean; `--record-baseline` unused (or justified in the commit message)
 - [ ] Manual pass on a real Chrome: (1) interval change applies without restart, (2) captcha with
       Watcher ON pauses the timeout and the job still completes, (3) Watcher ON without a key waits for
       the manual solve with the honest reason, (4) Watcher OFF ignores the captcha and times out
-      normally, (5) Reset All re-queues and a live run picks the images up, (6) the debug window shows
-      workers/queue head and reacts to a tab added/removed, (7) the ⊘ icon appears on an unchecked or
+      normally, (5) a captcha left unsolved past `watcher_captcha_timeout_sec` fails the job with the
+      cap named in the reason and the tab cools down, (6) Reset All re-queues and a live run picks the
+      images up, (7) the debug window shows
+      workers/queue head and reacts to a tab added/removed, (8) the ⊘ icon appears on an unchecked or
       offline row and disappears when it becomes a receiver
 
 ---
@@ -239,8 +255,11 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 4. **No second worker table.** The pool panel is rescued, not duplicated (D-21); the job-line list is
    a different view with no shared templates (jscpd is measured, not assumed).
 5. **No timeout cap dressed as a pause.** The pause is exact, charged only around a real settle, and
-   reported in the failure text and the UI (D-13/D-14, I-44).
+   reported in the failure text and the UI (D-13/D-14R, I-44).
 6. **No silent contract growth.** The window set changes 15 → 16 with every pinned test updated in the
    same commit and the reason recorded here (§6.2).
-7. **No docs-after-code.** RULE 17: §7 lands with the code, and the round-1/round-2 archive folders are
+7. **No silent cap, no silent silence.** The cap is one existing user knob (`watcher_captcha_timeout_sec`),
+   reported in the throttled pause line, the failure reason and the debug window; "Watcher OFF" is proven
+   by a **counting** test (D-23), not by reading code and finding nothing.
+8. **No docs-after-code.** RULE 17: §7 lands with the code, and the round-1/round-2 archive folders are
    never edited to catch up (a new folder supersedes, this one amends by naming D-1/D-6/D-9).

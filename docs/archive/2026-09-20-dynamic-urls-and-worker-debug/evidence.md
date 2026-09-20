@@ -48,7 +48,7 @@ The chain, with the exact line where time is measured:
    `LoopState(..., start=time.monotonic())` (`:190`), and `_check_timeout:150-160` computes
    `elapsed = time.monotonic() - state.start` vs `spec.timeout` — **no pause term exists**.
 6. On expiry: `_map_wait_result:127-136` → `"failed", {"error": f"Timeout after {timeout_ms}ms"}`.
-7. The settle itself is unbounded by design (RULE 20): `_settle_and_note:265-271` →
+7. The settle itself is unbounded by design (RULE 20 today; bounded by the cap in `design.md` D-14R): `_settle_and_note:265-271` →
    `check_security:107-116` → `_run_security_captcha:88-104` → `captcha/service.handle_captcha:210-229`
    → `_resolve_captcha:232-239` → `_manual_wait:242-268` → `cooldown_service.wait_captcha_cleared:446-463`,
    whose docstring is *"Poll until the dialog clears; False only on stop (never gives up)"* — after
@@ -76,7 +76,23 @@ Headroom facts that shape the fix (baseline maxima, `tools/quality_baseline.json
 * `captcha/service.py` — `max_func_loc 27` and `_manual_wait` span **27** ⇒ **zero headroom in
   `_manual_wait`**; `_resolve_captcha` span 8 and `handle_captcha` span 20 have room. The reason
   wording must therefore be produced *outside* `_manual_wait` (it already receives `reason` as a
-  parameter — `:250-251` overlay `sub=reason`).
+  parameter — `:257-258` overlay `sub=reason`).
+
+### 2.1 What the cap must be built from (owner correction: *"D-14 should be capped"*, *"no activity at all if off"*)
+
+| Fact | Evidence |
+|---|---|
+| The knob already exists, is user-settable and is read **per wait**: `watcher_captcha_timeout_sec`, default 300 | `app/persistence/config_manager.py:25`; read by `_wait_timeout` `app/services/captcha/service.py:190-195`; clamped 10…3600 on write `app/ui/panels/watcher_captcha.py:65-73`; persisted `:88-98`; surfaced in the Watcher window (SYSTEM_OF_RECORD row 12) |
+| The wait overlay already counts that same number down ⇒ the cap is visible while it runs | `service.py:257-258` (`show_watcher_overlay(..., timeout_sec=timeout, sub=reason)`) |
+| `wait_captcha_cleared(ctrl, stop, timeout_sec, log)` is at the file's **`max_params` 4** and today only *warns* after `timeout_sec` ("never gives up") | `app/services/cooldown_service.py:446-463` (warning branch `:459-462`); baseline for the file: `max_params 4`, `max_cc 10`, `max_func_loc 22`, coverage floor 93.64 ⇒ **the cap must ride the existing `stop` predicate, not a new parameter** |
+| That "keeps waiting" behaviour is pinned by a test ⇒ composing the cap in the *caller* keeps the module **and** the test untouched | `tests/test_cooldown_service.py:604-618` (`test_wait_captcha_cleared_timeout_logs_but_keeps_waiting`, asserts `ok is True` + the `⏰` line) |
+| `_stop_pred(ctx)` is already the composition point for "stop" | `service.py:65-66` |
+| `SolveOutcome.status` is a free-form string ⇒ a new `wait_timeout` status needs no enum edit | `app/services/captcha/signals.py:94-99` (round 1 adds `out_of_scope` the same way) |
+| The honest-failure shape to copy already exists, with room to grow | `app/services/single_job_runner.py:75-85` (`page_error` → `raise RuntimeError(outcome.reason)`), span 11 vs file `max_func_loc 26` ⇒ +2 lines fit |
+| `_manual_wait` has **zero** headroom ⇒ the outcome mapping must be extracted (the function shrinks) | `service.py:251-277` (span **27** = file `max_func_loc 27`); the solved/stopped `if/else` is `:269-275` |
+| The cap cannot travel as a new parameter of the controller wait either | `app/browser/cdp_arena/mixins.py:139-146` (`wait_for_new_output(self, baseline, timeout_ms, correlation_id, cancel_check)` → builds `cdp_arena.WaitSpec:29-35`) ⇒ it rides `ctrl.pause_cap_s`, installed next to `security_settler` (`single_job_runner.py:249`) and cleared in the same `finally:` (`:257-261`) |
+| Two captchas inside one generation are possible (the settle runs **per poll**), so a per-encounter cap alone would not bound the absorbed pause ⇒ the clock cap must be cumulative per wait | `cdp_arena/output.py:161-165` (`check_fn` calls `_security_gate` on every poll), `:115-125` |
+| "No activity at all if OFF" is measurable today — every side effect has exactly one call site | detect probe `service.py:197-208`; pool mark `_mark_waiting:97` (called `:216`); stats `_record_stats:79` (called `:217`, `:271`); recording `svc.recordings.start/finish` `:220`, `:228`; overlay `:257`; penalty `_record_penalty:88`; report line `_emit_report:180`; per-poll dialog check `cdp_arena/output.py:115-125` — reachable only when the settler is installed (`single_job_runner.py:249`) |
 
 ---
 
