@@ -406,13 +406,25 @@
 
     <!-- BROWSER PREVIEW -->
     <div class="panel" id="winCaptcha" data-window="captcha">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">verified_user</span> Captcha — Watcher solver (2Captcha SDK) <span class="spacer"></span><span id="captchaWatcherBadge" class="status-badge" style="font-size:10px; padding:2px 8px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">solver: off</span><button id="captchaWatcherStartBtn" class="btn-small btn-primary" title="Turn the Watcher ON — the app solves visible reCAPTCHA challenges on its own pages">Watcher ON</button><button id="captchaWatcherStopBtn" class="btn-small" title="Turn the Watcher OFF — the app never solves captchas">OFF</button><button id="captchaStatsBtn" class="btn-small" title="Refresh status, stats + balance">↻</button></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">verified_user</span> Captcha — Watcher solver (2Captcha / CapMonster) <span class="spacer"></span><span id="captchaWatcherBadge" class="status-badge" style="font-size:10px; padding:2px 8px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">solver: off</span><button id="captchaWatcherStartBtn" class="btn-small btn-primary" title="Turn the Watcher ON — the app solves visible reCAPTCHA challenges on its own pages">Watcher ON</button><button id="captchaWatcherStopBtn" class="btn-small" title="Turn the Watcher OFF — the app never solves captchas">OFF</button><button id="captchaStatsBtn" class="btn-small" title="Refresh status, stats + balance">↻</button></h3>
       <div style="padding:10px; overflow:auto;">
         <div class="settings-row">
-          <div class="settings-group" style="flex:2;">
-            <label>2Captcha API key — stored locally (config/2captcha.json, 0600), masked, never in logs/presets</label>
+          <div class="settings-group" style="flex:1; min-width:220px;">
+            <label>Solving provider — each keeps its own key; the Watcher uses the selected one</label>
             <div style="display:flex; gap:6px; align-items:center;">
-              <input id="captchaApiKey" type="password" placeholder="paste API key" autocomplete="off" style="flex:1;">
+              <select id="captchaProvider" title="Captcha solving provider (2Captcha or CapMonster Cloud — same protocol, different host/key)" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; color:var(--text-primary); font-size:12px;">
+                <option value="2captcha">2Captcha</option>
+                <option value="capmonster">CapMonster Cloud</option>
+              </select>
+              <span id="captchaProviderHint" style="font-size:10px; color:var(--text-muted); white-space:nowrap;">key: —</span>
+            </div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-group" style="flex:2;">
+            <label id="captchaKeyLabel">2Captcha API key — stored locally (config/captcha_solvers.json, 0600), masked, never in logs/presets</label>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <input id="captchaApiKey" type="password" placeholder="paste 2Captcha API key" autocomplete="off" style="flex:1;">
               <button id="captchaSaveBtn" class="btn-small btn-primary">Save key</button>
               <button id="captchaBalanceBtn" class="btn-small" title="Check account balance via the SDK">Balance</button>
             </div>
@@ -430,7 +442,7 @@
           <div><b id="capStatTabs">0</b> pages scanned</div>
           <div><b id="capStatBalance">—</b> balance</div>
         </div>
-        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;"><b>Isolation contract:</b> jobs never solve a captcha — they pause until the dialog clears. Watcher ON = the Watcher scans the app's own pages every few seconds and solves visible reCAPTCHA challenges through the official 2Captcha SDK (max 2 paid attempts per challenge). Watcher OFF = the app only processes images; solve captchas yourself in Chrome. Cleared captchas still stack the cooldown penalty.</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;"><b>Isolation contract:</b> jobs never solve a captcha — they pause until the dialog clears. Watcher ON = the Watcher scans the app's own pages every few seconds and solves visible reCAPTCHA challenges through the selected provider (2Captcha or CapMonster Cloud via the official 2Captcha SDK; max 2 paid attempts per challenge). Watcher OFF = the app only processes images; solve captchas yourself in Chrome. Cleared captchas still stack the cooldown penalty.</div>
       </div>
     </div>
 

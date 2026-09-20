@@ -43,11 +43,35 @@ window.ImageQueueRender = {
     tbody.innerHTML = '';
     filtered.forEach(img => {
       const tr = document.createElement('tr');
+      tr.dataset.imgId = img.id;
       tr.innerHTML = this.rowHtml(img);
       tbody.appendChild(tr);
     });
     const countEl = document.getElementById('queueCount');
     if (countEl) countEl.textContent = `${filtered.length}/${s.images.length} images`;
     this._thumbs().fetchAll(filtered);
+  },
+
+  _rowFor(imgId) {
+    const tbody = document.getElementById('queueTableBody');
+    if (!tbody) return null;
+    const rows = tbody.children || [];
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].dataset && rows[i].dataset.imgId === imgId) return rows[i];
+    }
+    return null;
+  },
+
+  /* B10: re-render ONE row in place (job_started / job_finished). Falls back to
+     a full render when the row is not on screen or a status filter is active
+     (the row may need to enter/leave the filtered view). */
+  updateRow(img) {
+    if (!img) return false;
+    const s = this._store();
+    const tr = s.filter === 'all' ? this._rowFor(img.id) : null;
+    if (!tr) { this.render(); return true; }
+    tr.innerHTML = this.rowHtml(img);
+    this._thumbs().fetchAll([img]);
+    return true;
   },
 };

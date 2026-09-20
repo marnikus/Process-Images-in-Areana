@@ -5,7 +5,8 @@ mixin already owns 10 slots). Owns the ONLY UI entry points to the captcha
 solver:
 
     watcher_start / watcher_stop / watcher_status   — the solve loop
-    set_captcha_api_key / get_captcha_api_key       — config/2captcha.json (0600, masked)
+    set_captcha_api_key / get_captcha_api_key       — config/captcha_solvers.json (0600, masked)
+    set_captcha_provider                             — active provider (2captcha | capmonster), B10
     captcha_balance                                  — one-shot SDK balance
 
 Wiring rules:
@@ -30,39 +31,73 @@ KEY_MIN_LEN = 16
 
 
 def key_store(bridge):
-    """Single owner of config/2captcha.json (shared with the legacy status slot)."""
+    """Single owner of config/captcha_solvers.json (shared with the legacy status slot)."""
     from app.services.captcha.key_store import CaptchaKeyStore
     return CaptchaKeyStore(str(bridge.config.dir))
 
 
-def load_api_key(bridge) -> str:
+def load_settings(bridge):
+    """Stored solver settings (defaults when the file is missing/corrupt)."""
+    from app.services.captcha.key_store import CaptchaSettings
     try:
-        return key_store(bridge).load().api_key
+        return key_store(bridge).load()
     except Exception:
-        return ""
+        return CaptchaSettings()
+
+
+def load_api_key(bridge) -> str:
+    """Key of the ACTIVE provider ('' when none)."""
+    return load_settings(bridge).api_key
+
+
+def key_reply(settings) -> Dict[str, Any]:
+    """UI payload: active provider + per-provider masked keys (raw keys never leave)."""
+    from app.services.captcha.key_store import CaptchaKeyStore
+    from app.services.captcha_watcher.providers import provider_label, providers_summary
+    key = settings.api_key
+    providers = []
+    for p in providers_summary():
+        k = settings.key_for(p["id"])
+        providers.append({**p, "has_key": bool(k), "masked_key": CaptchaKeyStore.mask(k)})
+    return {"ok": True, "has_key": bool(key), "masked_key": CaptchaKeyStore.mask(key),
+            "provider": settings.provider, "provider_label": provider_label(settings.provider),
+            "providers": providers}
 
 
 def save_api_key(bridge, key: str) -> Dict[str, Any]:
-    """Persist the key (empty clears it); keeps the other stored fields."""
-    from app.services.captcha.key_store import CaptchaKeyStore, CaptchaSettings
+    """Persist the ACTIVE provider's key (empty clears it); other providers untouched."""
     store = key_store(bridge)
     current = store.load()
     key = (key or "").strip()
     if key and len(key) < KEY_MIN_LEN:
         return {"ok": False, "error": f"key too short (<{KEY_MIN_LEN} chars)"}
-    store.save(CaptchaSettings(enabled=False, api_key=key,
-                               solve_timeout_sec=current.solve_timeout_sec))
-    return {"ok": True, "has_key": bool(key), "masked_key": CaptchaKeyStore.mask(key)}
+    updated = current.with_key(current.provider, key)
+    updated.enabled = False
+    store.save(updated)
+    return key_reply(updated)
+
+
+def save_provider(bridge, provider: str) -> Dict[str, Any]:
+    """Switch the active provider (keys stay per provider)."""
+    from app.services.captcha_watcher.providers import PROVIDERS
+    pid = str(provider or "").strip().lower()
+    if pid not in PROVIDERS:
+        return {"ok": False, "error": f"unknown provider '{provider}' (known: {', '.join(PROVIDERS)})"}
+    store = key_store(bridge)
+    updated = store.load().with_provider(pid)
+    updated.enabled = False
+    store.save(updated)
+    return key_reply(updated)
 
 
 def make_solver(bridge):
-    """Fresh SdkSolver bound to the stored key (None when no key)."""
+    """Fresh SdkSolver bound to the active provider + its stored key (None when no key)."""
     from app.services.captcha_watcher import SdkSolver
-    key = load_api_key(bridge)
-    if not key:
+    settings = load_settings(bridge)
+    if not settings.api_key:
         return None
-    timeout = key_store(bridge).load().solve_timeout_sec
-    return SdkSolver(key, timeout_sec=timeout)
+    return SdkSolver(settings.api_key, timeout_sec=settings.solve_timeout_sec,
+                     provider=settings.provider)
 
 
 def pool_tabs(bridge) -> List[Dict[str, str]]:
@@ -125,14 +160,23 @@ def captcha_watcher(bridge):
     return watcher
 
 
+def push_solver_status(bridge) -> None:
+    """Re-emit the Watcher status (provider label/key state) when a watcher exists."""
+    watcher = getattr(bridge, "_captcha_watcher", None)
+    if watcher is not None:
+        on_solver_status(bridge, watcher.status())
+
+
 def solver_start(bridge) -> Dict[str, Any]:
     """Schedule the solve loop on the bg loop (idempotent)."""
     watcher = captcha_watcher(bridge)
     if watcher.running:
         return {"ok": True, "running": True, "note": "already running"}
-    if not load_api_key(bridge):
-        bridge._log("🛡️ Captcha Watcher: no 2Captcha key — the app will NOT solve captchas "
-                    "(set a key in the Captcha window)", "warn")
+    settings = load_settings(bridge)
+    if not settings.api_key:
+        from app.services.captcha_watcher.providers import provider_label
+        bridge._log(f"🛡️ Captcha Watcher: no {provider_label(settings.provider)} key — the app will "
+                    "NOT solve captchas (set a key in the Captcha window)", "warn")
         return {"ok": False, "running": False, "error": "no api key"}
     schedule_coro(bridge, watcher.run_forever())
     return {"ok": True, "running": True}
@@ -160,13 +204,14 @@ def solver_follow(bridge, enabled: bool) -> Optional[Dict[str, Any]]:
 
 async def _balance_job(bridge) -> None:
     solver = make_solver(bridge)
+    label = solver.provider_label if solver is not None else "solver"
     balance = await solver.balance() if solver is not None else None
     watcher = captcha_watcher(bridge)
     watcher._status.balance = balance
     if balance is None:
-        bridge._log("2Captcha balance: unavailable (no key, SDK missing or API error)", "warn")
+        bridge._log(f"{label} balance: unavailable (no key, SDK missing or API error)", "warn")
     else:
-        bridge._log(f"2Captcha balance ${balance:.2f}", "info")
+        bridge._log(f"{label} balance ${balance:.2f}", "info")
     on_solver_status(bridge, watcher.status())
 
 
@@ -196,23 +241,34 @@ class WatcherSolverMixin:
 
     @Slot(str, result=str)
     def set_captcha_api_key(self, key: str):
-        """Store the key locally (masked reply); never logs the raw key."""
+        """Store the ACTIVE provider's key locally (masked reply); never logs the raw key."""
         try:
             result = save_api_key(self, key)
             if result.get("ok"):
-                self._log(f"🔐 2Captcha key {'saved' if result['has_key'] else 'cleared'} "
+                self._log(f"🔐 {result['provider_label']} key {'saved' if result['has_key'] else 'cleared'} "
                           f"({result['masked_key'] or 'empty'})", "success")
+            return json.dumps(result)
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)})
+
+    @Slot(str, result=str)
+    def set_captcha_provider(self, provider: str):
+        """Switch the solving provider (2captcha | capmonster); each keeps its own key (B10)."""
+        try:
+            result = save_provider(self, provider)
+            if result.get("ok"):
+                self._log(f"🛡️ Captcha provider: {result['provider_label']} "
+                          f"({'key set' if result['has_key'] else 'no key yet'})", "info")
+                push_solver_status(self)
             return json.dumps(result)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
     @Slot(result=str)
     def get_captcha_api_key(self):
+        """Active provider + per-provider masked keys (raw keys never cross the channel)."""
         try:
-            from app.services.captcha.key_store import CaptchaKeyStore
-            key = load_api_key(self)
-            return json.dumps({"ok": True, "has_key": bool(key),
-                               "masked_key": CaptchaKeyStore.mask(key)})
+            return json.dumps(key_reply(load_settings(self)))
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 

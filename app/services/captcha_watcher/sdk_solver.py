@@ -4,6 +4,11 @@ This is the ONLY place in the app that talks to a captcha-solving service.
 No hand-rolled HTTP client, no polling loop of our own: `AsyncTwoCaptcha`
 submits the task, polls and returns the token.
 
+B10: two providers, one SDK. CapMonster Cloud exposes the same `in.php` /
+`res.php` protocol at api.capmonster.cloud, so the provider only selects the
+SDK's `server` host (see `providers.py`). The solver never contacts anything
+else (RULE 20).
+
 * Lazy import: the SDK is optional (requirements.txt lists it, but the app
   boots and processes images without it — the Watcher then reports
   `sdk_available=False` and never attempts a solve).
@@ -16,9 +21,11 @@ submits the task, polls and returns the token.
 from __future__ import annotations
 
 import asyncio
+import functools
 import time
 from typing import Any, Callable, Optional
 
+from .providers import DEFAULT_PROVIDER, normalize_provider, provider_label, provider_server
 from .signals import CaptchaSignal, SolveResult
 
 DEFAULT_SOLVE_TIMEOUT_SEC = 180
@@ -39,13 +46,14 @@ def sdk_available() -> bool:
     return _import_sdk() is not None
 
 
-def _default_factory(api_key: str, timeout_sec: int) -> Any:
-    """Real SDK client; raises ImportError-like when the package is missing."""
+def _default_factory(api_key: str, timeout_sec: int, server: str = "2captcha.com") -> Any:
+    """Real SDK client bound to the provider host; RuntimeError when the package is missing."""
     sdk = _import_sdk()
     if sdk is None:
         raise RuntimeError(SDK_MISSING_ERROR)
     return sdk.AsyncTwoCaptcha(api_key, defaultTimeout=timeout_sec,
-                               recaptchaTimeout=timeout_sec, pollingInterval=POLL_INTERVAL_SEC)
+                               recaptchaTimeout=timeout_sec, pollingInterval=POLL_INTERVAL_SEC,
+                               server=server)
 
 
 def _error_text(exc: BaseException) -> str:
@@ -68,17 +76,28 @@ def _task_id_of(result: Any) -> str:
 
 
 class SdkSolver:
-    """One solver per API key; stateless between calls (safe to share)."""
+    """One solver per API key + provider; stateless between calls (safe to share)."""
 
     def __init__(self, api_key: str, timeout_sec: int = DEFAULT_SOLVE_TIMEOUT_SEC,
-                 client_factory: Optional[Callable[[str, int], Any]] = None):
+                 client_factory: Optional[Callable[[str, int], Any]] = None,
+                 provider: str = DEFAULT_PROVIDER):
         self._api_key = (api_key or "").strip()
         self._timeout = max(30, int(timeout_sec or DEFAULT_SOLVE_TIMEOUT_SEC))
-        self._factory = client_factory or _default_factory
+        self._provider = normalize_provider(provider)
+        self._factory = client_factory or functools.partial(
+            _default_factory, server=provider_server(self._provider))
 
     @property
     def has_key(self) -> bool:
         return bool(self._api_key)
+
+    @property
+    def provider(self) -> str:
+        return self._provider
+
+    @property
+    def provider_label(self) -> str:
+        return provider_label(self._provider)
 
     def _client(self) -> Any:
         return self._factory(self._api_key, self._timeout)

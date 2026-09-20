@@ -11,7 +11,7 @@ window.SashCoreConstants = (() => {
     { id: 'watcher', title: 'Watcher — Generation & Captcha' },
     { id: 'log', title: 'Activity Log' },
     { id: 'settings', title: 'Settings' },
-    { id: 'captcha', title: 'Captcha — 2Captcha Control' },
+    { id: 'captcha', title: 'Captcha — Solver (2Captcha / CapMonster)' },
     { id: 'recordings', title: 'Recordings — Captcha Sessions' },
     { id: 'browser', title: 'Browser Preview' },
     { id: 'action_blocks', title: 'Action Blocks — Stacking Jobs' },

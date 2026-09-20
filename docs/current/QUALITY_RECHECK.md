@@ -78,6 +78,31 @@ available) and `tests/js/test_dom_probes.mjs` (real probes executed);
 `npm run test:js` 174 → 205 (the two existing un-wired probe suites are now
 wired as well).
 
+### 2026-10-06 follow-up re-record (B10 — Image Queue live status + captcha provider dropdown)
+
+Re-recorded for the B10 fixes (`bugfix-verification.md` §B10). Reviewed
+deltas — all feature growth, every symbol far inside the hard limits:
+`app/services/captcha/key_store.py` (one key per provider: `CaptchaSettings`
+gained `key_for` / `with_provider` / `with_key`, the store gained the legacy
+migration → 9 methods, max CC 6, max nest 2, max func 14 LOC, class 92 LOC;
+`_clean_keys` / `_merge_keys` / `_write_legacy_mirror` extracted to keep
+`load` / `__post_init__` flat), `app/services/captcha_watcher/sdk_solver.py`
+(`provider` / `provider_label` properties, `provider` ctor param → 7 methods,
+5 params), `app/ui/panels/watcher_solver.py` (+`set_captcha_provider` slot →
+7 slots, class 67 LOC; `push_solver_status` extracted), `service.py` /
+`watcher.py` +3 LOC each. `persistence.py` kept its maxima (`_is_transient`
+extracted; retry budget is a module constant, not a parameter). New modules:
+`app/services/captcha_watcher/providers.py`, `app/services/job_events.py`.
+The refresh also folded in earlier reductions that had not been re-recorded
+(`single_job_runner.py` max nest 3 → 2, `url-list/actions.js` max nest 2 →
+1). Full lane `--js` 0 fails / 0 warns; `--changed --coverage-ratchet --js`
+PASSED after the re-record. Fresh coverage **86.37 % line / 82.34 % branch**
+(floor raised from 86.09 / 82.01 to 86.36 / 82.33). New lanes:
+`tests/test_state_push_resilience.py` (10), `tests/test_captcha_providers.py`
+(20), `tests/js/test_queue_live_status.mjs` (8) and
+`tests/js/test_captcha_provider_panel.mjs` (5) on the shared
+`tests/js/page_harness.mjs`; `npm run test:js` 205 → 218; slot surface 134 → 135.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

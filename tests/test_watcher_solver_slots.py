@@ -60,10 +60,14 @@ def no_bg_loop(monkeypatch):
 
 def test_key_slots_store_locally_and_mask(cfg, no_bg_loop):
     host = make_host(cfg)
-    assert json.loads(host.get_captcha_api_key()) == {"ok": True, "has_key": False, "masked_key": ""}
+    empty = json.loads(host.get_captcha_api_key())
+    assert (empty["ok"], empty["has_key"], empty["masked_key"], empty["provider"]) == (True, False, "", "2captcha")
+    assert [p["id"] for p in empty["providers"]] == ["2captcha", "capmonster"]  # B10 dropdown source
     assert json.loads(host.set_captcha_api_key("short"))["ok"] is False
     saved = json.loads(host.set_captcha_api_key(f"  {KEY}  "))
-    assert saved == {"ok": True, "has_key": True, "masked_key": "abcd****7890"}
+    assert (saved["ok"], saved["has_key"], saved["masked_key"]) == (True, True, "abcd****7890")
+    assert saved["provider"] == "2captcha" and saved["providers"][0]["masked_key"] == "abcd****7890"
+    assert not any(KEY in json.dumps(p) for p in saved["providers"])  # raw key never in the reply
     assert KEY not in json.dumps(host.logs)  # raw key never logged
     assert CaptchaKeyStore(cfg.dir).load().api_key == KEY  # same file as the legacy slot
     assert json.loads(host.get_captcha_status())["masked_key"] == "abcd****7890"
@@ -114,7 +118,7 @@ def test_balance_slot_schedules_job_and_updates_status(cfg, monkeypatch):
             return 4.25
 
     monkeypatch.setattr(ws, "make_solver", lambda bridge: SimpleNamespace(
-        has_key=True, balance=Sdk().balance))
+        has_key=True, balance=Sdk().balance, provider="2captcha", provider_label="2Captcha"))
     assert json.loads(host.captcha_balance()) == {"ok": True, "pending": True}
     assert json.loads(host.watcher_status())["balance"] == 4.25
     assert any("balance $4.25" in m for m, _ in host.logs)
@@ -173,9 +177,12 @@ def test_slots_degrade_to_error_json(cfg, monkeypatch):
     monkeypatch.setattr(ws, "solver_stop", boom)
     monkeypatch.setattr(ws, "captcha_watcher", boom)
     monkeypatch.setattr(ws, "save_api_key", boom)
+    monkeypatch.setattr(ws, "save_provider", boom)
     monkeypatch.setattr(ws, "load_api_key", boom)
+    monkeypatch.setattr(ws, "load_settings", boom)
     for slot in (host.watcher_start, host.watcher_stop, host.watcher_status, host.captcha_balance,
                  host.get_captcha_api_key):
         assert json.loads(slot()) == {"ok": False, "error": "boom"}
     assert json.loads(host.set_captcha_api_key("x")) == {"ok": False, "error": "boom"}
+    assert json.loads(host.set_captcha_provider("capmonster")) == {"ok": False, "error": "boom"}
     assert ws.solver_follow(host, True) is None  # never raises

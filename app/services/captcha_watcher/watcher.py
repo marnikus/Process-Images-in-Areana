@@ -131,6 +131,9 @@ class CaptchaWatcher:
         solver = self._solver()
         self._status.has_key = bool(solver and solver.has_key)
         self._status.sdk_available = sdk_available()
+        if solver is not None:
+            self._status.provider = solver.provider
+            self._status.provider_label = solver.provider_label
         return self._status.to_dict()
 
     async def run_forever(self) -> None:
@@ -208,10 +211,10 @@ class CaptchaWatcher:
             return
         solver = self._solver()
         if solver is None or not solver.has_key:
-            self._status.last_error = "no 2Captcha API key"
+            self._status.last_error = f"no {self._status.provider_label} API key"
             return
         self._attempts[tab_id] = self._attempts.get(tab_id, 0) + 1
-        self._log(f"🤖 Captcha Watcher: solving {signal.kind} on {tab_id[:12]} "
+        self._log(f"🤖 Captcha Watcher: solving {signal.kind} on {tab_id[:12]} via {solver.provider_label} "
                   f"(attempt {self._attempts[tab_id]}/{MAX_SOLVE_ATTEMPTS})", "warn")
         await self._encounter.run(tab_id, signal, solver)
 

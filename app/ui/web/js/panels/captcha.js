@@ -1,13 +1,15 @@
 /* captcha.js — standalone Captcha window: Captcha Watcher (SDK solver) control.
    Isolation contract (2026-10-02): jobs never solve; the Watcher is the only
-   solver. This panel owns: key save (masked reply, RULE 20), Watcher ON/OFF
-   (same switch as the Watcher window), live solver counters, balance, and
-   the pipeline's detected/cleared counters. The raw key is cleared from the
-   field after a successful save and never kept in a page preset. */
+   solver. This panel owns: provider dropdown (B10: 2Captcha | CapMonster
+   Cloud, one key per provider), key save (masked reply, RULE 20), Watcher
+   ON/OFF (same switch as the Watcher window), live solver counters, balance,
+   and the pipeline's detected/cleared counters. The raw key is cleared from
+   the field after a successful save and never kept in a page preset. */
 'use strict';
 
 const CaptchaPanel = {
   _status: null,
+  _providers: null,   // last get_captcha_api_key reply: {provider, provider_label, providers:[…]}
 
   init() {
     const on = (id, fn) => document.getElementById(id)?.addEventListener('click', fn);
@@ -20,6 +22,7 @@ const CaptchaPanel = {
       const k = document.getElementById('captchaApiKey');
       if (k) k.type = e.target.checked ? 'text' : 'password';
     });
+    document.getElementById('captchaProvider')?.addEventListener('change', (e) => this.setProvider(e.target.value));
     setTimeout(() => this.refresh(), 1200);
   },
 
@@ -36,6 +39,7 @@ const CaptchaPanel = {
   },
 
   refresh() {
+    this.loadProviders();
     this.loadStatus();
     this.loadStats();
   },
@@ -44,17 +48,67 @@ const CaptchaPanel = {
     this._call('watcher_status', [], (r) => { if (r.ok) this.renderStatus(r); });
   },
 
+  loadProviders() {
+    this._call('get_captcha_api_key', [], (r) => { if (r.ok) this.renderProviders(r); });
+  },
+
+  /* Provider dropdown: value = active provider, option labels show which
+     providers already have a key; hint + key label follow the selection. */
+  _optionLabel(p) {
+    return `${p.label}${p.has_key ? ' ✓ key set' : ' — no key'}`;
+  },
+
+  renderProviders(r) {
+    if (!r || !Array.isArray(r.providers)) return;
+    this._providers = r;
+    const sel = document.getElementById('captchaProvider');
+    if (sel) {
+      const opts = Array.from(sel.options || []);
+      r.providers.forEach((p) => {
+        const opt = opts.find((o) => o.value === p.id);
+        if (opt) opt.textContent = this._optionLabel(p);
+      });
+      sel.value = r.provider;
+    }
+    const active = r.providers.find((p) => p.id === r.provider) || {};
+    const hint = document.getElementById('captchaProviderHint');
+    if (hint) hint.textContent = active.has_key ? `key: ${active.masked_key || 'set'}` : 'key: (not set)';
+    const label = document.getElementById('captchaKeyLabel');
+    if (label) label.textContent = `${r.provider_label} API key — stored locally (config/captcha_solvers.json, 0600), masked, never in logs/presets`;
+    const input = document.getElementById('captchaApiKey');
+    if (input) input.placeholder = `paste ${r.provider_label} API key`;
+  },
+
+  setProvider(provider) {
+    this._call('set_captcha_provider', [provider], (r) => {
+      if (!r.ok) {
+        this._log('Captcha provider switch failed: ' + (r.error || '?'), 'error');
+        if (this._providers) this.renderProviders(this._providers);   // snap the dropdown back
+        return;
+      }
+      this.renderProviders(r);
+      this._log(`Captcha provider: ${r.provider_label}${r.has_key ? '' : ' — paste its API key and Save'}`, r.has_key ? 'info' : 'warn');
+      setTimeout(() => this.loadStatus(), 300);
+    });
+  },
+
   loadStats() {
     this._call('get_captcha_stats', [], (r) => { if (r.ok) this.renderStats(r); });
+  },
+
+  _providerLabel() {
+    return (this._providers && this._providers.provider_label) || '2Captcha';
   },
 
   saveKey() {
     const key = (document.getElementById('captchaApiKey')?.value || '').trim();
     this._call('set_captcha_api_key', [key], (r) => {
-      if (!r.ok) { this._log('2Captcha key save failed: ' + (r.error || '?'), 'error'); return; }
-      this._log(`2Captcha key ${r.has_key ? 'saved: ' + r.masked_key : 'cleared'}`, 'success');
+      const label = r.provider_label || this._providerLabel();
+      if (!r.ok) { this._log(`${label} key save failed: ` + (r.error || '?'), 'error'); return; }
+      this._log(`${label} key ${r.has_key ? 'saved: ' + r.masked_key : 'cleared'}`, 'success');
       const k = document.getElementById('captchaApiKey');
       if (k) k.value = '';
+      if (Array.isArray(r.providers)) this.renderProviders(r);
       this.refresh();
     });
   },
@@ -97,9 +151,10 @@ const CaptchaPanel = {
   },
 
   _solverText(r) {
-    if (r.running) return r.solving_tab ? `solver: ON (solving ${r.solving_tab.slice(0, 8)}…)` : 'solver: ON';
+    const via = r.provider_label ? ` via ${r.provider_label}` : '';
+    if (r.running) return r.solving_tab ? `solver: ON${via} (solving ${r.solving_tab.slice(0, 8)}…)` : `solver: ON${via}`;
     if (!r.sdk_available) return 'solver: off (SDK missing — pip install 2captcha-python)';
-    return r.has_key ? 'solver: off (turn the Watcher ON)' : 'solver: off (no key)';
+    return r.has_key ? `solver: off${via} (turn the Watcher ON)` : `solver: off (no ${r.provider_label || 'provider'} key)`;
   },
 
   _renderBadge(r) {
@@ -115,7 +170,7 @@ const CaptchaPanel = {
     this._renderBadge(r);
     const line = document.getElementById('captchaStatusLine');
     if (line) {
-      const key = r.has_key ? 'key: set' : 'key: (not set)';
+      const key = r.has_key ? `${r.provider_label || '2Captcha'} key: set` : `${r.provider_label || '2Captcha'} key: (not set)`;
       const err = r.last_error ? ` · last error: ${r.last_error}` : '';
       line.textContent = `${this._solverText(r)} · ${key} · ${this._balanceText(r)}${err}`;
     }

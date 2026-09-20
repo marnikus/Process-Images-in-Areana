@@ -24,7 +24,7 @@ REQUIRED_SLOTS = (
     "set_captcha_settings", "get_captcha_status", "get_captcha_stats",
     "restore_default_blocks",
     "watcher_start", "watcher_stop", "watcher_status",
-    "set_captcha_api_key", "get_captcha_api_key", "captcha_balance",
+    "set_captcha_api_key", "get_captcha_api_key", "captcha_balance", "set_captcha_provider",
     "get_recordings_list", "get_recording_detail", "get_recording_snapshot",
     "get_recording_diff", "set_recording_label", "delete_recording",
     "set_recording_settings", "get_recording_settings",
@@ -210,6 +210,7 @@ FROZEN_SLOTS = frozenset({
     'watcher_stop',
     'watcher_status',
     'set_captcha_api_key',
+    'set_captcha_provider',
     'get_captcha_api_key',
     'captcha_balance',
 })
@@ -231,7 +232,7 @@ EXPECTED_PACKING = {
     'undo_history': 10,
     'url_queue': 9,
     'watcher_captcha': 10,
-    'watcher_solver': 6,
+    'watcher_solver': 7,
 }
 
 
@@ -267,7 +268,8 @@ def test_frozen_slot_surface_exact():
 def test_panel_packing():
     counts = _panel_slot_counts()
     assert counts == EXPECTED_PACKING, f"packing drift: {counts}"
-    assert sum(counts.values()) == 134  # 127 + 6 Captcha Watcher + restore_default_blocks (2026-10-02)
+    # 127 + 6 Captcha Watcher + restore_default_blocks (2026-10-02) + set_captcha_provider (B10, 2026-10-06)
+    assert sum(counts.values()) == 135
 
 
 @pytest.mark.unit

@@ -363,6 +363,98 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
   `test_nonrequired_midfail_continues` now asserts `completed` + the warning
   markers. Goldens `req_fail`, `cancel`, `abort` unchanged.
 
+## B10 — Image Queue stuck at `pending / 0 / —` while a job ran and saved; Captcha window lost the provider dropdown (`layout_state.py`, `persistence.py`, `job_events.py`, `arena-app/listeners.js`, `image-queue/*`, `key_store.py`, `providers.py`, `sdk_solver.py`, `watcher_solver.py`, `captcha.js`, `index.html`)
+
+* **Saw (1):** a run processed the checked image and the log said the image
+  was saved, yet every Image Queue row kept `STATUS pending · ATTEMPTS 0 ·
+  OUTPUT —` (header `49/49 IMAGES`): neither `processing` nor the finished
+  state ever became visible in the window.
+* **Saw (2):** the Captcha window offered a single 2Captcha key field — the
+  pre-import app let the user pick one of two solving providers
+  (`config/captcha_solvers.json` still carried `2captcha` + `capmonster`).
+* **What was verified, in the repo and in a whole-page Node harness (real
+  scripts, fake QWebChannel):** Python tracks the run correctly
+  (`mark_processing` / `_settle_image` mutate the very objects
+  `state.to_dict()` serialises; the user's own `config/app_state.json`
+  shows `failed / attempt_count 1 / output_path …_AI_4.png` after the B8
+  run); `arena_state_updated` is emitted from the bg loop through the same
+  `Qt::AutoConnection` path as `arena_log`, which demonstrably reaches the
+  console; one handler is connected; applying a pushed state re-renders the
+  rows. No single line in the shipped code was provably wrong in the
+  sandbox — but the whole live-status path had **one** transport (the
+  debounced full-state push) and several silent single points of failure:
+  1. `save_arena_state` ran `save_state()` **and then** `emit_arena_state()`
+     inside one `try` — any write failure (Windows sharing violation while
+     an antivirus/indexer/sync client holds the freshly written JSON, a
+     second writer thread mid-`os.replace`, read-only/locked file, full
+     disk) skipped the UI push; the run went on, the state file lagged, the
+     console got one `Failed to save state` line.
+  2. `_applyPendingState` restored `UrlList → ImageQueue → ProgressPanel`
+     inside one bare `try {} catch (e) {}` — a throw in the URL panel (or an
+     unparsable payload) dropped the queue and progress refresh silently.
+  3. `job_started` / `job_finished` only fed the Action Blocks panel; the
+     queue row itself had no per-job update at all.
+  4. `ImageQueue.restore` skipped rendering for an empty array (stale rows
+     after Clear list) and rows carried no identity (`<tr>` had no id).
+* **Change (1) — three independent transports, none silent:**
+  `save_arena_state` now saves in its own `try` and **always** emits
+  (I-39); the failure is reported once per distinct error per 10 s with a
+  message that says the UI keeps updating; `_atomic_json_write` retries a
+  transient replace failure (5 attempts, 20 ms doubling backoff, only
+  `PermissionError` / `EACCES` / `EBUSY` / `EPERM`). `job_finished` payloads
+  (both run paths, via the new `app/services/job_events.py`) carry
+  `image_id`, `image_path`, `attempts`, `error`; the listeners registry
+  forwards `job_started(job_id, path)` and `job_finished` to
+  `ImageQueue.onJobStarted / onJobFinished`, which patch **that row in
+  place** (`processing` + attempt, then `completed`/`failed` + output +
+  error) — the debounced full-state push remains the source of truth and
+  lands right after with the same values. `_applyPendingState` restores each
+  panel in isolation; a failing panel is reported to `console.error` and
+  once to the log console (`UI state sync: <panel> failed to render …`),
+  the others keep updating; a malformed payload is reported instead of
+  swallowed. Rows carry `data-img-id`; `restore` re-renders for any array
+  (empty included) and leaves the table alone only when the payload has no
+  `images` key.
+* **Change (2) — provider dropdown restored:** `app/services/captcha_watcher/
+  providers.py` is the registry (`2captcha` → `2captcha.com`, `capmonster`
+  → `api.capmonster.cloud`; CapMonster Cloud serves the 2Captcha `in.php` /
+  `res.php` protocol on that host per its own docs, so the ONE official SDK
+  drives both — the provider only selects the SDK `server`). `CaptchaKeyStore`
+  now owns `config/captcha_solvers.json` (the pre-import multi-provider
+  shape: `provider`, `solve_timeout_sec`, `providers.{id}.{enabled, api_key}`),
+  one key per provider; the 2026-10-02 single-provider `config/2captcha.json`
+  is authoritative for the 2Captcha slot while it exists and is folded away
+  on the first save (mirrored instead when it cannot be removed). New slot
+  `set_captcha_provider` (surface 134 → **135**, `watcher_solver` 6 → 7);
+  `get_captcha_api_key` / `set_captcha_api_key` reply with
+  `{provider, provider_label, providers:[{id,label,has_key,masked_key,…}]}`;
+  `make_solver` builds the `SdkSolver` for the active provider; Watcher
+  status, log lines and the balance check name the provider. The Captcha
+  window: provider `<select>` (option labels show `✓ key set` / `— no key`),
+  key label/placeholder/hint follow the selection, Save stores the key of
+  the selected provider, a rejected switch snaps the dropdown back. Raw keys
+  still never cross the WebChannel or reach the log (RULE 20).
+* **Pinned by:** `tests/js/test_queue_live_status.mjs` (8 — whole page:
+  `job_started` → `processing`/attempt 1 (Windows path, any case/slash),
+  `job_finished` completed → output basename / failed → error text + attempts
+  from the payload, debounced push rebuilds rows, a throwing `UrlList.restore`
+  no longer blocks the queue and is reported once, `images: []` clears the
+  table, a malformed push is reported and the next good one applies, unknown
+  images ignored; **pre-fix code: 7/8 fail**), `tests/test_state_push_resilience.py`
+  (10 — failing `save_state` still pushes state + progress, dedup window,
+  broken signal never raises, replace retry / budget / non-transient errno,
+  `job_finished_payload` shape), `tests/test_captcha_providers.py` (20 —
+  registry + normalisation, per-provider keys, pre-import file loads as-is,
+  legacy override + migration on save, corrupt shapes, SDK receives the
+  provider host, provider switch keeps both keys, unknown provider rejected,
+  solver factory / `watcher_start` / status follow the active provider,
+  legacy `set_captcha_settings` keeps the other key, balance log names the
+  provider), `tests/js/test_captcha_provider_panel.mjs` (5), plus the
+  updated `test_bridge_slots.py` (135), `test_watcher_solver_slots.py`,
+  `test_captcha_key_store.py`, `test_captcha_pure_full.py`.
+  `tests/js/page_harness.mjs` is the shared whole-page boot used by both new
+  suites.
+
 ## Gate evidence (2026-10-02)
 
 | Gate | Result |
@@ -403,4 +495,15 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 | `tools/verify_quality.py --js` | PASSED — 0 fails (`_loop_blocks` split into `_absorb_block_result` / `_record_failure` / `_soft_failures_forgiven`; file max CC stays 9) |
 | `--changed --base origin/<branch> --allow-legacy --coverage-ratchet --js` | PASSED without a baseline re-record; coverage 86.15 % line / 82.14 % branch (floor 86.09 / 82.01 kept) |
 | `compileall` / pyflakes on touched files | clean |
+
+## Gate evidence (2026-10-06, B10)
+
+| Gate | Result |
+|---|---|
+| `pytest -q -n 4` (CI-like, no PySide6) | 1,534 passed, 1 skipped, same 2 pre-existing environmental failures (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message); characterization goldens unchanged (`job_finished` is normalised to `[status, has_output]`) |
+| `npm run test:js` | 218 pass / 0 fail (205 + `test_queue_live_status.mjs` 8 + `test_captcha_provider_panel.mjs` 5) |
+| `tools/verify_quality.py --allow-legacy --coverage-ratchet --js` | PASSED — 0 fails / 0 warns |
+| `--changed --base origin/<branch> --allow-legacy --coverage-ratchet --js` | 13 in-limit growth deltas, all feature-driven (`key_store` 9 methods / CC 6, `sdk_solver` 7 methods / 5 params, `watcher_solver` 7 slots, `service` +3 LOC, `watcher` +3 LOC) → reviewed `--record-baseline` (`docs/current/QUALITY_RECHECK.md`), then PASSED; coverage 86.37 % line / 82.34 % branch (floor raised from 86.09 / 82.01 to 86.36 / 82.33) |
+| `tests/test_bridge_slots.py` | frozen surface **135** slots (+`set_captcha_provider`), packing table updated |
+| `compileall` / pyflakes (whole `app/`, no undefined names) | clean |
 

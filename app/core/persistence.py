@@ -1,9 +1,11 @@
 """Persistence — C5 refactor with predicate tables and small helpers."""
 from __future__ import annotations
 
+import errno
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 from .models import AppState
@@ -22,6 +24,37 @@ def load_state(path: Path) -> AppState:
         return AppState()
 
 
+# Windows: `os.replace` onto a file another process holds open (antivirus /
+# indexer / sync client scanning the just-written JSON, or a second writer
+# thread mid-replace) raises a transient sharing violation. Retry briefly
+# instead of failing the whole save (B10 — a lost save must never freeze the
+# UI, see layout_state.save_arena_state).
+REPLACE_ATTEMPTS = 5
+REPLACE_BACKOFF_SEC = 0.02
+
+
+_TRANSIENT_ERRNOS = (errno.EACCES, errno.EBUSY, errno.EPERM)
+
+
+def _is_transient(exc: OSError) -> bool:
+    """Sharing-violation class of failure (retry) vs. everything else (raise)."""
+    return isinstance(exc, PermissionError) or exc.errno in _TRANSIENT_ERRNOS
+
+
+def _replace_with_retry(tmp_path: Path, target: Path) -> None:
+    """`tmp_path.replace(target)`, retrying transient sharing violations."""
+    delay = REPLACE_BACKOFF_SEC
+    for attempt in range(1, REPLACE_ATTEMPTS + 1):
+        try:
+            tmp_path.replace(target)
+            return
+        except OSError as e:
+            if attempt >= REPLACE_ATTEMPTS or not _is_transient(e):
+                raise
+        time.sleep(delay)
+        delay *= 2
+
+
 def _atomic_json_write(target: Path, data: dict) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path_str = tempfile.mkstemp(
@@ -31,7 +64,7 @@ def _atomic_json_write(target: Path, data: dict) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        tmp_path.replace(target)
+        _replace_with_retry(tmp_path, target)
     finally:
         if tmp_path.exists():
             try:

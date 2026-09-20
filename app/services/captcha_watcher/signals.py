@@ -65,6 +65,8 @@ class WatcherStatus:
     running: bool = False
     has_key: bool = False
     sdk_available: bool = True
+    provider: str = "2captcha"          # active solving provider id (B10)
+    provider_label: str = "2Captcha"
     tabs_seen: int = 0
     ticks: int = 0
     solved_total: int = 0

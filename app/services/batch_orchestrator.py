@@ -15,6 +15,7 @@ from typing import Any, List, Optional
 
 from app.core.enums import ImageStatus
 from app.services import auto_connect as ac
+from app.services.job_events import job_finished_payload
 from app.services.cooldown_service import (
     FinishCtx,
     clear_tab_abort,
@@ -229,8 +230,7 @@ def _emit_job_finished(bridge, res: ImageResult) -> None:
             status, message = "failed", res.error
         else:
             status, message = "completed", f"Saved to {res.img.output_path}"
-        payload = json.dumps({"status": status, "message": message,
-                              "output_path": res.img.output_path or ""}, ensure_ascii=False)
+        payload = json.dumps(job_finished_payload(res.img, status, message), ensure_ascii=False)
         bridge.job_finished.emit(res.job_id, payload)
     except Exception:
         pass

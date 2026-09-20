@@ -29,7 +29,7 @@ from app.browser.captcha_probes import build_detect_js
 from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 from app.services.captcha_recording import RecordingManager
 
-from .key_store import CaptchaKeyStore, CaptchaSettings, clamp_timeout
+from .key_store import CaptchaKeyStore, clamp_timeout
 from .signals import CaptchaSignal, SolveOutcome, host_of
 from .stats import CaptchaStatsStore
 
@@ -291,17 +291,20 @@ class CaptchaService:
         self.recordings = RecordingManager(config_dir, self._log)
 
     def apply_settings(self, api_key: str, solve_timeout_sec: int) -> Dict[str, Any]:
-        """Persist key + timeout; `enabled` is always False (pipeline never solves)."""
-        s = CaptchaSettings(enabled=False, api_key=(api_key or "").strip(),
-                            solve_timeout_sec=clamp_timeout(solve_timeout_sec))
+        """Persist the ACTIVE provider's key + timeout; `enabled` is always False
+        (pipeline never solves). Other providers' keys are kept (B10)."""
+        current = self.keys.load()
+        s = current.with_key(current.provider, (api_key or "").strip())
+        s.enabled = False
+        s.solve_timeout_sec = clamp_timeout(solve_timeout_sec)
         self.keys.save(s)
         return {"ok": True, "enabled": False, "has_key": bool(s.api_key),
-                "masked_key": CaptchaKeyStore.mask(s.api_key)}
+                "masked_key": CaptchaKeyStore.mask(s.api_key), "provider": s.provider}
 
     def status_payload(self) -> Dict[str, Any]:
         s = self.keys.load()
         return {"enabled": False, "has_key": bool(s.api_key),
-                "masked_key": CaptchaKeyStore.mask(s.api_key),
+                "masked_key": CaptchaKeyStore.mask(s.api_key), "provider": s.provider,
                 "solve_timeout_sec": s.solve_timeout_sec,
                 "balance": self.stats.last_balance, "balance_at": self.stats.balance_at,
                 "last_error": self.stats.last_error}
