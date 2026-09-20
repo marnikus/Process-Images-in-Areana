@@ -204,8 +204,13 @@ def assert_markers(trace: Dict[str, Any], markers: List[str]) -> None:
 
 
 async def run_orchestrator(env) -> None:
-    from app.services.batch_orchestrator import run_batch
+    from app.services.live.supervisor import run_batch
     await run_batch(env.bridge)
+
+
+async def run_supervisor(env) -> None:
+    from app.services.live.supervisor import run_live
+    await run_live(env.bridge)
 
 
 RUNNERS: Dict[str, Callable] = {"orchestrator": run_orchestrator}

@@ -2798,8 +2798,8 @@
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 3,
-    "file_lines": 359,
-    "coverage": 72.43
+    "file_lines": 358,
+    "coverage": 72.33
   },
   "app/ui/panels/blocks_library.py": {
     "max_func_loc": 16,

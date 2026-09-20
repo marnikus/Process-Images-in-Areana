@@ -9,6 +9,7 @@ from app.browser.page_pool import PagePool
 from app.browser.page_status import PageInfo, PageStatus
 from app.core.models import UrlRow
 from app.services import batch_orchestrator as bo
+from app.services.live import supervisor as sv
 from tests.characterization.harness import make_block
 
 
@@ -35,7 +36,7 @@ def make_bridge(images=None, urls=None, pool=None, tab="tab1"):
         _cancel_requested=False,
         _pause_requested=False,
         _stop_after=False,
-        cdp=SimpleNamespace(_current_tab_id=tab,
+        cdp=SimpleNamespace(_current_tab_id=tab, is_connected=True,
                             connect=lambda ws: _connected(ws)),
         _log=lambda m, l="info": logs.append((m, l)),
         _save_arena=lambda: logs.append(("save", "")),
@@ -302,7 +303,7 @@ async def test_run_sequential_completes_and_cancels(monkeypatch):
     ctx = make_ctx(bridge, images=list(bridge.state.images))
     await bo._run_sequential(ctx)
     assert [i.status for i in bridge.state.images] == ["completed", "completed"]
-    assert bridge._run_state == "idle"
+    assert any("🏁 Batch complete" in m for m, _ in bridge._logs)  # tail speaks; run end idles
 
     async def _raise(ctx, img):
         raise asyncio.CancelledError()
@@ -334,7 +335,7 @@ async def test_sequential_skips_settled_images_at_claim_time(monkeypatch):
     lines = [m for m, _ in bridge._logs]
     assert "⏭ Skipping done.png — already completed" in lines
     assert "⏭ Skipping skip.png — already skipped" in lines
-    assert bridge._run_state == "idle"  # the skip never stalls the batch (RULE 9)
+    assert "🏁 Batch complete" in lines  # the skip never stalls the batch (RULE 9)
 
 
 @pytest.mark.asyncio
@@ -367,7 +368,7 @@ async def test_parallel_fallback_does_not_redo_completed(monkeypatch):
     bridge = make_bridge(images=[a, b], urls=urls, pool=pool)
     ctx = make_ctx(bridge, tab_id="t1", images=[a, b])
 
-    async def _dies_after_first(bridge_, pool_, images, urls_):
+    async def _dies_after_first(bridge_, pool_, images, urls_, *a):
         images[0].status, images[0].attempt_count = "completed", 1
         raise RuntimeError("pool went away")
 
@@ -379,13 +380,12 @@ async def test_parallel_fallback_does_not_redo_completed(monkeypatch):
     assert [p for j, p in bridge._started] == ["/tmp/b.png"]
 
 
-def test_finish_batch_lines():
+def test_pass_complete_lines():
     bridge = make_bridge()
-    bo._finish_batch(make_ctx(bridge))
+    bo.pass_complete(make_ctx(bridge))
     assert any("Batch complete" in m for m, _ in bridge._logs)
-    assert bridge._run_state == "idle"
     bridge._cancel_requested = True
-    bo._finish_batch(make_ctx(bridge))
+    bo.pass_complete(make_ctx(bridge))
     assert any("Batch cancelled by user" in m for m, _ in bridge._logs)
 
 
@@ -403,8 +403,7 @@ async def test_prepare_batch_ok_and_no_tab(monkeypatch):
 
     bridge2 = make_bridge(images=[make_img()], urls=urls)
     bridge2.cdp._current_tab_id = ""
-    assert await bo.prepare_batch(bridge2) is None
-    assert bridge2._run_state == "idle"
+    assert await bo.prepare_batch(bridge2) is None  # no tab: the loop waits, nothing idles
 
 
 @pytest.mark.asyncio
@@ -419,8 +418,9 @@ def test_load_run_settings_uses_the_one_run_scope_predicate():
     imgs = [make_img("a.png", "pending", True), make_img("b.png", "completed", True),
             make_img("c.png", "pending", False), make_img("d.png", "failed", True),
             make_img("e.png", "skipped", True), make_img("f.png", "needs_review", True)]
-    ctx = make_ctx(make_bridge(images=imgs))
-    bo._load_run_settings(ctx)
+    bridge = make_bridge(images=imgs)
+    ctx = make_ctx(bridge)
+    bo._load_run_settings(ctx, sv.plan_pass(bridge))
     assert [i.relative_path for i in ctx.images] == ["a.png", "d.png", "f.png"]
     assert ctx.prompt_template == "draw x"
     assert not hasattr(bo, "_selected_images"), "duplicate predicate must stay deleted (RULE 16.4)"
@@ -464,20 +464,19 @@ async def test_batch_gate_paths():
     ctx.bridge._cancel_requested = True
     pool.get_page("tab1").status = PageStatus.COOLDOWN
     pool.get_page("tab1").cooldown_until = 9999999999.0
-    assert await bo._await_batch_gate(ctx) is False
-    assert ctx.bridge._run_state == "idle"
+    assert await bo._await_batch_gate(ctx) is False  # the gate aborts; the run end idles
 
 
 @pytest.mark.asyncio
 async def test_run_guarded_chain(monkeypatch):
     order = []
-    monkeypatch.setattr(bo, "prepare_batch", lambda b: _prep(order))
-    monkeypatch.setattr(bo, "_try_parallel", lambda c: _par(order))
-    monkeypatch.setattr(bo, "_await_batch_gate", lambda c: _gate(order))
-    monkeypatch.setattr(bo, "_run_sequential", lambda c: _seq(order))
+    monkeypatch.setattr(bo, "prepare_batch", lambda b, *a: _prep(order))
+    monkeypatch.setattr(bo, "_try_parallel", lambda c, *a: _par(order))
+    monkeypatch.setattr(bo, "_await_batch_gate", lambda c, *a: _gate(order))
+    monkeypatch.setattr(bo, "_run_sequential", lambda c, *a: _seq(order))
     await bo._run_guarded(make_bridge())
     assert order == ["prep", "par", "gate", "seq"]
-    monkeypatch.setattr(bo, "prepare_batch", lambda b: _none())
+    monkeypatch.setattr(bo, "prepare_batch", lambda b, *a: _none())
     await bo._run_guarded(make_bridge())  # None -> stop, no crash
 
 
@@ -506,21 +505,21 @@ async def _none():
 
 def test_cancel_and_crash_batch(capsys):
     bridge = make_bridge()
-    bo._cancel_batch(bridge)
+    sv._cancel_batch(bridge)
     assert bridge._run_state == "idle"
-    bo._crash_batch(bridge, RuntimeError("Cancelled mid-air"))
+    sv._crash_batch(bridge, RuntimeError("Cancelled mid-air"))
     assert any("Batch cancelled" in m for m, _ in bridge._logs)
-    bo._crash_batch(bridge, RuntimeError("boom"))
+    sv._crash_batch(bridge, RuntimeError("boom"))
     assert any("Batch runner crashed" in m for m, _ in bridge._logs)
 
 
 @pytest.mark.asyncio
 async def test_run_batch_shell(monkeypatch):
-    monkeypatch.setattr(bo, "_run_guarded", lambda b: _raise_cancel())
+    monkeypatch.setattr(bo, "_run_guarded", lambda b, *a: _raise_cancel())
     with pytest.raises(asyncio.CancelledError):
-        await bo.run_batch(make_bridge())
-    monkeypatch.setattr(bo, "_run_guarded", lambda b: _raise_err())
-    await bo.run_batch(make_bridge())  # crash -> finalized, not raised
+        await sv.run_batch(make_bridge())
+    monkeypatch.setattr(bo, "_run_guarded", lambda b, *a: _raise_err())
+    await sv.run_batch(make_bridge())  # crash -> finalized, not raised
 
 
 async def _raise_cancel():

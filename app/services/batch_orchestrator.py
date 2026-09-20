@@ -14,9 +14,10 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from app.core.enums import ImageStatus
-from app.core.run_scope import claim_denied, run_scope
+from app.core.run_scope import claim_denied
 from app.services import auto_connect as ac
 from app.services.job_events import job_finished_payload
+from app.services.live.supervisor import completed_tail, plan_pass
 from app.services.cooldown_service import (
     FinishCtx,
     clear_tab_abort,
@@ -154,6 +155,7 @@ async def await_pause_or_abort(ctx: BatchCtx) -> bool:
 
 async def _claim_tab(ctx: BatchCtx) -> bool:
     """Refresh the run tab per image; False when none usable."""
+    ctx.allowed = ac.enabled_tab_ids([u for u in ctx.bridge.state.urls if u.enabled])
     tab_id = await resolve_and_claim_tab(ctx.bridge, ctx.tab_id, ctx.allowed)
     if not tab_id:
         ctx.bridge._log("❌ No usable checked tab left in pool — stopping batch", "error")
@@ -333,17 +335,12 @@ async def _run_one_image(ctx: BatchCtx, img: Any) -> str:
     return done
 
 
-def _finish_batch(ctx: BatchCtx) -> None:
-    """Batch tail: cancelled/complete line + idle + emit."""
-    if getattr(ctx.bridge, "_cancel_requested", False):
-        ctx.bridge._log("🏁 Batch cancelled by user", "warn")
-    else:
-        ctx.bridge._log("🏁 Batch complete", "success")
-    ctx.bridge._run_state = "idle"
-    ctx.bridge._emit_arena_state()
+def pass_complete(ctx) -> None:
+    """Sequential tail: the run-end line (idle belongs to the caller)."""
+    completed_tail(ctx.bridge)
 
 
-async def _run_sequential(ctx: BatchCtx) -> None:
+async def _run_sequential(ctx: BatchCtx, final: bool = True) -> None:
     """Per-image loop (settled images skipped at claim time, I-44); cancel settles the tab."""
     try:
         for img in ctx.images:
@@ -354,14 +351,8 @@ async def _run_sequential(ctx: BatchCtx) -> None:
     except asyncio.CancelledError:
         _settle_stuck(ctx)
         raise
-    _finish_batch(ctx)
-
-
-def _abort_no_tab(bridge) -> None:
-    """No usable checked tab: loud error + idle + emit."""
-    bridge._log(f"❌ No usable checked tab in pool — check a URL row linked to a live tab — pool: {_pool_summary(_pool_of(bridge))}", "error")
-    bridge._run_state = "idle"
-    bridge._emit_arena_state()
+    if final:
+        pass_complete(ctx)
 
 
 async def _warn_unready(bridge, ctrl) -> None:
@@ -374,9 +365,9 @@ async def _warn_unready(bridge, ctrl) -> None:
         bridge._log(f"⚠ Page not ready: {', '.join(reasons)} — trying anyway", "warn")
 
 
-def _load_run_settings(ctx: BatchCtx) -> None:
-    """Images (run scope, I-44) + prompt template for this batch."""
-    ctx.images = run_scope(ctx.bridge.state.images)
+def _load_run_settings(ctx: BatchCtx, plan) -> None:
+    """Images from the plan (run scope, I-44) + live prompt for this pass."""
+    ctx.images = list(plan.images)
     ctx.prompt_template = ctx.bridge.state.prompt.get("user_prompt", "")
 
 
@@ -388,19 +379,21 @@ def _announce_stack(ctx: BatchCtx) -> None:
     ctx.bridge._log(f"📦 Action blocks stack: {len(stack)} blocks — {head}{'...' if len(stack) > 6 else ''}", "info")
 
 
-async def prepare_batch(bridge) -> Optional[BatchCtx]:
-    """Controller + tab + settings; None when already finalized."""
+async def prepare_batch(bridge, plan=None) -> Optional[BatchCtx]:
+    """Controller + tab + settings from the plan (no re-snapshot); None when no tab."""
     from app.browser.cdp_arena import CDPArenaController
+    if plan is None:  # direct callers (tests): plan first, then consume it
+        plan = plan_pass(bridge)
     ctrl = CDPArenaController(bridge.cdp, log_callback=lambda m: bridge._log(m, "info"))
-    urls = [u for u in bridge.state.urls if u.enabled]
-    allowed = ac.enabled_tab_ids(urls)
-    tab_id = await resolve_and_claim_tab(bridge, getattr(bridge.cdp, "_current_tab_id", "") or "", allowed)
+    baseline = plan.tab_id if plan.ready else ""
+    current = baseline or getattr(bridge.cdp, "_current_tab_id", "") or ""
+    tab_id = await resolve_and_claim_tab(bridge, current, plan.allowed)
     if not tab_id:
-        _abort_no_tab(bridge)
         return None
     await _warn_unready(bridge, ctrl)
-    ctx = BatchCtx(bridge=bridge, ctrl=ctrl, urls=urls, allowed=allowed, tab_id=tab_id)
-    _load_run_settings(ctx)
+    ctx = BatchCtx(bridge=bridge, ctrl=ctrl, urls=plan.urls, allowed=set(plan.allowed),
+                   tab_id=tab_id)
+    _load_run_settings(ctx, plan)
     _announce_stack(ctx)
     return ctx
 
@@ -413,7 +406,7 @@ def _log_parallel_fallback(ctx: BatchCtx, total: int) -> None:
         ctx.bridge._log("ℹ Pool empty — using primary CDP connection single mode. Connect tabs to enable parallel.", "info")
 
 
-async def _try_parallel(ctx: BatchCtx) -> bool:
+async def _try_parallel(ctx: BatchCtx, final: bool = True) -> bool:
     """Parallel dispatch when 2+ pages and 2+ images; else sequential."""
     try:
         pool = _pool_of(ctx.bridge)
@@ -423,12 +416,18 @@ async def _try_parallel(ctx: BatchCtx) -> bool:
         if total >= 2 and free >= 1:
             ctx.bridge._log(f"🚀 Parallel mode: {total} pages {free} free, {len(ctx.images)} images — dispatching to different pages steady/busy tracked, no double-send", "success")
             ctx.bridge._emit_pool_status()
-            await dispatch_parallel(ctx.bridge, pool, ctx.images, ctx.urls)
+            await dispatch_parallel(ctx.bridge, pool, ctx.images, ctx.urls, final)
             return True
         _log_parallel_fallback(ctx, total)
     except Exception as e:
         ctx.bridge._log(f"Parallel dispatch check failed {e}, fallback to single", "warn")
     return False
+
+
+def _cooldown_tail(ctx: BatchCtx) -> None:
+    """Gate-abort line + emit (idle belongs to the run end, not the gate)."""
+    ctx.bridge._log("Batch start aborted during cooldown wait", "warn")
+    ctx.bridge._emit_arena_state()
 
 
 async def _await_batch_gate(ctx: BatchCtx) -> bool:
@@ -438,52 +437,20 @@ async def _await_batch_gate(ctx: BatchCtx) -> bool:
         if pool and ctx.tab_id:
             await ensure_pool_page(ctx.bridge, ctx.tab_id)
             if not await wait_for_batch_ready(pool, [ctx.tab_id], ctx.bridge):
-                ctx.bridge._log("Batch start aborted during cooldown wait", "warn")
-                ctx.bridge._run_state = "idle"
-                ctx.bridge._emit_arena_state()
+                _cooldown_tail(ctx)
                 return False
     except Exception as e:
         ctx.bridge._log(f"Batch-start cooldown wait skipped: {e}", "warn")
     return True
 
 
-async def _run_guarded(bridge) -> None:
-    """Prepare → parallel? → gate → sequential (None/False finalize inside)."""
-    ctx = await prepare_batch(bridge)
+async def _run_guarded(bridge, plan=None, final: bool = True) -> None:
+    """Prepare → parallel? → gate → sequential (tails only when final)."""
+    ctx = await prepare_batch(bridge, plan)
     if ctx is None:
         return
-    if await _try_parallel(ctx):
+    if await _try_parallel(ctx, final):
         return
     if not await _await_batch_gate(ctx):
         return
-    await _run_sequential(ctx)
-
-
-def _cancel_batch(bridge) -> None:
-    """Cancelled future: line + idle + emit (settle happens per-image)."""
-    bridge._log("🏁 Batch cancelled", "warn")
-    bridge._run_state = "idle"
-    bridge._emit_arena_state()
-
-
-def _crash_batch(bridge, error: Exception) -> None:
-    """Unexpected crash: cancelled-vs-crash line + idle + emit."""
-    if "Cancelled" in str(error) or getattr(bridge, "_cancel_requested", False):
-        bridge._log(f"🏁 Batch cancelled: {error}", "warn")
-    else:
-        bridge._log(f"Batch runner crashed: {error}", "error")
-    import traceback
-    traceback.print_exc()
-    bridge._run_state = "idle"
-    bridge._emit_arena_state()
-
-
-async def run_batch(bridge) -> None:
-    """Run the batch (scheduled by start_run; tracked for cancel)."""
-    try:
-        await _run_guarded(bridge)
-    except asyncio.CancelledError:
-        _cancel_batch(bridge)
-        raise
-    except Exception as e:
-        _crash_batch(bridge, e)
+    await _run_sequential(ctx, final)

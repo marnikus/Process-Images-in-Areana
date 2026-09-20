@@ -259,22 +259,57 @@ is stale, file_lines unenforced).
 Docs: rows 6/3/4, I-49 (plan I-41) + I-54 (plan I-46) landed, QUALITY_RECHECK S4
 entry. No AGENT_RULES change (§S4.4 lists none).
 
-## S5 — Always-live supervisor and one run-state writer — NEXT (S4 green)
+## S5 — Always-live supervisor and one run-state writer — DONE (2026-09-20)
 
-Boundary: a started run waits for work or a usable tab until the user stops it.
-No batch tail self-ends the run.
-Interfaces: `live.supervisor.set_run_state/run_live/plan_pass/is_live/wait_reason/`
-`run_pass`/tails + `PassPlan`. Explicit `schedule_batch` replaces name sniffing.
-RED: `tests/test_live_supervisor.py` (empty queue wait, no-tab wait, wake on new work,
-stop-after-current, cancel-current, single active batch, state persistence, no
-duplicate dispatch). Golden harness swaps only the runner registry, keeps its stop hook.
-GREEN: replace `run_batch` entry with `run_live`; delete self-ending state writes;
-route lifecycle through `set_run_state` (also fixes L-2: persist `AppState.run_state`).
-Decide "Start while live" deliberately against the I-45 `batch_active` refusal.
-REFACTOR/EQUIVALENCE: keep stop checks inside each wait; preserve pinned `Batch complete`
-marker; do not alter slot names or packing.
-Gate: supervisor tests, run-state tests, all characterization goldens, fast lane.
-Docs: row 6 (run lifecycle), row 11. Lands plan round-1 I-39 as **I-47**.
+Boundary: a started run waits for work/tabs on the bus until the user stops it; no
+batch tail self-ends the run. New `app/services/live/supervisor.py` (191 LOC, 97.01%
+covered): `PassPlan(images, urls, allowed, tab_id, reason)` snapshot + `plan_pass`
+(CC 6 exact), `_tab_plan`/`_cdp_down`/`_plan_tab`/`_cooling_pages` pure reads,
+`is_live` (flags only, never the label), `run_pass` lane seam, `wait_reason`
+(`REASON_LINES` lookup + `bus.wait(1.0)`), `run_live` (`while is_live`: plan →
+pass-or-wait; CancelledError re-raised per spec), `run_batch` compat (batch semantics
++ else-idle), `set_run_state` one writer (D-8/L-2 — `AppState.run_state` stays
+write-only JSON ballast, the attribute is now honest, `layout_state` unchanged),
+`pass_tail`/`cancelled_tail`/`completed_tail` + moved `_cancel_batch`/`_crash_batch`.
+Surgery: `batch_orchestrator` 489→456 (tails moved out; `_finish_batch`→
+`pass_complete(ctx)` log-only forward; `_abort_no_tab` deleted; gate idle→
+`_cooldown_tail`; `final` flags; `prepare_batch` consumes the plan without
+re-snapshot; `_claim_tab` refreshes `allowed` per image); dispatcher `final` flag +
+idle-free `_finalize`; `start_run` reentry (`_run_is_live`/`_reenter_live_run`, plan's
+`queue re-checked (N queued)` line, stays ≤19) + schedules `run_live`; folder-AI
+refuses only on raw `processing`; harness gains `run_supervisor` (`RUNNERS` untouched
+— iterating it would hang the 12 goldens on a drained queue).
+RED: 9 tests (`ModuleNotFoundError` first); real short sleeps (fake_clock unusable,
+S3/S4 finding) + the golden rig (no `FakeActionRunner` exists). T2 is two-phase
+(add + `commit_queue` wake, then `reset_all` requeue on the same loop).
+REFACTOR/EQUIVALENCE: goldens byte-identical under BOTH runners (12/12 each, no
+`UPDATE_GOLDENS`); `Batch complete` pinned in `completed_tail`; `evals` unchanged;
+dispatcher `max_func_loc` stays 29. Armed with recorded reason: `test_run_control_gate`
+running-case (reenter, not refuse), orchestrator/dispatcher idle asserts (tails speak,
+run end idles), chain/fallback lambda arities, `_load` plan shape. jscpd 1.103% <
+1.24% floor.
+Gate: new files 9/9 + dispatcher silent-pass test; full pytest **1692 passed / 1
+skipped** (incl. 15 hygiene); coverage **87.58 / 84.03** (baseline 86.36/82.33;
+supervisor 97.01); Python gate **0 fails**; plan_pass B6/run_live A5 (all new symbols
+≤6), cognitive ≤8 (explicit scan); JS 240/0 untouched. Slots 135.
+Deviations from tdd-interfaces §S5: (1) `plan_pass` first measured radon CC 11 — split
+into `_cdp_down` + `_tab_plan`, now CC 6 exact per budget. (2) `_run_sequential` keeps
+a `final` flag instead of dropping its tail call: dropping it needs a tri-state return
+through `_run_guarded` (sequential-done vs parallel-tailed-inside vs aborted) while the
+flag keeps one tail call-site and the supervisor still owns the decision (live passes
+`False`). (3) Failed images retry every pass without a cap (`max_attempts` unenforced,
+pre-existing) — a retry budget is later-stage scope; T9 stops after one pass. (4)
+`app_settings` baseline 72.43→72.33 + file_lines 359→358: stale since S4's line removal,
+S4-tree worktree re-run proved S4→S5 coverage identical (bookkeeping, not gaming).
+(5) Empty pool alone is single-mode READY (old semantics preserved) — T3's no_tab case
+also clears the current tab. (6) `REASON_LINES` levels: no_tab/cdp_down warn (actionable),
+no_work/all_cooling info. (7) File math 489−33=456, not 445 — the plan undercounted the
+kept helpers (its 492 baseline was already stale at S4). (8) SoR row 11 is the CDP row
+(S4 finding) — S5 content lands on row 6 only. (9) Tests 260 LOC, not ~180 — real-sleep
+drivers + two-phase T2 (no fake clock). (10) `run_state.py` name-sniffing removal was
+already done in S4 (plan text stale).
+Docs: row 6, I-47 (plan I-39) landed, I-45 amended (reenter), §8 row, QUALITY_RECHECK S5
+entry. No AGENT_RULES change (§S5 lists none).
 
 ## S6 — Python URL reconciler and user cadence control — PENDING (needs S1+S4 green)
 

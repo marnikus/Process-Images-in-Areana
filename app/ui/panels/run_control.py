@@ -13,8 +13,9 @@ import logging
 from datetime import datetime
 
 from app.core.run_scope import run_scope
-from app.services.batch_orchestrator import run_batch
+from app.services.live.bus import live_bus
 from app.services.live.feed import commit_queue, push_queue_undo, recover_stale_processing
+from app.services.live.supervisor import run_live
 from app.services.run_state import batch_active, schedule_batch
 from app.ui.panels.url_queue import _URL_GATE_MSG, _urls_gate_error, enabled_urls
 from app.ui.qt_compat import Slot
@@ -69,6 +70,20 @@ def check_start_inputs(bridge):
         bridge._log(msg, level)
         return json.dumps({"ok": False, "error": gate})
     return None
+
+
+def _reenter_live_run(bridge):
+    """Start while live: wake the loop instead of refusing (S5)."""
+    queued = len(run_scope(bridge.state.images))
+    bridge._log(f"🟢 Run already live — queue re-checked ({queued} queued)", "info")
+    live_bus(bridge).wake("start")
+    return json.dumps({"ok": True, "already_live": True})
+
+
+def _run_is_live(bridge) -> bool:
+    """A live loop is really out there (running state + unfinished future)."""
+    fut = getattr(bridge, "_batch_future", None)
+    return bridge._run_state == "running" and fut is not None and not fut.done()
 
 
 def check_start_ready(bridge):
@@ -218,6 +233,8 @@ class RunControlMixin:
 
     @Slot(result=str)
     def start_run(self):
+        if _run_is_live(self):
+            return _reenter_live_run(self)
         err = check_start_inputs(self) or check_start_ready(self)
         if err:
             return err
@@ -231,7 +248,7 @@ class RunControlMixin:
         self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
         self._emit_arena_state()
         recover_stale_processing(self)
-        schedule_batch(self, run_batch(self))
+        schedule_batch(self, run_live(self))
         return json.dumps({"ok": True})
 
     @Slot(result=str)

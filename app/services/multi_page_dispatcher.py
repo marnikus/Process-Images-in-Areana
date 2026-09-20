@@ -340,7 +340,7 @@ def _handle_exception(bridge, img, tab_id, e):
         pass
 
 
-async def dispatch_parallel(bridge, pool, images, urls):
+async def dispatch_parallel(bridge, pool, images, urls, final: bool = True):
     if not pool or not images:
         return
     allowed = ac.enabled_tab_ids(urls)
@@ -355,7 +355,8 @@ async def dispatch_parallel(bridge, pool, images, urls):
     ctx = DispatchCtx(bridge=bridge, pool=pool, urls=urls, sem=sem, allowed=allowed)
     tasks = await _create_tasks(ctx, images)
     await _await_tasks(bridge, tasks)
-    _finalize_batch(bridge)
+    if final:
+        _finalize_batch(bridge)
 
 
 async def _create_tasks(ctx: DispatchCtx, images):
@@ -393,9 +394,9 @@ async def _await_tasks(bridge, tasks):
 
 
 def _finalize_batch(bridge):
+    """Parallel tail: line + emits (idle belongs to the run end, not the pass)."""
     try:
         bridge._log("🏁 Parallel batch complete steady", "success")
-        bridge._run_state = "idle"
         bridge._emit_arena_state()
         bridge._emit_pool_status()
     except Exception:

@@ -246,6 +246,27 @@ Python gate **0 fails** (1 JS fail pre-existing), run_control 279→272,
 queue_scan 310→293, app_settings max 18→17, cognitive ≤8, slots **135**.
 SoR rows 6/3/4, I-49 (plan I-41) + I-54 (plan I-46) landed. No JS touched.
 
+### 2026-09-20 S5 Always-live supervisor and one run-state writer (branch `arena/01a0bf4d-…`)
+
+New `app/services/live/supervisor.py` (`PassPlan` + `plan_pass` CC 6 exact,
+`is_live`, `run_pass`, `wait_reason` with `REASON_LINES`, `run_live`,
+`run_batch` compat, `set_run_state` one writer, three tails; 97.01% covered) +
+orchestrator/dispatcher tail surgery (489→456, `_abort_no_tab` deleted,
+`final` flags, no `_run_state =` left in either) + `start_run` live reentry
+(plan's `queue re-checked (N queued)` line) + folder-AI raw-`processing` guard.
+RED observed (`ModuleNotFoundError`), then green: new files 9/9 (real short
+sleeps — fake_clock unusable, S3/S4 finding; golden rig — no `FakeActionRunner`;
+two-phase T2) + dispatcher silent-pass test.
+Armed with recorded reason: gate running-case (reenter), idle asserts (run end
+idles), lambda arities, `_load` plan shape.
+Full pytest **1,692 / 1 skipped** (incl. 15 hygiene; goldens byte-identical under
+both runners, no `UPDATE_GOLDENS`), coverage **87.58 / 84.03** (baseline
+86.36/82.33), jscpd 1.103 < 1.24, Python gate **0 fails**, plan_pass B6/run_live
+A5, cognitive ≤8, slots **135**.
+`app_settings` baseline synced 72.43→72.33 + file_lines 359→358 (stale since S4's
+line removal; S4-tree worktree re-run proved S4→S5 identical — bookkeeping).
+SoR row 6, I-47 (plan I-39) landed, I-45 amended (reenter). No JS touched.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).
