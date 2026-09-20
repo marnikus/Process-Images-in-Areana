@@ -1,15 +1,13 @@
 """qt_compat shim tests (R10.12): clipboard centralization, headless behavior."""
 
-import importlib.util
-
 import pytest
 
 from app.ui import qt_compat
 
 
 needs_no_qt = pytest.mark.skipif(
-    importlib.util.find_spec("PySide6") is not None,
-    reason="headless-only: PySide6 present",
+    qt_compat.QFileDialog is not None,
+    reason="headless-only: real QtWidgets in use (shim inactive)",
 )
 
 

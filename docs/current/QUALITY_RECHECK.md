@@ -180,6 +180,18 @@ run_state files, +1 naming; pytest 1,554 → 1,621;
 `npm run test:js` unchanged (240); coverage 86.55 / 82.63 → **87.03 / 83.25**.
 Goldens byte-identical; slot surface unchanged (135).
 
+### 2026-09-20 S0 baseline (live chain S0–S10 starts; branch `arena/01a0bf4d-…` from `528af87`)
+
+No production change. Bootstrap `.venv` (Python 3.11.2) + `npm ci` (Node v22.22.3);
+untracked 6 runtime files the squashed base commit had re-added (kept on disk);
+two test-only reproducibility fixes (`test_qt_compat` skipif now checks the active
+shim, new `test_transport_import_without_qt`): pytest **1,617 passed / 8 skipped**,
+JS **240/0**, coverage **87.05 / 83.25** (floors 86.36 / 82.33), full gate **0 fails**,
+slots **135**, jscpd **1.119 %**. L-1/L-5/L-6/L-7/L-8 confirmed open; §D re-measured
+(all enforced maxima hold, `single_job_runner` CC 9 → 7 shrink). Cognitive lib stays
+uninstalled to match the recorded baseline (max_cog 0 × 147); new symbols get an
+explicit ≤15 scan per stage. Evidence: `docs/archive/2026-09-20-s0s10-live-chain/`.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

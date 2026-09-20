@@ -5,6 +5,9 @@ Every panel module must stay importable when PySide6 is unavailable
 site (RULE 18: one shim, not one per panel), so this test blocks PySide6,
 reloads qt_compat + every panel + the bridge facade, and asserts the dummy
 QObject/Signal/Slot surface is sane. Real modules are restored afterwards.
+The CDP transport (`app/browser/cdp/transport.py`) carries the only other Qt
+guard in the app (browser layer must not import ui/), so its fallback is
+pinned here too — in any env, by forcing the ImportError.
 """
 from __future__ import annotations
 
@@ -66,6 +69,23 @@ def test_panels_import_without_qt():
         sys.modules.update(saved)
         for name in reloaded:
             importlib.reload(sys.modules[name])
+
+
+@pytest.mark.unit
+def test_transport_import_without_qt():
+    """CDP transport falls back to its dummy QObject/Signal without Qt."""
+    saved = _block_qt()
+    try:
+        fresh = importlib.reload(importlib.import_module("app.browser.cdp.transport"))
+        obj = fresh.QObject()
+        assert obj is not None
+        sig = fresh.Signal()
+        sig.connect(lambda *a: None)
+        sig.emit("x")  # must not raise
+        assert fresh.CDPTransport is not None
+    finally:
+        sys.modules.update(saved)
+        importlib.reload(importlib.import_module("app.browser.cdp.transport"))
 
 
 @pytest.mark.unit
