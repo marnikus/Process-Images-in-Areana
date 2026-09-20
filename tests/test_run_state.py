@@ -37,7 +37,8 @@ def test_ensure_bg_loop_reuses_running():
     assert rs.ensure_bg_loop(bridge) is loop
 
 
-def test_schedule_coro_runs_and_tracks_batch():
+def test_schedule_coro_runs_and_schedule_batch_tracks():
+    """S4: `schedule_coro` never tracks (no coroutine-name sniffing); `schedule_batch` always does."""
     bridge = make_bridge()
     done = threading.Event()
 
@@ -47,11 +48,18 @@ def test_schedule_coro_runs_and_tracks_batch():
     fut = rs.schedule_coro(bridge, work())
     assert fut is not None
     assert done.wait(timeout=5)
+    assert bridge._batch_future is None
 
     async def run_batch():
         return None
 
-    fut2 = rs.schedule_coro(bridge, run_batch())
+    assert rs.schedule_coro(bridge, run_batch()).result(timeout=5) is None
+    assert bridge._batch_future is None  # the name no longer matters
+
+    async def run_live():
+        return None
+
+    fut2 = rs.schedule_batch(bridge, run_live())
     assert bridge._batch_future is fut2
     fut2.result(timeout=5)
     deadline = time.time() + 5

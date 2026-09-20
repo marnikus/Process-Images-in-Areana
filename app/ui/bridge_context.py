@@ -9,7 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import threading
+
 from app.core.undo_service import UndoService
+from app.services.live.bus import LiveBus
+from app.ui.panels.queue_scan import push_queue_undo
 from app.ui.panels.watcher_captcha import (
     get_watcher_cdp_controller, on_watcher_state)
 
@@ -25,13 +29,16 @@ class BridgeContext:
 
 
 def init_run_state(bridge) -> None:
-    """Run-lifecycle flags + per-run stores."""
+    """Run-lifecycle flags + per-run stores + the live bus / queue lock (S4)."""
     bridge._run_state = "idle"
     bridge._cancel_requested = False
     bridge._pause_requested = False
     bridge._stop_after = False
     bridge._batch_future = None
     bridge._exported_paths = {}
+    bridge._live_bus = LiveBus()
+    bridge._state_lock = threading.RLock()
+    bridge._push_queue_undo = lambda: push_queue_undo(bridge)  # the funnel's undo seam (services stay ui-free)
 
 
 def init_tracking_state(bridge) -> None:

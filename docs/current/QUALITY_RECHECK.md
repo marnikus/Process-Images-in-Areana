@@ -353,6 +353,72 @@ rows 8 + 12, core/services module rows, new **I-52**, `docs/README.md`
 footer. `evidence.md` §2.1 lives in an archived plan folder and is
 therefore not edited (archived plan docs are never caught up).
 
+### 2026-09-20 S4 (live queue core + every reset re-queues, D-6R / I-49 / I-54) — same chain
+
+**Plan re-budget applied (merge-note §2).** The plan's `feed.eligible_images`
+would have been a third eligibility rule next to `core/run_scope.py` — the
+merged tree already deleted both clones. So the live rule is
+`run_scope.live_scope` / `LIVE_STATUSES` (= `RUNNABLE_STATUSES` minus
+`processing`) **in the same module**, and `feed.eligible_images` /
+`feed.ELIGIBLE` are identity re-exports (`is`-asserted by the tests). A
+source lock forbids any `("pending", "failed"…)` tuple outside
+`run_scope.py`. `queue_scan.selected_images` no longer exists, so the
+plan's delegation test was dropped for that lock.
+
+**RED first.** `tests/test_live_bus.py` (6), `tests/test_live_feed.py`
+(10), `tests/test_reset_requeues.py` (6, real `Bridge` via the golden
+harness) all failed to collect (`ModuleNotFoundError: app.services.live`);
+the reset test's defect line at base is `reset_image_state(img, False)`.
+
+**GREEN.** New `app/services/live/` (3 files): `bus.py` 88 lines —
+`LiveBus` (6 methods, max 11 loc / CC 4; `wake` is `call_soon_threadsafe`,
+`wait` drains the reasons, `throttle` takes an injectable clock) +
+`live_bus(bridge)`; `feed.py` 102 lines — `commit_queue(bridge, reason,
+undo=True)` (3 params, CC 2: recalc → save → undo-if-user → wake, under the
+bridge `RLock`, never across an `await`), `recover_stale_processing`
+(reads `pool.status_snapshot()["pages"][*]["current_image"]`, the same
+fact `set_tab_image` writes), `clear_row_assignments`, `state_lock`;
+`__init__.py` re-export facade. `core/run_scope.py` 51 → 66 lines
+(`LIVE_STATUSES`, `live_scope`). Funnel tails: `run_control` (`retry_failed`,
+`reset_all` + count line, `retry_image`, `reset_image` — the two id loops
+became `find_image` lookups), `queue_scan` (`clear_queue_images`,
+`run_scan_merge`, `run_scan_new_batch`, `set_image_selected`,
+`bulk_select`), `app_settings` (`import_preset`, `load_arena_preset` —
+`undo=False`, the file's 18-line max shrank to 17). `reset_image_state(img)`
+— the parameter is gone (signature lock). `run_state`: `_track_batch_future`
+(coroutine-name sniffing) deleted, `schedule_batch` added; `start_run` uses
+it and calls `recover_stale_processing` first. `bridge_context.init_run_state`
+creates `_live_bus`, `_state_lock` and the `_push_queue_undo` seam (the
+funnel's undo push reaches `queue_scan.push_queue_undo` without a services →
+ui import). Mutation controls: `selected=False` in the reset → 3 fail; funnel
+never wakes → 5 fail; live rule keeps `processing` → 1 fail.
+
+**Existing tests that changed (reasons recorded in-file).** Three spies on
+`rc.schedule_coro` became `rc.schedule_batch` (`test_run_control_gate`,
+`test_panel_slots`); `test_run_state::…tracks_batch` now asserts the
+opposite of the deleted sniffing (a coroutine named `run_batch` is **not**
+tracked by `schedule_coro`; `schedule_batch` tracks any name);
+`test_file_dialogs` preset fake gained `images=[]` (the funnel counts the
+queue). No test asserted `selected is False` after a reset.
+**Goldens byte-identical** (the harness never resets mid-run; `logs` are
+excluded from the compare).
+
+**Lane after S4.** pytest serial **1,683 passed · 4 skipped · 0 failed**
+(+22 new); `npm run test:js` 240 / 0; `pyflakes` on every touched file
+clean (the `app_settings.py:310` unused `e` pre-exists); `vulture @90`
+clean. Coverage **87.33 % line / 83.82 % branch** (S3: 87.11 / 83.51;
+`live/bus.py` 96.97, `live/feed.py` 94.81, `run_scope.py` 100,
+`run_control.py` 88.36). jscpd `app/` **1.24 % → 1.106 %** (23 groups; the
+L-4 clone family is gone). `verify_quality.py --changed-files` on the nine
+touched app files: **no** ratchet maximum moved — `run_control.py` /
+`queue_scan.py` `max_methods` stay **10**, `app_settings.py` `max_func_loc`
+18 → **17**, `run_state.py` 18 / 7 unchanged; the panels shrank
+(275 → 273, 315 → 304, 359 → 358). Remaining fails are the same three
+environment facts (`max_cog 0→N`, two `libGL` coverage floors). Docs in
+the same commit: SYSTEM_OF_RECORD rows 3 + 6, new **I-49** + **I-54**
+(numbers per merge-note §1), services / core module rows,
+`docs/README.md` footer.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

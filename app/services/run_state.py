@@ -115,15 +115,6 @@ def ensure_bg_loop(bridge):
 
 # ---- scheduling ----
 
-def _track_batch_future(bridge, coro, future) -> None:
-    """Keep the batch future for immediate cancel_current."""
-    try:
-        if hasattr(coro, "cr_code") and coro.cr_code.co_name == "run_batch":
-            bridge._batch_future = future
-    except Exception:
-        pass
-
-
 def batch_active(bridge) -> bool:
     """True while a batch future is alive — running, paused, stopping or still unwinding (I-45)."""
     fut = getattr(bridge, "_batch_future", None)
@@ -163,9 +154,8 @@ def _on_coro_done(bridge, fut) -> None:
 
 
 def _submit_tracked(bridge, loop, coro):
-    """Submit + track + done-callback on the live bg loop."""
+    """Submit + done-callback on the live bg loop (the batch future is tracked by `schedule_batch`)."""
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    _track_batch_future(bridge, coro, future)
     future.add_done_callback(lambda fut: _on_coro_done(bridge, fut))
     return future
 
@@ -211,6 +201,14 @@ def schedule_coro(bridge, coro):
         except Exception:
             pass
         return None
+
+
+def schedule_batch(bridge, coro):
+    """Schedule THE run coroutine and always track it as the batch future (S4: no name sniffing)."""
+    future = schedule_coro(bridge, coro)
+    if future is not None:
+        bridge._batch_future = future
+    return future
 
 
 # ---- tab identity ----

@@ -9,6 +9,12 @@ sequential loop (`batch_orchestrator`) and the parallel worker
 (`multi_page_dispatcher`) call `claim_denied`; the run panel
 (`run_control`) filters the batch with `run_scope`.
 
+The live loop (S4/S5) asks the SAME module a narrower question —
+`live_scope`: selected AND `LIVE_STATUSES`, which is `RUNNABLE_STATUSES`
+without `processing` (a live loop must never dispatch an image twice; a
+crash leftover is returned to `pending` by `live.feed.recover_stale_processing`
+before the loop asks). One owner, two moments, no copies (RULE 10, L-4).
+
 Imports go core -> core only (no Qt, no services, no ui).
 """
 
@@ -25,6 +31,10 @@ RUNNABLE_STATUSES = frozenset({
     ImageStatus.NEEDS_REVIEW.value,
     ImageStatus.PROCESSING.value,   # crash leftovers are re-run, not stranded
 })
+
+
+# the live loop's rule: runnable minus `processing` (double-dispatch protection)
+LIVE_STATUSES = RUNNABLE_STATUSES - {ImageStatus.PROCESSING.value}
 
 
 def is_runnable(status: str) -> bool:
@@ -49,3 +59,8 @@ def claim_denied(img, log: Callable[[str, str], None]) -> bool:
     why = f"already {img.status}" if not is_runnable(img.status) else "deselected"
     log(f"⏭ Skipping {img.relative_path} — {why}", "info")
     return True
+
+
+def live_scope(images: Iterable) -> List:
+    """Images the live loop may dispatch now (snapshot copy; never `processing`)."""
+    return [img for img in images if img.selected and img.status in LIVE_STATUSES]
