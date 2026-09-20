@@ -186,8 +186,9 @@ class RunControlMixin:
 
     @Slot(result=str)
     def reset_all(self):
+        # Reset is a live requeue operation, not a removal from the run.
         for img in self.state.images:
-            reset_image_state(img, False)
+            reset_image_state(img, True)
         self.state.jobs = []
         self.state.recalculate_progress()
         self._save_arena()
@@ -211,7 +212,8 @@ class RunControlMixin:
     def reset_image(self, img_id: str):
         for img in self.state.images:
             if img.id == img_id:
-                reset_image_state(img, False)
+                # A reset immediately returns the image to the live queue.
+                reset_image_state(img, True)
                 self.state.recalculate_progress()
                 self._save_arena()
                 push_queue_undo(self)

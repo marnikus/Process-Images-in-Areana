@@ -52,6 +52,29 @@ class WatcherLoop:
                 log.debug(f"Watcher callback failed: {e}")
 
     async def check_once(self) -> Dict[str, Any]:
+        # The switch is a hard boundary: when OFF do not probe, solve, or
+        # publish captcha state/logs.  This is deliberately checked before
+        # obtaining CDP so a stale controller cannot leak detections.
+        if not self.config.enabled:
+            # Disabling is also a cleanup boundary.  Do not emit a captcha
+            # transition here; just remove stale UI state and release an
+            # auto-paused runner if a previous tick was waiting.
+            was_waiting = bool(self.state.waiting_kind)
+            if was_waiting:
+                try:
+                    await self.cdp_probe.hide_overlay(self.cdp_probe.get())
+                except Exception:
+                    pass
+                try:
+                    self.handlers.job_ctrl.resume()
+                except Exception:
+                    pass
+            self.state.status = "idle"
+            self.state.last_captcha_detected = False
+            self.state.waiting_kind = None
+            self.state.waiting_since = None
+            await self._notify()
+            return self.state.to_dict()
         self.state.checks_count += 1
         self.state.last_check = time.time()
         cdp = self.cdp_probe.get()

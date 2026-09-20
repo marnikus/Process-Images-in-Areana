@@ -357,9 +357,13 @@ async def join_new_tabs(bridge, sockets) -> None:
 
 
 def auto_prune_allowed(bridge, tabs) -> bool:
-    """Prune dead rows only with a healthy tab list and no live run."""
-    if getattr(bridge, "_run_state", "idle") != "idle":
-        return False
+    """Prune rows against a healthy tab snapshot, including live runs.
+
+    URL ownership is dynamic: a closed/non-matching tab must stop receiving
+    jobs immediately rather than remaining in the run's captured URL list.
+    The planner is conservative and only prunes when the snapshot has real
+    tab identities, so transient CDP failures cannot wipe the queue.
+    """
     return any(getattr(t, "id", "") or getattr(t, "ws_url", "") for t in tabs or [])
 
 
@@ -367,7 +371,12 @@ def plan_auto_sync(bridge, tabs, pattern, rows):
     """Plan the scan; attach safe row pruning when allowed."""
     plan = plan_auto_connect(tabs, pattern, rows, pooled_ids(bridge._page_pool))
     if auto_prune_allowed(bridge, tabs):
-        plan.remove = prunable_row_ids(rows, live_tab_keys(tabs))
+        # A linked row is valid only while its tab still matches the active
+        # URL requirements, not merely while the tab exists.
+        matching = {getattr(t, "id", "") or getattr(t, "ws_url", "")
+                    for t in tabs or []
+                    if matches_pattern(getattr(t, "url", ""), pattern)}
+        plan.remove = prunable_row_ids(rows, matching)
     return plan
 
 

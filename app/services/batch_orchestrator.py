@@ -333,25 +333,93 @@ async def _run_one_image(ctx: BatchCtx, img: Any) -> str:
 
 
 def _finish_batch(ctx: BatchCtx) -> None:
-    """Batch tail: cancelled/complete line + idle + emit."""
+    """Report a live run reaching an empty queue without stopping it."""
+    if not getattr(ctx.bridge, "_live_run", False):
+        if getattr(ctx.bridge, "_cancel_requested", False):
+            ctx.bridge._log("🏁 Batch cancelled by user", "warn")
+        else:
+            ctx.bridge._log("🏁 Batch complete", "success")
+        ctx.bridge._run_state = "idle"
+        ctx.bridge._emit_arena_state()
+        return
     if getattr(ctx.bridge, "_cancel_requested", False):
-        ctx.bridge._log("🏁 Batch cancelled by user", "warn")
-    else:
-        ctx.bridge._log("🏁 Batch complete", "success")
-    ctx.bridge._run_state = "idle"
-    ctx.bridge._emit_arena_state()
+        return
+    ctx.bridge._log("✅ Queue is empty — run remains live and will process new pending images", "info")
+
+
+def _refresh_live_queue(ctx: BatchCtx) -> None:
+    """Refresh URL ownership and image references without restarting a run."""
+    bridge = ctx.bridge
+    ctx.urls = [u for u in bridge.state.urls if u.enabled]
+    ctx.allowed = ac.enabled_tab_ids(ctx.urls)
+    ctx.images = _selected_images(bridge)
+    ctx.prompt_template = bridge.state.prompt.get("user_prompt", "")
+
+
+async def _passively_refresh_urls(ctx: BatchCtx) -> None:
+    """Recheck tabs during a live run; failures never interrupt processing."""
+    try:
+        # Import lazily: browser tab UI owns the CDP auto-connect seam.
+        from app.ui.panels.browser_tabs import do_auto_connect_scan
+        await do_auto_connect_scan(ctx.bridge, "auto")
+    except Exception:
+        pass
+    _refresh_live_queue(ctx)
 
 
 async def _run_sequential(ctx: BatchCtx) -> None:
-    """Per-image loop; a cancelled future settles the stuck tab."""
+    """Always-live queue loop; state changes are observed between images."""
+    if not getattr(ctx.bridge, "_live_run", False):
+        # Compatibility seam for pure service harnesses that do not model a
+        # user-owned run lifecycle.
+        try:
+            for img in ctx.images:
+                if await _run_one_image(ctx, img) == "stop":
+                    break
+        except asyncio.CancelledError:
+            _settle_stuck(ctx)
+            raise
+        _finish_batch(ctx)
+        return
+    was_empty = False
     try:
-        for img in ctx.images:
-            if await _run_one_image(ctx, img) == "stop":
+        while not getattr(ctx.bridge, "_cancel_requested", False):
+            await _passively_refresh_urls(ctx)
+            if getattr(ctx.bridge, "_stop_after", False):
                 break
+            # Pending/reset images are deliberately re-evaluated every pass;
+            # a UI reset therefore enters the queue without a new run.
+            candidate = next((img for img in ctx.images
+                              if img.selected and img.status in
+                              ("pending", "selected", "needs_review", "processing")), None)
+            if candidate is None:
+                if not was_empty:
+                    _finish_batch(ctx)
+                    was_empty = True
+                await asyncio.sleep(0.25)
+                continue
+            was_empty = False
+            if await _run_one_image(ctx, candidate) == "stop":
+                # A live run waits for a tab/URL to return.  Only explicit
+                # cancel or stop-after is terminal; transient URL changes
+                # must not silently kill the run task.
+                if getattr(ctx.bridge, "_cancel_requested", False) or getattr(ctx.bridge, "_stop_after", False):
+                    break
+                await asyncio.sleep(0.25)
+                continue
+            # Do not impose the old one-second cycle delay.  The next live
+            # queue pass is the requeue/update boundary.
+            await asyncio.sleep(0)
     except asyncio.CancelledError:
         _settle_stuck(ctx)
         raise
-    _finish_batch(ctx)
+    if getattr(ctx.bridge, "_cancel_requested", False):
+        ctx.bridge._log("🏁 Batch cancelled by user", "warn")
+    elif getattr(ctx.bridge, "_stop_after", False):
+        ctx.bridge._log("🏁 Run stopped after current image", "warn")
+    ctx.bridge._run_state = "idle" if (getattr(ctx.bridge, "_cancel_requested", False)
+                                         or getattr(ctx.bridge, "_stop_after", False)) else "running"
+    ctx.bridge._emit_arena_state()
 
 
 def _abort_no_tab(bridge) -> None:
@@ -427,6 +495,10 @@ async def _try_parallel(ctx: BatchCtx) -> bool:
             ctx.bridge._log(f"🚀 Parallel mode: {total} pages {free} free, {len(ctx.images)} images — dispatching to different pages steady/busy tracked, no double-send", "success")
             ctx.bridge._emit_pool_status()
             await dispatch_parallel(ctx.bridge, pool, ctx.images, ctx.urls)
+            # The dispatcher handles the current burst; hand control back to
+            # the live queue loop for resets, new images, and URL changes.
+            ctx.bridge._run_state = "running"
+            ctx.bridge._emit_arena_state()
             return True
         _log_parallel_fallback(ctx, total)
     except Exception as e:
@@ -456,6 +528,8 @@ async def _run_guarded(bridge) -> None:
     if ctx is None:
         return
     if await _try_parallel(ctx):
+        _refresh_live_queue(ctx)
+        await _run_sequential(ctx)
         return
     if not await _await_batch_gate(ctx):
         return

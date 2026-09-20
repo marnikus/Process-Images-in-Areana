@@ -27,6 +27,10 @@ class BridgeContext:
 def init_run_state(bridge) -> None:
     """Run-lifecycle flags + per-run stores."""
     bridge._run_state = "idle"
+    # Runs created by the application use the live queue loop.  Keeping this
+    # explicit also lets small service harnesses opt into the legacy finite
+    # batch behavior without affecting production.
+    bridge._live_run = True
     bridge._cancel_requested = False
     bridge._pause_requested = False
     bridge._stop_after = False

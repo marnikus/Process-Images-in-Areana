@@ -153,7 +153,9 @@ class CaptchaWatcher:
             self._status.running = False
             self._status.solving_tab = ""
             self._task = None
-            self._log("🛡️ Captcha Watcher OFF — the app no longer solves captchas", "warn")
+            # Do not emit a captcha-labelled log on shutdown.  OFF is a
+            # hard boundary: subsequent ticks are silent until explicitly
+            # started again.
             self._emit()
 
     def stop(self) -> None:
