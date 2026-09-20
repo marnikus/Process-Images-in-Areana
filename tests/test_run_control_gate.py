@@ -22,7 +22,9 @@ from tests.test_panel_slots import make_cdp, make_host, make_state
 def ready_host(run_state, future, monkeypatch):
     """Host that passes every other gate (prompt, selection, URL, CDP)."""
     scheduled = []
-    monkeypatch.setattr(rc, "schedule_coro", lambda self, coro: scheduled.append(coro) or coro)
+    # S4: the panel goes through the real run_state.schedule_batch; only the loop submit is faked
+    from app.services import run_state as rs_mod
+    monkeypatch.setattr(rs_mod, "schedule_coro", lambda self, coro: scheduled.append(coro) or coro.close() or coro)
     img = make_img()
     img.selected, img.status = True, "pending"
     state = make_state(images=[img], urls=[UrlRow.create("https://arena.ai/c", enabled=True, tab_id="t1")])

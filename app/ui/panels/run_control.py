@@ -14,7 +14,8 @@ from datetime import datetime
 
 from app.core.run_scope import run_scope
 from app.services.batch_orchestrator import run_batch
-from app.services.run_state import batch_active, schedule_coro
+from app.services.live.feed import commit_queue, recover_stale_processing
+from app.services.run_state import batch_active, schedule_batch
 from app.ui.panels.queue_scan import push_queue_undo
 from app.ui.panels.url_queue import _URL_GATE_MSG, _urls_gate_error, enabled_urls
 from app.ui.qt_compat import Slot
@@ -39,15 +40,14 @@ def clear_image_state(bridge) -> int:
     count = len(bridge.state.images)
     bridge.state.images = []
     bridge.state.jobs = []
-    bridge.state.recalculate_progress()
-    bridge._save_arena()
+    commit_queue(bridge, "clear")
     return count
 
 
-def reset_image_state(img, selected: bool) -> None:
-    """Return one image to pending (run-scope selection as given)."""
+def reset_image_state(img) -> None:
+    """Return one image to pending AND re-queue it (selected=True — D-16/I-54, no other option)."""
     img.status = "pending"
-    img.selected = selected
+    img.selected = True
     img.error = None
     img.output_path = None
     img.assigned_url_id = None
@@ -168,9 +168,7 @@ class RunControlMixin:
     @Slot(result=str)
     def retry_failed(self):
         count = revive_failed_images(self.state.images)
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        commit_queue(self, "retry_failed", undo=push_queue_undo)
         return json.dumps({"ok": True, "count": count})
 
     @Slot(result=str)
@@ -191,12 +189,11 @@ class RunControlMixin:
     @Slot(result=str)
     def reset_all(self):
         for img in self.state.images:
-            reset_image_state(img, False)
+            reset_image_state(img)
         self.state.jobs = []
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
-        return json.dumps({"ok": True})
+        count = commit_queue(self, "reset_all", undo=push_queue_undo)
+        self._log(f"↻ Reset all: {count} images re-queued (pending + selected — a live run picks them up)", "info")
+        return json.dumps({"ok": True, "count": count})
 
     @Slot(str, result=str)
     def retry_image(self, img_id: str):
@@ -205,9 +202,7 @@ class RunControlMixin:
                 img.status = "pending"
                 img.selected = True
                 img.error = None
-                self.state.recalculate_progress()
-                self._save_arena()
-                push_queue_undo(self)
+                commit_queue(self, "retry", undo=push_queue_undo)
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
 
@@ -215,15 +210,16 @@ class RunControlMixin:
     def reset_image(self, img_id: str):
         for img in self.state.images:
             if img.id == img_id:
-                reset_image_state(img, False)
-                self.state.recalculate_progress()
-                self._save_arena()
-                push_queue_undo(self)
+                reset_image_state(img)
+                commit_queue(self, "reset", undo=push_queue_undo)
+                self._log(f"↻ Reset {img.relative_path}: re-queued (pending + selected)", "info")
                 return json.dumps({"ok": True})
         return json.dumps({"ok": False, "error": "not found"})
 
     @Slot(result=str)
     def start_run(self):
+        if recover_stale_processing(self):  # crash leftovers back to pending before the gates look
+            commit_queue(self, "recover")
         err = check_start_inputs(self) or check_start_ready(self)
         if err:
             return err
@@ -236,9 +232,7 @@ class RunControlMixin:
         self._stop_after = False
         self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
         self._emit_arena_state()
-        fut = schedule_coro(self, run_batch(self))
-        if fut:
-            self._batch_future = fut
+        schedule_batch(self, run_batch(self))
         return json.dumps({"ok": True})
 
     @Slot(result=str)

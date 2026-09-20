@@ -27,9 +27,21 @@ RUNNABLE_STATUSES = frozenset({
 })
 
 
+# A live pass (S4, I-49) never lists in-flight work: Start still counts a
+# `processing` crash leftover as part of the run (`live.feed.recover_stale_processing`
+# turns it back to pending first), but nothing may claim an image another
+# worker is running right now. Same set, one status less — derived, not copied.
+CLAIMABLE_STATUSES = RUNNABLE_STATUSES - {ImageStatus.PROCESSING.value}
+
+
 def is_runnable(status: str) -> bool:
     """A status a loop may claim; `completed` / `skipped` / `deselected` never are."""
     return status in RUNNABLE_STATUSES
+
+
+def is_claimable(status: str) -> bool:
+    """Runnable AND not in flight — what a live pass may pick up next."""
+    return status in CLAIMABLE_STATUSES
 
 
 def in_run_scope(img) -> bool:
@@ -40,6 +52,11 @@ def in_run_scope(img) -> bool:
 def run_scope(images: Iterable) -> List:
     """Images a batch may send, in queue order."""
     return [img for img in images if in_run_scope(img)]
+
+
+def claim_scope(images: Iterable) -> List:
+    """Images a live pass may claim now (selected + claimable), in queue order — a fresh list."""
+    return [img for img in images if bool(img.selected) and is_claimable(img.status)]
 
 
 def claim_denied(img, log: Callable[[str, str], None]) -> bool:

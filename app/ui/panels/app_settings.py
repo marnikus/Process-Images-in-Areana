@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.core.models import UrlRow
 from app.core.persistence import load_preset, save_preset
+from app.services.live.feed import commit_queue
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import arena_serialize, undo_entries
 
@@ -294,8 +295,7 @@ class AppSettingsMixin:
             restore_import_sections(self.state, data)
             if "settings" in data:
                 apply_preset_settings(self.state, data["settings"])
-            self.state.recalculate_progress()
-            self._save_arena()
+            commit_queue(self, "preset")
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -335,8 +335,7 @@ class AppSettingsMixin:
             restore_preset_cdp(self, doc)
             restore_preset_action_blocks(self, doc)
             restore_preset_cooldown(self, doc)
-            self.state.recalculate_progress()
-            self._save_arena()
+            commit_queue(self, "preset")
             self._log(f"Arena preset loaded: {name}", "success")
             return json.dumps({"ok": True, "name": name})
         except Exception as e:

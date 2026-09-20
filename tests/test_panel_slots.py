@@ -182,8 +182,12 @@ def test_run_control_start_run_ok_schedules_batch(cfg, monkeypatch):
 
     def fake_schedule(self, coro):
         scheduled.append(coro)
+        coro.close()
         return coro
-    monkeypatch.setattr(rc_mod, "schedule_coro", fake_schedule)
+    # S4: the panel calls the real run_state.schedule_batch; only the loop submit is faked,
+    # so the assertion below proves schedule_batch itself tracks the future (no name sniffing)
+    from app.services import run_state as rs_mod
+    monkeypatch.setattr(rs_mod, "schedule_coro", fake_schedule)
     img = make_img(); img.selected = True; img.status = "pending"
     host, _ = make_host((RunControlMixin,), config=cfg, cdp=make_cdp(connected=True),
                         state=make_state(images=[img], urls=[UrlRow.create("https://arena.ai/c",
