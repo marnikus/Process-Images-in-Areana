@@ -37,23 +37,34 @@ def test_ensure_bg_loop_reuses_running():
     assert rs.ensure_bg_loop(bridge) is loop
 
 
-def test_schedule_coro_runs_and_tracks_batch():
+def test_schedule_coro_runs_without_tracking_and_schedule_batch_tracks():
+    """S4: _track_batch_future's co_name sniff is gone — generic scheduling NEVER
+    tracks (even a coro named run_batch); schedule_batch tracks deliberately."""
     bridge = make_bridge()
     done = threading.Event()
 
     async def work():
         done.set()
 
+    assert not hasattr(rs, "_track_batch_future"), "name-sniffing helper must be deleted"
     fut = rs.schedule_coro(bridge, work())
     assert fut is not None
     assert done.wait(timeout=5)
 
-    async def run_batch():
+    async def run_batch():                              # the old sniff would have tracked this
         return None
 
     fut2 = rs.schedule_coro(bridge, run_batch())
-    assert bridge._batch_future is fut2
+    assert fut2 is not None
     fut2.result(timeout=5)
+    assert bridge._batch_future is None, "schedule_coro must not track, even for run_batch"
+
+    async def run_batch2():
+        return None
+
+    fut3 = rs.schedule_batch(bridge, run_batch2())
+    assert bridge._batch_future is fut3                 # deliberate tracking
+    fut3.result(timeout=5)
     deadline = time.time() + 5
     while bridge._batch_future is not None and time.time() < deadline:
         time.sleep(0.01)

@@ -25,13 +25,19 @@ class BridgeContext:
 
 
 def init_run_state(bridge) -> None:
-    """Run-lifecycle flags + per-run stores."""
+    """Run-lifecycle flags + per-run stores + the live bus / state lock (S4)."""
+    import threading
+
+    from app.services.live.bus import LiveBus
+
     bridge._run_state = "idle"
     bridge._cancel_requested = False
     bridge._pause_requested = False
     bridge._stop_after = False
     bridge._batch_future = None
     bridge._exported_paths = {}
+    bridge._live_bus = LiveBus()
+    bridge._state_lock = threading.RLock()
 
 
 def init_tracking_state(bridge) -> None:

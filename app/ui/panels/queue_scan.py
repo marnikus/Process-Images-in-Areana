@@ -19,6 +19,7 @@ from pathlib import Path
 
 from app.ui.qt_compat import Slot, clipboard_copy
 from app.ui.panels.queue_scan_folder import FolderPickMixin, as_folder_dict
+from app.services.live import feed
 from app.ui.services import arena_serialize, undo_entries
 from app.ui.services import file_service, folder_ai_service
 from app.ui.services.scan_service import merge_scanned, scan_folder_pure, scan_summary
@@ -75,14 +76,17 @@ def push_queue_undo(bridge) -> None:
         pass
 
 
+# S4: the panel layer owns the undo push; services.live feed wakes it layer-legally.
+feed.set_undo_hook(push_queue_undo)
+
+
 def clear_queue_images(bridge) -> int:
     """Empty images+jobs (undoable); returns cleared count. No log/JSON."""
     count = len(bridge.state.images)
-    push_queue_undo(bridge)
+    push_queue_undo(bridge)                      # pre-push: undo restores the cleared list
     bridge.state.images = []
     bridge.state.jobs = []
-    bridge.state.recalculate_progress()
-    bridge._save_arena()
+    feed.commit_queue(bridge, "clear_queue", undo=False)
     return count
 
 
@@ -111,8 +115,7 @@ def run_scan_new_batch(bridge, root_path: Path, cleared: int) -> None:
         # Queue was cleared by the slot: merge appends all (selected=False),
         # identical to the original inline loop.
         added = merge_scanned(bridge.state.images, scanned)
-        bridge.state.recalculate_progress()
-        bridge._save_arena()
+        feed.commit_queue(bridge, "scan", undo=False)
         summary, _level = scan_summary(scanned, added)  # a new batch is destructive: always warn
         bridge._log(f"🗑 New batch: cleared {cleared} old — {summary}", "warn")
     except Exception as e:
@@ -281,17 +284,13 @@ class QueueScanMixin(FolderPickMixin):
         img.selected = bool(selected)
         if selected and img.status == "skipped":
             img.status = "pending"
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        feed.commit_queue(self, "set_selected")
         return json.dumps({"ok": True})
 
     @Slot(bool, str, result=str)
     def bulk_select(self, selected: bool, filter_status: str):
         count = apply_bulk_selection(self.state.images, bool(selected), filter_status)
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        feed.commit_queue(self, "bulk_select")
         return json.dumps({"ok": True, "count": count})
 
     @Slot(result=str)

@@ -182,8 +182,9 @@ def test_run_control_start_run_ok_schedules_batch(cfg, monkeypatch):
 
     def fake_schedule(self, coro):
         scheduled.append(coro)
+        self._batch_future = coro                       # schedule_batch owns the tracking now
         return coro
-    monkeypatch.setattr(rc_mod, "schedule_coro", fake_schedule)
+    monkeypatch.setattr(rc_mod, "schedule_batch", fake_schedule)
     img = make_img(); img.selected = True; img.status = "pending"
     host, _ = make_host((RunControlMixin,), config=cfg, cdp=make_cdp(connected=True),
                         state=make_state(images=[img], urls=[UrlRow.create("https://arena.ai/c",

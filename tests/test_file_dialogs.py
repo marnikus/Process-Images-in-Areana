@@ -91,8 +91,8 @@ def test_app_settings_import_dialog_ok_and_cancel(tmp_path, monkeypatch):
     preset.write_text(json.dumps({"folder": {"root_path": "/z"},
                                   "prompt": {"user_prompt": "hi"}}))
     FakeDialog.open_file = (str(preset), "JSON (*.json)")
-    state = SimpleNamespace(urls=[], folder={}, prompt={},
-                            recalculate_progress=Rec())
+    state = SimpleNamespace(urls=[], images=[], folder={}, prompt={},
+                            recalculate_progress=Rec())   # images: commit_queue funnel reads the queue
     fake = SimpleNamespace(state=state, _save_arena=Rec())
     res = json.loads(app_settings.AppSettingsMixin.import_preset(fake))
     assert res == {"ok": True}

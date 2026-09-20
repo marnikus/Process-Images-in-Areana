@@ -115,13 +115,19 @@ def ensure_bg_loop(bridge):
 
 # ---- scheduling ----
 
-def _track_batch_future(bridge, coro, future) -> None:
-    """Keep the batch future for immediate cancel_current."""
-    try:
-        if hasattr(coro, "cr_code") and coro.cr_code.co_name == "run_batch":
-            bridge._batch_future = future
-    except Exception:
-        pass
+def schedule_batch(bridge, coro):
+    """Submit the batch coroutine + always keep the future for cancel_current.
+
+    Deliberate tracking replaces the old `_track_batch_future` name sniffing:
+    this is the only path that starts a batch, so it is the only path that
+    registers `_batch_future` (I-45)."""
+    loop = ensure_bg_loop(bridge)
+    if loop is None or not loop.is_running():
+        return None
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    bridge._batch_future = future
+    future.add_done_callback(lambda fut: _on_coro_done(bridge, fut))
+    return future
 
 
 def batch_active(bridge) -> bool:
@@ -163,9 +169,9 @@ def _on_coro_done(bridge, fut) -> None:
 
 
 def _submit_tracked(bridge, loop, coro):
-    """Submit + track + done-callback on the live bg loop."""
+    """Submit + done-callback on the live bg loop (no batch tracking — that is
+    `schedule_batch`'s deliberate job)."""
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    _track_batch_future(bridge, coro, future)
     future.add_done_callback(lambda fut: _on_coro_done(bridge, fut))
     return future
 
