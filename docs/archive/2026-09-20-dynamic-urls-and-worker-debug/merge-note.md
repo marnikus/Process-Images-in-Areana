@@ -88,13 +88,14 @@ New modules the plan does not know about (touch-points, not conflicts): `app/cor
 
 | Defect | Status | Evidence in the merged tree |
 |---|---|---|
-| L-1 `_schedule_coro` | **open** | `app/ui/panels/page_pool.py:147` still calls `self._schedule_coro(...)`; `grep -rn _schedule_coro app/` ⇒ that one hit |
+| L-1 `_schedule_coro` | **closed — S1 (`0beec31`, 2026-09-20)** | `app/ui/panels/page_pool.py` now schedules on the real `run_state.schedule_coro`; `tests/test_page_pool_join.py` |
 | L-5 unregistered `page_pool` panel | **open** | `index.html:263` `data-window="page_pool"`; `WINDOW_IDS` in `app/core/layout_service.py:11` and `_collectPanels` in `js/sash-grid-windows/store.js:5` list 15 windows, none `page_pool` |
-| L-6 test doubles the seam | **open** | `tests/test_panel_browser_tabs.py` builds hosts with `_schedule_coro=` 5 times |
+| L-6 test doubles the seam | **closed — S1 (`0beec31`, 2026-09-20)** | the five `_schedule_coro=` doubles in `tests/test_panel_browser_tabs.py` replaced by a spy on the real seam |
 | L-7 unlisted `.mjs` tests | **open** | `test_captcha_saved_page.mjs`, `test_title_fit.mjs` on disk, absent from `package.json` `test:js` |
 | L-8 dead `WIN_ICONS` | **open** | `js/sash-grid.js:41` |
+| L-9 dead socket leaves in-flight CDP commands hanging | **closed — defect fix (RED→GREEN same day, 2026-09-20)** | found in a real run: ws died without close frame, `evaluate transport error: TimeoutError` arrived 30 s after the disconnect line. `_receive_loop`'s post-mortem flipped `_connected` but left `_pending` + `_ws` behind; `disconnect()` orphaned the futures. Fix: one module-level post-mortem `_finish_disconnect` (fails every in-flight future with `ConnectionError`, drops `_ws`) shared by both paths; `tests/test_cdp_transport_failfast.py` (RED at base, 3 tests) |
 
-None were fixed by B10–B13; **S1 (L-1) is still the first stage** and its RED test still fails at base.
+None were fixed by B10–B13. **Status 2026-09-20:** L-1/L-6 closed by S1; L-9 found and closed the same day as S2 (out-of-chain defect fix — a user-visible runtime symptom, not a staged deliverable); L-5/L-7/L-8 remain open.
 
 ## 5. What this merge did and did not do
 

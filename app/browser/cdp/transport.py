@@ -77,6 +77,7 @@ class CDPTransport(QObject):
 
     async def disconnect(self):
         self._connected = False
+        ws = self._ws
         if self._receive_task:
             self._receive_task.cancel()
             try:
@@ -84,14 +85,12 @@ class CDPTransport(QObject):
             except Exception:
                 pass
             self._receive_task = None
-        if self._ws:
+        if ws:
             try:
-                await self._ws.close()
+                await ws.close()
             except Exception:
                 pass
-            self._ws = None
-        self._pending.clear()
-        self.disconnected.emit()
+        _finish_disconnect(self)
 
     async def send(self, method: str, params: dict | None = None, timeout: float = 30) -> dict:
         if not self._ws:
@@ -126,16 +125,7 @@ class CDPTransport(QObject):
             log.error(f"CDP receive error {self._current_ws_url[:80]}: {e} — {tb}")
             self.error.emit(f"CDP receive error: {e}")
         finally:
-            was = self._connected
-            self._connected = False
-            if was:
-                log.warning(f"CDP disconnected (was connected) {self._current_ws_url[:80]}")
-            else:
-                log.info(f"CDP disconnected (was not) {self._current_ws_url[:80]}")
-            try:
-                self.disconnected.emit()
-            except Exception:
-                pass
+            _finish_disconnect(self)
 
     async def evaluate(self, expression: str, await_promise: bool = True):
         try:
@@ -153,6 +143,35 @@ class CDPTransport(QObject):
         self.last_error = ""
         self.last_error_kind = ""
         return value
+
+
+def _finish_disconnect(transport) -> None:
+    """One post-mortem for EVERY socket death (L-9): drop the handle and fail
+    all in-flight commands now — a dead target can never answer, and letting
+    futures sit out their 30 s timeout is a lie by omission."""
+    was_connected = transport._connected
+    transport._connected = False
+    transport._ws = None
+    if was_connected:
+        log.warning(f"CDP disconnected (was connected) {transport._current_ws_url[:80]}")
+    else:
+        log.info(f"CDP disconnected (was not) {transport._current_ws_url[:80]}")
+    pending, transport._pending = transport._pending, {}
+    for fut in pending.values():
+        if not fut.done():
+            _fail_future(fut, "CDP disconnected")
+    try:
+        transport.disconnected.emit()
+    except Exception:
+        pass
+
+
+def _fail_future(fut, reason: str) -> None:
+    """Resolve an in-flight command future from ANY thread (B8 pattern)."""
+    try:
+        fut.get_loop().call_soon_threadsafe(fut.set_exception, ConnectionError(reason))
+    except RuntimeError:
+        pass  # future's loop is already closed — nothing left to wake
 
 
 def _note_eval_error(transport, kind: str, text: str) -> None:
