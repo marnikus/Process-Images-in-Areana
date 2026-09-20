@@ -82,25 +82,32 @@ Gate (all green, commands + output in `s0-baseline.md`):
 `.venv/bin/python tools/verify_quality.py --allow-legacy --coverage-ratchet` → 0 fails.
 Docs: QUALITY_RECHECK S0 entry + docs/README archive bullet (this folder).
 
-## S1 — L-1 page-pool scheduler defect — NEXT
+## S1 — L-1 page-pool scheduler defect — DONE (2026-09-20)
 
 Boundary: PagePoolMixin delegates its coroutine to the existing service scheduler; it owns no scheduler method.
 Interface: `app.services.run_state.schedule_coro(bridge, coro)` remains the only scheduling seam used by the panel.
-RED: `tests/test_page_pool_join.py::test_connect_page_pool_uses_service_scheduler`
-builds a host with no `_schedule_coro`, spies on the module-level `schedule_coro`,
-invokes the real slot, and asserts the coroutine was passed to the service scheduler.
-The old code returns {ok:false} and the test fails. Plus the no-private-scheduler
-source lock and the two equivalence tests (tdd-interfaces §S1.3).
-GREEN: import `schedule_coro` into `app/ui/panels/page_pool.py` and replace
-`self._schedule_coro(...)` with `schedule_coro(self, ...)`. Close the captured
-coroutine in the test spy.
-REFACTOR/EQUIVALENCE: remove the five fake `_schedule_coro` injections from
-`tests/test_panel_browser_tabs.py` (L-6 de-mask, spy on the real seam instead).
-Do not duplicate scheduling logic in the panel.
-Gate: targeted test, panel-slot suite, then the fast lane. Update current defect
-history and QUALITY_RECHECK. Slot surface stays 135.
+RED (observed): `tests/test_page_pool_join.py` — `test_connect_page_pool_uses_service_scheduler`
+failed with `{'ok': False, ...'_schedule_coro'...} == {'ok': True}` (the slot's except
+swallowed the AttributeError, spy empty); `test_no_private_scheduler_survives_in_the_pool_panel`
+failed on the line-147 string. The two equivalence tests were green at base, as planned.
+GREEN: 2-line edit in `app/ui/panels/page_pool.py` — `schedule_coro` added to the
+`run_state` import (same line) + `self._schedule_coro(...)` → `schedule_coro(self, ...)`.
+Test spy closes the captured coroutine.
+REFACTOR/EQUIVALENCE: L-6 de-masked — the five `_schedule_coro=` doubles deleted from
+`tests/test_panel_browser_tabs.py`; `test_pool_slots_connect_and_cooldowns` now spies on
+the real `page_pool.schedule_coro` (same `len(queued) == 1` assertion, coroutine closed).
+No scheduling logic duplicated in the panel.
+Gate: new file 4/4; panel suites 56 passed/1 skipped (`test_page_pool_join`,
+`test_panel_browser_tabs`, `test_page_pool`, `test_run_state`, `test_bridge_slots`,
+`test_bridge_metaobject`); full pytest **1621 passed / 8 skipped** (12 goldens green);
+coverage **87.06 / 83.28**, page_pool.py 83.18 (floor 82.24); `verify_quality --changed
+--base origin/main --allow-legacy --coverage-ratchet` → 0 fails (fell back to all-file
+scope pre-commit; re-run scoped post-commit); page_pool maxima byte-identical to baseline;
+cognitive scan of the file: all symbols ≤6, edited slot = 3 (limit 15). No JS touched
+(JS lane not re-run). Slot surface stays 135. Docs: SoR row 11 (L-1 closed), QUALITY_RECHECK
+S1 entry, this record. Archived `evidence.md` §4 deliberately NOT edited (RULE 17).
 
-## S2 — Watcher scope is a hard captcha gate — PENDING (needs S1 green)
+## S2 — Watcher scope is a hard captcha gate — NEXT (S1 green)
 
 Boundary: captcha detection is in scope only while the Watcher switch is ON.
 Solver status affects wording only, never scope.

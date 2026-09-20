@@ -192,6 +192,15 @@ slots **135**, jscpd **1.119 %**. L-1/L-5/L-6/L-7/L-8 confirmed open; §D re-mea
 uninstalled to match the recorded baseline (max_cog 0 × 147); new symbols get an
 explicit ≤15 scan per stage. Evidence: `docs/archive/2026-09-20-s0s10-live-chain/`.
 
+### 2026-09-20 S1 L-1 fixed (branch `arena/01a0bf4d-…`)
+
+2-line production edit (`page_pool.py`: import + `schedule_coro(self, …)`); L-6 de-masked
+(5 test doubles → spy on the real seam). RED observed then green: new
+`tests/test_page_pool_join.py` 4/4. Full pytest **1,621 / 8 skipped** (goldens green),
+coverage **87.06 / 83.28** (page_pool.py 83.18, floor 82.24), changed-lane gate **0 fails**,
+page_pool maxima identical, cognitive ≤6 (edited slot 3/15), slots **135**.
+SoR row 11 notes the repair. No JS touched.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).
