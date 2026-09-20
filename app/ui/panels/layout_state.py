@@ -69,7 +69,7 @@ def emit_arena_state(bridge) -> None:
         bridge.arena_state_updated.emit(json.dumps(js_state, ensure_ascii=False))
         prog = js_state.get("progress", {}).copy()
         prog["run_state"] = getattr(bridge, "_run_state", "idle")
-        prog["live"] = debug_view.cadence(bridge)  # S6: the URL cadence the control reads (D-12R)
+        prog["live"] = debug_view.live_view(bridge)  # S6/S9: cadence + queue head + receivers (D-12R/D-22)
         bridge.progress_updated.emit(json.dumps(prog, ensure_ascii=False))
     except Exception as e:
         log.warning(f"emit arena state failed: {e}")
