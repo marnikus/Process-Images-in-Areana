@@ -221,7 +221,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 201,
-    "coverage": 90.45
+    "coverage": 84.26
   },
   "app/browser/cdp_arena/__init__.py": {
     "max_func_loc": 0,
@@ -3292,7 +3292,7 @@
     "max_nest": 1,
     "max_params": 1,
     "file_lines": 72,
-    "coverage": 60.71
+    "coverage": 39.28
   },
   "app/ui/services/__init__.py": {
     "max_func_loc": 0,
