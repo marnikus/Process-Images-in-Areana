@@ -180,6 +180,23 @@ run_state files, +1 naming; pytest 1,554 → 1,621;
 `npm run test:js` unchanged (240); coverage 86.55 / 82.63 → **87.03 / 83.25**.
 Goldens byte-identical; slot surface unchanged (135).
 
+### 2026-09-21 staged chain S0 → S5 (interim note — S10 refreshes every number)
+
+No re-record so far. S3 (capped pause, I-52) and S4/S5 (live queue core + the
+always-live run, I-49/I-54/I-47) landed under the fast lane
+(`tools/stage_gate.sh --coverage`) with **no recorded per-file maximum
+growing**: `captcha/service.py` `max_func_loc` 27 → 22, `batch_orchestrator.py`
+492 → 426 lines / 38 → 31 functions (the lifecycle moved to
+`live/supervisor.py`, 173 lines, CC ≤ 6 after `_current_tab` was split
+out of `plan_pass`), `run_control.py` / `queue_scan.py` / `app_settings.py`
+kept their mixins at 10 methods and got shorter (funnel tails). New modules
+are all radon A: `core/pause_clock.py` (62), `live/bus.py` (85),
+`live/feed.py` (96), `live/supervisor.py`. One ratchet trip was fixed with
+behaviour, not padding: removing two covered lines from `app_settings.py`
+took it 0.13 under its 72.43 floor → `tests/test_app_settings_apply.py`
+(4 real clamp/sync tests). Goldens byte-identical under the supervisor
+runner; slot surface unchanged (135).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

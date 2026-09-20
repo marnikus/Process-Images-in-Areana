@@ -302,7 +302,7 @@ async def test_run_sequential_completes_and_cancels(monkeypatch):
     ctx = make_ctx(bridge, images=list(bridge.state.images))
     await bo._run_sequential(ctx)
     assert [i.status for i in bridge.state.images] == ["completed", "completed"]
-    assert bridge._run_state == "idle"
+    assert bridge._run_state == "running"   # S5: a pass body never writes run state (supervisor owns it)
 
     async def _raise(ctx, img):
         raise asyncio.CancelledError()
@@ -334,7 +334,7 @@ async def test_sequential_skips_settled_images_at_claim_time(monkeypatch):
     lines = [m for m, _ in bridge._logs]
     assert "⏭ Skipping done.png — already completed" in lines
     assert "⏭ Skipping skip.png — already skipped" in lines
-    assert bridge._run_state == "idle"  # the skip never stalls the batch (RULE 9)
+    assert bridge._run_state == "running"  # the skip never stalls the pass; run state is the supervisor's (S5)
 
 
 @pytest.mark.asyncio
@@ -379,32 +379,22 @@ async def test_parallel_fallback_does_not_redo_completed(monkeypatch):
     assert [p for j, p in bridge._started] == ["/tmp/b.png"]
 
 
-def test_finish_batch_lines():
-    bridge = make_bridge()
-    bo._finish_batch(make_ctx(bridge))
-    assert any("Batch complete" in m for m, _ in bridge._logs)
-    assert bridge._run_state == "idle"
-    bridge._cancel_requested = True
-    bo._finish_batch(make_ctx(bridge))
-    assert any("Batch cancelled by user" in m for m, _ in bridge._logs)
-
-
 # ---- prepare / parallel / gate / run ----
 
 @pytest.mark.asyncio
-async def test_prepare_batch_ok_and_no_tab(monkeypatch):
+async def test_prepare_batch_takes_the_pass_plan(monkeypatch):
+    """S5: the tab and the scope come from the supervisor's plan (no re-snapshot, no lifecycle)."""
     import app.browser.cdp_arena as arena_mod
+    from app.services.live.supervisor import PassPlan
     monkeypatch.setattr(arena_mod, "CDPArenaController", lambda *a, **k: make_ctrl())
     urls = [UrlRow.create("https://arena.ai/a", enabled=True, tab_id="tab1")]
     bridge = make_bridge(images=[make_img()], urls=urls)
-    ctx = await bo.prepare_batch(bridge)
-    assert ctx is not None and ctx.tab_id == "tab1" and len(ctx.images) == 1
+    plan = PassPlan(images=list(bridge.state.images), urls=urls, allowed={"tab1"}, tab_id="tab1")
+    ctx = await bo.prepare_batch(bridge, plan)
+    assert ctx.tab_id == "tab1" and len(ctx.images) == 1 and ctx.allowed == {"tab1"}
+    assert ctx.images is not plan.images                     # its own list
     assert any("Action blocks stack" in m for m, _ in bridge._logs)
-
-    bridge2 = make_bridge(images=[make_img()], urls=urls)
-    bridge2.cdp._current_tab_id = ""
-    assert await bo.prepare_batch(bridge2) is None
-    assert bridge2._run_state == "idle"
+    assert bridge._run_state == "running"
 
 
 @pytest.mark.asyncio
@@ -415,15 +405,16 @@ async def test_warn_unready_branches():
     await bo._warn_unready(bridge, SimpleNamespace())  # no probe -> silent
 
 
-def test_load_run_settings_uses_the_one_run_scope_predicate():
-    imgs = [make_img("a.png", "pending", True), make_img("b.png", "completed", True),
-            make_img("c.png", "pending", False), make_img("d.png", "failed", True),
-            make_img("e.png", "skipped", True), make_img("f.png", "needs_review", True)]
+def test_load_run_settings_uses_the_plan_not_a_private_predicate():
+    """S5: the scope is planned once by the supervisor (claim scope, I-49); the orchestrator copies it."""
+    from app.services.live.supervisor import PassPlan
+    imgs = [make_img("a.png", "pending", True), make_img("b.png", "completed", True)]
     ctx = make_ctx(make_bridge(images=imgs))
-    bo._load_run_settings(ctx)
-    assert [i.relative_path for i in ctx.images] == ["a.png", "d.png", "f.png"]
+    bo._load_run_settings(ctx, PassPlan(images=[imgs[0]]))
+    assert [i.relative_path for i in ctx.images] == ["a.png"]
     assert ctx.prompt_template == "draw x"
     assert not hasattr(bo, "_selected_images"), "duplicate predicate must stay deleted (RULE 16.4)"
+    assert not hasattr(bo, "run_scope"), "the orchestrator no longer snapshots the scope itself (S5)"
 
 
 @pytest.mark.asyncio
@@ -465,67 +456,4 @@ async def test_batch_gate_paths():
     pool.get_page("tab1").status = PageStatus.COOLDOWN
     pool.get_page("tab1").cooldown_until = 9999999999.0
     assert await bo._await_batch_gate(ctx) is False
-    assert ctx.bridge._run_state == "idle"
-
-
-@pytest.mark.asyncio
-async def test_run_guarded_chain(monkeypatch):
-    order = []
-    monkeypatch.setattr(bo, "prepare_batch", lambda b: _prep(order))
-    monkeypatch.setattr(bo, "_try_parallel", lambda c: _par(order))
-    monkeypatch.setattr(bo, "_await_batch_gate", lambda c: _gate(order))
-    monkeypatch.setattr(bo, "_run_sequential", lambda c: _seq(order))
-    await bo._run_guarded(make_bridge())
-    assert order == ["prep", "par", "gate", "seq"]
-    monkeypatch.setattr(bo, "prepare_batch", lambda b: _none())
-    await bo._run_guarded(make_bridge())  # None -> stop, no crash
-
-
-async def _prep(order):
-    order.append("prep")
-    return SimpleNamespace()
-
-
-async def _par(order):
-    order.append("par")
-    return False
-
-
-async def _gate(order):
-    order.append("gate")
-    return True
-
-
-async def _seq(order):
-    order.append("seq")
-
-
-async def _none():
-    return None
-
-
-def test_cancel_and_crash_batch(capsys):
-    bridge = make_bridge()
-    bo._cancel_batch(bridge)
-    assert bridge._run_state == "idle"
-    bo._crash_batch(bridge, RuntimeError("Cancelled mid-air"))
-    assert any("Batch cancelled" in m for m, _ in bridge._logs)
-    bo._crash_batch(bridge, RuntimeError("boom"))
-    assert any("Batch runner crashed" in m for m, _ in bridge._logs)
-
-
-@pytest.mark.asyncio
-async def test_run_batch_shell(monkeypatch):
-    monkeypatch.setattr(bo, "_run_guarded", lambda b: _raise_cancel())
-    with pytest.raises(asyncio.CancelledError):
-        await bo.run_batch(make_bridge())
-    monkeypatch.setattr(bo, "_run_guarded", lambda b: _raise_err())
-    await bo.run_batch(make_bridge())  # crash -> finalized, not raised
-
-
-async def _raise_cancel():
-    raise asyncio.CancelledError()
-
-
-async def _raise_err():
-    raise RuntimeError("x")
+    assert ctx.bridge._run_state == "running"   # S5: the gate reports, the supervisor decides

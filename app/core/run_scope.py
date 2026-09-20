@@ -27,11 +27,14 @@ RUNNABLE_STATUSES = frozenset({
 })
 
 
-# A live pass (S4, I-49) never lists in-flight work: Start still counts a
-# `processing` crash leftover as part of the run (`live.feed.recover_stale_processing`
-# turns it back to pending first), but nothing may claim an image another
-# worker is running right now. Same set, one status less — derived, not copied.
-CLAIMABLE_STATUSES = RUNNABLE_STATUSES - {ImageStatus.PROCESSING.value}
+# A live pass (S4/S5, I-49) claims fresh work only. Start still counts every
+# runnable image as part of the run and `live.feed.requeue_for_start` turns
+# them into fresh work explicitly (a `processing` crash leftover, a selected
+# `failed` / `needs_review`) — but a pass never re-claims an image that just
+# failed (no retry storm: a failure waits for Retry / Reset / Start) and never
+# an image another worker is running right now. Derived, not copied.
+CLAIMABLE_STATUSES = frozenset({ImageStatus.PENDING.value, ImageStatus.SELECTED.value})
+RETRY_ON_START = frozenset({ImageStatus.FAILED.value, ImageStatus.NEEDS_REVIEW.value})
 
 
 def is_runnable(status: str) -> bool:
@@ -40,7 +43,7 @@ def is_runnable(status: str) -> bool:
 
 
 def is_claimable(status: str) -> bool:
-    """Runnable AND not in flight — what a live pass may pick up next."""
+    """Fresh work — what a live pass may pick up next (never in flight, never a fresh failure)."""
     return status in CLAIMABLE_STATUSES
 
 

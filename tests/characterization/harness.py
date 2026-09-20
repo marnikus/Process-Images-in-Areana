@@ -205,12 +205,25 @@ def assert_markers(trace: Dict[str, Any], markers: List[str]) -> None:
         assert m in joined, f"log marker missing: {m!r}"
 
 
-async def run_orchestrator(env) -> None:
-    from app.services.batch_orchestrator import run_batch
-    await run_batch(env.bridge)
+async def run_supervisor(env) -> None:
+    """The live run (S5) through one scenario, awaited inline exactly like `run_batch`
+    was (so the scripted controller sees the pipeline's probes in the recorded order —
+    a concurrently started task would let the Watcher poll first and drift `captcha`).
+    `run_live` ends only on stop, so the harness pulls the operator's Stop-after-current
+    lever at the moment the loop would first wait (no work left / no tab / CDP down):
+    the pass body and the tails run for real, only the wait is replaced by the stop."""
+    from unittest.mock import patch
+    from app.services.live import supervisor
+
+    async def stop_instead_of_waiting(bridge, plan, bus):
+        supervisor.live_state(bridge).reason = plan.reason
+        bridge._stop_after = True
+
+    with patch.object(supervisor, "wait_reason", stop_instead_of_waiting):
+        await supervisor.run_live(env.bridge)
 
 
-RUNNERS: Dict[str, Callable] = {"orchestrator": run_orchestrator}
+RUNNERS: Dict[str, Callable] = {"supervisor": run_supervisor}
 
 
 def arm_hooks(env, after_event: Optional[Dict[tuple, Callable]] = None,

@@ -42,20 +42,43 @@ def test_eligible_images_is_the_only_rule():
     items.append(img("off.png", "pending", selected=False))
     before = list(items)
     picked = feed.eligible_images(items)
-    assert [i.relative_path for i in picked] == ["pending.png", "selected.png", "failed.png",
-                                                 "needs_review.png"]
+    assert [i.relative_path for i in picked] == ["pending.png", "selected.png"]   # fresh work only
     assert items == before and picked is not items          # snapshot copy, input untouched
     assert feed.ELIGIBLE is run_scope.CLAIMABLE_STATUSES
     assert picked == run_scope.claim_scope(items)
 
 
-def test_claim_scope_is_run_scope_minus_in_flight_work():
-    """Start counts a crash leftover (`processing`) as part of the run; a live pass never claims it."""
-    assert run_scope.CLAIMABLE_STATUSES == run_scope.RUNNABLE_STATUSES - {"processing"}
-    assert run_scope.is_claimable("processing") is False and run_scope.is_runnable("processing") is True
-    items = [img("a", "pending"), img("b", "processing"), img("c", "failed")]
-    assert [i.relative_path for i in run_scope.run_scope(items)] == ["a", "b", "c"]
-    assert [i.relative_path for i in run_scope.claim_scope(items)] == ["a", "c"]
+def test_claim_scope_is_fresh_work_only():
+    """Start counts leftovers and failures as part of the run; a live pass claims neither
+    (no retry storm: a failure waits for Retry / Reset / Start), nor in-flight work."""
+    assert run_scope.CLAIMABLE_STATUSES == run_scope.RUNNABLE_STATUSES - {"processing", "failed", "needs_review"}
+    assert run_scope.RETRY_ON_START == {"failed", "needs_review"}
+    for status in ("processing", "failed", "needs_review"):
+        assert run_scope.is_claimable(status) is False and run_scope.is_runnable(status) is True
+    items = [img("a", "pending"), img("b", "processing"), img("c", "failed"), img("d", "selected")]
+    assert [i.relative_path for i in run_scope.run_scope(items)] == ["a", "b", "c", "d"]
+    assert [i.relative_path for i in run_scope.claim_scope(items)] == ["a", "d"]
+
+
+def test_requeue_for_start_makes_everything_runnable_fresh():
+    pool = PagePool()
+    pool.add_page(make_info("t1"))
+    cooldown_service.set_tab_image(pool, "t1", "live.png")
+    live = img("live.png", "processing")
+    stale = img("stale.png", "processing")
+    failed = img("f.png", "failed")
+    failed.error = "boom"
+    off = img("off.png", "failed", selected=False)
+    done = img("done.png", "completed")
+    bridge = spy_bridge([live, stale, failed, off, done])
+    bridge._page_pool = pool
+    assert feed.requeue_for_start(bridge) == 2
+    assert [i.status for i in (live, stale, failed, off, done)] == \
+        ["processing", "pending", "pending", "failed", "completed"]
+    assert failed.error is None
+    assert bridge.calls == ["recalc", "save+emit"] and live_bus(bridge).reasons() == ["start"]
+    assert feed.requeue_for_start(bridge) == 0          # nothing left ⇒ no commit
+    assert bridge.calls == ["recalc", "save+emit"]
 
 
 def test_commit_queue_recalculates_saves_pushes_undo_and_wakes():
