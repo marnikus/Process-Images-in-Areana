@@ -1,8 +1,4 @@
 {
-  "coverage": {
-    "line": 86.36,
-    "branch": 82.33
-  },
   "app/__init__.py": {
     "max_func_loc": 0,
     "max_class_loc": 0,
@@ -221,7 +217,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 201,
-    "coverage": 90.45
+    "coverage": 91.01
   },
   "app/browser/cdp_arena/__init__.py": {
     "max_func_loc": 0,
@@ -364,7 +360,7 @@
   "app/browser/cdp_arena/output.py": {
     "max_func_loc": 16,
     "max_class_loc": 7,
-    "func_count": 14,
+    "func_count": 17,
     "funcs": {
       "_run_resume_gate": 8,
       "_scan_safely": 8,
@@ -372,7 +368,10 @@
       "_convert_dead_generation": 15,
       "_poll_diag_or_revive": 16,
       "_poll_output_diag": 10,
+      "_charge_pause": 4,
+      "_settle_timed": 7,
       "_security_gate": 10,
+      "_timeout_text": 4,
       "_map_wait_result": 10,
       "_build_poll_context": 7,
       "_prepare_wait": 8,
@@ -386,8 +385,8 @@
     "max_cog": 4,
     "max_nest": 1,
     "max_params": 4,
-    "file_lines": 182,
-    "coverage": 91.56
+    "file_lines": 204,
+    "coverage": 92.86
   },
   "app/browser/cdp_arena/state.py": {
     "max_func_loc": 23,
@@ -615,7 +614,7 @@
   "app/browser/output_wait.py": {
     "max_func_loc": 23,
     "max_class_loc": 4,
-    "func_count": 17,
+    "func_count": 20,
     "funcs": {
       "should_continue_after_spinner": 2,
       "is_ready_result": 2,
@@ -630,7 +629,10 @@
       "_process_ready": 7,
       "_process_spinner": 11,
       "_check_cancelled": 4,
-      "_check_timeout": 11,
+      "_counted_elapsed": 5,
+      "_pause_exhausted": 3,
+      "_pause_evidence": 6,
+      "_check_timeout": 12,
       "_handle_ready_branch": 11,
       "_handle_non_ready_branch": 10,
       "wait_for_new_output_with_spec": 23
@@ -640,8 +642,8 @@
     "max_cog": 14,
     "max_nest": 3,
     "max_params": 4,
-    "file_lines": 211,
-    "coverage": 94.95
+    "file_lines": 234,
+    "coverage": 95.35
   },
   "app/browser/output_wait_fallback.py": {
     "max_func_loc": 17,
@@ -776,6 +778,27 @@
     "max_nest": 0,
     "max_params": 0,
     "file_lines": 78,
+    "coverage": 100.0
+  },
+  "app/browser/processing_probe.py": {
+    "max_func_loc": 17,
+    "max_class_loc": 0,
+    "func_count": 7,
+    "funcs": {
+      "_mask_quotes": 9,
+      "_split_depth0": 12,
+      "split_selector_list": 5,
+      "selector_parts": 11,
+      "build_processing_probe": 6,
+      "interpret_processing": 17,
+      "_stash": 3
+    },
+    "max_methods": 0,
+    "max_cc": 4,
+    "max_cog": 5,
+    "max_nest": 2,
+    "max_params": 2,
+    "file_lines": 171,
     "coverage": 100.0
   },
   "app/browser/recording_probes.py": {
@@ -928,7 +951,7 @@
     "max_cog": 10,
     "max_nest": 3,
     "max_params": 3,
-    "file_lines": 755,
+    "file_lines": 758,
     "coverage": 96.37
   },
   "app/core/action_blocks_defaults.py": {
@@ -990,7 +1013,7 @@
     "max_class_loc": 0,
     "func_count": 4,
     "funcs": {
-      "strip_ai_name": 7,
+      "strip_ai_name": 8,
       "_image_files": 8,
       "strip_ai_suffixes": 18,
       "delete_non_ai_images": 13
@@ -1000,15 +1023,14 @@
     "max_cog": 7,
     "max_nest": 2,
     "max_params": 2,
-    "file_lines": 71,
-    "coverage": 94.03
+    "file_lines": 69,
+    "coverage": 100.0
   },
   "app/core/layout_service.py": {
-    "max_func_loc": 21,
+    "max_func_loc": 20,
     "max_class_loc": 4,
-    "func_count": 25,
+    "func_count": 22,
     "funcs": {
-      "default_grid_tree": 21,
       "default_payload": 3,
       "_parse_one_size": 6,
       "_scale_to_100": 3,
@@ -1030,33 +1052,28 @@
       "canonical_grid_payload": 11,
       "_rename_legacy_windows": 14,
       "migrate_grid_tree": 16,
-      "node_type": 2,
-      "leaf": 2,
-      "split": 2
+      "node_type": 2
     },
     "max_methods": 0,
     "max_cc": 9,
     "max_cog": 10,
     "max_nest": 4,
-    "max_params": 3,
-    "file_lines": 300,
-    "coverage": 97.56
+    "max_params": 2,
+    "file_lines": 262,
+    "coverage": 98.92
   },
   "app/core/models.py": {
     "max_func_loc": 28,
     "max_class_loc": 74,
-    "func_count": 14,
+    "func_count": 11,
     "funcs": {
       "now_iso": 2,
-      "_count_selected": 2,
-      "_count_by_status": 2,
-      "_count_pending_selected": 3,
-      "_build_progress_counts": 17,
+      "_discovered_status": 5,
       "_folder_from_saved": 9,
       "create": 21,
       "link_tab": 5,
       "to_dict": 13,
-      "from_scan_dict": 19,
+      "from_scan_dict": 20,
       "recalculate_progress": 2,
       "from_dict": 28
     },
@@ -1065,13 +1082,13 @@
     "max_cog": 2,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 292,
+    "file_lines": 274,
     "coverage": 100.0
   },
   "app/core/naming.py": {
     "max_func_loc": 21,
     "max_class_loc": 7,
-    "func_count": 7,
+    "func_count": 9,
     "funcs": {
       "_resolve_ext": 5,
       "_build_target_path": 2,
@@ -1079,15 +1096,38 @@
       "_find_unique_path": 9,
       "get_output_path": 10,
       "atomic_write_bytes": 21,
-      "is_ai_generated_filename": 8
+      "_ai_family_re": 3,
+      "parse_ai_output": 7,
+      "is_ai_generated_filename": 2
     },
     "max_methods": 0,
     "max_cc": 4,
     "max_cog": 5,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 104,
-    "coverage": 95.74
+    "file_lines": 116,
+    "coverage": 95.88
+  },
+  "app/core/pause_clock.py": {
+    "max_func_loc": 7,
+    "max_class_loc": 36,
+    "func_count": 7,
+    "funcs": {
+      "_finite_positive": 7,
+      "__init__": 3,
+      "note": 6,
+      "expired": 3,
+      "remaining": 5,
+      "paused_elapsed": 4,
+      "describe": 7
+    },
+    "max_methods": 6,
+    "max_cc": 4,
+    "max_cog": 3,
+    "max_nest": 1,
+    "max_params": 3,
+    "file_lines": 62,
+    "coverage": 100.0
   },
   "app/core/persistence.py": {
     "max_func_loc": 25,
@@ -1118,16 +1158,57 @@
     "file_lines": 232,
     "coverage": 66.49
   },
+  "app/core/progress.py": {
+    "max_func_loc": 10,
+    "max_class_loc": 0,
+    "func_count": 4,
+    "funcs": {
+      "count_selected": 2,
+      "count_by_status": 2,
+      "count_pending_selected": 3,
+      "build_progress_counts": 10
+    },
+    "max_methods": 0,
+    "max_cc": 4,
+    "max_cog": 1,
+    "max_nest": 1,
+    "max_params": 2,
+    "file_lines": 49,
+    "coverage": 100.0
+  },
+  "app/core/run_scope.py": {
+    "max_func_loc": 7,
+    "max_class_loc": 0,
+    "func_count": 6,
+    "funcs": {
+      "is_runnable": 3,
+      "is_claimable": 3,
+      "in_run_scope": 3,
+      "run_scope": 3,
+      "claim_scope": 3,
+      "claim_denied": 7
+    },
+    "max_methods": 0,
+    "max_cc": 4,
+    "max_cog": 2,
+    "max_nest": 1,
+    "max_params": 2,
+    "file_lines": 71,
+    "coverage": 100.0
+  },
   "app/core/scanner.py": {
     "max_func_loc": 28,
     "max_class_loc": 5,
-    "func_count": 7,
+    "func_count": 10,
     "funcs": {
       "_normalize_exts": 10,
       "_should_include": 9,
-      "_build_item": 21,
+      "_build_item": 22,
       "_get_iterator": 2,
-      "scan_folder": 19,
+      "_checked_root": 6,
+      "_output_rank": 3,
+      "_outputs_by_source": 12,
+      "scan_folder": 14,
       "scan_folder_legacy": 12,
       "detect_changes": 28
     },
@@ -1136,8 +1217,8 @@
     "max_cog": 9,
     "max_nest": 3,
     "max_params": 4,
-    "file_lines": 134,
-    "coverage": 91.15
+    "file_lines": 164,
+    "coverage": 91.34
   },
   "app/core/state_machine.py": {
     "max_func_loc": 3,
@@ -1185,6 +1266,23 @@
     "file_lines": 107,
     "coverage": 52.88
   },
+  "app/core/window_catalog.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 0,
+    "func_count": 3,
+    "funcs": {
+      "_leaf": 2,
+      "_split": 2,
+      "default_grid_tree": 16
+    },
+    "max_methods": 0,
+    "max_cc": 1,
+    "max_cog": 0,
+    "max_nest": 0,
+    "max_params": 3,
+    "file_lines": 63,
+    "coverage": 100.0
+  },
   "app/main.py": {
     "max_func_loc": 16,
     "max_class_loc": 0,
@@ -1224,7 +1322,7 @@
     "max_cog": 5,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 124,
+    "file_lines": 125,
     "coverage": 95.24
   },
   "app/persistence/cooldown_store.py": {
@@ -1382,10 +1480,36 @@
     "file_lines": 286,
     "coverage": 100.0
   },
+  "app/services/await_processing.py": {
+    "max_func_loc": 17,
+    "max_class_loc": 0,
+    "func_count": 12,
+    "funcs": {
+      "_emit": 5,
+      "_log": 5,
+      "_name": 2,
+      "poll_seconds": 8,
+      "timeout_ms": 6,
+      "_cancelled": 4,
+      "probe_processing": 9,
+      "describe": 7,
+      "_idle_message": 5,
+      "_busy_ui": 17,
+      "_wait_idle": 16,
+      "handle_await_processing": 16
+    },
+    "max_methods": 0,
+    "max_cc": 6,
+    "max_cog": 8,
+    "max_nest": 2,
+    "max_params": 4,
+    "file_lines": 156,
+    "coverage": 100.0
+  },
   "app/services/batch_orchestrator.py": {
     "max_func_loc": 17,
     "max_class_loc": 10,
-    "func_count": 38,
+    "func_count": 31,
     "funcs": {
       "_pool_of": 2,
       "_pool_summary": 14,
@@ -1410,29 +1534,22 @@
       "_settle_stuck": 11,
       "finish_image": 11,
       "_run_one_image": 16,
-      "_finish_batch": 8,
-      "_run_sequential": 10,
-      "_abort_no_tab": 5,
+      "_run_sequential": 14,
       "_warn_unready": 8,
-      "_selected_images": 4,
       "_load_run_settings": 4,
       "_announce_stack": 6,
-      "prepare_batch": 15,
+      "prepare_batch": 9,
       "_log_parallel_fallback": 6,
       "_try_parallel": 16,
-      "_await_batch_gate": 14,
-      "_run_guarded": 10,
-      "_cancel_batch": 5,
-      "_crash_batch": 10,
-      "run_batch": 9
+      "_await_batch_gate": 12
     },
     "max_methods": 0,
     "max_cc": 7,
     "max_cog": 8,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 492,
-    "coverage": 92.52
+    "file_lines": 426,
+    "coverage": 92.99
   },
   "app/services/captcha/__init__.py": {
     "max_func_loc": 0,
@@ -1480,6 +1597,31 @@
     "file_lines": 235,
     "coverage": 93.04
   },
+  "app/services/captcha/policy.py": {
+    "max_func_loc": 7,
+    "max_class_loc": 14,
+    "func_count": 11,
+    "funcs": {
+      "watcher_enabled": 6,
+      "solver_running": 7,
+      "has_solver_key": 7,
+      "captcha_in_scope": 3,
+      "out_of_scope": 3,
+      "pause_cap_seconds": 7,
+      "pause_budget": 5,
+      "wait_reason": 3,
+      "__init__": 4,
+      "expired": 2,
+      "stop_or": 3
+    },
+    "max_methods": 3,
+    "max_cc": 3,
+    "max_cog": 2,
+    "max_nest": 0,
+    "max_params": 3,
+    "file_lines": 109,
+    "coverage": 100.0
+  },
   "app/services/captcha/recovery.py": {
     "max_func_loc": 15,
     "max_class_loc": 13,
@@ -1512,9 +1654,9 @@
     "coverage": 91.35
   },
   "app/services/captcha/service.py": {
-    "max_func_loc": 27,
+    "max_func_loc": 22,
     "max_class_loc": 34,
-    "func_count": 23,
+    "func_count": 24,
     "funcs": {
       "_log": 11,
       "_stop_pred": 2,
@@ -1529,12 +1671,13 @@
       "_penalty_seconds": 7,
       "_stash_encounter": 12,
       "_emit_report": 8,
-      "_wait_timeout": 5,
       "detect_signal": 11,
-      "handle_captcha": 20,
-      "_resolve_captcha": 8,
-      "_watcher_running": 7,
-      "_manual_wait": 27,
+      "handle_captcha": 5,
+      "_handle_captcha_scoped": 20,
+      "_resolve_captcha": 5,
+      "_watcher_running": 3,
+      "_manual_wait": 22,
+      "_wait_outcome": 11,
       "__init__": 5,
       "apply_settings": 10,
       "status_payload": 7,
@@ -1545,8 +1688,8 @@
     "max_cog": 7,
     "max_nest": 1,
     "max_params": 4,
-    "file_lines": 313,
-    "coverage": 94.76
+    "file_lines": 316,
+    "coverage": 94.81
   },
   "app/services/captcha/signals.py": {
     "max_func_loc": 16,
@@ -1564,7 +1707,7 @@
     "max_cog": 8,
     "max_nest": 1,
     "max_params": 2,
-    "file_lines": 115,
+    "file_lines": 121,
     "coverage": 97.37
   },
   "app/services/captcha/stats.py": {
@@ -2107,6 +2250,171 @@
     "file_lines": 26,
     "coverage": 100.0
   },
+  "app/services/live/__init__.py": {
+    "max_func_loc": 0,
+    "max_class_loc": 0,
+    "func_count": 0,
+    "funcs": {},
+    "max_methods": 0,
+    "max_cc": 0,
+    "max_cog": 0,
+    "max_nest": 0,
+    "max_params": 0,
+    "file_lines": 31,
+    "coverage": 100.0
+  },
+  "app/services/live/bus.py": {
+    "max_func_loc": 11,
+    "max_class_loc": 59,
+    "func_count": 8,
+    "funcs": {
+      "live_bus": 6,
+      "__init__": 7,
+      "attach": 4,
+      "wake": 11,
+      "wait": 11,
+      "_drain": 4,
+      "reasons": 4,
+      "throttle": 9
+    },
+    "max_methods": 7,
+    "max_cc": 5,
+    "max_cog": 5,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 85,
+    "coverage": 96.97
+  },
+  "app/services/live/debug_view.py": {
+    "max_func_loc": 9,
+    "max_class_loc": 0,
+    "func_count": 6,
+    "funcs": {
+      "clamp_interval_ms": 7,
+      "interval_ms": 5,
+      "cadence": 6,
+      "next_queued": 4,
+      "receiver_counts": 7,
+      "live_view": 9
+    },
+    "max_methods": 0,
+    "max_cc": 6,
+    "max_cog": 2,
+    "max_nest": 0,
+    "max_params": 1,
+    "file_lines": 74,
+    "coverage": 100.0
+  },
+  "app/services/live/feed.py": {
+    "max_func_loc": 10,
+    "max_class_loc": 0,
+    "func_count": 7,
+    "funcs": {
+      "eligible_images": 3,
+      "state_lock": 6,
+      "commit_queue": 9,
+      "_live_image_names": 6,
+      "recover_stale_processing": 9,
+      "requeue_for_start": 10,
+      "clear_row_assignments": 9
+    },
+    "max_methods": 0,
+    "max_cc": 5,
+    "max_cog": 5,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 96,
+    "coverage": 100.0
+  },
+  "app/services/live/reconcile.py": {
+    "max_func_loc": 22,
+    "max_class_loc": 21,
+    "func_count": 16,
+    "funcs": {
+      "reconcile_state": 5,
+      "url_bus": 6,
+      "last_pass_at": 2,
+      "_fetch": 7,
+      "_claim": 9,
+      "_forget_rows": 10,
+      "_remove": 11,
+      "_join": 7,
+      "_summary": 4,
+      "_report": 11,
+      "reconcile_once": 22,
+      "reconcile_loop": 6,
+      "start_reconciler": 7,
+      "changed": 3,
+      "pool_touched": 3,
+      "noteworthy": 3
+    },
+    "max_methods": 3,
+    "max_cc": 6,
+    "max_cog": 5,
+    "max_nest": 2,
+    "max_params": 4,
+    "file_lines": 206,
+    "coverage": 98.22
+  },
+  "app/services/live/supervisor.py": {
+    "max_func_loc": 17,
+    "max_class_loc": 8,
+    "func_count": 13,
+    "funcs": {
+      "live_state": 5,
+      "set_run_state": 7,
+      "is_live": 3,
+      "_cdp_connected": 3,
+      "_current_tab": 2,
+      "plan_pass": 12,
+      "wait_reason": 7,
+      "run_pass": 10,
+      "pass_tail": 4,
+      "end_tail": 8,
+      "cancelled_tail": 5,
+      "crashed_tail": 10,
+      "run_live": 17
+    },
+    "max_methods": 0,
+    "max_cc": 6,
+    "max_cog": 6,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 176,
+    "coverage": 97.52
+  },
+  "app/services/live/url_policy.py": {
+    "max_func_loc": 14,
+    "max_class_loc": 9,
+    "func_count": 18,
+    "funcs": {
+      "_is_duplicate": 3,
+      "_is_invalid": 2,
+      "_pattern_mismatch": 2,
+      "_tab_gone": 3,
+      "_reason_for": 2,
+      "removable_rows": 14,
+      "advance_misses": 8,
+      "busy_tabs": 6,
+      "dedupe_rows": 9,
+      "tab_owned": 3,
+      "add_rows": 9,
+      "remember": 6,
+      "restore_enabled": 2,
+      "removal_lines": 3,
+      "pooled_pages": 6,
+      "receiver_reason": 8,
+      "mark_receivers": 9,
+      "mark_state_receivers": 4
+    },
+    "max_methods": 0,
+    "max_cc": 6,
+    "max_cog": 7,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 203,
+    "coverage": 100.0
+  },
   "app/services/multi_page_dispatcher.py": {
     "max_func_loc": 29,
     "max_class_loc": 9,
@@ -2136,7 +2444,7 @@
       "_handle_exception": 11,
       "dispatch_parallel": 16,
       "_create_tasks": 14,
-      "_run_with_sem": 3,
+      "_run_with_sem": 6,
       "_await_tasks": 8,
       "_finalize_batch": 8
     },
@@ -2145,8 +2453,8 @@
     "max_cog": 8,
     "max_nest": 2,
     "max_params": 4,
-    "file_lines": 398,
-    "coverage": 88.51
+    "file_lines": 402,
+    "coverage": 88.64
   },
   "app/services/recording/__init__.py": {
     "max_func_loc": 0,
@@ -2321,20 +2629,21 @@
   "app/services/run_state.py": {
     "max_func_loc": 18,
     "max_class_loc": 7,
-    "func_count": 33,
+    "func_count": 34,
     "funcs": {
       "_bg_primitives": 6,
       "_running_loop": 6,
       "_run_loop_forever": 14,
       "_spawn_bg_loop": 13,
       "ensure_bg_loop": 16,
-      "_track_batch_future": 7,
+      "batch_active": 4,
       "_clear_batch_future": 7,
       "_failure_note": 9,
       "_on_coro_done": 10,
-      "_submit_tracked": 6,
+      "_submit_tracked": 5,
       "_run_detached": 15,
       "schedule_coro": 14,
+      "schedule_batch": 6,
       "_cdp_attrs": 4,
       "_fetch_tabs_safe": 6,
       "_tab_attr": 6,
@@ -2362,20 +2671,21 @@
     "max_cog": 8,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 417,
-    "coverage": 82.09
+    "file_lines": 421,
+    "coverage": 82.44
   },
   "app/services/single_job_runner.py": {
     "max_func_loc": 26,
     "max_class_loc": 18,
-    "func_count": 79,
+    "func_count": 82,
     "funcs": {
       "_emit_action": 6,
       "_get_blocks": 6,
       "capture_baseline": 7,
-      "_handle_captcha_outcome": 11,
+      "_captcha_failure_text": 6,
+      "_handle_captcha_outcome": 10,
       "_run_security_captcha": 17,
-      "check_security": 10,
+      "check_security": 12,
       "_mark_waiting": 9,
       "_mark_busy": 9,
       "attach_image": 6,
@@ -2388,7 +2698,9 @@
       "_submit_fallbacks": 9,
       "submit_job": 15,
       "_poll_generation": 10,
-      "wait_for_output": 19,
+      "_install_wait_hooks": 6,
+      "_uninstall_wait_hooks": 7,
+      "wait_for_output": 16,
       "_settle_and_note": 7,
       "_report_recovery": 6,
       "_arm_revival": 12,
@@ -2401,13 +2713,13 @@
       "save_image": 19,
       "_emit_saved_rect": 9,
       "_handle_baseline": 8,
-      "_handle_security": 10,
+      "_handle_security": 13,
       "_attach_open_dialog": 11,
       "_attach_emit": 11,
       "_handle_attach": 8,
       "_handle_prompt": 6,
       "_handle_submit": 8,
-      "_handle_wait": 17,
+      "_handle_wait": 16,
       "_handle_download": 15,
       "_pil_format": 11,
       "_src_suffix": 6,
@@ -2455,8 +2767,8 @@
     "max_cog": 8,
     "max_nest": 2,
     "max_params": 4,
-    "file_lines": 939,
-    "coverage": 83.82
+    "file_lines": 974,
+    "coverage": 86.02
   },
   "app/services/verification.py": {
     "max_func_loc": 16,
@@ -2691,7 +3003,7 @@
     "max_cog": 2,
     "max_nest": 1,
     "max_params": 5,
-    "file_lines": 152,
+    "file_lines": 149,
     "coverage": 94.0
   },
   "app/ui/bridge_context.py": {
@@ -2699,7 +3011,7 @@
     "max_class_loc": 7,
     "func_count": 13,
     "funcs": {
-      "init_run_state": 8,
+      "init_run_state": 12,
       "init_tracking_state": 19,
       "wire_cdp": 12,
       "on_cdp_error": 10,
@@ -2718,8 +3030,8 @@
     "max_cog": 3,
     "max_nest": 1,
     "max_params": 3,
-    "file_lines": 196,
-    "coverage": 85.61
+    "file_lines": 200,
+    "coverage": 88.24
   },
   "app/ui/main_window.py": {
     "max_func_loc": 26,
@@ -2743,7 +3055,7 @@
     "max_cog": 6,
     "max_nest": 1,
     "max_params": 2,
-    "file_lines": 154,
+    "file_lines": 155,
     "coverage": 0.0
   },
   "app/ui/panels/__init__.py": {
@@ -2760,9 +3072,9 @@
     "coverage": 100.0
   },
   "app/ui/panels/app_settings.py": {
-    "max_func_loc": 18,
-    "max_class_loc": 118,
-    "func_count": 28,
+    "max_func_loc": 17,
+    "max_class_loc": 117,
+    "func_count": 29,
     "funcs": {
       "push_prompt_undo": 7,
       "push_settings_undo": 8,
@@ -2771,6 +3083,7 @@
       "apply_supported_types": 5,
       "apply_highlight_duration": 5,
       "apply_watcher_timeouts": 12,
+      "apply_url_interval": 10,
       "apply_preset_settings": 12,
       "build_cdp_snapshot": 8,
       "read_action_blocks_snapshot": 11,
@@ -2784,12 +3097,12 @@
       "restore_preset_cooldown": 14,
       "set_theme": 4,
       "set_prompt": 5,
-      "save_settings": 16,
+      "save_settings": 17,
       "export_preset": 7,
-      "import_preset": 16,
+      "import_preset": 15,
       "list_arena_presets": 8,
       "save_arena_preset": 10,
-      "load_arena_preset": 18,
+      "load_arena_preset": 17,
       "delete_arena_preset": 9,
       "refresh_users": 3
     },
@@ -2798,8 +3111,8 @@
     "max_cog": 9,
     "max_nest": 3,
     "max_params": 3,
-    "file_lines": 359,
-    "coverage": 72.43
+    "file_lines": 371,
+    "coverage": 82.05
   },
   "app/ui/panels/blocks_library.py": {
     "max_func_loc": 16,
@@ -2860,7 +3173,7 @@
   "app/ui/panels/browser_tabs.py": {
     "max_func_loc": 20,
     "max_class_loc": 76,
-    "func_count": 41,
+    "func_count": 35,
     "funcs": {
       "claim_connect_slot": 15,
       "connect_reused": 12,
@@ -2881,15 +3194,9 @@
       "do_fetch_tabs": 15,
       "report_diag_checks": 10,
       "do_diagnose_chrome": 15,
-      "prune_auto_rows": 8,
-      "claim_auto_rows": 9,
-      "apply_auto_plan": 12,
-      "plan_has_changes": 3,
-      "report_auto_plan": 12,
-      "join_new_tabs": 5,
-      "auto_prune_allowed": 5,
-      "plan_auto_sync": 6,
-      "auto_scan_pass": 13,
+      "live_deps": 6,
+      "start_url_reconciler": 7,
+      "auto_scan_pass": 3,
       "do_auto_connect_scan": 11,
       "popup_row_title": 9,
       "popup_targets": 15,
@@ -2908,9 +3215,9 @@
     "max_cc": 7,
     "max_cog": 7,
     "max_nest": 2,
-    "max_params": 4,
-    "file_lines": 544,
-    "coverage": 89.13
+    "max_params": 3,
+    "file_lines": 470,
+    "coverage": 90.76
   },
   "app/ui/panels/cdp_tools.py": {
     "max_func_loc": 19,
@@ -2960,7 +3267,7 @@
     "funcs": {
       "_report_save_failure": 15,
       "save_arena_state": 13,
-      "emit_arena_state": 10,
+      "emit_arena_state": 11,
       "_write_preset_doc": 4,
       "_read_preset_doc": 4,
       "export_preset_file": 19,
@@ -2990,8 +3297,8 @@
     "max_cog": 6,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 307,
-    "coverage": 87.45
+    "file_lines": 309,
+    "coverage": 87.55
   },
   "app/ui/panels/page_pool.py": {
     "max_func_loc": 16,
@@ -3019,21 +3326,20 @@
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 234,
-    "coverage": 82.24
+    "coverage": 83.18
   },
   "app/ui/panels/queue_scan.py": {
     "max_func_loc": 19,
-    "max_class_loc": 86,
-    "func_count": 25,
+    "max_class_loc": 82,
+    "func_count": 24,
     "funcs": {
-      "selected_images": 4,
       "find_image": 6,
       "apply_bulk_selection": 8,
       "resolve_scan_root": 9,
       "run_off_ui_thread": 9,
       "push_queue_undo": 8,
-      "clear_queue_images": 9,
-      "run_scan_merge": 14,
+      "clear_queue_images": 8,
+      "run_scan_merge": 13,
       "run_scan_new_batch": 16,
       "run_folder_ai_request": 19,
       "copy_path_text": 13,
@@ -3046,8 +3352,8 @@
       "copy_path_to_clipboard": 3,
       "scan_folder": 15,
       "scan_folder_new_batch": 14,
-      "set_image_selected": 11,
-      "bulk_select": 6,
+      "set_image_selected": 9,
+      "bulk_select": 4,
       "clear_images": 3,
       "drop_ai_suffix": 3,
       "keep_only_ai_files": 3
@@ -3057,8 +3363,8 @@
     "max_cog": 9,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 315,
-    "coverage": 52.24
+    "file_lines": 304,
+    "coverage": 78.54
   },
   "app/ui/panels/queue_scan_folder.py": {
     "max_func_loc": 11,
@@ -3109,25 +3415,26 @@
   },
   "app/ui/panels/run_control.py": {
     "max_func_loc": 19,
-    "max_class_loc": 115,
-    "func_count": 20,
+    "max_class_loc": 110,
+    "func_count": 21,
     "funcs": {
       "revive_failed_images": 10,
-      "clear_image_state": 8,
+      "clear_image_state": 7,
       "reset_image_state": 8,
       "check_start_inputs": 15,
-      "check_start_ready": 9,
+      "check_start_ready": 12,
+      "wake_live_run": 6,
       "cancel_batch_future": 8,
       "fail_processing_images": 13,
       "describe_action_block": 9,
       "emit_action_highlight": 18,
       "emit_job_action_status": 19,
-      "retry_failed": 6,
+      "retry_failed": 4,
       "clear_queue": 13,
-      "reset_all": 8,
-      "retry_image": 11,
-      "reset_image": 9,
-      "start_run": 17,
+      "reset_all": 7,
+      "retry_image": 9,
+      "reset_image": 8,
+      "start_run": 18,
       "pause_run": 6,
       "resume_run": 6,
       "stop_after_current": 6,
@@ -3138,8 +3445,8 @@
     "max_cog": 4,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 275,
-    "coverage": 82.77
+    "file_lines": 283,
+    "coverage": 87.92
   },
   "app/ui/panels/undo_history.py": {
     "max_func_loc": 18,
@@ -3175,13 +3482,13 @@
       "enabled_urls": 3,
       "_checked_tabs_ready": 10,
       "_urls_gate_error": 7,
-      "_dedupe_state_rows": 10,
-      "_tab_already_owned": 6,
-      "_add_missing_rows": 9,
+      "_dedupe_state_rows": 3,
+      "_tab_already_owned": 3,
+      "_add_missing_rows": 3,
       "push_urls_undo": 8,
       "_valid_new_url": 10,
       "_duplicate_url": 3,
-      "commit_urls": 9,
+      "commit_urls": 10,
       "_find_url": 6,
       "_commit_urls": 2,
       "add_url": 10,
@@ -3200,8 +3507,8 @@
     "max_cog": 5,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 251,
-    "coverage": 96.88
+    "file_lines": 233,
+    "coverage": 100.0
   },
   "app/ui/panels/watcher_captcha.py": {
     "max_func_loc": 17,
@@ -3232,7 +3539,7 @@
     "max_nest": 2,
     "max_params": 2,
     "file_lines": 243,
-    "coverage": 63.74
+    "coverage": 68.13
   },
   "app/ui/panels/watcher_solver.py": {
     "max_func_loc": 15,
@@ -3292,7 +3599,7 @@
     "max_nest": 1,
     "max_params": 1,
     "file_lines": 72,
-    "coverage": 60.71
+    "coverage": 89.29
   },
   "app/ui/services/__init__.py": {
     "max_func_loc": 0,
@@ -3312,7 +3619,7 @@
     "max_class_loc": 0,
     "func_count": 5,
     "funcs": {
-      "urls_to_js": 14,
+      "urls_to_js": 15,
       "images_to_js": 18,
       "prompt_to_js": 3,
       "settings_to_js": 23,
@@ -3323,7 +3630,7 @@
     "max_cog": 4,
     "max_nest": 1,
     "max_params": 1,
-    "file_lines": 91,
+    "file_lines": 92,
     "coverage": 100.0
   },
   "app/ui/services/captcha_recordings_bridge.py": {
@@ -3352,7 +3659,7 @@
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 98,
-    "coverage": 95.65
+    "coverage": 97.1
   },
   "app/ui/services/file_service.py": {
     "max_func_loc": 18,
@@ -3399,11 +3706,12 @@
   "app/ui/services/scan_service.py": {
     "max_func_loc": 18,
     "max_class_loc": 0,
-    "func_count": 4,
+    "func_count": 5,
     "funcs": {
       "scan_folder_pure": 16,
       "merge_scan_results": 18,
       "merge_scanned": 18,
+      "scan_summary": 7,
       "should_ignore_file": 12
     },
     "max_methods": 0,
@@ -3411,8 +3719,8 @@
     "max_cog": 6,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 87,
-    "coverage": 92.75
+    "file_lines": 96,
+    "coverage": 93.51
   },
   "app/ui/services/thumbnail_service.py": {
     "max_func_loc": 16,
@@ -3441,8 +3749,8 @@
     "max_class_loc": 0,
     "func_count": 35,
     "funcs": {
-      "url_rows_from_js": 11,
-      "arena_url_rows_from_js": 7,
+      "url_rows_from_js": 12,
+      "arena_url_rows_from_js": 8,
       "emit_undo_state": 15,
       "coerce_push_value": 9,
       "_remember_grid": 4,
@@ -3482,8 +3790,8 @@
     "max_cog": 7,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 406,
-    "coverage": 68.44
+    "file_lines": 408,
+    "coverage": 72.57
   },
   "app/ui/services/window_preset_service.py": {
     "max_func_loc": 19,
@@ -3615,6 +3923,10 @@
     "file_lines": 124,
     "coverage": 48.0
   },
+  "coverage": {
+    "line": 88.22,
+    "branch": 84.85
+  },
   "app/ui/web/js/arena-app.js": {
     "max_func_loc": 13,
     "max_cc": 10,
@@ -3692,17 +4004,26 @@
     "max_cc": 5,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 235,
-    "func_count": 120,
+    "file_lines": 220,
+    "func_count": 116,
     "js": true
   },
   "app/ui/web/js/panels/action-blocks/block-config.js": {
-    "max_func_loc": 20,
+    "max_func_loc": 13,
     "max_cc": 5,
-    "max_nest": 2,
+    "max_nest": 1,
     "max_params": 3,
-    "file_lines": 158,
-    "func_count": 21,
+    "file_lines": 108,
+    "func_count": 19,
+    "js": true
+  },
+  "app/ui/web/js/panels/action-blocks/block-fields.js": {
+    "max_func_loc": 20,
+    "max_cc": 6,
+    "max_nest": 1,
+    "max_params": 3,
+    "file_lines": 154,
+    "func_count": 20,
     "js": true
   },
   "app/ui/web/js/panels/action-blocks/block-io.js": {
@@ -3720,15 +4041,15 @@
     "max_nest": 1,
     "max_params": 3,
     "file_lines": 61,
-    "func_count": 20,
+    "func_count": 16,
     "js": true
   },
   "app/ui/web/js/panels/action-blocks/block-render.js": {
-    "max_func_loc": 22,
-    "max_cc": 9,
+    "max_func_loc": 14,
+    "max_cc": 8,
     "max_nest": 3,
     "max_params": 4,
-    "file_lines": 195,
+    "file_lines": 191,
     "func_count": 33,
     "js": true
   },
@@ -3746,7 +4067,7 @@
     "max_cc": 8,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 334,
+    "file_lines": 326,
     "func_count": 46,
     "js": true
   },
@@ -3757,6 +4078,15 @@
     "max_params": 2,
     "file_lines": 60,
     "func_count": 13,
+    "js": true
+  },
+  "app/ui/web/js/panels/action-blocks/block-views.js": {
+    "max_func_loc": 11,
+    "max_cc": 7,
+    "max_nest": 1,
+    "max_params": 3,
+    "file_lines": 136,
+    "func_count": 27,
     "js": true
   },
   "app/ui/web/js/panels/arena-presets.js": {
@@ -3836,8 +4166,8 @@
     "max_cc": 5,
     "max_nest": 2,
     "max_params": 2,
-    "file_lines": 135,
-    "func_count": 55,
+    "file_lines": 134,
+    "func_count": 54,
     "js": true
   },
   "app/ui/web/js/panels/cdp/cdp-actions.js": {
@@ -3939,6 +4269,42 @@
     "func_count": 11,
     "js": true
   },
+  "app/ui/web/js/panels/live-debug.js": {
+    "max_func_loc": 9,
+    "max_cc": 9,
+    "max_nest": 1,
+    "max_params": 2,
+    "file_lines": 29,
+    "func_count": 10,
+    "js": true
+  },
+  "app/ui/web/js/panels/live-debug/actions.js": {
+    "max_func_loc": 8,
+    "max_cc": 3,
+    "max_nest": 1,
+    "max_params": 1,
+    "file_lines": 14,
+    "func_count": 2,
+    "js": true
+  },
+  "app/ui/web/js/panels/live-debug/render.js": {
+    "max_func_loc": 8,
+    "max_cc": 8,
+    "max_nest": 1,
+    "max_params": 2,
+    "file_lines": 57,
+    "func_count": 11,
+    "js": true
+  },
+  "app/ui/web/js/panels/live-debug/store.js": {
+    "max_func_loc": 5,
+    "max_cc": 5,
+    "max_nest": 1,
+    "max_params": 1,
+    "file_lines": 40,
+    "func_count": 9,
+    "js": true
+  },
   "app/ui/web/js/panels/page-pool.js": {
     "max_func_loc": 11,
     "max_cc": 2,
@@ -4036,6 +4402,15 @@
     "max_params": 2,
     "file_lines": 49,
     "func_count": 9,
+    "js": true
+  },
+  "app/ui/web/js/panels/url-list/interval.js": {
+    "max_func_loc": 13,
+    "max_cc": 7,
+    "max_nest": 1,
+    "max_params": 1,
+    "file_lines": 54,
+    "func_count": 10,
     "js": true
   },
   "app/ui/web/js/panels/url-list/listeners.js": {
@@ -4259,7 +4634,7 @@
     "max_cc": 10,
     "max_nest": 1,
     "max_params": 1,
-    "file_lines": 123,
+    "file_lines": 114,
     "func_count": 10,
     "js": true
   },

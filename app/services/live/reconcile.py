@@ -165,6 +165,8 @@ def _report(bridge: Any, deps: LiveDeps, report: Report, source: str) -> None:
     deps.log(_summary(report), "info")
 
 
+# ideal-size: reconcile_once is 22 LOC reason=the pass is one ordered story (fetch, repair,
+# plan, write, commit, join, presence, report); splitting it further would hide the order.
 async def reconcile_once(bridge: Any, deps: LiveDeps, source: str) -> Report:
     """One pass: tabs → rows (claim / add / remove with reasons) → commit + wake → join → presence."""
     tabs = await _fetch(deps)

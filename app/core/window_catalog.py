@@ -8,6 +8,8 @@ used to be discarded by `SashGrid.render()`). Adding a window is one row
 here, one same-line append in the three JS registries, and its markup.
 `layout_service` re-exports these names for its existing importers.
 """
+# ideal-size: ~65 lines reason=a table plus its derived views; the parsing/migration logic
+# stays in layout_service so the window list has exactly one owner (RULE 10 / 18.2).
 
 from __future__ import annotations
 

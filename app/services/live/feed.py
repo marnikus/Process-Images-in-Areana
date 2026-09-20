@@ -16,6 +16,8 @@ Layer: services → core only. The undo push is a ui-layer function
 (`queue_scan.push_queue_undo`), so panels hand it in as `undo=`; system
 writes (scan, preset, clear) pass nothing and stay out of the user's history.
 """
+# ideal-size: ~100 lines reason=the queue-write funnel and the claim scope only; the pass
+# lifecycle (supervisor) and the row policy (url_policy) are deliberately separate owners.
 
 from __future__ import annotations
 

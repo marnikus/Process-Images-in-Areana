@@ -11,6 +11,8 @@ workers half rides `page_pool_updated` unchanged; the JS merges the two.
 Counts reuse S4's rule (`feed.eligible_images`) and S7's flag — never a
 second rule.
 """
+# ideal-size: ~75 lines reason=a read model for one pushed payload; it grows only when the
+# window shows more, never with behaviour (D-22).
 
 from __future__ import annotations
 

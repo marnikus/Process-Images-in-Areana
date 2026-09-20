@@ -8,6 +8,8 @@ second captcha in the same generation absorbs only what the first one left.
 `cap_s <= 0` means uncapped. It lives in `app/core` because both chargers
 (browser, services) may import it (D-25). No lock: one wait, one coroutine.
 """
+# ideal-size: ~60 lines reason=one value object with one job (absorbed seconds, capped); its
+# two chargers live in other layers, so padding it would only blur the owner (RULE 18.2).
 
 from __future__ import annotations
 

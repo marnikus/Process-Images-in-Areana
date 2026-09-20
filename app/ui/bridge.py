@@ -21,13 +21,10 @@ from app.services.run_state import persist_cooldowns
 from app.ui.bridge_context import (
     build_context, init_run_state, init_tracking_state,
     log_build_version, wire_cdp)
-from app.ui.panels.url_queue import (
-    _add_missing_rows,
+from app.ui.panels.url_queue import (  # compat: single source lives in panels/url_queue.py
     _checked_tabs_ready,
-    _dedupe_state_rows,
-    _tab_already_owned,
     _urls_gate_error,
-)  # compat: single source lives in panels/url_queue.py
+)
 from app.ui.panels.layout_state import LayoutStateMixin
 from app.ui.panels.blocks_library import BlocksLibraryMixin
 from app.ui.panels.blocks_stack import BlocksStackMixin

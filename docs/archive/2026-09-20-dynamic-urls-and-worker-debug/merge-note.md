@@ -116,3 +116,14 @@ grep -n 135 tests/test_bridge_slots.py; python -c "json.load(open('tools/quality
 grep -rn _schedule_coro app tests; grep -n page_pool app/core/layout_service.py js/sash-grid-windows/store.js
 ls tests/js/*.mjs | wc -l; grep -o 'tests/js/[a-z_0-9]*\.mjs' package.json | sort -u | wc -l
 ```
+
+
+## Implementation log (2026-09-21, branch `arena/01a0bf98-process-images-in-areana`)
+
+All ten stages landed as one commit each (S0 `dba80b7` … S10), every stage RED → GREEN →
+`tools/stage_gate.sh --coverage` → docs in the same commit. Final numbers and the baseline
+decision: `docs/current/QUALITY_RECHECK.md` (2026-09-21 section). Drift honoured as
+predicted above (eligibility in `core/run_scope.py`, I-numbers I-47…I-55, slot count 135,
+`check_start_ready` → wake while live). Deviations recorded in the invariants: fresh
+failures are not re-claimed by a live pass (I-47), the reconciler has its own bus (I-50),
+`receiver_reason` persisted with `receiver` (I-53), the round-1 `S1` L-1 fix was 2 lines.

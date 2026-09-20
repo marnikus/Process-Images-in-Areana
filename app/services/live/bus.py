@@ -7,6 +7,8 @@ drains them and never polls. `throttle` keeps repeated status lines to
 one per window per key. No Qt, no panels; the lock is never held across
 an `await` (there is no `await` under it).
 """
+# ideal-size: ~85 lines reason=one primitive (wake / wait / throttle) shared by the run loop
+# and the reconciler; merging it into feed.py would couple a queue rule to a threading tool.
 
 from __future__ import annotations
 

@@ -180,22 +180,65 @@ run_state files, +1 naming; pytest 1,554 → 1,621;
 `npm run test:js` unchanged (240); coverage 86.55 / 82.63 → **87.03 / 83.25**.
 Goldens byte-identical; slot surface unchanged (135).
 
-### 2026-09-21 staged chain S0 → S5 (interim note — S10 refreshes every number)
+### 2026-09-21 staged chain S0 → S10 (round 2: dynamic URLs, live run, worker debug)
 
-No re-record so far. S3 (capped pause, I-52) and S4/S5 (live queue core + the
-always-live run, I-49/I-54/I-47) landed under the fast lane
-(`tools/stage_gate.sh --coverage`) with **no recorded per-file maximum
-growing**: `captcha/service.py` `max_func_loc` 27 → 22, `batch_orchestrator.py`
-492 → 426 lines / 38 → 31 functions (the lifecycle moved to
-`live/supervisor.py`, 173 lines, CC ≤ 6 after `_current_tab` was split
-out of `plan_pass`), `run_control.py` / `queue_scan.py` / `app_settings.py`
-kept their mixins at 10 methods and got shorter (funnel tails). New modules
-are all radon A: `core/pause_clock.py` (62), `live/bus.py` (85),
-`live/feed.py` (96), `live/supervisor.py`. One ratchet trip was fixed with
-behaviour, not padding: removing two covered lines from `app_settings.py`
-took it 0.13 under its 72.43 floor → `tests/test_app_settings_apply.py`
-(4 real clamp/sync tests). Goldens byte-identical under the supervisor
-runner; slot surface unchanged (135).
+Plan of record: `docs/archive/2026-09-20-dynamic-urls-and-worker-debug/` (+ round 1
+`2026-09-20-live-processing-and-watcher-scope/`). Ten stage commits on
+`arena/01a0bf98-process-images-in-areana`, each RED → GREEN →
+`tools/stage_gate.sh --coverage` → docs in the same commit:
+
+| Stage | Landed | Invariant |
+|---|---|---|
+| S0 | `tools/stage_gate.sh`, baseline instrument alignment, hygiene, `S0-baseline.md` | — |
+| S1 | L-1: the manual pool join reaches the real scheduler (2 lines in `page_pool.py`) | — |
+| S2 | `captcha/policy.py` — Watcher OFF ⇒ zero captcha activity | I-48 |
+| S3 | `core/pause_clock.py`, `WaitDeadline`, `wait_timeout` — bounded wait, capped pause | I-52 |
+| S4 | `services/live/{bus,feed}.py` — one queue funnel, one wake, every reset re-queues | I-49, I-54 |
+| S5 | `live/supervisor.py` — the always-live run, one `run_state` writer | I-47 |
+| S6 | `live/{reconcile,url_policy,debug_view}.py` + `url-list/interval.js` — Python owns the URL cadence | I-50 |
+| S7 | `UrlRow.receiver` + ⊘ — one owner for "can this row take a job" | I-53 |
+| S8 | `core/window_catalog.py` — 16 windows, one table, the L-5 rescue, L-7/L-8 closed | I-51 |
+| S9 | `debug_view.live_view` + `panels/live-debug/*` — the read-only worker/queue window | I-55 |
+| S10 | this note, baseline extended, full lane | — |
+
+**Numbers (final tree, `tools/pre_push_check.sh` green):** pytest 1,621 → **1,765** passed
+(4 skipped; +144 tests in 19 new py files + 4 new mjs files); `npm run test:js` 240 → **270**
+(33 listed files — `test_title_fit.mjs` adopted, L-7); coverage 87.03 / 83.25 →
+**88.22 / 84.85** (line / branch); jscpd 1.240 % → **1.081 %**; vulture @90 **clean** (the
+three dead compat re-exports in `bridge.py` removed); radon on every new module **A/B ≤ 6**
+(CC max repo-wide 10, cognitive max 15, no function > 30 LOC except the two pre-existing
+overrides). Slot surface **135**, zero new signals (D-20/D-22 held through all ten stages); the
+12 characterization goldens are byte-identical under the new supervisor runner.
+
+**RULE 16 per-file ratchet:** no recorded maximum grew in any stage. Downward moves recorded
+now (reasons: code moved to its new owner): `captcha/service.py` `max_func_loc` 27 → 22;
+`batch_orchestrator.py` 492 → 426 lines / 38 → 31 functions; `layout_service.py` 300 → 262 /
+`max_func_loc` 21 → 20; `browser_tabs.py` 544 → 470; `queue_scan.py` 315 → 304; `cdp.js` 135 →
+134 / 55 → 54; `sash-grid.js` 123 → 114. Three coverage trips were fixed with behaviour, not
+padding (`test_app_settings_apply.py`, the browser_tabs failure-path tests, the layout_service
+reject/rename test) and are named in their stage commits.
+
+**Baseline decision (RULE 16 §16.5):** `tools/quality_baseline.json` was **extended, never
+loosened** (`verify_quality.record_baseline(refresh=False)` + a diff review): 21 new entries
+(the chain's 13 py/js files plus 8 that predated S0 unrecorded — `processing_probe.py`,
+`progress.py`, `run_scope.py`, `await_processing.py`, two `action-blocks/*.js`), the global
+floor raised to **88.22 / 84.85**, no per-file coverage floor lowered by more than the
+tolerance, no enforced maximum raised (py `file_lines` is informational and was refreshed).
+
+**RULE 18 recheck (final tree):** every new function is 4–22 LOC (`reconcile_once` 22, noted
+in place); new files 62–206 lines, the five under 150 carry an `# ideal-size:` reason
+(single-owner value objects / tables); modules: `services/live` **6** files, `captcha` 6,
+`browser` 23 (unchanged), `ui/panels` 15 (unchanged), `app/core` **16** — one over the 5–15
+ideal: both newcomers (`pause_clock.py`, `window_catalog.py`) are leaf tables/values that
+`browser` and `services` must both import, and `core` is the only layer allowed to sit under
+both (layer rule), so they stay; a `core/` split is the next RULE 18.3 candidate when the
+package grows again.
+
+**Deviations from the plan, each recorded in its invariant/commit:** the claim scope of a live
+pass excludes fresh `failed`/`needs_review` (a retry storm the goldens exposed — I-47); the
+reconciler waits on its own `LiveBus` (I-50); invariants were numbered I-47…I-55 (the plan's
+I-39…I-46 were already taken, see the merge note); `receiver_reason` is persisted next to
+`receiver` so the icon's title needs no JS-side vocabulary (I-53).
 
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
