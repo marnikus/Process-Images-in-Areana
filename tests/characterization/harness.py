@@ -105,7 +105,8 @@ def _recorders(bridge: Bridge) -> Dict[str, Recorder]:
 
 def build_bridge(tmp_path: Path, stack: List[ActionBlock], n_images: int = 1,
                  tab_ids: Optional[List[str]] = None,
-                 pool=None, cdp: Optional[FakeCDP] = None):
+                 pool=None, cdp: Optional[FakeCDP] = None,
+                 watcher_on: bool = False):
     """Real Bridge wired to tmp dirs + recorders (pool None = single mode)."""
     cfg = ConfigManager(str(tmp_path / "cfg"))
     cdp = cdp or FakeCDP()
@@ -113,6 +114,8 @@ def build_bridge(tmp_path: Path, stack: List[ActionBlock], n_images: int = 1,
                     cdp_client=cdp)
     recs = _recorders(bridge)
     cfg.set_state(action_blocks=stack_to_dicts(stack))
+    if watcher_on:
+        cfg.set_state(watcher_enabled=True)
     bridge.state.images = make_images(tmp_path, n_images)
     bridge.state.urls = make_urls(tab_ids if tab_ids is not None else ["tab1"])
     bridge.state.prompt["user_prompt"] = "a red circle"

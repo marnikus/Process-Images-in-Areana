@@ -107,28 +107,53 @@ cognitive scan of the file: all symbols ≤6, edited slot = 3 (limit 15). No JS 
 (JS lane not re-run). Slot surface stays 135. Docs: SoR row 11 (L-1 closed), QUALITY_RECHECK
 S1 entry, this record. Archived `evidence.md` §4 deliberately NOT edited (RULE 17).
 
-## S2 — Watcher scope is a hard captcha gate — NEXT (S1 green)
+## S2 — Watcher scope is a hard captcha gate — DONE (2026-09-20)
 
 Boundary: captcha detection is in scope only while the Watcher switch is ON.
-Solver status affects wording only, never scope.
-Interfaces: `captcha.policy.watcher_enabled/captcha_in_scope/solver_running/`
-`has_solver_key/out_of_scope` (+ `wait_reason` in S3). `handle_captcha` becomes a
-thin scoped entry (split, not a branch — CC 7 is the file max, D-26).
-RED: `tests/test_captcha_scope.py` + `tests/test_watcher_off_zero_activity.py`
-count detect probes, marks, stats, recordings, penalties, overlay calls,
-security-dialog polls, and shield/captcha log lines. OFF ⇒ zero of each; ON is the
-positive control and must produce activity.
-GREEN: gate every pipeline site through policy; install no output security settler
-when out of scope. Return `SolveOutcome(status="out_of_scope")` without probing.
-Keep normal output timeout behaviour alive.
-REFACTOR/EQUIVALENCE: retain wait-only pipeline behaviour while in scope; the guard
-must not stall downstream work (RULE 9). Arm `watcher_on` in the golden harness so
-goldens stay byte-identical.
-Gate: captcha service, single-job runner, watcher tests, docs-current consistency.
-Docs: amend RULE 20 + I-19/I-34/system-of-record row 12 (Watcher OFF = no pipeline
-captcha activity; ON = detect/wait only). Lands plan I-40 as **I-48**.
+Solver/key status affects wording only, never scope (RULE 10).
+Interface: new `app/services/captcha/policy.py` (`watcher_enabled` /
+`solver_running` / `has_solver_key` / `captcha_in_scope` / `out_of_scope`, 100%
+covered); `handle_captcha` is a 4-line scoped entry delegating to
+`_handle_captcha_scoped` (split, not a branch — CC 7 is the file max, D-26,
+re-measured with the gate's own counters on this tree); scope vocabulary
+`out_of_scope` on `SolveOutcome` (same-line docstring append: `max_class_loc` 44
+byte-identical, since a new line would ratchet-fail).
+RED (observed): `tests/test_captcha_scope.py` first failed collection with
+`ImportError: cannot import name 'policy'`; with policy present, tests 3–7 failed
+behaviorally (probe ran, "Security done", status manual, settler installed).
+`tests/test_watcher_off_zero_activity.py`: the two OFF tests failed with every
+counter ≥1 (51 polls, 2 shield lines…); the ON positive control passed at base,
+as planned.
+GREEN: 5 gate edits — `check_security` +2 lines (CC 3→4), `_handle_security`
+guard reporting success `"Skipped (Watcher off)"`, `wait_for_output` settler
+under `if in_scope` (nest unchanged at 1), the `handle_captcha` split,
+`_watcher_running` 7→3 lines delegating to policy. sjr imports policy top-level
+(no cycle — policy imports `.signals` only).
+REFACTOR/EQUIVALENCE: no `_handle_captcha_outcome` branch needed (unknown status
+falls through as no failure). Armed with recorded reason: shared
+`test_captcha_service.make_bridge` (+1 key, covers `recording_service` too),
+4 boundary sites, 3 sjr tests (new behavior-neutral `session` helper param),
+`test_every_helper_absorbs_failures` (only the scope lookup answers now),
+harness `build_bridge(watcher_on)` + the captcha golden — **byte-identical**,
+traces carry `[block_id, status]` only. Deviations from tdd-interfaces §S2:
+inline gate → D-26 split (the §S2.1 "CC 4" is stale; measured CC is 7 =
+recorded max, so a branch would ratchet-fail); `test_captcha_service.py` was NOT
+green unedited (its helper lacked the switch — armed); 4 boundary + 3 sjr sites,
+not 3 + 2 (the F4 boundaries and the stop-closure test route through the gates
+too); `FakeBridge` not used (it lacks the config/log/pool surface — a
+SimpleNamespace bridge like the sibling tests).
+Gate: new files 11/11; targeted captcha/watcher/golden lane 84 green; full
+pytest **1639 passed / 1 skipped** (the 7 `test_verify_quality_tool` base-skips
+from S1 now run — GOOD_BASE resolves); coverage **87.10 / 83.32**
+(service.py 94.84/floor 94.76, sjr 84.84/83.82, signals.py 97.37/97.37,
+policy.py 100); `verify_quality` on the 4 touched app files → 0 fails
+(pre-commit `--changed` sees only committed S1; post-commit re-run scoped);
+maxima byte-identical except unenforced file_lines/func_count (+1 split fn);
+cognitive ≤8, edited/new symbols ≤7 (limit 15). No JS touched. Slots 135.
+Docs: RULE 20 amendment, I-19/I-34 amended, I-48 landed (plan I-40), SoR row 12,
+QUALITY_RECHECK S2 entry, this record.
 
-## S3 — Capped captcha pause clock — PENDING (needs S2 green)
+## S3 — Capped captcha pause clock — NEXT (S2 green)
 
 Boundary: only the per-page generation hard timeout pauses while an in-scope captcha
 settle runs. The capped pause is per generation wait.

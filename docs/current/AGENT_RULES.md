@@ -493,6 +493,22 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
   asserts the pipeline never evaluates `inject.js`). Cleared captchas still stack the cooldown
   penalty. Earlier amendment 2026-09-17 (in-pipeline auto-solve, `solver.py`/`api_client.py`) is
   superseded; design: `docs/archive/2026-10-02-captcha-watcher-isolation/design.md`.
+* **Watcher OFF = captcha out of scope (amendment 2026-09-20, S2):** the pipeline's
+  wait-only flow runs only while the user holds the Watcher ON. One predicate owns the
+  switch — `app/services/captcha/policy.py` (`watcher_enabled` / `solver_running` /
+  `has_solver_key` / `captcha_in_scope` / `out_of_scope`) — and five gates ask it:
+  `check_security` (no probe), `_handle_security` (the block reports success
+  `"Skipped (Watcher off)"`), `wait_for_output` (no `security_settler` inside the
+  generation wait), `handle_captcha` (a 4-line scoped entry returns
+  `SolveOutcome(status="out_of_scope")` without probing; the old body moved verbatim to
+  `_handle_captcha_scoped` because CC 7 is the file maximum — D-26), and
+  `_watcher_running` (delegates to `policy.solver_running`). OFF ⇒ no probe, overlay,
+  `waiting_captcha` row, stat, recording, penalty or `🛡️` line, and the generation
+  timeout runs untouched; ON = detect/wait only, unchanged. Key/loop state affects
+  wording only, never scope (RULE 10: one control per decision). Tests:
+  `tests/test_captcha_scope.py` (8) + `tests/test_watcher_off_zero_activity.py` (3,
+  incl. the ON positive control); the golden harness arms `watcher_on=True` for the
+  captcha golden so all 12 goldens stay byte-identical.
 * **Key hygiene (non-negotiable even when opt-in is ON):** the keys live only in
   `config/captcha_solvers.json` (one per provider — 2Captcha | CapMonster Cloud — git-ignored,
   0600 best-effort; the older single-provider `config/2captcha.json` is folded in on first save);

@@ -201,6 +201,18 @@ coverage **87.06 / 83.28** (page_pool.py 83.18, floor 82.24), changed-lane gate 
 page_pool maxima identical, cognitive ≤6 (edited slot 3/15), slots **135**.
 SoR row 11 notes the repair. No JS touched.
 
+### 2026-09-20 S2 Watcher scope gate (branch `arena/01a0bf4d-…`)
+
+New `app/services/captcha/policy.py` (5 predicates, 100% covered) + 5 gate edits
+(`check_security`, `_handle_security`, `wait_for_output`, the `handle_captcha`
+D-26 split, `_watcher_running` 7→3). RED observed (ImportError, then behavioral),
+then green: new scope/zero-activity files 11/11 (incl. the ON positive control).
+Full pytest **1,639 / 1 skipped** (goldens byte-identical), coverage
+**87.10 / 83.32** (service.py 94.84/94.76, sjr 84.84/83.82, signals.py
+97.37/97.37), touched-file gate **0 fails**, maxima identical except unenforced
+structure counts, cognitive ≤8 (edited/new ≤7), slots **135**.
+SoR row 12 + I-19/I-34 amended, I-48 landed (plan I-40). No JS touched.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

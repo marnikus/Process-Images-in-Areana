@@ -66,7 +66,7 @@ def make_bridge(pool, config_dir=None, with_service=True):
         _page_pool=pool,
         _log=lambda m, l="info": logs.append((m, l)),
         _emit_pool_status=lambda: logs.append(("emit", "")),
-        config=SimpleNamespace(get_state=lambda k, d=None: ({"watcher_captcha_timeout_sec": 300}).get(k, d)),
+        config=SimpleNamespace(get_state=lambda k, d=None: ({"watcher_captcha_timeout_sec": 300, "watcher_enabled": True}).get(k, d)),
         _logs=logs,
     )
     if with_service and config_dir is not None:
@@ -248,7 +248,8 @@ async def test_every_helper_absorbs_failures(monkeypatch, isolated_config_dir):
     pool.get_page = boom  # after we captured `page`
     bridge = make_bridge(pool, isolated_config_dir)
     bridge._emit_pool_status = boom
-    bridge.config.get_state = boom
+    # S2: the scope lookup must answer for the wait path to run; every other read still explodes.
+    bridge.config.get_state = lambda k, d=None: True if k == "watcher_enabled" else boom(k, d)
     bridge._captcha_watcher = SimpleNamespace()  # no `running` attr → fail closed
     svc = CaptchaService(str(isolated_config_dir))
     svc.stats.record = boom

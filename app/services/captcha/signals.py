@@ -92,7 +92,7 @@ def host_of(url: str) -> str:
 
 @dataclass
 class SolveOutcome:
-    """Result of one handle_captcha flow (RULE 4: reason distinguishes broken)."""
+    """Result of one handle_captcha flow (RULE 4: reason distinguishes broken; "out_of_scope" = Watcher OFF)."""
 
     status: str = "none"
     reason: str = ""

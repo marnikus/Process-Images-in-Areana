@@ -13,9 +13,10 @@ from app.services import single_job_runner as sjr
 from tests.characterization.harness import make_block
 
 
-def make_bridge(stack=None, pool=None, cancel=False):
+def make_bridge(stack=None, pool=None, cancel=False, session=None):
     events = []
     logs = []
+    sess = dict(session or {})
     state = SimpleNamespace(
         settings=SimpleNamespace(
             timeouts={"generation": 180},
@@ -25,7 +26,7 @@ def make_bridge(stack=None, pool=None, cancel=False):
     return SimpleNamespace(
         _cancel_requested=cancel,
         _page_pool=pool,
-        config=SimpleNamespace(get_state=lambda k, d=None: d),
+        config=SimpleNamespace(get_state=lambda k, d=None: sess.get(k, d)),
         state=state,
         _log=lambda m, l="info": logs.append((m, l)),
         _emit_job_action_status=lambda action: events.append(
@@ -421,7 +422,7 @@ async def test_security_announces_while_solving(tmp_path, monkeypatch):
         return NS(status="solved", reason="")
 
     monkeypatch.setattr(cap_mod, "handle_captcha", _solved)
-    bridge = make_bridge()
+    bridge = make_bridge(session={"watcher_enabled": True})
     ctrl = make_ctrl(is_security_dialog_visible=_never_visible)
     ctx = make_ctx(bridge, ctrl, make_client(), make_img(tmp_path))
     await sjr._handle_security(ctx, make_block("CHECK_SECURITY"))
@@ -466,7 +467,8 @@ async def test_settle_and_note_stamps_policy(tmp_path, monkeypatch):
         return True
     ctrl = make_ctrl(is_security_dialog_visible=_visible)
     ctrl._resume_policy = SimpleNamespace(settled_at=None)
-    ctx = make_ctx(make_bridge(), ctrl, make_client(), make_img(tmp_path))
+    ctx = make_ctx(make_bridge(session={"watcher_enabled": True}), ctrl,
+                   make_client(), make_img(tmp_path))
     assert await sjr._settle_and_note(ctx) is True
     assert seen and seen[0].source == "check-security"
     assert ctrl._resume_policy.settled_at is not None
@@ -485,7 +487,7 @@ async def test_security_stop_closure_honours_cancel(tmp_path, monkeypatch):
     async def _visible():
         return True
     for cancel, want in [(False, False), (True, True)]:
-        ctx = make_ctx(make_bridge(cancel=cancel),
+        ctx = make_ctx(make_bridge(cancel=cancel, session={"watcher_enabled": True}),
                        make_ctrl(is_security_dialog_visible=_visible),
                        make_client(), make_img(tmp_path))
         assert await sjr.check_security(ctx) is True
