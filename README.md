@@ -82,6 +82,17 @@ See `docs/selector_map.md` for full map.
 - Atomic writes via temp file + replace
 - Reconcile on startup: detect added/removed/changed files, mark interrupted jobs
 
+### Configuration & secrets (local only — never in Git)
+- Everything under `config/` is **runtime data of one machine**: the 2Captcha API key
+  (`config/captcha_solvers.json`, written by the Captcha Settings panel), session/undo history,
+  captcha recordings, presets. `.gitignore` excludes `config/*` (only `config/.gitkeep` is tracked),
+  `logs/`, `arena webpages/` (saved session pages) and bytecode.
+- Enter the API key in the app (Captcha → Settings); it is stored only in that ignored file.
+- Guard: `tests/test_repo_hygiene.py` asks `git ls-files` and fails when any such path or an
+  `api_key` literal is tracked; `tools/pre_push_check.sh` step 0 blocks the push the same way.
+- History note (2026-10-09): keys were once committed in the root commit of this repo and have
+  been rotated; a leaked key is burned the moment it is pushed — rotate first, clean second.
+
 ## Highlight Rect
 When clicking element, draws rect overlay for configurable seconds (default 2s, color #FF0000). Enabled in settings.
 
