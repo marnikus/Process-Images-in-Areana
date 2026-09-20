@@ -102,6 +102,18 @@ def test_connect_page_pool_error_branches_unchanged(cfg):
     assert json.loads(host.connect_page_pool("")) == {"ok": False, "error": "empty ws_url"}
 
 
+def test_connect_page_pool_reports_scheduler_failure_honestly(cfg, monkeypatch):
+    """A broken scheduler surfaces as error JSON, never a silent ok (RULE 4)."""
+    def boom(bridge, coro):
+        coro.close()
+        raise RuntimeError("bg loop down")
+
+    monkeypatch.setattr(pp_mod, "schedule_coro", boom, raising=False)
+    host, _ = make_pool_host(cfg)
+    assert json.loads(host.connect_page_pool("ws://x/1")) == {
+        "ok": False, "error": "bg loop down"}
+
+
 async def test_scheduled_coroutine_joins_the_pool(cdp_server, cfg, monkeypatch):
     """Equivalence: the coroutine S1 schedules really joins the pool.
 

@@ -138,6 +138,13 @@ Headroom facts that shape the fix (baseline maxima, `tools/quality_baseline.json
 
 ## 4. Item 04 — L-1 (re-verified, and now load-bearing for item 05)
 
+> **CLOSED — S1 (2026-09-20):** status marker only, original evidence below kept verbatim
+> (RULE 17). Fixed by the planned 2-line edit (`schedule_coro` import + call in
+> `app/ui/panels/page_pool.py`); RED-first proof `tests/test_page_pool_join.py`
+> (failed at base with `'Host' object has no attribute '_schedule_coro'`); L-6
+> de-masked in the same commit (`tests/test_panel_browser_tabs.py`, five injected
+> `_schedule_coro` doubles → spy on the real `schedule_coro` seam).
+
 * `connect_page_pool` calls `self._schedule_coro(do_connect_page_pool(self, ws_url))` —
   `app/ui/panels/page_pool.py:139-151` (the call is line **147**). No `_schedule_coro` exists
   anywhere in `app/`; the real helper is `app/services/run_state.py:194-202`
