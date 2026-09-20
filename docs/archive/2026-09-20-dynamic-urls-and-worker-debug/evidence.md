@@ -138,6 +138,10 @@ Headroom facts that shape the fix (baseline maxima, `tools/quality_baseline.json
 
 ## 4. Item 04 — L-1 (re-verified, and now load-bearing for item 05)
 
+> **Closed — S1, 2026-09-21** (`docs/archive/2026-09-21-staged-chain-implementation/`): `page_pool.py` now calls
+> `schedule_coro(self, do_connect_page_pool(self, ws_url))`; `tests/test_page_pool_join.py` (4) pins it and the
+> five `_schedule_coro=` doubles in `tests/test_panel_browser_tabs.py` are gone (L-6 de-masked).
+
 * `connect_page_pool` calls `self._schedule_coro(do_connect_page_pool(self, ws_url))` —
   `app/ui/panels/page_pool.py:139-151` (the call is line **147**). No `_schedule_coro` exists
   anywhere in `app/`; the real helper is `app/services/run_state.py:194-202`
