@@ -1,10 +1,11 @@
 {
   "provider": "2captcha",
+  "enabled": false,
   "solve_timeout_sec": 180,
   "providers": {
     "2captcha": {
       "enabled": true,
-      "api_key": "68919006adc62cd12ff7e00f8b8d4983"
+      "api_key": "1d51a4cb723fe0bd8864e8d4d6ae27d4"
     },
     "capmonster": {
       "enabled": true,
