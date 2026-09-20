@@ -1,4 +1,7 @@
-"""LayoutService — C5 refactor with predicate table and small helpers."""
+"""LayoutService — grid payload parsing / validation / migration (C5).
+
+The window table itself lives in `core.window_catalog` (S8, I-51) and is
+re-exported here for the three production importers and the tests."""
 from __future__ import annotations
 
 import json
@@ -8,33 +11,15 @@ from typing import Any
 
 log = logging.getLogger("arena")
 
-WINDOW_IDS = [
-    "url_list", "folder", "queue", "prompt", "run", "progress", "watcher",
-    "log", "settings", "captcha", "recordings", "browser",
-    "action_blocks", "block_config", "arena_presets",
-]
-WINDOWS = [
-    {"id": "url_list", "title": "URL List"},
-    {"id": "folder", "title": "Folder Picker"},
-    {"id": "queue", "title": "Image Queue"},
-    {"id": "prompt", "title": "Prompt Editor"},
-    {"id": "run", "title": "Run Controls"},
-    {"id": "progress", "title": "Progress"},
-    {"id": "watcher", "title": "Watcher — Generation & Captcha"},
-    {"id": "log", "title": "Activity Log"},
-    {"id": "settings", "title": "Settings"},
-    {"id": "captcha", "title": "Captcha — Solver (2Captcha / CapMonster)"},
-    {"id": "browser", "title": "Browser Preview"},
-    {"id": "action_blocks", "title": "Action Blocks — Stacking Jobs"},
-    {"id": "block_config", "title": "Block Config — Security Check"},
-    {"id": "arena_presets", "title": "Arena Presets"},
-    {"id": "recordings", "title": "Recordings — Captcha Sessions"},
-]
-WINDOW_TITLES = {w["id"]: w["title"] for w in WINDOWS}
-# Windows this app renamed. A stored layout that still uses one keeps its
-# position + sizes under the new id (never rejected, never default-substituted).
-LEGACY_WINDOW_IDS = {"captcha_records": "recordings"}
-GRID_VERSION = 5
+from app.core.window_catalog import (  # noqa: F401 — re-exported for the existing importers (S8)
+    GRID_VERSION,
+    LEGACY_WINDOW_IDS,
+    WINDOW_IDS,
+    WINDOW_TITLES,
+    WINDOWS,
+    default_grid_tree,
+)
+
 MIN_GRID_SIZE = 4
 
 
@@ -43,29 +28,6 @@ class GridSpec:
     """Param object for grid validation (C5)."""
     max_depth: int = 12
     min_size: float = MIN_GRID_SIZE
-
-
-def default_grid_tree() -> dict:
-    def leaf(i):
-        return {"t": "leaf", "id": i}
-
-    def split(d, kids, sizes):
-        return {"t": "split", "dir": d, "children": kids, "sizes": sizes}
-
-    return split("col", [
-        split("row", [
-            split("col", [leaf("url_list"), leaf("folder")], [55, 45]),
-            split("col", [leaf("prompt"), leaf("run"), leaf("settings"),
-                          leaf("captcha"), leaf("recordings")], [35, 20, 20, 12, 13]),
-        ], [60, 40]),
-        split("row", [
-            leaf("queue"),
-            split("col", [leaf("action_blocks"), leaf("block_config")], [55, 45]),
-            split("col", [leaf("browser"), leaf("arena_presets"),
-                          leaf("progress"), leaf("watcher")], [30, 25, 20, 25]),
-        ], [45, 35, 20]),
-        leaf("log"),
-    ], [38, 40, 22])
 
 
 def default_payload() -> str:

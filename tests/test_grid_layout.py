@@ -242,15 +242,15 @@ def test_preset_save_load_round_trip(isolated_config_dir):
     res = json.loads(Bridge.save_window_preset(fake, "Desk", json.dumps(portable_doc(tree))))
     assert res == {"ok": True, "name": "Desk"}
     doc = fake.config.window_presets.load_preset("Desk")
-    assert doc["grid"]["window_count"] == 15
-    assert len(leaf_ids(json.loads(doc["grid"]["payload"])["tree"])) == 15
-    assert len(leaf_ids(doc["grid"]["tree"])) == 15
+    assert doc["grid"]["window_count"] == 16   # S8: the Live Worker & Queue Debug window
+    assert len(leaf_ids(json.loads(doc["grid"]["payload"])["tree"])) == 16
+    assert len(leaf_ids(doc["grid"]["tree"])) == 16
     # load returns the portable doc (JS preview contract), applies nothing
     sentinel = json.dumps({"v": 5, "tree": default_grid_tree()}, separators=(",", ":"))
     Bridge.save_grid_layout(fake, sentinel)
     loaded = json.loads(Bridge.load_window_preset(fake, "Desk"))
     assert loaded["format"] == "chat-v-bot.window-preset"
-    assert len(leaf_ids(loaded["grid"]["tree"])) == 15
+    assert len(leaf_ids(loaded["grid"]["tree"])) == 16
     expect, _ = canonical_grid_payload(sentinel)
     assert fake.config.get_state("grid_layout") == expect  # untouched
 

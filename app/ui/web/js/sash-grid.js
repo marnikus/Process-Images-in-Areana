@@ -38,15 +38,6 @@ const SashGrid = {
   closedWindows: null,
   minimizedWindows: null,
 
-  WIN_ICONS: {
-    url_list: 'link', folder: 'folder', queue: 'photo_library',
-    prompt: 'edit_note', run: 'play_circle', progress: 'insights',
-    watcher: 'visibility',
-    log: 'terminal', settings: 'settings', captcha: 'verified_user',
-    browser: 'preview',
-    action_blocks: 'view_module', arena_presets: 'bookmarks',
-  },
-
   init() {
     this.gridEl = document.getElementById('sashGrid');
     if (!this.gridEl) { console.warn('sash-grid: #sashGrid missing'); return; }
