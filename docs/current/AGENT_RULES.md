@@ -204,6 +204,8 @@ When setting retired, constructor must accept and discard its key (`extra.pop(de
 
 Corollaries (S4/S5, 2026-09-20): **one queue-write funnel** — every queue mutation ends in `live.feed.commit_queue` (I-49); **one eligibility rule** — `core/run_scope` (`in_run_scope` for a pass, `in_live_scope` for the live plan, incl. the `max_attempts` rest rule), re-exported never copied; **one run-state writer** — `live.supervisor.set_run_state` (D-8, I-47): no other module assigns `_run_state` (source-locked tests). **One periodic URL writer** (S6, I-50) — `live.reconcile.reconcile_loop` at the one cadence `url_reconcile_interval_ms` (clamped by the one owner `debug_view.clamp_interval_ms`; the JS timer that raced it is deleted, source-locked); URL rows change through `commit_urls` (user) / `commit_urls_system` (reconciler, no undo) — never by a slot that saves without emitting.
 
+Corollary (S8, 2026-09-20): **one window table** — `core/window_catalog.WINDOWS` is the only hand-written list of windows; `WINDOW_IDS` / `WINDOW_TITLES` are derived from it and `constants.js` / `store.js` / `_PANEL_INITS` / `index.html` mirror it (I-51, `tests/test_window_catalog.py`). Never add a second id list or an icon/title map keyed by window id (the dead `WIN_ICONS` and the drifted `WINDOW_IDS` were L-8); a panel whose `data-window` id is not in the table is destroyed by the first grid render (L-5).
+
 Same as Old App RULE 10.
 
 ---

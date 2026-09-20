@@ -622,6 +622,52 @@ floors. Docs in the same commit: SYSTEM_OF_RECORD rows 19 / 21, module row,
 **I-53**, archive pointer; AGENT_RULES RULE 13 corollary; `docs/README.md`
 footer.
 
+### 2026-09-20 S8 (window contract 15 → 16 + the L-5 rescue, D-21 / I-51) — same chain
+
+**RED first.** `tests/test_window_catalog.py` (7) failed with `ImportError:
+cannot import name 'window_catalog' from 'app.core'`;
+`tests/js/test_live_debug_panel.mjs` 1 / 6 (no `winLiveDebug`, no 16th
+registry row, `WIN_ICONS` still present).
+
+**GREEN.** New `app/core/window_catalog.py` (58 lines, 100 % covered):
+`WINDOWS` — the one ordered 16-row table — with `WINDOW_IDS` /
+`WINDOW_TITLES` **derived** (the two hand-written lists had drifted on
+`recordings`' position, L-8), `LEGACY_WINDOW_IDS` (unchanged: no `page_pool`
+alias — the panel is rescued, not registered, D-21), `GRID_VERSION = 6`,
+`default_grid_tree` (`live_debug` in the last column split, every split sums
+to 100). `layout_service.py` **300 → 258 lines**, `max_func_loc` still 21,
+re-exports the six names so `layout_state`, `undo_entries`,
+`window_preset_service` and six test modules import unchanged; coverage
+97.6 → **99.6 %** (three never-exercised migration branches — a non-dict
+tree, a max-depth v5 tree that cannot take the 16th leaf, a split with
+non-list children — now have tests instead of a baseline edit). Same-line
+appends only in the frozen JS: `constants.js` **25 / 22** (row + `VERSION:
+6`), `store.js` **122 / 14**, `arena-app.js` **176** (`'LiveDebugPanel'`),
+`sash-core/tree.js` 106 (the four preset trees take the 16th leaf, sizes
+re-summed); `sash-grid.js` **123 → 114** (dead `WIN_ICONS` deleted).
+`index.html`: the Page Pool markup — declared `data-window="page_pool"`, an
+id no registry knew, so `SashGrid.render()`'s `replaceChildren` destroyed
+it on the first paint (L-5: the worker table was never visible) — now sits
+inside the registered `#winLiveDebug` ("Live Worker & Queue Debug") with
+its inner ids untouched (`PagePoolPanel.init()` still binds the three
+buttons — locked by test). New `js/panels/live-debug.js` (10 lines, the
+registered shell; S9 fills it) + `css/live-debug.css`. L-7 closed:
+`test_title_fit.mjs` and `test_captcha_saved_page.mjs` are in `test:js`.
+
+**Existing tests adapted.** `tests/test_grid_layout.py` window counts
+15 → 16 (4 assertions); `tests/test_panel_slots.py` canonical `v` 5 → 6;
+harness `ALL_WINDOW_IDS` + `TITLE_SECONDARIES` gain `live_debug` (the
+title-fit suite now runs with 16 windows).
+
+**Lane after S8.** pytest serial **1,765 passed · 4 skipped · 0 failed**
+(+8); `npm run test:js` **269 / 0** (+6 new, +10 L-7 previously unlisted);
+coverage **87.80 % line / 84.47 % branch** (S7: 87.77 / 84.38); jscpd
+`app/` **1.086 %**. `verify_quality.py --allow-legacy --changed-files` on
+the eight touched app files: **0 fails**; `--coverage-ratchet` adds only
+the two sandbox `libGL` floors. Docs in the same commit: SYSTEM_OF_RECORD
+row 19, module row, **I-51**; AGENT_RULES RULE 10 corollary;
+`docs/README.md` footer.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).
