@@ -605,7 +605,7 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
   the prompt + hidden spinners → `false`; visible spinner / `div` label /
   small wrapper / `aria-busy` / `match_text` prefix → `true` with the
   indicator; hidden ancestors excluded; rejected selector part skipped),
-  `tests/test_await_processing.py` (13: default stack really puts the block
+  `tests/test_await_processing.py` (14: default stack really puts the block
   before ATTACH; idle → 1 eval, 0 sleeps, no overlay; busy → waiting →
   success with overlay show/hide and pool marks; timeout never raises; cancel
   and tab abort → skipped; raising / empty / non-JSON probe replies → idle;
@@ -617,6 +617,64 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
   re-recorded on purpose:** `happy_full` — `AWAIT_PROCESSING_IMAGE` now
   `running → success` (the fake page is idle, so no `waiting` row) and one
   more `evaluate` (the indicator probe); every other golden unchanged.
+
+## B13 — API keys tracked in the public repo; images marked `completed` sent again (`.gitignore`, `core/run_scope.py`, `batch_orchestrator.py`, `multi_page_dispatcher.py`, `run_control.py`, `run_state.py`, `core/scanner.py`, `core/models.py`, `scan_service.py`)
+
+Design record: [`docs/archive/2026-10-09-run-scope-and-config-hygiene/design.md`](../2026-10-09-run-scope-and-config-hygiene/design.md).
+
+### B13a — runtime data in Git
+
+**Symptom.** Two 2Captcha keys (`config/2captcha.json`, `config/captcha_solvers.json`) visible on GitHub; the repo is public.
+
+**Root cause.** The root squash commit `0eeec39` (2026-09-19) committed the whole `config/` tree (894 files, 6.4 MB: state with local paths, session, 278 KB undo history, 36 captcha recordings, private arena chat URL in `arena_presets.json`), `logs/`, 50 `.pyc` files and 182 saved arena.ai pages containing account e-mails. `.gitignore` already listed most of it — a rule never un-tracks a file that was committed before it existed, so the ignore was decorative.
+
+**Fix.** `git rm --cached` of 1,126 paths (nothing deleted on disk), `.gitignore` → `config/*` + `!config/.gitkeep` + `arena webpages/`, `tests/test_repo_hygiene.py` (asks real `git ls-files`; fails on any tracked runtime path or `"api_key": "<hex>"` literal; the scanner is proven live with a planted key), `tools/pre_push_check.sh` step 0 (same check, blocks the push). Keys rotated by the owner — history still holds the old ones (every `arena/*` branch descends from `0eeec39`; a purge needs a `filter-repo` + force-push of `main` by the owner, rotation makes it hygiene rather than urgency). `tests/js/test_captcha_saved_page.mjs` keeps running where the pages exist and skips (by design, `skip: !hasFixtures`) where they don't. Invariant I-43. Commit `54cb501`.
+
+### B13b — `completed` images sent again
+
+**Symptom (owner).** "Marked as completed but sent a second time again." The committed `app_state.json` carried the footprint: completed items with `attempt_count` 4–6 and outputs `…_AI_3.png` / `…_AI_4.png` (the unique-suffix path is taken only when `_AI` already exists).
+
+**Root cause.** The run-scope predicate did exclude `completed` — but it was evaluated **once**, at batch start, and duplicated in two files (`queue_scan.selected_images`, `batch_orchestrator._selected_images`). From then on both loops walked a snapshot list without ever re-reading `img.status`. Three doors led a completed image back into a loop:
+
+1. **Second batch while one was alive** — `check_start_ready` refused only `_run_state == "running"`; after Pause (`paused`) or Stop-after-current (`stopping`) the Start button (never disabled in JS) was accepted and `start_run` **reset `_pause_requested` / `_stop_after`**, which woke the old loop. Two loops on one tab with overlapping lists: what one finished, the other sent again.
+2. **Parallel → sequential fallback** — `_try_parallel` caught an `Exception` out of `dispatch_parallel` and returned `False`; `_run_sequential` then re-ran **all** of `ctx.images`, including the parallel phase's completed ones.
+3. **Cancel race** — `cancel_current` set `idle` synchronously while the future was still unwinding; an immediate Start passed the gate.
+
+**Fix.**
+
+* `app/core/run_scope.py` — the one predicate: `RUNNABLE_STATUSES`, `is_runnable`, `run_scope` (selected ∧ runnable) and `claim_denied(img, log)` — the **claim-time re-check** that logs `⏭ Skipping <rel> — already <status>` and returns True. `queue_scan.selected_images` is its alias; the orchestrator copy is deleted.
+* `batch_orchestrator._run_sequential` and `multi_page_dispatcher._run_with_sem` call `claim_denied` right before the claim (sequential: before `_run_one_image`; parallel: after the semaphore, before the page is taken). A settled image is skipped, the batch continues (RULE 9). Closes doors 2 and 3 and any door not listed. **I-44.**
+* `run_state.batch_active(bridge)` (future alive?) + `run_control.check_start_ready` refuses with `batch still active` / `⚠ A batch is still active (paused / stopping / unwinding) — Resume or Cancel it first` **before** `start_run` can touch the pause/stop flags; the future is already released in `_on_coro_done`, so the gate opens by itself. Closes door 1. **I-45.**
+
+**Also decided (owner: yes) — resume on scan (I-46).** A scan that **adds** a source whose `<base>_AI[_n].<ext>` sibling already exists enters it as `completed` with `output_path` (exact `_AI` preferred, else the highest counter; any supported extension; same folder only), `selected=False`. One directory walk (`scanner._image_files` → `_outputs_by_source`; `_build_item` carries `existing_output`; `ImageItem.from_scan_dict` adopts it). Newcomers only: a rescan never overrides an in-app status, so *Reset → Scan* does not flip an image back (boundary pinned by test). Scan log lines come from `scan_service.scan_summary` (`…, N already have _AI output (Reset to redo)`).
+
+**Rejected.** A JS-side Start disable (would duplicate the decision, RULE 10); putting the claim check into `should_continue` with a string verdict (the loop owns the list, and the parallel worker needed the same call anyway); the first `scan_folder` cut at CC 9 (validation and AI-filter split into `_checked_root` / list comprehensions, CC 5).
+
+**Evidence (RULE 8 — each fails with the fix removed; verified by removing it).**
+
+| Test | Executes | Pins |
+|---|---|---|
+| `tests/test_run_scope.py` (15) | `is_runnable` table over every `ImageStatus`, `in_run_scope` / `run_scope`, `run_control` uses the core predicate (no panel alias), `claim_denied` logging incl. `— deselected` | one predicate, every status placed explicitly, Start and claim agree |
+| `…::test_sequential_skips_an_image_deselected_mid_run` | real `_run_sequential`; the checkbox is cleared from inside `job_started` of image 1 | image 2 never claimed, `⏭ … — deselected` |
+| `tests/test_batch_orchestrator.py::test_sequential_skips_settled_images_at_claim_time` | real `_run_sequential` + runner with `completed`/`skipped`/`pending` in the list | one job started, `⏭` lines, settled items untouched, batch reaches `idle` |
+| `…::test_parallel_fallback_does_not_redo_completed` | `_try_parallel` whose dispatch completes image A then raises → `_run_sequential` | A not re-sent (attempt 1), B processed |
+| `…::test_load_run_settings_uses_the_one_run_scope_predicate` | `_load_run_settings` | scope list; `_selected_images` stays deleted |
+| `tests/test_multi_page_dispatcher_run.py::test_settled_image_never_acquires_a_page` | real `_run_with_sem` on a real `PagePool` | no page taken, no `job_started`, pool STEADY |
+| `tests/test_run_control_gate.py` (6) | real `RunControlMixin.start_run` with a live `Future` in `paused` / `stopping` / `idle` | refused, nothing scheduled, flags untouched; allowed once the future is done; gate order |
+| `tests/test_run_state.py::test_batch_active_follows_the_future_not_the_label` | `batch_active` | live / done / cancelled / missing |
+| `tests/test_scan_resume.py` (11) | real files in `tmp_path` through `scan_folder`, `from_scan_dict`, `merge_scanned`, both scan workers | output reported, exact-then-highest, same-folder only, newcomers-only boundary, summary line |
+| `tests/test_repo_hygiene.py` (15) | real `git ls-files` | no runtime path / key literal tracked; scanner finds a planted key |
+| `tests/test_queue_thumbnails.py` (8) | real PNGs through `request_thumbnail` / `start_thumb_job` / `thumb_job_done` | cached → pending ticket → emit, slot always released (kept `queue_scan.py` above its coverage floor after the `selected_images` alias was deleted) |
+| `tests/test_naming.py::test_parse_ai_output_is_the_one_family_definition` + existing naming / folder_ai / scanner suites | `parse_ai_output` table (counter, suffix param, case, the degenerate `_AI` stem) | one `_AI` vocabulary; `scanner._AI_FAMILY_RE` and `folder_ai._STRIP_RE` gone; Drop _AI and the scan filter behave exactly as before (equivalence gate) |
+| `tests/test_scan_resume.py` (+2: `…empty_scan_as_empty_not_success`, `…worker_logs_an_empty_folder_as_a_warning`) | `scan_summary` and the real scan worker on a folder with no supported file | RULE 4 — `warn`, never a success line |
+| `tests/test_progress.py` (3) | `core/progress.py` table + `AppState.recalculate_progress` | counts per key from a real mixed queue; pending = selected ∧ untouched |
+| `tests/test_folder_ai.py::test_os_errors_are_reported_per_file_and_never_stop_the_sweep` | real tmp tree, `Path.rename` / `Path.unlink` refusing one file | the `errors` contract names the file, the sweep finishes the rest (RULE 4 / RULE 9); added when `folder_ai.py` lost its regex lines and slipped 0.09 pp under its per-file floor |
+
+Goldens: unchanged (no block behaviour touched); slot surface unchanged (135).
+
+### B13 validation pass (same day) — all 23 rules re-read, `3a5ee06` re-audited
+
+Findings and fixes (design + numbers: [`design.md` → *Validation pass*](../2026-10-09-run-scope-and-config-hygiene/design.md)): **V1** RULE 10 — the claim-time check tested status only while Start filtered `selected ∧ runnable`; an image deselected mid-run was still sent → `in_run_scope` is the one predicate for both. **V2** RULE 16.4 — `scanner._AI_FAMILY_RE` was the fourth definition of the `_AI` family → `naming.AI_SUFFIX` + `naming.parse_ai_output`, consumed by the scan filter, the output map and `folder_ai.strip_ai_name`. **V3** RULE 4 — `Scanned 0 images, 0 new` was logged at success → `scan_summary` returns `(line, level)`, empty = `warn`. **V4/V5** readability — blank lines / type hint in `models.py`, core import first in `run_control.py`. **V6** RULE 18.2 — `models.py` reached 301 lines → progress counting extracted to `core/progress.py` (models 272, progress 49; `AppState.recalculate_progress` is the only caller). Fixture correction: `tests/test_multi_page_dispatcher_run.make_img` now builds *selected* images (a batch list never holds a deselected one); two `test_panel_slots.py` tests that wanted an unselected image say so explicitly.
 
 ## Gate evidence (2026-10-02)
 
@@ -691,3 +749,15 @@ dead-button reports and supersedes the B4/B5 diagnoses for that symptom.
 | Goldens | `happy_full` re-recorded (documented in §B12); the other 11 scenario goldens byte-identical |
 | `tests/test_bridge_slots.py` | frozen surface **135** slots — unchanged (no new slot) |
 | `compileall` / pyflakes | clean |
+
+## Gate evidence (2026-10-09, B13)
+
+| Gate | Result |
+|---|---|
+| `pytest -q -n 4` (CI-like, no PySide6) | 1,621 passed, 1 skipped, same 2 pre-existing environmental failures deselected (`test_qt_shim_fallback`, `test_cdp_client_stub` IPv6 message); one timing flake seen once under the coverage tracer (`test_cooldown_service.py::test_wait_for_batch_ready_waits_for_zero`, untouched since the root commit, 3/3 green re-run) |
+| `npm run test:js` | 240 pass / 0 fail (unchanged — no JS touched) |
+| `tools/verify_quality.py --allow-legacy --coverage-ratchet --js` | PASSED — 0 fails / 0 warns; coverage **87.03 % line / 83.25 % branch** against the 86.36 / 82.33 floor (`run_scope.py`, `progress.py`, `models.py`, `folder_ai.py` 100 % line; `queue_scan.py` 52.24 → 74.91 %); `--changed-files` on the 12 touched production files: 0 fails, no ratchet maximum grown; `--changed --base origin/<branch>` lane on the committed diff: PASSED (see commit) |
+| Goldens | all 12 scenario goldens byte-identical |
+| `tests/test_bridge_slots.py` | frozen surface **135** slots — unchanged |
+| `compileall` / pyflakes | clean |
+| Repo hygiene | `git ls-files -- config logs 'arena webpages' '*.pyc'` → `config/.gitkeep` only; `git grep` for `"api_key": "<hex>"` → nothing |

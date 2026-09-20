@@ -33,6 +33,25 @@ echo "=== Arena Quality Gate — pre-push check (RULE 16) ==="
 echo "Docs: docs/current/AGENT_RULES.md RULE 16"
 echo ""
 
+# 0. Repo hygiene — runtime data and secrets never reach GitHub (2026-10-09, B13:
+#    API keys + config/ + logs/ + saved pages + .pyc were tracked in a public
+#    repo although .gitignore listed them). Mirrors tests/test_repo_hygiene.py.
+echo "▶ Repo hygiene (config/, logs/, arena webpages/, *.pyc must not be tracked)..."
+LEAK="$(git ls-files -- config logs 'arena webpages' '*.pyc' '*__pycache__*' | grep -v '^config/.gitkeep$' || true)"
+if [ -n "$LEAK" ]; then
+  echo "  ❌ runtime data is tracked — git rm --cached it (files stay on disk):"
+  echo "$LEAK" | head -n 20
+  exit 1
+fi
+KEYS="$(git grep -lIiE '"api_key"\s*:\s*"[0-9a-f]{20,}"' -- . || true)"
+if [ -n "$KEYS" ]; then
+  echo "  ❌ api_key literal in tracked files — rotate the key, then untrack:"
+  echo "$KEYS"
+  exit 1
+fi
+echo "  ✅ No runtime data or API keys tracked"
+echo ""
+
 # 1. Python syntax + undefined-name check
 #    Whole app/, not a hand-picked list: 2026-09-19 a merge dropped an import in
 #    app/ui/main_window.py (outside the old list) and the app died on startup
@@ -182,6 +201,6 @@ echo ""
 
 echo "✅ All pre-push checks PASSED — safe to push"
 echo "   git push origin $(git rev-parse --abbrev-ref HEAD)"
-echo "Lanes: syntax + pytest + node + coverage(ratchet) + quality gate(py+js) + vulture + jscpd + metrics"
+echo "Lanes: hygiene + syntax + pytest + node + coverage(ratchet) + quality gate(py+js) + vulture + jscpd + metrics"
 echo "Not in the push budget (run on demand): mutation — bash tools/mutmut_scope.sh run [SCOPE]"
 echo "  (scopes: tools/mutmut_scopes.txt, evidence: docs/archive/2026-09-19-area-d-implementation/d5-mutation.md)"

@@ -12,9 +12,10 @@ import json
 import logging
 from datetime import datetime
 
+from app.core.run_scope import run_scope
 from app.services.batch_orchestrator import run_batch
-from app.services.run_state import schedule_coro
-from app.ui.panels.queue_scan import push_queue_undo, selected_images
+from app.services.run_state import batch_active, schedule_coro
+from app.ui.panels.queue_scan import push_queue_undo
 from app.ui.panels.url_queue import _URL_GATE_MSG, _urls_gate_error, enabled_urls
 from app.ui.qt_compat import Slot
 
@@ -59,7 +60,7 @@ def check_start_inputs(bridge):
     if not prompt:
         bridge._log("⚠ Prompt is empty — set prompt before running", "warn")
         return json.dumps({"ok": False, "error": "empty prompt"})
-    if not selected_images(bridge.state.images):
+    if not run_scope(bridge.state.images):
         bridge._log("⚠ No selected images — select images in queue", "warn")
         return json.dumps({"ok": False, "error": "no selected images"})
     gate = _urls_gate_error(bridge, enabled_urls(bridge.state.urls))
@@ -78,6 +79,9 @@ def check_start_ready(bridge):
     if bridge._run_state == "running":
         bridge._log("⚠ Already running", "warn")
         return json.dumps({"ok": False, "error": "already running"})
+    if batch_active(bridge):
+        bridge._log("⚠ A batch is still active (paused / stopping / unwinding) — Resume or Cancel it first", "warn")
+        return json.dumps({"ok": False, "error": "batch still active"})
     return None
 
 
@@ -96,7 +100,7 @@ def fail_processing_images(bridge) -> None:
     try:
         # Also emit job_finished cancelled for current jobs
         from app.core.enums import ImageStatus
-        for img in selected_images(bridge.state.images):
+        for img in run_scope(bridge.state.images):
             if img.status == ImageStatus.PROCESSING.value:
                 img.status = ImageStatus.FAILED.value
                 img.error = "Cancelled by user"
@@ -224,7 +228,7 @@ class RunControlMixin:
         if err:
             return err
         prompt = self.state.prompt.get("user_prompt", "").strip()
-        selected = selected_images(self.state.images)
+        selected = run_scope(self.state.images)
         urls = enabled_urls(self.state.urls)
         self._run_state = "running"
         self._cancel_requested = False

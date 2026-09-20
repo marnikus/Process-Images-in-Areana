@@ -74,3 +74,19 @@ def test_atomic_write():
         assert final.read_bytes() == data
         partials = list(root.glob("*.partial_*"))
         assert len(partials) == 0
+
+
+def test_parse_ai_output_is_the_one_family_definition():
+    """V2 / RULE 10: `_AI` family vocabulary lives in naming; scanner and folder_ai consume it."""
+    from app.core import folder_ai, scanner
+    from app.core.naming import AI_SUFFIX, parse_ai_output
+    assert AI_SUFFIX == "_AI" == OutputSpec().suffix
+    assert parse_ai_output("photo_AI") == ("photo", None)
+    assert parse_ai_output("photo_AI_3") == ("photo", 3)
+    assert parse_ai_output("my_AI_photo_AI_10") == ("my_AI_photo", 10)
+    assert parse_ai_output("photo") is None
+    assert parse_ai_output("photo_ai_2") is None            # case-sensitive, as before
+    assert parse_ai_output("photo_AI_2_backup") is None
+    assert parse_ai_output("image_X_1", suffix="_X") == ("image", 1)
+    assert parse_ai_output("_AI") == ("", None)             # today's endswith() accepts it too
+    assert not hasattr(scanner, "_AI_FAMILY_RE") and not hasattr(folder_ai, "_STRIP_RE")

@@ -147,6 +147,39 @@ row is `running → success` on an idle fake page and the probe adds one
 `evaluate`); the other eleven goldens are byte-identical. Slot surface
 unchanged (135).
 
+### 2026-10-09 follow-up (B13 — API keys in the public repo; `completed` images sent again)
+
+No re-record needed. A: 1,126 runtime paths left the index (`config/` but
+`.gitkeep`, `logs/`, `arena webpages/`, 50 `.pyc`); the guard is a test
+(`tests/test_repo_hygiene.py`, 15, real `git ls-files`) plus pre-push step 0.
+B: the run-scope predicate moved out of two files into `app/core/run_scope.py`
+(44 lines, 3 functions, 100 % line + branch) and is re-checked at claim time
+in `_run_sequential` (12 LOC, CC 5) and `_run_with_sem` (6 LOC); Start is
+gated by `run_state.batch_active` in `check_start_ready` (12 LOC, CC 5).
+C: `scanner.scan_folder` grew one responsibility (outputs per source) and
+was split rather than fattened — `_checked_root` / `_output_rank` /
+`_outputs_by_source` (max 11 LOC, CC 5), `scan_folder` 14 LOC / CC 6; the
+first cut at CC 9 was rejected. The same-day validation pass (every rule
+re-read, the diff re-audited) unified the claim-time check with the Start
+predicate (`in_run_scope`, RULE 10), collapsed the `_AI` family vocabulary
+into `naming.parse_ai_output` (RULE 16.4 — `scanner._AI_FAMILY_RE` and
+`folder_ai._STRIP_RE` deleted), made an empty scan log as empty (RULE 4)
+and, when `models.py` touched 301 lines, moved progress counting to
+`core/progress.py` (49 lines, 4 functions; `models.py` 272). No ratchet
+maximum grew in any touched file; `queue_scan.py` lost its
+`selected_images` alias (one call re-hosted, RULE 18.1). New
+lanes: `tests/test_run_scope.py` (15), `tests/test_run_control_gate.py` (6,
+real `start_run` against a live `Future`), `tests/test_scan_resume.py` (13,
+real files through scanner → model → merge → scan workers),
+`tests/test_progress.py` (3),
+`tests/test_queue_thumbnails.py` (8 — the never-blocking thumbnail contract,
+real PNGs; added when deleting the covered alias pushed `queue_scan.py`
+under its per-file coverage floor: the floor is met with behaviour, not by
+keeping dead lines), 5 tests across the orchestrator / dispatcher /
+run_state files, +1 naming; pytest 1,554 → 1,621;
+`npm run test:js` unchanged (240); coverage 86.55 / 82.63 → **87.03 / 83.25**.
+Goldens byte-identical; slot surface unchanged (135).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

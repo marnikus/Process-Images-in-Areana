@@ -111,7 +111,7 @@ def test_cdp_tools_config_round_trip_and_launch_command(cfg):
 
 
 def test_cdp_tools_guards_on_missing_cdp_or_image(cfg):
-    state = make_state(images=[make_img()])
+    state = make_state(images=[make_img(selected=False)])  # nothing selected → no fallback image
     host, _ = make_host((CdpToolsMixin,), cdp=None, config=cfg, state=state,
                         highlight_rect=Signal(str))
     assert json.loads(host.cdp_attach_image_test("i-a.png"))["error"] == "CDP not connected"
@@ -224,7 +224,7 @@ def test_run_control_retry_and_reset_targets(cfg):
 # ── queue_scan ──
 
 def test_queue_scan_selection_and_folder_guards(cfg):
-    img = make_img()
+    img = make_img(selected=False)
     host, _ = make_host((QueueScanMixin, RunControlMixin), state=make_state(images=[img]),
                         config=cfg, _scan_in_progress=False)
     assert json.loads(host.set_image_selected("i-a.png", True))["ok"] is True

@@ -1,10 +1,14 @@
-"""Models — C5 refactor with predicate table for recalculate_progress."""
+"""Models — queue rows (`UrlRow`, `ImageItem`), job records, settings and `AppState`.
+
+Progress counting lives in `core/progress.py`; imports go core -> core only.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from .enums import UrlStatus, ImageStatus, JobStatus, RunState
+from .progress import build_progress_counts
 import uuid
 
 def now_iso() -> str:
@@ -38,6 +42,14 @@ class UrlRow:
         self.tab_id = tab_id
         return True
 
+
+def _discovered_status(selected: bool, existing_output: str | None) -> str:
+    """Discovered with an `_AI` sibling → completed (I-46); else pending / selected."""
+    if existing_output:
+        return ImageStatus.COMPLETED.value
+    return ImageStatus.SELECTED.value if selected else ImageStatus.PENDING.value
+
+
 @dataclass
 class ImageItem:
     id: str
@@ -62,6 +74,7 @@ class ImageItem:
 
     @staticmethod
     def from_scan_dict(d: dict, selected: bool = False) -> "ImageItem":
+        output = d.get("existing_output")  # `_AI` sibling already on disk → completed (I-46)
         return ImageItem(
             id=d.get("id") or d.get("fingerprint"),
             relative_path=d["relative_path"],
@@ -72,11 +85,11 @@ class ImageItem:
             size=d["size"],
             mtime=d["mtime"],
             fingerprint=d["fingerprint"],
-            status=ImageStatus.PENDING.value if not selected else ImageStatus.SELECTED.value,
-            selected=selected,
+            status=_discovered_status(selected, output),
+            selected=bool(selected and not output),
             assigned_url_id=None,
             attempt_count=0,
-            output_path=None,
+            output_path=output,
             error=None,
             content_hash=d.get("content_hash"),
         )
@@ -170,39 +183,6 @@ class AppSettings:
     supported_types: List[str] = field(default_factory=lambda: [".png", ".jpg", ".jpeg", ".webp"])
     ignore_ai_suffix: bool = True
 
-# ---- progress helpers with predicate table (C5) ----
-
-def _count_selected(images: List[ImageItem]) -> int:
-    return sum(1 for img in images if img.selected)
-
-
-def _count_by_status(images: List[ImageItem], status_value: str) -> int:
-    return sum(1 for img in images if img.status == status_value)
-
-
-def _count_pending_selected(images: List[ImageItem]) -> int:
-    pending_set = {ImageStatus.PENDING.value, ImageStatus.SELECTED.value}
-    return sum(1 for img in images if img.selected and img.status in pending_set)
-
-
-def _build_progress_counts(images: List[ImageItem]) -> Dict[str, int]:
-    # predicate table mapping progress keys to counting funcs/statuses
-    status_map = {
-        "processing": ImageStatus.PROCESSING.value,
-        "completed": ImageStatus.COMPLETED.value,
-        "skipped": ImageStatus.SKIPPED.value,
-        "failed": ImageStatus.FAILED.value,
-        "needs_review": ImageStatus.NEEDS_REVIEW.value,
-    }
-    counts = {
-        "total": len(images),
-        "selected": _count_selected(images),
-        "pending": _count_pending_selected(images),
-    }
-    for key, status_val in status_map.items():
-        counts[key] = _count_by_status(images, status_val)
-    return counts
-
 
 def _folder_from_saved(value: Any) -> Dict[str, Any]:
     """Saved `folder` → dict (null / bare path string in legacy files never brick the picker)."""
@@ -245,7 +225,7 @@ class AppState:
     last_run: Optional[str] = None
 
     def recalculate_progress(self):
-        self.progress = _build_progress_counts(self.images)
+        self.progress = build_progress_counts(self.images)
 
     def to_dict(self) -> dict:
         return {

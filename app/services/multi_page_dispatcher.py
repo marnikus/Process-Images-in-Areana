@@ -1,5 +1,5 @@
 """Multi-page dispatcher — parallel dispatch to different webpages."""
-# ideal-size: ~395 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx/FreeWaitSpec; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
+# ideal-size: ~400 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx/FreeWaitSpec; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typing import List, Tuple
 from app.browser.page_pool import PagePool
 from app.core.enums import ImageStatus
 from app.core.models import ImageItem, UrlRow
+from app.core.run_scope import claim_denied
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
 from . import auto_connect as ac
@@ -374,7 +375,10 @@ async def _create_tasks(ctx: DispatchCtx, images):
 
 
 async def _run_with_sem(ctx: DispatchCtx, img):
+    """One worker slot; the claim-time re-check (I-44) runs right before the page is taken."""
     async with ctx.sem:
+        if claim_denied(img, ctx.bridge._log):
+            return
         await run_one_image_on_page(ctx.bridge, ctx.pool, img, ctx.urls)
 
 

@@ -10,7 +10,7 @@ Goals:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Tuple
 
 from app.core.models import ImageItem
 
@@ -71,6 +71,15 @@ def merge_scanned(images: List, scanned: List[Dict]) -> int:
             e.mtime = s["mtime"]
             e.absolute_path = s["absolute_path"]
     return added
+
+
+def scan_summary(scanned: List[Dict], added: int) -> Tuple[str, str]:
+    """(log line, level) for one scan — an empty scan is reported as empty, never as success (RULE 4)."""
+    if not scanned:
+        return "Scanned 0 images — no supported files under this folder (check supported types / ignore _AI)", "warn"
+    done = sum(1 for s in scanned if s.get("existing_output"))
+    line = f"Scanned {len(scanned)} images, {added} new"
+    return line + (f", {done} already have _AI output (Reset to redo)" if done else ""), "success"
 
 
 def should_ignore_file(filename: str, ignore_ai_suffix: bool = True) -> bool:
