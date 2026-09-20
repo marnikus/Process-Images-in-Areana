@@ -322,3 +322,127 @@ Each row is a *verified* reason why a stage cannot move earlier, or why it must 
 | **The JS lane is global, not per-change** | `check_js(js_files, baseline)` calls `js_maxima(js_files)`, which runs `node tools/js_metrics.js` over the **whole** `app/ui/web` tree and returns per-file maxima for every file (`:201-234`); the passed list is only an on/off switch (`:1032-1034`). So a stage that touches one `.js` file is accountable for every baselined `.js` file's `file_lines`/`func_count` |
 | **Two stages edit the same frozen line — and commute** | S6 appends `'UrlInterval'` and S9 appends `'LiveDebugPanel'` to the same last line of `_PANEL_INITS` (`arena-app.js:30-34`). Both are net-zero appends to a data list, so they compose in either order; the ledger in `quality-budget.md` §3.2 keeps the file at 176 lines / 28 funcs after both |
 | **CSS is the free surface, but named honestly** | Neither lane covers CSS (`all_js_files` = `app/ui/web/**/*.js`, `:178-179`), so S7 puts `.url-not-receiver` in the existing `css/arena.css` (S7 runs before the window exists) and S8/S9 create `css/live-debug.css` for the window's own strips |
+
+---
+
+## 9. Interface-level research (rev 3 — what forced D-25, D-26, D-27)
+
+Everything below was measured in this checkout at `6bbaf8b` with the gate's **own** code
+(`tools/verify_quality.py` imported as a module: `node_loc`, `current_maxima`, `compute_cc_simple`,
+`get_nesting_depth`, `effective_params`) so the numbers are the numbers the gate will compare against.
+`radon` is not installed here, so CC comes from the AST fallback — re-measure after S0's
+`pip install -r requirements.txt`; `current_maxima(Path('app/browser/output_wait.py'))` reproduces the
+baseline exactly (23/4/0/8/0/3/4, 211 lines, 17 functions), which is the evidence that the fallback and
+the baseline agree.
+
+### 9.1 The ratchet, precisely (this is what makes "small edit" a measured claim)
+
+* `RATCHET_METRICS = max_func_loc, max_class_loc, max_methods, max_cc, max_cog, max_nest, max_params`
+  — **any growth fails**, even in an already-baselined file (`verify_quality.py:171-175`, `:296-309`).
+* `file_lines` and `func_count` are recorded but **not** enforced for Python (`:171-175`); for JS they
+  **are** enforced globally whenever any `.js` changes (`:252-270`, `:1032-1034`).
+* ⇒ the legal move in a tight Python file is always *extract into a new symbol or a new file*, never
+  *add a branch*; and in JS it is *same-line edits or a new file*.
+* Full-tree re-measure of all 222 baseline entries at `6bbaf8b`: **0 breaches** on the seven enforced
+  maxima. Two **soft** drifts only: `single_job_runner.py` recorded 902 lines / 76 functions vs actual
+  **939 / 79**, `undo_entries.py` 404 vs **406**. Any doc quoting `file_lines` must say recorded-vs-actual
+  (`quality-budget.md` §3.1 corrected).
+
+### 9.2 Class spans that decide *where a class may live* (`node_loc`, exact)
+
+| Class | File | Span | File `max_class_loc` | Consequence |
+|---|---|---:|---:|---|
+| `WaitSpec` | `browser/output_wait.py:23-27` | **3** | 4 | `+1` field ⇒ 4 = **at** the max (legal, no headroom left) |
+| `LoopState` | `browser/output_wait.py:29-33` | **4** | 4 | `+1` field ⇒ 5 = **breach** |
+| `UrlRow` | `core/models.py:13-21` | **26** | 74 | `+receiver` ⇒ 27, plenty of room |
+| `PageInfo` | `browser/page_status.py:28-47` (+ `to_dict`) | **79** | 79 | **zero** headroom ⇒ S9 adds no field (it needs none: `current_image` exists) |
+| `CaptchaSignal` | `captcha/signals.py` | 44 | 44 | docstring-only edits |
+| `SolveOutcome` | `captcha/signals.py` | 22 | 44 | `+wait_reason`? — not needed (the status string carries it) |
+| `PollContext` / `cdp_arena.WaitSpec` | `cdp_arena/output.py`, `cdp_arena/mixins.py` | 5 / 7 | 7 / 9 | `pause=` must ride an **existing** field line |
+| `AppSettings` / `AppState` / `JobRecord` / `ImageItem` / `PageStatus` / `JobRequest` | various | 33 / 74 / 42 / 41 / 8 / 7 | all ≥ their span | no growth needed anywhere in this chain |
+
+**⇒ D-25:** a new `PauseClock` class cannot live in `output_wait.py` (any new class there is ≥ 5 lines
+of body and the file's `max_class_loc` is 4), and it cannot ride `LoopState`. `WaitSpec.pause` is the
+only carrier, and the clock itself becomes `app/core/pause_clock.py`.
+
+### 9.3 Function-level measurements for every symbol a stage edits
+
+The full 25-file table is `tdd-interfaces.md` §D. The four that changed the design:
+
+| Symbol | loc | CC | nest | params | File maxima | Verdict |
+|---|---:|---:|---:|---:|---|---|
+| `captcha/service.handle_captcha:210` | 21 | **7** | 1 | 2 | CC **7** = file max | an added `if not in_scope: return` ⇒ CC 8 = breach ⇒ **D-26** split into a 4-line entry + `_handle_captcha_scoped` |
+| `cdp_arena/output._security_gate:115-125` | 10 | **4** | **1** | 3 | CC **4**, nest **1** = file maxima | in-function charging double-breaches ⇒ **extract** `_settle_timed(settler, clock)` |
+| `cdp_arena/output._map_wait_result:127-136` | 10 | 3 | 1 | **4** | params **4** = file max | ⇒ `(cdp, result, spec)` (4→3) **and** a `_timeout_text()` helper (no second branch in a CC-4 file) |
+| `browser/output_wait.wait_for_new_output_with_spec:189-211` | **23** | **8** | **3** | **4** | all four = file maxima | **untouchable** — the clock rides `WaitSpec`, the loop body never changes |
+| `app_settings.load_arena_preset:326-344` | **18** | 5 | 2 | 1 | loc **18** = file max | S6's interval applier must be a **new module function**, not a line inside it (`save_settings` 16 → 17 ≤ 18 ✓) |
+| `cooldown_service.wait_captcha_cleared` | 18 | 7 | 2 | **4** | params **4** = file max | the cap composes into the caller's `stop` (`policy.WaitDeadline`) — module untouched, `test_cooldown_service.py:604-618` stays green |
+| `browser/page_pool.PagePool.add_page` | 23 | **10** | 3 | 2 | CC **10** = RULE 16 hard limit **and** all file maxima | `PagePool` is untouchable in every stage (S4/S6/S9 only read it) |
+| `panels/queue_scan.RunControlMixin` / `panels/run_control.RunControlMixin` | — | — | **10 methods** | — | `max_methods` **10** = file max | S4's `commit_queue` funnel adds **module-level** functions only, never a mixin method |
+| `panels/browser_tabs.report_auto_plan` | 12 | **7** | 2 | 2 | CC **7** = file max | S6 moves the pass body to `live/reconcile.reconcile_once` (a *new* file) instead of growing it |
+
+### 9.4 The three test-integrity defects (D-27)
+
+* **L-6 — the test doubles the seam it tests.** `tests/test_panel_browser_tabs.py:82,156,168,180,211`
+  does `panel._schedule_coro = queued.append`, i.e. it replaces the panel's scheduler, so the tests pass
+  while the production call `page_pool.py:147 self._schedule_coro(...)` is broken (`AttributeError` on a
+  real host — L-1). S1 deletes the double and spies on the real
+  `run_state.schedule_coro:194` (`monkeypatch.setattr` + a recording wrapper), keeping all five
+  expectations meaningful.
+* **L-7 — two JS tests exist but never run.** `package.json`'s `test:js` is an explicit list of
+  **25** `.mjs` files while **30** exist on disk: three are harnesses/helpers (`fake_dom.mjs`,
+  `sash_harness.mjs`, `user_layout.mjs` — correctly unlisted) and **two are real test files**
+  (`test_captcha_saved_page.mjs`, `test_title_fit.mjs`) that no command runs, so a green gate says
+  nothing about them — including the 96 px title-bar invariant that S8's 16th window must satisfy
+  (`test_title_fit.mjs:107` iterates every window). S10 adopts them
+  (→ 30) only if both are green; otherwise the reason is recorded in `QUALITY_RECHECK.md`.
+* **L-8 — a dead registry that has already drifted.** `sash-grid.js:41-49` defines `WIN_ICONS` with
+  one hit repo-wide (dead), and its key set already disagrees with `WINDOW_IDS`. S8 **deletes** it
+  (−9 lines, so the JS `file_lines` ratchet moves down) instead of adding a `live_debug` entry to a
+  table nobody reads.
+
+### 9.5 Characterization-harness facts that decide S2 and S5
+
+* `tests/characterization/harness.py:105-121` `build_bridge` constructs a **real** `Bridge` + real
+  `ConfigManager` and calls `cfg.set_state(action_blocks=…)` — it never arms the Watcher ⇒ **S2 must add
+  a `watcher_on: bool = False` parameter** and `test_captcha_pause_resume.py` must pass `True`; with the
+  default `False` the 12 goldens stay **byte-identical** (`check_golden:181-192`, `UPDATE_GOLDENS=1`).
+* `collect_trace:158-172` includes `run_state` read from `bridge._run_state`, and `check_golden`
+  excludes **logs** ⇒ new log lines are free, but any change to *who writes* `_run_state` drifts the
+  goldens. **S5 therefore swaps `RUNNERS:208` to `live.supervisor.run_live` and arms `arm_hooks:211-231`
+  (`_stop_after`)** in the same commit as the move.
+* Pinned markers: `"Starting"`, `"Job completed"`, `"Batch complete"`, `"Completed with warnings"`,
+  `"Prompt verification failed: Mismatch"` (`test_batch_goldens.py:37,47,81`;
+  `test_captcha_pause_resume.py:124-132`) — `"Batch complete"` must still be emitted when a run is
+  stopped by `_stop_after`, so the supervisor's stop path has to finish the pass.
+* No golden contains the string `"Timeout"` ⇒ S3's new timeout wording cannot break one.
+* `tests/fakes/cdp_stub_server.py` (129 lines) + `install_patches` (`characterization/fakes.py:196`)
+  already stub `wait_for_new_output` wholesale (`fakes.py:125-135`) ⇒ S3's tests need their **own**
+  real-loop harness (`test_output_wait_timeout_pause.py` drives `wait_for_new_output_with_spec`
+  directly against the stub server), not the golden harness.
+
+### 9.6 UI/JS facts that fix S6-S9 shapes
+
+* **No settings getter slot exists** (`app/ui/panels/app_settings.py` exposes `set_theme`, `set_prompt`,
+  `save_settings`, preset import/export/list/save/load/delete, `refresh_users`) and D-20 forbids adding
+  one ⇒ the interval control can only *write* through `save_settings` and *read* through the pushed
+  `progress_updated.live` payload. That is why `layout_state.emit_arena_state:38-47` (loc 10 · CC 2 ·
+  params 1, file max 19) gains exactly one line in S6: `prog["live"] = debug_view.cadence(bridge)`, and
+  S9 swaps that same line to `debug_view.live_view(bridge)` (zero growth).
+* `url-list/listeners.js:25-40` `bind()` is **15 lines = the file's `max_func_loc`**, and `:31` shows the
+  self-binding precedent (`urlCooldownSaveBtn` binds its own id) ⇒ D-12R's control **must** be a new
+  file (`url-list/interval.js`, ~60 LOC, modelled on `cooldown.js` 48 LOC / 9 funcs) — there is no legal
+  place to add a listener inside `listeners.js`.
+* `web/css/arena.css` is **945 lines** and already linked at `index.html:13` ⇒ S7's `.url-not-receiver`
+  rule needs no new `<link>`; S8/S9's `live-debug.css` does (one link, ungated — CSS is outside both
+  ratchet lanes; `index.html:7-14` lists the stylesheets).
+* `arena-app.js:29-34` `_PANEL_INITS` (17 names) is a single multi-line list whose **file** is frozen at
+  176 lines / 28 functions ⇒ S6's `'UrlInterval'` and S8's `'LiveDebugPanel'` are both *same-line*
+  appends and they commute (no ordering conflict between stages).
+* `watcher_solver.solver_start:128-137` is the in-repo precedent for an idempotent loop start through
+  `schedule_coro` ⇒ S6's `start_reconciler` copies that shape (start once, `ensure_bg_loop` handles a
+  missing loop), called from `main_window._build_ui` (`:48-55`, +1 line; `main_window.py` has
+  `max_methods` **10** = file max, so no new method there either).
+* JS metrics are **unavailable** in this checkout (`acorn` missing without `npm ci`; the lane prints
+  "acorn not installed" and skips) ⇒ `tools/quality_baseline.json`'s JS numbers are authoritative for
+  planning, and S0's `npm ci` is what makes them checkable.
