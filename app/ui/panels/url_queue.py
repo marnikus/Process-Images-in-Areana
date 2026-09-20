@@ -13,7 +13,6 @@ from datetime import datetime
 from app.core.models import UrlRow
 from app.services.auto_connect import (
     claim_unlinked_from_pool,
-    dedupe_linked_rows,
     enabled_tab_ids,
 )
 from app.ui.qt_compat import Slot
@@ -55,14 +54,11 @@ def _urls_gate_error(bridge, urls) -> str:
 
 
 def _dedupe_state_rows(state_urls) -> tuple[list, int]:
-    """Repair legacy N-rows-per-tab state; returns (plan rows, removed)."""
-    rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id, "enabled": u.enabled}
-            for u in state_urls]
-    kept, dropped = dedupe_linked_rows(rows)
-    if not dropped:
-        return rows, 0
-    drop = {r["id"] for r in dropped}
-    state_urls[:] = [u for u in state_urls if u.id not in drop]
+    from app.services.live.url_policy import dedupe_rows as _dp
+    kept, dropped = _dp(state_urls)
+    if dropped:
+        drop_ids = {getattr(u, "id", "") for u in dropped}
+        state_urls[:] = [u for u in state_urls if getattr(u, "id", "") not in drop_ids]
     return kept, len(dropped)
 
 
@@ -75,14 +71,8 @@ def _tab_already_owned(urls, tab_id: str) -> bool:
 
 
 def _add_missing_rows(urls, adds) -> int:
-    """Append rows for tabs none owns yet; returns count added."""
-    added = 0
-    for url, tab_id in adds:
-        if _tab_already_owned(urls, tab_id):
-            continue
-        urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
-        added += 1
-    return added
+    from app.services.live.url_policy import add_rows as _ar
+    return _ar(urls, adds)
 
 
 def push_urls_undo(bridge) -> None:

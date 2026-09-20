@@ -53,6 +53,8 @@ class MainWindow(QMainWindow):
         manager = self.bridge._captcha_service().recordings
         self.recordings_bridge = CaptchaRecordingsBridge(manager, self)
         self._attach_web_channel()
+        try: from app.ui.panels.browser_tabs import start_url_reconciler; start_url_reconciler(self.bridge)
+        except Exception: pass
 
     def _init_cdp_client(self) -> None:
         # CDP client for Chrome remote debugging — host/port from config so user can choose

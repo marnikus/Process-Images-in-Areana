@@ -62,24 +62,31 @@ def is_live(bridge) -> bool:
     return not getattr(bridge, "_cancel_requested", False) and not getattr(bridge, "_stop_after", False)
 
 
-def plan_pass(bridge) -> PassPlan:
-    """Fresh read of queue/URL/pool liveness — never cached (S5).
+def _cdp_connected(bridge) -> bool:
+    cdp = getattr(bridge, "cdp", None)
+    return bool(cdp and getattr(cdp, "is_connected", False))
 
-    Failed images wait for an explicit Retry (revive -> pending); the
-    live loop never auto-retries them.
-    """
+
+def _pool_all_cooling(pool, allowed) -> bool:
+    if pool is None:
+        return False
+    total, free = ac.counts_in(pool, allowed)
+    return bool(total and not free)
+
+
+def plan_pass(bridge) -> PassPlan:
+    """Fresh read of queue/URL/pool liveness — never cached (S5)."""
     urls = [u for u in bridge.state.urls if u.enabled]
     allowed = ac.enabled_tab_ids(urls)
     images = [i for i in eligible_images(bridge.state.images) if i.status != "failed"]
     if not images:
         return PassPlan(images, urls, allowed, "", "no_work")
-    cdp = getattr(bridge, "cdp", None)
-    if not cdp or not getattr(cdp, "is_connected", False):
+    if not _cdp_connected(bridge):
         return PassPlan(images, urls, allowed, "", "cdp_down")
     pool = getattr(bridge, "_page_pool", None)
-    total, free = ac.counts_in(pool, allowed)
-    if pool is not None and total and not free:
+    if _pool_all_cooling(pool, allowed):
         return PassPlan(images, urls, allowed, "", "all_cooling")
+    cdp = getattr(bridge, "cdp", None)
     want = resolve_primary_tab(pool, getattr(cdp, "_current_tab_id", "") or "", allowed)
     if not want:
         return PassPlan(images, urls, allowed, "", "no_tab")

@@ -15,13 +15,7 @@ import logging
 import re
 import time
 
-from app.services.auto_connect import (
-    live_tab_keys,
-    pick_primary_ws,
-    plan_auto_connect,
-    prunable_row_ids,
-    sync_pool_presence,
-)
+from app.services.auto_connect import live_tab_keys, pick_primary_ws, plan_auto_connect, prunable_row_ids, sync_pool_presence
 from app.services.run_state import pooled_ids, resolve_tab_info, restore_page_state, schedule_coro
 from app.ui.panels.page_pool import do_connect_page_pool
 from app.ui.panels.url_queue import _add_missing_rows, _dedupe_state_rows
@@ -295,6 +289,42 @@ async def do_diagnose_chrome(bridge) -> None:
         bridge._log(f"Diagnose failed: {e}", "error")
 
 
+def live_deps(bridge):
+    """Wiring for the Python-owned reconciler (S6)."""
+    async def fetch_tabs():
+        return await bridge.cdp.fetch_tabs()
+    async def join_tab(ws_url):
+        await do_connect_page_pool(bridge, ws_url)
+    def commit():
+        bridge._save_arena()
+        bridge._emit_arena_state()
+        try:
+            from app.services.live.bus import live_bus
+            live_bus(bridge).wake("urls")
+        except Exception:
+            pass
+    def log(msg):
+        try: bridge._log(msg, "info")
+        except Exception: pass
+    try:
+        from app.services.live.reconcile import LiveDeps as LD
+        return LD(fetch_tabs=fetch_tabs, join_tab=join_tab, commit=commit, log=log)
+    except Exception:
+        return None
+
+
+def start_url_reconciler(bridge) -> None:
+    """Boot-time start for the reconciler loop (S6)."""
+    try:
+        deps = live_deps(bridge)
+        if deps is None:
+            return
+        from app.services.live.reconcile import start_reconciler
+        start_reconciler(bridge, deps)
+    except Exception:
+        pass
+
+
 def prune_auto_rows(bridge, plan) -> int:
     """Drop auto-linked rows whose tabs vanished; returns removed count."""
     if not plan.remove:
@@ -324,7 +354,6 @@ def apply_auto_plan(bridge, plan) -> bool:
     pruned = prune_auto_rows(bridge, plan)
     changed = bool(added) or changed or pruned > 0
     if changed:
-        # system action, reproducible by re-scan: no undo spam
         bridge._save_arena()
         bridge._emit_arena_state()
     return changed
@@ -372,18 +401,9 @@ def plan_auto_sync(bridge, tabs, pattern, rows):
 
 
 async def auto_scan_pass(bridge, source: str) -> None:
-    """One scan: fetch tabs, plan, apply, join, sync presence, report."""
-    tabs = await bridge.cdp.fetch_tabs()
-    pattern = bridge.config.get_state("url_pattern", "arena.ai")
-    rows, removed = _dedupe_state_rows(bridge.state.urls)
-    if removed:  # legacy broken state: N rows on one tab -> keep one (I-33)
-        bridge._log(f"🤖 Auto-connect: removed {removed} extra row(s) — their tab already has a row", "warn")
-    plan = plan_auto_sync(bridge, tabs, pattern, rows)
-    apply_auto_plan(bridge, plan)
-    await join_new_tabs(bridge, plan.connect)
-    live = {(t.id or t.ws_url) for t in tabs or []} - {""}
-    presence = sync_pool_presence(bridge._page_pool, live)
-    report_auto_plan(bridge, plan, presence, source)
+    """Delegation to the Python-owned reconciler (S6)."""
+    from app.services.live.reconcile import reconcile_once
+    await reconcile_once(bridge, live_deps(bridge), source)
 
 
 async def do_auto_connect_scan(bridge, source: str = "auto") -> None:

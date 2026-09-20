@@ -25,6 +25,7 @@ DEFAULT_SESSION = {
     "watcher_captcha_timeout_sec": 300,
     "watcher_generation_timeout_sec": 600,
     "watcher_auto_pause": True,
+    "url_reconcile_interval_ms": 5000,
     "cooldown_enabled": True,
     "cooldown_min_seconds": 300,
     "cooldown_captcha_penalty_seconds": 900,

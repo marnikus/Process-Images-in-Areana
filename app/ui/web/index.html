@@ -71,6 +71,7 @@
         <span title="Extra wait when the site shows a rate-limit / limit-reached banner (0 = off)">⛔ +<input id="urlCooldownRateLimit" type="number" min="0" max="1440" placeholder="30" style="width:52px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">m/limit</span>
         <label style="display:flex; align-items:center; gap:3px;"><input id="urlCooldownEnabled" type="checkbox" checked> on</label>
         <button id="urlCooldownSaveBtn" class="btn-small">Save</button>
+        <span>🔁 every <input id="urlIntervalMs" type="number" min="500" max="60000" value="5000" style="width:64px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">ms</span><button id="urlIntervalSaveBtn" class="btn-small">Save</button>
       </div>
       <div style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px;">
         <table class="url-table">
@@ -689,6 +690,7 @@
 <script src="js/panels/url-list/render.js"></script>
 <script src="js/panels/url-list/matching.js"></script>
 <script src="js/panels/url-list/cooldown.js"></script>
+<script src="js/panels/url-list/interval.js"></script>
 <script src="js/panels/url-list/actions.js"></script>
 <script src="js/panels/url-list/listeners.js"></script>
 <script src="js/panels/url-list.js"></script>

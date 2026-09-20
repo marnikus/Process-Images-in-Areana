@@ -30,7 +30,7 @@ const _PANEL_INITS = [
   'WindowPresets','UrlList','FolderPicker','ImageQueue','PromptEditor',
   'RunControls','ProgressPanel','WatcherPanel','PagePoolPanel','SettingsPanel',
   'CaptchaPanel','CaptchaRecordingsPanel','BrowserPreview','HighlightOverlay',
-  'CDPPanel','ArenaPresets','ActionBlocksPanel'
+  'CDPPanel','ArenaPresets','ActionBlocksPanel','UrlInterval'
 ];
 
 // Panels are looked up BY NAME on window — every panel module must publish itself
