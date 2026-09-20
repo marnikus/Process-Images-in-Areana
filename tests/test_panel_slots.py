@@ -6,6 +6,7 @@ Every assertion checks real slot output, so gutting a slot body fails it.
 """
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -137,6 +138,11 @@ def test_url_queue_add_remove_toggle_edit_test(cfg):
     assert json.loads(host.edit_url(row_id, ""))["error"] == "empty URL"
     assert json.loads(host.test_url(row_id))["status"] == "ready"
     assert json.loads(host.test_url("ghost"))["error"] == "not found"
+    host.state.urls[0].url = "not a url"                     # a row edited into garbage tests as invalid
+    assert json.loads(host.test_url(row_id)) == {"ok": False, "error": "Invalid URL"}
+    assert host.state.urls[0].last_status == "error"
+    host.config = SimpleNamespace(presets=None)              # a broken preset store answers []
+    assert host.get_url_presets() == "[]"
     assert json.loads(host.remove_url(row_id))["ok"] is True
     assert json.loads(host.remove_url(row_id))["error"] == "not found"
     assert json.loads(host.toggle_url("ghost"))["error"] == "not found"

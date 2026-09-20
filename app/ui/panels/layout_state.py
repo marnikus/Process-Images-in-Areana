@@ -18,6 +18,7 @@ from app.core.layout_service import (
     default_payload,
 )
 from app.core.persistence import save_state
+from app.services.live import debug_view
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import arena_serialize as js
 from app.ui.services import undo_entries
@@ -68,6 +69,7 @@ def emit_arena_state(bridge) -> None:
         bridge.arena_state_updated.emit(json.dumps(js_state, ensure_ascii=False))
         prog = js_state.get("progress", {}).copy()
         prog["run_state"] = getattr(bridge, "_run_state", "idle")
+        prog["live"] = debug_view.cadence(bridge)  # S6: the URL cadence the control reads (D-12R)
         bridge.progress_updated.emit(json.dumps(prog, ensure_ascii=False))
     except Exception as e:
         log.warning(f"emit arena state failed: {e}")

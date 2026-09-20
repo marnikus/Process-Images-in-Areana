@@ -30,7 +30,6 @@ const CDPPanel = {
     setTimeout(() => this.fetchTabs(), 800);
     setTimeout(() => this.loadBookmarks(), 900);
     setTimeout(() => this.autoConnectScan(), 4000);
-    setInterval(() => this.autoConnectScan(), 15000);
     setInterval(() => this.ensurePrimary(), 500);
   },
 

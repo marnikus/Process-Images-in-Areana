@@ -376,68 +376,53 @@ async def test_fetch_tabs_slot_and_diagnose(cdp_server, cfg, monkeypatch):
     assert json.loads(none_host.diagnose_chrome())["error"] == "CDP not available"
 
 
-async def test_auto_scan_plan_apply_report(cfg):
-    from app.services.auto_connect import AutoConnectPlan
-    tabs = [tab("t1", "A", "https://arena.ai/c/direct")]
-    row = UrlRow.create("https://arena.ai/c/direct")  # unlinked row for the tab
-    bridge = make_bridge(cdp=None, config=cfg, urls=[row])
-    # planner works on row dicts (the _dedupe_state_rows shape)
-    rows = [{"id": row.id, "url": row.url, "tab_id": None, "enabled": True}]
-    plan = bt_mod.plan_auto_sync(bridge, tabs, "arena.ai", rows)
-    assert plan.add or plan.claim or plan.connect  # something to do
-    changed = bt_mod.apply_auto_plan(bridge, plan)
-    assert changed is True
-    linked = [u for u in bridge.state.urls if u.tab_id]
-    assert any(u.tab_id == "t1" for u in linked)  # claimed or added
-    # presence + report
-    presence = (0, [])
-    assert bt_mod.plan_has_changes(plan, *presence) is True
-    bridge._emit_pool_status = lambda: bridge.logs.append(("pool", "emitted"))
-    bt_mod.report_auto_plan(bridge, plan, presence, "manual")
-    assert any("Auto-connect:" in msg for _, msg in bridge.logs)
-    # no changes → manual still logs, auto stays quiet
-    quiet = []
-    b2 = make_bridge(cdp=None, config=cfg, urls=[UrlRow.create(
-        "https://arena.ai/c/direct", tab_id="t1")])
-    empty_plan = AutoConnectPlan()
-    assert bt_mod.apply_auto_plan(b2, empty_plan) is False
-    assert bt_mod.plan_has_changes(empty_plan, 0, []) is False
-    b2._log = lambda m, l="info": quiet.append(m)
-    bt_mod.report_auto_plan(b2, empty_plan, (0, []), "manual")
-    assert any("no changes" in m for m in quiet)
-    b3 = make_bridge(cdp=None, config=cfg)
-    b3._log = lambda m, l="info": quiet.append(m)
-    quiet_before = len(quiet)
-    bt_mod.report_auto_plan(b3, AutoConnectPlan(), (0, []), "auto")
-    assert len(quiet) == quiet_before  # auto source stays silent on no-change
-    # prune: plan.remove holds row ids whose tabs vanished
-    gone_row = UrlRow.create("https://arena.ai/c/direct", tab_id="t1")
-    b4 = make_bridge(cdp=None, config=cfg, urls=[gone_row])
-    gone_plan = AutoConnectPlan()
-    gone_plan.remove = [gone_row.id]
-    assert bt_mod.prune_auto_rows(b4, gone_plan) == 1
-    assert b4.state.urls == []
-    assert bt_mod.prune_auto_rows(b4, AutoConnectPlan()) == 0
-
-
-async def test_auto_prune_allowed_and_join(cdp_server, cfg, monkeypatch):
+async def test_live_deps_wires_the_panel_seams(cdp_server, cfg, monkeypatch):
+    """S6: the pass body lives in live.reconcile; this panel only injects fetch / join / commit / log."""
+    from app.services.live.reconcile import LiveDeps
     pool = PagePool()
     client = make_client(cdp_server)
+    client.fetch_tabs = fake_fetch([tab("t1", "A", "https://arena.ai/c/direct")])
     bridge = make_bridge(cdp=client, config=cfg, pool=pool)
-    tabs = [tab("t1", "A", "https://arena.ai/c")]
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is True
-    bridge._run_state = "running"
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is False
-    bridge._run_state = "idle"
-    assert bt_mod.auto_prune_allowed(bridge, []) is False
-    # join skips empty sockets
+    deps = bt_mod.live_deps(bridge)
+    assert isinstance(deps, LiveDeps)
+    assert [t.id for t in await deps.fetch_tabs()] == ["t1"]
     joined = []
 
     async def fake_join(b, ws):
-        joined.append(ws)
+        joined.append((b, ws))
     monkeypatch.setattr(bt_mod, "do_connect_page_pool", fake_join)
-    await bt_mod.join_new_tabs(bridge, ["ws://a/1", "", "ws://a/2"])
-    assert joined == ["ws://a/1", "ws://a/2"]
+    await deps.join_tab("ws://a/1")
+    assert joined == [(bridge, "ws://a/1")]
+    saves = []
+    bridge._save_arena = lambda: saves.append(1)
+    deps.commit(bridge)
+    assert saves == [1]                                   # a system save: no undo entry
+    deps.log("hello", "info")
+    assert ("info", "hello") in bridge.logs
+
+
+async def test_start_url_reconciler_is_boot_safe(cfg, monkeypatch):
+    from app.services.live import reconcile as rc_mod
+    bridge = make_bridge(cdp=None, config=cfg)
+    started = []
+
+    class Fut:
+        def done(self):
+            return False
+
+    def fake_schedule(b, coro):
+        started.append(coro)
+        coro.close()
+        return Fut()
+    monkeypatch.setattr(rc_mod, "schedule_coro", fake_schedule)
+    assert bt_mod.start_url_reconciler(bridge) is True
+    assert bt_mod.start_url_reconciler(bridge) is False  # one loop per bridge
+    assert len(started) == 1
+
+    def boom(b, deps):
+        raise RuntimeError("no loop")
+    monkeypatch.setattr(bt_mod, "start_reconciler", boom)
+    assert bt_mod.start_url_reconciler(bridge) is False   # never breaks boot
 
 
 async def test_auto_scan_pass_end_to_end(cdp_server, cfg):
@@ -552,3 +537,63 @@ def test_browser_tab_slot_guards(cfg, monkeypatch):
     coro = queued.pop()
     assert coro.cr_frame is not None
     coro.close()
+
+
+async def test_connect_reuse_and_failed_connect_paths(cfg):
+    """`do_connect_tab`: an already-current tab is announced, a refused socket is reported (no raise)."""
+    class Cdp:
+        is_connected = True
+        _current_tab_id = "t1"
+        _host, _port = "127.0.0.1", 9222
+
+        async def connect(self, ws):
+            return False
+    bridge = make_bridge(cdp=Cdp(), config=cfg)
+    await bt_mod.do_connect_tab(bridge, "ws://127.0.0.1:9222/devtools/page/t1")
+    assert any("Already connected" in m for _, m in bridge.logs)
+    assert bridge.connection_status.calls[-1] == ("connected",)
+    await bt_mod.do_connect_tab(bridge, "ws://127.0.0.1:9222/devtools/page/t2")
+    assert any("Connect failed" in m for _, m in bridge.logs)
+    assert bridge.connection_status.calls[-1] == ("error",)
+    assert bridge._connect_in_progress is False
+    # the debounce slot: a second identical request while one is in flight is refused
+    bridge._connect_in_progress, bridge._last_connect_ws = True, "ws://x"
+    assert bt_mod.claim_connect_slot(bridge, "ws://x") is False
+
+
+async def test_do_auto_connect_scan_reports_a_crashing_pass(cfg, monkeypatch):
+    bridge = make_bridge(cdp=None, config=cfg)
+
+    async def boom(b, deps, source):
+        raise RuntimeError("pass down")
+    monkeypatch.setattr(bt_mod, "reconcile_once", boom)
+    await bt_mod.do_auto_connect_scan(bridge, "auto")
+    assert any("scan skipped" in m and "pass down" in m for _, m in bridge.logs)
+    assert bridge._auto_scan_running is False
+
+
+async def test_failure_paths_are_logged_not_raised(cfg):
+    """RULE 9 at the CDP boundary: a raising client leaves one log line and a clean flag, never a crash."""
+    class BrokenCdp:
+        is_connected = False
+        _current_tab_id = ""
+        _host, _port = "127.0.0.1", 9222
+
+        async def connect(self, ws):
+            raise RuntimeError("socket refused")
+
+        async def fetch_tabs(self):
+            raise RuntimeError("list down")
+
+        def diagnose_sync(self):
+            raise RuntimeError("diag down")
+    bridge = make_bridge(cdp=BrokenCdp(), config=cfg)
+    await bt_mod.do_connect_tab(bridge, "ws://127.0.0.1:9222/devtools/page/t1")
+    assert any("Connect exception" in m and "socket refused" in m for _, m in bridge.logs)
+    assert bridge.connection_status.calls[-1] == ("error",) and bridge._connect_in_progress is False
+    await bt_mod.do_fetch_tabs(bridge)
+    assert any("Tab fetch failed" in m for _, m in bridge.logs)
+    await bt_mod.do_diagnose_chrome(bridge)
+    assert any("Diagnose failed" in m for _, m in bridge.logs)
+    bt_mod.report_diag_checks(bridge, {"checks": [{"host": "127.0.0.1", "port_open": False, "list_error": "ECONNREFUSED"}]})
+    assert any("closed — ECONNREFUSED" in m for _, m in bridge.logs)

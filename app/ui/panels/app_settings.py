@@ -101,6 +101,18 @@ def apply_watcher_timeouts(bridge, data: dict) -> None:
                 pass
 
 
+def apply_url_interval(bridge, data: dict) -> None:
+    """URL reconcile interval (S6, D-11): one clamp owner, written here only, wakes the reconciler."""
+    if "url_reconcile_interval_ms" not in data:
+        return
+    from app.services.live.debug_view import clamp_interval_ms
+    from app.services.live.reconcile import url_bus
+    ms = clamp_interval_ms(data["url_reconcile_interval_ms"])
+    bridge.config.set_state(url_reconcile_interval_ms=ms)
+    url_bus(bridge).wake("interval")
+    bridge._log(f"URL reconcile interval set to {ms} ms (URL List bar)", "info")
+
+
 def apply_preset_settings(state, s: dict, include_folder_types: bool = False) -> None:
     """Apply a settings-dict section (preset wire format)."""
     if not isinstance(s, dict):
@@ -268,6 +280,7 @@ class AppSettingsMixin:
             apply_simple_key(self.state, data, _OVERWRITE_SPEC)
             apply_highlight_duration(self.state, self.config, data)
             apply_watcher_timeouts(self, data)
+            apply_url_interval(self, data)
             self._save_arena()
             push_settings_undo(self)
             return json.dumps({"ok": True})
