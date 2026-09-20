@@ -1,9 +1,11 @@
 # Quality budget — Dynamic URLs & Worker Debug Panel (round 2, PLAN ONLY)
 
-RULE 16 (gates) + RULE 18 (ideal sizes) numbers for the single wave **W1** in `design.md` §9.
+RULE 16 (gates) + RULE 18 (ideal sizes) numbers for the **staged chain S1…S10** in `design.md` §9
+(rev 2 — the owner replaced the single wave with separable stages, most important first).
 Baseline: `tools/quality_baseline.json` @ `6bbaf8b` (222 entries) · `tools/jscpd_baseline.json` 1.24 %
 · round-1 budget (`../2026-09-20-live-processing-and-watcher-scope/quality-budget.md`) is **merged
-into this one** — W1 replaces the S0…S5 staging, so this file is the single budget to check at the end.
+into this one** — S1…S10 absorb round 1's features, so this file is the single budget; §1 gives the
+per-stage fast lane and §8 the per-stage + final checklists.
 
 > Gate-metric convention: JS `file_lines` comes from `tools/js_metrics.js` (`fileLines`), which counts
 > one more than `wc -l` for these files (e.g. `cdp.js` = 135 gate / 134 `wc -l`). All numbers below
@@ -16,9 +18,9 @@ into this one** — W1 replaces the S0…S5 staging, so this file is the single 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt radon vulture coverage cognitive-complexity
 npm ci
-# fast lane, after every step of W1:
+# fast lane, after EVERY stage S1…S9 (D-24, design.md §9.1):
 .venv/bin/python tools/verify_quality.py --changed --allow-legacy --coverage-ratchet
-# full lane, once at the end of W1 (step 12):
+# full lane, once at S10 (and in any stage that moves coverage/duplication):
 bash tools/pre_push_check.sh
 .venv/bin/python tools/verify_quality.py --allow-legacy --coverage-ratchet     # all files
 npm run test:js                                                               # 25 → 27 .mjs files
@@ -28,9 +30,19 @@ npm run test:js                                                               # 
 npx jscpd app --reporters json --output /tmp/jscpd                            # ≤ 1.24 %
 ```
 
-`--record-baseline` is **integrator-only** and is not part of W1 unless a maximum must move; if it is
-used, the commit message states which maximum, why, and which decision in `design.md` §2 forced it
-(`verify_quality.py:761-812`, RULE 16 §16.5 "never grandfathered").
+`--record-baseline` is **integrator-only** and is not part of any stage unless a maximum must move; if
+it is used, the commit message states which maximum, why, and which decision in `design.md` §2 forced
+it (`verify_quality.py:762-812`, RULE 16 §16.5 "never grandfathered").
+
+**Staging trap (D-24a):** `record_baseline(refresh=False)` *adds* new files to the baseline
+(`:762-812`, JS branch `:807-812`). If an integrator records after S6, then `url-list/interval.js`
+becomes baselined and **no later stage may ever grow it**. Therefore every stage's new `.js` files are
+complete inside that stage, and later stages add *new* files instead: S6 → `url-list/interval.js`;
+S9 → the four `live-debug/*.js`. No stage grows another stage's JS.
+
+**The JS lane is global:** `check_js` measures **every** baselined `.js` file whenever any JS file is in
+scope (`:201-234`, `:252-270`, `:1032-1034`), so a stage touching one `.js` file is accountable for the
+whole ledger in §3.2.
 
 ---
 
@@ -42,10 +54,10 @@ used, the commit message states which maximum, why, and which decision in `desig
 | Coverage branch | **82.01 %** | `coverage.branch` |
 | Duplication | **1.240 %** | `tools/jscpd_baseline.json` |
 | Frozen slot surface | **134 slots**, `EXPECTED_PACKING` sum, Bridge ≤ 10 direct methods, `bridge.py` ≤ 300 LOC | `tests/test_bridge_slots.py`, `tests/test_bridge_metaobject.py:41,47` |
-| Window registry | Python ≡ JS ids/order/titles (16 after W1) | `tests/test_grid_layout.py:117-121` + new `tests/test_window_catalog.py` |
+| Window registry | Python ≡ JS ids/order/titles (15 until **S8**, 16 from S8 on) | `tests/test_grid_layout.py:117-121` + new `tests/test_window_catalog.py` |
 | Hard limits (every new symbol, any file) | func ≤ 30 LOC, class ≤ 150, params ≤ 4, methods ≤ 15, CC ≤ 10, cognitive ≤ 15, nesting ≤ 4 | `verify_quality.py:237` (JS), `check_*` (Python) |
 
-**Expected direction after W1:** duplication **down** (round-1 §7.1 merges the eligibility clone pair
+**Expected direction after S10:** duplication **down** (round-1 §7.1 merges the eligibility clone pair
 `queue_scan.selected_images:28-31` ≡ `batch_orchestrator._selected_images:374-377`; round-1 §5.4
 deletes a JS interval), coverage **up** (new logic in new fully-tested files), JS lines **down by 1**
 (`cdp.js` 135 → 134), Python `layout_service.py` **down ~28 lines** (catalog extraction).
@@ -86,55 +98,60 @@ deletes a JS interval), coverage **up** (new logic in new fully-tested files), J
 |---|---|---|---|
 | `js/sash-core/constants.js` | 25 → **25** | 3 → **3** | `{ id: 'live_debug', title: 'Live Worker & Queue Debug' },` appended to the `arena_presets` line; `VERSION: 6` on the existing return line (IIFE span 22 = file max ⇒ no new line allowed) |
 | `js/sash-grid-windows/store.js` | 122 → **122** | 19 → **19** | `live_debug: 'winLiveDebug',` appended to the last `winElIds` line (`_collectPanels` span 14 = file max) |
-| `js/arena-app.js` | 176 → **176** | 28 → **28** | `'LiveDebugPanel'` appended to the last `_PANEL_INITS` line (module const, not a function) |
-| `js/panels/url-list/render.js` | 74 → **74** | 12 → **12** | receiver `<span>` inside the existing one-line `rowHtml` template |
+| `js/arena-app.js` | 176 → **176** | 28 → **28** | **two** net-zero appends to the same last `_PANEL_INITS` line, in different stages: `'UrlInterval'` (S6) and `'LiveDebugPanel'` (S9) — they commute (evidence §8) |
+| `js/panels/url-list/render.js` | 74 → **74** | 12 → **12** | receiver `<span>` inside the existing one-line `rowHtml` template (S7) |
+| `js/panels/url-list/{listeners,cooldown,actions,store}.js`, `js/panels/url-list.js` | 63/49/163/39/138 → **same** | 18/9/36/4/37 → **same** | **untouched** (S6): the interval control gets its own new file, `url-list/interval.js` |
+| `css/arena.css` · `css/live-debug.css` | ungated | ungated | `.url-not-receiver` (+6, S7) · new window strips (S8/S9) |
 | `js/panels/cdp.js` | 135 → **134** | 55 → **54** | round-1 §5.4: the 15 s `setInterval` is **deleted** (shrink ⇒ ratchet-safe) |
 | `js/arena-app/listeners.js` | 168 → **168** | 51 → **51** | **untouched** — the new panel self-connects (D-22) |
 | `js/panels/settings.js` | 252 → **252** | 48 → **48** | **untouched** — interval control lives in the new window (D-12) |
 | `js/panels/page-pool.js`, `page-pool/{store,render,actions}.js` | 43/32/119/134 → **same** | 24/4/20/22 → **same** | **untouched** — the rescued markup keeps every element id (D-21) |
 | `js/panels/image-queue.js` | 140 → **140** | 45 → **45** | **untouched** — Reset All behaviour is Python-side (D-16) |
 | `js/core/boot.js` | 109 → **109** | 14 → **14** | **untouched** — `Boot.onBridgeReady`/`needBridge`/`panel` already suffice |
-| `index.html`, `css/*` | ungated | ungated | orphan `winPagePool` div → `winLiveDebug` (+ queue head, interval control, worker job lines), 1 new `<link>`, 4 new `<script>` tags |
+| `index.html`, `css/*` | ungated | ungated | **S6**: url-interval input + Save button in the URL List job-cycle bar (next to `urlCooldownMin`/`urlCooldownSaveBtn`, `:68-73`) + 1 `<script>` · **S7**: `.url-not-receiver` rule in `css/arena.css` · **S8**: orphan `winPagePool` div → `winLiveDebug`, 1 new `<link>`, +3 `<script>` tags · **S9**: queue-head strip, worker job lines, cadence readout (read-only, D-12R) |
 
-**Ledger total: 0 new lines and 0 new functions in any baselined `.js` file; −1 line, −1 function in
-`cdp.js`.** Any step that cannot honour this is re-designed, not re-baselined (R16).
+**Ledger total: 0 new lines and 0 new functions in any baselined `.js` file across all ten stages;
+−1 line, −1 function in `cdp.js` (S6).** Any stage that cannot honour this is re-designed, not
+re-baselined (R16/R23).
 
 ---
 
 ## 4. New files — hard limits only (unbaselined), RULE 18 ideals as the target
 
-| File | Target LOC | Hardest symbol (budget) | The test that kills it if deleted |
+| File (stage) | Target LOC | Hardest symbol (budget) | The test that kills it if deleted |
 |---|---:|---|---|
-| `app/core/window_catalog.py` | 45 | module table only (no function > 5 LOC, CC 1) | `tests/test_window_catalog.py::test_python_and_js_tables_identical` |
-| `app/services/live/debug_view.py` | 90 | `live_view` ≤ 20 LOC / CC ≤ 6 / params ≤ 2; `interval_ms` ≤ 8 / CC 3; `next_queued` ≤ 6 / CC 2; `clamp_interval_ms` ≤ 5 / CC 2 | `tests/test_live_debug_view.py::test_next_queued_is_first_eligible` |
-| `app/services/live/bus.py` (round 1) | 90 | `LiveBus.wait` ≤ 18 / CC ≤ 5 | `tests/test_live_bus.py::test_wake_from_qt_thread_sets_event` |
-| `app/services/live/supervisor.py` (round 1) | 230 | `run_live` ≤ 28 / CC ≤ 8 / nest ≤ 3; `plan_pass` ≤ 20 / CC ≤ 6 | `tests/test_live_supervisor.py::test_no_work_waits_and_never_ends` |
-| `app/services/live/feed.py` (round 1) | 150 | `commit_queue` ≤ 14 / CC ≤ 4; `eligible_images` ≤ 6 / CC 2 | `tests/test_live_feed.py::test_commit_queue_wakes_loop` |
-| `app/services/live/reconcile.py` (round 1 + interval/receivers) | 215 | `reconcile_once` ≤ 28 / CC ≤ 9 / params ≤ 3 (spec object); `reconcile_loop` ≤ 16 / CC ≤ 5 | `tests/test_live_reconcile.py::test_interval_read_every_pass` |
-| `app/services/live/url_policy.py` (round 1 + receivers) | 185 | `removable_rows` ≤ 20 / CC ≤ 8 (predicate table, not if/elif); `mark_receivers` ≤ 10 / CC ≤ 4; `receiver_reason` ≤ 8 / CC ≤ 4 | `tests/test_url_policy.py::test_mark_receivers_flags_unchecked_and_offline` |
-| `app/services/live/__init__.py` (round 1) | 30 | re-export facade (RULE 16.0 waiver) | import in every live test |
-| `app/services/captcha/policy.py` (round 1 + D-14R/D-15/D-23) | 75 | `captcha_in_scope` ≤ 6 / CC 2; `wait_reason` ≤ 10 / CC ≤ 4; `has_key` ≤ 6 / CC 2; `pause_cap_seconds` ≤ 8 / CC 3; `WaitDeadline.stop_or_expired` ≤ 8 / CC 3, `WaitDeadline.expired` ≤ 3 | `tests/test_captcha_scope.py`, `tests/test_captcha_wait_reason.py::test_no_key_wording_names_the_paused_timeout`, `tests/test_captcha_wait_cap.py::test_deadline_ends_the_wait_at_the_cap` |
-| `js/panels/live-debug.js` | 90 | `init` ≤ 20 LOC / CC ≤ 6 / params ≤ 1; ends `window.LiveDebugPanel = LiveDebugPanel` (I-35) | `tests/js/test_live_debug_panel.mjs::publishes itself` |
-| `js/panels/live-debug/store.js` | 80 | `tick` ≤ 12 / CC ≤ 4; `cache` setters ≤ 8 | `…::ticker recomputes elapsed without a bridge call` |
-| `js/panels/live-debug/render.js` | 130 | `workers` ≤ 24 / CC ≤ 8 / params ≤ 2; `queueHead` ≤ 14 / CC ≤ 4; `interval` ≤ 12 | `…::renders paused worker line + first image name` |
-| `js/panels/live-debug/actions.js` | 70 | `saveInterval` ≤ 16 / CC ≤ 5 | `…::save calls save_settings with the clamped ms` |
-| `css/live-debug.css` | 60 | ungated (`.url-not-receiver`, window strips) | rendered by the JS test's DOM assertions (class present) |
+| **S8** `app/core/window_catalog.py` | 45 | module table only (no function > 5 LOC, CC 1) | `tests/test_window_catalog.py::test_python_and_js_tables_identical` |
+| **S6** (`interval_ms`, `clamp_interval_ms`) + **S9** (`live_view`, `next_queued`) `app/services/live/debug_view.py` | 90 | `live_view` ≤ 20 LOC / CC ≤ 6 / params ≤ 2; `interval_ms` ≤ 8 / CC 3; `next_queued` ≤ 6 / CC 2; `clamp_interval_ms` ≤ 5 / CC 2 | `tests/test_live_debug_view.py::test_next_queued_is_first_eligible` |
+| **S4** `app/services/live/bus.py` | 90 | `LiveBus.wait` ≤ 18 / CC ≤ 5 | `tests/test_live_bus.py::test_wake_from_qt_thread_sets_event` |
+| **S5** `app/services/live/supervisor.py` | 230 | `run_live` ≤ 28 / CC ≤ 8 / nest ≤ 3; `plan_pass` ≤ 20 / CC ≤ 6 | `tests/test_live_supervisor.py::test_no_work_waits_and_never_ends` |
+| **S4** `app/services/live/feed.py` | 150 | `commit_queue` ≤ 14 / CC ≤ 4; `eligible_images` ≤ 6 / CC 2 | `tests/test_live_feed.py::test_commit_queue_wakes_loop` |
+| **S6** `app/services/live/reconcile.py` (interval read; `mark_receivers` call lands in **S7**) | 215 | `reconcile_once` ≤ 28 / CC ≤ 9 / params ≤ 3 (spec object); `reconcile_loop` ≤ 16 / CC ≤ 5 | `tests/test_live_reconcile.py::test_interval_read_every_pass` |
+| **S6** `app/services/live/url_policy.py` (`removable_rows`; `mark_receivers`/`receiver_reason` land in **S7**) | 185 | `removable_rows` ≤ 20 / CC ≤ 8 (predicate table, not if/elif); `mark_receivers` ≤ 10 / CC ≤ 4; `receiver_reason` ≤ 8 / CC ≤ 4 | `tests/test_url_policy.py::test_mark_receivers_flags_unchecked_and_offline` |
+| **S4** `app/services/live/__init__.py` (re-export facade; grows its list in S5/S6) | 30 | re-export facade (RULE 16.0 waiver) | import in every live test |
+| **S2** `app/services/captcha/policy.py` (scope trio; cap/reason/`WaitDeadline` land in **S3**) | 75 | `captcha_in_scope` ≤ 6 / CC 2; `wait_reason` ≤ 10 / CC ≤ 4; `has_key` ≤ 6 / CC 2; `pause_cap_seconds` ≤ 8 / CC 3; `WaitDeadline.stop_or_expired` ≤ 8 / CC 3, `WaitDeadline.expired` ≤ 3 | `tests/test_captcha_scope.py`, `tests/test_captcha_wait_reason.py::test_no_key_wording_names_the_paused_timeout`, `tests/test_captcha_wait_cap.py::test_deadline_ends_the_wait_at_the_cap` |
+| **S9** `js/panels/live-debug.js` | 90 | `init` ≤ 20 LOC / CC ≤ 6 / params ≤ 1; ends `window.LiveDebugPanel = LiveDebugPanel` (I-35) | `tests/js/test_live_debug_panel.mjs::publishes itself` |
+| **S9** `js/panels/live-debug/store.js` | 80 | `tick` ≤ 12 / CC ≤ 4; `cache` setters ≤ 8 | `…::ticker recomputes elapsed without a bridge call` |
+| **S9** `js/panels/live-debug/render.js` | 130 | `workers` ≤ 24 / CC ≤ 8 / params ≤ 2; `queueHead` ≤ 14 / CC ≤ 4; `interval` ≤ 12 | `…::renders paused worker line + first image name` |
+| **S9** `js/panels/live-debug/actions.js` | 60 | `refresh` ≤ 12 / CC ≤ 3 (one bridge read, no writes — cadence is read-only here, D-12R) | `…::refresh republishes without mutating cache` |
+| **S6** `js/panels/url-list/interval.js` | 60 | `init` ≤ 14 / CC ≤ 4 (`Boot.bindOnceById` ×2); `save` ≤ 16 / CC ≤ 5 (clamp 500…60000 → `save_settings({url_reconcile_interval_ms})`); `load` ≤ 10 / CC ≤ 3; ends `window.UrlInterval = UrlInterval` (I-35) | `tests/js/test_url_interval_control.mjs::save clamps and calls save_settings` |
+| **S8/S9** `css/live-debug.css` | 60 | ungated — the window's own strips only | `tests/js/test_live_debug_panel.mjs` DOM assertions |
+| **S7** `css/arena.css` (+6) | ungated | `.url-not-receiver` (muted, 11 px, `cursor:help`) — in the *existing* sheet, because S7 runs before the S8 window exists | `tests/js/test_url_list_receiver_icon.mjs` (class present in `rowHtml`) |
 
 Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a RULE 18 ideal
 (none of the above does).
 
 ---
 
-## 5. RULE 18 ideal-size recheck (the end-of-change check the brief asks for)
+## 5. RULE 18 ideal-size recheck (the end-of-chain check the brief asks for — re-run at S10, and re-check any row a stage moves)
 
-| Ideal | Before W1 | After W1 | Verdict |
+| Ideal | Before S1 | After S10 | Verdict |
 |---|---|---|---|
-| **18.1 function 4-20 LOC** | 3 files carry functions > 20 LOC that this wave touches (`single_job_runner` 26, `output_wait` 23, `captcha/service` 27 — all frozen maxima, none grown) | no new symbol > 20 LOC except `run_live` (28) and `reconcile_once` (28), each with an `# ideal-size:` reason (loop body + one pass, splitting would scatter the wake/plan/act triad) | ✓ with 2 documented deviations |
+| **18.1 function 4-20 LOC** | 3 files carry functions > 20 LOC that the chain touches (`single_job_runner` 26, `output_wait` 23, `captcha/service` 27 — all frozen maxima, none grown) | no new symbol > 20 LOC except `run_live` (28) and `reconcile_once` (28), each with an `# ideal-size:` reason (loop body + one pass, splitting would scatter the wake/plan/act triad) — `run_live` lands in **S5**, `reconcile_once` in **S6** | ✓ with 2 documented deviations |
 | **18.2 file 150-300 LOC** | `layout_service.py` **300** (at ceiling), `single_job_runner.py` 902, `cooldown_service.py` 787, `browser_tabs.py` 544, `batch_orchestrator.py` 492, `undo_entries.py` 404, `run_state.py` 417 (legacy, reason comments) | `layout_service.py` → **~272** ✓; `browser_tabs.py` → ~440; `batch_orchestrator.py` → ~445; new files 40-215 ✓; `single_job_runner.py`/`cooldown_service.py` unchanged (legacy debt, not worsened — RULE 16 §16.5) | ✓ direction improved |
-| **18.3 module 5-15 files** | `app/core` **13**, `app/services` **12** + 6 packages, `app/services/captcha` **6**, `app/browser` **23** (already over), `app/ui/panels` **16** (already over), `app/ui/services` **9** | `app/core` → **14** ✓; `app/services/live` → **7** ✓; `app/services/captcha` → **7** ✓; `app/browser` → **23 unchanged** (PauseClock folded into `output_wait.py`); `app/ui/panels` → **16 unchanged** (no new panel file) | ✓ two pre-existing over-ideal modules are **not worsened** (RULE 16 §16.5) |
-| **18.2b sub-150-LOC files** | `bus.py` 90, `captcha/policy.py` 35 (round 1) | `window_catalog.py` 45, `debug_view.py` 90, `captcha/policy.py` 55, `live-debug/actions.js` 70, `store.js` 80 (`PauseClock` is **not** a new file — it lives in `output_wait.py`, 245 lines, inside the band) | deliberate: each is **one decision** (a table, a clock, a predicate trio, one window's actions/cache) — splitting further would scatter twins that always change together, which is what the 150-300 band protects against |
+| **18.3 module 5-15 files** (counts move in S2 `captcha` +1, S4/S5/S6 `live` 7 files, S8 `core` +1) | `app/core` **13**, `app/services` **12** + 6 packages, `app/services/captcha` **6**, `app/browser` **23** (already over), `app/ui/panels` **16** (already over), `app/ui/services` **9** | `app/core` → **14** ✓; `app/services/live` → **7** ✓; `app/services/captcha` → **7** ✓; `app/browser` → **23 unchanged** (PauseClock folded into `output_wait.py`); `app/ui/panels` → **16 unchanged** (no new panel file) | ✓ two pre-existing over-ideal modules are **not worsened** (RULE 16 §16.5) |
+| **18.2b sub-150-LOC files** | `bus.py` 90, `captcha/policy.py` 35 (round 1) | `window_catalog.py` 45, `debug_view.py` 90, `captcha/policy.py` 55, `live-debug/actions.js` 60, `store.js` 80, `url-list/interval.js` 60 (`PauseClock` is **not** a new file — it lives in `output_wait.py`, 245 lines, inside the band) | deliberate: each is **one decision** (a table, a clock, a predicate trio, one window's actions/cache) — splitting further would scatter twins that always change together, which is what the 150-300 band protects against |
 | **18.4 context 60-200 LOC per reading unit** | round-1 §3.1 module table | the debug window is read as 4 files × 70-130 LOC; `window_catalog.py` is a 45-line table read with `layout_service.py`'s 272 | ✓ |
-| **RULE 10 one control per decision** | interval: none; receivers: none; pause: none; workers UI: **destroyed** (L-5) | one setting + one control (debug window), one receiver writer (`mark_receivers`), one pause owner (`PauseClock`), one worker table (`PagePoolPanel`) + one job view (`LiveDebugPanel`) | ✓ |
+| **RULE 10 one control per decision** | interval: none; receivers: none; pause: none; workers UI: **destroyed** (L-5) | one setting + one writable control, in the URL List job-cycle bar (`url-list/interval.js`, S6 — the debug window only *shows* cadence, D-12R); one receiver writer (`mark_receivers`); one pause owner (`PauseClock`); one worker table (`PagePoolPanel`) + one job view (`LiveDebugPanel`) | ✓ |
 | **RULE 19 remediation order** | — | data before branches: `receiver` flag, `live` payload dict, `wait_reason` table, `PauseClock` value — no new if/elif chains; `removable_rows`/`wait_reason` are lookup tables | ✓ |
 
 ---
@@ -145,20 +162,21 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 
 | Test | Covers |
 |---|---|
-| `tests/test_page_pool_join.py` | **L-1**: `connect_page_pool` schedules via `run_state.schedule_coro` on a host **without** `_schedule_coro` (fails on `6bbaf8b`); the coroutine reaches the pool |
-| `tests/test_window_catalog.py` | Python ≡ JS window tables (ids, order, titles, version); every id has an element id in `_collectPanels`; `live_debug` present; `default_grid_tree` leaf set ≡ `WINDOW_IDS` |
-| `tests/test_pause_clock.py` | `note` accumulates, ignores ≤ 0, never raises; **charges at most `cap − total`** so a second settle in the same wait adds nothing (R22); `expired()`; `paused_elapsed` subtracts; `describe` wording (all in `output_wait.py`) |
-| `tests/test_output_wait_timeout_pause.py` | a settle that blocks longer than `timeout` **does not** time out (clock charged); the same wait **without** a clock times out (Watcher-OFF equivalence); the failure text carries `+Ns captcha wait` and `paused_s` |
-| `tests/test_captcha_wait_reason.py` | three-way `wait_reason` (ON+key / ON+no-key / OFF-unreachable); `_resolve_captcha` passes it through; the overlay still receives `timeout_sec` |
-| `tests/test_captcha_wait_cap.py` | **D-14R**: a dialog that never clears ends the wait at `watcher_captcha_timeout_sec` ⇒ `SolveOutcome(status="wait_timeout")` ⇒ `_handle_captcha_outcome` raises ⇒ job FAILED (retryable), no penalty recorded, cooldown as usual; a Stop before the cap still yields `stopped`; a smaller/larger config value moves the cap with no restart; `wait_captcha_cleared` itself is called unchanged (spy asserts 4 args) |
-| `tests/test_watcher_off_zero_activity.py` | **D-23**: with the switch OFF a visible dialog produces **zero** side effects — counted on spies: 0 detect probes, 0 `is_security_dialog_visible` polls, 0 overlays, 0 `mark_waiting`, 0 stats writes, 0 recordings, 0 penalties, 0 `🛡`/`CAPTCHA_*` log lines, `PauseClock.total == 0`, no `pause_cap_s` on the controller, and no captcha wording in `live_view` |
-| `tests/test_url_interval_setting.py` | default 5000; clamp 500/60000; `save_settings` persists only when the key is present; `interval_ms` re-read per pass (a fake bridge whose value changes between passes changes the sleep); published in `progress_updated.live` |
-| `tests/test_url_receivers.py` | `mark_receivers` flags unchecked / unlinked / offline rows; connected+enabled ⇒ receiver; `urls_to_js` publishes the flag; undo builders keep it; `commit_urls` recomputes |
-| `tests/test_reset_requeues.py` | `reset_image` and `reset_all` ⇒ `pending` + `selected=True` + `commit_queue` + the count log line; undo restores prior statuses |
-| `tests/test_live_debug_view.py` | `live_view` is read-only (no state mutation), `queued`/`next_image`/`receivers`/`url_interval_ms`/`last_pass_at` shapes; `next_queued` = first `eligible_images` entry |
-| `tests/js/test_live_debug_panel.mjs` | boots the **real** `index.html` script list (like `test_boot_all_panels.mjs`): `window.LiveDebugPanel` published; grid mounts `winLiveDebug` (not destroyed — L-5 regression); queue head renders count + first image name; a `waiting_captcha` page renders the paused-timeout line; interval Save calls `save_settings` with the clamped ms; the 1 s ticker recomputes elapsed **without** a bridge call |
-| `tests/js/test_url_list_receiver_icon.mjs` | `UrlListRender.rowHtml({receiver:false})` contains `.url-not-receiver` with the title; `receiver:true` does not; `render.js` line count unchanged (net-zero guard) |
-| round-1: `tests/test_captcha_scope.py`, `test_live_{bus,supervisor,feed,reconcile}.py`, `test_url_policy.py` | round-1 features 01-04 (unchanged scope) |
+| **S1** `tests/test_page_pool_join.py` | **L-1**: `connect_page_pool` schedules via `run_state.schedule_coro` on a host **without** `_schedule_coro` (fails on `6bbaf8b`); the coroutine reaches the pool |
+| **S8** `tests/test_window_catalog.py` | Python ≡ JS window tables (ids, order, titles, version); every id has an element id in `_collectPanels`; `live_debug` present; `default_grid_tree` leaf set ≡ `WINDOW_IDS` |
+| **S3** `tests/test_pause_clock.py` | `note` accumulates, ignores ≤ 0, never raises; **charges at most `cap − total`** so a second settle in the same wait adds nothing (R22); `expired()`; `paused_elapsed` subtracts; `describe` wording (all in `output_wait.py`) |
+| **S3** `tests/test_output_wait_timeout_pause.py` | a settle that blocks longer than `timeout` **does not** time out (clock charged); the same wait **without** a clock times out (Watcher-OFF equivalence); the failure text carries `+Ns captcha wait` and `paused_s` |
+| **S3** `tests/test_captcha_wait_reason.py` | three-way `wait_reason` (ON+key / ON+no-key / OFF-unreachable); `_resolve_captcha` passes it through; the overlay still receives `timeout_sec` |
+| **S3** `tests/test_captcha_wait_cap.py` | **D-14R**: a dialog that never clears ends the wait at `watcher_captcha_timeout_sec` ⇒ `SolveOutcome(status="wait_timeout")` ⇒ `_handle_captcha_outcome` raises ⇒ job FAILED (retryable), no penalty recorded, cooldown as usual; a Stop before the cap still yields `stopped`; a smaller/larger config value moves the cap with no restart; `wait_captcha_cleared` itself is called unchanged (spy asserts 4 args) |
+| **S2** `tests/test_watcher_off_zero_activity.py` | **D-23**: with the switch OFF a visible dialog produces **zero** side effects — counted on spies: 0 detect probes, 0 `is_security_dialog_visible` polls, 0 overlays, 0 `mark_waiting`, 0 stats writes, 0 recordings, 0 penalties, 0 `🛡`/`CAPTCHA_*` log lines, `PauseClock.total == 0`, no `pause_cap_s` on the controller, and no captcha wording in `live_view` |
+| **S6** `tests/test_url_interval_setting.py` | default 5000; clamp 500/60000; `save_settings` persists only when the key is present; `interval_ms` re-read per pass (a fake bridge whose value changes between passes changes the sleep); published in `progress_updated.live` |
+| **S7** `tests/test_url_receivers.py` | `mark_receivers` flags unchecked / unlinked / offline rows; connected+enabled ⇒ receiver; `urls_to_js` publishes the flag; undo builders keep it; `commit_urls` recomputes |
+| **S4** `tests/test_reset_requeues.py` | `reset_image` and `reset_all` ⇒ `pending` + `selected=True` + `commit_queue` + the count log line; undo restores prior statuses |
+| **S9** `tests/test_live_debug_view.py` | `live_view` is read-only (no state mutation), `queued`/`next_image`/`receivers`/`url_interval_ms`/`last_pass_at` shapes; `next_queued` = first `eligible_images` entry |
+| **S8** (mount) + **S9** (content) `tests/js/test_live_debug_panel.mjs` | boots the **real** `index.html` script list (like `test_boot_all_panels.mjs`): `window.LiveDebugPanel` published; grid mounts `winLiveDebug` (not destroyed — L-5 regression); queue head renders count + first image name; a `waiting_captcha` page renders the paused-timeout line; cadence is read-only text (D-12R — no `save_settings` here); the 1 s ticker recomputes elapsed **without** a bridge call |
+| **S7** `tests/js/test_url_list_receiver_icon.mjs` | `UrlListRender.rowHtml({receiver:false})` contains `.url-not-receiver` with the title; `receiver:true` does not; `render.js` line count unchanged (net-zero guard) |
+| **S2** `tests/test_captcha_scope.py` · **S4** `test_live_bus.py`, `test_live_feed.py` · **S5** `test_live_supervisor.py` · **S6** `test_live_reconcile.py`, `test_url_policy.py` | round-1 features 01-04, absorbed into the chain (scope unchanged) |
+| **S6** `tests/js/test_url_interval_control.mjs` | `url-list/interval.js`: Save clamps to 500…60000 and calls `save_settings({url_reconcile_interval_ms})`; Load repopulates from `progress_updated.live`; a net-zero guard asserts `url-list/{listeners,cooldown,actions,store}.js` and `url-list.js` kept their line counts |
 
 ### 6.2 Existing tests that must change (named, with the reason — no silent rewrites)
 
@@ -176,7 +194,7 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 | `tests/test_bridge_metaobject.py` | **none** | no signal added; `bridge.py` unchanged |
 | `tests/test_cooldown_service.py:604-618` | **none** | the cap is composed by the caller (D-14R) — `wait_captcha_cleared` keeps its "never gives up on its own" contract and its 4-param signature |
 | `tests/test_captcha_service.py` (never injects) | **none** expected | the pipeline stays wait-only; only the wait's *end* is now bounded — if an assertion pins the unbounded behaviour it is updated **by name** in the commit message, never silently |
-| `package.json` → `scripts["test:js"]` | append the 2 new `.mjs` files (25 → 27) | the JS lane is an explicit list |
+| `package.json` → `scripts["test:js"]` | append the **3** new `.mjs` files, one per stage (25 → **28**): `test_url_interval_control.mjs` (S6), `test_url_list_receiver_icon.mjs` (S7), `test_live_debug_panel.mjs` (S8/S9) | the JS lane is an explicit list; package.json is outside both ratchet lanes |
 | characterization goldens (`tests/goldens/*`) | expected **unchanged**; regenerate only with a reviewed diff (`UPDATE_GOLDENS=1`) | no golden arms captcha-wait + timeout together; pinned log strings kept (round-1 R7) |
 
 ### 6.3 Equivalence gates (behaviour that must NOT change)
@@ -196,7 +214,12 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 
 ---
 
-## 7. Docs to update in the same change (RULE 17)
+## 7. Docs to update in the same change (RULE 17 — per stage, D-24b)
+
+Each row lands in the stage that makes it true (`design.md` §9.3): **S2** RULE 20 (OFF ⇒ no captcha activity) + I-19/I-34/I-40 + row 12 ·
+**S3** RULE 20 (bounded wait + capped pause) + I-44 + rows 8/12 · **S4** I-41/I-46 + rows 6/8 · **S5** I-39 + rows 6/11 ·
+**S6** I-42 + rows 8/11/21 · **S7** I-45 + rows 19/21 · **S8** I-43 + row 19 (16 windows) · **S9** row 19 (window content) ·
+**S10** `QUALITY_RECHECK.md` + `docs/README.md`. No stage may leave a row describing a system that does not exist yet.
 
 | Doc | Edit |
 |---|---|
@@ -214,7 +237,21 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 
 ---
 
-## 8. RULE 16.7 acceptance checklist (fill in at the end of W1, step 12)
+## 8. RULE 16.7 acceptance checklist
+
+### 8.0 Per stage (S1…S9 — filled into each stage's commit description)
+
+- [ ] tests written before the code; the stage's named test fails without its change
+- [ ] fast lane green: `verify_quality.py --changed --allow-legacy --coverage-ratchet` (+ `npm run test:js` when JS was touched)
+- [ ] no bridge slot added/renamed; `test_bridge_slots.py` (Σ=134) and `test_bridge_metaobject.py` unedited
+- [ ] JS ledger (§3.2) honoured: no baselined `.js` grew a line or a function
+- [ ] no `.js` file created by an **earlier** stage was edited (D-24a)
+- [ ] `tests/test_cooldown_service.py:604-618` still green **unedited**
+- [ ] this stage's `docs/current/` rows updated in the same commit (§7)
+- [ ] goldens unchanged (S5: any diff reviewed and pasted into the commit message)
+- [ ] the app runs at the end of the stage and the stage is shippable on its own
+
+### 8.1 Final (S10)
 
 - [ ] Bootstrap done; equivalence baseline captured (§1) — numbers: ______
 - [ ] `verify_quality --changed --allow-legacy`: **0 fails**; no ratchet breach in §3.1/§3.2
@@ -222,7 +259,7 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 - [ ] No new slot, no new signal: `test_bridge_slots.py` + `test_bridge_metaobject.py` green **unedited**
 - [ ] Window contract: Python ≡ JS ≡ `_collectPanels` (16), stored v5 layouts migrate, `test_title_fit` green
 - [ ] `pytest -q` green; coverage line ≥ 86.09, branch ≥ 82.01; per-file floors of §3.1 held
-- [ ] `npm run test:js` green with the 2 new files listed in `package.json`
+- [ ] `npm run test:js` green with all 3 new files listed in `package.json` (28 total)
 - [ ] jscpd ≤ 1.240 %; `radon cc app -n C` shows no new C-or-worse symbol; cognitive ≤ 15
 - [ ] Goldens unchanged (or the reviewed diff is pasted into the commit message)
 - [ ] **Cap proven**: one image's worst case is `generation_timeout + watcher_captcha_timeout_sec`;
@@ -261,5 +298,8 @@ Every new Python symbol also gets a `# ideal-size:` comment only if it exceeds a
 7. **No silent cap, no silent silence.** The cap is one existing user knob (`watcher_captcha_timeout_sec`),
    reported in the throttled pause line, the failure reason and the debug window; "Watcher OFF" is proven
    by a **counting** test (D-23), not by reading code and finding nothing.
-8. **No docs-after-code.** RULE 17: §7 lands with the code, and the round-1/round-2 archive folders are
+8. **No stage without its docs, no stage inside another stage's files.** D-24: each stage updates its own
+   `docs/current/` rows in the same commit, and no stage grows a `.js` file an earlier stage created —
+   the chain integrates by *adding* files, never by editing a frozen predecessor.
+9. **No docs-after-code.** RULE 17: §7 lands with the code, and the round-1/round-2 archive folders are
    never edited to catch up (a new folder supersedes, this one amends by naming D-1/D-6/D-9).
