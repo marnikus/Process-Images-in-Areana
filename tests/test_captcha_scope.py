@@ -211,3 +211,33 @@ def test_watcher_running_delegates_to_policy():
     angry = make_scope_bridge()
     angry._captcha_watcher = AngryWatcher()
     assert policy.solver_running(angry) is False  # fail closed
+
+
+def test_policy_reads_fail_closed_on_broken_bridges():
+    from app.services.captcha import policy
+
+    class BrokenConfig:
+        def get_state(self, key, default=None):
+            raise RuntimeError("config unreadable")
+
+    class BrokenService:
+        def keys_load(self):
+            raise RuntimeError("key store unreadable")
+
+    assert policy.watcher_enabled(SimpleNamespace(config=BrokenConfig())) is False
+    assert policy.solver_running(SimpleNamespace()) is False  # no watcher attr at all
+    assert policy.has_solver_key(SimpleNamespace()) is False  # no service at all
+    boom = SimpleNamespace(_captcha_service=lambda: (_ for _ in ()).throw(RuntimeError()))
+    assert policy.has_solver_key(boom) is False  # service lookup blows up
+
+
+def test_has_solver_key_reads_the_active_provider_only():
+    from app.services.captcha import policy
+
+    def bridge_with(provider: str, key: str) -> SimpleNamespace:
+        settings = SimpleNamespace(provider=provider, key_for=lambda p: key)
+        svc = SimpleNamespace(keys=SimpleNamespace(load=lambda: settings))
+        return SimpleNamespace(_captcha_service=lambda: svc)
+
+    assert policy.has_solver_key(bridge_with("recaptcha", "sk-abc")) is True
+    assert policy.has_solver_key(bridge_with("recaptcha", "")) is False

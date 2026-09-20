@@ -480,7 +480,14 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
 
 ## RULE 20 — CAPTCHA policy (default manual; opt-in owner-authorized 2Captcha), respect ToS, user-authorized URLs only
 
-* **Default (OFF): do not bypass/defeat/solve CAPTCHA** — pause with `USER_ACTION_REQUIRED`, let the user solve manually.
+* **Default (OFF) = zero captcha activity (S2 amendment, 2026-09-20):** the pipeline never
+  bypasses/defeats/solves CAPTCHA, and while the Watcher switch is OFF it does **zero** captcha
+  activity of any kind — no detect probe, no overlay, no `waiting_captcha` pool mark, no stats,
+  no recording, no cooldown penalty, no pause. Every gate reads one predicate,
+  `captcha_in_scope(bridge)` (= the switch; `app/services/captcha/policy.py`; fail-closed;
+  re-read per call, live in both directions), and the only outcome OFF can produce is
+  `out_of_scope`. Pausing with `USER_ACTION_REQUIRED` and letting the user solve manually is
+  the Watcher-ON path only (`handle_captcha` wait-only, I-34).
 * **Opt-in (owner-authorized) = the Watcher switch (amendment 2026-10-02):** the job pipeline
   itself NEVER solves — `handle_captcha` only detects, pauses and waits for the dialog to clear.
   Solving is the exclusive job of the Captcha Watcher (`app/services/captcha_watcher/`), which

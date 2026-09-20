@@ -101,8 +101,11 @@ class Stack:
         return {
             "detect_probes": len(self.ctrl.probes),
             "dialog_polls": len(self.ctrl.visible_calls),
-            "overlays": len(self.ctrl.overlay_calls),
-            "mark_waiting": len(self.pool.mark_waiting_calls),
+            # generation overlays/marks are normal WAIT_OUTPUT work — only the
+            # captcha-kind events count as captcha activity (D-23)
+            "overlays": sum(1 for k in self.ctrl.overlay_calls if k.get("kind") == "captcha"),
+            "mark_waiting": sum(1 for _t, kind in self.pool.mark_waiting_calls
+                                if kind == "captcha"),
             "stats": len(self.svc.stats_calls),
             "recordings": len(self.svc.recording_calls),
             "penalties": len(self.penalties),

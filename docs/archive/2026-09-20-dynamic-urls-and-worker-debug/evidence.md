@@ -80,6 +80,10 @@ Headroom facts that shape the fix (baseline maxima, `tools/quality_baseline.json
 
 ### 2.1 What the cap must be built from (owner correction: *"D-14 should be capped"*, *"no activity at all if off"*)
 
+> **PARTIALLY LANDED — S2 (2026-09-20):** the *"no activity at all if off"* half (D-23) is now
+> code and counting tests — `app/services/captcha/policy.py` + the five gates; status marker
+> only, original evidence below kept verbatim. The *"capped"* half (D-14R) still belongs to S3.
+
 | Fact | Evidence |
 |---|---|
 | The knob already exists, is user-settable and is read **per wait**: `watcher_captcha_timeout_sec`, default 300 | `app/persistence/config_manager.py:25`; read by `_wait_timeout` `app/services/captcha/service.py:190-195`; clamped 10…3600 on write `app/ui/panels/watcher_captcha.py:65-73`; persisted `:88-98`; surfaced in the Watcher window (SYSTEM_OF_RECORD row 12) |
@@ -409,6 +413,10 @@ The full 25-file table is `tdd-interfaces.md` §D. The four that changed the des
   table nobody reads.
 
 ### 9.5 Characterization-harness facts that decide S2 and S5
+
+> **S2 LANDED (2026-09-20):** the S2-relevant facts below are now proven by code — the armed
+> golden (`test_captcha_pause_resume`, `watcher_on=True`) stayed byte-identical exactly because
+> `FakeCtrl` dialog polls never touch `FakeCDP.evaluate`. Status marker only; S5 still pending.
 
 * `tests/characterization/harness.py:105-121` `build_bridge` constructs a **real** `Bridge` + real
   `ConfigManager` and calls `cfg.set_state(action_blocks=…)` — it never arms the Watcher ⇒ **S2 must add

@@ -30,6 +30,7 @@ from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 from app.services.captcha_recording import RecordingManager
 
 from .key_store import CaptchaKeyStore, clamp_timeout
+from .policy import captcha_in_scope, out_of_scope, solver_running
 from .signals import CaptchaSignal, SolveOutcome, host_of
 from .stats import CaptchaStatsStore
 
@@ -209,6 +210,13 @@ async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
 
 async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     """Detect, record, resolve, and close one visible captcha encounter."""
+    if not captcha_in_scope(ctx.bridge):
+        return out_of_scope()
+    return await _handle_captcha_scoped(ctx)
+
+
+async def _handle_captcha_scoped(ctx: CaptchaCtx) -> SolveOutcome:
+    """Watcher-ON encounter: detect probe → stats → wait → record."""
     signal = await detect_signal(ctx)
     if not signal.visible:
         return SolveOutcome(status="none")
@@ -240,12 +248,8 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
 
 
 def _watcher_running(ctx: CaptchaCtx) -> bool:
-    """Is the isolated Captcha Watcher loop running on this bridge? (fail closed)."""
-    try:
-        watcher = getattr(ctx.bridge, "_captcha_watcher", None)
-        return bool(watcher is not None and watcher.running)
-    except Exception:
-        return False
+    """One owner for this question: `captcha.policy` (fail closed)."""
+    return solver_running(ctx.bridge)
 
 
 async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,

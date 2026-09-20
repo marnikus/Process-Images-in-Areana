@@ -422,6 +422,9 @@ async def test_security_announces_while_solving(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cap_mod, "handle_captcha", _solved)
     bridge = make_bridge()
+    # S2: announcing-while-solving is the Watcher-ON path (OFF skips, D-23)
+    bridge.config = SimpleNamespace(
+        get_state=lambda k, d=None: {"watcher_enabled": True}.get(k, d))
     ctrl = make_ctrl(is_security_dialog_visible=_never_visible)
     ctx = make_ctx(bridge, ctrl, make_client(), make_img(tmp_path))
     await sjr._handle_security(ctx, make_block("CHECK_SECURITY"))
@@ -466,7 +469,11 @@ async def test_settle_and_note_stamps_policy(tmp_path, monkeypatch):
         return True
     ctrl = make_ctrl(is_security_dialog_visible=_visible)
     ctrl._resume_policy = SimpleNamespace(settled_at=None)
-    ctx = make_ctx(make_bridge(), ctrl, make_client(), make_img(tmp_path))
+    bridge = make_bridge()
+    # S2: settling a visible dialog is the Watcher-ON path (OFF skips, D-23)
+    bridge.config = SimpleNamespace(
+        get_state=lambda k, d=None: {"watcher_enabled": True}.get(k, d))
+    ctx = make_ctx(bridge, ctrl, make_client(), make_img(tmp_path))
     assert await sjr._settle_and_note(ctx) is True
     assert seen and seen[0].source == "check-security"
     assert ctrl._resume_policy.settled_at is not None
@@ -485,7 +492,11 @@ async def test_security_stop_closure_honours_cancel(tmp_path, monkeypatch):
     async def _visible():
         return True
     for cancel, want in [(False, False), (True, True)]:
-        ctx = make_ctx(make_bridge(cancel=cancel),
+        bridge = make_bridge(cancel=cancel)
+        # S2: cancel-honouring only runs inside the scope; OFF skips (D-23)
+        bridge.config = SimpleNamespace(
+            get_state=lambda k, d=None: {"watcher_enabled": True}.get(k, d))
+        ctx = make_ctx(bridge,
                        make_ctrl(is_security_dialog_visible=_visible),
                        make_client(), make_img(tmp_path))
         assert await sjr.check_security(ctx) is True
