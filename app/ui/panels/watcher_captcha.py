@@ -1,4 +1,4 @@
-"""Watcher + CAPTCHA panel — passive watcher config/control, 2Captcha settings.
+"""Watcher + CAPTCHA panel — passive watcher config/control, captcha key/stats.
 
 Owns the 10 watcher/captcha slots (R5): thin slots delegate to module
 funcs. Watcher construction is shared (`create_watcher_service`); the
@@ -6,14 +6,18 @@ watcher/captcha/CDP imports stay lazy (load-bearing fault tolerance:
 import failure must degrade to err JSON / None, never break panel
 import). `Bridge._captcha_service` stays a 2-line delegation: main_window
 and app/services/captcha call that seam. Imports go panels -> services
-only (Qt via qt_compat; asyncio for fire-and-forget tasks).
+only (Qt via qt_compat).
+
+Captcha SOLVING is not here: the Watcher ON/OFF switch forwards to
+`watcher_solver.solver_follow`, which drives the isolated
+`app.services.captcha_watcher` loop (the app's only solver — RULE 20).
 """
 
-import asyncio
 import json
 
 from app.ui.qt_compat import Slot
 from app.services.run_state import schedule_coro
+from app.ui.panels.watcher_solver import solver_follow
 
 
 def get_watcher_cdp_controller(bridge):
@@ -95,7 +99,7 @@ def persist_watcher_config(config, values: dict) -> None:
 
 
 def captcha_service(bridge):
-    """Lazy CaptchaService (key store + stats + solver)."""
+    """Lazy CaptchaService (key store + stats + recordings — no solver)."""
     svc = getattr(bridge, "_captcha_service_obj", None)
     if svc is None:
         from app.services.captcha import CaptchaService
@@ -104,11 +108,12 @@ def captcha_service(bridge):
 
 
 class WatcherCaptchaMixin:
-    """Passive-watcher config/control and 2Captcha settings slots.
+    """Passive-watcher config/control and 2Captcha key/stats slots.
 
     ideal-size: 10 frozen JS slots; validate/wire helpers already live at
     module level — remaining per-slot bodies cannot move without
-    scattering slot+helper pairs (R10.10).
+    scattering slot+helper pairs (R10.10). Solver slots live in
+    WatcherSolverMixin (RULE 16 method cap).
     """
 
     @Slot(result=str)
@@ -122,6 +127,8 @@ class WatcherCaptchaMixin:
                 cfg = self._watcher.get_config()
             else:
                 cfg = watcher_config_values(self.config)
+            if cfg.get("enabled"):
+                solver_follow(self, True)  # Watcher ON at boot → solver ON too
             return json.dumps(cfg, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"error": str(e)})
@@ -136,6 +143,7 @@ class WatcherCaptchaMixin:
             elif values["enabled"]:
                 self._watcher = create_watcher_service(self, values)
                 self._watcher.start()
+            solver_follow(self, values["enabled"])
             self._log(f"Watcher config saved: enabled={values['enabled']}"
                       f" interval={values['check_interval_ms']}ms"
                       f" captcha_to={values['captcha_timeout_sec']}s"
@@ -152,7 +160,8 @@ class WatcherCaptchaMixin:
                     self, watcher_config_values(self.config, enabled=True))
             self._watcher.update_config(enabled=True)
             self.config.set_state(watcher_enabled=True)
-            return json.dumps({"ok": True})
+            solver = solver_follow(self, True)
+            return json.dumps({"ok": True, "solver": solver})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
@@ -162,6 +171,7 @@ class WatcherCaptchaMixin:
             if self._watcher:
                 self._watcher.update_config(enabled=False)
             self.config.set_state(watcher_enabled=False)
+            solver_follow(self, False)
             self._log("Watcher stopped by user", "warn")
             return json.dumps({"ok": True})
         except Exception as e:
@@ -202,35 +212,31 @@ class WatcherCaptchaMixin:
 
     @Slot(str, result=str)
     def set_captcha_settings(self, payload_json: str):
-        """Save 2Captcha key/enable/timeout; key stays local (masked in reply)."""
+        """Legacy: save key + solve timeout (the `enabled` flag is inert — only
+        the Watcher solves); key stays local, masked in reply."""
         try:
             data = json.loads(payload_json or "{}")
             key = str(data.get("api_key", "") or "").strip()
-            enabled = bool(data.get("enabled", False))
             timeout = int(data.get("solve_timeout_sec", 180))
-            result = captcha_service(self).apply_settings(key, enabled, timeout)
+            result = captcha_service(self).apply_settings(key, timeout)
             self._log(f"🔐 2Captcha settings saved (key={'set' if key else 'empty'},"
-                      f" enabled={result['enabled']}, timeout={timeout}s)", "success")
-            if result["enabled"]:
-                asyncio.create_task(captcha_service(self).refresh_balance())
+                      f" timeout={timeout}s)", "success")
         except Exception as e:
             result = {"ok": False, "error": str(e)}
         return json.dumps(result, ensure_ascii=False)
 
     @Slot(result=str)
     def get_captcha_status(self):
-        """Key mask + balance + last error; raw key never leaves the store."""
+        """Key mask + last error; raw key never leaves the store (balance:
+        `captcha_balance` slot)."""
         try:
-            svc = captcha_service(self)
-            if svc.status_payload().get("has_key"):
-                asyncio.create_task(svc.refresh_balance())  # fire-and-forget, next call shows it
-            return json.dumps({"ok": True, **svc.status_payload()}, ensure_ascii=False)
+            return json.dumps({"ok": True, **captcha_service(self).status_payload()}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
     @Slot(result=str)
     def get_captcha_stats(self):
-        """Local solve counters + auto success rate + balance (API stat)."""
+        """Local encounter counters (detected / manual) + last error."""
         try:
             return json.dumps({"ok": True, **captcha_service(self).stats_payload()}, ensure_ascii=False)
         except Exception as e:

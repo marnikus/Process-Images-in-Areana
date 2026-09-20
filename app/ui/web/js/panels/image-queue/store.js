@@ -12,7 +12,7 @@ window.ImageQueueStore = {
   get thumbCache() { return this._thumbCache; },
 
   restore(state) {
-    if (!state || !state.images) return [];
+    if (!state || !Array.isArray(state.images)) return null;
     this._images = state.images;
     return this._images;
   },
@@ -23,6 +23,22 @@ window.ImageQueueStore = {
   },
 
   findById(id) { return this._images.find(i => i.id === id); },
+
+  /* B10: rows are addressed by job signals through the image path
+     (job_started carries only job_id + absolute_path). Windows paths compare
+     case-insensitively with either slash. */
+  normPath(p) { return String(p || '').replace(/\\/g, '/').toLowerCase(); },
+
+  findByPath(p) {
+    const key = this.normPath(p);
+    if (!key) return undefined;
+    return this._images.find(i => this.normPath(i.absolute_path) === key);
+  },
+
+  _jobs: {},   // job_id → image id (job_started → job_finished)
+  rememberJob(jobId, imgId) { if (jobId && imgId) this._jobs[jobId] = imgId; },
+  imageForJob(jobId) { const id = this._jobs[jobId]; return id ? this.findById(id) : undefined; },
+  forgetJob(jobId) { delete this._jobs[jobId]; },
 
   esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
 

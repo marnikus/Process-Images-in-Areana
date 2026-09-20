@@ -127,6 +127,13 @@
     <div class="panel" id="winPrompt" data-window="prompt">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">edit_note</span> Prompt Editor <span class="spacer"></span><button id="promptSaveBtn" class="btn-small btn-primary">Save</button></h3>
       <textarea id="promptTextarea" class="prompt-textarea" placeholder="Enter your prompt for image generation... e.g. 'Enhance this image, keep style'"></textarea>
+      <div class="preset-bar" id="promptPresetBar" style="margin-top:8px;">
+        <input id="promptPresetName" type="text" placeholder="prompt preset name" style="flex:1; min-width:120px;">
+        <button id="promptPresetSaveBtn" class="btn-small btn-primary" title="Save the textarea as a named prompt preset">Save</button>
+        <select id="promptPresetSelect" style="min-width:140px;" title="Saved prompt presets"></select>
+        <button id="promptPresetLoadBtn" class="btn-small" title="Load the selected preset into the textarea">Load</button>
+        <button id="promptPresetDeleteBtn" class="btn-small" title="Delete the selected preset">Delete</button>
+      </div>
       <div id="promptPreview" class="prompt-preview">Preview will appear here with [JOB-ID: ...] token highlighted</div>
       <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Token format: [JOB-ID: &lt;unique&gt;] will be appended automatically. Saved as preset JSON.</div>
     </div>
@@ -399,34 +406,43 @@
 
     <!-- BROWSER PREVIEW -->
     <div class="panel" id="winCaptcha" data-window="captcha">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">verified_user</span> Captcha — 2Captcha <span class="spacer"></span><button id="captchaSaveBtn" class="btn-small btn-primary">Save</button><button id="captchaStatsBtn" class="btn-small" title="Refresh stats + balance">↻ Stats</button></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">verified_user</span> Captcha — Watcher solver (2Captcha / CapMonster) <span class="spacer"></span><span id="captchaWatcherBadge" class="status-badge" style="font-size:10px; padding:2px 8px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">solver: off</span><button id="captchaWatcherStartBtn" class="btn-small btn-primary" title="Turn the Watcher ON — the app solves visible reCAPTCHA challenges on its own pages">Watcher ON</button><button id="captchaWatcherStopBtn" class="btn-small" title="Turn the Watcher OFF — the app never solves captchas">OFF</button><button id="captchaStatsBtn" class="btn-small" title="Refresh status, stats + balance">↻</button></h3>
       <div style="padding:10px; overflow:auto;">
-        <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:8px;">
-          <input id="captchaEnabled" type="checkbox"> Enable auto-solve (opt-in — off = manual solve in Chrome)
-        </label>
+        <div class="settings-row">
+          <div class="settings-group" style="flex:1; min-width:220px;">
+            <label>Solving provider — each keeps its own key; the Watcher uses the selected one</label>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <select id="captchaProvider" title="Captcha solving provider (2Captcha or CapMonster Cloud — same protocol, different host/key)" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; color:var(--text-primary); font-size:12px;">
+                <option value="2captcha">2Captcha</option>
+                <option value="capmonster">CapMonster Cloud</option>
+              </select>
+              <span id="captchaProviderHint" style="font-size:10px; color:var(--text-muted); white-space:nowrap;">key: —</span>
+            </div>
+          </div>
+        </div>
         <div class="settings-row">
           <div class="settings-group" style="flex:2;">
-            <label>2Captcha API key — stored locally, masked, never in logs/presets</label>
-            <input id="captchaApiKey" type="password" placeholder="paste API key" autocomplete="off">
+            <label id="captchaKeyLabel">2Captcha API key — stored locally (config/captcha_solvers.json, 0600), masked, never in logs/presets</label>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <input id="captchaApiKey" type="password" placeholder="paste 2Captcha API key" autocomplete="off" style="flex:1;">
+              <button id="captchaSaveBtn" class="btn-small btn-primary">Save key</button>
+              <button id="captchaBalanceBtn" class="btn-small" title="Check account balance via the SDK">Balance</button>
+            </div>
             <label style="font-size:10px; color:var(--text-muted); display:flex; gap:4px; align-items:center; margin-top:2px;">
               <input id="captchaKeyShow" type="checkbox"> show key
             </label>
           </div>
-          <div class="settings-group">
-            <label>Solve timeout (minutes)</label>
-            <input id="captchaTimeoutMin" type="number" min="0.5" max="10" step="0.5" placeholder="3">
-          </div>
         </div>
-        <div id="captchaStatusLine" style="font-size:11px; color:var(--text-muted); margin:6px 0;">key: — · balance: —</div>
+        <div id="captchaStatusLine" style="font-size:11px; color:var(--text-muted); margin:6px 0;">solver: off · key: — · balance: —</div>
         <div id="captchaStatsGrid" style="display:flex; gap:10px; flex-wrap:wrap; font-size:11px;">
-          <div><b id="capStatDetected">0</b> detected</div>
-          <div><b id="capStatAuto">0</b> auto-solved</div>
-          <div><b id="capStatFailed">0</b> auto-failed</div>
-          <div><b id="capStatRate">—</b> auto success</div>
-          <div><b id="capStatManual">0</b> manual</div>
+          <div><b id="capStatDetected">0</b> detected (jobs)</div>
+          <div><b id="capStatManual">0</b> cleared while waiting</div>
+          <div><b id="capStatAuto">0</b> solved by Watcher</div>
+          <div><b id="capStatFailed">0</b> Watcher failed</div>
+          <div><b id="capStatTabs">0</b> pages scanned</div>
           <div><b id="capStatBalance">—</b> balance</div>
         </div>
-        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;">Each page detects and solves its own captcha independently — parallel across pages, never blocks other tabs. If auto-solve fails, the job falls back to manual solve. Solved captchas still stack the cooldown penalty.</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:6px;"><b>Isolation contract:</b> jobs never solve a captcha — they pause until the dialog clears. Watcher ON = the Watcher scans the app's own pages every few seconds and solves visible reCAPTCHA challenges through the selected provider (2Captcha or CapMonster Cloud via the official 2Captcha SDK; max 2 paid attempts per challenge). Watcher OFF = the app only processes images; solve captchas yourself in Chrome. Cleared captchas still stack the cooldown penalty.</div>
       </div>
     </div>
 
@@ -555,8 +571,8 @@
       <div style="margin-top:8px;">
         <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">Prompt Presets</div>
         <div style="display:flex; gap:6px; margin-bottom:6px;">
-          <input id="promptPresetNameInput" type="text" placeholder="prompt preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:11px;">
-          <button id="promptPresetSaveBtn" class="btn-small">Save Prompt</button>
+          <input id="arenaPromptPresetNameInput" type="text" placeholder="prompt preset name" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:11px;">
+          <button id="arenaPromptPresetSaveBtn" class="btn-small" title="Save the Prompt Editor text as a named prompt preset">Save Prompt</button>
         </div>
         <div id="promptPresetsList" style="border:1px solid var(--border); border-radius:4px; padding:4px; max-height:150px; overflow:auto;"></div>
       </div>
@@ -644,6 +660,7 @@
 </div>
 
 <script src="js/core/bridge-ready.js"></script>
+<script src="js/core/boot.js"></script>
 <script src="js/core/ui-helpers.js"></script>
 <script src="js/core/dialog.js"></script>
 <script src="js/sash-core/constants.js"></script>
@@ -673,6 +690,7 @@
 <script src="js/panels/url-list/matching.js"></script>
 <script src="js/panels/url-list/cooldown.js"></script>
 <script src="js/panels/url-list/actions.js"></script>
+<script src="js/panels/url-list/listeners.js"></script>
 <script src="js/panels/url-list.js"></script>
 <script src="js/panels/folder-picker.js"></script>
 <script src="js/panels/image-queue/store.js"></script>
@@ -699,7 +717,9 @@
 <script src="js/panels/arena-presets/actions.js"></script>
 <script src="js/panels/arena-presets.js"></script>
 <script src="js/panels/action-blocks/block-store.js"></script>
+<script src="js/panels/action-blocks/block-fields.js"></script>
 <script src="js/panels/action-blocks/block-render.js"></script>
+<script src="js/panels/action-blocks/block-views.js"></script>
 <script src="js/panels/action-blocks/block-config.js"></script>
 <script src="js/panels/action-blocks/block-listeners.js"></script>
 <script src="js/panels/action-blocks/block-ui.js"></script>

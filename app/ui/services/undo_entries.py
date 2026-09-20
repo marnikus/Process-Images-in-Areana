@@ -19,7 +19,7 @@ log = logging.getLogger("arena")
 
 
 def url_rows_from_js(value: list) -> list:
-    """JS url dicts -> UrlRow list (id fallback + last-checked kept)."""
+    """JS url dicts -> UrlRow list (id fallback + last-checked + tab link kept)."""
     return [UrlRow(
         id=u.get("id", f"url_{i}"),
         url=u.get("url", ""),
@@ -27,14 +27,16 @@ def url_rows_from_js(value: list) -> list:
         last_status=u.get("status", "unchecked"),
         last_checked=u.get("last_checked"),
         error=u.get("last_error") or u.get("error"),
+        tab_id=u.get("tab_id") or "",  # B7: undo/redo used to unlink every tab
     ) for i, u in enumerate(value)]
 
 
 def arena_url_rows_from_js(urls: list) -> list:
-    """Arena-snapshot url dicts -> UrlRow list (strict ids)."""
+    """Arena-snapshot url dicts -> UrlRow list (strict ids, tab link kept)."""
     return [UrlRow(
         id=u.get("id"), url=u.get("url"), enabled=u.get("enabled", True),
         last_status=u.get("status", "unchecked"), error=u.get("last_error"),
+        tab_id=u.get("tab_id") or "",
     ) for u in urls]
 
 

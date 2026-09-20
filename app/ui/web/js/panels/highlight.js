@@ -57,3 +57,6 @@ const HighlightOverlay = {
     }
   }
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.HighlightOverlay = HighlightOverlay;

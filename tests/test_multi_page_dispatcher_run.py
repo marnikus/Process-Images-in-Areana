@@ -62,7 +62,9 @@ def make_img(name="a.png", **kw):
             "absolute_path": f"/tmp/{name}", "filename": name,
             "base_name": name.rsplit(".", 1)[0], "extension": "." + name.rsplit(".", 1)[1],
             "size": 1, "mtime": 0.0, "fingerprint": "fp-" + name}
-    return ImageItem.from_scan_dict(data)
+    item = ImageItem.from_scan_dict(data)
+    item.selected = kw.get("selected", True)  # a batch list only ever holds selected images (run_scope)
+    return item
 
 
 def make_pool(tab_ids, busy=()):
@@ -144,6 +146,27 @@ async def test_run_cancel_before_start_is_noop(runner_fakes):
     await mpd.run_one_image_on_page(bridge, pool, img, make_urls(["t1"]))
     assert img.status != ImageStatus.PROCESSING.value
     assert runner_fakes["calls"] == 0 and not bridge.job_finished.calls
+
+
+@pytest.mark.asyncio
+async def test_settled_image_never_acquires_a_page(runner_fakes):
+    """B13 / I-44: the worker re-checks the status right before the claim."""
+    pool = make_pool(["t1"])
+    pool.register_client("t1", object(), object())
+    bridge = FakeBridge()
+    done = make_img("done.png")
+    done.status, done.attempt_count, done.selected = ImageStatus.COMPLETED.value, 1, True
+    fresh = make_img("fresh.png")
+    ctx = mpd.DispatchCtx(bridge=bridge, pool=pool, urls=make_urls(["t1"]),
+                          sem=asyncio.Semaphore(1), allowed={"t1"})
+    await mpd._run_with_sem(ctx, done)
+    await mpd._run_with_sem(ctx, fresh)
+    assert (done.status, done.attempt_count) == (ImageStatus.COMPLETED.value, 1)
+    assert fresh.status == ImageStatus.COMPLETED.value and fresh.attempt_count == 1
+    assert runner_fakes["calls"] == 1
+    assert [p for _, p in bridge.job_started.calls] == ["/tmp/fresh.png"]
+    assert ("info", "⏭ Skipping done.png — already completed") in bridge.logs
+    assert pool.get_page("t1").status == PageStatus.STEADY
 
 
 @pytest.mark.asyncio

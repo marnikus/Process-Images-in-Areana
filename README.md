@@ -63,6 +63,12 @@ For each selected pending image (sequential, round-robin URLs):
 
 Core rule: **observe baseline -> execute one action -> verify effect -> persist state -> advance**
 
+### Run scope — a completed image is never sent again
+- One predicate decides what runs: `app/core/run_scope.py` — an image is in scope when it is **selected** and its status is `pending`, `selected`, `failed` or `processing`. `completed` and `skipped` are never in scope.
+- The **same** predicate is re-checked **at claim time** in both the sequential loop and the parallel dispatcher, so a stale list, a parallel → sequential fallback, a second loop or a checkbox you clear mid-run cannot send an image (log: `⏭ Skipping <file> — already completed` / `— deselected`).
+- **One batch at a time:** while a batch is paused, stopping or still unwinding after Cancel, Start answers `batch still active` — Resume or Cancel it first.
+- **Resume on scan:** when a scan adds a source that already has a sibling output (`name_AI.png`, or the highest `name_AI_<n>.<ext>`), it enters the queue as `completed` with that output path and stays out of the run — handy after *Clear list*, *New batch* or on another machine. Only **Reset** / **Retry** put an image back into scope; a rescan never changes the status of an image already in the queue.
+
 ## Selector Strategy
 All selectors centralized in `app/browser/site_adapter.py` with primary + fallbacks. Prefer semantic: aria-label, name, role, placeholder prefix. Avoid generated IDs, full Tailwind chains, signed URLs.
 
@@ -81,6 +87,17 @@ See `docs/selector_map.md` for full map.
 - `config/presets/*.json` — presets with UI params (URLs, prompt, settings, folder) without job history
 - Atomic writes via temp file + replace
 - Reconcile on startup: detect added/removed/changed files, mark interrupted jobs
+
+### Configuration & secrets (local only — never in Git)
+- Everything under `config/` is **runtime data of one machine**: the 2Captcha API key
+  (`config/captcha_solvers.json`, written by the Captcha Settings panel), session/undo history,
+  captcha recordings, presets. `.gitignore` excludes `config/*` (only `config/.gitkeep` is tracked),
+  `logs/`, `arena webpages/` (saved session pages) and bytecode.
+- Enter the API key in the app (Captcha → Settings); it is stored only in that ignored file.
+- Guard: `tests/test_repo_hygiene.py` asks `git ls-files` and fails when any such path or an
+  `api_key` literal is tracked; `tools/pre_push_check.sh` step 0 blocks the push the same way.
+- History note (2026-10-09): keys were once committed in the root commit of this repo and have
+  been rotated; a leaked key is burned the moment it is pushed — rotate first, clean second.
 
 ## Highlight Rect
 When clicking element, draws rect overlay for configurable seconds (default 2s, color #FF0000). Enabled in settings.

@@ -4,17 +4,20 @@ RULE18: file 150-300, func ≤20, CC≤10, params≤4, predicate table.
 """
 from __future__ import annotations
 
+import functools
 import os
 import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+AI_SUFFIX = "_AI"  # the one literal: outputs, the scan filter and Drop _AI all read it
+
 
 @dataclass
 class OutputSpec:
     """Param object for get_output_path (C5)."""
-    suffix: str = "_AI"
+    suffix: str = AI_SUFFIX
     preserve_format: bool = True
     overwrite: bool = False
     downloaded_ext: str | None = None
@@ -94,11 +97,20 @@ def atomic_write_bytes(temp_dir: Path, final_path: Path, data: bytes) -> Path:
     return final_path
 
 
-def is_ai_generated_filename(path: Path, suffix: str = "_AI") -> bool:
-    stem = Path(path).stem
-    if stem.endswith(suffix):
-        return True
-    pattern = re.escape(suffix) + r"_\d+$"
-    if re.search(pattern, stem):
-        return True
-    return False
+@functools.lru_cache(maxsize=8)
+def _ai_family_re(suffix: str) -> re.Pattern:
+    """`<base><suffix>` or `<base><suffix>_<n>` — the family `get_output_path` writes."""
+    return re.compile(rf"^(?P<base>.*){re.escape(suffix)}(?:_(?P<n>\d+))?$")
+
+
+def parse_ai_output(stem: str, suffix: str = AI_SUFFIX) -> tuple[str, int | None] | None:
+    """(base, counter) of an output stem — `photo_AI` → ("photo", None), `photo_AI_3` → ("photo", 3); None for a source."""
+    m = _ai_family_re(suffix).match(stem)
+    if m is None:
+        return None
+    n = m.group("n")
+    return m.group("base"), (int(n) if n is not None else None)
+
+
+def is_ai_generated_filename(path: Path, suffix: str = AI_SUFFIX) -> bool:
+    return parse_ai_output(Path(path).stem, suffix) is not None

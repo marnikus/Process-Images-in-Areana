@@ -1,4 +1,4 @@
-# ideal-size: ~830 lines reason=single converged block-runner owns all 20 block handlers sharing JobCtx; splitting handlers across files would scatter one per-image lifecycle that always changes together (RULE 18.2)
+# ideal-size: ~830 lines reason=single converged block-runner owns the block handlers sharing JobCtx; splitting handlers across files would scatter one per-image lifecycle that always changes together (RULE 18.2). AWAIT_PROCESSING_IMAGE lives in services/await_processing.py (B12): it is a different mechanism (indicator poll, never fails), not a variant of the new-output wait.
 """Single job runner — small helpers per RULE 18/16."""
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from app.browser.probe_selectors import (
 from app.browser.site_adapter import get_selector
 from app.browser.probe_requests import FindProbeSpec, HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
+from app.services.await_processing import handle_await_processing
 from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
@@ -466,22 +467,21 @@ async def _handle_submit(ctx: JobCtx, block: Any):
 
 
 async def _handle_wait(ctx: JobCtx, block: Any):
-    """Handle wait (announce watching state first, like the legacy loop)."""
-    # ideals-TABLED (R10.9): CC 9 is 3 readable ternaries + single-level
-    # ifs with no nesting; the A2-converged legacy body stays verbatim.
-    is_await = getattr(block, "block_id", "") == "AWAIT_PROCESSING_IMAGE"
-    label = "Waiting for image to finish generating" if is_await else "Waiting for generation"
+    """WAIT_OUTPUT: announce, then wait for the NEW output image (legacy loop).
+
+    B12: AWAIT_PROCESSING_IMAGE no longer shares this handler — the new-output
+    wait can only end by timeout on an idle page (services/await_processing)."""
     timeout = getattr(block, "timeout_ms", 0) or ctx.bridge.state.settings.timeouts.get("generation", 180) * 1000
-    _emit_action(ctx, block, "waiting" if is_await else "running", f"{label} — timeout {timeout}ms")
+    _emit_action(ctx, block, "running", f"Waiting for generation — timeout {timeout}ms")
     src, fbytes, err = await wait_for_output(ctx, timeout)
     if src:
         ctx.new_src = src
     if fbytes:
         ctx.file_bytes = fbytes
         ctx.ctype = "image"
-    if not ctx.new_src and not is_await:
+    if not ctx.new_src:
         raise RuntimeError(f"Wait failed: {err}")
-    _emit_action(ctx, block, "success", f"Output {ctx.new_src[:60] if ctx.new_src else 'done'}")
+    _emit_action(ctx, block, "success", f"Output {ctx.new_src[:60]}")
 
 
 async def _handle_download(ctx: JobCtx, block: Any):
@@ -733,7 +733,7 @@ def _handler_map():
         "HIGHLIGHT_SUBMIT": _handle_marker_highlight,
         "SUBMIT": _handle_submit,
         "WAIT_OUTPUT": _handle_wait,
-        "AWAIT_PROCESSING_IMAGE": _handle_wait,
+        "AWAIT_PROCESSING_IMAGE": handle_await_processing,
         "DOWNLOAD": _handle_download,
         "VALIDATE": _handle_validate,
         "SAVE": _handle_save,
@@ -816,19 +816,83 @@ async def _run_one_checked(ctx: JobCtx, block: Any) -> tuple[bool, str, bool]:
         return True, err, should_break
 
 
+def _output_secured(ctx: JobCtx) -> bool:
+    """The generated image is already in memory (DOWNLOAD/WAIT delivered bytes)."""
+    return bool(ctx.file_bytes and len(ctx.file_bytes) > 100)
+
+
+# Blocks whose failure means the secured bytes themselves are bad or unsaved.
+_OUTPUT_BLOCKS = frozenset({"VALIDATE", "SAVE"})
+
+
+def _post_download_warning(ctx: JobCtx, block: Any, err: str, secured: bool) -> bool:
+    """B8 policy: once the image is downloaded, a later page-action failure is
+    a warning, not a job failure — the stack continues so VALIDATE/SAVE keep
+    the bytes (a paid generation is never thrown away). VALIDATE/SAVE and
+    cancellation keep their normal failure semantics."""
+    if not secured or _is_cancelled(ctx):
+        return False
+    if getattr(block, "block_id", "") in _OUTPUT_BLOCKS:
+        return False
+    name = getattr(block, "display_name", None) or getattr(block, "block_id", "block")
+    _report_recovery(ctx, f"⚠ {name} failed after the image was downloaded ({err}) "
+                          f"— continuing so the image is saved", "warn")
+    return True
+
+
+def _record_failure(block: Any, err: str, brk: bool, acc: Dict[str, Any]) -> bool:
+    """Classify one block failure into the run accumulator; True = stop the stack.
+
+    hard: a required break or a VALIDATE/SAVE failure (never forgiven);
+    soft: a non-required block that failed while the stack continued."""
+    acc["failed"], acc["error"] = True, err
+    if brk or getattr(block, "block_id", "") in _OUTPUT_BLOCKS:
+        acc["hard"] = True
+        return brk
+    acc["soft"].append(f"{_display(block)} ({err})")
+    return False
+
+
+def _soft_failures_forgiven(ctx: JobCtx, acc: Dict[str, Any]) -> bool:
+    """B9 policy: optional (`required=False`) blocks that failed BEFORE the
+    download do not fail a job whose image was then downloaded, validated
+    and SAVED — the paid generation is on disk and the block rows already
+    show the red status. Required breaks, VALIDATE/SAVE failures and
+    cancellation keep their failure semantics (goldens req_fail / cancel)."""
+    if not acc["failed"] or acc["hard"] or not acc["saved"] or not acc["soft"]:
+        return False
+    if _is_cancelled(ctx) or not _output_secured(ctx):
+        return False
+    _report_recovery(ctx, "⚠ Completed with warnings — the image was saved although "
+                          "non-required block(s) failed: " + "; ".join(acc["soft"]), "warn")
+    return True
+
+
+def _absorb_block_result(ctx: JobCtx, block: Any, result: tuple, acc: Dict[str, Any]) -> bool:
+    """Fold one block outcome into the run accumulator; True = stop the stack."""
+    failed, err, brk = result
+    if not failed:
+        if getattr(block, "block_id", "") == "SAVE":
+            acc["saved"] = True
+        return False
+    if _post_download_warning(ctx, block, err, acc["secured"]):
+        return False
+    return _record_failure(block, err, brk, acc)
+
+
 async def _loop_blocks(ctx: JobCtx, blocks: List[Any]) -> tuple[bool, str]:
-    failed = False
-    error = ""
+    acc: Dict[str, Any] = {"failed": False, "error": "", "hard": False, "soft": [],
+                           "saved": False, "secured": False}
     for block in blocks:
-        f, e, brk = await _run_one_checked(ctx, block)
-        if f:
-            failed = True
-            error = e
-            if brk:
-                break
-        if _is_cancelled(ctx) and failed:
+        acc["secured"] = _output_secured(ctx)  # before the block runs (B8)
+        result = await _run_one_checked(ctx, block)
+        if _absorb_block_result(ctx, block, result, acc):
             break
-    return failed, error
+        if _is_cancelled(ctx) and acc["failed"]:
+            break
+    if _soft_failures_forgiven(ctx, acc):
+        return False, ""
+    return acc["failed"], acc["error"]
 
 
 def _reset_captcha_reports(ctx: JobCtx):

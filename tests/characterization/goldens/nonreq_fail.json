@@ -105,15 +105,15 @@
   ],
   [
    "job_finished",
-   "failed",
+   "completed",
    true
   ]
  ],
  "images": [
   {
    "rel": "pic1.png",
-   "status": "failed",
-   "error": "Prompt verification failed: Mismatch"
+   "status": "completed",
+   "error": ""
   }
  ],
  "files": [

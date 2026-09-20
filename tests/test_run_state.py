@@ -60,6 +60,22 @@ def test_schedule_coro_runs_and_tracks_batch():
     assert bridge._batch_future is None
 
 
+def test_batch_active_follows_the_future_not_the_label():
+    """I-45: alive future → active (whatever _run_state says); done/cancelled/None → not."""
+    bridge = make_bridge()
+    assert rs.batch_active(bridge) is False
+    fut = Future()
+    bridge._batch_future = fut
+    assert rs.batch_active(bridge) is True
+    fut.set_result(None)
+    assert rs.batch_active(bridge) is False
+    cancelled = Future()
+    cancelled.cancel()
+    bridge._batch_future = cancelled
+    assert rs.batch_active(bridge) is False
+    assert rs.batch_active(SimpleNamespace()) is False  # attribute missing → not active
+
+
 def test_on_coro_done_logs_errors_not_cancels():
     import concurrent.futures
     bridge = make_bridge()

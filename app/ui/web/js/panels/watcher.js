@@ -63,3 +63,6 @@ const WatcherPanel = {
   onStatusUpdate(payload) { return this._actions?.onStatusUpdate(payload); },
   render(data) { return this._render?.render(data); },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.WatcherPanel = WatcherPanel;

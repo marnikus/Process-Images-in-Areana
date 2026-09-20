@@ -1,138 +1,94 @@
-/* block-config.js — config panel rendering & editing (C7)
-   Handles config form for a single block, debounced save.
+/* block-config.js — Block Config window: head + form + debounced autosave (C7)
+   DOM contract (index.html #winBlockConfig + css/arena.css "screenshot 2"):
+     #blockConfigHead  > .bc-title-row (.bc-title-icon .bc-title-text .bc-badge…) | .bc-head-empty
+     #blockConfigForm  > .block-config-win > .bc-card > .bc-hint + .bc-row* (ActionBlocksFields)
+   B11 (2026-10-07): used to target #panel-action-blocks / #ab-config-form,
+   which never existed → no form ever appeared and flushSave threw on null.
+   Form events are bound ONCE (Boot.bindOnce); the form is rebuilt only when
+   the shown block changes, so a live re-render never eats a half-typed edit.
    RULE18: file 150-300, func ≤30, CC≤10
 */
 'use strict';
 
 window.ActionBlocksConfig = {
   _saveTimer: null,
+  _shownId: null,
+  _fields() { return window.ActionBlocksFields; },
+  headEl() { return document.getElementById('blockConfigHead'); },
+  formEl() { return document.getElementById('blockConfigForm'); },
 
-  fieldDefs() {
-    return [
-      { key: 'selector', label: 'CSS Selector', type: 'text', placeholder: 'e.g. [data-testid=attach]' },
-      { key: 'label_selector', label: 'Label Selector', type: 'text' },
-      { key: 'match_text', label: 'Match Text', type: 'text' },
-      { key: 'match_mode', label: 'Match Mode', type: 'select', options: ['contains', 'exact', 'regex'] },
-      { key: 'click_enabled', label: 'Click Enabled', type: 'checkbox' },
-      { key: 'click_selector', label: 'Click Selector', type: 'text' },
-      { key: 'fallback_selector', label: 'Fallback Selector', type: 'text' },
-      { key: 'fallback_text', label: 'Fallback Text', type: 'text' },
-      { key: 'highlight_enabled', label: 'Highlight Enabled', type: 'checkbox' },
-      { key: 'color', label: 'Color', type: 'color' },
-      { key: 'timeout_ms', label: 'Timeout (ms)', type: 'number' },
-      { key: 'pre_delay_ms', label: 'Pre Delay (ms)', type: 'number' },
-      { key: 'highlight_ms', label: 'Highlight (ms)', type: 'number' },
-      { key: 'confirm_pause_ms', label: 'Confirm Pause (ms)', type: 'number' },
-      { key: 'enabled', label: 'Enabled', type: 'checkbox' },
-      { key: 'custom_name', label: 'Custom Name', type: 'text' },
-    ];
+  _el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null && text !== '') node.textContent = String(text);
+    return node;
   },
 
-  _createSelectInput(def, block) {
-    const input = document.createElement('select');
-    def.options.forEach(opt => {
-      const o = document.createElement('option');
-      o.value = opt;
-      o.textContent = opt;
-      if (block[def.key] === opt) o.selected = true;
-      input.appendChild(o);
-    });
-    return input;
-  },
+  _badge(cls, text) { return this._el('span', `bc-badge ${cls}`, text); },
 
-  _createCheckboxInput(def, block) {
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = !!block[def.key];
-    return input;
-  },
+  _titleText(block) { return block.custom_name || block.name || block.block_id; },
 
-  _createTextInput(def, block) {
-    const input = document.createElement('input');
-    if (def.type === 'color') input.type = 'color';
-    else if (def.type === 'number') input.type = 'number';
-    else input.type = 'text';
-    input.value = block[def.key] != null ? String(block[def.key]) : '';
-    if (def.placeholder) input.placeholder = def.placeholder;
-    return input;
-  },
-
-  _inputForDef(def, block) {
-    if (def.type === 'select') return this._createSelectInput(def, block);
-    if (def.type === 'checkbox') return this._createCheckboxInput(def, block);
-    return this._createTextInput(def, block);
-  },
-
-  _fieldRow(def, block) {
-    const row = document.createElement('div');
-    row.className = 'ab-field';
-    const label = document.createElement('label');
-    label.className = 'ab-field__label';
-    label.textContent = def.label;
-    const wrap = document.createElement('div');
-    wrap.className = 'ab-field__input';
-    const input = this._inputForDef(def, block);
-    input.dataset.fieldKey = def.key;
-    wrap.appendChild(input);
-    row.appendChild(label);
-    row.appendChild(wrap);
+  _titleRow(block) {
+    const row = this._el('div', 'bc-title-row');
+    row.appendChild(window.ActionBlocksRender.icon(block.icon, 'bc-title-icon', block.color));
+    row.appendChild(this._el('span', 'bc-title-text', this._titleText(block)));
+    row.appendChild(this._badge('bc-badge-id', block.block_id));
+    row.appendChild(this._badge('bc-badge-cat', block.category || 'action'));
+    if (block.required) row.appendChild(this._badge('bc-badge-cat', 'required'));
     return row;
   },
 
-  _appendSaveButton(form) {
-    const btn = document.createElement('button');
-    btn.className = 'ab-btn ab-btn--primary';
-    btn.textContent = 'Save';
-    btn.dataset.action = 'save-config';
-    form.appendChild(btn);
+  renderHead(block) {
+    const head = this.headEl();
+    if (!head) return;
+    head.innerHTML = '';
+    if (block) { head.appendChild(this._titleRow(block)); return; }
+    head.appendChild(this._el('span', 'bc-head-empty', 'Select a block to configure — all params storable in preset JSON, rect duration configurable'));
   },
 
-  buildForm(root, block) {
-    const form = root.querySelector('#ab-config-form');
-    if (!form) return;
+  _emptyForm(form) {
     form.innerHTML = '';
-    if (!block) {
-      form.innerHTML = '<div class="ab-empty">Select a block to configure</div>';
-      return;
-    }
-    this.fieldDefs().forEach(def => {
-      form.appendChild(this._fieldRow(def, block));
-    });
-    this._appendSaveButton(form);
+    form.classList.add('empty');
+    form.appendChild(this._el('div', 'bc-hint', 'Click a block in the stack (or its Edit button) to tune selectors, timings and visual confirmation. Changes save automatically.'));
   },
 
-  _onFieldInput(e, getBlock, onSave) {
-    const input = e.target.closest('[data-field-key]');
+  buildForm(block, labels) {
+    const form = this.formEl();
+    if (!form) return;
+    if (!block) { this._emptyForm(form); return; }
+    form.innerHTML = '';
+    form.classList.remove('empty');
+    const win = this._el('div', 'block-config-win');
+    const card = this._el('div', 'bc-card');
+    if (block.description) card.appendChild(this._el('div', 'bc-hint', block.description));
+    this._fields().orderedDefs(block, labels).forEach((def) => card.appendChild(this._fields().row(def, block)));
+    win.appendChild(card);
+    form.appendChild(win);
+  },
+
+  /** Show `block` (null = empty state); rebuilds only when the block changes or `force`. */
+  showConfig(block, labels, force) {
+    const id = block ? block.id : null;
+    if (!force && id === this._shownId) return;
+    this._shownId = id;
+    this.renderHead(block);
+    this.buildForm(block, labels);
+  },
+
+  _onFieldEvent(e, getBlock, onSave) {
+    const input = e.target && e.target.closest ? e.target.closest('.bc-field') : null;
     if (!input) return;
     this.scheduleSave(getBlock, onSave);
   },
 
-  bindFormEvents(root, getSelectedBlock, onSave) {
-    const form = root.querySelector('#ab-config-form');
+  /** Bind once per form element (init-time); idempotent through Boot.bindOnce. */
+  bindFormEvents(getSelectedBlock, onSave) {
+    const form = this.formEl();
     if (!form) return;
-    form.addEventListener('input', (e) => this._onFieldInput(e, getSelectedBlock, onSave));
-    form.addEventListener('change', (e) => this._onFieldInput(e, getSelectedBlock, onSave));
-    form.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-action="save-config"]');
-      if (!btn) return;
-      e.preventDefault();
-      this.flushSave(getSelectedBlock, onSave);
-    });
-  },
-
-  readFormValues(root) {
-    const form = root.querySelector('#ab-config-form');
-    if (!form) return {};
-    const values = {};
-    form.querySelectorAll('[data-field-key]').forEach(input => {
-      const key = input.dataset.fieldKey;
-      if (input.type === 'checkbox') values[key] = input.checked;
-      else if (input.type === 'number') {
-        const n = Number(input.value);
-        values[key] = Number.isFinite(n) ? n : 0;
-      } else values[key] = input.value;
-    });
-    return values;
+    const handler = (e) => this._onFieldEvent(e, getSelectedBlock, onSave);
+    const bind = (ev) => (window.Boot ? window.Boot.bindOnce(form, ev, handler, 'ab-config') : form.addEventListener(ev, handler));
+    bind('input');
+    bind('change');
   },
 
   scheduleSave(getSelectedBlock, onSave) {
@@ -145,13 +101,7 @@ window.ActionBlocksConfig = {
     this._saveTimer = null;
     const block = getSelectedBlock();
     if (!block) return;
-    const root = document.getElementById('panel-action-blocks');
-    Object.assign(block, this.readFormValues(root));
-    onSave();
-  },
-
-  showConfig(root, idx, blocks) {
-    const block = blocks[idx] || null;
-    this.buildForm(root, block);
+    this._fields().apply(block, this._fields().readForm(this.formEl()));
+    onSave(block);
   },
 };

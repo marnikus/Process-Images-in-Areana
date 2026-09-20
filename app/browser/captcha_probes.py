@@ -39,8 +39,3 @@ def build_inject_js(token: str, sitekey: str = "") -> str:
     own widget when several clients coexist (badge + challenge).
     """
     return f"({_read('inject.js')})({json.dumps(token)}, {json.dumps(sitekey)})"
-
-
-def build_continue_js() -> str:
-    """Dialog action-button click probe (best effort, IIFE)."""
-    return _read("continue_click.js")

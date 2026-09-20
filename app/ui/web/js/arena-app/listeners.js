@@ -6,20 +6,40 @@
 window.ArenaAppListeners = {
   _arenaStateTimer: null,
   _pendingArenaState: null,
+  // Panels re-rendered from every live `arena_state_updated` push, in order.
+  LIVE_STATE_PANELS: ['UrlList', 'ImageQueue', 'ProgressPanel'],
+  _applyErrors: new Set(),
 
   _handleArenaLog(msg, level) {
     if (typeof LogConsole !== 'undefined') LogConsole.log(msg, level);
   },
 
+  /* B10: a live-state render failure is never silent and never takes the
+     other panels down with it (one throwing restore() used to skip the Image
+     Queue + Progress refresh inside a single bare try/catch). */
+  _reportApplyError(name, e) {
+    const msg = (e && e.message) ? e.message : String(e);
+    console.error(`[App] live state: ${name} failed`, e);
+    if (this._applyErrors.has(name)) return;
+    this._applyErrors.add(name);
+    if (typeof LogConsole !== 'undefined') {
+      LogConsole.log(`UI state sync: ${name} failed to render (${msg}) — other panels keep updating`, 'error');
+    }
+  },
+
+  _restorePanel(name, data) {
+    const panel = window[name];
+    if (!panel || typeof panel.restore !== 'function') return false;
+    try { panel.restore(data); return true; } catch (e) { this._reportApplyError(name, e); return false; }
+  },
+
   _applyPendingState(j) {
     if (!j) return;
-    try {
-      const data = JSON.parse(j);
-      window.App.state = data;
-      if (typeof UrlList !== 'undefined' && UrlList.restore) UrlList.restore(data);
-      if (typeof ImageQueue !== 'undefined' && ImageQueue.restore) ImageQueue.restore(data);
-      if (typeof ProgressPanel !== 'undefined' && ProgressPanel.restore) ProgressPanel.restore(data);
-    } catch (e) {}
+    let data;
+    try { data = JSON.parse(j); } catch (e) { this._reportApplyError('state payload', e); return; }
+    if (!data || typeof data !== 'object') return;
+    window.App.state = data;
+    this.LIVE_STATE_PANELS.forEach((name) => this._restorePanel(name, data));
   },
 
   _handleArenaState(json) {
@@ -92,12 +112,18 @@ window.ArenaAppListeners = {
     if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.onJobActionStatus(jobId, blockId, statusJson);
   },
 
-  _handleJobStarted(jobId) {
+  /* B10: per-job row updates go straight to the Image Queue (processing →
+     completed/failed) — no dependence on the debounced full-state push. */
+  _handleJobStarted(jobId, imagePath) {
     if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.onJobStarted(jobId);
+    const q = window.ImageQueue;
+    if (q && q.onJobStarted) { try { q.onJobStarted(jobId, imagePath); } catch (e) { this._reportApplyError('ImageQueue.onJobStarted', e); } }
   },
 
   _handleJobFinished(jobId, resultJson) {
     if (typeof ActionBlocksPanel !== 'undefined') ActionBlocksPanel.onJobFinished(jobId, resultJson);
+    const q = window.ImageQueue;
+    if (q && q.onJobFinished) { try { q.onJobFinished(jobId, resultJson); } catch (e) { this._reportApplyError('ImageQueue.onJobFinished', e); } }
   },
 
   _handleWatcherStatus(payload) {
@@ -106,6 +132,10 @@ window.ArenaAppListeners = {
 
   _handleWatcherLog(msg, level) {
     if (typeof LogConsole !== 'undefined') LogConsole.log(msg, level);
+  },
+
+  _handleCaptchaWatcherStatus(payload) {
+    if (typeof CaptchaPanel !== 'undefined' && CaptchaPanel.onStatusUpdate) CaptchaPanel.onStatusUpdate(payload);
   },
 
   _handlePagePool(payload) {
@@ -134,10 +164,11 @@ window.ArenaAppListeners = {
       presets_changed: (k, p) => this._handlePresetsChanged(k, p),
       action_blocks_updated: (payload) => this._handleActionBlocks(payload),
       job_action_status: (j, b, s) => this._handleJobActionStatus(j, b, s),
-      job_started: (j) => this._handleJobStarted(j),
+      job_started: (j, p) => this._handleJobStarted(j, p),
       job_finished: (j, r) => this._handleJobFinished(j, r),
       watcher_status: (p) => this._handleWatcherStatus(p),
       watcher_log: (m, l) => this._handleWatcherLog(m, l),
+      captcha_watcher_status: (p) => this._handleCaptchaWatcherStatus(p),
       page_pool_updated: (p) => this._handlePagePool(p),
       thumbnail_ready: (id, p) => this._handleThumbnail(id, p),
     };

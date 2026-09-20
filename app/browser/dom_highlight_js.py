@@ -80,7 +80,7 @@ _LABEL_JS = """
       var node = nodes[i];
       var el = node;
       var label = (node.textContent || '').trim().replace(/\\s+/g, ' ');
-      if (childSel) { var c = node.querySelector(childSel); if (c) { el = c; label = (c.textContent || '').trim().replace(/\\s+/g, ' '); }"""
+      if (childSel) { var c = node.querySelector(childSel); if (c) { el = c; label = (c.textContent || '').trim().replace(/\\s+/g, ' '); } }"""
 
 _MATCH_JS = """
       if (matchText !== null && matchText !== undefined && matchText !== '') {

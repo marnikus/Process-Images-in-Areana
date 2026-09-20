@@ -1,16 +1,21 @@
-"""handle_captcha — the ONE choke point every captcha call site routes through.
+"""handle_captcha — the ONE choke point every pipeline captcha call routes through.
 
 Flow: visibility (existing predicate) → detect probe (kind + sitekey) →
-stats → auto-solve (opt-in 2Captcha) → manual fallback (overlay + wait) →
-cooldown penalty record (same choke point as the 2026-09-17 fix).
+stats → wait for the dialog to clear (overlay + poll) → cooldown penalty
+record (same choke point as the 2026-09-17 fix).
 
-RULE 9 fail-open: probe errors, a missing service, or solver failures never
-stall the job — they degrade to the manual flow. RULE 7: stop is honoured
-inside the waits. Penalty records exactly once per solved edge.
+The pipeline NEVER solves (2026-10-02 isolation): while this wait runs the
+dialog is cleared either by the user in Chrome or by the Captcha Watcher
+(`app.services.captcha_watcher`, the app's only solver) when it is ON.
+The job simply resumes once the challenge is gone.
+
+RULE 9 fail-open: probe errors or a missing service never stall the job —
+they degrade to the plain wait. RULE 7: stop is honoured inside the wait.
+Penalty records exactly once per cleared edge.
 """
-# ideal-size(reason): one choke point whose phases (probe, stats, solve,
-# manual wait, penalty) must stay in one readable control flow — the
-# phase helpers are separate functions, the sequence is not.
+# ideal-size(reason): one choke point whose phases (probe, stats, wait,
+# penalty) must stay in one readable control flow — the phase helpers are
+# separate functions, the sequence is not.
 
 from __future__ import annotations
 
@@ -24,11 +29,11 @@ from app.browser.captcha_probes import build_detect_js
 from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 from app.services.captcha_recording import RecordingManager
 
-from .api_client import POLL_INTERVAL_SEC, ApiError, Captcha2Client
-from .key_store import CaptchaKeyStore, CaptchaSettings, clamp_timeout
+from .key_store import CaptchaKeyStore, clamp_timeout
 from .signals import CaptchaSignal, SolveOutcome, host_of
-from .solver import CaptchaSolver, task_type_for
 from .stats import CaptchaStatsStore
+
+POLL_INTERVAL_SEC = 0.0  # report-schema compat: the pipeline no longer polls a solver
 
 
 @dataclass
@@ -140,32 +145,6 @@ def _new_encounter(ctx: CaptchaCtx, signal: CaptchaSignal) -> Dict[str, Any]:
     return report
 
 
-def _finish_auto(rep: Dict[str, Any], outcome: SolveOutcome,
-                 solve_mono: float, task_type: str) -> None:
-    """Fill the 2Captcha-attempt fields (durations relative to detect)."""
-    det = rep.get("_detected_mono", solve_mono)
-    to_solve = round(solve_mono - det, 1)
-    rep["detect_to_solve_s"] = to_solve
-    rep["task_type"] = task_type
-    rep["task_id"] = outcome.task_id
-    rep["polls"] = outcome.polls
-    rep["attempts"] = outcome.attempts
-    rep["token"] = ({"at_s": round(to_solve + outcome.token_sec, 1),
-                     "fp": outcome.token_fp} if outcome.token_fp else None)
-    rep["dialog_at_token"] = outcome.dialog_at_token
-    rep["inject"] = outcome.inject
-    rep["callback"] = {"attempted": bool(outcome.inject),
-                       "source": outcome.inject.split(" via ", 1)[1].split(")", 1)[0]
-                       if " via " in outcome.inject else "",
-                       "called": "cb=called" in outcome.inject}
-    acceptance_at = outcome.page_error_at_s if outcome.status == "page_error" else outcome.token_sec
-    rep["acceptance"] = {"state": outcome.status, "at_s": round(to_solve + acceptance_at, 1)}
-    rep["page_error"] = ({"at_s": round(to_solve + outcome.page_error_at_s, 1),
-                          "text": outcome.page_error} if outcome.page_error else None)
-    if outcome.status == "token_stale" or "stale" in outcome.reason:
-        rep["stale"] = {"reason": outcome.reason, "at_s": round(to_solve + outcome.token_sec, 1)}
-
-
 def _finish_resolution(rep: Dict[str, Any], outcome: SolveOutcome) -> None:
     """Fill status/reason/total (mutates rep, drops the internal stamp)."""
     det = rep.pop("_detected_mono", None)
@@ -250,52 +229,23 @@ async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
     return outcome
 
 
-async def _dialog_still_visible(ctx: CaptchaCtx) -> bool:
-    """H4: can a human still solve this challenge right now? (fail closed)."""
-    try:
-        return bool(await ctx.ctrl.is_security_dialog_visible())
-    except Exception:
-        return False
-
-
 async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
                            svc: Optional["CaptchaService"], rep: Dict[str, Any]) -> SolveOutcome:
-    """Choose automatic or manual policy while recording stays orthogonal."""
-    if svc is not None and svc.auto_enabled() and signal.solvable:
-        outcome = await _try_auto(ctx, signal, svc, rep)
-        await svc.recordings.note(ctx.tab_id, "auto_attempt_finished", outcome)
-        if outcome.status == "solved":
-            _record_penalty(ctx)
-            return outcome
-        if outcome.status == "page_error":
-            return outcome
-        if outcome.status == "token_stale" and not await _dialog_still_visible(ctx):
-            _log(ctx, "challenge dialog already cleared — token_stale stands, no manual wait", "info")
-            return outcome
-        return await _manual_wait(ctx, signal, f"auto-solve failed: {outcome.reason}", rep)
-    if svc is not None and svc.auto_enabled():
-        _log(ctx, "⚠️ FLAG CAPTCHA_AUTO skipped — no sitekey in dialog — manual wait", "warn")
-        return await _manual_wait(ctx, signal, "auto-solve: no sitekey in dialog", rep)
-    reason = "auto-solve OFF — solve in Chrome (enable 2Captcha in the Captcha window)"
+    """Wait-only policy: the pipeline never solves; the Watcher (when ON) or
+    the user clears the dialog. `svc` is kept for the call contract (stats)."""
+    watcher_on = _watcher_running(ctx)
+    reason = ("Captcha Watcher is solving it (2Captcha SDK)" if watcher_on
+              else "solve in Chrome — or turn the Watcher ON to auto-solve")
     return await _manual_wait(ctx, signal, reason, rep)
 
 
-async def _try_auto(ctx: CaptchaCtx, signal: CaptchaSignal, svc: CaptchaService,
-                 rep: Dict[str, Any]) -> SolveOutcome:
-    """One 2Captcha attempt; fills + emits the report when solved."""
-    _log(ctx, f"🤖 FLAG CAPTCHA_AUTO — 2Captcha auto-solve started (tab {str(ctx.tab_id)[:12]})", "warn")
-    solve_mono = time.monotonic()
-    outcome = await svc.solver.solve(ctx.ctrl, ctx.tab_id, signal, _stop_pred(ctx))
-    _finish_auto(rep, outcome, solve_mono, task_type_for(signal.kind))
-    if outcome.status != "solved":
-        _finish_resolution(rep, outcome)
-        _emit_report(ctx, rep)
-        _log(ctx, f"2Captcha auto-solve failed ({outcome.reason}) — "
-                  f"{'preserving page failure' if outcome.status == 'page_error' else 'falling back to manual wait'}", "warn")
-        return outcome
-    _finish_resolution(rep, outcome)
-    _emit_report(ctx, rep)
-    return outcome
+def _watcher_running(ctx: CaptchaCtx) -> bool:
+    """Is the isolated Captcha Watcher loop running on this bridge? (fail closed)."""
+    try:
+        watcher = getattr(ctx.bridge, "_captcha_watcher", None)
+        return bool(watcher is not None and watcher.running)
+    except Exception:
+        return False
 
 
 async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
@@ -320,67 +270,41 @@ async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
     else:
         _record_stats(ctx, "manual_solved", host_of(signal.page_url))
         _record_penalty(ctx)
-        out = SolveOutcome(status="manual", method="manual")
+        method = "watcher" if _watcher_running(ctx) else "manual"
+        out = SolveOutcome(status="manual", method=method)
     _finish_resolution(rep, out)
     _emit_report(ctx, rep)
     return out
 
 
 class CaptchaService:
-    """Bridge-side facade: key store + stats + solver + payloads (no Qt)."""
+    """Bridge-side facade: key store + stats + recordings (no solver, no Qt).
+
+    Solving moved to `app.services.captcha_watcher` (2026-10-02); this
+    service only observes encounters for the pipeline's wait/penalty flow.
+    """
 
     def __init__(self, config_dir: str, log: Optional[Callable[[str, str], None]] = None):
         self.keys = CaptchaKeyStore(config_dir)
         self.stats = CaptchaStatsStore(config_dir)
         self._log = log or (lambda msg, level="info": None)
         self.recordings = RecordingManager(config_dir, self._log)
-        # D2: solver milestones flow into the active recording (fail-open inside the hook)
-        self.solver = CaptchaSolver(self.keys, self.stats, self._log,
-                                    milestone_hook=self._on_milestone)
 
-    async def _on_milestone(self, tab_id: str, phase: str, outcome: Any) -> None:
-        await self.recordings.note(tab_id, phase, outcome)
-
-    def auto_enabled(self) -> bool:
-        try:
-            s = self.keys.load()
-            return s.enabled and bool(s.api_key)
-        except Exception:
-            return False
-
-    def apply_settings(self, api_key: str, enabled: bool, solve_timeout_sec: int) -> Dict[str, Any]:
-        s = CaptchaSettings(enabled=bool(enabled and bool(api_key)),
-                            api_key=(api_key or "").strip(),
-                            solve_timeout_sec=clamp_timeout(solve_timeout_sec))
+    def apply_settings(self, api_key: str, solve_timeout_sec: int) -> Dict[str, Any]:
+        """Persist the ACTIVE provider's key + timeout; `enabled` is always False
+        (pipeline never solves). Other providers' keys are kept (B10)."""
+        current = self.keys.load()
+        s = current.with_key(current.provider, (api_key or "").strip())
+        s.enabled = False
+        s.solve_timeout_sec = clamp_timeout(solve_timeout_sec)
         self.keys.save(s)
-        return {"ok": True, "enabled": s.enabled, "has_key": bool(s.api_key),
-                "masked_key": CaptchaKeyStore.mask(s.api_key)}
-
-    async def refresh_balance(self) -> Optional[float]:
-        """One-shot balance fetch (fire-and-forget from slots); never raises."""
-        s = self.keys.load()
-        if not s.api_key:
-            return None
-        client = Captcha2Client(s.api_key)
-        try:
-            balance = await client.get_balance()
-        except ApiError as e:
-            self.stats.set_last_error(f"balance: {e.reason}")
-            self._log(f"2Captcha balance check failed: {e.reason}", "warn")
-            return None
-        except Exception as e:
-            self._log(f"2Captcha balance check error: {e}", "warn")
-            return None
-        finally:
-            await client.aclose()
-        self.stats.set_balance(balance)
-        self._log(f"2Captcha balance ${balance:.2f}", "info")
-        return balance
+        return {"ok": True, "enabled": False, "has_key": bool(s.api_key),
+                "masked_key": CaptchaKeyStore.mask(s.api_key), "provider": s.provider}
 
     def status_payload(self) -> Dict[str, Any]:
         s = self.keys.load()
-        return {"enabled": s.enabled, "has_key": bool(s.api_key),
-                "masked_key": CaptchaKeyStore.mask(s.api_key),
+        return {"enabled": False, "has_key": bool(s.api_key),
+                "masked_key": CaptchaKeyStore.mask(s.api_key), "provider": s.provider,
                 "solve_timeout_sec": s.solve_timeout_sec,
                 "balance": self.stats.last_balance, "balance_at": self.stats.balance_at,
                 "last_error": self.stats.last_error}

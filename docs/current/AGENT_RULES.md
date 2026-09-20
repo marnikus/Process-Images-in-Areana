@@ -177,6 +177,10 @@ Same as Old App RULE 8.
 
 For Arena, we have `tests/` with scanner, naming, persistence, correlation, state transitions, verification, selector tests — all must run real logic.
 
+**Web-UI corollary (2026-10-03, I-35).** A test that pokes `FolderPicker.pickFolder()` directly proves nothing about the button: the page reaches panels *by name* (`Boot.bootPanels`, `window.X` readers) and a top-level `const X` is a lexical global that is **not** `window.X`. Every panel module therefore ends with `window.X = X`, and the boot path is tested the way the page runs it — `tests/js/test_boot_all_panels.mjs` loads every `index.html` script in order and asserts all panels init and a real click reaches the bridge slot. Add new panels to `_PANEL_INITS` **and** publish them; `tests/test_ui_wiring.py` fails otherwise.
+
+**Generated-JS corollary (2026-10-05, I-38).** A Python builder that returns page JavaScript is production code whose output must be *executed*, never merely string-matched: `tests/test_dom_highlight.py` asserted on the generated strings for months while every FIND/HIGHLIGHT probe was a `SyntaxError` (one missing `}` in `_LABEL_JS` — §B9). Every `build_*` JS function is registered in `tests/test_js_payload_syntax.py` (bracket-balance scan always, `node --check` when node exists — the meta-test fails for an unregistered builder), and DOM probes get a Node lane that generates the payload through the real Python builder and runs it in a `vm` context against a stub DOM (`tests/js/test_dom_probes.mjs`). A change to any `*_js.py` template without running `npm run test:js` is not done.
+
 ---
 
 ## RULE 9 — A guard that skips work must not stall the stack
@@ -234,6 +238,8 @@ Corollary for "reset to default": restoring default tree is not enough when hidd
 Same as Old App RULE 13.
 
 For Arena, also applies to `AppState` persistence: `load_state()` must handle corrupt JSON gracefully, never crash, and `save_state()` uses atomic write (temp file + replace).
+
+Corollary (B10, 2026-10-06) — **the UI is not a side effect of the disk write.** `save_arena_state` saves in its own `try` and ALWAYS emits the live state afterwards; a failed write is logged (once per distinct error per 10 s) and never skips the push. The atomic replace retries transient Windows sharing violations. The same shape applies in JS: a live-state apply restores each panel in isolation and reports the failing one — `try { a(); b(); c(); } catch (e) {}` around several panels is banned (one throw froze the Image Queue at `pending` for a whole run). Invariant I-39.
 
 ---
 
@@ -475,16 +481,26 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
 ## RULE 20 — CAPTCHA policy (default manual; opt-in owner-authorized 2Captcha), respect ToS, user-authorized URLs only
 
 * **Default (OFF): do not bypass/defeat/solve CAPTCHA** — pause with `USER_ACTION_REQUIRED`, let the user solve manually.
-* **Opt-in (owner-authorized):** if the user enables the 2Captcha integration in Settings and stores
-  their own API key, the visible Security-Verification captcha MAY be submitted to 2Captcha
-  (`RecaptchaV2EnterpriseTaskProxyless`). Every solver failure (bad key, no credit, unsolvable,
-  timeout, user stop) falls back to the manual flow — a job is never lost to a solver failure.
-  Auto-solved captchas still stack the cooldown penalty. Amendment 2026-09-17, user-requested;
-  design: `docs/archive/2026-09-17-2captcha-integration/design.md` §4.
-* **Key hygiene (non-negotiable even when opt-in is ON):** the key lives only in
-  `config/2captcha.json` (git-ignored, 0600 best-effort); the WebChannel/UI carries the masked
-  form (`abcd****7890`) only; the raw key never appears in logs, payloads, presets, or error
-  text.
+* **Opt-in (owner-authorized) = the Watcher switch (amendment 2026-10-02):** the job pipeline
+  itself NEVER solves — `handle_captcha` only detects, pauses and waits for the dialog to clear.
+  Solving is the exclusive job of the Captcha Watcher (`app/services/captcha_watcher/`), which
+  runs only while the user turns the Watcher ON, has stored their own API key in the Captcha
+  window, and talks to 2Captcha only through the official SDK (`2captcha-python`,
+  `AsyncTwoCaptcha.recaptcha`). It scans page-pool tabs only (pages the app attached to),
+  spends at most 2 paid attempts per challenge, and every failure (no key, SDK missing, bad key,
+  no credit, unsolvable kind, timeout) fails open — the paused job simply keeps waiting for the
+  user. No other module may submit a captcha anywhere (RULE 8 test: `tests/test_captcha_service.py`
+  asserts the pipeline never evaluates `inject.js`). Cleared captchas still stack the cooldown
+  penalty. Earlier amendment 2026-09-17 (in-pipeline auto-solve, `solver.py`/`api_client.py`) is
+  superseded; design: `docs/archive/2026-10-02-captcha-watcher-isolation/design.md`.
+* **Key hygiene (non-negotiable even when opt-in is ON):** the keys live only in
+  `config/captcha_solvers.json` (one per provider — 2Captcha | CapMonster Cloud — git-ignored,
+  0600 best-effort; the older single-provider `config/2captcha.json` is folded in on first save);
+  the WebChannel/UI carries the masked form (`abcd****7890`) only; the raw key never appears in
+  logs, payloads, presets, or error text. Providers are a registry
+  (`app/services/captcha_watcher/providers.py`, I-40): the provider selects the SDK host and
+  nothing else — no second HTTP client, no other endpoint (`2captcha.com`,
+  `api.capmonster.cloud`).
 * Respect target site terms, permissions, rate limits; only use user-authorized URLs.
 * Credentials out of logs, session in browser profile dir, upload only to user-configured URLs.
 * Same as old app's security rules, adapted to Arena.

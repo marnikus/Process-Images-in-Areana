@@ -8,13 +8,11 @@ venv/
 dist/
 build/
 
-# App
-config/app_state.json
-config/cooldowns.json
-config/2captcha.json
-config/captcha_stats.json
-config/captcha_recordings/
-config/presets/
+# App — config/ is RUNTIME DATA (API keys, session, undo history, captcha
+# recordings, presets). Nothing under it is ever tracked except the
+# .gitkeep placeholder (guard: tests/test_repo_hygiene.py, pre_push_check step 0).
+config/*
+!config/.gitkeep
 browser_profile/
 logs/
 *.log
@@ -51,7 +49,11 @@ docs/research/*_files/
 
 # Keep docs
 !docs/
-config/session.json
+
+# Saved arena.ai pages — personal session dumps (contain account e-mails);
+# local research material only. tests/js/test_captcha_saved_page.mjs skips
+# when they are absent.
+arena webpages/
 
 # D5 mutation testing scratch (mutmut working dir)
 mutants/

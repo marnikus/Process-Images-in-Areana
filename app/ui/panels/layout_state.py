@@ -8,6 +8,7 @@ shaping lives in `ui/services/window_preset_service.py`, state->JS mapping in
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -25,14 +26,39 @@ from app.ui.services import window_preset_service as presets
 log = logging.getLogger("arena")
 
 
+SAVE_ERROR_RELOG_SEC = 10.0
+
+
+def _report_save_failure(bridge, exc: Exception) -> None:
+    """Log a failed state write — once per distinct error per 10 s (a locked
+    file would otherwise flood the console several times per job)."""
+    text = f"{type(exc).__name__}: {exc}"
+    log.error(f"Failed to save arena state: {text}")
+    now = time.monotonic()
+    last_text, last_at = getattr(bridge, "_last_save_error", ("", 0.0))
+    if text == last_text and now - last_at < SAVE_ERROR_RELOG_SEC:
+        return
+    bridge._last_save_error = (text, now)
+    try:
+        bridge.arena_log.emit(f"⚠ Failed to save state to disk ({text}) — the UI keeps "
+                              f"updating; progress will be re-saved on the next change", "error")
+    except Exception:
+        pass
+
+
 def save_arena_state(bridge) -> None:
-    """Persist AppState, then re-emit (Bridge._save_arena delegates here)."""
+    """Persist AppState and ALWAYS re-emit (Bridge._save_arena delegates here).
+
+    B10 (I-39): the UI push must not depend on the disk write. Before this fix
+    one failed `save_state` (Windows sharing violation, full disk, locked
+    file…) silently skipped `emit_arena_state`, so the Image Queue kept
+    showing `pending` while the job ran and finished.
+    """
     try:
         save_state(bridge.state, bridge.state_path)
-        emit_arena_state(bridge)
     except Exception as e:
-        log.error(f"Failed to save arena state: {e}")
-        bridge.arena_log.emit(f"Failed to save state: {e}", "error")
+        _report_save_failure(bridge, e)
+    emit_arena_state(bridge)
 
 
 def emit_arena_state(bridge) -> None:

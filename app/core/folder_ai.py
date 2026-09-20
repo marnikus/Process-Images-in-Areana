@@ -8,22 +8,20 @@ non-_AI image. Both walk recursively, images only, hidden dirs skipped.
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 from typing import Iterator, List, Set, Tuple
 
-from .naming import is_ai_generated_filename
-
-_STRIP_RE = re.compile(r"_AI(_\d+)?$")
+from .naming import is_ai_generated_filename, parse_ai_output
 
 
 def strip_ai_name(filename: str) -> str | None:
     """Filename minus the _AI suffix (keeps _1 counters); None if N/A."""
     stem, ext = os.path.splitext(os.path.basename(filename or ""))
-    m = _STRIP_RE.search(stem)
-    if not m:
+    parsed = parse_ai_output(stem)
+    if parsed is None:
         return None
-    return f"{stem[:m.start()]}{m.group(1) or ''}{ext}"
+    base, n = parsed
+    return f"{base}{'' if n is None else f'_{n}'}{ext}"
 
 
 def _image_files(root: Path, exts: Set[str]) -> Iterator[Path]:

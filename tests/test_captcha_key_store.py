@@ -90,7 +90,7 @@ def test_save_is_atomic_replace(isolated_config_dir):
     first = store._path.read_text()
     store.save(CaptchaSettings(enabled=False, api_key="zzzzzzzz8888"))
     data = json.loads(store._path.read_text())
-    assert data["api_key"] == "zzzzzzzz8888"
+    assert data["providers"]["2captcha"]["api_key"] == "zzzzzzzz8888"  # B10 multi-provider shape
     assert first != store._path.read_text()
     # no leftover temp files
     leftovers = [p for p in isolated_config_dir.iterdir() if p.suffix == ".tmp"]

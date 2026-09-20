@@ -110,8 +110,52 @@ const ImageQueue = {
   },
 
   restore(state) {
-    const imgs = this._store.restore(state);
-    if (imgs.length) this.render(imgs);
+    // B10: any array (even empty) re-renders — a cleared queue must not keep
+    // stale rows; a payload WITHOUT `images` leaves the table alone.
+    const imgs = this._st().restore(state);
+    if (imgs) this.render(imgs);
+  },
+
+  /* B10 — per-job row updates straight from the bridge signals.
+     job_started(job_id, absolute_path): row → processing (attempt counted the
+     way Python's mark_processing does). job_finished(job_id, payload): row →
+     payload.status with output_path / error. The debounced full-state push
+     that follows carries the same values (source of truth). */
+  _st() { return this._store || window.ImageQueueStore; },
+  _rd() { return this._render || window.ImageQueueRender; },
+
+  _patchRow(img, fields) {
+    if (!img) return false;
+    Object.assign(img, fields);
+    return this._rd().updateRow(img);
+  },
+
+  onJobStarted(jobId, imagePath) {
+    const st = this._st();
+    const img = st.findByPath(imagePath) || st.imageForJob(jobId);
+    if (!img) return false;
+    st.rememberJob(jobId, img.id);
+    return this._patchRow(img, { status: 'processing', attempts: (Number(img.attempts) || 0) + 1, error: '' });
+  },
+
+  _finishedFields(r) {
+    const status = r.status || 'completed';
+    const fields = { status };
+    if (r.output_path) fields.output_path = r.output_path;
+    if (r.attempts !== undefined && r.attempts !== null) fields.attempts = r.attempts;
+    fields.error = status === 'failed' ? (r.error || r.message || '') : '';
+    return fields;
+  },
+
+  onJobFinished(jobId, resultJson) {
+    let r = resultJson;
+    try { if (typeof r === 'string') r = JSON.parse(r); } catch (e) { r = {}; }
+    r = r || {};
+    const st = this._st();
+    const img = st.imageForJob(jobId) || (r.image_id && st.findById(r.image_id)) || st.findByPath(r.image_path);
+    st.forgetJob(jobId);
+    if (!img) return false;
+    return this._patchRow(img, this._finishedFields(r));
   },
 
   _fileUrl(p) { return this._store.fileUrl(p); },
@@ -134,3 +178,6 @@ const ImageQueue = {
   excludeOne(id) { this._actions.excludeOne(id); },
   previewOne(id) { this._actions.previewOne(id); },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.ImageQueue = ImageQueue;

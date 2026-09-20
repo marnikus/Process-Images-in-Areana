@@ -74,7 +74,11 @@ async def test_nonrequired_midfail_continues(tmp_path, monkeypatch):
     await _run(env)
     trace = _trace(env, patched)
     check_golden("nonreq_fail", trace)
-    assert trace["images"][0]["status"] == "failed"
+    # B9 policy (bugfix-verification.md §B9): the optional VERIFY_PROMPT failure
+    # is a warning once DOWNLOAD/VALIDATE/SAVE delivered the image (legacy: failed).
+    assert trace["images"][0]["status"] == "completed"
+    assert trace["images"][0]["error"] in ("", None)
+    assert_markers(trace, ["Completed with warnings", "Prompt verification failed: Mismatch", "Job completed"])
 
 
 @pytest.mark.integration

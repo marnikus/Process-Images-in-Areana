@@ -1,5 +1,5 @@
 """Multi-page dispatcher — parallel dispatch to different webpages."""
-# ideal-size: ~395 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx/FreeWaitSpec; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
+# ideal-size: ~400 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx/FreeWaitSpec; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
 
 from __future__ import annotations
 
@@ -7,14 +7,16 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from app.browser.page_pool import PagePool
 from app.core.enums import ImageStatus
 from app.core.models import ImageItem, UrlRow
+from app.core.run_scope import claim_denied
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
 from . import auto_connect as ac
+from .job_events import job_finished_payload
 from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status, maybe_note_rate_limit
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
 
@@ -218,7 +220,7 @@ def _handle_result(ctx: ResultCtx):
 
 def _emit_finished(bridge, info: FinishInfo):
     try:
-        payload = json.dumps({"status": info.status, "message": info.message, "output_path": info.img.output_path or ""}, ensure_ascii=False)
+        payload = json.dumps(job_finished_payload(info.img, info.status, info.message), ensure_ascii=False)
         bridge.job_finished.emit(info.job_id, payload)
     except Exception:
         pass
@@ -373,7 +375,10 @@ async def _create_tasks(ctx: DispatchCtx, images):
 
 
 async def _run_with_sem(ctx: DispatchCtx, img):
+    """One worker slot; the claim-time re-check (I-44) runs right before the page is taken."""
     async with ctx.sem:
+        if claim_denied(img, ctx.bridge._log):
+            return
         await run_one_image_on_page(ctx.bridge, ctx.pool, img, ctx.urls)
 
 

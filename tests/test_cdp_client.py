@@ -251,6 +251,49 @@ async def test_evaluate_success_exception_and_failure(cdp_server):
     assert await client.evaluate("x") is None
 
 
+# ── B8: evaluate() records WHY it answered None (bugfix-verification.md §B8) ──
+
+async def test_evaluate_records_js_exception_reason(cdp_server):
+    exc = {"text": "Uncaught", "exception": {"description": "TypeError: boom at probe"}}
+    client = await _connected(cdp_server, _eval_responder(exception=exc))
+    assert await client.evaluate("throw 1") is None
+    assert client.last_error_kind == "js"
+    assert "TypeError: boom" in client.last_error
+
+
+async def test_evaluate_records_protocol_error_reason(cdp_server):
+    def responder(method, params, server):
+        if method == "Runtime.evaluate":
+            return None, {"code": -32000, "message": "Execution context was destroyed."}
+        return {"ok": True}, None
+    client = await _connected(cdp_server, responder)
+    assert await client.evaluate("1") is None  # used to be silent: result={} → None
+    assert client.last_error_kind == "protocol"
+    assert client.last_error == "Execution context was destroyed."
+
+
+async def test_evaluate_success_clears_last_error(cdp_server):
+    client = await _connected(cdp_server, _eval_responder(exception={"text": "boom"}))
+    assert await client.evaluate("throw 1") is None
+    assert client.last_error_kind == "js"
+    cdp_server.responder = _eval_responder(value="ok")
+    assert await client.evaluate("1") == "ok"
+    assert (client.last_error, client.last_error_kind) == ("", "")
+
+
+async def test_evaluate_records_transport_loss_after_socket_close(cdp_server):
+    client = await _connected(cdp_server, _eval_responder(value="ok"))
+    await cdp_server.last_ws.close()
+    for _ in range(40):
+        if not client.is_connected:
+            break
+        await asyncio.sleep(0.01)
+    assert client.is_connected is False
+    assert await client.evaluate("1") is None
+    assert client.last_error_kind == "transport"
+    assert client.last_error  # e.g. "ConnectionClosedOK: ..." — never an empty string
+
+
 async def test_dom_helpers_and_file_input(cdp_server):
     doc = {"nodeId": 7}
 

@@ -1,6 +1,17 @@
 /* block-store.js — data layer for Action Blocks (C7)
    Holds blocks, catalogs, job state and persistence helpers.
    RULE18: file 150-300, func ≤30, CC≤10
+
+   2026-10-02 bugfix: QWebChannel slot calls are asynchronous — a call
+   without a callback returns undefined, so the old synchronous
+   `bridge.get_action_blocks()` never yielded data and the panel silently
+   painted local defaults while the backend could hold an EMPTY stack.
+   The store now (a) accepts blocks only through `_acceptBlocks`
+   (shape-checked, empty → defaults), (b) loads via callback when the
+   bridge is async, (c) exposes `restoreDefaults(cb)` which calls the
+   backend's restore_default_blocks (fallback reset_action_blocks) once.
+   B11 (2026-10-07): the catalog / custom-block / stack-preset loads take
+   the same callback path (they were still synchronous → always empty).
 */
 'use strict';
 
@@ -93,21 +104,6 @@ window.ActionBlocksStore = {
     return order.map((bt, idx) => this._makeDefaultBlock(bt, idx, defs));
   },
 
-  _tryLoadBuiltinFromBridge() {
-    const bridge = window.App && window.App.bridge;
-    if (!bridge || !bridge.get_builtin_blocks) return false;
-    try {
-      const res = bridge.get_builtin_blocks();
-      if (typeof res !== 'string') return false;
-      const data = JSON.parse(res);
-      if (!Array.isArray(data)) return false;
-      this.builtinCatalog = data;
-      return true;
-    } catch {
-      return false;
-    }
-  },
-
   _selectorDefaults(b) {
     return {
       selector: b.selector || '',
@@ -133,10 +129,6 @@ window.ActionBlocksStore = {
     };
   },
 
-  _catalogDefaults(b) {
-    return { ...this._selectorDefaults(b), ...this._visualDefaults(b) };
-  },
-
   _catalogEntryFromBlock(b) {
     return {
       block_id: b.block_id,
@@ -146,7 +138,7 @@ window.ActionBlocksStore = {
       category: b.category,
       required: !!b.required,
       allow_duplicate: ['CUSTOM_FIND', 'PAUSE', 'HIGHLIGHT', 'AWAIT_PROCESSING_IMAGE'].includes(b.block_id),
-      defaults: this._catalogDefaults(b),
+      defaults: { ...this._selectorDefaults(b), ...this._visualDefaults(b) },
       labels: {},
     };
   },
@@ -156,46 +148,95 @@ window.ActionBlocksStore = {
     this.builtinCatalog = this.getDefaultBlocks().map(b => this._catalogEntryFromBlock(b));
   },
 
-  loadBuiltin() {
-    this._tryLoadBuiltinFromBridge();
+  loadBuiltin(onLoaded) {
     this._buildFallbackCatalog();
+    this._loadJsonArray('get_builtin_blocks', 'builtinCatalog', onLoaded);
   },
 
-  _loadJsonArray(bridgeFnName, targetKey) {
+  /** Adopt a non-empty JSON array reply into this[targetKey]; cb(list) once adopted. */
+  _adoptList(res, targetKey, onLoaded) {
+    let data = res;
+    try { data = typeof res === 'string' ? JSON.parse(res) : res; } catch (e) { console.warn(`${targetKey} parse failed`, e); return; }
+    if (!Array.isArray(data) || !data.length) return;
+    this[targetKey] = data;
+    if (typeof onLoaded === 'function') onLoaded(data);
+  },
+
+  /** Async-safe list load: `slot(cb)` for QWebChannel, sync shim for tests. */
+  _loadJsonArray(bridgeFnName, targetKey, onLoaded) {
     const bridge = window.App && window.App.bridge;
     if (!bridge || !bridge[bridgeFnName]) return;
+    const adopt = (res) => this._adoptList(res, targetKey, onLoaded);
     try {
-      const res = bridge[bridgeFnName]();
-      if (typeof res !== 'string') return;
-      const data = JSON.parse(res);
-      if (Array.isArray(data)) this[targetKey] = data;
-    } catch {}
+      const res = bridge[bridgeFnName](adopt);
+      if (typeof res === 'string') adopt(res);
+    } catch (e) { console.warn(`${bridgeFnName} failed`, e); }
   },
 
-  loadCustom() { this._loadJsonArray('get_custom_blocks', 'customBlocks'); },
-  loadStackPresets() { this._loadJsonArray('get_stack_presets', 'stackPresets'); },
+  loadCustom(onLoaded) { this._loadJsonArray('get_custom_blocks', 'customBlocks', onLoaded); },
+  loadStackPresets(onLoaded) { this._loadJsonArray('get_stack_presets', 'stackPresets', onLoaded); },
 
-  load() {
-    const bridge = window.App && window.App.bridge;
-    if (bridge && bridge.get_action_blocks) {
-      try {
-        const res = bridge.get_action_blocks();
-        if (typeof res === 'string' && res.trim()) {
-          const data = JSON.parse(res);
-          if (Array.isArray(data) && data.length > 0) {
-            this.blocks = data;
-            return;
-          }
-        }
-      } catch (e) { console.warn('parse failed', e); }
+  _looksValid(data) {
+    return Array.isArray(data) && data.length > 0 &&
+      data.every(b => b && typeof b === 'object' && typeof b.block_id === 'string' && b.block_id);
+  },
+
+  /** The ONE way blocks enter the store: valid array → adopt; anything else → defaults. */
+  _acceptBlocks(data) {
+    let parsed = data;
+    if (typeof parsed === 'string') {
+      try { parsed = parsed.trim() ? JSON.parse(parsed) : []; } catch (e) { console.warn('blocks parse failed', e); parsed = null; }
     }
-    this.blocks = this.getDefaultBlocks();
+    this.blocks = this._looksValid(parsed) ? parsed : this.getDefaultBlocks();
+    return this.blocks;
+  },
+
+  load(onLoaded) {
+    const bridge = window.App && window.App.bridge;
+    const done = () => { if (typeof onLoaded === 'function') onLoaded(this.blocks); };
+    if (!bridge || !bridge.get_action_blocks) { this._acceptBlocks(null); done(); return; }
+    try {
+      const res = bridge.get_action_blocks((async) => { this._acceptBlocks(async); done(); });
+      if (typeof res === 'string') { this._acceptBlocks(res); done(); }  // sync shim (tests/standalone)
+    } catch (e) { console.warn('get_action_blocks failed', e); this._acceptBlocks(null); done(); }
   },
 
   save() {
     const bridge = window.App && window.App.bridge;
     if (!bridge || !bridge.save_action_blocks) return;
+    if (!this._looksValid(this.blocks)) { console.warn('refusing to save an invalid/empty stack'); return; }
     try { bridge.save_action_blocks(JSON.stringify(this.blocks)); } catch {}
+  },
+
+  _blocksFromReply(payload) {
+    let data = payload;
+    try { data = typeof payload === 'string' ? JSON.parse(payload) : payload; } catch { return null; }
+    return data && Array.isArray(data.blocks) ? data.blocks : null;
+  },
+
+  _adoptRestored(payload, cb) {
+    const blocks = this._blocksFromReply(payload);
+    this.selectedIdx = -1;
+    if (blocks) { this._acceptBlocks(blocks); if (cb) cb(this.blocks); return; }
+    this.load(() => { if (cb) cb(this.blocks); });   // reply without blocks (reset_action_blocks) → reload
+  },
+
+  _restoreLocally(cb) {
+    this._acceptBlocks(null);
+    this.selectedIdx = -1;
+    this.save();
+    if (cb) cb(this.blocks);
+  },
+
+  /** Backend-authoritative reset; cb(blocks) after the store adopted the reply. */
+  restoreDefaults(cb) {
+    const bridge = window.App && window.App.bridge;
+    const slot = bridge && (bridge.restore_default_blocks || bridge.reset_action_blocks);
+    if (!slot) { this._restoreLocally(cb); return; }
+    try {
+      const res = slot.call(bridge, (payload) => this._adoptRestored(payload, cb));
+      if (typeof res === 'string') this._adoptRestored(res, cb);  // sync shim
+    } catch (e) { console.warn('restore defaults failed', e); this._restoreLocally(cb); }
   },
 
   moveBlock(fromIdx, toIdx) {

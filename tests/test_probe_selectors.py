@@ -30,6 +30,7 @@ PROBE_FILES = [
     "app/browser/dom_highlight_js.py",
     "app/browser/new_chat.py",
     "app/browser/output_probes.py",
+    "app/browser/processing_probe.py",  # B12: AWAIT_PROCESSING_IMAGE indicator probe
 ]
 
 

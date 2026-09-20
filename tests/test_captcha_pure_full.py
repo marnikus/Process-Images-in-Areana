@@ -364,14 +364,14 @@ class TestKeyStore:
     def test_save_enabled_without_key_false(self, tmp_path):
         store = self.make(tmp_path)
         store.save(CaptchaSettings(enabled=True, api_key=""))
-        data = json.loads((tmp_path / "2captcha.json").read_text("utf-8"))
+        data = json.loads((tmp_path / CaptchaKeyStore.FILENAME).read_text("utf-8"))  # B10: captcha_solvers.json
         assert data["enabled"] is False
 
     def test_save_mode_600(self, tmp_path):
         import os
         store = self.make(tmp_path)
         store.save(CaptchaSettings(api_key="k"))
-        mode = os.stat(tmp_path / "2captcha.json").st_mode & 0o777
+        mode = os.stat(tmp_path / CaptchaKeyStore.FILENAME).st_mode & 0o777
         assert mode == 0o600
 
     def test_mask(self):

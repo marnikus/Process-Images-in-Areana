@@ -87,3 +87,90 @@ def test_index_html_assets_and_script_coverage():
     referenced = {r for r in refs if r.endswith(".js")}
     orphans = sorted(on_disk - referenced)
     assert orphans == [], f"JS files no page loads (dead UI): {orphans}"
+
+
+# ── Global-name contract (2026-10-03) ─────────────────────────────────────────
+# A top-level `const X = {...}` in a classic <script> is a LEXICAL global: it is
+# NOT `window.X`. Boot.bootPanels / _restoreArenaPanels resolve panels through
+# window[name] and 22 modules reach the bridge through `window.App.bridge`, so
+# every name read that way must be published (`window.X = X`). Before this guard
+# 14 of 17 panels were never init()ed — Browse/Scan/URL/Run buttons were dead.
+
+_JS_BUILTINS = {
+    "location", "getSelection", "confirm", "prompt", "alert", "setTimeout", "setInterval",
+    "clearTimeout", "clearInterval", "innerWidth", "innerHeight", "addEventListener",
+    "removeEventListener", "qt", "QWebChannel", "requestAnimationFrame", "getComputedStyle",
+    "open", "scrollTo", "devicePixelRatio", "localStorage", "document", "navigator",
+    "matchMedia", "event", "onerror", "console", "dispatchEvent", "CustomEvent", "Event",
+    "name", "screen", "performance", "close", "focus", "scrollY", "scrollX", "outerWidth",
+    "outerHeight", "history", "parent", "top", "self", "frames", "origin", "print",
+}
+_ASSIGN_RE = re.compile(r"(?:window|globalThis)\.([A-Za-z_$][\w$]*)\s*=(?!=)")
+_READ_RE = re.compile(r"(?:window|globalThis)\.([A-Za-z_$][\w$]*)\b(?!\s*=[^=])")
+_CONST_RE = re.compile(r"^(?:const|let)\s+([A-Z][\w$]*)\s*=", re.M)
+
+
+def _js_sources() -> dict:
+    return {p: p.read_text(encoding="utf-8") for p in sorted((WEB / "js").rglob("*.js"))}
+
+
+def _published_globals(sources: dict) -> set:
+    published = set()
+    for src in sources.values():
+        published |= set(_ASSIGN_RE.findall(src))
+    return published
+
+
+def _panel_init_names() -> list:
+    src = (WEB / "js" / "arena-app.js").read_text(encoding="utf-8")
+    block = re.search(r"_PANEL_INITS\s*=\s*\[(.*?)\]", src, re.S)
+    assert block, "arena-app.js must keep the _PANEL_INITS registry"
+    return re.findall(r"'([A-Za-z]+)'", block.group(1))
+
+
+@pytest.mark.unit
+def test_every_boot_panel_is_published_on_window():
+    """Boot.bootPanels(name) does window[name] — a const-only panel never inits."""
+    sources = _js_sources()
+    published = _published_globals(sources)
+    names = _panel_init_names()
+    assert len(names) >= 15, names
+    unpublished = [n for n in names if n not in published]
+    assert unpublished == [], (
+        f"panels in _PANEL_INITS never reach window[name] (dead init, dead buttons): "
+        f"{unpublished} — end each module with `window.X = X;`")
+    assert "App" in published, "arena-app.js must publish `window.App = App`"
+
+
+@pytest.mark.unit
+def test_every_window_dot_name_read_is_published_somewhere():
+    """Any `window.Name` read must have a `window.Name =` writer in some loaded module."""
+    sources = _js_sources()
+    published = _published_globals(sources)
+    declared_consts = set()
+    for src in sources.values():
+        declared_consts |= set(_CONST_RE.findall(src))
+    dangling = {}
+    for path, src in sources.items():
+        for name in set(_READ_RE.findall(src)):
+            if name in published or name in _JS_BUILTINS:
+                continue
+            if name[:1].isupper() or name in declared_consts:
+                dangling.setdefault(name, []).append(path.relative_to(WEB / "js").as_posix())
+    assert dangling == {}, f"window.X read but X is only a lexical const (undefined at runtime): {dangling}"
+
+
+def _strip_js_comments(src: str) -> str:
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return re.sub(r"^\s*//.*$", "", src, flags=re.M)
+
+
+@pytest.mark.unit
+def test_panel_export_lines_match_their_const():
+    """The export line must name the const actually declared in that file."""
+    for path, raw in _js_sources().items():
+        src = _strip_js_comments(raw)
+        for name in _ASSIGN_RE.findall(src):
+            if re.search(rf"window\.{name}\s*=\s*{name}\s*;", src):
+                assert re.search(rf"^(?:const|let)\s+{name}\s*=|^function\s+{name}\b", src, re.M), (
+                    f"{path.name}: `window.{name} = {name}` but no `const {name}` in this file")

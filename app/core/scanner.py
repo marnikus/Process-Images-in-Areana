@@ -1,11 +1,17 @@
-"""Scanner — C5 refactor with ScanSpec param object and predicate table."""
+"""Scanner — C5 refactor with ScanSpec param object and predicate table.
+
+B13 (2026-10-09): one directory walk also yields `existing_output` per
+source — the best `<base>_AI[_n].<ext>` sibling already on disk — so a
+discovered image whose output exists enters the queue as `completed`
+(I-46). Outputs are read, never written or removed here (RULE 14).
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Set
+from typing import Dict, List, Set
 
-from .naming import is_ai_generated_filename
+from .naming import is_ai_generated_filename, parse_ai_output
 from ..utils.hashing import fingerprint_from_path_stat
 
 SUPPORTED_EXTS_DEFAULT = {".png", ".jpg", ".jpeg", ".webp"}
@@ -42,7 +48,8 @@ def _should_include(path: Path, exts: Set[str], ignore_ai: bool) -> bool:
     return True
 
 
-def _build_item(root_path: Path, path: Path) -> dict | None:
+# ideal-size: 22 lines reason=one scan-item dict literal, one key per line (the queue item contract, RULE 18.5)
+def _build_item(root_path: Path, path: Path, existing_output: Path | None = None) -> dict | None:
     try:
         stat = path.stat()
         size = stat.st_size
@@ -59,6 +66,7 @@ def _build_item(root_path: Path, path: Path) -> dict | None:
             "mtime": mtime,
             "fingerprint": fp,
             "id": fp,
+            "existing_output": str(existing_output) if existing_output else None,
         }
     except Exception as e:
         print(f"Warning: cannot stat {path}: {e}")
@@ -69,23 +77,45 @@ def _get_iterator(root_path: Path, recursive: bool):
     return root_path.rglob("*") if recursive else root_path.glob("*")
 
 
-def scan_folder(root_path: Path, spec: ScanSpec | None = None) -> List[dict]:
-    if spec is None:
-        spec = ScanSpec()
+def _checked_root(root_path: Path) -> Path:
+    """Existing directory, or ValueError — the scan never guesses a root."""
     root_path = Path(root_path)
     if not root_path.exists() or not root_path.is_dir():
         raise ValueError(f"Root path does not exist or not a directory: {root_path}")
+    return root_path
 
-    supported = _normalize_exts(spec.supported_exts)
-    results: List[dict] = []
 
-    for p in _get_iterator(root_path, spec.recursive):
-        if not _should_include(p, supported, spec.ignore_ai_suffix):
+def _output_rank(counter: int | None) -> tuple:
+    """Exact `_AI` before counters; among counters the highest (= the last save)."""
+    return (0, 0) if counter is None else (1, -counter)
+
+
+def _outputs_by_source(images: List[Path]) -> Dict[Path, Path]:
+    """`<dir>/<base>` → its best existing `_AI` sibling, any supported extension (I-46)."""
+    best: Dict[Path, tuple] = {}
+    for p in images:
+        parsed = parse_ai_output(p.stem)  # the one family definition (naming, RULE 10)
+        if parsed is None:
             continue
-        item = _build_item(root_path, p)
-        if item:
-            results.append(item)
+        base, counter = parsed
+        key, rank = p.parent / base, _output_rank(counter)
+        if key not in best or rank < best[key][0]:
+            best[key] = (rank, p)
+    return {key: path for key, (_, path) in best.items()}
 
+
+def scan_folder(root_path: Path, spec: ScanSpec | None = None) -> List[dict]:
+    """Source dicts under root (RULE 6 filters) with `existing_output` per source."""
+    if spec is None:
+        spec = ScanSpec()
+    root_path = _checked_root(root_path)
+    exts = _normalize_exts(spec.supported_exts)
+    # One walk: every supported file, sources and `_AI` outputs alike.
+    images = [p for p in _get_iterator(root_path, spec.recursive) if _should_include(p, exts, False)]
+    outputs = _outputs_by_source(images)
+    sources = [p for p in images if not (spec.ignore_ai_suffix and is_ai_generated_filename(p))]
+    items = [_build_item(root_path, p, outputs.get(p.parent / p.stem)) for p in sources]
+    results = [item for item in items if item]
     results.sort(key=lambda x: x["relative_path"])
     return results
 

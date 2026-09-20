@@ -143,3 +143,29 @@ def test_stack_and_grid_projections(tmp_path):
     br.redo = UndoHistoryMixin.redo.__get__(br)
     assert UndoHistoryMixin.undo_stack(br) == "null"  # nothing stacked
     assert UndoHistoryMixin.undo_grid_layout(br) == "null"
+
+
+# ── B7: URL rows round-trip through undo/redo/push with their tab link ──
+
+def test_url_rows_from_js_keep_tab_link():
+    rows = entries.url_rows_from_js([
+        {"id": "u1", "url": "https://a", "tab_id": "T1", "status": "ok", "last_checked": "t"},
+        {"url": "https://b"},                       # no id, no tab
+        {"id": "u3", "url": "https://c", "tab_id": None},
+    ])
+    assert [(r.id, r.tab_id) for r in rows] == [("u1", "T1"), ("url_1", ""), ("u3", "")]
+    assert rows[0].last_status == "ok" and rows[0].last_checked == "t"
+    arena_rows = entries.arena_url_rows_from_js([{"id": "u1", "url": "https://a", "tab_id": "T9"}])
+    assert (arena_rows[0].id, arena_rows[0].tab_id) == ("u1", "T9")
+
+
+def test_remember_and_apply_urls_keep_tab_link(tmp_path):
+    br, _ = fake(tmp_path)
+    snap = [{"id": "u1", "url": "https://a", "tab_id": "T1"}]
+    entries.remember_global_edit(br, "urls", snap)
+    assert br.state.urls[0].tab_id == "T1"
+    br.state.urls = []
+    assert entries.apply_undo_entry(br, {"kind": "urls", "value": snap}) is True
+    assert br.state.urls[0].tab_id == "T1"
+    entries.remember_global_edit(br, "arena", {"urls": [{"id": "u2", "url": "https://b", "tab_id": "T2"}]})
+    assert br.state.urls[0].tab_id == "T2"

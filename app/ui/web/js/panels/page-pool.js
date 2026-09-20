@@ -37,3 +37,6 @@ const PagePoolPanel = {
   esc(s) { return this._store ? this._store.esc(s) : ''; },
   render(snap) { return this._render?.render(snap, this._actions); },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.PagePoolPanel = PagePoolPanel;

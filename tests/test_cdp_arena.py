@@ -362,6 +362,28 @@ async def test_download_image_python_fallback_paths(arena, monkeypatch):
     assert any("Python download failed" in m for m in logs)
 
 
+async def test_download_reports_why_the_page_answered_nothing(arena, cdp_server, monkeypatch):
+    """B8: a protocol error during the in-page attempt is named in the log,
+    and the Python fallback still delivers the bytes."""
+    import urllib.request
+    ctrl = await _connected(arena)
+    resp = arena[2]
+    logs = []
+    ctrl.set_log_callback(logs.append)
+
+    def gone_mid_download(method, params, server):
+        if method == "Runtime.evaluate" and "tryFetch" in params.get("expression", ""):
+            return None, {"code": -32000, "message": "Execution context was destroyed."}
+        return resp(method, params, server)
+    cdp_server.responder = gone_mid_download
+    good = b"\x89PNG" + b"x" * 300
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda req, timeout=None, context=None: _FakeHttpResp(good))
+    ok, data, _ctype = await ctrl.download_image("https://arena.ai/out/9.png")
+    assert ok is True and data == good
+    assert any("No result (Execution context was destroyed.) trying Python" in m for m in logs)
+
+
 # ── highlight / overlay / reload ──
 
 async def test_highlight_selector_and_clear(arena):

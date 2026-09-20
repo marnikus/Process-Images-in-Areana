@@ -19,7 +19,11 @@ window.UrlListActions = {
       else {
         input.value = '';
         LogConsole.log('URL added: ' + val, 'success');
-        if (typeof ArenaHistory !== 'undefined') setTimeout(()=>ArenaHistory.recordGlobal('urls', window.App.state.urls), 100);
+        // B7: never push `App.state.urls` back to Python here. Python's
+        // commit_urls() already saved + recorded the undo entry, and this
+        // snapshot is STALE (arena_state_updated is applied after a 250 ms
+        // debounce) — pushing it made _remember_urls overwrite the rows
+        // without the new one, so the row vanished ~1 s after it appeared.
       }
     } catch {}
   },
@@ -44,10 +48,28 @@ window.UrlListActions = {
   },
 
   editUrl(id) {
-    const newUrl = prompt('Edit URL:');
-    if (!newUrl) return;
+    const row = this._store().snapshotUrls().find(u => String(u.id) === String(id));
+    const current = row ? row.url : '';
+    const apply = (newUrl) => this._applyEdit(id, newUrl);
+    if (window.Dialog && window.Dialog.promptEdit) {
+      window.Dialog.promptEdit('Edit URL', current || 'https://…', 'Save', apply);
+      return;
+    }
+    const typed = typeof prompt === 'function' ? prompt('Edit URL:', current) : null;  // standalone fallback
+    if (typed) apply(typed);
+  },
+
+  _applyEdit(id, newUrl) {
     const b = this._bridge();
-    if (b && b.edit_url) b.edit_url(id, newUrl, (res)=>{ try{ const r=JSON.parse(res); if (!r.ok) LogConsole.log('Edit failed: '+r.error,'error'); }catch{}});
+    if (!b || !b.edit_url) { LogConsole.log('Edit failed: bridge slot edit_url missing', 'error'); return; }
+    b.edit_url(id, newUrl, (res) => {
+      try {
+        const r = JSON.parse(res);
+        if (!r.ok) { LogConsole.log('Edit failed: ' + r.error, 'error'); return; }
+        LogConsole.log('URL updated: ' + (r.url || newUrl), 'success');
+        // B7: no stale snapshot push-back (see _onAdd) — edit_url committed already.
+      } catch {}
+    });
   },
 
   connectUrl(id) {

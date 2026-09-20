@@ -1,4 +1,6 @@
-/* url-list.js — facade C14 ≤200 LOC, delegates to store/render/matching/actions/cooldown */
+/* url-list.js — facade C14 ≤200 LOC, delegates to store/render/matching/actions/cooldown/listeners.
+   2026-10-02: DOM listeners live in url-list/listeners.js (bound once via Boot.bindOnce);
+   the facade never calls addEventListener itself. */
 'use strict';
 
 const UrlList = {
@@ -7,6 +9,8 @@ const UrlList = {
   _matching: null,
   _actions: null,
   _cooldown: null,
+  _listeners: null,
+  _timersStarted: false,
   _coolSnapAt: 0,
   poolPages: [],
 
@@ -16,49 +20,15 @@ const UrlList = {
     this._matching = window.UrlListMatching;
     this._actions = window.UrlListActions;
     this._cooldown = window.UrlListCooldown;
-    const addBtn = document.getElementById('urlAddBtn');
-    const input = document.getElementById('urlInput');
-    const tableBody = document.getElementById('urlTableBody');
-    if (!addBtn || !input || !tableBody) return;
-    addBtn.addEventListener('click', () => this.addUrl());
-    document.getElementById('urlReparseBtn')?.addEventListener('click', () => this.reparseTabs());
-    document.getElementById('urlPopupBtn')?.addEventListener('click', () => this.popupTabs());
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.addUrl(); });
-    document.getElementById('urlCooldownSaveBtn')?.addEventListener('click', () => this.saveCooldownConfig());
+    this._listeners = window.UrlListListeners;
+    if (!this._listeners || !this._listeners.bind(this)) return;
+    if (this._timersStarted) return;
+    this._timersStarted = true;
     setTimeout(() => this.loadCooldownConfig(), 1400);
     setInterval(() => this.refreshCooldownCells(), 1000);
-    tableBody.addEventListener('click', (e) => this._handleTableClick(e));
   },
 
-  _handleCheckbox(chk) {
-    const urlId = chk.dataset.urlId;
-    const action = chk.dataset.action;
-    if (action === 'toggle' && urlId) this.toggleUrl(urlId);
-  },
-
-  _handleButton(btn) {
-    const urlId = btn.dataset.urlId;
-    const action = btn.dataset.action;
-    if (!urlId || !action) return;
-    const map = {
-      test: () => this.testUrl(urlId),
-      toggle: () => this.toggleUrl(urlId),
-      remove: () => this.removeUrl(urlId),
-      edit: () => this.editUrl(urlId),
-      connect: () => this.connectUrl(urlId),
-      'stop-job': () => this.stopJob(urlId),
-    };
-    if (map[action]) { map[action](); return; }
-    if (action === 'cool-reset' || action === 'cool-edit') this.coolAction(action, btn);
-  },
-
-  _handleTableClick(e) {
-    const chk = e.target.closest('input[type=checkbox]');
-    if (chk) { this._handleCheckbox(chk); return; }
-    const btn = e.target.closest('button');
-    if (!btn) return;
-    this._handleButton(btn);
-  },
+  _handleTableClick(e) { return this._listeners?.onTableClick(this, e); },
 
   restore(state) { if (!state || !state.urls) return; this.render(state.urls); },
   render(urls) { if (this._render) this._render.render(urls); },
@@ -162,3 +132,6 @@ const UrlList = {
   _fillCoolCell(tr, page) { return this._render?.fillCoolCell(tr, page); },
   _fillJobsCell(tr, page) { return this._render?.fillJobsCell(tr, page); },
 };
+
+// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
+if (typeof window !== 'undefined') window.UrlList = UrlList;

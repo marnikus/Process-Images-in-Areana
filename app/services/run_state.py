@@ -1,4 +1,4 @@
-# ideal-size: ~380 lines reason=single scheduling seam owns bg-loop/schedule plus tab/pool/restore glue sharing bridge duck-type helpers; splitting would scatter one run-support surface used jointly by orchestrator and panels (RULE 18.2)
+# ideal-size: ~420 lines reason=single scheduling seam owns bg-loop/schedule plus tab/pool/restore glue sharing bridge duck-type helpers; splitting would scatter one run-support surface used jointly by orchestrator and panels (RULE 18.2)
 """Run-state seam: bg loop, scheduling, pool-page ensure/restore (Area A3).
 
 Single source for the async/scheduling glue shared by the batch
@@ -122,6 +122,12 @@ def _track_batch_future(bridge, coro, future) -> None:
             bridge._batch_future = future
     except Exception:
         pass
+
+
+def batch_active(bridge) -> bool:
+    """True while a batch future is alive — running, paused, stopping or still unwinding (I-45)."""
+    fut = getattr(bridge, "_batch_future", None)
+    return fut is not None and not fut.done()
 
 
 def _clear_batch_future(bridge, fut) -> None:
