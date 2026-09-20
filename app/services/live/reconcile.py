@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 
 from app.services.auto_connect import enabled_tab_ids, live_tab_keys, plan_auto_connect
 from app.services.live.bus import live_bus
-from app.services.live.debug_view import interval_ms
+from app.services.live.debug_view import clamp_interval_ms, interval_ms
 from app.services.live.feed import clear_row_assignments
 from app.services.live.url_policy import (
     RemovalSpec,
@@ -41,6 +41,14 @@ class Report:
     revived: int = 0
     stale: int = 0
     deferred: int = 0
+
+
+def update_interval(bridge, value) -> None:
+    """One cadence write path for the settings control and its history restore."""
+    ms = clamp_interval_ms(value)
+    bridge.config.set_state(url_reconcile_interval_ms=ms)
+    live_bus(bridge).wake("interval")
+    bridge._log(f"URL reconcile interval set to {ms}ms", "info")
 
 
 def last_pass_at(bridge) -> float:

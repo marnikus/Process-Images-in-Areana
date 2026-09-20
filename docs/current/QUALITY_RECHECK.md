@@ -13,10 +13,22 @@ Prior snapshots retained verbatim (including their historical baseline decisions
 - S6 Python-owned URL reconciliation and one interval writer in the URL List;
   S7 stored receiver flag; S8 catalog/grid v6 and rescued pool markup.
 - S9 worker/queue detail, read-only cadence and labeled last-settled pause evidence.
-- S10 replaces S6/S7 placeholder checks with executable tests and repairs three
+- S10 replaces S6/S7 placeholder checks with executable tests and repairs four
   reproduced integration defects: model/dict planner boundary, dedupe-only commit,
-  and connected (not merely registered) receiver ids. This bounded production
+  connected (not merely registered) receiver ids, and interval settings history. This bounded production
   repair is documented as an amendment to the consolidation-only plan.
+
+## Final results
+
+| Lane | Result |
+|---|---|
+| Full pytest, plain + fresh coverage | **1775 passed, 4 skipped, 5 warnings** in each run |
+| Default JS suite | **273 passed**, 51 suites, no failures (33 test files) |
+| S10 changed gate, base S9 | **5 Python files**, 0 failures / 0 warnings |
+| Whole-chain gate, base S0 | **36 Python + 12 JS files**, 0 failures / 0 warnings |
+| Fresh coverage | **88.62% statements / 84.76% branches** |
+| Duplication | **1.079%**, 23 groups / 399 lines; no baseline change |
+| Private saved-page suite | **0 passed / 4 skipped**; not verification |
 
 ## Gate commands and contracts
 

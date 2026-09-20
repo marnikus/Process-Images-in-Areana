@@ -14,6 +14,7 @@ import logging
 
 from app.core.layout_service import canonical_grid_payload, default_payload
 from app.core.models import UrlRow
+from app.services.live.reconcile import update_interval
 
 log = logging.getLogger("arena")
 
@@ -124,6 +125,8 @@ def _remember_settings(bridge, value) -> None:
     bridge.state.settings.highlight.update(value.get("highlight", {}))
     if "supported_types" in value:
         bridge.state.folder["supported_types"] = value["supported_types"]
+    if "url_reconcile_interval_ms" in value:
+        update_interval(bridge, value["url_reconcile_interval_ms"])
     bridge._save_arena()
 
 
@@ -259,6 +262,8 @@ def _apply_settings(bridge, value) -> None:
     if "supported_types" in value:
         bridge.state.folder["supported_types"] = value["supported_types"]
         bridge.state.settings.supported_types = value["supported_types"]
+    if "url_reconcile_interval_ms" in value:
+        update_interval(bridge, value["url_reconcile_interval_ms"])
     bridge._save_arena()
     bridge._log("↩ Undo settings", "info")
 

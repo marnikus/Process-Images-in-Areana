@@ -15,6 +15,8 @@ from pathlib import Path
 from app.core.models import UrlRow
 from app.core.persistence import load_preset, save_preset
 from app.services.live.feed import commit_queue
+from app.services.live.debug_view import interval_ms
+from app.services.live.reconcile import update_interval
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import arena_serialize, undo_entries
 
@@ -44,6 +46,7 @@ def push_settings_undo(bridge) -> None:
     """Snapshot settings to undo (best effort)."""
     try:
         js = arena_serialize.arena_to_js(bridge.state)["settings"]
+        js["url_reconcile_interval_ms"] = interval_ms(bridge)
         bridge.undo_service.push("settings", js)
         undo_entries.emit_undo_state(bridge)
     except Exception:
@@ -106,12 +109,8 @@ def apply_url_interval(bridge, data: dict) -> None:
     if "url_reconcile_interval_ms" not in data:
         return
     try:
-        from app.services.live.debug_view import clamp_interval_ms
-        from app.services.live.bus import live_bus
-        v = clamp_interval_ms(data["url_reconcile_interval_ms"])
-        bridge.config.set_state(url_reconcile_interval_ms=v)
-        live_bus(bridge).wake("interval")
-        bridge._log(f"URL reconcile interval set to {v}ms", "info")
+        push_settings_undo(bridge)  # preserve the pre-first-edit value as well
+        update_interval(bridge, data["url_reconcile_interval_ms"])
     except Exception:
         pass
 
