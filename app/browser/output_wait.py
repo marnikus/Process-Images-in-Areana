@@ -7,7 +7,9 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional
+
+from app.core.pause_clock import PauseClock
 
 from .output_wait_fallback import (
     _handle_timeout_fallback,
@@ -24,6 +26,7 @@ from .output_wait_fallback import (
 class WaitSpec:
     timeout: float
     poll_interval: float = 2.0
+    pause: Optional[PauseClock] = None  # S3: absorbed captcha-pause seconds
 
 
 @dataclass
@@ -149,16 +152,26 @@ async def _check_cancelled(cancel_check, state: LoopState) -> dict | None:
 
 
 async def _check_timeout(state: LoopState, spec: WaitSpec, log_cb: Callable) -> dict | None:
-    elapsed = time.monotonic() - state.start
+    elapsed = (spec.pause.paused_elapsed(state.start) if spec.pause
+               else time.monotonic() - state.start)
     if elapsed <= spec.timeout:
         return None
     fb = await _handle_timeout_fallback(state.last, spec.timeout, log_cb)
     if fb:
-        return fb
+        return _with_pause(fb, spec)
     if state.last.get("reason") == "job_id_mismatch_no_matching_image":
         state.last["elapsed"] = elapsed
-        return state.last
-    return {"ready": False, "reason": "timeout", "last": state.last, "elapsed": elapsed}
+        return _with_pause(state.last, spec)
+    return _with_pause({"ready": False, "reason": "timeout", "last": state.last,
+                        "elapsed": elapsed}, spec)
+
+
+def _with_pause(result: dict, spec: WaitSpec) -> dict:
+    """Stamp the pause evidence (S3) — only when a clock rode on the spec."""
+    if spec.pause is not None:
+        result["paused_s"] = spec.pause.total
+        result["pause_note"] = spec.pause.describe()
+    return result
 
 
 async def _handle_ready_branch(diag: dict, check_fn: Callable, log_cb: Callable, spec: WaitSpec):

@@ -130,7 +130,9 @@ async def test_pipeline_waits_and_records_never_solves(monkeypatch, isolated_con
     d = bridge._captcha_service().stats.to_dict()
     assert d["detected_total"] == 1 and d["manual_solved"] == 1
     assert any("CAPTCHA_WAITING" in m and "awaiting your solve" in m for m, _ in bridge._logs)
-    assert ctrl.overlay_calls and "turn the Watcher ON" in ctrl.overlay_calls[-1]["sub"]
+    # S3/D-15: no key ⇒ honest wording — solve in Chrome, timeout paused
+    sub = ctrl.overlay_calls[-1]["sub"]
+    assert "solve it in Chrome" in sub and "timeout is paused" in sub
     assert all("findCfgCallback" not in js for js in probe_payloads(ctrl))  # never injects
 
 
@@ -160,6 +162,9 @@ async def test_watcher_running_labels_the_wait(monkeypatch, isolated_config_dir)
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
     bridge._captcha_watcher = SimpleNamespace(running=True)
+    # S3/D-15: the "solving" wording needs a stored key (the watcher loop alone
+    # cannot solve — wording follows the key, method follows the loop)
+    CaptchaKeyStore(isolated_config_dir).save(CaptchaSettings(api_key="K" * 16))
     ctrl = FakeCtrl(visible_seq=[True, False])
     outcome = await handle_captcha(CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1"))
     assert outcome.status == "manual" and outcome.method == "watcher"

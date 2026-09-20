@@ -30,7 +30,8 @@ from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 from app.services.captcha_recording import RecordingManager
 
 from .key_store import CaptchaKeyStore, clamp_timeout
-from .policy import captcha_in_scope, out_of_scope, solver_running
+from .policy import (WaitDeadline, captcha_in_scope, out_of_scope,
+                     pause_cap_seconds, solver_running, wait_reason)
 from .signals import CaptchaSignal, SolveOutcome, host_of
 from .stats import CaptchaStatsStore
 
@@ -188,13 +189,6 @@ def _emit_report(ctx: CaptchaCtx, rep: Dict[str, Any]) -> None:
     _stash_encounter(ctx, str(rep.get("eid", "")))
 
 
-def _wait_timeout(ctx: CaptchaCtx) -> int:
-    try:
-        return int(ctx.bridge.config.get_state("watcher_captcha_timeout_sec", 300))
-    except Exception:
-        return 300
-
-
 async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
     """Kind + sitekey probe; probe error → probe_error (fail open, RULE 9)."""
     try:
@@ -241,10 +235,7 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
                            svc: Optional["CaptchaService"], rep: Dict[str, Any]) -> SolveOutcome:
     """Wait-only policy: the pipeline never solves; the Watcher (when ON) or
     the user clears the dialog. `svc` is kept for the call contract (stats)."""
-    watcher_on = _watcher_running(ctx)
-    reason = ("Captcha Watcher is solving it (2Captcha SDK)" if watcher_on
-              else "solve in Chrome — or turn the Watcher ON to auto-solve")
-    return await _manual_wait(ctx, signal, reason, rep)
+    return await _manual_wait(ctx, signal, wait_reason(ctx.bridge), rep)
 
 
 def _watcher_running(ctx: CaptchaCtx) -> bool:
@@ -254,8 +245,11 @@ def _watcher_running(ctx: CaptchaCtx) -> bool:
 
 async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
                        rep: Dict[str, Any]) -> SolveOutcome:
-    """Overlay (with the why-not-solving flag) + poll until the dialog clears."""
-    timeout = _wait_timeout(ctx)
+    """Overlay (with the why-not-solving flag) + poll until the dialog clears,
+    capped at the one knob (D-14R): the deadline composes into the `stop`
+    predicate the wait already accepts."""
+    timeout = pause_cap_seconds(ctx.bridge)
+    deadline = WaitDeadline(timeout)
     _log(ctx, f"🛡️ FLAG CAPTCHA_WAITING — captcha on screen (tab {str(ctx.tab_id)[:12]}, {host_of(signal.page_url)}) — awaiting your solve in Chrome", "error")
     try:
         await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha",
@@ -263,22 +257,31 @@ async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
     except Exception:
         pass
     from app.services.cooldown_service import wait_captcha_cleared
-    solved = await wait_captcha_cleared(ctx.ctrl, _stop_pred(ctx), timeout,
-                                        lambda m, l="info": _log(ctx, m, l))
+    solved = await wait_captcha_cleared(ctx.ctrl, deadline.stop_or(_stop_pred(ctx)),
+                                        timeout, lambda m, l="info": _log(ctx, m, l))
     try:
         await ctx.ctrl.hide_watcher_overlay()
     except Exception:
         pass
-    if not solved:
-        out = SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
-    else:
-        _record_stats(ctx, "manual_solved", host_of(signal.page_url))
-        _record_penalty(ctx)
-        method = "watcher" if _watcher_running(ctx) else "manual"
-        out = SolveOutcome(status="manual", method=method)
+    out = _wait_outcome(ctx, signal, solved, deadline)
     _finish_resolution(rep, out)
     _emit_report(ctx, rep)
     return out
+
+
+def _wait_outcome(ctx: CaptchaCtx, signal: CaptchaSignal, solved: bool,
+                  deadline: WaitDeadline) -> SolveOutcome:
+    """Three honest outcomes (RULE 4): solved ⇒ manual (+stats +penalty),
+    cap hit ⇒ wait_timeout (retryable, no penalty), else stopped."""
+    if solved:
+        _record_stats(ctx, "manual_solved", host_of(signal.page_url))
+        _record_penalty(ctx)
+        method = "watcher" if _watcher_running(ctx) else "manual"
+        return SolveOutcome(status="manual", method=method)
+    if deadline.expired():
+        return SolveOutcome(status="wait_timeout",
+                            reason=f"captcha wait hit the {int(deadline.cap_s)}s cap")
+    return SolveOutcome(status="stopped", reason="stop requested while waiting for solve")
 
 
 class CaptchaService:

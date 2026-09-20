@@ -500,6 +500,17 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
   asserts the pipeline never evaluates `inject.js`). Cleared captchas still stack the cooldown
   penalty. Earlier amendment 2026-09-17 (in-pipeline auto-solve, `solver.py`/`api_client.py`) is
   superseded; design: `docs/archive/2026-10-02-captcha-watcher-isolation/design.md`.
+* **The wait is bounded and the pause is capped (S3 amendment, 2026-09-20, D-14R):** one knob —
+  `watcher_captcha_timeout_sec` (default 300, clamped 10…3600, editable in the Watcher window) —
+  bounds both (a) how long one captcha wait may last and (b) how much generation timeout one wait
+  may absorb (`app/core/pause_clock.PauseClock`, cumulative per generation wait; the cap rides the
+  caller's `stop` predicate, so `cooldown_service.wait_captcha_cleared` keeps its pinned
+  never-gives-up contract unedited). At the cap the job fails honestly as `wait_timeout`
+  (retryable, no captcha penalty, normal job-cycle cooldown); Stop/abort still wins earlier; the
+  worst case per image is `generation_timeout + captcha_cap`. The settle's seconds are charged to
+  the pause clock and subtracted from the wait's elapsed time, so a captcha that WAS cleared can
+  never end the wait in `Timeout after …ms`; on a genuine timeout the failure text names the
+  absorbed pause (`+Ns captcha wait (cap Ms, Ks left)`).
 * **Key hygiene (non-negotiable even when opt-in is ON):** the keys live only in
   `config/captcha_solvers.json` (one per provider — 2Captcha | CapMonster Cloud — git-ignored,
   0600 best-effort; the older single-provider `config/2captcha.json` is folded in on first save);

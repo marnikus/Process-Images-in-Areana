@@ -49,10 +49,14 @@ class Stack:
             _log=lambda m, l="info": self.logs.append(m),
             _captcha_service=lambda: svc,
         )
-        visible_seq = [visible] * 10_000 if isinstance(visible, bool) else list(visible)
+        if isinstance(visible, bool):
+            async def dialog_visible():
+                return visible  # constant — a bool never "runs out"
+        else:
+            seq = list(visible)
 
-        async def dialog_visible():
-            return visible_seq.pop(0) if visible_seq else False
+            async def dialog_visible():
+                return seq.pop(0) if seq else False
 
         async def overlay(text, kind=None, timeout_sec=None, sub=None):
             self.overlay.append({"text": text, "kind": kind,

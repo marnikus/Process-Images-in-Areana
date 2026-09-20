@@ -80,9 +80,12 @@ Headroom facts that shape the fix (baseline maxima, `tools/quality_baseline.json
 
 ### 2.1 What the cap must be built from (owner correction: *"D-14 should be capped"*, *"no activity at all if off"*)
 
-> **PARTIALLY LANDED — S2 (2026-09-20):** the *"no activity at all if off"* half (D-23) is now
-> code and counting tests — `app/services/captcha/policy.py` + the five gates; status marker
-> only, original evidence below kept verbatim. The *"capped"* half (D-14R) still belongs to S3.
+> **LANDED — S2+S3 (2026-09-20):** the *"no activity at all if off"* half (D-23) landed in S2
+> (`app/services/captcha/policy.py` + the five gates + counting tests), and the *"capped"* half
+> (D-14R) landed in S3: `app/core/pause_clock.py` (D-25), `_settle_timed` charging (D-26),
+> `policy.WaitDeadline` composed into the caller's `stop` predicate, `wait_timeout` outcome,
+> one knob `watcher_captcha_timeout_sec` bounding wait AND pause (I-52). Status marker only,
+> original evidence below kept verbatim.
 
 | Fact | Evidence |
 |---|---|
