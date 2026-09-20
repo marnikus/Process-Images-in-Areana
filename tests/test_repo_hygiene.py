@@ -85,9 +85,13 @@ def test_predicate_keeps_source_and_placeholder(rel):
     assert is_runtime_artifact(rel) is False
 
 
+# Samples are assembled at run time so this file never contains a matching literal itself.
+HEX32 = "0123456789abcdef" * 2
+
+
 def test_api_key_regex_matches_store_format_only():
-    assert API_KEY_RE.search('{"api_key": "00000000000000000000000000000000"}')
-    assert API_KEY_RE.search('"api_key":"ABCDEF0123456789ABCDEF01"')
+    assert API_KEY_RE.search('{"api_key": "%s"}' % HEX32)
+    assert API_KEY_RE.search('"api_key":"%s"' % HEX32[:24].upper())
     assert not API_KEY_RE.search('"api_key": ""')
     assert not API_KEY_RE.search('"api_key": "<your key>"')
     assert not API_KEY_RE.search('api_key = load()')
@@ -104,7 +108,6 @@ def test_no_api_key_literal_is_tracked():
 
 def test_api_key_scanner_finds_a_planted_key(tmp_path):
     """The scanner itself must be live, not vacuously green (RULE 8)."""
-    (tmp_path / "leak.json").write_text(
-        '{"api_key": "0123456789abcdef0123456789abcdef"}', encoding="utf-8")
+    (tmp_path / "leak.json").write_text('{"api_key": "%s"}' % HEX32, encoding="utf-8")
     (tmp_path / "clean.json").write_text('{"api_key": ""}', encoding="utf-8")
     assert files_with_api_key(["leak.json", "clean.json", "missing.json"], tmp_path) == ["leak.json"]

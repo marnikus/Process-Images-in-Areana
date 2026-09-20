@@ -1,6 +1,6 @@
 # Design — runtime config out of Git (API keys) + "completed is never sent again"
 
-Status: **PLAN ONLY — nothing implemented yet** (user asked for the plan first).
+Status: **IMPLEMENTED** — A in `54cb501` (B13a), B + C in the B13b commit; see *Outcome* at the end and [`bugfix-verification.md` §B13](../2026-10-02-captcha-watcher-isolation/bugfix-verification.md) for the evidence. Written as a plan first (owner asked for the plan before the go).
 Rules applied: RULE 16 (gates), RULE 18 (ideal sizes), RULE 19 (order),
 RULE 8 (tests execute real code), RULE 10 (one control per decision),
 RULE 9 (a skip must not stall the stack), RULE 17 (this doc is the record).
@@ -139,3 +139,60 @@ Per-file coverage floors to hold: orchestrator 92.5 %, dispatcher 88.5 %, run_co
 4. Gates: `pytest -n 4`, `npm run test:js`, coverage run, `verify_quality --allow-legacy --coverage-ratchet --js` and the `--changed --base origin/<branch>` lane on the committed diff; RULE 16.7 checklist walked line by line; docs (SOR I-43…I-46, §B13, QUALITY_RECHECK) in the same commits; push.
 
 Estimated size: A ≈ 60 lines of test/shell + ignore rules; B ≈ 40 new + ~25 changed production lines, ~120 test lines; C ≈ 45 new + ~10 changed production lines, ~90 test lines. No file leaves its RULE 18 band; no ratchet maximum grows.
+
+---
+
+## Outcome (2026-10-09, after the go)
+
+Delivered as planned, with three deviations worth recording:
+
+| Planned | Done | Why |
+|---|---|---|
+| Claim-time check inside `should_continue` | Loop-level `claim_denied` in `_run_sequential` (before `_run_one_image`) and in `_run_with_sem` (after the semaphore, before the page) | `should_continue` stays a pure bool verdict; `_run_one_image` sits at the file's max func LOC (17) and the parallel worker needed the identical call anyway — one helper, two call sites, no wrapper |
+| `scan_folder` "one walk + output map" | Same, but split into `_checked_root` / `_image_files` / `_output_rank` / `_outputs_by_source` | first cut hit CC 9 in `scan_folder` (fail-lane is >10, prefer ≤7); the split leaves `scan_folder` at CC 5 and every helper ≤ 12 LOC |
+| Resume-on-scan for *every* scanned source | Newcomers only (`merge_scanned` never overrides an in-app status) | otherwise *Reset → Scan* would flip the image straight back to `completed`; boundary pinned by `test_rescan_keeps_in_app_status_of_known_items` |
+
+### Final recheck — RULE 18 (ideal sizes) and RULE 16 (gates)
+
+Every new or edited production function (measured with the gate's own AST counters; radon is not installed in the sandbox, `verify_quality.py` falls back to the same counting rules):
+
+| File | Function | LOC | CC | Nesting | Params | RULE 18 verdict |
+|---|---|---:|---:|---:|---:|---|
+| `core/run_scope.py` | `is_runnable` | 3 | 1 | 0 | 1 | < 4 by design — predicate used in several places (18.1) |
+| | `run_scope` | 3 | 3 | 0 | 1 | < 4 by design — predicate used in several places (18.1) |
+| | `claim_denied` | 6 | 2 | 1 | 2 | in band |
+| `core/scanner.py` | `_build_item` | 22 | 3 | 0 | 3 | 21 → 22 (one dict key); `# ideal-size: 22 lines reason=one scan-item dict literal …` |
+| | `_checked_root` | 6 | 3 | 1 | 1 | in band |
+| | `_output_rank` | 4 | 2 | 0 | 1 | in band |
+| | `_outputs_by_source` | 11 | 5 | 2 | 1 | in band |
+| | `scan_folder` | 14 | 6 | 1 | 2 | in band (first cut CC 9 rejected; the one-expression `_image_files` helper was inlined — a 3-line helper that only re-hosts a comprehension is the 18.1 anti-pattern) |
+| `core/models.py` | `_discovered_status` | 5 | 3 | 1 | 2 | in band |
+| | `from_scan_dict` | 20 | 3 | 0 | 2 | at the top of the band |
+| `ui/services/scan_service.py` | `scan_summary` | 5 | 3 | 0 | 2 | in band |
+| `ui/panels/queue_scan.py` | `run_scan_merge` / `run_scan_new_batch` | 14 / 16 | 2 / 2 | 0 | 2 / 3 | in band; `selected_images` alias **deleted** (one call re-hosted under another name, 18.1) |
+| `ui/panels/run_control.py` | `check_start_ready` | 12 | 5 | 1 | 1 | in band; `check_start_inputs` / `fail_processing_images` / `start_run` only changed the callee name |
+| `services/run_state.py` | `batch_active` | 4 | 2 | 0 | 1 | in band |
+| `services/batch_orchestrator.py` | `_run_sequential` | 12 | 5 | 2 | 1 | in band |
+| | `_load_run_settings` | 4 | 1 | 0 | 1 | in band |
+| `services/multi_page_dispatcher.py` | `_run_with_sem` | 6 | 2 | 1 | 2 | in band |
+
+Files: `run_scope.py` 44 (leaf, fine under 150), `scanner.py` 134 → 169, `models.py` 292 → **300** (top of the band; the next `ImageItem` addition splits the file), `scan_service.py` 87 → 94, `queue_scan.py` 315 → 309, `run_control.py` 275 → 279; `run_state.py` 417 → 423, `batch_orchestrator.py` 492 → 489, `multi_page_dispatcher.py` 398 → 402 — the last three were outside the band before B13 and carry their module `# ideal-size:` reason (numbers refreshed to ~420 / ~490 / ~400). Module `core/` stays at 13 files (18.3 band 5–15). Context files: `QUALITY_RECHECK.md` 176 lines (band 60–200); `SYSTEM_OF_RECORD.md` was already over 200 before this round (pre-existing debt, not grown by a new section — three invariant rows and the dated paragraph).
+
+RULE 16.7 checklist, walked:
+
+```text
+[x] No new function >30 physical LOC                  max new/edited 22 (_build_item, legacy 21 → 22, ideal-size note)
+[x] No new class >150 LOC or >15 methods              no new class; RunControlMixin stays at 10 methods (gate is a module func)
+[x] No new function with >4 params                    max 3
+[x] CC ≤10, cognitive ≤15, nesting ≤4                 max CC 6 (scan_folder), max nesting 2
+[x] coverage ≥80 % and not below baseline; branch ≥75 %  see gate evidence (§B13) — ratchet floor 86.36 / 82.33
+[x] every new function has a test that fails if deleted  verified by removing the orchestrator skip (2 fail), the Start gate (4 fail), the scanner map / model adoption (test_scan_resume fails)
+[x] no new vulture/pyflakes findings; no duplication  pyflakes clean on all touched files; the duplicated predicate was removed, none added
+[x] quality-override comments                         none added
+[x] no dummy helpers                                  `_image_files` and `selected_images` removed for exactly that reason
+[x] RULE 18 ideals                                    table above; deviations carry ideal-size reasons
+[x] RULE 19 order                                     scan_folder: nesting first (validation out), then CC (AI filter as comprehension), size last
+[x] SYSTEM_OF_RECORD.md + docs updated                §2 rows 2/3/6, I-44…I-46, §7 core list, §8 test rows, dated paragraph; README run-scope section; QUALITY_RECHECK follow-up; §B13 record
+```
+
+Tests added: `test_run_scope.py` 14, `test_run_control_gate.py` 6, `test_scan_resume.py` 11, `test_queue_thumbnails.py` 8 (per-file coverage floor of `queue_scan.py` after the alias deletion — covered by the real thumbnail contract, not by keeping the alias), 5 across `test_batch_orchestrator.py` / `test_multi_page_dispatcher_run.py` / `test_run_state.py`; each was checked to fail with its fix removed.

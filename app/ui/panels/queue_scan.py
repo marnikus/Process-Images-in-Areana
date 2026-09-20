@@ -5,9 +5,9 @@ Owns 10 of the 12 scan/queue slots (R3) — `pick_folder`/`set_folder_path`
 live in `queue_scan_folder.FolderPickMixin` (2026-10-02 bugfix: folder
 shape normalisation) and are inherited here; thin slots delegate to module funcs;
 OS/disk work lives in ui/services (file_service, folder_ai_service,
-scan_service, thumbnail_service). `selected_images` is the run-scope read
-model (`Bridge._get_selected_images` delegates to it; run_control imports
-it in R9). `clear_images` is the compat alias of run_control's
+scan_service, thumbnail_service). The run-scope read model is
+`core.run_scope.run_scope` (one predicate, I-44 — run_control imports it
+directly). `clear_images` is the compat alias of run_control's
 `clear_queue` (log packing table). Imports go panels -> services/core
 only (Qt via qt_compat).
 """
@@ -21,14 +21,8 @@ from app.ui.qt_compat import Slot, clipboard_copy
 from app.ui.panels.queue_scan_folder import FolderPickMixin, as_folder_dict
 from app.ui.services import arena_serialize, undo_entries
 from app.ui.services import file_service, folder_ai_service
-from app.ui.services.scan_service import merge_scanned, scan_folder_pure
+from app.ui.services.scan_service import merge_scanned, scan_folder_pure, scan_summary
 from app.ui.services.thumbnail_service import generate_thumbnail_data_url
-
-
-def selected_images(images) -> list:
-    """Images in run scope (selected + runnable status)."""
-    return [img for img in images
-            if img.selected and img.status in ("pending", "failed", "selected", "needs_review", "processing")]
 
 
 def find_image(images, img_id: str):
@@ -101,7 +95,7 @@ def run_scan_merge(bridge, root_path: Path) -> None:
         added = merge_scanned(bridge.state.images, scanned)
         bridge.state.recalculate_progress()
         bridge._save_arena()
-        bridge._log(f"Scanned {len(scanned)} images, {added} new", "success")
+        bridge._log(scan_summary(scanned, added), "success")
     except Exception as e:
         bridge._log(f"Scan failed: {e}", "error")
     finally:
@@ -116,10 +110,10 @@ def run_scan_new_batch(bridge, root_path: Path, cleared: int) -> None:
         scanned = scan_folder_pure(root_path, supported, ignore_ai)
         # Queue was cleared by the slot: merge appends all (selected=False),
         # identical to the original inline loop.
-        merge_scanned(bridge.state.images, scanned)
+        added = merge_scanned(bridge.state.images, scanned)
         bridge.state.recalculate_progress()
         bridge._save_arena()
-        bridge._log(f"🗑 New batch: cleared {cleared} old, scanned {len(scanned)} new images", "warn")
+        bridge._log(f"🗑 New batch: cleared {cleared} old — {scan_summary(scanned, added)}", "warn")
     except Exception as e:
         bridge._log(f"New batch scan failed: {e}", "error")
     finally:

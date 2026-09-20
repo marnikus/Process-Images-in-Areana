@@ -38,6 +38,13 @@ class UrlRow:
         self.tab_id = tab_id
         return True
 
+def _discovered_status(selected: bool, existing_output) -> str:
+    """Discovered with an `_AI` sibling → completed (I-46); else pending / selected."""
+    if existing_output:
+        return ImageStatus.COMPLETED.value
+    return ImageStatus.SELECTED.value if selected else ImageStatus.PENDING.value
+
+
 @dataclass
 class ImageItem:
     id: str
@@ -62,6 +69,7 @@ class ImageItem:
 
     @staticmethod
     def from_scan_dict(d: dict, selected: bool = False) -> "ImageItem":
+        output = d.get("existing_output")  # `_AI` sibling already on disk → completed (I-46)
         return ImageItem(
             id=d.get("id") or d.get("fingerprint"),
             relative_path=d["relative_path"],
@@ -72,11 +80,11 @@ class ImageItem:
             size=d["size"],
             mtime=d["mtime"],
             fingerprint=d["fingerprint"],
-            status=ImageStatus.PENDING.value if not selected else ImageStatus.SELECTED.value,
-            selected=selected,
+            status=_discovered_status(selected, output),
+            selected=bool(selected and not output),
             assigned_url_id=None,
             attempt_count=0,
-            output_path=None,
+            output_path=output,
             error=None,
             content_hash=d.get("content_hash"),
         )

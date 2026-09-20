@@ -43,7 +43,7 @@ if [ -n "$LEAK" ]; then
   echo "$LEAK" | head -n 20
   exit 1
 fi
-KEYS="$(git grep -lIiE '"api_key"\s*:\s*"[0-9a-f]{20,}"' -- . ':!tests/test_repo_hygiene.py' || true)"
+KEYS="$(git grep -lIiE '"api_key"\s*:\s*"[0-9a-f]{20,}"' -- . || true)"
 if [ -n "$KEYS" ]; then
   echo "  ❌ api_key literal in tracked files — rotate the key, then untrack:"
   echo "$KEYS"

@@ -1,4 +1,4 @@
-# ideal-size: ~480 lines reason=single per-batch lifecycle owns prepare/parallel-gate/sequential/finish sharing BatchCtx; splitting would scatter one batch flow that always changes together (RULE 18.2)
+# ideal-size: ~490 lines reason=single per-batch lifecycle owns prepare/parallel-gate/sequential/finish sharing BatchCtx; splitting would scatter one batch flow that always changes together (RULE 18.2)
 """Batch orchestrator — the sequential run loop extracted from Bridge (A3).
 
 Owns the per-batch lifecycle: prepare (tab + settings + stack announce),
@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from app.core.enums import ImageStatus
+from app.core.run_scope import claim_denied, run_scope
 from app.services import auto_connect as ac
 from app.services.job_events import job_finished_payload
 from app.services.cooldown_service import (
@@ -343,9 +344,11 @@ def _finish_batch(ctx: BatchCtx) -> None:
 
 
 async def _run_sequential(ctx: BatchCtx) -> None:
-    """Per-image loop; a cancelled future settles the stuck tab."""
+    """Per-image loop (settled images skipped at claim time, I-44); cancel settles the tab."""
     try:
         for img in ctx.images:
+            if claim_denied(img, ctx.bridge._log):
+                continue
             if await _run_one_image(ctx, img) == "stop":
                 break
     except asyncio.CancelledError:
@@ -371,15 +374,9 @@ async def _warn_unready(bridge, ctrl) -> None:
         bridge._log(f"⚠ Page not ready: {', '.join(reasons)} — trying anyway", "warn")
 
 
-def _selected_images(bridge) -> List[Any]:
-    """Queue images eligible for this run."""
-    return [img for img in bridge.state.images
-            if img.selected and img.status in ("pending", "failed", "selected", "needs_review", "processing")]
-
-
 def _load_run_settings(ctx: BatchCtx) -> None:
-    """Images + prompt template for this batch."""
-    ctx.images = _selected_images(ctx.bridge)
+    """Images (run scope, I-44) + prompt template for this batch."""
+    ctx.images = run_scope(ctx.bridge.state.images)
     ctx.prompt_template = ctx.bridge.state.prompt.get("user_prompt", "")
 
 

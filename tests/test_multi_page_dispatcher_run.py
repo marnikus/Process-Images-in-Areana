@@ -147,6 +147,27 @@ async def test_run_cancel_before_start_is_noop(runner_fakes):
 
 
 @pytest.mark.asyncio
+async def test_settled_image_never_acquires_a_page(runner_fakes):
+    """B13 / I-44: the worker re-checks the status right before the claim."""
+    pool = make_pool(["t1"])
+    pool.register_client("t1", object(), object())
+    bridge = FakeBridge()
+    done = make_img("done.png")
+    done.status, done.attempt_count, done.selected = ImageStatus.COMPLETED.value, 1, True
+    fresh = make_img("fresh.png")
+    ctx = mpd.DispatchCtx(bridge=bridge, pool=pool, urls=make_urls(["t1"]),
+                          sem=asyncio.Semaphore(1), allowed={"t1"})
+    await mpd._run_with_sem(ctx, done)
+    await mpd._run_with_sem(ctx, fresh)
+    assert (done.status, done.attempt_count) == (ImageStatus.COMPLETED.value, 1)
+    assert fresh.status == ImageStatus.COMPLETED.value and fresh.attempt_count == 1
+    assert runner_fakes["calls"] == 1
+    assert [p for _, p in bridge.job_started.calls] == ["/tmp/fresh.png"]
+    assert ("info", "⏭ Skipping done.png — already completed") in bridge.logs
+    assert pool.get_page("t1").status == PageStatus.STEADY
+
+
+@pytest.mark.asyncio
 async def test_run_no_free_page_logs_warning(runner_fakes):
     pool = make_pool(["t1"], busy=("t1",))
     bridge = FakeBridge()

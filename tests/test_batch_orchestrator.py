@@ -310,9 +310,54 @@ async def test_run_sequential_completes_and_cancels(monkeypatch):
     monkeypatch.setattr(bo, "_run_one_image", _raise)
     settled = []
     monkeypatch.setattr(bo, "_settle_stuck", lambda ctx: settled.append(1))
+    ctx.images = [make_img("c.png")]  # a fresh claim — completed ones are skipped (I-44)
     with pytest.raises(asyncio.CancelledError):
         await bo._run_sequential(ctx)
     assert settled
+
+
+@pytest.mark.asyncio
+async def test_sequential_skips_settled_images_at_claim_time(monkeypatch):
+    """B13 / I-44: a stale run list may hold completed/skipped images — never re-sent."""
+    instant_sleep(monkeypatch)
+    urls = [UrlRow.create("https://arena.ai/a", enabled=True, tab_id="tab1")]
+    done = make_img("done.png", "completed", True)
+    done.attempt_count, done.output_path = 1, "/tmp/done_AI.png"
+    skipped = make_img("skip.png", "skipped", True)
+    fresh = make_img("fresh.png")
+    bridge = make_bridge(images=[done, skipped, fresh], urls=urls)
+    await bo._run_sequential(make_ctx(bridge, images=[done, skipped, fresh]))
+    assert (done.status, done.attempt_count, done.output_path) == ("completed", 1, "/tmp/done_AI.png")
+    assert (skipped.status, skipped.attempt_count) == ("skipped", 0)
+    assert (fresh.status, fresh.attempt_count) == ("completed", 1)
+    assert [j for j, _ in bridge._started] and len(bridge._started) == 1  # one job only
+    lines = [m for m, _ in bridge._logs]
+    assert "⏭ Skipping done.png — already completed" in lines
+    assert "⏭ Skipping skip.png — already skipped" in lines
+    assert bridge._run_state == "idle"  # the skip never stalls the batch (RULE 9)
+
+
+@pytest.mark.asyncio
+async def test_parallel_fallback_does_not_redo_completed(monkeypatch):
+    """B13 door 2: parallel dispatch dies mid-way → sequential fallback must not re-run its wins."""
+    instant_sleep(monkeypatch)
+    pool = pool_with(info("t1"), info("t2"))
+    urls = [UrlRow.create("https://arena.ai/a", enabled=True, tab_id="t1"),
+            UrlRow.create("https://arena.ai/b", enabled=True, tab_id="t2")]
+    a, b = make_img("a.png"), make_img("b.png")
+    bridge = make_bridge(images=[a, b], urls=urls, pool=pool)
+    ctx = make_ctx(bridge, tab_id="t1", images=[a, b])
+
+    async def _dies_after_first(bridge_, pool_, images, urls_):
+        images[0].status, images[0].attempt_count = "completed", 1
+        raise RuntimeError("pool went away")
+
+    monkeypatch.setattr(bo, "dispatch_parallel", _dies_after_first)
+    assert await bo._try_parallel(ctx) is False
+    await bo._run_sequential(ctx)
+    assert (a.status, a.attempt_count) == ("completed", 1)  # not sent a second time
+    assert (b.status, b.attempt_count) == ("completed", 1)
+    assert [p for j, p in bridge._started] == ["/tmp/b.png"]
 
 
 def test_finish_batch_lines():
@@ -351,10 +396,15 @@ async def test_warn_unready_branches():
     await bo._warn_unready(bridge, SimpleNamespace())  # no probe -> silent
 
 
-def test_selected_images_filter():
+def test_load_run_settings_uses_the_one_run_scope_predicate():
     imgs = [make_img("a.png", "pending", True), make_img("b.png", "completed", True),
-            make_img("c.png", "pending", False), make_img("d.png", "failed", True)]
-    assert [i.relative_path for i in bo._selected_images(make_bridge(images=imgs))] == ["a.png", "d.png"]
+            make_img("c.png", "pending", False), make_img("d.png", "failed", True),
+            make_img("e.png", "skipped", True), make_img("f.png", "needs_review", True)]
+    ctx = make_ctx(make_bridge(images=imgs))
+    bo._load_run_settings(ctx)
+    assert [i.relative_path for i in ctx.images] == ["a.png", "d.png", "f.png"]
+    assert ctx.prompt_template == "draw x"
+    assert not hasattr(bo, "_selected_images"), "duplicate predicate must stay deleted (RULE 16.4)"
 
 
 @pytest.mark.asyncio

@@ -73,6 +73,13 @@ def merge_scanned(images: List, scanned: List[Dict]) -> int:
     return added
 
 
+def scan_summary(scanned: List[Dict], added: int) -> str:
+    """One scan log line; names the sources whose `_AI` output already exists (RULE 2)."""
+    done = sum(1 for s in scanned if s.get("existing_output"))
+    line = f"Scanned {len(scanned)} images, {added} new"
+    return line + (f", {done} already have _AI output (Reset to redo)" if done else "")
+
+
 def should_ignore_file(filename: str, ignore_ai_suffix: bool = True) -> bool:
     """Pure ignore decision — same as scanner logic."""
     if not ignore_ai_suffix:
