@@ -713,6 +713,82 @@ branch** (S8: 87.80 / 84.47); jscpd `app/` **1.079 %**; goldens (12) and
 same commit: SYSTEM_OF_RECORD row 19 (what the window shows), I-52 / I-53
 enforcement pointers, module row; `docs/README.md` footer.
 
+### 2026-09-20 S10 (consolidation — the chain verified as a whole) — same chain
+
+**The three RED checks, run against the final tree.**
+
+1. *Docs match the code.* Every enforcement file named by I-47…I-54 exists
+   (`find app tests tools` per invariant — 0 missing); every stage commit
+   touched `docs/current/` in the same change (`git show --stat` per commit:
+   S0+S1 `57cfae1` 2 files, S2 `a632537` 3, S3 `ec4f2f7` 3, S4 `e2ab4c6` 2,
+   S5 `e02cc5d` 3, S6 `4169de6` 3, S7 `06798d6` 3, S8 `071295b` 3,
+   S9 `a534532` 2 — RULE 17). SYSTEM_OF_RECORD §11 said "15 windows" until
+   this stage; now 16 with the `live_debug` row.
+2. *No stage grew another stage's JS.* The net-zero guards re-run on the final
+   tree: `test_url_interval_control.mjs` + `test_url_list_receiver_icon.mjs`
+   **13 / 0** (frozen `url-list/*.js`, `render.js` 74 / 12,
+   `arena-app/listeners.js` 193 all unchanged).
+3. *L-7 orphans adopted.* `package.json` `test:js` lists **34 of 38** `.mjs`
+   files; the 4 unlisted are harnesses (`fake_dom`, `page_harness`,
+   `sash_harness`, `user_layout`), both former orphans run green inside the
+   lane (S8).
+
+**The full lane (`bash tools/pre_push_check.sh`, the whole gate).** Repo
+hygiene ✅ (no `config/` / keys / `.pyc` tracked, I-43) · pytest serial
+**1,772 passed · 4 skipped · 0 failed** (S0 base: 1,612) · `npm run test:js`
+**275 / 0** (S0: 240) · coverage **87.82 % line / 84.48 % branch** (S0:
+86.89 / 83.21; plan floors 86.09 / 82.01) · jscpd `app/` **1.078 %** (S0:
+1.240 % floor) · `test_bridge_slots` **Σ 135** — no stage added a slot or a
+signal (D-20) · goldens (12) byte-identical throughout.
+`verify_quality.py --changed --base origin/main --allow-legacy
+--coverage-ratchet` (the hook lane): **0 real fails**; the two reported
+`[ratchet-coverage]` lines are `app/browser/cdp/transport.py` 90.5 → 84.3 and
+`app/ui/qt_compat.py` 60.7 → 39.3 — both are the sandbox's missing
+`libGL.so.1` (the Qt import path cannot execute here; unchanged since S0,
+identical on the untouched base). The same lane on the nine new/rewritten
+Python modules only: 0 fails. RULE 16.6 step 4 (radon is not installed in the
+sandbox; measured with the gate's own `compute_cc_simple`): every new module's
+worst function ≤ CC 7 — `pause_clock` 4 · `window_catalog` 1 · `bus` 5 ·
+`feed` 6 · `supervisor` 7 · `reconcile` 7 · `url_policy` 6 · `debug_view` 4
+· `captcha/policy` 3.
+
+**Baseline decision: `tools/quality_baseline.json` is NOT re-recorded** —
+by the owner's S0 instruction (no new baseline, no overrides) and because
+nothing needs it: every ratchet was met against the old maxima, the legitimate
+*downward* moves the plan expected happened in the tree (`captcha/service.py`
+`_manual_wait` 27 → 22, `layout_service.py` 300 → 258, `sash-grid.js`
+123 → 114, `batch_orchestrator.py` 489 → 433) and are simply unclaimed
+headroom, and the new files carry no baseline entry at all (they are judged
+by the absolute limits, all met). An integrator who re-records later gets the
+smaller numbers for free; the only lines a re-record would "fix" are the two
+`libGL` floors, which must not be lowered — they are a machine fact, not a
+code fact.
+
+**The ten stages in one table.**
+
+| Stage | Commit | What landed | py · js · cov line/branch · jscpd |
+|---|---|---|---|
+| S0+S1 | `57cfae1` | baseline; L-1 pool join through the real seam; L-6 de-masked | 1,612 · 240 · 86.89/83.21 · 1.240 |
+| S2 | `a632537` | captcha scope = the Watcher switch (D-23, I-48) | 1,633 · 240 · 87.03/83.42 · 1.240 |
+| S3 | `ec4f2f7` | capped captcha pause `PauseClock` (D-14R, I-52) | 1,657 · 240 · 87.19/83.60 · 1.240 |
+| S4 | `e2ab4c6` | `live/bus` + `live/feed` `commit_queue`; every reset re-queues (I-49, I-54) | 1,679 · 240 · 87.35/83.89 · 1.106 |
+| S5 | `e02cc5d` | always-live run `live/supervisor` (I-47) | 1,694 · 240 · 87.48/84.11 · 1.101 |
+| S6 | `4169de6` | Python-owned URL reconciler + interval setting (D-12R, I-50) | 1,743 · 247 · 87.73/84.33 · 1.088 |
+| S7 | `06798d6` | receiver flag + ⊘ icon, one owner (D-18, I-53) | 1,757 · 253 · 87.77/84.38 · 1.086 |
+| S8 | `071295b` | one window table, 16 windows, L-5/L-7/L-8 (D-21, I-51) | 1,765 · 269 · 87.80/84.47 · 1.086 |
+| S9 | `a534532` | Live Worker & Queue Debug content (D-20/D-22) | 1,772 · 275 · 87.82/84.48 · 1.079 |
+| S10 | this commit | consolidation — docs verified, no baseline change | 1,772 · 275 · 87.82/84.48 · 1.078 |
+
+**RULE 18 recheck (final tree).** Module counts: `core` **16** (plan: 15 —
+the tree already carried `action_blocks_defaults.py` from B11, noted in the
+merge-note), `services/live` **6** (plan said 7 counting `__init__`),
+`captcha` **6**, `browser` **23** unchanged, `ui/panels` **15** unchanged.
+No production function above 30 LOC was added in any stage; the largest new
+functions are `default_grid_tree` 21 and `_manual_wait` 22; no new class
+above 120 LOC; params ≤ 4 everywhere (S6's `_Pass` context object). Latent
+defects: **L-1, L-5, L-6, L-7, L-8 all closed**; L-2 (run-state writer) closed
+by S5, L-3/L-4 by S4/S6.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

@@ -354,7 +354,7 @@ Remediation order: nesting → cyclomatic → cognitive → size (RULE 19).
 
 ---
 
-## 11. Current UI — 15 windows
+## 11. Current UI — 16 windows (`app/core/window_catalog.WINDOWS`, I-51)
 
 | Window ID | Title | Content | Persisted in |
 |---|---|---|---|
@@ -373,6 +373,7 @@ Remediation order: nesting → cyclomatic → cognitive → size (RULE 19).
 | `browser` | Browser Preview | Selected/generated image and webpage highlight context | ephemeral |
 | `block_config` | Block Config — Security Check | Selected action-block configuration | `arena.json` action blocks |
 | `arena_presets` | Arena Presets | Save/load prompt, action-block, and setting combinations | `config/arena.json` |
+| `live_debug` | Live Worker & Queue Debug | Queue head (pending count + first image), one job-centric line per worker tab (status, current image/elapsed, paused captcha timeout + cap, cooldown), receiver counters, read-only reconcile cadence, plus the rescued Page Pool table (L-5) | ephemeral (pushed `progress_updated.live` + `page_pool_updated`) |
 
 **Layout:** Sash-grid draggable via win-grip `drag_indicator`, splittable/mergeable/resizable sashes, dock minimized, windows menu, Grid view menu layouts default/A/B/C + Reset, Window presets save/load/import/export with preview. Persistence `grid_layout+window_states+window_preset_store` in `config/session.json`. From Old App, tested. Sash visibility single-rule + "divider touches only adjacent rows" invariants: `docs/archive/2026-09-17-watcher-grid-bugfixes/SOLUTION.md`.
 
