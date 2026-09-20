@@ -501,6 +501,16 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
   (`app/services/captcha_watcher/providers.py`, I-40): the provider selects the SDK host and
   nothing else — no second HTTP client, no other endpoint (`2captcha.com`,
   `api.capmonster.cloud`).
+* **Scope amendment 2026-09-21 (S2, I-48):** with the Watcher **OFF there is no captcha activity of
+  any kind** — no detect probe, overlay, `waiting_captcha` pool row, stat, recording, penalty,
+  `🛡` log line, and no settler inside the generation wait; the `CHECK_SECURITY` block reports
+  `Skipped (Watcher off)`. One predicate owns the question — `app/services/captcha/policy.py`
+  `captcha_in_scope(bridge)` (= the `watcher_enabled` switch, read per call, fail-closed) — and the
+  five pipeline gates ask it (`check_security`, `_handle_security`, the settler install in
+  `wait_for_output`, the `handle_captcha` choke point which answers `out_of_scope`, and
+  `_watcher_running` → `policy.solver_running`). With the Watcher ON the pipeline still never
+  solves: it detects and waits (with or without a key). Proof: `tests/test_watcher_off_zero_activity.py`
+  (all-zero counters + the positive control), `tests/test_captcha_scope.py`.
 * Respect target site terms, permissions, rate limits; only use user-authorized URLs.
 * Credentials out of logs, session in browser profile dir, upload only to user-configured URLs.
 * Same as old app's security rules, adapted to Arena.
