@@ -22,6 +22,7 @@ from app.browser.site_adapter import get_selector
 from app.browser.probe_requests import FindProbeSpec, HighlightSpec
 from app.browser.visual_click import ClickRequest, find_and_click
 from app.services.await_processing import handle_await_processing
+from app.services.captcha.policy import captcha_in_scope
 from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
@@ -106,7 +107,9 @@ async def _run_security_captcha(ctx: JobCtx) -> None:
 
 
 async def check_security(ctx: JobCtx) -> bool:
-    """Captcha gate: auto-solve (2Captcha, opt-in) else wait for user (RULE 20)."""
+    """Captcha gate (RULE 20): in scope only while the Watcher is ON, then detect + wait."""
+    if not captcha_in_scope(ctx.bridge):
+        return False  # RULE 9: "no captcha", the stack continues
     try:
         visible = await ctx.ctrl.is_security_dialog_visible()
     except Exception:
@@ -247,7 +250,8 @@ async def wait_for_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], 
     try:
         await _show_gen_overlay(ctx, timeout_ms)
         _arm_revival(ctx)  # bounded resubmit if the blocked generation died
-        ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
+        if captcha_in_scope(ctx.bridge):
+            ctx.ctrl.security_settler = lambda: _settle_and_note(ctx)  # captcha inside the wait
         status, data, src = await _poll_generation(ctx, timeout_ms)
         if status == "completed" and src:
             return await _verify_download(ctx, src)
@@ -401,7 +405,10 @@ async def _handle_baseline(ctx: JobCtx, block: Any):
 
 
 async def _handle_security(ctx: JobCtx, block: Any):
-    """Handle security (announce while solving, like the legacy loop)."""
+    """Handle security (announce while waiting, like the legacy loop); OFF ⇒ skipped, no probe."""
+    if not captcha_in_scope(ctx.bridge):
+        _emit_action(ctx, block, "success", "Skipped (Watcher off)")
+        return
     try:
         visible = await ctx.ctrl.is_security_dialog_visible()
     except Exception:

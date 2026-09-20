@@ -22,6 +22,9 @@ def make_info(tab_id):
                      url="https://arena.ai", status=PageStatus.STEADY, is_connected=True)
 
 
+ON = {"watcher_enabled": True}  # S2: captcha work is in scope only while the Watcher is ON
+
+
 def make_bridge(pool, session=None):
     state = {"cooldown_enabled": True, "cooldown_min_seconds": 300,
              "cooldown_captcha_penalty_seconds": 900}
@@ -89,7 +92,7 @@ def instant_sleep(monkeypatch):
 async def test_check_security_noop_when_clear():
     pool = PagePool()
     pool.add_page(make_info("t1"))
-    bridge = make_bridge(pool)
+    bridge = make_bridge(pool, ON)
     ctrl, _ = make_ctrl([False])
     ctx = make_ctx(pool, bridge, ctrl)
     assert await sjr.check_security(ctx) is False
@@ -103,7 +106,7 @@ async def test_check_security_visible_records_penalty(monkeypatch):
     pool = PagePool()
     pool.add_page(make_info("t1"))
     pool.mark_busy("t1", "j1")
-    bridge = make_bridge(pool)
+    bridge = make_bridge(pool, ON)
     ctrl, _ = make_ctrl([True, False])
     ctx = make_ctx(pool, bridge, ctrl)
     assert await sjr.check_security(ctx) is True
@@ -117,7 +120,7 @@ async def test_submit_boundary_clear_no_penalty():
     pool = PagePool()
     pool.add_page(make_info("t1"))
     pool.mark_busy("t1", "j1")
-    bridge = make_bridge(pool)
+    bridge = make_bridge(pool, ON)
     ctrl, _ = make_ctrl([False])
     ctx = make_ctx(pool, bridge, ctrl)
     await sjr._handle_submit(ctx, SimpleNamespace())
@@ -131,7 +134,7 @@ async def test_submit_boundary_visible_records(monkeypatch):
     pool = PagePool()
     pool.add_page(make_info("t1"))
     pool.mark_busy("t1", "j1")
-    bridge = make_bridge(pool)
+    bridge = make_bridge(pool, ON)
     ctrl, _ = make_ctrl([True, False])
     ctx = make_ctx(pool, bridge, ctrl)
     await sjr._handle_submit(ctx, SimpleNamespace())
@@ -145,7 +148,7 @@ async def test_download_boundary_visible_records(monkeypatch):
     pool = PagePool()
     pool.add_page(make_info("t1"))
     pool.mark_busy("t1", "j1")
-    bridge = make_bridge(pool)
+    bridge = make_bridge(pool, ON)
     ctrl, _ = make_ctrl([True, False])
     ctx = make_ctx(pool, bridge, ctrl)
     ctx.new_src = "https://cdn/x.png"
@@ -211,7 +214,7 @@ async def test_penalty_recorder_failure_never_breaks_the_job(monkeypatch):
     monkeypatch.setattr(svc, "note_captcha_event", boom)
     pool = PagePool()
     pool.add_page(make_info("t1"))
-    bridge = make_bridge(pool)
+    bridge = make_bridge(pool, ON)
     ctrl, _ = make_ctrl([True, False])
     ctx = make_ctx(pool, bridge, ctrl)
     assert await sjr.check_security(ctx) is True  # must not raise

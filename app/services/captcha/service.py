@@ -4,6 +4,10 @@ Flow: visibility (existing predicate) → detect probe (kind + sitekey) →
 stats → wait for the dialog to clear (overlay + poll) → cooldown penalty
 record (same choke point as the 2026-09-17 fix).
 
+Scope (S2, 2026-09-20): the whole flow is in scope only while the Watcher
+switch is ON — `policy.captcha_in_scope`. OFF returns `out_of_scope` before
+any probe, so the pipeline shows no captcha activity at all (D-23).
+
 The pipeline NEVER solves (2026-10-02 isolation): while this wait runs the
 dialog is cleared either by the user in Chrome or by the Captcha Watcher
 (`app.services.captcha_watcher`, the app's only solver) when it is ON.
@@ -30,6 +34,7 @@ from app.core.cooldown import DEFAULT_PENALTY_SECONDS
 from app.services.captcha_recording import RecordingManager
 
 from .key_store import CaptchaKeyStore, clamp_timeout
+from .policy import captcha_in_scope, out_of_scope, solver_running
 from .signals import CaptchaSignal, SolveOutcome, host_of
 from .stats import CaptchaStatsStore
 
@@ -208,6 +213,13 @@ async def detect_signal(ctx: CaptchaCtx) -> CaptchaSignal:
 
 
 async def handle_captcha(ctx: CaptchaCtx) -> SolveOutcome:
+    """Scoped choke point: Watcher OFF ⇒ out_of_scope without touching the page (S2)."""
+    if not captcha_in_scope(ctx.bridge):
+        return out_of_scope()
+    return await _handle_captcha_scoped(ctx)
+
+
+async def _handle_captcha_scoped(ctx: CaptchaCtx) -> SolveOutcome:
     """Detect, record, resolve, and close one visible captcha encounter."""
     signal = await detect_signal(ctx)
     if not signal.visible:
@@ -240,12 +252,8 @@ async def _resolve_captcha(ctx: CaptchaCtx, signal: CaptchaSignal,
 
 
 def _watcher_running(ctx: CaptchaCtx) -> bool:
-    """Is the isolated Captcha Watcher loop running on this bridge? (fail closed)."""
-    try:
-        watcher = getattr(ctx.bridge, "_captcha_watcher", None)
-        return bool(watcher is not None and watcher.running)
-    except Exception:
-        return False
+    """Is the isolated Captcha Watcher loop running? (policy owns the read)."""
+    return solver_running(ctx.bridge)
 
 
 async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,

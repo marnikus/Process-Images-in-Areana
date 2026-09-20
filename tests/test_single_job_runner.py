@@ -25,7 +25,8 @@ def make_bridge(stack=None, pool=None, cancel=False):
     return SimpleNamespace(
         _cancel_requested=cancel,
         _page_pool=pool,
-        config=SimpleNamespace(get_state=lambda k, d=None: d),
+        # S2: the Watcher switch gates captcha work; the runner tests exercise the ON path
+        config=SimpleNamespace(get_state=lambda k, d=None: True if k == "watcher_enabled" else d),
         state=state,
         _log=lambda m, l="info": logs.append((m, l)),
         _emit_job_action_status=lambda action: events.append(

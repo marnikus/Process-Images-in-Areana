@@ -105,9 +105,15 @@ def _recorders(bridge: Bridge) -> Dict[str, Recorder]:
 
 def build_bridge(tmp_path: Path, stack: List[ActionBlock], n_images: int = 1,
                  tab_ids: Optional[List[str]] = None,
-                 pool=None, cdp: Optional[FakeCDP] = None):
-    """Real Bridge wired to tmp dirs + recorders (pool None = single mode)."""
+                 pool=None, cdp: Optional[FakeCDP] = None, watcher_on: bool = False):
+    """Real Bridge wired to tmp dirs + recorders (pool None = single mode).
+
+    `watcher_on` arms the Watcher switch (S2): captcha work is in scope only
+    while it is ON, and a real ConfigManager defaults it to OFF.
+    """
     cfg = ConfigManager(str(tmp_path / "cfg"))
+    if watcher_on:
+        cfg.set_state(watcher_enabled=True)
     cdp = cdp or FakeCDP()
     bridge = Bridge(config_manager=cfg, state_path=tmp_path / "arena.json",
                     cdp_client=cdp)

@@ -227,6 +227,65 @@ CC, nesting or params movement; the only remaining lanes are the three
 environment facts above (`max_cog 0→6` = base value, and the two untouched
 files' `libGL` coverage floors). Goldens untouched; slots 135.
 
+### 2026-09-20 S2 (captcha scope = the Watcher switch, D-23) — same chain
+
+**RED first.** `tests/test_captcha_scope.py` (11 tests) could not even collect
+(`ImportError: cannot import name 'policy'`); `tests/test_watcher_off_zero_activity.py`
+(the D-23 counting test through the real `CaptchaService` + real
+`wait_captcha_cleared`, with a positive ON control): OFF run failed
+`'stopped' == 'out_of_scope'` and the whole-job variant hit `TimeoutError`
+(the pipeline waited on the dialog with the Watcher OFF — the defect in one
+line); the ON control passed before any production edit, so the counters
+are proven to count. Lesson kept in the file: a *pure no-op* `asyncio.sleep`
+patch makes the forever-visible-dialog loop spin without yielding and
+`asyncio.wait_for` can never cancel it — the fakes yield with
+`await real_sleep(0)` and the scope fake's dialog clears after three polls,
+so a wrongly-scoped wait fails fast instead of hanging the suite.
+
+**GREEN.** New `app/services/captcha/policy.py` (54 lines, 5 functions, max
+7 loc / CC 3, 100 % covered): `watcher_enabled` (the sole reader of the
+switch, fail-closed), `captcha_in_scope` (== the switch, never key/loop),
+`solver_running`, `has_solver_key` (wording only), `out_of_scope()`. Five
+gate edits, no new branch beyond the guard: `service.handle_captcha` →
+scope guard + `_handle_captcha_scoped` (the old body, unchanged),
+`_watcher_running` delegates to policy (7 → 3 lines);
+`single_job_runner.check_security` returns False before any probe,
+`_handle_security` emits `Skipped (Watcher off)` and returns,
+`wait_for_output` installs `security_settler` only in scope
+(`cdp_arena/output._security_gate` untouched — it only reads the attribute).
+`SolveOutcome` docstring lists the status vocabulary incl. `out_of_scope`;
+`_handle_captcha_outcome` needed no change (it raises only on the named
+statuses). Mutation control: with `captcha_in_scope` forced `True` the two
+new files fail 9 / pass 5; restored 14 / 14.
+
+**Existing tests that assumed the ON path.** 21 tests in
+`test_captcha_service`, `test_captcha_boundaries`,
+`test_captcha_recording_service`, `test_single_job_runner` and the
+characterization golden `test_captcha_pause_resume` failed after GREEN
+because their bridge fakes never set `watcher_enabled` — the switch was not
+load-bearing before S2. Each fake now arms `watcher_enabled: True` with a one-line
+reason; `harness.build_bridge(..., watcher_on=True)` sets it on the real
+`ConfigManager` for the captcha golden only. The chaos test
+`test_every_helper_absorbs_failures` keeps every other config read
+exploding (`boom`) while the scope read answers — the gate itself is the one
+read that must not fail open. **All golden files are byte-identical.**
+
+**Lane after S2.** pytest `-n 4` **1,638 passed · 4 skipped · 0 failed**
+(+17 new, 0 removed); `npm run test:js` 240 / 0; `pyflakes` + `vulture @90`
+clean. Coverage **87.02 % line / 83.39 % branch** (S1: 86.91 / 83.25;
+`service.py` 94.76 → 94.84, `single_job_runner.py` 83.82 → 84.84).
+`verify_quality.py --changed-files` on the four touched app files: no
+size / CC / nesting / params ratchet moved — `service.py` max_func_loc stays
+27 (`_manual_wait`, S3 shrinks it), `single_job_runner.py` max_cc 9 → **7**
+(`check_security` A 4, `_handle_security` A 4, `wait_for_output` B 6),
+`file_lines` +8 / +7 / +4 within RULE 18 bands (`single_job_runner.py`
+946 keeps its ideal-size header). Remaining fails are only the three
+environment facts (`max_cog 0→7/8/8` — verified equal to the base tree's
+values by measuring the stashed tree; the two `libGL` coverage floors).
+Docs in the same commit: RULE 20 amendment (scope paragraph),
+SYSTEM_OF_RECORD row 12 + I-19 / I-34 wording + new **I-48** + services
+module row, `docs/README.md` footer.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

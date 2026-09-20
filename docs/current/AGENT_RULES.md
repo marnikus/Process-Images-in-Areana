@@ -480,9 +480,17 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
 
 ## RULE 20 — CAPTCHA policy (default manual; opt-in owner-authorized 2Captcha), respect ToS, user-authorized URLs only
 
-* **Default (OFF): do not bypass/defeat/solve CAPTCHA** — pause with `USER_ACTION_REQUIRED`, let the user solve manually.
-* **Opt-in (owner-authorized) = the Watcher switch (amendment 2026-10-02):** the job pipeline
-  itself NEVER solves — `handle_captcha` only detects, pauses and waits for the dialog to clear.
+* **The Watcher switch owns pipeline captcha scope (amendment 2026-09-20, S2).** One predicate,
+  `app/services/captcha/policy.captcha_in_scope(bridge)` — the only reader of `watcher_enabled` —
+  gates every pipeline site (`check_security`, the `CHECK_SECURITY` block, the submit/download
+  boundaries, the mid-generation `security_settler`, and `handle_captcha` itself).
+  **Watcher OFF ⇒ no pipeline captcha activity of any kind**: no probe, no `waiting_captcha` row, no
+  stat, recording, overlay, penalty or 🛡 line; `handle_captcha` returns `out_of_scope` before
+  touching the page and the generation timeout runs untouched (counting test with positive control:
+  `tests/test_watcher_off_zero_activity.py`). The stored key and the solver loop change the wait's
+  *wording* only, never its scope (RULE 10). The switch is read on every call — live in both directions.
+* **Watcher ON = detect and wait only:** the job pipeline itself NEVER solves — `handle_captcha`
+  only detects, pauses and waits for the dialog to clear (`USER_ACTION_REQUIRED` semantics).
   Solving is the exclusive job of the Captcha Watcher (`app/services/captcha_watcher/`), which
   runs only while the user turns the Watcher ON, has stored their own API key in the Captcha
   window, and talks to 2Captcha only through the official SDK (`2captcha-python`,
