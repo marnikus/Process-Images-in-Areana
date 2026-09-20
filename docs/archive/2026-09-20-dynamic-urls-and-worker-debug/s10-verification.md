@@ -73,3 +73,20 @@ and name the actual supervisor/pass bodies and 135-slot surface. Long historical
 quality snapshots moved verbatim to `quality-history-before-s10.md`; current
 QUALITY_RECHECK is a concise summary with a pointer, per RULE 18.4. The original
 design/tdd/quality-budget documents are unchanged historical records (RULE 17).
+
+### Final RULE 12 review: interval history RED
+
+The full gate passed, but checking the plan's claim that the new setting uses the
+existing settings history found an omitted field: interval lives in session
+config, while `push_settings_undo` only serializes AppState. Add a real first-edit
+undo/redo test (starting from a nondefault 7000 ms value) plus history remember /
+legacy-entry compatibility tests **before** repair. The proposed fix snapshots
+the interval before/after its edit on the existing `settings` timeline, restores
+it in existing remember/apply handlers, and shares clamp/persist/wake in the
+reconciler's cadence owner. No new history kind, slot or JS writer. Old entries
+without the field must leave it alone. Existing generic history semantics are
+not rewritten in this bounded fix.
+
+Pre-edit budgets: app_settings maxfunc17/CC7/class117/method10; undo_entries
+maxfunc17/CC7/cognitive7. Shared setter target <=10 LOC/CC<=3/2 parameters;
+existing callers must not raise file maxima. No baseline or override change.
