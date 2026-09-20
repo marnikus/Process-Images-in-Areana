@@ -17,6 +17,7 @@ from app.browser.page_status import PageInfo, PageStatus
 from app.core.models import UrlRow
 from app.persistence.config_manager import ConfigManager
 from app.ui.panels import browser_tabs as bt_mod
+from app.ui.panels import page_pool as pp_mod
 from app.ui.panels.browser_tabs import BrowserTabsMixin
 from app.ui.panels.page_pool import (
     PagePoolMixin,
@@ -79,7 +80,6 @@ def make_bridge(cdp, config, urls=(), pool=None, **extra):
         _emit_arena_state=lambda: None,
         _emit_pool_status=lambda: None,
         _persist_cooldowns=lambda: None,
-        _schedule_coro=lambda coro: None,
         connection_status=Emitter(), tab_match_result=Emitter(),
         tabs_received=Emitter(), page_pool_updated=Emitter(),
         _last_connect_ws="", _last_connect_ts=0.0, _connect_in_progress=False,
@@ -152,8 +152,7 @@ def test_pool_slots_status_clear_disconnect(cfg):
     pool.add_page(PageInfo(tab_id="t1", ws_url="ws://x/1", title="A", url="u"))
     host, _ = make_host((PagePoolMixin,), _page_pool=pool, config=cfg,
                         page_pool_updated=Emitter(), _log=lambda m, l="info": None,
-                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None,
-                        _schedule_coro=lambda coro: None)
+                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)
     snap = json.loads(host.get_page_pool_status())
     assert snap["total"] == 1 and any(c == (json.dumps(snap, ensure_ascii=False),)
                                       for c in host.page_pool_updated.calls)
@@ -164,23 +163,28 @@ def test_pool_slots_status_clear_disconnect(cfg):
     assert json.loads(host.disconnect_page_pool("t2"))["error"] == "not found"
     empty = make_host((PagePoolMixin,), _page_pool=None, config=cfg,
                       page_pool_updated=Emitter(), _log=lambda m, l="info": None,
-                      _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None,
-                      _schedule_coro=lambda coro: None)[0]
+                      _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)[0]
     assert json.loads(empty.get_page_pool_status())["total"] == 0
     assert json.loads(empty.clear_page_pool())["cleared"] == 0
     assert json.loads(empty.disconnect_page_pool("t"))["error"] == "pool not initialized"
 
 
-def test_pool_slots_connect_and_cooldowns(cfg):
+async def test_pool_slots_connect_and_cooldowns(cfg, cdp_server, mocker):
     pool = PagePool()
-    queued = []
+    scheduler = mocker.spy(pp_mod, "schedule_coro")
     host, _ = make_host((PagePoolMixin,), _page_pool=pool, config=cfg,
                         page_pool_updated=Emitter(), _log=lambda m, l="info": None,
                         _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None,
-                        _schedule_coro=queued.append)
+                        _bg_loop=asyncio.get_running_loop(), cdp=None)
     assert json.loads(host.connect_page_pool(""))["error"] == "empty ws_url"
     assert json.loads(host.connect_page_pool("ws://127.0.0.1:9222/devtools/page/t1"))["ok"] is True
-    assert len(queued) == 1
+    assert scheduler.call_count == 1
+    try:
+        await asyncio.wait_for(asyncio.wrap_future(scheduler.spy_return), timeout=2)
+        assert pool.get_page("t1").status == PageStatus.STEADY
+    finally:
+        for client in pool._clients.values():
+            await client.disconnect()
     assert json.loads(host.get_cooldown_config())["ok"] is True
     set_reply = json.loads(host.set_cooldown_config(json.dumps(
         {"enabled": True, "min_seconds": 60, "captcha_penalty_seconds": 4,
@@ -207,8 +211,7 @@ def test_pool_stop_tab_job(cfg):
     pool.add_page(PageInfo(tab_id="tj", ws_url="ws://x/j", title="J", url="u"))
     host, _ = make_host((PagePoolMixin,), _page_pool=pool, config=cfg,
                         page_pool_updated=Emitter(), _log=lambda m, l="info": None,
-                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None,
-                        _schedule_coro=lambda coro: None)
+                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)
     assert json.loads(host.stop_tab_job("tj"))["error"] == "no live job on this tab"
     pool.get_page("tj").current_image = "img.png"
     assert json.loads(host.stop_tab_job("tj"))["ok"] is True

@@ -1,0 +1,197 @@
+{
+  "date_utc": "2026-09-20",
+  "base_commit": "528af87e8092e1066c6c8ed5f7c82e34546313e6",
+  "branch": "arena/01a0bf1f-process-images-in-areana",
+  "scope": [
+    "S0 bootstrap and baseline",
+    "S1L-1 pool scheduler seam; L-6 test de-masking"
+  ],
+  "environment": {
+    "python": "3.11.2",
+    "node": "22.22.3",
+    "npm": "10.9.8",
+    "packages": {
+      "pytest": "9.1.1",
+      "pytest-asyncio": "1.4.0",
+      "pytest-cov": "7.1.0",
+      "pytest-mock": "3.15.1",
+      "coverage": "7.16.1",
+      "radon": "6.0.1",
+      "cognitive-complexity": "1.3.0",
+      "vulture": "2.16",
+      "pyflakes": "3.4.0",
+      "PySide6": "6.11.2",
+      "websockets": "17.1"
+    },
+    "qt_widgets_import_error": "libGL.so.1: cannot open shared object file: No such file or directory",
+    "npm_audit_vulnerabilities": 0
+  },
+  "s0": {
+    "pytest": {
+      "passed": 1612,
+      "failed": 1,
+      "skipped": 11
+    },
+    "javascript": {
+      "passed": 240,
+      "failed": 0
+    },
+    "coverage": {
+      "covered_lines": 11659,
+      "statements": 13288,
+      "line_percent": 87.74081878386514,
+      "covered_branches": 2548,
+      "branches": 3062,
+      "branch_percent": 83.21358589157414,
+      "gate_combined_percent": 86.89296636085626,
+      "page_pool_combined_percent": 82.24299065420561
+    },
+    "duplication": {
+      "percent": 1.1192773788150807,
+      "groups": 23
+    },
+    "vulture_90_findings": 0,
+    "full_gate": {
+      "fails": 121,
+      "cognitive_ratchet_fails": 119,
+      "coverage_ratchet_fails": 2,
+      "findings_sha256": "c70f4beee0538482c9ebd265f3fcb0b1f1e1b967caad9e0a3732a506ee1a11b1"
+    },
+    "explicit_page_pool_gate_fails": [
+      {
+        "file": "app/ui/panels/page_pool.py",
+        "type": "ratchet",
+        "metric": "ratchet-max_cog",
+        "value": 6,
+        "limit": 0,
+        "fail": true,
+        "message": "RATCHET app/ui/panels/page_pool.py max_cog grew 0\u21926 (even in baseline, growth fails)"
+      },
+      {
+        "file": "app/browser/cdp/transport.py",
+        "type": "coverage",
+        "metric": "ratchet-coverage",
+        "value": 84.26966292134831,
+        "baseline": 90.45,
+        "fail": true,
+        "message": "RATCHET app/browser/cdp/transport.py coverage dropped 90.5%\u219284.3% (even in baseline, growth fails)"
+      },
+      {
+        "file": "app/ui/qt_compat.py",
+        "type": "coverage",
+        "metric": "ratchet-coverage",
+        "value": 39.285714285714285,
+        "baseline": 60.71,
+        "fail": true,
+        "message": "RATCHET app/ui/qt_compat.py coverage dropped 60.7%\u219239.3% (even in baseline, growth fails)"
+      }
+    ],
+    "pre_push_exit_code": 1
+  },
+  "s1": {
+    "pytest": {
+      "passed": 1616,
+      "failed": 1,
+      "skipped": 11
+    },
+    "javascript": {
+      "passed": 240,
+      "failed": 0
+    },
+    "coverage": {
+      "covered_lines": 11660,
+      "statements": 13288,
+      "line_percent": 87.74834437086093,
+      "covered_branches": 2549,
+      "branches": 3062,
+      "branch_percent": 83.24624428478118,
+      "gate_combined_percent": 86.90519877675841,
+      "page_pool_combined_percent": 83.17757009345794
+    },
+    "duplication": {
+      "percent": 1.1192773788150807,
+      "groups": 23
+    },
+    "vulture_90_findings": 0,
+    "full_gate": {
+      "fails": 121,
+      "cognitive_ratchet_fails": 119,
+      "coverage_ratchet_fails": 2,
+      "findings_sha256": "c70f4beee0538482c9ebd265f3fcb0b1f1e1b967caad9e0a3732a506ee1a11b1"
+    },
+    "explicit_page_pool_gate_fails": [
+      {
+        "file": "app/ui/panels/page_pool.py",
+        "type": "ratchet",
+        "metric": "ratchet-max_cog",
+        "value": 6,
+        "limit": 0,
+        "fail": true,
+        "message": "RATCHET app/ui/panels/page_pool.py max_cog grew 0\u21926 (even in baseline, growth fails)"
+      },
+      {
+        "file": "app/browser/cdp/transport.py",
+        "type": "coverage",
+        "metric": "ratchet-coverage",
+        "value": 84.26966292134831,
+        "baseline": 90.45,
+        "fail": true,
+        "message": "RATCHET app/browser/cdp/transport.py coverage dropped 90.5%\u219284.3% (even in baseline, growth fails)"
+      },
+      {
+        "file": "app/ui/qt_compat.py",
+        "type": "coverage",
+        "metric": "ratchet-coverage",
+        "value": 39.285714285714285,
+        "baseline": 60.71,
+        "fail": true,
+        "message": "RATCHET app/ui/qt_compat.py coverage dropped 60.7%\u219239.3% (even in baseline, growth fails)"
+      }
+    ],
+    "pre_push_exit_code": 1
+  },
+  "pool_file_maxima_before": {
+    "max_func_loc": 16,
+    "max_class_loc": 139,
+    "max_methods": 9,
+    "max_cc": 7,
+    "max_cog": 6,
+    "max_nest": 1,
+    "max_params": 4,
+    "file_lines": 234,
+    "func_count": 14
+  },
+  "pool_file_maxima_after": {
+    "max_func_loc": 16,
+    "max_class_loc": 139,
+    "max_methods": 9,
+    "max_cc": 7,
+    "max_cog": 6,
+    "max_nest": 1,
+    "max_params": 4,
+    "file_lines": 234,
+    "func_count": 14
+  },
+  "tdd": {
+    "red_failed": 2,
+    "red_passed": 2,
+    "green_passed": 4,
+    "focused_passed": 70,
+    "focused_skipped": 1
+  },
+  "golden_sha256_unchanged": {
+    "abort.json": "7cbe628756c823b62cc21e45602b172f2c6cf831f4fc21fde90c55ac9cea2e6f",
+    "cancel.json": "2d2751d24bc607c3be56526fdb7e38dbacf836fd2b7e3f3ccb3d572036d97867",
+    "captcha.json": "405b598f65d44e0230630155a8b93df75cd8eff4fae0ad39bf67ed79b4c06948",
+    "custom_fallback.json": "4a9649b686cde5c14db90857d6550f0574fec570af1e5d77819054c438d1de3a",
+    "disabled.json": "e2effd00e3aa14e61699519bd390d9d038372f08a25c7885b07323e419f20fdb",
+    "happy_full.json": "f6ba45e14646b12cb9b0e125b48defb2ade78a641345e870a15013492227b91e",
+    "happy_two.json": "31cbb7422bae0cbc60636cf0567473627cd2db426d734459e94626051f377921",
+    "no_tab.json": "c955bd906a7e5afd56f83aec64f2d18ad4f0b1593eb6dca49a98b2bf1030c3bc",
+    "nonreq_fail.json": "f46c2683e48a6fb606a8e66a9990c8882d3a37d737dcbef83c0bc1b5a45d5b14",
+    "req_fail.json": "91448f2f8b82710ff6e117fab71e6da2cf829ecddb07e2201bffce86cf120f4d",
+    "stop_after.json": "dae3c3e5c26ddcaa2bcb886e86aa2baa6ea98aaeb408477760c96fe0fac8e165",
+    "unknown.json": "baa530d645b24c816701a8445edcaf85c5fa7a85e5e3cecd9ab7ec632d5768dd"
+  },
+  "status": "Implementation verified; release acceptance blocked by pre-existing hygiene and quality-gate findings. No baselines reset."
+}
