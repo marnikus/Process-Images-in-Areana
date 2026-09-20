@@ -1,3 +1,4 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S3 — D-15: one pure helper owns the wait-reason wording.
 
 Watcher ON + key ⇒ the Watcher is solving; Watcher ON + no key ⇒ solve it in
@@ -9,12 +10,14 @@ reaches the wording (S2's gate returns first).
 import json
 from types import SimpleNamespace
 
-import pytest
 
 from app.services.captcha import policy
 from app.services.captcha.service import CaptchaCtx, handle_captcha
 
-pytestmark = pytest.mark.unit
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 DETECT = json.dumps({"visible": True, "kind": "recaptcha_v2",
                      "sitekey": "sk", "url": "https://arena.ai"})
@@ -63,19 +66,6 @@ def make_ctrl(visible_seq, overlay_calls):
     return SimpleNamespace(cdp=SimpleNamespace(evaluate=evaluate),
                            is_security_dialog_visible=dialog_visible,
                            show_watcher_overlay=overlay, hide_watcher_overlay=hide)
-
-
-def test_on_with_key_says_the_watcher_is_solving():
-    bridge = make_bridge(key="sk-abc")
-    assert policy.wait_reason(bridge) == "Captcha Watcher is solving it (2Captcha SDK)"
-
-
-def test_on_without_key_says_solve_it_in_chrome():
-    bridge = make_bridge(key="")
-    reason = policy.wait_reason(bridge)
-    assert "solve it in Chrome" in reason
-    assert "timeout is paused" in reason   # names the paused generation timeout
-    assert "solving" not in reason.lower()  # never claim solving without a key
 
 
 @pytest.mark.asyncio

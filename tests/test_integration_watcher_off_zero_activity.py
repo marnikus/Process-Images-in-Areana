@@ -1,3 +1,4 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S2 — D-23: Watcher OFF is ZERO captcha activity, counted, not assumed.
 
 A counting stack (spy service, counting pool/ctrl, penalty spy) proves the
@@ -11,13 +12,14 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-import pytest
 
 from app.services import cooldown_service
 from app.services import single_job_runner as sjr
 from app.services.captcha.service import CaptchaCtx, handle_captcha
 
-pytestmark = pytest.mark.unit
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 class CountingPool:

@@ -1,47 +1,39 @@
-"""S3 — D-26 extractions in cdp_arena/output.py: the settle is timed, the
-timeout text carries the pause evidence. `_security_gate`'s span/CC/nest are
-unchanged (it only swapped `await settler()` for the timed wrapper)."""
-
+"""S3 output helper units: one definition per helper; deterministic clock boundary."""
 import asyncio
+
+from unittest.mock import AsyncMock
+from types import SimpleNamespace as NS
 
 import pytest
 
-from app.browser.cdp_arena.output import _settle_timed, _timeout_text
+from app.browser.cdp_arena import output
+from app.core.pause_clock import PauseClock
 
 pytestmark = pytest.mark.unit
 
 
-async def test_settle_timed_charges_only_the_settles_own_duration():
-    from app.core.pause_clock import PauseClock
-    clock = PauseClock(cap_s=300)
-    called = []
-
-    async def settler():
-        await asyncio.sleep(0.05)
-        called.append("settled")
-
-    await _settle_timed(settler, clock)
-    assert called == ["settled"]
-    assert 0.03 <= clock.total <= 0.5  # the settle's wall time, nothing more
-
-
-async def test_settle_timed_without_a_clock_still_settles():
-    called = []
-
-    async def settler():
-        called.append("settled")
-
-    await _settle_timed(settler, None)  # Watcher-OFF: no clock installed (D-23)
-    assert called == ["settled"]
+@pytest.mark.target('app.browser.cdp_arena.output:_settle_timed')
+@pytest.mark.parametrize('capped', [None, 300, 2])
+@pytest.mark.parametrize('failure', [None, RuntimeError, asyncio.CancelledError])
+async def test_settle_timed(monkeypatch, capped, failure):
+    times = iter([100, 103])
+    monkeypatch.setattr(output, 'time', NS(monotonic=lambda: next(times)))
+    clock = None if capped is None else PauseClock(capped)
+    settler = AsyncMock(side_effect=failure)
+    if failure:
+        with pytest.raises(failure):
+            await output._settle_timed(settler, clock)
+    else:
+        await output._settle_timed(settler, clock)
+    settler.assert_awaited_once()
+    if clock is not None:
+        assert clock.total == (0 if failure else min(capped, 3))
 
 
-async def test_timeout_text_is_unchanged_without_a_pause():
-    assert _timeout_text({}, 5000) == "Timeout after 5000ms"
-    assert _timeout_text({"pause_note": ""}, 5000) == "Timeout after 5000ms"
-
-
-def test_timeout_text_carries_the_pause_evidence():
-    result = {"pause_note": "+12s captcha wait (cap 300s, 288s left)", "paused_s": 12.0}
-    text = _timeout_text(result, 5000)
-    assert text.startswith("Timeout after 5000ms (")
-    assert "+12s captcha wait" in text and text.endswith(")")
+@pytest.mark.target('app.browser.cdp_arena.output:_timeout_text')
+@pytest.mark.parametrize('result,expected', [({}, 'Timeout after 5000ms'),
+    ({'pause_note': ''}, 'Timeout after 5000ms'),
+    ({'pause_note': '+12s captcha wait (cap 300s, 288s left)', 'paused_s': 12},
+     'Timeout after 5000ms (+12s captcha wait (cap 300s, 288s left))')])
+def test_timeout_text(result, expected):
+    assert output._timeout_text(result, 5000) == expected

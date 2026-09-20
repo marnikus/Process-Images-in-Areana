@@ -1,3 +1,4 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S3 — D-13/D-14R: the generation wait honours the pause clock.
 
 Real `wait_for_new_output_with_spec` + real `WaitSpec` (RULE 8 — the loop is
@@ -11,11 +12,13 @@ untouched behaviour — proof the pause is the ONLY change.
 
 import asyncio
 
-import pytest
 
 from app.browser.output_wait import WaitSpec, wait_for_new_output_with_spec
 
-pytestmark = pytest.mark.unit
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 NOT_READY = {"ready": False, "reason": "generating_no_new_yet"}
 READY = {"ready": True, "src": "https://x/new.png", "associatedJobId": "j1",

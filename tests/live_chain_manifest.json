@@ -1,0 +1,350 @@
+{
+  "base": "19a96c9",
+  "python_units": [
+    "tests/test_pause_clock.py",
+    "tests/test_captcha_policy.py",
+    "tests/test_cdp_output_settle.py",
+    "tests/test_live_bus.py",
+    "tests/test_live_feed.py",
+    "tests/test_url_policy.py",
+    "tests/test_live_debug_functions.py",
+    "tests/test_window_catalog_functions.py"
+  ],
+  "python_integration": [
+    "tests/test_integration_captcha_scope.py",
+    "tests/test_integration_captcha_wait_cap.py",
+    "tests/test_integration_captcha_wait_reason.py",
+    "tests/test_integration_live_bus.py",
+    "tests/test_integration_live_debug_view.py",
+    "tests/test_integration_live_feed.py",
+    "tests/test_integration_live_panel_boundaries.py",
+    "tests/test_integration_live_reconcile.py",
+    "tests/test_integration_live_supervisor.py",
+    "tests/test_integration_output_wait_timeout_pause.py",
+    "tests/test_integration_page_pool_join.py",
+    "tests/test_integration_reset_requeues.py",
+    "tests/test_integration_s10_consolidation.py",
+    "tests/test_integration_url_interval_setting.py",
+    "tests/test_integration_url_receivers.py",
+    "tests/test_integration_watcher_off_zero_activity.py",
+    "tests/test_integration_window_catalog.py"
+  ],
+  "python_targets": [
+    "app.core.pause_clock:PauseClock.__init__",
+    "app.core.pause_clock:PauseClock.note",
+    "app.core.pause_clock:PauseClock.expired",
+    "app.core.pause_clock:PauseClock.remaining",
+    "app.core.pause_clock:PauseClock.paused_elapsed",
+    "app.core.pause_clock:PauseClock.describe",
+    "app.services.captcha.policy:watcher_enabled",
+    "app.services.captcha.policy:captcha_in_scope",
+    "app.services.captcha.policy:solver_running",
+    "app.services.captcha.policy:has_solver_key",
+    "app.services.captcha.policy:out_of_scope",
+    "app.services.captcha.policy:pause_cap_seconds",
+    "app.services.captcha.policy:wait_reason",
+    "app.services.captcha.policy:WaitDeadline.__init__",
+    "app.services.captcha.policy:WaitDeadline.expired",
+    "app.services.captcha.policy:WaitDeadline.stop_or",
+    "app.browser.cdp_arena.output:_settle_timed",
+    "app.browser.cdp_arena.output:_timeout_text",
+    "app.services.live.bus:LiveBus.__init__",
+    "app.services.live.bus:LiveBus.attach",
+    "app.services.live.bus:LiveBus.wake",
+    "app.services.live.bus:LiveBus.wait",
+    "app.services.live.bus:LiveBus.throttle",
+    "app.services.live.bus:LiveBus.reasons",
+    "app.services.live.bus:live_bus",
+    "app.core.run_scope:eligible_images",
+    "app.services.live.feed:commit_queue",
+    "app.services.live.feed:recover_stale_processing",
+    "app.services.live.feed:clear_row_assignments",
+    "app.services.live.url_policy:removable_rows",
+    "app.services.live.url_policy:advance_misses",
+    "app.services.live.url_policy:dedupe_rows",
+    "app.services.live.url_policy:add_rows",
+    "app.services.live.url_policy:remember",
+    "app.services.live.url_policy:restore_enabled",
+    "app.services.live.url_policy:removal_lines",
+    "app.services.live.url_policy:receiver_reason",
+    "app.services.live.url_policy:mark_receivers",
+    "app.services.live.url_policy:connected_tab_ids",
+    "app.services.live.debug_view:clamp_interval_ms",
+    "app.services.live.debug_view:interval_ms",
+    "app.services.live.debug_view:cadence",
+    "app.services.live.debug_view:next_queued",
+    "app.services.live.debug_view:receiver_counts",
+    "app.services.live.debug_view:live_view",
+    "app.core.window_catalog:default_grid_tree"
+  ],
+  "legacy_cases": {
+    "tests/test_captcha_scope.py": {
+      "test_watcher_enabled_mirrors_the_switch": [
+        "tests/test_captcha_policy.py::test_watcher_enabled"
+      ],
+      "test_captcha_in_scope_is_the_switch_and_nothing_else": [
+        "tests/test_captcha_policy.py::test_captcha_in_scope"
+      ],
+      "test_check_security_does_not_probe_when_off": "tests/test_integration_captcha_scope.py",
+      "test_handle_security_block_reports_skipped_when_off": "tests/test_integration_captcha_scope.py",
+      "test_handle_captcha_returns_out_of_scope_when_off": "tests/test_integration_captcha_scope.py",
+      "test_settler_installation_follows_the_scope": "tests/test_integration_captcha_scope.py",
+      "test_scope_is_evaluated_per_call": "tests/test_integration_captcha_scope.py",
+      "test_watcher_running_delegates_to_policy": "tests/test_integration_captcha_scope.py",
+      "test_policy_reads_fail_closed_on_broken_bridges": [
+        "tests/test_captcha_policy.py::test_watcher_enabled",
+        "tests/test_captcha_policy.py::test_solver_running",
+        "tests/test_captcha_policy.py::test_has_solver_key"
+      ],
+      "test_has_solver_key_reads_the_active_provider_only": [
+        "tests/test_captcha_policy.py::test_has_solver_key"
+      ]
+    },
+    "tests/test_captcha_wait_cap.py": {
+      "test_a_dialog_that_never_clears_ends_at_the_cap": "tests/test_integration_captcha_wait_cap.py",
+      "test_wait_timeout_maps_to_a_retryable_job_failure": "tests/test_integration_captcha_wait_cap.py",
+      "test_stop_before_the_cap_still_yields_stopped": "tests/test_integration_captcha_wait_cap.py",
+      "test_the_cap_moves_with_the_setting_without_a_restart": "tests/test_integration_captcha_wait_cap.py",
+      "test_wait_captcha_cleared_is_called_unchanged": "tests/test_integration_captcha_wait_cap.py",
+      "test_the_failure_is_honest_not_a_free_pass": "tests/test_integration_captcha_wait_cap.py"
+    },
+    "tests/test_captcha_wait_reason.py": {
+      "test_on_with_key_says_the_watcher_is_solving": [
+        "tests/test_captcha_policy.py::test_wait_reason"
+      ],
+      "test_on_without_key_says_solve_it_in_chrome": [
+        "tests/test_captcha_policy.py::test_wait_reason"
+      ],
+      "test_off_never_reaches_the_wording": "tests/test_integration_captcha_wait_reason.py",
+      "test_the_overlay_receives_timeout_and_sub": "tests/test_integration_captcha_wait_reason.py"
+    },
+    "tests/test_cdp_output_settle.py": {
+      "test_settle_timed_charges_only_the_settles_own_duration": [
+        "tests/test_cdp_output_settle.py::test_settle_timed"
+      ],
+      "test_settle_timed_without_a_clock_still_settles": [
+        "tests/test_cdp_output_settle.py::test_settle_timed"
+      ],
+      "test_timeout_text_is_unchanged_without_a_pause": [
+        "tests/test_cdp_output_settle.py::test_timeout_text"
+      ],
+      "test_timeout_text_carries_the_pause_evidence": [
+        "tests/test_cdp_output_settle.py::test_timeout_text"
+      ]
+    },
+    "tests/test_live_bus.py": {
+      "test_live_bus_exists_and_reexports": "tests/test_integration_live_bus.py",
+      "test_wake_then_wait_returns_reason": [
+        "tests/test_live_bus.py::test_wait"
+      ],
+      "test_sticky_wake_no_reason_lost": [
+        "tests/test_live_bus.py::test_wait"
+      ],
+      "test_throttle_one_line_per_window_one_per_change": [
+        "tests/test_live_bus.py::test_throttle"
+      ],
+      "test_wake_before_attach_survives": [
+        "tests/test_live_bus.py::test_wait"
+      ],
+      "test_wait_timeout_returns_empty": [
+        "tests/test_live_bus.py::test_wait"
+      ]
+    },
+    "tests/test_live_debug_view.py": {
+      "test_live_view_is_read_only_and_does_not_sample_pool": "tests/test_integration_live_debug_view.py",
+      "test_next_queued_follows_eligibility_and_order": "tests/test_integration_live_debug_view.py",
+      "test_receiver_counts_use_flag_not_enabled_or_pool": "tests/test_integration_live_debug_view.py",
+      "test_cadence_and_run_state_are_typed_and_json_safe": "tests/test_integration_live_debug_view.py",
+      "test_progress_push_and_initial_getter_agree_without_changing_arena_push": "tests/test_integration_live_debug_view.py",
+      "test_off_payload_has_no_captcha_wording_or_probe": "tests/test_integration_live_debug_view.py",
+      "test_pool_pause_evidence_reads_real_clock_once_without_mutation": "tests/test_integration_live_debug_view.py",
+      "test_pool_off_does_not_even_read_controllers_and_missing_clock_is_unknown": "tests/test_integration_live_debug_view.py",
+      "test_both_existing_pool_signal_paths_carry_evidence": "tests/test_integration_live_debug_view.py",
+      "test_uncapped_and_disappearing_controller_telemetry_is_json_safe": "tests/test_integration_live_debug_view.py",
+      "test_idle_reconcile_publishes_fresh_cadence_without_a_commit": "tests/test_integration_live_debug_view.py",
+      "test_failed_telemetry_cannot_interrupt_reconcile_or_its_wait": "tests/test_integration_live_debug_view.py",
+      "test_debug_heartbeat_preserves_progress_and_has_no_save_side_effect": "tests/test_integration_live_debug_view.py"
+    },
+    "tests/test_live_feed.py": {
+      "test_eligible_never_includes_processing": [
+        "tests/test_live_feed.py::test_eligible_images"
+      ],
+      "test_commit_queue_recalculates_saves_pushes_undo_emits_and_wakes": [
+        "tests/test_live_feed.py::test_commit_queue"
+      ],
+      "test_commit_queue_without_undo_pushes_nothing": [
+        "tests/test_live_feed.py::test_commit_queue"
+      ],
+      "test_commit_queue_wakes_a_live_waiter": "tests/test_integration_live_feed.py",
+      "test_commit_queue_is_thread_safe_from_a_worker": "tests/test_integration_live_feed.py",
+      "test_recover_stale_processing_revives_only_dead": [
+        "tests/test_live_feed.py::test_recover_stale_processing"
+      ],
+      "test_clear_row_assignments_drops_removed_rows": [
+        "tests/test_live_feed.py::test_clear_row_assignments"
+      ]
+    },
+    "tests/test_live_panel_boundaries.py": {
+      "test_live_deps_fetch_join_commit_and_log_use_their_real_paths": "tests/test_integration_live_panel_boundaries.py",
+      "test_live_deps_commit_and_log_tolerate_unavailable_notifications": "tests/test_integration_live_panel_boundaries.py",
+      "test_boot_starts_exactly_one_reconciler_through_the_scheduler": "tests/test_integration_live_panel_boundaries.py",
+      "test_progress_emit_survives_broken_cadence_and_retains_a_positive_control": "tests/test_integration_live_panel_boundaries.py",
+      "test_receiver_read_failure_does_not_prevent_url_save": "tests/test_integration_live_panel_boundaries.py",
+      "test_persisted_invalid_url_reports_error_and_saves_it": "tests/test_integration_live_panel_boundaries.py",
+      "test_unavailable_url_presets_are_an_empty_list": "tests/test_integration_live_panel_boundaries.py",
+      "test_tab_fetch_distinguishes_empty_tabs_from_transport_failure": "tests/test_integration_live_panel_boundaries.py"
+    },
+    "tests/test_live_reconcile.py": {
+      "test_interval_is_reread_and_cancellation_exits_after_real_passes": "tests/test_integration_live_reconcile.py",
+      "test_empty_or_broken_fetch_does_not_remove_rows_and_errors_are_logged": "tests/test_integration_live_reconcile.py",
+      "test_new_tab_is_added_and_existing_row_claimed_in_every_run_state": "tests/test_integration_live_reconcile.py",
+      "test_closed_row_is_removed_after_three_misses_and_clears_assignment": "tests/test_integration_live_reconcile.py",
+      "test_busy_closed_tab_is_deferred": "tests/test_integration_live_reconcile.py",
+      "test_dedupe_only_change_still_commits": "tests/test_integration_live_reconcile.py",
+      "test_manual_slot_runs_real_reconcile_and_ui_commit_wakes_bus": "tests/test_integration_live_reconcile.py",
+      "test_reconcile_does_not_advertise_a_disconnected_pool_page_as_receiver": "tests/test_integration_live_reconcile.py"
+    },
+    "tests/test_live_supervisor.py": {
+      "test_no_work_waits_and_never_ends": "tests/test_integration_live_supervisor.py",
+      "test_new_work_is_picked_up_without_a_restart": "tests/test_integration_live_supervisor.py",
+      "test_wait_states_keep_the_run_alive": "tests/test_integration_live_supervisor.py",
+      "test_stop_is_the_only_way_out": "tests/test_integration_live_supervisor.py",
+      "test_stop_after_current_finishes_the_pass_then_ends": "tests/test_integration_live_supervisor.py",
+      "test_a_crashing_pass_ends_the_run_honestly": "tests/test_integration_live_supervisor.py",
+      "test_run_state_has_exactly_one_writer": "tests/test_integration_live_supervisor.py",
+      "test_start_while_live_wakes_instead_of_refusing": "tests/test_integration_live_supervisor.py",
+      "test_folder_ai_is_refused_only_while_an_image_processes": "tests/test_integration_live_supervisor.py",
+      "test_goldens_are_byte_identical_under_the_supervisor": "tests/test_integration_live_supervisor.py"
+    },
+    "tests/test_output_wait_timeout_pause.py": {
+      "test_a_long_settle_does_not_time_out_when_a_clock_absorbs_it": "tests/test_integration_output_wait_timeout_pause.py",
+      "test_the_same_wait_times_out_without_a_clock": "tests/test_integration_output_wait_timeout_pause.py",
+      "test_the_timeout_result_carries_the_pause_evidence": "tests/test_integration_output_wait_timeout_pause.py",
+      "test_an_exhausted_cap_times_out_even_with_the_dialog_up": "tests/test_integration_output_wait_timeout_pause.py",
+      "test_wait_spec_pause_defaults_to_none": "tests/test_integration_output_wait_timeout_pause.py"
+    },
+    "tests/test_page_pool_join.py": {
+      "test_connect_page_pool_schedules_on_the_real_helper": "tests/test_integration_page_pool_join.py",
+      "test_no_private_scheduler_survives_in_the_pool_panel": "tests/test_integration_page_pool_join.py",
+      "test_connect_page_pool_error_branches_unchanged": "tests/test_integration_page_pool_join.py",
+      "test_connect_page_pool_reports_scheduler_failure_honestly": "tests/test_integration_page_pool_join.py",
+      "test_scheduled_coroutine_joins_the_pool": "tests/test_integration_page_pool_join.py"
+    },
+    "tests/test_pause_clock.py": {
+      "test_note_accumulates_and_ignores_garbage": [
+        "tests/test_pause_clock.py::test_note"
+      ],
+      "test_cap_is_cumulative_per_wait": [
+        "tests/test_pause_clock.py::test_note",
+        "tests/test_pause_clock.py::test_expired"
+      ],
+      "test_uncapped_clock_never_expires": [
+        "tests/test_pause_clock.py::test_expired",
+        "tests/test_pause_clock.py::test_remaining"
+      ],
+      "test_paused_elapsed_subtracts_and_floors_at_zero": [
+        "tests/test_pause_clock.py::test_paused_elapsed"
+      ],
+      "test_paused_elapsed_defaults_to_now": [
+        "tests/test_pause_clock.py::test_paused_elapsed"
+      ],
+      "test_describe_names_absorbed_and_cap": [
+        "tests/test_pause_clock.py::test_describe"
+      ],
+      "test_remaining_never_negative": [
+        "tests/test_pause_clock.py::test_remaining"
+      ],
+      "test_clock_is_not_shared_between_waits": [
+        "tests/test_pause_clock.py::test_init"
+      ]
+    },
+    "tests/test_reset_requeues.py": {
+      "test_eligible_images_returns_all_of_them": "tests/test_integration_reset_requeues.py",
+      "test_reset_image_requeues": "tests/test_integration_reset_requeues.py",
+      "test_reset_all_requeues_and_logs": "tests/test_integration_reset_requeues.py",
+      "test_reset_is_undoable": "tests/test_integration_reset_requeues.py",
+      "test_reset_all_wakes_live_loop": "tests/test_integration_reset_requeues.py"
+    },
+    "tests/test_s10_consolidation.py": {
+      "test_current_docs_name_all_chain_invariants_and_live_owners": "tests/test_integration_s10_consolidation.py",
+      "test_title_fit_is_in_the_default_test_command": "tests/test_integration_s10_consolidation.py",
+      "test_private_fixture_suite_has_an_explicit_opt_in_command_and_limit": "tests/test_integration_s10_consolidation.py",
+      "test_current_readme_marks_the_chain_integrated": "tests/test_integration_s10_consolidation.py",
+      "test_invariant_enforcement_files_exist_and_window_count_matches_code": "tests/test_integration_s10_consolidation.py"
+    },
+    "tests/test_url_interval_setting.py": {
+      "test_default_is_5000": "tests/test_integration_url_interval_setting.py",
+      "test_clamp_bounds_and_invalid_values": [
+        "tests/test_live_debug_functions.py::test_clamp_interval_ms"
+      ],
+      "test_real_save_persists_emits_and_wakes_only_when_key_is_present": "tests/test_integration_url_interval_setting.py",
+      "test_interval_first_edit_undo_redo_uses_existing_global_settings_history": "tests/test_integration_url_interval_setting.py",
+      "test_history_remember_restores_interval_but_old_settings_entry_leaves_it_alone": "tests/test_integration_url_interval_setting.py"
+    },
+    "tests/test_url_policy.py": {
+      "test_removable_rows_names_each_reason_without_mutating_input": [
+        "tests/test_url_policy.py::test_removable_rows"
+      ],
+      "test_live_job_and_never_linked_unchecked_rows_are_kept": [
+        "tests/test_url_policy.py::test_removable_rows"
+      ],
+      "test_hysteresis_and_reappearance_reset_misses": [
+        "tests/test_url_policy.py::test_removable_rows",
+        "tests/test_url_policy.py::test_advance_misses"
+      ],
+      "test_dedupe_prefers_checked_owner_and_keeps_unlinked_order": [
+        "tests/test_url_policy.py::test_dedupe_rows"
+      ],
+      "test_checkbox_memory_is_bounded_and_reused_without_duplication": [
+        "tests/test_url_policy.py::test_remember",
+        "tests/test_url_policy.py::test_restore_enabled",
+        "tests/test_url_policy.py::test_add_rows"
+      ],
+      "test_removal_log_preserves_reason_for_each_row": [
+        "tests/test_url_policy.py::test_removal_lines"
+      ]
+    },
+    "tests/test_url_receivers.py": {
+      "test_one_owner_marks_every_receiver_case": [
+        "tests/test_url_policy.py::test_receiver_reason",
+        "tests/test_url_policy.py::test_mark_receivers"
+      ],
+      "test_flag_round_trips_persistence_js_and_both_history_converters": "tests/test_integration_url_receivers.py",
+      "test_commit_urls_recomputes_and_publishes_real_pool_connection_changes": "tests/test_integration_url_receivers.py",
+      "test_connected_id_projection_has_an_empty_positive_control": [
+        "tests/test_url_policy.py::test_connected_tab_ids"
+      ]
+    },
+    "tests/test_watcher_off_zero_activity.py": {
+      "test_watcher_off_produces_zero_captcha_side_effects": "tests/test_integration_watcher_off_zero_activity.py",
+      "test_the_same_counters_do_count_when_on": "tests/test_integration_watcher_off_zero_activity.py",
+      "test_zero_activity_holds_through_the_whole_job": "tests/test_integration_watcher_off_zero_activity.py"
+    },
+    "tests/test_window_catalog.py": {
+      "test_python_and_js_tables_identical": "tests/test_integration_window_catalog.py",
+      "test_every_registered_window_has_a_mountable_element": "tests/test_integration_window_catalog.py",
+      "test_ids_and_titles_have_no_duplicates_and_no_legacy_names": "tests/test_integration_window_catalog.py",
+      "test_default_tree_leaf_set_equals_the_registry": "tests/test_integration_window_catalog.py",
+      "test_grid_version_is_six_and_v5_layouts_migrate": "tests/test_integration_window_catalog.py",
+      "test_legacy_rename_still_works": "tests/test_integration_window_catalog.py",
+      "test_the_layout_service_reexport_is_complete": "tests/test_integration_window_catalog.py",
+      "test_legacy_tree_walkers_tolerate_unknown_nodes_without_mutating_them": "tests/test_integration_window_catalog.py"
+    }
+  },
+  "js_integration": [
+    "tests/js/test_integration_live_debug_panel.mjs",
+    "tests/js/test_integration_url_interval_control.mjs",
+    "tests/js/test_integration_url_list_receiver_icon.mjs"
+  ],
+  "js_units": [
+    "tests/js/test_functions_interval.mjs",
+    "tests/js/test_functions_debug_store.mjs",
+    "tests/js/test_functions_debug_render.mjs",
+    "tests/js/test_functions_debug_actions.mjs"
+  ],
+  "js_legacy_files": {
+    "tests/js/test_live_debug_panel.mjs": "tests/js/test_integration_live_debug_panel.mjs",
+    "tests/js/test_url_interval_control.mjs": "tests/js/test_integration_url_interval_control.mjs",
+    "tests/js/test_url_list_receiver_icon.mjs": "tests/js/test_integration_url_list_receiver_icon.mjs"
+  }
+}

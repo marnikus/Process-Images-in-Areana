@@ -84,3 +84,14 @@ RULE 16/18 decisions: new connected-id projection is a small policy leaf; module
 counts and maxima are measured in the archive. No scope-padding, no dummy wrappers,
 no baseline relaxation. Current quality context is short; historical detail stays
 in the archive. Re-run all gates before a later push.
+
+## Function-owned test layout (2026-09-20 follow-up)
+
+S0–S10 units now have one definition per declared production function/method,
+with parameterized cases. Multi-component integration/golden regressions remain
+separate. The executable ownership and legacy-case ledger is
+`tests/live_chain_manifest.json`; usage is in `tests/LIVE_CHAIN.md`.
+Production code, baseline and goldens are unchanged by this test-only rebuild.
+Fresh validation: **1890 Python / 386 JS passes**; coverage **88.672% statements /
+84.824% branches**, both above S10. Existing skips/warnings remain. Evidence:
+`docs/archive/2026-09-20-function-owned-tests/verification.md`.

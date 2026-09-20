@@ -1,4 +1,4 @@
-# ideal-size: ~230 lines reason=S5 RED budget — one test per supervisor contract (tdd-interfaces rev-3, 9 tests)
+# Integration/contract lane: real collaborators; not counted as function units.
 """S5 RED — the always-live run (`live/supervisor.run_live`).
 
 The run survives no-work / no-tab / all-cooling / CDP-down by waiting on
@@ -12,10 +12,13 @@ import asyncio
 import contextlib
 from concurrent.futures import Future
 
-import pytest
 
 from tests.characterization.fakes import FakeCDP, install_patches
 from tests.characterization.harness import CORE_STACK, build_bridge, arm_hooks
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio

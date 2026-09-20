@@ -1,86 +1,72 @@
-"""S3 — D-25/D-14R: the PauseClock value object (RED at base: no module).
-
-One wait, one clock: `note()` charges at most `cap − total` (R22 — a second
-settle in the same wait absorbs nothing), `expired()` is False forever when
-uncapped, and `paused_elapsed` floors at zero. Pure arithmetic — no Qt, no
-bridge, no I/O.
-"""
-
+"""S3 units: one definition for each PauseClock method, table-driven scenarios."""
 import math
-import time
 
 import pytest
+
+from app.core.pause_clock import PauseClock
 
 pytestmark = pytest.mark.unit
 
 
-def _clock(cap_s=0.0):
-    from app.core.pause_clock import PauseClock
-    return PauseClock(cap_s=cap_s)
+@pytest.mark.target('app.core.pause_clock:PauseClock.__init__')
+@pytest.mark.parametrize('cap', [0, 10, '300', -1])
+def test_init(cap):
+    first, second = PauseClock(cap), PauseClock(cap)
+    assert first.cap_s == float(cap)
+    assert first.total == second.total == 0
+    first.total = 7
+    assert second.total == 0
 
 
-def test_note_accumulates_and_ignores_garbage():
-    c = _clock(cap_s=100)
-    c.note(1.5)
-    c.note(2.5)
-    assert c.total == pytest.approx(4.0)
-    c.note(0)
-    c.note(-3)
-    c.note(float("nan"))
-    assert c.total == pytest.approx(4.0)  # garbage never lands, never raises
+@pytest.mark.target('app.core.pause_clock:PauseClock.note')
+@pytest.mark.parametrize('cap,steps,total', [
+    (100, [1.5, 2.5, 0, -3, math.nan, math.inf, 'bad', None], 4),
+    (10, [6, 6, 6], 10), (0, [10000, 1], 10001), (-1, [2], 2)])
+def test_note(cap, steps, total):
+    clock = PauseClock(cap)
+    for seconds in steps:
+        clock.note(seconds)
+    assert clock.total == pytest.approx(total)
 
 
-def test_cap_is_cumulative_per_wait():
-    c = _clock(cap_s=10)
-    c.note(6)
-    c.note(6)  # R22: only 4 more may be absorbed
-    assert c.total == pytest.approx(10)
-    assert c.expired() is True
+@pytest.mark.target('app.core.pause_clock:PauseClock.expired')
+@pytest.mark.parametrize('cap,total,expected', [(0, 10000, False), (-1, 9, False),
+                                               (10, 9, False), (10, 10, True), (10, 11, True)])
+def test_expired(cap, total, expected):
+    clock = PauseClock(cap)
+    clock.total = total
+    assert clock.expired() is expected
 
 
-def test_uncapped_clock_never_expires():
-    c = _clock()  # cap_s = 0 ⇒ uncapped
-    c.note(10_000)
-    assert c.expired() is False
-    assert c.remaining() > 10_000
+@pytest.mark.target('app.core.pause_clock:PauseClock.remaining')
+@pytest.mark.parametrize('cap,total,expected', [(0, 10000, math.inf), (-1, 0, math.inf),
+                                               (10, 4, 6), (5, 5, 0), (5, 9, 0)])
+def test_remaining(cap, total, expected):
+    clock = PauseClock(cap)
+    clock.total = total
+    assert clock.remaining() == expected
+    assert not math.isnan(clock.remaining())
 
 
-def test_paused_elapsed_subtracts_and_floors_at_zero():
-    c = _clock(cap_s=100)
-    c.note(12)
-    assert c.paused_elapsed(start=100.0, now=130.0) == pytest.approx(18.0)
-    c.note(28)  # total 40 > the 30 s window
-    assert c.paused_elapsed(start=100.0, now=130.0) == 0.0  # never negative
+@pytest.mark.target('app.core.pause_clock:PauseClock.paused_elapsed')
+@pytest.mark.parametrize('absorbed,now,expected', [(12, 130, 18), (40, 130, 0),
+                                                (1, None, 29), (0, 90, 0)])
+def test_paused_elapsed(monkeypatch, absorbed, now, expected):
+    ticks = [130]
+    monkeypatch.setattr('app.core.pause_clock.time.monotonic', lambda: ticks[0])
+    clock = PauseClock(100)
+    clock.total = absorbed
+    assert clock.paused_elapsed(100, now) == expected
+    if now is None:
+        ticks[0] += 1
+        assert clock.paused_elapsed(100) == expected + 1
 
 
-def test_paused_elapsed_defaults_to_now():
-    c = _clock(cap_s=100)
-    c.note(1.0)
-    start = time.monotonic()
-    first = c.paused_elapsed(start)
-    second = c.paused_elapsed(start)
-    assert first >= 0.0 and second >= first  # monotone, floored
-
-
-def test_describe_names_absorbed_and_cap():
-    c = _clock(cap_s=300)
-    assert c.describe() == ""  # nothing absorbed ⇒ nothing to say
-    c.note(12)
-    text = c.describe()
-    assert "12" in text and "300" in text and "288" in text
-    assert "captcha wait" in text
-
-
-def test_remaining_never_negative():
-    c = _clock(cap_s=5)
-    c.note(9)
-    assert c.total == pytest.approx(5)
-    assert c.remaining() == 0.0
-    assert not math.isnan(c.remaining())
-
-
-def test_clock_is_not_shared_between_waits():
-    a, b = _clock(cap_s=10), _clock(cap_s=10)
-    a.note(7)
-    assert a.total == pytest.approx(7) and b.total == 0.0
-    assert b.expired() is False
+@pytest.mark.target('app.core.pause_clock:PauseClock.describe')
+@pytest.mark.parametrize('cap,total,expected', [(300, 0, ''),
+    (300, 12, '+12s captcha wait (cap 300s, 288s left)'),
+    (0, 12, '+12s captcha wait (uncapped)'), (10, 10, '+10s captcha wait (cap 10s, 0s left)')])
+def test_describe(cap, total, expected):
+    clock = PauseClock(cap)
+    clock.total = total
+    assert clock.describe() == expected

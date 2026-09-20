@@ -1,3 +1,4 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """Regression coverage for the existing live/pool seams exercised by S8's shell.
 
 These are equivalence tests, not S8 feature RED tests. Only external effects
@@ -7,10 +8,13 @@ import json
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
 
-import pytest
 
 from app.core.models import AppState, UrlRow
 from app.ui.panels import browser_tabs, layout_state, page_pool, url_queue
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio

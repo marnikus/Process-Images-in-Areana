@@ -1,3 +1,4 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S3 — D-14R end to end: the captcha wait is capped (RED at base: it hangs).
 
 Real `handle_captcha` / `_run_security_captcha`, real `wait_captcha_cleared`
@@ -15,14 +16,16 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-import pytest
 
 from app.services import cooldown_service
 from app.services import single_job_runner as sjr
 from app.services.captcha import policy
 from app.services.captcha.service import CaptchaCtx, handle_captcha
 
-pytestmark = pytest.mark.unit
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 DETECT = json.dumps({"visible": True, "kind": "recaptcha_v2",
                      "sitekey": "sk", "url": "https://arena.ai"})

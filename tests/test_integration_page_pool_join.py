@@ -1,3 +1,4 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S1 — L-1: `connect_page_pool` must schedule on the real scheduler helper.
 
 RED-first (tdd-interfaces.md §S1): tests 1-2 fail at base because
@@ -14,7 +15,6 @@ JS parses and prove the coroutine S1 schedules is the one that joins the pool.
 import json
 from pathlib import Path
 
-import pytest
 
 from app.browser.page_pool import PagePool
 from app.persistence.config_manager import ConfigManager
@@ -23,7 +23,10 @@ from app.ui.panels.page_pool import PagePoolMixin, do_connect_page_pool
 
 from tests.test_panel_slots import make_host
 
-pytestmark = pytest.mark.unit
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 PANEL_SRC = Path(__file__).resolve().parent.parent / "app" / "ui" / "panels" / "page_pool.py"
 

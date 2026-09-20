@@ -1,10 +1,10 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S9 RED: real bridge serialization, queue rule and read-only pause evidence."""
 import copy
 import json
 from types import SimpleNamespace as NS
 from unittest.mock import Mock
 
-import pytest
 
 from app.browser.page_pool import PagePool
 from app.browser.page_status import PageInfo
@@ -14,6 +14,10 @@ from app.services.live.feed import eligible_images
 from app.ui.panels.layout_state import emit_arena_state
 from app.ui.services.arena_serialize import arena_to_js
 from tests.characterization.harness import build_bridge
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

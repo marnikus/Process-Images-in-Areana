@@ -10,10 +10,15 @@ MANIFEST = ROOT / 'tests/live_chain_manifest.json'
 
 def test_chain_unit_ownership_and_retained_integration_cases():
     manifest = json.loads(MANIFEST.read_text())
+    added = subprocess.check_output(['git', 'diff', '--name-only', '--diff-filter=A', '2bbf9ab', '19a96c9', '--', 'tests'], text=True).splitlines()
+    expected = {p for p in added if p.endswith('.py') and not p.endswith('test_cdp_transport_failfast.py')}
+    assert set(manifest['legacy_cases']) == expected, 'chain source file omitted from the ledger'
     targets = []
     definitions = set()
     for file in manifest['python_units']:
         tree = ast.parse((ROOT / file).read_text())
+        test_defs = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')]
+        assert all(n in tree.body for n in test_defs), 'canonical owners must be top-level definitions, not hidden methods/callbacks'
         for fn in tree.body:
             if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or not fn.name.startswith('test_'):
                 continue
@@ -38,12 +43,16 @@ def test_chain_unit_ownership_and_retained_integration_cases():
         assert set(cases) == set(originals), (source, 'unaccounted old test')
         for name, destination in cases.items():
             if isinstance(destination, list):
-                assert set(destination) <= definitions, (source, name, 'missing replacement owner')
+                assert destination and set(destination) <= definitions, (source, name, 'missing replacement owner')
             else:
                 assert destination in manifest['python_integration']
                 new = ast.parse((ROOT / destination).read_text())
                 found = next(n for n in new.body if getattr(n, 'name', None) == name)
                 assert ast.dump(found) == ast.dump(originals[name]), (source, name, 'integration test changed')
+    for file in manifest['python_integration']:
+        text = (ROOT / file).read_text()
+        assert 'pytestmark = pytest.mark.integration' in text, file
+        assert 'pytestmark = pytest.mark.unit' not in text, file
     script = json.loads((ROOT / 'package.json').read_text())['scripts']['test:js'].split()
-    for file in manifest['js_integration'] + manifest['js_units']:
+    for file in manifest['js_integration'] + manifest['js_units'] + ['tests/js/test_function_ownership.mjs']:
         assert (ROOT / file).is_file() and file in script, file

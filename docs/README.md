@@ -107,3 +107,9 @@ job/status/time lines and read-only cadence. Last-settled pause evidence is labe
 idle-pass publication uses existing signals without saves or pipeline decisions.
 Verification: `docs/archive/2026-09-20-dynamic-urls-and-worker-debug/s9-verification.md`.
 S10 audit and consolidation are now integrated; see the final verification above.
+
+**S0–S10 test rebuild (2026-09-20):** one canonical unit-test definition per
+production function/method, parameterized cases, separate retained integrations.
+Layout and commands: `tests/LIVE_CHAIN.md`.
+Design: `docs/archive/2026-09-20-function-owned-tests/design.md`.
+Validation: `docs/archive/2026-09-20-function-owned-tests/verification.md`.

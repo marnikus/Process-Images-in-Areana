@@ -1,3 +1,4 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S2 — Captcha scope: one predicate owns "is captcha work allowed now?".
 
 RED-first (tdd-interfaces.md §S2). Watcher OFF ⇒ no probe, no overlay,
@@ -12,12 +13,13 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-import pytest
 
 from app.services import single_job_runner as sjr
 from app.services.captcha.service import CaptchaCtx, handle_captcha
 
-pytestmark = pytest.mark.unit
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 def make_scope_bridge(session=None, **extra):
@@ -89,27 +91,6 @@ def instant_sleep(monkeypatch):
 
 
 # ── 1-2 · the policy predicate itself ──
-
-def test_watcher_enabled_mirrors_the_switch():
-    from app.services.captcha import policy
-    assert policy.watcher_enabled(make_scope_bridge({"watcher_enabled": True})) is True
-    assert policy.watcher_enabled(make_scope_bridge()) is False  # fail-closed default
-    broken = make_scope_bridge()
-    broken.config = SimpleNamespace(get_state=lambda *a, **k: (_ for _ in ()).throw(RuntimeError()))
-    assert policy.watcher_enabled(broken) is False
-
-
-def test_captcha_in_scope_is_the_switch_and_nothing_else():
-    """Scope must not depend on the stored key or on the solver loop (D-15/D-23)."""
-    from app.services.captcha import policy
-    from app.services.captcha.key_store import CaptchaSettings
-    keyed_svc = SimpleNamespace(keys=SimpleNamespace(load=lambda: CaptchaSettings(api_key="K" * 16)))
-    for on in (False, True):
-        for watcher in (None, SimpleNamespace(running=False), SimpleNamespace(running=True)):
-            bridge = make_scope_bridge({"watcher_enabled": on})
-            bridge._captcha_watcher = watcher
-            bridge._captcha_service = lambda: keyed_svc
-            assert policy.captcha_in_scope(bridge) is on
 
 
 # ── 3-4 · the runner's security gates ──
@@ -211,33 +192,3 @@ def test_watcher_running_delegates_to_policy():
     angry = make_scope_bridge()
     angry._captcha_watcher = AngryWatcher()
     assert policy.solver_running(angry) is False  # fail closed
-
-
-def test_policy_reads_fail_closed_on_broken_bridges():
-    from app.services.captcha import policy
-
-    class BrokenConfig:
-        def get_state(self, key, default=None):
-            raise RuntimeError("config unreadable")
-
-    class BrokenService:
-        def keys_load(self):
-            raise RuntimeError("key store unreadable")
-
-    assert policy.watcher_enabled(SimpleNamespace(config=BrokenConfig())) is False
-    assert policy.solver_running(SimpleNamespace()) is False  # no watcher attr at all
-    assert policy.has_solver_key(SimpleNamespace()) is False  # no service at all
-    boom = SimpleNamespace(_captcha_service=lambda: (_ for _ in ()).throw(RuntimeError()))
-    assert policy.has_solver_key(boom) is False  # service lookup blows up
-
-
-def test_has_solver_key_reads_the_active_provider_only():
-    from app.services.captcha import policy
-
-    def bridge_with(provider: str, key: str) -> SimpleNamespace:
-        settings = SimpleNamespace(provider=provider, key_for=lambda p: key)
-        svc = SimpleNamespace(keys=SimpleNamespace(load=lambda: settings))
-        return SimpleNamespace(_captcha_service=lambda: svc)
-
-    assert policy.has_solver_key(bridge_with("recaptcha", "sk-abc")) is True
-    assert policy.has_solver_key(bridge_with("recaptcha", "")) is False

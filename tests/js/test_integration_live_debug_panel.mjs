@@ -1,3 +1,4 @@
+// Integration lane: actual DOM, boot/bridge or cross-file contracts.
 /** S8: boot the real HTML/scripts, render the grid, then click the rescued controls. */
 import test from 'node:test';
 import assert from 'node:assert/strict';

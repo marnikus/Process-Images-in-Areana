@@ -1,10 +1,10 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S10 audit: execute the S6 loop/bridge instead of its former placeholders."""
 import asyncio
 import json
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
 
-import pytest
 
 from app.browser.page_pool import PagePool
 from app.browser.page_status import PageInfo
@@ -13,6 +13,10 @@ from app.services.live.bus import live_bus
 from app.services.live.reconcile import LiveDeps, reconcile_loop, reconcile_once
 from app.ui.panels import browser_tabs
 from tests.characterization.harness import build_bridge
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-# ideal-size: ~130 lines reason=S4 RED budget — real-Bridge D-6R contract (tdd-interfaces rev-3, 5 tests)
+# Integration/contract lane: real collaborators; not counted as function units.
 """D-6R end-to-end on a REAL Bridge — every reset re-queues.
 
 Both resets return images to `pending` AND `selected=True`, log a count
@@ -13,6 +13,10 @@ import re
 
 from app.ui.panels.run_control import reset_image_state
 from tests.characterization.harness import build_bridge
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 def test_eligible_images_returns_all_of_them(tmp_path):

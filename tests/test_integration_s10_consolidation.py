@@ -1,6 +1,11 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """Executable S10 acceptance; archive history is not rewritten to pass these."""
 import json
 from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 ROOT = Path(__file__).resolve().parents[1]
 

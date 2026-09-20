@@ -1,3 +1,4 @@
+// Integration lane: actual DOM, boot/bridge or cross-file contracts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

@@ -1,22 +1,19 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S10 equivalence: real settings slot, persistence, progress and wake boundary."""
 import json
 
-import pytest
 
 from app.persistence.config_manager import ConfigManager
 from app.services.live.bus import live_bus
-from app.services.live.debug_view import clamp_interval_ms
 from tests.characterization.harness import build_bridge
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 def test_default_is_5000(tmp_path):
     assert ConfigManager(tmp_path).get_state('url_reconcile_interval_ms') == 5000
-
-
-@pytest.mark.parametrize('raw,expected', [(1, 500), (60001, 60000), ('abc', 5000),
-                                         (None, 5000), (2500, 2500)])
-def test_clamp_bounds_and_invalid_values(raw, expected):
-    assert clamp_interval_ms(raw) == expected
 
 
 def test_real_save_persists_emits_and_wakes_only_when_key_is_present(tmp_path):

@@ -1,3 +1,4 @@
+# Integration/contract lane: real collaborators; not counted as function units.
 """S8 contract: ordered registry, real layout migration and complete re-exports."""
 import importlib
 import json
@@ -5,9 +6,12 @@ from html.parser import HTMLParser
 from pathlib import Path
 import re
 
-import pytest
 
 from app.core import layout_service as layout
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 WEB = Path(__file__).resolve().parents[1] / "app/ui/web"
 
