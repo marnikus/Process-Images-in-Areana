@@ -13,8 +13,9 @@ import logging
 from datetime import datetime
 
 from app.core.run_scope import run_scope
-from app.services.batch_orchestrator import run_batch
-from app.services.live.feed import commit_queue, recover_stale_processing
+from app.services.live.bus import live_bus
+from app.services.live.feed import commit_queue, eligible_images, recover_stale_processing
+from app.services.live.supervisor import run_live, set_run_state
 from app.services.run_state import batch_active, schedule_batch
 from app.ui.panels.queue_scan import push_queue_undo
 from app.ui.panels.url_queue import _URL_GATE_MSG, _urls_gate_error, enabled_urls
@@ -50,6 +51,18 @@ def reset_image_state(img) -> None:
     from app.services.live.feed import reset_to_pending
 
     reset_to_pending(img)
+
+
+def live_recheck_payload(bridge):
+    """Live supervisor + CDP connected → waking re-plans the queue (S5)."""
+    if not getattr(bridge, "_live_supervisor", False):
+        return None
+    if bridge.cdp is None or not bridge.cdp.is_connected:
+        return None
+    live_bus(bridge).wake("start")
+    queued = len(eligible_images(bridge.state.images))
+    bridge._log(f"🟢 Run already live — queue re-checked ({queued} queued)", "success")
+    return json.dumps({"ok": True, "live": True})
 
 
 def check_start_inputs(bridge):
@@ -215,20 +228,20 @@ class RunControlMixin:
 
     @Slot(result=str)
     def start_run(self):
+        if (live := live_recheck_payload(self)) is not None:
+            return live
         err = check_start_inputs(self) or check_start_ready(self)
         if err:
             return err
         prompt = self.state.prompt.get("user_prompt", "").strip()
         selected = run_scope(self.state.images)
         urls = enabled_urls(self.state.urls)
-        self._run_state = "running"
-        self._cancel_requested = False
-        self._pause_requested = False
-        self._stop_after = False
+        set_run_state(self, "running")
+        self._cancel_requested = self._pause_requested = self._stop_after = False
         self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
         self._emit_arena_state()
         recover_stale_processing(self)          # crash leftovers re-enter before scheduling
-        fut = schedule_batch(self, run_batch(self))   # deliberate tracking (no name sniffing)
+        fut = schedule_batch(self, run_live(self))    # the always-live loop (S5)
         if fut is None:
             return json.dumps({"ok": False, "error": "no background loop"})
         return json.dumps({"ok": True})
@@ -236,7 +249,7 @@ class RunControlMixin:
     @Slot(result=str)
     def pause_run(self):
         self._pause_requested = True
-        self._run_state = "paused"
+        set_run_state(self, "paused")
         self._log("⏸ Paused — will pause after current step", "warn")
         self._emit_arena_state()
         return json.dumps({"ok": True})
@@ -244,7 +257,7 @@ class RunControlMixin:
     @Slot(result=str)
     def resume_run(self):
         self._pause_requested = False
-        self._run_state = "running"
+        set_run_state(self, "running")
         self._log("▶ Resumed", "info")
         self._emit_arena_state()
         return json.dumps({"ok": True})
@@ -252,7 +265,7 @@ class RunControlMixin:
     @Slot(result=str)
     def stop_after_current(self):
         self._stop_after = True
-        self._run_state = "stopping"
+        set_run_state(self, "stopping")
         self._log("⏹ Will stop after current image", "warn")
         self._emit_arena_state()
         return json.dumps({"ok": True})
@@ -260,7 +273,7 @@ class RunControlMixin:
     @Slot(result=str)
     def cancel_current(self):
         self._cancel_requested = True
-        self._run_state = "idle"
+        set_run_state(self, "idle")
         self._pause_requested = False
         self._stop_after = False
         self._log("✖ Cancel requested — stopping immediately", "error")

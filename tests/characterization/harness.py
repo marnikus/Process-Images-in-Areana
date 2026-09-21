@@ -208,12 +208,46 @@ def assert_markers(trace: Dict[str, Any], markers: List[str]) -> None:
         assert m in joined, f"log marker missing: {m!r}"
 
 
-async def run_orchestrator(env) -> None:
-    from app.services.batch_orchestrator import run_batch
-    await run_batch(env.bridge)
+async def run_supervisor(env) -> None:
+    """S5: the always-live loop drives each scenario; stops at the last job.
+
+    `run_live` never ends on its own (that is its contract) — the harness arms
+    the stop lever the moment every initially-eligible image has emitted
+    `job_finished` (or earlier via the scenario's own cancel/stop-after hook,
+    which `is_live` honours mid-pass). One full pass with no leftovers is what
+    the old one-shot runner ended on, so the recorded trace stays comparable.
+    """
+    from app.services.live.feed import eligible_images
+    from app.services.live.supervisor import run_live
+    bridge = env.bridge
+    pending = {"left": len(eligible_images(bridge.state.images))}
+    if not pending["left"]:
+        bridge._stop_after = True
+    else:
+        rec = env.recs.get("job_finished")
+        orig = rec.emit
+
+        def emit_fin(*args):
+            orig(*args)
+            pending["left"] -= 1
+            if pending["left"] <= 0:
+                bridge._stop_after = True
+
+        rec.emit = emit_fin
+        log_rec = env.recs.get("arena_log")              # a wait state is a valid
+        orig_log = log_rec.emit                          # endpoint (S5: it no longer ends)
+
+        def emit_log(*args):
+            orig_log(*args)
+            msg = str(args[0]) if args else ""
+            if "no usable checked tab" in msg and not bridge._stop_after:
+                bridge._stop_after = True
+
+        log_rec.emit = emit_log
+    await run_live(bridge)
 
 
-RUNNERS: Dict[str, Callable] = {"orchestrator": run_orchestrator}
+RUNNERS: Dict[str, Callable] = {"supervisor": run_supervisor}
 
 
 def arm_hooks(env, after_event: Optional[Dict[tuple, Callable]] = None,

@@ -1,7 +1,8 @@
 """app.services.live — the live-run core (S4+).
 
 Facade re-exports only (RULE 16.0 waiver: this module intentionally holds no
-logic — every symbol lives in `bus.py` / `feed.py`; tests import from those).
+logic — every symbol lives in `bus.py` / `feed.py` / `supervisor.py`; tests
+import from those).
 """
 
 from .bus import LiveBus, live_bus
@@ -13,6 +14,7 @@ from .feed import (
     reset_to_pending,
     set_undo_hook,
 )
+from .supervisor import PassPlan, plan_pass, run_live, set_run_state
 
 __all__ = [
     "LiveBus",

@@ -37,6 +37,7 @@ def init_run_state(bridge) -> None:
     bridge._batch_future = None
     bridge._exported_paths = {}
     bridge._live_bus = LiveBus()
+    bridge._live_supervisor = False
     bridge._state_lock = threading.RLock()
 
 

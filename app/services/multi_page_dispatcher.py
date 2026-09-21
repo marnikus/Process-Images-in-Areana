@@ -395,7 +395,6 @@ async def _await_tasks(bridge, tasks):
 def _finalize_batch(bridge):
     try:
         bridge._log("🏁 Parallel batch complete steady", "success")
-        bridge._run_state = "idle"
         bridge._emit_arena_state()
         bridge._emit_pool_status()
     except Exception:

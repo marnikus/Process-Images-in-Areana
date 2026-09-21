@@ -124,9 +124,15 @@ def run_scan_new_batch(bridge, root_path: Path, cleared: int) -> None:
         bridge._scan_in_progress = False
 
 
+def _any_processing(images) -> bool:
+    """S5/D-5: file-moving _AI ops refuse only while an image is *processing*
+    — a live run idles between passes, so a run-state guard would never re-open."""
+    return any(getattr(img, "status", "") == "processing" for img in images)
+
+
 def run_folder_ai_request(bridge, mode: str) -> str:
-    """Disk _AI op guards + submit; refuses mid-run/mid-scan. Pending JSON."""
-    if getattr(bridge, "_run_state", "idle") != "idle":
+    """Disk _AI op guards + submit; refuses mid-job/mid-scan. Pending JSON."""
+    if _any_processing(bridge.state.images):
         return json.dumps({"ok": False, "error": "stop the run first"})
     if getattr(bridge, "_scan_in_progress", False):
         return json.dumps({"ok": False, "pending": True, "error": "scan already in progress"})
