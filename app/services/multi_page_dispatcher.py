@@ -120,7 +120,9 @@ def _acquire_free_in(pool, allowed: set, job_id: str):
     """Lock-guarded acquire of a free page inside the checked-tab set (I-33).
 
     External-lock pattern (same as sync_pool_presence): PagePool keeps its
-    15-method cap, dispatch keeps the gating decision."""
+    15-method cap, dispatch keeps the gating decision. The first free checked
+    page in pool order takes the job — the job counter is display only
+    (2026-09-21: the I-28 load-balancing concept is gone)."""
     try:
         with pool._lock:
             for p in pool._pages.values():
@@ -129,7 +131,7 @@ def _acquire_free_in(pool, allowed: set, job_id: str):
                     if p.is_free() and p.tab_id in (allowed or set())]
             if not free:
                 return None
-            page = min(free, key=lambda p: p.jobs_completed)
+            page = free[0]
     except AttributeError:
         return None
     pool.mark_busy(page.tab_id, job_id)

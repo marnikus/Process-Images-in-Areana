@@ -3,7 +3,8 @@
 Entries keyed by tab_id (stable while Chrome runs); URL fallback covers
 Chrome restarts too. Real time counts: cooldown_until is epoch-based and
 expiry is checked against time.time() on load/restore. Plus per-URL job
-counters (stats) for load balancing; counters are never pruned, while the
+counters (stats) for the Jobs columns (display only, never a routing input);
+counters are never pruned, while the
 `aliases` section (2026-09-21, D-5) keeps each tab's 4-digit readable number
 and last known account — capped by recency, never pruned by a timer ending.
 Reuses the same-layer JSON helpers; works on pool snapshots (no browser

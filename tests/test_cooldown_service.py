@@ -335,15 +335,17 @@ def test_resolve_keeps_preferred_when_nothing_ready():
 
 
 @pytest.mark.unit
-def test_resolve_best_ready_uses_lowest_jobs_then_order():
+def test_resolve_best_ready_uses_pool_order_not_job_count():
+    """2026-09-21: the URL-list link resolves by pool order; counts change nothing."""
     pool = PagePool()
     pool.add_page(make_info("a"))
     pool.add_page(make_info("b"))
     pool.get_page("a").jobs_completed = 5
     pool.get_page("b").jobs_completed = 2
-    assert svc.resolve_primary_tab(pool, "ghost") == "b"
-    pool.get_page("b").jobs_completed = 5
-    assert svc.resolve_primary_tab(pool, "ghost") == "a"  # tie: pool order
+    assert svc.resolve_primary_tab(pool, "ghost") == "a"
+    pool.get_page("a").jobs_completed = 0
+    pool.get_page("b").jobs_completed = 99
+    assert svc.resolve_primary_tab(pool, "ghost") == "a"  # still pool order
 
 
 @pytest.mark.unit
@@ -755,7 +757,7 @@ def test_resolve_allowed_empty_when_nothing_usable():
 
 
 @pytest.mark.unit
-def test_resolve_allowed_prefers_lowest_jobs_within_allowed():
+def test_resolve_allowed_uses_pool_order_within_allowed():
     pool = PagePool()
     pool.add_page(make_info("a"))
     pool.add_page(make_info("b"))
@@ -763,7 +765,7 @@ def test_resolve_allowed_prefers_lowest_jobs_within_allowed():
     pool.get_page("a").jobs_completed = 1
     pool.get_page("b").jobs_completed = 7
     pool.get_page("c").jobs_completed = 3
-    assert svc.resolve_primary_tab(pool, "ghost", allowed={"b", "c"}) == "c"
+    assert svc.resolve_primary_tab(pool, "ghost", allowed={"b", "c"}) == "b"
 
 
 @pytest.mark.unit

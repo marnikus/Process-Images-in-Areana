@@ -183,14 +183,17 @@ def _snapshot_free(pages, tab_id: str) -> bool:
     return False
 
 
-def _best_ready_id(pages) -> str:
-    """Free tab with fewest jobs; ties keep pool order, else ''."""
-    free = [p for p in pages or []
-            if p.get("status") == "steady" and p.get("is_connected", False)]
-    if not free:
-        return ""
-    best = min(free, key=lambda p: p.get("jobs_completed", 0) or 0)
-    return best.get("tab_id", "") or ""
+def _first_ready_id(pages) -> str:
+    """First free tab in pool order, else ''.
+
+    2026-09-21: a run resolves its tab by pool order — never by how many jobs a
+    tab has finished (the counter is display-only, the I-28 load-balancing
+    concept is gone).
+    """
+    for p in pages or []:
+        if p.get("status") == "steady" and p.get("is_connected", False):
+            return p.get("tab_id", "") or ""
+    return ""
 
 
 def _first_connected_id(pages) -> str:
@@ -209,8 +212,8 @@ def _resolve_allowed_tab(pages, tab_id: str, allowed: set) -> str:
     if tab_id and _snapshot_free(pages, tab_id):
         return tab_id
     if tab_id:
-        return _best_ready_id(pages) or tab_id  # cooling: caller waits
-    return _best_ready_id(pages) or _first_connected_id(pages)
+        return _first_ready_id(pages) or tab_id  # cooling: caller waits
+    return _first_ready_id(pages) or _first_connected_id(pages)
 
 
 def resolve_primary_tab(pool: Any, tab_id: str, allowed=None) -> str:
@@ -233,7 +236,7 @@ def resolve_primary_tab(pool: Any, tab_id: str, allowed=None) -> str:
         return ""
     if _snapshot_free(pages, tab_id):
         return tab_id
-    return _best_ready_id(pages) or tab_id
+    return _first_ready_id(pages) or tab_id
 
 
 def _restore_pending(page, entry: dict) -> None:
@@ -747,7 +750,7 @@ async def _best_effort_reset(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, 
 
 
 def register_job_done(pool: Any, tab_id: str) -> int:
-    """Count one finished job for load balancing; -1 when unknown."""
+    """Count one finished job for the Jobs columns (display only); -1 when unknown."""
     try:
         with pool._lock:
             page = pool._pages.get(tab_id)

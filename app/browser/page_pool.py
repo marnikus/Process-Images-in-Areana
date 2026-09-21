@@ -51,12 +51,17 @@ def _expire_all(pages) -> None:
             continue
 
 
-def _pick_lowest_count(pages) -> Optional[PageInfo]:
-    """Free page with fewest completed jobs; ties keep default order."""
-    free = [p for p in pages if p.is_free()]
-    if not free:
-        return None
-    return min(free, key=lambda p: p.jobs_completed)
+def _pick_free(pages) -> Optional[PageInfo]:
+    """First free page in pool order (join order = the `#n` worker number).
+
+    2026-09-21: the per-tab job counter is display-only — it never decides who
+    works next (the load-balancing concept I-28 is gone), so this pick is the
+    pool's own insertion order and nothing else.
+    """
+    for page in pages:
+        if page.is_free():
+            return page
+    return None
 
 
 def _snapshot_entry(tab_id: str, page) -> dict:
@@ -218,13 +223,13 @@ class PagePool:
         with self._lock:
             for p in self._pages.values():
                 p.try_expire()
-            return _pick_lowest_count(self._pages.values())
+            return _pick_free(self._pages.values())
 
     async def acquire_free_page(self, job_id: str) -> Optional[PageInfo]:
         with self._lock:
             for p in self._pages.values():
                 p.try_expire()
-            page = _pick_lowest_count(self._pages.values())
+            page = _pick_free(self._pages.values())
             if page is None:
                 return None
             page.status = PageStatus.BUSY

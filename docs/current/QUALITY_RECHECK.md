@@ -1027,6 +1027,26 @@ Two "Clear" buttons now live side by side in the UI and were checked for ambigui
 empties the log behind a confirm (`clear_job_history`), while the URL-list **Clear time** (I-60) zeroes one tab's
 countdown — different labels, different windows, different slots; no shared wording.
 
+## Addendum 2026-09-21c — the job counter is display-only (I-28 rewritten)
+
+Owner instruction: remove the *job-queueing* concept, keep the counting as a number, and stop the pool / URL-list
+link from relying on the number — design `docs/archive/2026-09-21-job-count-is-display-only/design.md`.
+
+| Gate | Command | Result |
+|---|---|---|
+| Tests first | `pytest tests/test_job_count_display_only.py` + `node --test tests/js/test_job_count_display_only.mjs` at `764d267` | RED: **8 failed** of 9 (every pick returned the lowest-count tab; `_pick_lowest_count` / `_best_ready_id` still existed) and JS **4 failed** of 6 (the pool tooltip promised routing) |
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **2,002 passed · 4 skipped · 0 fail** (+10 net: new file 9, one extra dispatcher test), with 5 existing tests re-pointed **and renamed** to the new rule on the same fixtures (none deleted) |
+| JS tests | `npm run test:js` | **354 pass · 4 skipped · 0 fail** (358 subtests; the new file registered in `package.json`, 41 files) |
+| Coverage | fresh branch run + `coverage json` | **88.32 % line / 84.98 % branch** (before 88.31 / 84.96 → the removal moves both **up**; floors 86.36 / 82.33) |
+| Changed-file lane | `tools/verify_quality.py --changed-files <4 py + page-pool/render.js> --allow-legacy` | **no size/complexity fail** — the round only *removes* code (`page_pool.py` −6 lines net, `cooldown_service.py` and `multi_page_dispatcher.py` shrink, no baselined file grows). The 4 reported fails are the inherited coverage lanes already proven base-identical (addendum above) |
+| Whole-repo gate | `tools/verify_quality.py --coverage-ratchet` | unchanged single fail, the pre-existing untouched `captcha.js max_cc 12 > 10` |
+| Behaviour equivalence where it matters | the 5 re-pointed tests | same fixtures, same real `PagePool`/`PageInfo` objects — only the *expectation* changed from "lowest count wins" to "pool order wins", which is the point of the change |
+
+Rejected dishonest reductions (RULE 16.6): keeping the counter as a tie-break (still routing by the number),
+deleting the counter (the owner keeps it), a setting to switch order/balancing (two behaviours for one decision),
+and dropping the persistence so the number would reset every restart (the store is the counter's home; the
+`Jobs` column would lie about the tab's history).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

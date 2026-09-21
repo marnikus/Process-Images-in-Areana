@@ -26,14 +26,22 @@ def pool_with(*pages):
     return pool
 
 
-def test_acquire_free_in_takes_only_allowed_lowest_jobs():
+def test_acquire_free_in_takes_only_allowed_in_pool_order():
+    """2026-09-21: the first free checked page takes the job — counts are display only."""
     pool = pool_with(make_page("free1", jobs=4), make_page("free2", jobs=1),
                      make_page("checked", jobs=9))
+    got = mpd._acquire_free_in(pool, {"checked", "free2"}, "job1")
+    assert got is not None and got.tab_id == "free2"  # first allowed in pool order
+    assert got.status == PageStatus.BUSY and got.current_job_id == "job1"
+    assert pool.get_page("free1").status == PageStatus.STEADY  # not checked: untouched
+    assert pool.get_page("checked").status == PageStatus.STEADY
+
+
+def test_acquire_free_in_only_ever_touches_the_checked_set():
+    pool = pool_with(make_page("free1", jobs=4), make_page("checked", jobs=9))
     got = mpd._acquire_free_in(pool, {"checked"}, "job1")
     assert got is not None and got.tab_id == "checked"
-    assert got.status == PageStatus.BUSY and got.current_job_id == "job1"
-    assert pool.get_page("free1").status == PageStatus.STEADY  # untouched
-    assert pool.get_page("free2").status == PageStatus.STEADY
+    assert pool.get_page("free1").status == PageStatus.STEADY
 
 
 def test_acquire_free_in_none_when_only_foreign_free():

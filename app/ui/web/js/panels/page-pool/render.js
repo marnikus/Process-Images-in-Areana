@@ -55,7 +55,7 @@ window.PagePoolRender = {
         <td title="${s.esc(p.title)}">${s.esc((p.title||'').slice(0,30))}</td>
         <td title="${s.esc(p.url)}" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.esc((p.url||'').slice(0,50))}</td>
         <td><span style="color:${color}; font-weight:600;">● ${s.esc(statusLabel)}</span></td>
-        <td title="Jobs completed — next job goes to the free tab with the lowest count">${p.jobs_completed||0}</td>
+        <td title="Jobs completed">${p.jobs_completed||0}</td>
         <td>${s.esc(p.current_job_id||'—')}</td>
         <td style="white-space:nowrap;">${this.cooldownCell(p)}</td>
         <td style="white-space:nowrap;">
