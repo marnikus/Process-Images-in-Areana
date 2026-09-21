@@ -16,6 +16,10 @@ window.JobHistoryActions = {
   },
 
   clear() {
+    if (typeof confirm === 'function'
+        && !confirm('Clear the job history log? Finished-job rows are removed and cannot be restored.')) {
+      return false;
+    }
     const call = Boot.needBridge('clear_job_history');
     if (!call) return false;
     call((res) => {
@@ -40,8 +44,13 @@ window.JobHistoryActions = {
     } catch {}
   },
 
+  _clickedButton(e) {
+    if (!e || !e.target || !e.target.closest) return null;
+    return e.target.closest('button[data-act]');
+  },
+
   onTableClick(e) {
-    const btn = e && e.target && e.target.closest ? e.target.closest('button[data-act]') : null;
+    const btn = this._clickedButton(e);
     if (!btn) return;
     const path = (btn.dataset && btn.dataset.path) || '';
     if (!path) return;
@@ -50,7 +59,7 @@ window.JobHistoryActions = {
   },
 
   _elFor(id) {
-    if (!document.querySelector) return null;
+    if (typeof document === 'undefined' || !document.querySelector) return null;
     return document.querySelector(`img.history-thumb[data-img-id="${id}"]`);
   },
 

@@ -167,7 +167,9 @@ def test_note_take_lifecycle_and_unknown_job_defaults():
     started2, captcha2 = jh._take_context(bridge, "j1")
     assert captcha2 == 0 and started2 >= started  # unknown job: now, 0
     bridge._job_started_at["j2"] = "junk"  # garbage values fail soft
-    assert jh._take_context(bridge, "j2")[1] == 0
+    bridge._job_captcha["j2"] = "junk"
+    started_j, captcha_j = jh._take_context(bridge, "j2")
+    assert (captcha_j, started_j > 0) == (0, True)
     assert jh._take_context(SimpleNamespace(), "j3")[1] == 0
 
 
@@ -324,3 +326,45 @@ def test_apply_history_limit_clamps_persists_pushes(tmp_path):
     pushed = json.loads(host.job_history_updated.sent[-1])
     assert pushed["limit"] == 500
     assert any("500" in m for _, m in logs)
+
+
+def make_broken_store_bridge(tmp_path):
+    """A bridge whose history file sits under a regular file: every save raises."""
+    bridge = make_bridge(tmp_path)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a dir")
+    bridge._job_history = JobHistoryStore(blocker / "job_history.json")
+    return bridge
+
+
+def test_notes_and_file_lookup_tolerate_hostile_bridges():
+    jh.note_job_started(None, "j")  # setattr fails: silent
+    jh.note_captcha_count(None, "j", 1)
+
+    class Hostile:
+        def __getattr__(self, _name):
+            raise RuntimeError("hostile")
+
+    assert jh._history_file(Hostile()) is None
+    assert jh.history_payload(Hostile())["entries"] == []
+    assert jh._take_context(Hostile(), "j")[1] == 0  # hostile getattr: defaults
+
+    def _boom(_m, _l="info"):
+        raise RuntimeError("log gone")
+
+    jh._log_history_failure(SimpleNamespace(bridge=SimpleNamespace(_log=_boom)), "x")  # raising log: silent
+
+
+def test_record_warns_when_the_disk_save_fails(tmp_path):
+    bridge = make_broken_store_bridge(tmp_path)
+    assert jh.record_history(finished_input(bridge)) is None
+    assert any(lvl == "warn" and "History row lost" in m for lvl, m in bridge._logs)
+
+
+def test_clear_reports_a_failing_store(tmp_path):
+    host, logs = make_host(tmp_path)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a dir")
+    host._job_history = JobHistoryStore(blocker / "job_history.json")
+    assert json.loads(host.clear_job_history())["ok"] is False
+    assert not any("cleared" in m for _, m in logs)

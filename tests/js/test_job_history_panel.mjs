@@ -195,6 +195,16 @@ describe('job_history window (content)', () => {
     vm.runInContext('JobHistoryActions.onTableClick({target:{closest:()=>null}})', h.sandbox); // no button: silent
   });
 
+  test('clear asks for confirmation when a confirm dialog exists', () => {
+    const h = bootHistoryPanel();
+    h.sandbox.confirm = () => false;
+    assert.equal(vm.runInContext('JobHistoryPanel.clear()', h.sandbox), false);
+    assert.ok(!h.calls.includes('clear_job_history'));
+    h.sandbox.confirm = () => true;
+    vm.runInContext('JobHistoryPanel.clear()', h.sandbox);
+    assert.ok(h.calls.includes('clear_job_history'));
+  });
+
   test('async thumbs land in the history cache (own selector, queue untouched)', () => {
     const h = bootHistoryPanel();
     h.push('job_history_updated', PAYLOAD);
