@@ -16,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { El } from './fake_dom.mjs';
 import { createSashGrid, ALL_WINDOW_IDS, panelIdOf } from './sash_harness.mjs';
+import { bootPage } from './page_harness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(__dirname, '../../app/ui/web');
@@ -178,6 +179,18 @@ describe('job_history window (content)', () => {
     vm.runInContext("JobHistoryLimit.save('historyLimit')", h.sandbox);
     assert.equal(h.byId.historyLimit.value, '500', 'clamped to the max');
     assert.ok(h.calls.includes('save_settings'), 'saved through the existing slot');
+  });
+
+  test('one Settings Save carries job_history_limit — never a second save_settings', () => {
+    // The interface the window shares with the URL list (D-1's mirror rule): the
+    // Settings panel owns the one save, and the history mirror rides its payload —
+    // a second listener on settingsSaveBtn fired a duplicate save + undo entry.
+    const h = bootPage();
+    h.anyEl('setHistoryLimit').value = '120';
+    h.anyEl('settingsSaveBtn').dispatch('click', {});
+    const saves = h.calls.filter((c) => c.slot === 'save_settings');
+    assert.equal(saves.length, 1, `one save per click, got ${saves.length}`);
+    assert.equal(JSON.parse(saves[0].args[0]).job_history_limit, 120);
   });
 
   test('refresh pulls, clear clears, table buttons reveal and copy', () => {

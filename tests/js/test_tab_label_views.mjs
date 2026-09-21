@@ -111,6 +111,45 @@ describe('Live Debug', () => {
   });
 });
 
+describe('Job History', () => {
+  function history(extra = {}) {
+    return {
+      entries: [{ job_no: 7, job_id: 'j7', tab_id: FULL, worker_no: 3, status: 'completed',
+        error: '', image_id: 'i1', image: 'a.png', image_path: '/in/a.png', folder: '/out',
+        output_path: '/out/a_AI.png', captcha: 0, started: '2026-09-21T09:59:01+00:00',
+        finished: '2026-09-21T09:59:20+00:00', ...extra }],
+      limit: 50, total: 1, next_job_no: 8,
+    };
+  }
+
+  test('a finished-job row names the tab exactly like the worker table and the URL list', () => {
+    const h = bootPage();
+    h.emit('page_pool_updated', JSON.stringify(snapOf(worker())));
+    h.emit('job_history_updated', JSON.stringify(history()));
+    const html = h.anyEl('historyTableBody').innerHTML || '';
+    assert.ok(html.includes(LABEL), html);
+    assert.ok(html.includes(`title="${FULL}"`), 'the hex id stays reachable in the tooltip');
+    assert.ok(!html.includes(`>${FULL}<`), 'never the raw 32-char id as the visible id');
+  });
+
+  test('the row carries the pool worker number beside the label', () => {
+    const h = bootPage();
+    h.emit('page_pool_updated', JSON.stringify(snapOf(worker())));
+    h.emit('job_history_updated', JSON.stringify(history()));
+    const html = h.anyEl('historyTableBody').innerHTML || '';
+    assert.ok(html.includes('>#3<'), html);
+  });
+
+  test('a tab that already left the pool falls back to the short id', () => {
+    const h = bootPage();
+    h.emit('job_history_updated', JSON.stringify(history({ tab_id: 'deadbeefcafe0000', worker_no: '' })));
+    const html = h.anyEl('historyTableBody').innerHTML || '';
+    assert.ok(html.includes('>deadbeef</td>'), html);
+    assert.ok(!html.includes('>deadbeefcafe0000<'), 'never the raw 32-char id as the visible id');
+    assert.ok(html.includes('>—</td>'), 'no worker number left behind for a gone tab');
+  });
+});
+
 describe('log lines', () => {
   test('core/tab-label.js is the one place a tab id becomes a label', () => {
     const h = bootPage();
@@ -132,12 +171,13 @@ describe('log lines', () => {
     // 2026-09-21 (D-7): the URL row's Stop / Clear-time log lines moved to the
     // new url-list/reset.js (the frozen actions.js only delegates now), so the
     // label check follows the owner and the no-slicing rule covers both files.
-    for (const rel of ['page-pool/actions.js', 'url-list/actions.js', 'url-list/reset.js', 'captcha.js']) {
+    for (const rel of ['page-pool/actions.js', 'url-list/actions.js', 'url-list/reset.js', 'captcha.js',
+      'job-history/render.js']) {
       const text = fs.readFileSync(path.join(PANELS, rel), 'utf8');
-      assert.ok(!/tabId\.slice\(0, *8\)|solving_tab\.slice/.test(text),
+      assert.ok(!/tabId\.slice\(0, *8\)|solving_tab\.slice|\.tab_id \|\| ''\)\.slice/.test(text),
         `${rel} must not slice a tab id by hand`);
     }
-    for (const rel of ['page-pool/actions.js', 'url-list/reset.js', 'captcha.js']) {
+    for (const rel of ['page-pool/actions.js', 'url-list/reset.js', 'captcha.js', 'job-history/render.js']) {
       const text = fs.readFileSync(path.join(PANELS, rel), 'utf8');
       assert.ok(text.includes('TabLabel.of('), `${rel} must name the tab by its label`);
     }

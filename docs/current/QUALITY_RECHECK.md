@@ -985,6 +985,48 @@ bounded at 15 s), giving Cancel its own "steady, no cooldown" path (two behaviou
 produced the report), writing `UrlRow.status` from Python (it is the CDP validation status the row-removal policy
 rules on), and adding a second "stop penalty" setting next to the pause (one meaning, one knob).
 
+## Addendum 2026-09-21b — Job History window merged from `arena/01a0c3a5` (I-61)
+
+The 17th window arrived as a branch (`d6b3d5a` window + `bb0c996` quality pass) whose merge base is this
+branch's fork point `d8fa79c`; it was merged (`3aaa740`) and then integrated with the two conventions this
+branch owns — the readable tab label (I-59) and the pool worker number (I-55).
+
+| Gate | Command | Result |
+|---|---|---|
+| Conflict | `git merge FETCH_HEAD` | exactly **one** conflicting file: `package.json` `test:js` (both sides appended a file to the one-line list) → the union, their `test_job_history_panel.mjs` after `test_live_debug_panel.mjs` and this branch's four files kept, then re-validated as JSON (40 files). Every other file auto-merged — the new window touches different lines than the reset pipeline |
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **1,992 passed · 4 skipped · 0 fail** (+26 from the merged `tests/test_job_history.py`) |
+| JS tests | `npm run test:js` | **347 pass · 4 skipped · 0 fail** (351 subtests; +3 label tests added here) |
+| Coverage | fresh `coverage run --branch --source=app` + `coverage json` | **88.31 % line / 84.96 % branch** (before the merge 88.14 / 84.85; floors 86.36 / 82.33) — the two new Python files are **100 %** (`services/job_history.py` 196 statements, `panels/job_history.py` 23) |
+| Changed-file lane (merged Python) | `tools/verify_quality.py --changed-files <8 files> --allow-legacy --no-js` | **no fail on the merged files** (incl. `job_history.py`, which carries its `# ideal-size` reason header at 332 lines); the 4 reported fails are the same inherited coverage lanes proven base-identical in the addendum above |
+| JS lane | same tool on the 5 `job-history*.js` files | **5 files checked, 0 JS fails** |
+| Whole-repo gate | `tools/verify_quality.py --coverage-ratchet` | 169 files, 1 fail — the unchanged pre-existing `app/ui/web/js/panels/captcha.js max_cc 12 > 10` |
+
+**Dependency check (the merge's real work).** The feature brings two cross-feature reads, both now verified and
+locked by tests:
+
+* **pool → history:** `job_history.worker_no_of(pool, tab_id)` reads `PageInfo.worker_no` (I-55, the `#n` badge
+  number) at record time through the pool API — the `Tab #` cell shows `#n` and falls back to `—` once the tab is
+  gone (`tests/test_job_history.py::test_worker_no_variants`).
+* **URL list / worker table → history:** the merged `job-history/render.js` printed `tab_id.slice(0, 8)`, which
+  violates I-59 ("`{email}_{4 digits}` in the worker table AND the URL list AND all tab-referencing views"). It now
+  renders `window.TabLabel.of(e.tab_id)` (one formatter, the pool snapshot's label, the short id as fallback) with
+  the full hex in the tooltip, and `tests/js/test_tab_label_views.mjs` gained a **Job History** block (label, pool
+  worker number beside it, gone-tab fallback) plus `job-history/render.js` in both rule lists (no hand-sliced tab
+  ids; `TabLabel.of(` required). RED verified by reverting the one-line change: 3 subtests fail, then 13/13 pass.
+
+* **Settings mirror → one save:** the merged `job-history/limit.js` bound a *second* listener to `settingsSaveBtn`,
+  so one Settings Save fired two `save_settings` slots (two payloads, two undo entries, two log lines) where the
+  house pattern (D-1's interval mirror) is one panel-owned save whose payload carries the mirrored key. Fixed by
+  dropping the second binding and adding the mirror to `SettingsPanel._buildSettingsPayload()`
+  (`job_history_limit` beside `url_reconcile_interval_ms`), **line-neutral inside the JS ratchet** — `settings.js`
+  stays at 251 lines with its `max_func_loc` unchanged (the ratchet rejects any growth of a baselined file, and the
+  first two attempts grew it 252→254 and 252→257). Locked by a new test: one click → exactly one `save_settings`
+  carrying `job_history_limit` (RED: "one save per click, got 2").
+
+Two "Clear" buttons now live side by side in the UI and were checked for ambiguity: the Job History **Clear**
+empties the log behind a confirm (`clear_job_history`), while the URL-list **Clear time** (I-60) zeroes one tab's
+countdown — different labels, different windows, different slots; no shared wording.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

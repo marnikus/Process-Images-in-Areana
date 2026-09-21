@@ -1,8 +1,10 @@
 /* job-history/limit.js — the "show last N" display-count control.
    Two views of the one key `job_history_limit` (the history header input +
-   the Settings mirror `#setHistoryLimit`) — this module owns both views and
-   saves through the existing save_settings slot; bounds mirror
-   app/services/job_history.py (the url-list/interval.js pattern). */
+   the Settings mirror `#setHistoryLimit`) — this module owns both views; the
+   header's Apply saves through the existing save_settings slot and the Settings
+   mirror rides SettingsPanel's own payload, exactly like the interval control
+   (D-1/I-61: one click = one save_settings, never a second listener on the
+   Settings Save button). Bounds mirror app/services/job_history.py. */
 'use strict';
 const JobHistoryLimit = {
   MIN: 5, MAX: 500, DEFAULT: 50,
@@ -11,7 +13,6 @@ const JobHistoryLimit = {
 
   init() {
     Boot.bindOnceById('historyLimitSaveBtn', 'click', () => this.save('historyLimit'), 'historyLimitSave');
-    Boot.bindOnceById('settingsSaveBtn', 'click', () => this.save('setHistoryLimit'), 'historyLimitSettingsSave');
     for (const id of this.INPUTS) {
       const input = document.getElementById(id);
       if (!input) continue;

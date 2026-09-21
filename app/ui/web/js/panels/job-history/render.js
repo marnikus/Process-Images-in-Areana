@@ -1,7 +1,11 @@
 /* job-history/render.js — string builders for the history table.
    Pool-table look (the shared queue-table class): one row per finished job,
    newest first; every long value is truncated in the cell with the full text
-   in the title tooltip. */
+   in the title tooltip.
+   Tab cell: the SAME readable handle the worker table and the URL list print
+   (`TabLabel.of`, I-59) — this view references tabs like every other one, so it
+   must not slice a hex id by hand; `Tab #` is the pool's `worker_no`, recorded
+   when the job finished (I-55). */
 'use strict';
 window.JobHistoryRender = {
   _store() { return window.JobHistoryStore; },
@@ -62,10 +66,18 @@ window.JobHistoryRender = {
     return `<span class="history-captcha" title="${n} captcha encounter${n === 1 ? '' : 's'} during this job">🛡 ×${n}</span>`;
   },
 
+  /* The readable tab handle (I-59). `TabLabel.of` looks the id up in the pool
+     snapshot and falls back to the short id, so a tab that has already left the
+     pool still reads; the full id stays in the tooltip either way. */
+  _tabCell(e) {
+    const id = String(e.tab_id || '');
+    const label = window.TabLabel ? window.TabLabel.of(id) : id.slice(0, 8);
+    return `<td title="${this.esc(id)}">${this.esc(label || '—')}</td>`;
+  },
+
   _row(e) {
-    const tab = this.esc(e.tab_id || '');
     return '<tr>'
-      + `<td title="${tab}">${this.esc(this._short(e.tab_id || '', 8))}</td>`
+      + this._tabCell(e)
       + `<td>${this.esc(e.worker_no === '' || e.worker_no == null ? '—' : '#' + e.worker_no)}</td>`
       + `<td><b>${this.esc(e.job_no == null ? '' : e.job_no)}</b></td>`
       + `<td>${this._statusCell(e)}</td>`

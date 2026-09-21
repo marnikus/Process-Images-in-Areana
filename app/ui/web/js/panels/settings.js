@@ -117,8 +117,8 @@ const SettingsPanel = {
       max_concurrent: parseInt(getVal('setMaxConcurrent'))||1,
       watcher_generation_timeout_sec: genTo,
     };
-    const interval = parseInt(getVal('setUrlIntervalMs'), 10);
-    if (Number.isFinite(interval)) payload.url_reconcile_interval_ms = interval;  // empty field sends nothing (D-1)
+    const interval = parseInt(getVal('setUrlIntervalMs'), 10); if (Number.isFinite(interval)) payload.url_reconcile_interval_ms = interval;  // empty field sends nothing (D-1)
+    const hist = parseInt(getVal('setHistoryLimit'), 10); if (Number.isFinite(hist)) payload.job_history_limit = hist;  // Job History mirror: same rule, one Save click = one save_settings (I-61)
     return { payload, genTo };
   },
 
