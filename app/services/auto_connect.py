@@ -123,6 +123,15 @@ def prunable_row_ids(rows: Any, live_keys) -> list:
     return gone
 
 
+def _row_allows_rejoin(rows_by_tab: dict, key: str) -> bool:
+    """A tab owned by an UNCHECKED row never auto-rejoins the pool (D-5, 2026-09-21).
+
+    No row / legacy dict without the key counts as allowed (UrlRow.enabled's True default).
+    """
+    owner = rows_by_tab.get(key)
+    return owner is None or bool(owner.get("enabled", True))
+
+
 def plan_auto_connect(tabs: Any, pattern: Any, rows: Any, pooled: Any) -> AutoConnectPlan:
     """Pure plan: rows to add/claim, sockets to join, ids gone stale."""
     pooled = set(pooled or [])
@@ -134,7 +143,7 @@ def plan_auto_connect(tabs: Any, pattern: Any, rows: Any, pooled: Any) -> AutoCo
         if not matches_pattern(getattr(tab, "url", ""), pattern):
             continue
         _apply_row_action(plan, _row_action(rows_by_tab, unlinked, tab, key), tab, key)
-        if key not in pooled:
+        if key not in pooled and _row_allows_rejoin(rows_by_tab, key):
             plan.connect.append(getattr(tab, "ws_url", "") or "")
     plan.stale = sorted(pooled - live)
     return plan

@@ -1,17 +1,21 @@
 /* url-list/interval.js — the "🔁 every … ms" URL reconcile cadence control (S6, D-12R).
    Reads its value from the pushed progress_updated.live payload (no slot round-trip),
-   saves through the existing save_settings slot; bounds mirror live/debug_view.py. */
+   saves through the existing save_settings slot; bounds mirror live/debug_view.py.
+   2026-09-21 (D-1): the Settings panel mirrors the same one key (`setUrlIntervalMs`)
+   — this module owns both views; the value is saved only through save_settings. */
 'use strict';
 const UrlInterval = {
   MIN: 500, MAX: 60000, DEFAULT: 5000,
+  INPUTS: ['urlIntervalMs', 'setUrlIntervalMs'],
   _focused: false,
 
   init() {
     Boot.bindOnceById('urlIntervalSaveBtn', 'click', () => this.save(), 'urlIntervalSave');
-    const input = document.getElementById('urlIntervalMs');
-    if (input) {
-      Boot.bindOnce(input, 'focus', () => { this._focused = true; }, 'urlIntervalFocus');
-      Boot.bindOnce(input, 'blur', () => { this._focused = false; }, 'urlIntervalBlur');
+    for (const id of this.INPUTS) {
+      const input = document.getElementById(id);
+      if (!input) continue;
+      Boot.bindOnce(input, 'focus', () => { this._focused = true; }, `urlIntervalFocus:${id}`);
+      Boot.bindOnce(input, 'blur', () => { this._focused = false; }, `urlIntervalBlur:${id}`);
     }
     Boot.onBridgeReady(() => this._bindLive());
   },
@@ -23,8 +27,10 @@ const UrlInterval = {
   },
 
   applyValue(ms) {
-    const input = document.getElementById('urlIntervalMs');
-    if (input && !this._focused) input.value = String(ms);
+    for (const id of this.INPUTS) {
+      const input = document.getElementById(id);
+      if (input && !this._focused) input.value = String(ms);
+    }
   },
 
   load(live) {

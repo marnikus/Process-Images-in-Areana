@@ -31,7 +31,7 @@
       <div class="tab-select-wrap" style="display:flex; align-items:center; gap:6px;">
         <select id="tabSelect" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; min-width:260px;"><option value="">— Select Chrome Tab —</option></select>
         <button id="refreshTabsBtn" class="btn-icon" title="Refresh tabs"><span class="material-icons">refresh</span></button>
-        <button id="reparseTabsBtn" class="btn-icon" title="Reparse now: rescan open tabs, add new matches, drop dead rows"><span class="material-icons">autorenew</span></button>
+        <button id="reparseTabsBtn" class="btn-icon" title="Reparse now: clear the URL list and rebuild it from open tabs (rows with a running job are kept)"><span class="material-icons">autorenew</span></button>
       </div>
       <span id="connectionStatus" class="status-dot disconnected" title="Disconnected"></span>
       <button id="connectBtn" class="btn-primary" title="Connect to selected tab"><span class="material-icons">link</span> Connect</button>
@@ -61,7 +61,7 @@
 
     <!-- URL LIST -->
     <div class="panel" id="winUrlList" data-window="url_list">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List <button id="urlReparseBtn" class="btn-small" title="Reparse now: rescan open tabs, add new matches, drop dead rows">🔄 Reparse</button><button id="urlPopupBtn" class="btn-small" title="Popup on top: bring every active URL tab and its window to the front">⏫ Popup tabs</button> <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List <button id="urlReparseBtn" class="btn-small" title="Reparse now: clear the URL list and rebuild it from open tabs (rows with a running job are kept)">🔄 Reparse</button><button id="urlPopupBtn" class="btn-small" title="Popup on top: bring every active URL tab and its window to the front">⏫ Popup tabs</button> <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
       <div style="display:flex; gap:6px; margin-bottom:8px;">
         <input id="urlInput" type="text" placeholder="https://example.com/page" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
         <button id="urlAddBtn" class="btn-primary" style="padding:6px 12px;">Add</button>
@@ -72,7 +72,7 @@
         <span title="Extra wait when the site shows a rate-limit / limit-reached banner (0 = off)">⛔ +<input id="urlCooldownRateLimit" type="number" min="0" max="1440" placeholder="30" style="width:52px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">m/limit</span>
         <label style="display:flex; align-items:center; gap:3px;"><input id="urlCooldownEnabled" type="checkbox" checked> on</label>
         <button id="urlCooldownSaveBtn" class="btn-small">Save</button>
-        <span title="How often Python re-reads open Chrome tabs and updates this table (500–60000 ms; applies without restart)">🔁 every <input id="urlIntervalMs" type="number" min="500" max="60000" step="100" placeholder="5000" style="width:60px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">ms</span>
+        <span title="How often Python re-reads open Chrome tabs and updates this table (500–60000 ms; applies without restart — also in the Settings panel)">🔁 every <input id="urlIntervalMs" type="number" min="500" max="60000" step="100" placeholder="5000" style="width:60px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">ms</span>
         <button id="urlIntervalSaveBtn" class="btn-small" title="Save the reconcile interval">Save</button>
       </div>
       <div style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px;">
@@ -359,6 +359,11 @@
         <label>Generation / Waiting Max Time (seconds) — user configurable, e.g. 120 = 2 min, now synced to watcher win (30-3600s)</label>
         <input id="setGenerationTimeout" type="number" min="30" max="3600" placeholder="120">
         <div style="font-size:10px; color:var(--text-muted);">User setting from win — controls rect overlay timeout for "wait for finish generation" and watcher generation timeout</div>
+      </div>
+      <div class="settings-group">
+        <label>URL Reparse Interval (ms) — how often Python re-reads open Chrome tabs and rebuilds the URL list (500–60000; applies without restart)</label>
+        <input id="setUrlIntervalMs" type="number" min="500" max="60000" step="100" placeholder="5000">
+        <div style="font-size:10px; color:var(--text-muted);">Same setting as the URL window's "🔁 every … ms" — saving here or there updates both; Reparse itself clears the list and rebuilds it from open tabs.</div>
       </div>
       <!-- Job Cycle & Cooldown — per-tab pause between generations (spec 01-04) -->
       <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin:10px 0; background:var(--bg-card);">

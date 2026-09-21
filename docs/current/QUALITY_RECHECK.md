@@ -1,3 +1,28 @@
+# Quality re-check — 2026-09-21 (Reparse fresh sweep + checkbox pool gate)
+
+Snapshot of the RULE 16 gates after the round (`docs/archive/2026-09-21-reparse-sweep-and-checkbox-pool/design.md`).
+
+| Gate | Command | Result |
+|---|---|---|
+| Python tests | `QT_QPA_PLATFORM=offscreen python -m pytest tests -q` | **1,800 passed · 11 skipped · 0 fail** (+2: `tests/test_reparse_pool_gate.py` 17) |
+| JS tests | `npm run test:js` | **282 pass · 0 fail** (286 subtests; the live-debug registry test spawns `.venv/bin/python` — absent in a bare sandbox it fails environmentally, also on the base commit; `npm ci` + a `.venv/bin/python` shim clears it) |
+| Size/complexity | `radon cc -s` + per-function cognitive | new/edited functions: `pool_exits` CC 7 / cog 1 / 18 LOC, `_sweep_rows` CC 5 / cog 3 / 16 LOC, `_enforce_membership` CC 5 / cog 8 / 14 LOC, `_row_allows_rejoin` CC 2 / 7 LOC, `exit_pool_for_unchecked` CC 5 / cog 5 / 10 LOC, `_pooled_unchecked` CC 6→extracted / 4 LOC — all inside RULE 16 fail lines and RULE 18 ideals; `pool_exits` first landed at CC 11 (over the fail line) and was flattened per RULE 19 before review |
+| Coverage | `coverage run --branch --source=app -m pytest` | **88.7 % line / 84.6 % branch** (gates ≥80 / ≥75); `url_policy.py` 100 %, `auto_connect.py` 100 %, `url_queue.py` 99.5 %, `reconcile.py` 96.8 % |
+| Changed-file ratchet | `python tools/verify_quality.py --changed --allow-legacy` | no new findings from this round's files; the 134 `max_cog 0→N` ratchet lines are stale-baseline noise (cog recorded as 0 repo-wide) — identical on the untouched HEAD commit; the `url_queue.py` func/class-LOC growth was removed by moving the gate call into `commit_urls` |
+
+## What changed
+
+* `app/services/live/url_policy.py` +24 (`pool_exits`, `_pooled_unchecked` — the ONE checkbox→pool decision),
+  `app/services/auto_connect.py` +7 (`_row_allows_rejoin` — no auto-rejoin while unchecked),
+  `app/services/live/reconcile.py` +34 net (`LiveDeps.leave_tab` seam, `Report.swept`, `_sweep_rows`, `_enforce_membership`,
+  `_remove_rows` accumulates), `app/ui/panels/url_queue.py` +9 (`exit_pool_for_unchecked` riding `commit_urls`),
+  `app/ui/panels/browser_tabs.py` (`live_deps` wires `leave_pool`), `app/ui/panels/app_settings.py` (log wording),
+  `index.html` (Settings interval group + Reparse tooltips), `url-list/interval.js` (64/80 lines — mirrors both inputs),
+  `settings.js` (payload carries the key only when the field parses). Slot surface unchanged.
+* Invariant I-56 added; I-50 extended (manual sweep); rows 8 / 11 / 19 / 21 updated; history: `docs/README.md`.
+
+---
+
 # Quality re-check — 2026-10-02 (Captcha Watcher isolation + UI bugfixes)
 
 Snapshot of the RULE 16 gates after the round. Re-run the commands before
