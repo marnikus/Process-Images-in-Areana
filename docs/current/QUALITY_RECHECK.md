@@ -10,6 +10,26 @@ Snapshot of the RULE 16 gates after the round (`docs/archive/2026-09-21-reparse-
 | Coverage | `coverage run --branch --source=app -m pytest` | **88.7 % line / 84.6 % branch** (gates ≥80 / ≥75); `url_policy.py` 100 %, `auto_connect.py` 100 %, `url_queue.py` 99.5 %, `reconcile.py` 96.8 % |
 | Changed-file ratchet | `python tools/verify_quality.py --changed --allow-legacy` | no new findings from this round's files; the 134 `max_cog 0→N` ratchet lines are stale-baseline noise (cog recorded as 0 repo-wide) — identical on the untouched HEAD commit; the `url_queue.py` func/class-LOC growth was removed by moving the gate call into `commit_urls` |
 
+## Addendum 2026-09-21 — Reparse keeps its rows / re-check rejoins / one tab id
+
+Bugfix round on top of the snapshot above (`docs/archive/2026-09-21-reparse-rejoin-and-pool-tab-id/design.md`).
+
+| Gate | Command | Result |
+|---|---|---|
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q` | **1,821 passed · 11 skipped · 0 fail** (+13 new: `tests/test_reconcile_resilience.py` 8, `tests/test_reparse_pool_gate.py` 17 → 21, `tests/test_page_pool.py` +1) |
+| JS tests | `npm run test:js` | **287 pass · 4 skipped · 0 fail** (291 subtests; +4 `tests/js/test_pool_tab_id.mjs`, the pinned 12-char slice expectation in `test_run_badge.mjs` replaced by the full id) |
+| Size/complexity | `radon cc -s` + per-function cognitive | new/edited: `_auto_pass` 3 LOC, `_log_pass_error` CC 2 / 6 LOC, `_pool_phase` CC 2 / 8 LOC, `_join_each` CC 4 / 13 LOC, `_publish` CC 4 / 13 LOC, `_empty_manual_note` CC 3 / 5 LOC, `_summary` CC 5, `_sockets_by_tab` CC 1, `_live_sockets` CC 2, `_rejoin_one` CC 3 / 8 LOC, `rejoin_checked_rows` CC 6 / 10 LOC, `_rejoin_targets` CC 3 / 4 LOC, `enter_pool_for_checked` CC 3 / 13 LOC, `_snapshot_entry` CC 1 — all inside RULE 16 fail lines and RULE 18 ideals; nothing added inside a class body (the `UrlQueueMixin` LOC ratchet stays put) |
+| Coverage | `coverage run --branch --source=app -m pytest` then `coverage json` | **88.79 % line / 84.74 % branch** (gates ≥80 / ≥75); changed files: `reconcile.py` 97.7 %, `url_queue.py` 99.6 %, `browser/page_pool.py` 89.1 %, `ui/panels/page_pool.py` 83.9 % (floor 82.24) — all above their per-file floors |
+| Changed-file ratchet | `python tools/verify_quality.py --changed-files <the 4 Python files> [--coverage-ratchet --coverage-file coverage.json]` | **✅ PASSED — no fails**, coverage ratchet included; identical result on the untouched base tree (both: 0 fails, 1 warn = missing `coverage.json`), i.e. the round adds no finding |
+| JS lane | same tool with the two changed `.js` files | no finding for `page-pool/render.js` / `url-list/render.js`; the one JS fail (`panels/captcha.js max_cc 12 > 10`) is identical on the base tree (pre-existing) |
+| Environment facts | — | the `max_cog 0→N` ratchet lines are the stale-baseline noise documented above (cog recorded as 0 repo-wide; identical on the untouched HEAD commit); `bash tools/pre_push_check.sh` additionally reports two `ratchet-coverage` drops (`app/browser/cdp/transport.py` 90.5→84.3 %, `app/ui/qt_compat.py` 60.7→39.3 %) — measured on the **stashed base tree in this sandbox** with identical values, i.e. the venv now has `websockets`/`PySide6-Essentials` where the baseline was recorded without them (the same family as the documented `libGL` floors), not a finding from this round; the bare `from PySide6 import QtWidgets` import still needs `libGL.so.1` |
+
+Dishonest reductions rejected (RULE 16.6): catching the pool-phase error without committing (the rows stay lost),
+sweeping aside and swapping after the joins (same window, second writer), rejoining from the JS checkbox handler
+(second writer of pool membership), re-joining via a second `auto_connect_scan` (the interval would rule the
+checkbox), truncating the **badge** instead of the table (I-55), and a pass watchdog (aborting between sweep and
+commit re-creates the bug).
+
 ## What changed
 
 * `app/services/live/url_policy.py` +24 (`pool_exits`, `_pooled_unchecked` — the ONE checkbox→pool decision),

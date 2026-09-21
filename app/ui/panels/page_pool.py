@@ -24,6 +24,7 @@ from app.services.cooldown_service import (
     reset_cooldown,
     tab_has_live_job,
 )
+from app.services.live.bus import live_bus
 from app.services.live.worker_badges import assert_badges, clear_badge
 from app.services.run_state import cooldowns_path, resolve_tab_info, restore_page_state, schedule_coro
 from app.ui.qt_compat import Slot
@@ -83,6 +84,50 @@ def leave_pool(bridge, tab_id: str) -> bool:
     if client is not None:
         schedule_coro(bridge, clear_badge(client, tab_id))
     return bridge._page_pool.remove_page(tab_id)
+
+
+def _sockets_by_tab(tabs) -> dict:
+    """Fetched tabs as {tab key: ws url} in one expression (no statement nesting)."""
+    return {(getattr(t, "id", "") or getattr(t, "tab_id", "")): (getattr(t, "ws_url", "") or "")
+            for t in tabs or []}
+
+
+async def _live_sockets(bridge) -> dict:
+    """What Chrome lists right now ({} when the fetch fails — a rejoin is never a removal)."""
+    try:
+        return _sockets_by_tab(await bridge.cdp.fetch_tabs())
+    except Exception:
+        return {}
+
+
+async def _rejoin_one(bridge, pool, sockets: dict, tab_id: str) -> bool:
+    """Join one re-checked row's tab (False when it is pooled already or no longer open)."""
+    if pool.get_page(tab_id):
+        return False
+    ws = sockets.get(tab_id, "")
+    if not ws:
+        bridge._log(f"♻️ Rejoin skipped for {(tab_id or '')[:12]} — tab is not open; the next pass drops the row", "warn")
+        return False
+    await do_connect_page_pool(bridge, ws)  # same mechanic as the reconciler: badge + cooldown restored
+    return True
+
+
+async def rejoin_checked_rows(bridge, tab_ids) -> int:
+    """The join half of the checkbox gate (I-56): re-checked rows' tabs rejoin at once.
+
+    One fetch for the whole batch; the reconciler pass stays the fallback for a
+    tab Chrome had not listed yet. Returns how many tabs actually joined.
+    """
+    pool = getattr(bridge, "_page_pool", None)
+    if pool is None or not tab_ids:
+        return 0
+    sockets = await _live_sockets(bridge)
+    joined = 0
+    for tab_id in tab_ids:
+        joined += 1 if await _rejoin_one(bridge, pool, sockets, tab_id) else 0
+    if joined:
+        live_bus(bridge).wake("urls")  # a live run picks the worker up on its next pass
+    return joined
 
 
 async def do_connect_page_pool(bridge, ws_url: str):

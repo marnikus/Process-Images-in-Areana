@@ -241,3 +241,14 @@ async def test_pick_ties_keep_default_order():
     assert got.tab_id == "x"
     got2 = await pool.get_free_page()
     assert got2.tab_id == "y"
+
+
+@pytest.mark.unit
+def test_snapshot_reports_the_pool_key_as_the_tab_id():
+    """I-55 / worker badge: one worker, one id string — the key, never a fallback field."""
+    pool = PagePool()
+    key = "ws://127.0.0.1:9222/devtools/page/1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+    pool.add_page(PageInfo(ws_url=key, tab_id="", title="T"))
+    pool._pages[key].tab_id = "stale-fallback"  # a later join path rewriting the field must not leak
+    (entry,) = pool.status_snapshot()["pages"]
+    assert entry["tab_id"] == key

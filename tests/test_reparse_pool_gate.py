@@ -255,3 +255,79 @@ def test_checking_a_row_removes_nothing(tmp_path):
     env.bridge.state.urls = [row]
     assert json.loads(env.bridge.toggle_url(row.id))["enabled"] is True
     assert env.bridge._page_pool.get_page("t1") is not None  # rejoin is the reconciler's job (next pass)
+
+
+# ── I-56: the join half of the checkbox gate acts on the toggle ──
+
+
+def test_checking_a_row_schedules_the_rejoin_now(tmp_path, monkeypatch):
+    """RED at base: the toggle only removed the tab and left the rejoin to the next pass."""
+    from app.ui.panels import url_queue
+    scheduled = []
+    monkeypatch.setattr(url_queue, "schedule_coro", lambda bridge, coro: scheduled.append(coro))
+    env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1, tab_ids=[], pool=PagePool())
+    row = UrlRow.create("https://arena.ai/c/1", enabled=False, tab_id="t1")
+    env.bridge.state.urls = [row]
+    assert json.loads(env.bridge.toggle_url(row.id))["enabled"] is True
+    assert len(scheduled) == 1 and scheduled[0].cr_code.co_name == "rejoin_checked_rows"
+    assert scheduled[0].cr_frame.f_locals["tab_ids"] == ["t1"]
+    scheduled[0].close()
+    assert any("Checked URLs not pooled — rejoining 1 tab(s) now" in m for m, _l in env.recs["arena_log"].calls)
+
+
+def test_entering_the_pool_skips_a_pooled_tab_and_an_unlinked_row(tmp_path, monkeypatch):
+    from app.ui.panels import url_queue
+    scheduled = []
+    monkeypatch.setattr(url_queue, "schedule_coro", lambda bridge, coro: scheduled.append(coro))
+    env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1, tab_ids=[], pool=pool_with("t1"))
+    pooled = UrlRow.create("https://arena.ai/1", enabled=True, tab_id="t1")
+    unlinked = UrlRow.create("https://arena.ai/2", enabled=True, tab_id="")
+    unchecked = UrlRow.create("https://arena.ai/3", enabled=False, tab_id="t9")
+    env.bridge.state.urls = [pooled, unlinked, unchecked]
+    assert url_queue.enter_pool_for_checked(env.bridge) == []
+    assert scheduled == []  # nothing to do: the worker is already pooled / never linked / unchecked
+
+
+@pytest.mark.asyncio
+async def test_the_instant_rejoin_puts_the_tab_back(tmp_path, monkeypatch):
+    from app.services.live.bus import live_bus
+    from app.ui.panels import page_pool as pp
+
+    class FakeClient:
+        async def evaluate(self, js):
+            return "ok"
+
+    async def fake_connect(bridge, ws_url):
+        return FakeClient()
+
+    async def fake_tabs():
+        return [tab("t1")]
+
+    async def fake_info(bridge, tab_id, ws_url):
+        return "T", "https://arena.ai/c/1"
+
+    monkeypatch.setattr(pp, "connect_pool_client", fake_connect)
+    monkeypatch.setattr(pp, "resolve_tab_info", fake_info)
+    monkeypatch.setattr(pp, "restore_page_state", lambda bridge, tab_id: None)
+    monkeypatch.setattr("app.browser.cdp_arena.CDPArenaController", lambda client, log_callback: object())
+    env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1, tab_ids=[], pool=PagePool())
+    monkeypatch.setattr(env.cdp, "fetch_tabs", fake_tabs)
+    assert await pp.rejoin_checked_rows(env.bridge, ["t1"]) == 1
+    page = env.bridge._page_pool.get_page("t1")
+    assert page is not None and page.worker_no == 1 and page.is_connected
+    assert live_bus(env.bridge).reasons() == ["urls"]  # a live run picks the worker up
+    assert any("Pool added t1" in m for m, _l in env.recs["arena_log"].calls)
+
+
+@pytest.mark.asyncio
+async def test_the_instant_rejoin_says_when_the_tab_is_gone(tmp_path, monkeypatch):
+    from app.ui.panels import page_pool as pp
+
+    async def no_tabs():
+        return []
+
+    env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1, tab_ids=[], pool=PagePool())
+    monkeypatch.setattr(env.cdp, "fetch_tabs", no_tabs)
+    assert await pp.rejoin_checked_rows(env.bridge, ["dead01"]) == 0
+    assert not any("Pool added dead01" in m for m, _l in env.recs["arena_log"].calls)
+    assert any("Rejoin skipped" in m for m, _l in env.recs["arena_log"].calls)

@@ -123,7 +123,10 @@ describe('worker number #n (pool join order, from the pushed snapshot)', () => {
     }
     const p = { tab_id: 'ABCDEF0123456789XYZ', worker_no: 3, title: 'T', url: 'https://arena.ai', status: 'steady', is_connected: true, jobs_completed: 0 };
     const row = vm.runInContext('PagePoolRender._rowHtml(' + JSON.stringify(p) + ')', sandbox);
-    assert.match(row, /<td[^>]*><b class="worker-no">#3<\/b> ABCDEF012345<\/td>/);
+    // I-55 parity: the badge on the tab shows `#3` + the FULL id, so the pool
+    // row does too (user report: "the tabID in the POOL does not match the ID
+    // shown in the web-page badge" — the row used to slice to 12 chars).
+    assert.match(row, /<td[^>]*><b class="worker-no">#3<\/b> ABCDEF0123456789XYZ<\/td>/);
     vm.runInContext('LiveDebugStore.pool = ' + JSON.stringify({ pages: [p] }), sandbox);
     const line = vm.runInContext('LiveDebugRender.workers()', sandbox);
     assert.match(line, /<span class="live-no">#3<\/span>/);

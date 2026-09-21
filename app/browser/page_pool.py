@@ -52,9 +52,16 @@ def _pick_lowest_count(pages) -> Optional[PageInfo]:
     return min(free, key=lambda p: p.jobs_completed)
 
 
-def _snapshot_entry(page) -> dict:
-    """One page snapshot entry incl. live cooldown countdown."""
+def _snapshot_entry(tab_id: str, page) -> dict:
+    """One page snapshot entry incl. live cooldown countdown.
+
+    `tab_id` is the POOL KEY (`PageInfo.tab_id or ws_url`) — the same string
+    the worker badge carries (I-55): the join path that parsed the socket and
+    the path that cached the tab must never show two different ids for one
+    worker, so the snapshot reports the key, never a fallback field.
+    """
     entry = page.to_dict()
+    entry["tab_id"] = tab_id
     try:
         entry["cooldown_remaining"] = page.remaining_seconds()
     except Exception:
@@ -198,7 +205,7 @@ class PagePool:
 
     def status_snapshot(self) -> dict:
         with self._lock:
-            pages = [_snapshot_entry(p) for p in self._pages.values()]
+            pages = [_snapshot_entry(tid, p) for tid, p in self._pages.items()]
             steady = len([p for p in self._pages.values() if p.is_free()])
             busy = len([p for p in self._pages.values() if p.is_busy()])
             cooling = len([p for p in self._pages.values() if p.status == PageStatus.COOLDOWN])

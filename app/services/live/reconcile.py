@@ -92,12 +92,36 @@ def start_reconciler(bridge, deps: LiveDeps) -> bool:
 
 
 async def reconcile_loop(bridge, deps: LiveDeps) -> None:
-    """Pass, then sleep the CURRENT interval (or until `interval`/`start` wakes it) — forever."""
+    """Pass, then sleep the CURRENT interval (or until `interval`/`start` wakes it) — forever.
+
+    No single pass may end the loop (I-47 shape): a failing pass is logged and
+    the next interval retries it, so a transient Chrome/save error can never
+    leave the URL list without an owner for the rest of the session.
+    """
     bus = live_bus(bridge)
     bus.attach(asyncio.get_running_loop())
     while True:
-        await reconcile_once(bridge, deps, "auto")
+        await _auto_pass(bridge, deps)
         await bus.wait(interval_ms(bridge) / 1000.0)
+
+
+async def _auto_pass(bridge, deps: LiveDeps) -> None:
+    """One auto pass that survives its own failure; success clears the error memo."""
+    try:
+        await reconcile_once(bridge, deps, "auto")
+    except Exception as e:
+        _log_pass_error(bridge, deps, e)
+    else:
+        bridge._reconcile_last_error = ""
+
+
+def _log_pass_error(bridge, deps: LiveDeps, e: Exception) -> None:
+    """One warn line per distinct failure text (a repeating error never spams the log)."""
+    text = f"{type(e).__name__}: {e}"
+    if getattr(bridge, "_reconcile_last_error", "") == text:
+        return
+    bridge._reconcile_last_error = text
+    deps.log(f"⚠ Reconcile pass failed ({text}) — loop alive, next pass retries", "warn")
 
 
 @dataclass
@@ -166,15 +190,48 @@ def _apply_plan(p: _Pass, plan: ac.AutoConnectPlan) -> None:
         p.deps.log(f"🔗 URL linked row {row_id} → tab {tab_id} — exact URL match", "info")
 
 
-async def _join_and_sync(p: _Pass, plan: ac.AutoConnectPlan) -> None:
-    for ws in plan.connect:
-        if ws:
+async def _join_each(p: _Pass, sockets) -> int:
+    """Join every planned socket; one bad tab never stops the others (D-1)."""
+    joined = 0
+    for ws in sockets:
+        if not ws:
+            continue
+        try:
             await p.deps.join_tab(ws)
-            p.report.joined += 1
+        except Exception as e:
+            p.report.error = str(e)
+            p.deps.log(f"⚠ Pool join failed ({e}) — next pass retries", "warn")
+            continue
+        joined += 1
+    return joined
+
+
+async def _join_and_sync(p: _Pass, plan: ac.AutoConnectPlan) -> None:
+    p.report.joined += await _join_each(p, plan.connect)
     live = {(getattr(t, "id", "") or getattr(t, "ws_url", "")) for t in p.tabs or []} - {""}
     revived, stale = ac.sync_pool_presence(getattr(p.bridge, "_page_pool", None), live)
     p.report.revived, p.report.stale = revived, len(stale)
     await assert_badges(getattr(p.bridge, "_page_pool", None))  # a navigation wipes the badge (D-5)
+
+
+def _publish(p: _Pass, changed: bool) -> None:
+    """Persist + wake through the funnel; a failed save stays pending for the next pass.
+
+    Rows and the pool live in the same pass, but only this write reaches the
+    UI and the jar: when it fails, the in-memory rebuild would otherwise be
+    invisible until an unrelated save happened to publish it (D-1).
+    """
+    if not (changed or getattr(p.bridge, "_reconcile_unsaved", False)):
+        return
+    try:
+        p.deps.commit()
+    except Exception as e:
+        p.bridge._reconcile_unsaved = True
+        p.report.error = str(e)
+        p.deps.log(f"⚠ URL save failed ({e}) — the next pass retries", "error")
+        return
+    p.bridge._reconcile_unsaved = False
+    live_bus(p.bridge).wake("urls")
 
 
 def _commit(p: _Pass) -> None:
@@ -185,14 +242,24 @@ def _commit(p: _Pass) -> None:
         if cleared:
             p.deps.log(f"↩ {cleared} image(s) unassigned — their URL row was removed", "info")
     receivers = up.mark_receivers(p.urls, getattr(p.bridge, "_page_pool", None))  # after presence (S7)
-    if report.added or report.linked or report.removed or receivers:
-        p.deps.commit()
-        live_bus(p.bridge).wake("urls")
+    _publish(p, any((report.added, report.linked, report.removed, receivers)))
+
+
+def _empty_manual_note(p: _Pass) -> str:
+    """Why a manual rebuild found nothing (RULE 4: 'nothing matched' must be sayable)."""
+    if p.source != "manual" or p.urls or not p.tabs:
+        return ""
+    return (f"⚠ Reparse: 0 of {len(p.tabs)} open tab(s) match pattern '{p.pattern}' — "
+            "check the URL pattern in Settings")
 
 
 def _summary(p: _Pass) -> None:
     """Manual passes always answer; auto passes only when something changed."""
     r = p.report
+    if p.source == "manual":
+        note = _empty_manual_note(p)
+        if note:
+            p.deps.log(note, "warn")
     if not r.changed():
         if p.source == "manual":
             p.deps.log("🤖 Reparse: no changes — rows and pool already match open tabs", "info")
@@ -274,13 +341,22 @@ def _enforce_membership(p: _Pass) -> None:
     p.stats["exit_deferred_logged"] = {row.id for row in deferred}  # once per deferral streak
 
 
+async def _pool_phase(p: _Pass, plan: ac.AutoConnectPlan) -> None:
+    """Join + presence + checkbox gate; a pool failure costs the pool, never the rebuilt rows."""
+    try:
+        await _join_and_sync(p, plan)
+        _enforce_membership(p)
+    except Exception as e:
+        p.report.error = str(e)
+        p.deps.log(f"⚠ Pool update failed ({e}) — URL rows kept, next pass retries", "warn")
+
+
 async def _pass(p: _Pass) -> Report:
     """fetch → rows (only when Chrome answered tabs) → join + presence → membership → commit → summary."""
     if not await _fetch(p):
         return p.report
     plan = _sync_rows(p) if p.tabs else ac.AutoConnectPlan()  # an empty fetch never touches rows
-    await _join_and_sync(p, plan)
-    _enforce_membership(p)
+    await _pool_phase(p, plan)
     _commit(p)
     _summary(p)
     return p.report
