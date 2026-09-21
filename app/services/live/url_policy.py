@@ -2,11 +2,13 @@
 
 Pure: no bridge, no pool, no signals. The reconciler (reconcile.py) feeds a
 RemovalSpec and applies the verdicts; the reasons ride the log lines (RULE 2).
+S7: + mark_receivers (receiver flags) — reads pool._pages through its pool
+parameter, so tests inject a stub (still no bridge, no signals).
 """
 
 from dataclasses import dataclass, field
 
-from app.services.auto_connect import dedupe_linked_rows
+from app.services.auto_connect import dedupe_linked_rows, enabled_tab_ids
 
 MISS_THRESHOLD = 3
 MEMORY_BOUND = 200
@@ -169,3 +171,48 @@ def restore_enabled(tab_id, memory):
 def removal_lines(removals):
     """One RULE 2 line per removed row, carrying its reason."""
     return [f"🗑 Removed row {r.url} — {r.reason}" for r in removals or []]
+
+
+def _connected_ids(pool):
+    """Ids of connected pool pages; empty when the pool is missing."""
+    try:
+        return {tid for tid, page in pool._pages.items() if page.is_connected}
+    except Exception:
+        return set()
+
+
+def _receiver_tuple(tab_id, connected_ids, enabled_ids):
+    """(flag, reason) for one tab: unassigned, unchecked, offline, else receiving."""
+    if not tab_id:
+        return False, "no tab assigned"
+    if tab_id not in enabled_ids:
+        return False, "not running"
+    if tab_id not in connected_ids:
+        return False, "offline"
+    return True, ""
+
+
+def _stamp_receiver(row, connected_ids, enabled_ids):
+    """Stamp one row's (receiver, receiver_reason); True when the tuple changed."""
+    want = _receiver_tuple(getattr(row, "tab_id", "") or "", connected_ids, enabled_ids)
+    if (row.receiver, row.receiver_reason) != want:
+        row.receiver, row.receiver_reason = want
+        return True
+    return False
+
+
+def mark_receivers(rows, pool, connected_ids=None):
+    """Stamp receiver flags + reasons on rows; return count of changed tuples.
+
+    Enabled comes from the rows (enabled_tab_ids); connected comes from the
+    pool unless the caller injects a set (tests, CDP-authoritative callers).
+    """
+    rows = rows or []
+    enabled_ids = enabled_tab_ids(rows)
+    if connected_ids is None:
+        connected_ids = _connected_ids(pool)
+    changed = 0
+    for row in rows:
+        if _stamp_receiver(row, connected_ids, enabled_ids):
+            changed += 1
+    return changed

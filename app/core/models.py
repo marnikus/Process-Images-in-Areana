@@ -23,6 +23,8 @@ class UrlRow:
     last_checked: Optional[str] = None
     error: Optional[str] = None
     tab_id: str = ""
+    receiver: bool = False  # S7: tab will accept work (stamped by mark_receivers)
+    receiver_reason: str = ""  # S7: why not ("" when receiving)
 
     @staticmethod
     def create(url: str, enabled: bool = True, tab_id: str = "") -> "UrlRow":

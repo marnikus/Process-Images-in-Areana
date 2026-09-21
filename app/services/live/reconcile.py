@@ -166,7 +166,8 @@ async def reconcile_once(bridge, deps, source="auto"):
     report.linked = _claim_rows(by_id, plan.claim)
     report.added = up.add_rows(bridge.state.urls, plan.add, _memory_of(bridge))
     report.removed = _drop_rows(bridge, removals)
-    if report.added or report.linked or report.removed:
+    marked = up.mark_receivers(bridge.state.urls, bridge._page_pool)  # S7: refresh ⊘ flags
+    if report.added or report.linked or report.removed or marked:
         deps.commit()
         live_bus(bridge).wake("urls")
     report.joined = await _join_sockets(deps, plan.connect)

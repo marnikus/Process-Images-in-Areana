@@ -86,8 +86,11 @@ async def test_an_empty_fetch_never_removes_rows(tmp_path):
     assert report.removed == 0
     assert len(bridge.state.urls) == 1  # the row survives its first miss
     assert bridge._reconcile_misses == {"t1": 1}
-    assert rec["commit"] == 0  # nothing changed, nothing committed
+    # S7: the only change is flag init ((False, "") -> (False, "offline")) — commits once
+    assert rec["commit"] == 1
     assert rec["log"] == []  # auto stays silent on no-change
+    await rc.reconcile_once(bridge, d, "auto")
+    assert rec["commit"] == 1  # S7: flags settled, silence resumes
 
     async def boom():
         raise RuntimeError("cdp down")

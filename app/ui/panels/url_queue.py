@@ -91,7 +91,9 @@ def commit_urls(bridge, undo: bool = True) -> None:
     until the next unrelated refresh; `_save_arena` emits `arena_state_updated`
     and `push_urls_undo` records the global undo entry (RULE 12).
     S6: system passes (undo=False) skip the snapshot — reproducible by re-scan.
+    S7: receiver flags are stamped before the save so disk + emit agree.
     """
+    url_policy.mark_receivers(bridge.state.urls, getattr(bridge, "_page_pool", None))
     bridge._save_arena()
     if undo:
         push_urls_undo(bridge)

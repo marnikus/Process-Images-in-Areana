@@ -28,6 +28,8 @@ def url_rows_from_js(value: list) -> list:
         last_checked=u.get("last_checked"),
         error=u.get("last_error") or u.get("error"),
         tab_id=u.get("tab_id") or "",  # B7: undo/redo used to unlink every tab
+        receiver=u.get("receiver", False),
+        receiver_reason=u.get("reason", ""),
     ) for i, u in enumerate(value)]
 
 
@@ -37,6 +39,7 @@ def arena_url_rows_from_js(urls: list) -> list:
         id=u.get("id"), url=u.get("url"), enabled=u.get("enabled", True),
         last_status=u.get("status", "unchecked"), error=u.get("last_error"),
         tab_id=u.get("tab_id") or "",
+        receiver=u.get("receiver", False), receiver_reason=u.get("reason", ""),
     ) for u in urls]
 
 

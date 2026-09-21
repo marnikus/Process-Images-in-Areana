@@ -990,3 +990,9 @@
 [data-theme="light"] .bc-badge-id { background: rgba(74,144,226,0.12); }
 [data-theme="light"] .bc-badge-cat { background: rgba(0,0,0,0.06); }
 
+/* S7: receiver-off icon in the URL status cell (title carries the reason) */
+.url-recv-off {
+  color: var(--warning, #fbbf24);
+  cursor: help;
+  margin-left: 2px;
+}

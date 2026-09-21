@@ -421,11 +421,12 @@ async def test_auto_scan_plan_apply_report(cfg):
                      log=lambda m, level="info": quiet.append(m))
     r2 = await reconcile_once(b2, deps2, "manual")
     assert (r2.added, r2.linked, r2.removed, r2.joined, r2.revived, r2.stale) == (0, 0, 0, 0, 0, 0)
-    assert commits == [1]
+    assert commits == [1, 1]  # S7: flag init ((False, "") -> (True, "")) commits once
     assert any("no changes" in m for m in quiet)
     quiet_before = len(quiet)
     await reconcile_once(b2, deps2, "auto")
     assert len(quiet) == quiet_before  # auto source stays silent on no-change
+    assert commits == [1, 1]  # S7: flags settled, the second pass commits nothing
     # prune with a reason: two banked misses + a third makes tab_gone
     gone_row = UrlRow.create("https://arena.ai/c/direct", tab_id="t1")
     b4 = make_bridge(cdp=None, config=cfg, urls=[gone_row])

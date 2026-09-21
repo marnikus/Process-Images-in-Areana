@@ -149,14 +149,18 @@ def test_stack_and_grid_projections(tmp_path):
 
 def test_url_rows_from_js_keep_tab_link():
     rows = entries.url_rows_from_js([
-        {"id": "u1", "url": "https://a", "tab_id": "T1", "status": "ok", "last_checked": "t"},
+        {"id": "u1", "url": "https://a", "tab_id": "T1", "status": "ok", "last_checked": "t",
+         "receiver": True, "reason": ""},
         {"url": "https://b"},                       # no id, no tab
         {"id": "u3", "url": "https://c", "tab_id": None},
     ])
     assert [(r.id, r.tab_id) for r in rows] == [("u1", "T1"), ("url_1", ""), ("u3", "")]
     assert rows[0].last_status == "ok" and rows[0].last_checked == "t"
-    arena_rows = entries.arena_url_rows_from_js([{"id": "u1", "url": "https://a", "tab_id": "T9"}])
+    assert (rows[0].receiver, rows[0].receiver_reason) == (True, "")  # S7: kept
+    arena_rows = entries.arena_url_rows_from_js([{"id": "u1", "url": "https://a", "tab_id": "T9",
+                                                  "receiver": False, "reason": "offline"}])
     assert (arena_rows[0].id, arena_rows[0].tab_id) == ("u1", "T9")
+    assert (arena_rows[0].receiver, arena_rows[0].receiver_reason) == (False, "offline")  # S7
 
 
 def test_remember_and_apply_urls_keep_tab_link(tmp_path):
