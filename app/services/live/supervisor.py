@@ -93,21 +93,51 @@ def _all_cooling(bridge, allowed: set) -> bool:
     return bool(pages) and all(_cooling(p) for p in pages)
 
 
+def _parallel_ready(bridge, allowed: set) -> bool:
+    """The feeder lane can run this pass: 2+ checked pooled workers, 1+ of them free.
+
+    The parallel lane claims a pooled page and drives it through **that page's
+    own** client (`pool.get_clients`), so it never needs the single primary CDP
+    connection. Gating the pass on `resolve_and_claim_tab` therefore parked a
+    run on `no tab` while a `steady (ready)` worker sat idle next to a pending
+    queue — the same condition `batch_orchestrator._try_parallel` reads to pick
+    its lane, so the gate now asks the question the pass will actually answer.
+    """
+    pool = getattr(bridge, "_page_pool", None)
+    if pool is None or not allowed:
+        return False
+    try:
+        total, free = ac.counts_in(pool, allowed)
+    except Exception:
+        return False
+    return total >= 2 and free >= 1
+
+
+def _queue_reason(bridge, plan: PassPlan) -> str:
+    """Blocking reason knowable before any tab is claimed ('' = go on and claim)."""
+    if not plan.images:
+        return "no images"
+    if _cdp_down(bridge):
+        return "cdp down"
+    return "all cooling" if _all_cooling(bridge, plan.allowed) else ""
+
+
+async def _claim_reason(bridge, plan: PassPlan) -> str:
+    """Claim the primary tab (writes `plan.tab_id`) and say what still blocks the pass.
+
+    A free checked worker is work the feeder can do, primary tab or not.
+    """
+    current = getattr(bridge.cdp, "_current_tab_id", "") or ""
+    plan.tab_id = await resolve_and_claim_tab(bridge, current, plan.allowed)
+    return "" if (plan.tab_id or _parallel_ready(bridge, plan.allowed)) else "no tab"
+
+
 async def plan_pass(bridge) -> PassPlan:
     """Fresh read every pass: queued images, enabled rows, allowed tabs, primary tab, blocking reason."""
     plan = PassPlan(images=queued_images(bridge),
                     urls=[u for u in bridge.state.urls if u.enabled])
     plan.allowed = ac.enabled_tab_ids(plan.urls)
-    if not plan.images:
-        plan.reason = "no images"
-    elif _cdp_down(bridge):
-        plan.reason = "cdp down"
-    elif _all_cooling(bridge, plan.allowed):
-        plan.reason = "all cooling"
-    else:
-        current = getattr(bridge.cdp, "_current_tab_id", "") or ""
-        plan.tab_id = await resolve_and_claim_tab(bridge, current, plan.allowed)
-        plan.reason = "" if plan.tab_id else "no tab"
+    plan.reason = _queue_reason(bridge, plan) or await _claim_reason(bridge, plan)
     return plan
 
 
