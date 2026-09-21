@@ -30,6 +30,30 @@ sweeping aside and swapping after the joins (same window, second writer), rejoin
 checkbox), truncating the **badge** instead of the table (I-55), and a pass watchdog (aborting between sweep and
 commit re-creates the bug).
 
+## Addendum 2026-09-21 — the pool never holds a worker no URL row owns (I-58)
+
+Second bugfix round of the day (`docs/archive/2026-09-21-pool-follows-url-rows/design.md`).
+
+| Gate | Command | Result |
+|---|---|---|
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q` | **1,838 passed · 4 skipped · 0 fail** (+10: `tests/test_pool_follows_rows.py`; the two `pool_exits` unit tests adapted to the new `PoolExit`) |
+| JS tests | `npm run test:js` | **287 pass · 4 skipped · 0 fail** (291 subtests, unchanged — no JS touched this round) |
+| Size/complexity | `radon cc -s` | `url_policy.pool_exits` CC 7, `_unchecked_exits` CC 6, `_orphan_exits` CC 4, `_exit_text` CC 5, `reconcile._enforce_membership` CC 8, `url_queue.enforce_pool_membership` CC 5 — all ≤10; every edited function ≤20 LOC (`url_policy.py` 293 lines, inside the 150–300 ideal) |
+| Coverage | `coverage run --branch --source=app -m pytest` then `coverage json` | **88.79 % line / 84.74 % branch**; `url_policy.py` 98.9 %, `reconcile.py` 97.7 %, `url_queue.py` 99.6 % |
+| Changed-file ratchet | `python tools/verify_quality.py --changed-files <url_policy, reconcile, url_queue, the new test> [--coverage-ratchet --coverage-file coverage.json]` | **✅ PASSED — 0 fails, 0 breaches** (coverage ratchet included); the `url_queue.py` per-symbol map is respected (new symbols only, none over the file's 14-LOC maximum) |
+| Repo-wide lane | `python tools/verify_quality.py --changed --allow-legacy` | only the documented environment facts remain — the `max_cog 0→N` stale-baseline noise and the two `ratchet-coverage` floors (`transport.py`, `qt_compat.py`), both reproduced unchanged on the stashed base tree in this sandbox; the one JS fail (`panels/captcha.js max_cc 12`) is pre-existing and identical at base |
+
+Reproduction kept for the record: `/tmp/diag/orphan.py` (1 row, 3 pool pages → the pass reported
+`2 stale` and removed nothing) and `/tmp/diag/pool_vs_rows.py` (the reported 4-worker/2-row state → after
+one pass `total=2`, two `🚪 Worker … left the pool — no URL row owns it` lines). `pick_primary_ws`
+picking an ownerless page was verified directly (`/tmp/diag/primary.py`).
+
+Dishonest reductions rejected (RULE 16.6): pruning only in the pass (up to a full interval of fake
+workers after a ✕), pruning everything the fetch did not list (a Chrome restart would evict the pool),
+auto-creating a row per pooled page (resurrects rows the removal table just deleted), deleting inside
+`sync_pool_presence` (it is the pure presence flagger), and hiding the extras by counting only steady
+pages in the snapshot (the zombie clients/sockets/reconnects would stay).
+
 ## What changed
 
 * `app/services/live/url_policy.py` +24 (`pool_exits`, `_pooled_unchecked` — the ONE checkbox→pool decision),

@@ -326,19 +326,19 @@ def _sweep_rows(p: _Pass, spec: up.RemovalSpec) -> None:
 
 
 def _enforce_membership(p: _Pass) -> None:
-    """The checkbox owns pool membership (D-3/D-4): unchecked rows' tabs leave the pool; busy rows defer."""
+    """The URL list owns pool membership (I-56/I-58): exits leave now, busy ones defer."""
     pool = getattr(p.bridge, "_page_pool", None)
     if pool is None or p.deps.leave_tab is None:
         return
     leaves, deferred = up.pool_exits(p.urls, pool)
-    for row in leaves:
-        if p.deps.leave_tab(row.tab_id):
-            p.deps.log(f"🚪 URL unchecked {row.url} — tab left the worker pool", "info")
+    for exit in leaves:
+        if p.deps.leave_tab(exit.tab_id):
+            p.deps.log(up.exit_line(exit), "info")
     logged = p.stats.setdefault("exit_deferred_logged", set())
-    for row in deferred:
-        if row.id not in logged:
-            p.deps.log(f"⏸ Pool exit deferred {row.url} — job running on its tab (next reconcile)", "info")
-    p.stats["exit_deferred_logged"] = {row.id for row in deferred}  # once per deferral streak
+    for exit in deferred:
+        if exit.tab_id not in logged:
+            p.deps.log(up.defer_line(exit), "info")
+    p.stats["exit_deferred_logged"] = {e.tab_id for e in deferred}  # once per deferral streak
 
 
 async def _pool_phase(p: _Pass, plan: ac.AutoConnectPlan) -> None:

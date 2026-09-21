@@ -218,27 +218,76 @@ def mark_receivers(rows: Iterable[Any], pool: Any) -> int:
 
 # ── Checkbox owns pool membership (D-3, 2026-09-21): one decision, two enforcers ──
 
-def _pooled_unchecked(rows: Iterable[Any], pooled: Set[str]) -> List[Any]:
-    """Pool-exit candidates: rows whose linked tab is pooled and whose checkbox is off."""
-    return [r for r in rows or []
+@dataclass(frozen=True)
+class PoolExit:
+    """A pooled tab that must leave the pool — the membership rule's output (I-56/I-58).
+
+    `reason` is `unchecked` (the row exists, its checkbox is off) or `orphan`
+    (no row owns the tab at all — a row the removal table/✕/undo dropped).
+    `row` is the owning row for `unchecked` and None for `orphan`.
+    """
+
+    tab_id: str
+    reason: str
+    row: Any = None
+
+
+_EXIT_LINES = {
+    "unchecked": "🚪 URL unchecked {url} — tab left the worker pool",
+    "orphan": "🚪 Worker {tab} left the pool — no URL row owns it",
+}
+_DEFER_LINES = {
+    "unchecked": "⏸ Pool exit deferred {url} — job running on its tab (next reconcile)",
+    "orphan": "⏸ Pool exit deferred {tab} — job running on its tab (next reconcile)",
+}
+
+
+def _exit_text(table: dict, exit: PoolExit) -> str:
+    """One wording for both enforcers (the service and the UI log the same sentence)."""
+    try:
+        return table.get(exit.reason, "🚪 Worker {tab} left the pool").format(
+            url=getattr(exit.row, "url", "") or "", tab=(exit.tab_id or "")[:12])
+    except Exception:
+        return f"🚪 Worker {(exit.tab_id or '')[:12]} left the pool"
+
+
+def exit_line(exit: PoolExit) -> str:
+    """The log line for a tab leaving the pool (reason-specific)."""
+    return _exit_text(_EXIT_LINES, exit)
+
+
+def defer_line(exit: PoolExit) -> str:
+    """The log line for a busy tab whose exit is postponed (RULE 15)."""
+    return _exit_text(_DEFER_LINES, exit)
+
+
+def _unchecked_exits(rows: Iterable[Any], pooled: Set[str]) -> List[PoolExit]:
+    """Checked-off rows whose linked tab is pooled (I-56, the checkbox half)."""
+    return [PoolExit(r.tab_id, "unchecked", r) for r in rows or []
             if getattr(r, "tab_id", "") and r.tab_id in pooled and not getattr(r, "enabled", True)]
 
 
-def pool_exits(rows: Iterable[Any], pool: Any) -> tuple[List[Any], List[Any]]:
-    """Pooled tabs owned by an UNCHECKED row: (leave now, deferred while a job runs).
+def _orphan_exits(rows: Iterable[Any], pooled: Set[str]) -> List[PoolExit]:
+    """Pooled tabs NO row owns (I-58, the ownership half): the pool never exceeds the rows."""
+    owned = {getattr(r, "tab_id", "") for r in rows or []} - {""}
+    return [PoolExit(tid, "orphan") for tid in sorted(pooled - owned)]
 
-    The one checkbox→pool gate (S11): checked row = worker in Live Debug,
-    unchecked = out of the active pool. The busy deferral is the same gate
-    the removal table uses (RULE 15 — nothing leaves mid-job). Tabs with no
-    row are not the checkbox's business (manual pool joins keep working);
-    no pool → nothing to enforce.
+
+def pool_exits(rows: Iterable[Any], pool: Any) -> tuple[List[PoolExit], List[PoolExit]]:
+    """Pooled tabs no CHECKED row owns: (leave now, deferred while a job runs).
+
+    The one membership rule (S11 + I-58): the URL list authorises every worker,
+    so a pooled tab is out when its row's checkbox is off (I-56) or when no row
+    owns it at all (I-58 — a row the removal table, the ✕ button or an undo
+    dropped). The busy deferral is the same gate the removal table uses
+    (RULE 15 — nothing leaves mid-job); no pool → nothing to enforce.
     """
     try:
         pooled = set(pool._pages.keys())
     except AttributeError:
         return [], []
-    candidates = _pooled_unchecked(rows, pooled)
-    busy = busy_tabs(pool, [r.tab_id for r in candidates])
-    now = [r for r in candidates if r.tab_id not in busy]
-    later = [r for r in candidates if r.tab_id in busy]
+    candidates = _unchecked_exits(rows, pooled) + _orphan_exits(rows, pooled)
+    busy = busy_tabs(pool, [e.tab_id for e in candidates])
+    now = [e for e in candidates if e.tab_id not in busy]
+    later = [e for e in candidates if e.tab_id in busy]
     return now, later

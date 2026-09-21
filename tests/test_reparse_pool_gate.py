@@ -3,7 +3,7 @@
 Manual Reparse clears every row whose tab has no live job, remembers each
 checkbox, then the same pass rebuilds the list from the fetched tabs
 (fetch-first: a failed fetch never removes, I-50). `url_policy.pool_exits`
-is the ONE checkbox→pool decision: an unchecked row's tab leaves the pool
+is the ONE membership decision (checkbox off OR no row at all): such a tab leaves the pool
 (instantly on toggle through `leave_pool`, every pass through the
 reconciler's `LiveDeps.leave_tab`), a busy tab defers, and
 `plan_auto_connect` never auto-rejoins a tab whose row is unchecked.
@@ -156,7 +156,8 @@ def test_pool_exits_kicks_unchecked_pooled_rows_only():
     keep = UrlRow.create("https://arena.ai/2", enabled=True, tab_id="t2")
     unlinked = UrlRow.create("https://arena.ai/3", enabled=False, tab_id="")
     leaves, deferred = up.pool_exits([out, keep, unlinked], pool)
-    assert [r.id for r in leaves] == [out.id] and deferred == []
+    assert [(e.tab_id, e.reason) for e in leaves] == [("t1", "unchecked")] and deferred == []
+    assert leaves[0].row is out  # the exit names the row that owns the tab
 
 
 def test_pool_exits_defers_a_row_under_a_live_job():
@@ -164,7 +165,7 @@ def test_pool_exits_defers_a_row_under_a_live_job():
     set_tab_image(pool, "t1", "a.png")
     busy = UrlRow.create("https://arena.ai/1", enabled=False, tab_id="t1")
     leaves, deferred = up.pool_exits([busy], pool)
-    assert leaves == [] and [r.id for r in deferred] == [busy.id]
+    assert leaves == [] and [(e.tab_id, e.reason) for e in deferred] == [("t1", "unchecked")]
 
 
 def test_pool_exits_without_a_pool_is_empty():

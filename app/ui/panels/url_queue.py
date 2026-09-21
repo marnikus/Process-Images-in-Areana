@@ -11,7 +11,8 @@ import json
 from datetime import datetime
 
 from app.core.models import UrlRow
-from app.services.live.url_policy import add_rows, dedupe_rows, mark_receivers, pool_exits
+from app.services.live.url_policy import (add_rows, dedupe_rows, defer_line, exit_line,
+                                           mark_receivers, pool_exits)
 from app.services.auto_connect import claim_unlinked_from_pool, enabled_tab_ids
 from app.services.run_state import schedule_coro
 from app.ui.panels.page_pool import leave_pool, rejoin_checked_rows
@@ -103,7 +104,7 @@ def commit_urls(bridge) -> None:
     of an unchecked row leaves the pool again without waiting for a pass.
     """
     mark_receivers(bridge.state.urls, getattr(bridge, "_page_pool", None))
-    exit_pool_for_unchecked(bridge)
+    enforce_pool_membership(bridge)
     enter_pool_for_checked(bridge)
     bridge._save_arena()
     push_urls_undo(bridge)
@@ -124,8 +125,8 @@ def _rejoin_targets(bridge, pool) -> list:
 def enter_pool_for_checked(bridge) -> list:
     """I-56 join half: a re-checked row's tab rejoins NOW, not on the next pass.
 
-    The exit half (`exit_pool_for_unchecked`) acts on the same commit, so a
-    re-check — or an undo/preset back to checked — is instant either way.
+    The exit half (`enforce_pool_membership`) runs in the same commit, so a
+    re-check is instant; the pass stays the fallback for restore paths.
     """
     pool = getattr(bridge, "_page_pool", None)
     if pool is None:
@@ -137,14 +138,14 @@ def enter_pool_for_checked(bridge) -> list:
     return targets
 
 
-def exit_pool_for_unchecked(bridge) -> None:
-    """The checkbox owns pool membership (D-4): an unchecked row's tab leaves the pool now (busy defers)."""
+def enforce_pool_membership(bridge) -> None:
+    """The URL list owns pool membership (I-56/I-58): a hand-edited row's worker leaves now."""
     leaves, deferred = pool_exits(bridge.state.urls, getattr(bridge, "_page_pool", None))
-    for row in leaves:
-        if leave_pool(bridge, row.tab_id):
-            bridge._log(f"🚪 URL unchecked {row.url} — tab left the worker pool", "info")
-    for row in deferred:
-        bridge._log(f"⏸ Pool exit deferred {row.url} — job running on its tab (it leaves when the job ends)", "info")
+    for exit in leaves:
+        if leave_pool(bridge, exit.tab_id):
+            bridge._log(exit_line(exit), "info")
+    for exit in deferred:
+        bridge._log(defer_line(exit), "info")
     if leaves:
         bridge._emit_pool_status()
 
