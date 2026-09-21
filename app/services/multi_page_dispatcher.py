@@ -17,6 +17,7 @@ from app.utils.correlation import build_final_prompt, generate_correlation_id
 
 from . import auto_connect as ac
 from .job_events import job_finished_payload
+from .job_history import note_job_started, record_dispatch_result
 from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status, maybe_note_rate_limit
 from .live.bus import live_bus
 from .live.feed import queued_images
@@ -191,6 +192,7 @@ async def prepare_image_for_job(bridge, img, urls, tab_id: str):
     corr = generate_correlation_id()
     tmpl = bridge.state.prompt.get("user_prompt", "")
     final = build_final_prompt(corr, tmpl)
+    note_job_started(bridge, corr)
     return url_row, corr, corr, final
 
 
@@ -223,6 +225,7 @@ def _handle_result(ctx: ResultCtx):
             ctx.img.status = ImageStatus.COMPLETED.value
         _emit_finished(ctx.bridge, FinishInfo(job_id=ctx.job_id, img=ctx.img, status="completed", message=f"Saved {ctx.img.output_path}"))
         _log_result(ctx.bridge, LogInfo(corr_id=ctx.corr_id, tab_id=ctx.tab_id, img=ctx.img, ok=True, err=""))
+    record_dispatch_result(ctx)  # the history row for this job_finished (cancelled return above)
     _recalc_save(ctx.bridge)
 
 

@@ -19,6 +19,7 @@ from app.core.enums import ImageStatus
 from app.core.run_scope import claim_denied
 from app.services import auto_connect as ac
 from app.services.job_events import job_finished_payload
+from app.services.job_history import note_job_started, record_batch_result
 from app.services.cooldown_service import (
     FinishCtx,
     clear_tab_abort,
@@ -212,6 +213,7 @@ def build_job_ids(ctx: BatchCtx, img: Any, url_row) -> tuple:
         ctx.bridge.job_started.emit(corr_id, img.absolute_path)
     except Exception:
         pass
+    note_job_started(ctx.bridge, corr_id)
     return corr_id, corr_id, final_prompt
 
 
@@ -314,6 +316,7 @@ def finish_image(ctx: BatchCtx, res: ImageResult) -> str:
     else:
         _complete_job(ctx, res)
     _settle_image(ctx, res)
+    record_batch_result(ctx, res)  # the history row for this job_finished (cancelled return above)
     return "next"
 
 

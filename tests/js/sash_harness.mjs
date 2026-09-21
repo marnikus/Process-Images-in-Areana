@@ -16,7 +16,7 @@ const read = (f) => fs.readFileSync(path.join(WEB, 'js', f), 'utf-8');
 export const ALL_WINDOW_IDS = [
   'url_list', 'folder', 'queue', 'prompt', 'run', 'progress', 'watcher', 'log',
   'settings', 'captcha', 'browser', 'action_blocks', 'block_config', 'arena_presets', 'recordings',
-  'live_debug',
+  'live_debug', 'job_history',
 ];
 
 // Panel element ids that predate the camelCase rule stay explicit — the DOM id
@@ -48,7 +48,7 @@ export const TITLE_SECONDARIES = {
   live_debug: { pre: [], post: ['poolStatusBadge'] },
 };
 const BADGE_LIKE = new Set(['urlCount', 'queueCount', 'watcherStatusBadge',
-  'actionBlocksCount', 'arenaPresetsCount', 'captchaRecordsSummary', 'poolStatusBadge']);
+  'actionBlocksCount', 'arenaPresetsCount', 'captchaRecordsSummary', 'poolStatusBadge', 'historyCount']);
 
 function makePanel(id) {
   const p = new El('div');

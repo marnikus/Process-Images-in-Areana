@@ -24,6 +24,7 @@ from app.browser.visual_click import ClickRequest, find_and_click
 from app.services.await_processing import handle_await_processing
 from app.core.pause_clock import PauseClock
 from app.services.captcha.policy import captcha_in_scope, pause_cap_seconds
+from app.services.job_history import note_captcha_count
 from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
@@ -936,12 +937,13 @@ def _captcha_job_line(ctx: JobCtx, entry: Dict[str, Any], failed: bool, error: s
 
 
 def _emit_captcha_job_lines(ctx: JobCtx, failed: bool, error: str) -> None:
-    """Drain the encounter stash (each eid reported exactly once)."""
+    """Drain the encounter stash (each eid reported exactly once) + note the count for history."""
     try:
         lst = getattr(ctx.ctrl, "_captcha_reports", None)
-        if not isinstance(lst, list) or not lst:
-            return
+        if not isinstance(lst, list):
+            lst = []
         ctx.ctrl._captcha_reports = []
+        note_captcha_count(ctx.bridge, getattr(ctx, "job_id", ""), len(lst))
     except Exception:
         return
     for entry in lst:
