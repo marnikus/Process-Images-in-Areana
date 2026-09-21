@@ -11,8 +11,9 @@ import json
 from datetime import datetime
 
 from app.core.models import UrlRow
-from app.services.live.url_policy import add_rows, dedupe_rows, mark_receivers
+from app.services.live.url_policy import add_rows, dedupe_rows, mark_receivers, pool_exits
 from app.services.auto_connect import claim_unlinked_from_pool, enabled_tab_ids
+from app.ui.panels.page_pool import leave_pool
 from app.ui.qt_compat import Slot
 from app.ui.services import arena_serialize, undo_entries
 
@@ -96,9 +97,12 @@ def commit_urls(bridge) -> None:
 
     Bug 2026-10-02: slots that saved without emitting left the table stale
     until the next unrelated refresh; `_save_arena` emits `arena_state_updated`
-    and `push_urls_undo` records the global undo entry (RULE 12).
+    and `push_urls_undo` records the global undo entry (RULE 12). Every
+    commit also re-asserts the checkbox→pool gate (D-4), so an undo restore
+    of an unchecked row leaves the pool again without waiting for a pass.
     """
     mark_receivers(bridge.state.urls, getattr(bridge, "_page_pool", None))
+    exit_pool_for_unchecked(bridge)
     bridge._save_arena()
     push_urls_undo(bridge)
 
@@ -107,6 +111,18 @@ def commit_urls_system(bridge) -> None:
     """`commit_urls` for SYSTEM changes (the reconciler): persist + emit, no undo entry (I-37)."""
     mark_receivers(bridge.state.urls, getattr(bridge, "_page_pool", None))
     bridge._save_arena()
+
+
+def exit_pool_for_unchecked(bridge) -> None:
+    """The checkbox owns pool membership (D-4): an unchecked row's tab leaves the pool now (busy defers)."""
+    leaves, deferred = pool_exits(bridge.state.urls, getattr(bridge, "_page_pool", None))
+    for row in leaves:
+        if leave_pool(bridge, row.tab_id):
+            bridge._log(f"🚪 URL unchecked {row.url} — tab left the worker pool", "info")
+    for row in deferred:
+        bridge._log(f"⏸ Pool exit deferred {row.url} — job running on its tab (it leaves when the job ends)", "info")
+    if leaves:
+        bridge._emit_pool_status()
 
 
 def _find_url(urls, url_id: str):

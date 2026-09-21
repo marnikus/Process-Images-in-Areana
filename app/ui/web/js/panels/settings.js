@@ -106,20 +106,20 @@ const SettingsPanel = {
   _buildSettingsPayload() {
     const getVal = (id) => document.getElementById(id)?.value;
     const genTo = parseInt(getVal('setGenerationTimeout'))||120;
-    return {
-      payload: {
-        timeout_seconds: parseInt(getVal('setTimeout'))||120,
-        generation_timeout: genTo,
-        max_retries: parseInt(getVal('setRetries'))||3,
-        naming_suffix: getVal('setNaming')||'_AI',
-        supported_types: (getVal('setFileTypes')||'.png,.jpg').split(',').map(x=>x.trim()).filter(Boolean),
-        overwrite: getVal('setOverwrite')==='true',
-        highlight_duration: parseInt(getVal('setHighlightDur'))||3,
-        max_concurrent: parseInt(getVal('setMaxConcurrent'))||1,
-        watcher_generation_timeout_sec: genTo,
-      },
-      genTo,
+    const payload = {
+      timeout_seconds: parseInt(getVal('setTimeout'))||120,
+      generation_timeout: genTo,
+      max_retries: parseInt(getVal('setRetries'))||3,
+      naming_suffix: getVal('setNaming')||'_AI',
+      supported_types: (getVal('setFileTypes')||'.png,.jpg').split(',').map(x=>x.trim()).filter(Boolean),
+      overwrite: getVal('setOverwrite')==='true',
+      highlight_duration: parseInt(getVal('setHighlightDur'))||3,
+      max_concurrent: parseInt(getVal('setMaxConcurrent'))||1,
+      watcher_generation_timeout_sec: genTo,
     };
+    const interval = parseInt(getVal('setUrlIntervalMs'), 10);
+    if (Number.isFinite(interval)) payload.url_reconcile_interval_ms = interval;  // empty field sends nothing (D-1)
+    return { payload, genTo };
   },
 
   _onSaveSettings(res, genTo) {

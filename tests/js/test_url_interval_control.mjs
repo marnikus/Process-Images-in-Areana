@@ -21,8 +21,9 @@ const JS = path.join(WEB, 'js');
 const read = (rel) => fs.readFileSync(path.join(JS, rel), 'utf-8');
 const lineCount = (rel) => read(rel).split('\n').filter((_l, i, a) => i < a.length - 1 || _l !== '').length;  // wc -l
 
-function harness({ withBridge = true } = {}) {
+function harness({ withBridge = true, settings = false } = {}) {
   const byId = { urlIntervalMs: new El('input'), urlIntervalSaveBtn: new El('button') };
+  if (settings) byId.setUrlIntervalMs = new El('input');
   const saved = [];
   const listeners = [];
   const bridge = {
@@ -38,6 +39,25 @@ function harness({ withBridge = true } = {}) {
   vm.runInContext(read('core/boot.js'), sandbox, { filename: 'boot.js' });
   vm.runInContext(read('panels/url-list/interval.js'), sandbox, { filename: 'interval.js' });
   return { U: sandbox.window.UrlInterval, byId, saved, listeners, bridge };
+}
+
+/** settings.js loaded the way the page loads it (Boot first, then the panel const). */
+function settingsHarness(byIdSpec = {}) {
+  const byId = {};
+  for (const [id, v] of Object.entries({ setTimeout: '120', setGenerationTimeout: '120', setRetries: '3',
+    setNaming: '_AI', setFileTypes: '.png', setOverwrite: 'false', setHighlightDur: '3', setMaxConcurrent: '1',
+    ...byIdSpec })) byId[id] = Object.assign(new El('input'), { value: v });
+  const sandbox = { console, JSON, Set, WeakMap, Map, Math, Object, Array, String, Number, parseInt, isNaN,
+    navigator: {}, localStorage: { getItem() { return null; }, setItem() {} },
+    document: { getElementById: (id) => byId[id] || null, readyState: 'complete', addEventListener() {},
+      documentElement: { getAttribute() { return 'dark'; }, setAttribute() {} } },
+    LogConsole: { log() {} } };
+  sandbox.window = sandbox;
+  sandbox.App = { bridge: null };
+  vm.createContext(sandbox);
+  vm.runInContext(read('core/boot.js'), sandbox, { filename: 'boot.js' });
+  vm.runInContext(read('panels/settings.js'), sandbox, { filename: 'settings.js' });
+  return sandbox;
 }
 
 describe('UrlInterval (url-list/interval.js)', () => {
@@ -67,6 +87,30 @@ describe('UrlInterval (url-list/interval.js)', () => {
     byId.urlIntervalMs.dispatch('blur', {});
     listeners[0](JSON.stringify({ live: { url_interval_ms: 5000 } }));
     assert.equal(byId.urlIntervalMs.value, '5000');
+  });
+
+  test('the Settings panel mirrors the same one key (D-1) and is guarded while focused', () => {
+    const { U, byId, listeners } = harness({ settings: true });
+    U.init();
+    listeners[0](JSON.stringify({ live: { url_interval_ms: 1200 } }));
+    assert.equal(byId.setUrlIntervalMs.value, '1200', 'both views follow one pushed payload');
+    byId.setUrlIntervalMs.value = '999';
+    byId.setUrlIntervalMs.dispatch('focus', {});
+    listeners[0](JSON.stringify({ live: { url_interval_ms: 5000 } }));
+    assert.equal(byId.setUrlIntervalMs.value, '999', 'typing in Settings wins over the push');
+    byId.setUrlIntervalMs.dispatch('blur', {});
+    listeners[0](JSON.stringify({ live: { url_interval_ms: 5000 } }));
+    assert.equal(byId.setUrlIntervalMs.value, '5000');
+  });
+
+  test('SettingsPanel carries the interval in save_settings only when its input parses (D-1)', async () => {
+    const sandbox = settingsHarness({ setUrlIntervalMs: '700' });
+    const { payload } = sandbox.window.SettingsPanel._buildSettingsPayload();
+    assert.equal(payload.url_reconcile_interval_ms, 700);
+    const empty = settingsHarness({ setUrlIntervalMs: '' }).window.SettingsPanel._buildSettingsPayload().payload;
+    assert.equal('url_reconcile_interval_ms' in empty, false, 'an empty field sends nothing — no silent 5000 reset');
+    const gone = settingsHarness({}).window.SettingsPanel._buildSettingsPayload().payload;
+    assert.equal('url_reconcile_interval_ms' in gone, false, 'a missing field sends nothing');
   });
 
   test('Save clamps and calls save_settings with only the interval key', () => {

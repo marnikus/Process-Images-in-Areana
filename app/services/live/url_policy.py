@@ -214,3 +214,31 @@ def mark_receivers(rows: Iterable[Any], pool: Any) -> int:
             row.receiver = value
             changed += 1
     return changed
+
+
+# ── Checkbox owns pool membership (D-3, 2026-09-21): one decision, two enforcers ──
+
+def _pooled_unchecked(rows: Iterable[Any], pooled: Set[str]) -> List[Any]:
+    """Pool-exit candidates: rows whose linked tab is pooled and whose checkbox is off."""
+    return [r for r in rows or []
+            if getattr(r, "tab_id", "") and r.tab_id in pooled and not getattr(r, "enabled", True)]
+
+
+def pool_exits(rows: Iterable[Any], pool: Any) -> tuple[List[Any], List[Any]]:
+    """Pooled tabs owned by an UNCHECKED row: (leave now, deferred while a job runs).
+
+    The one checkbox→pool gate (S11): checked row = worker in Live Debug,
+    unchecked = out of the active pool. The busy deferral is the same gate
+    the removal table uses (RULE 15 — nothing leaves mid-job). Tabs with no
+    row are not the checkbox's business (manual pool joins keep working);
+    no pool → nothing to enforce.
+    """
+    try:
+        pooled = set(pool._pages.keys())
+    except AttributeError:
+        return [], []
+    candidates = _pooled_unchecked(rows, pooled)
+    busy = busy_tabs(pool, [r.tab_id for r in candidates])
+    now = [r for r in candidates if r.tab_id not in busy]
+    later = [r for r in candidates if r.tab_id in busy]
+    return now, later

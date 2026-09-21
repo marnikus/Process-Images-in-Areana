@@ -118,7 +118,9 @@ def test_the_flag_survives_undo_and_redo(tmp_path):
     env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1, tab_ids=["t1"])
     env.bridge._page_pool = pool_with("t1")
     row_id = env.bridge.state.urls[0].id
-    env.bridge.toggle_url(row_id)  # checked → unchecked (commit #1)
+    env.bridge.toggle_url(row_id)  # checked → unchecked (commit #1; the tab also leaves the pool, D-4)
+    env.bridge._page_pool.add_page(  # a re-checked row's tab rejoins via the reconciler's next pass
+        PageInfo(tab_id="t1", ws_url="ws://x/t1", title="T", url="https://arena.ai/chat0"))
     env.bridge.toggle_url(row_id)  # back to checked (commit #2)
     assert env.bridge.state.urls[0].receiver is True
     env.bridge.undo()
@@ -134,6 +136,9 @@ def test_commit_urls_recomputes_the_flag(tmp_path):
     assert row.receiver is False  # nothing has committed yet
     env.bridge.toggle_url(row.id)
     assert row.enabled is False and row.receiver is False
+    assert env.bridge._page_pool.get_page("t1") is None  # the checkbox is the pool gate (D-4)
+    env.bridge._page_pool.add_page(  # the reconciler re-joins a checked row's tab on its next pass
+        PageInfo(tab_id="t1", ws_url="ws://x/t1", title="T", url="https://arena.ai/chat0"))
     env.bridge.toggle_url(row.id)
     assert row.enabled is True and row.receiver is True  # the icon follows the checkbox instantly
     pushed = json.loads(env.recs["arena_state_updated"].calls[-1][0])["urls"][0]

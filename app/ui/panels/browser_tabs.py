@@ -19,7 +19,7 @@ from functools import partial
 from app.services.auto_connect import pick_primary_ws
 from app.services.live.reconcile import LiveDeps, reconcile_once, start_reconciler
 from app.services.run_state import pooled_ids, resolve_tab_info, restore_page_state, schedule_coro
-from app.ui.panels.page_pool import do_connect_page_pool
+from app.ui.panels.page_pool import do_connect_page_pool, leave_pool
 from app.ui.panels.url_queue import commit_urls_system
 from app.ui.qt_compat import Slot
 from app.utils.win_popup import raise_window_titles
@@ -292,14 +292,19 @@ async def do_diagnose_chrome(bridge) -> None:
 
 
 def live_deps(bridge) -> LiveDeps:
-    """The reconciler's four callables, wired in ui land (the service never imports ui/browser)."""
+    """The reconciler's callables, wired in ui land (the service never imports ui/browser)."""
     async def fetch_tabs():
         return await bridge.cdp.fetch_tabs()
 
     async def join_tab(ws: str):
         await do_connect_page_pool(bridge, ws)
 
-    return LiveDeps(fetch_tabs=fetch_tabs, join_tab=join_tab,
+    def leave_tab(tab_id: str) -> bool:
+        left = leave_pool(bridge, tab_id)  # badge cleared, page removed (the one leave mechanic)
+        bridge._emit_pool_status()
+        return left
+
+    return LiveDeps(fetch_tabs=fetch_tabs, join_tab=join_tab, leave_tab=leave_tab,
                     commit=partial(commit_urls_system, bridge), log=bridge._log)
 
 

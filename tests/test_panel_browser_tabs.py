@@ -72,7 +72,7 @@ def make_bridge(cdp, config, urls=(), pool=None, **extra):
     logs = []
     host = SimpleNamespace(
         cdp=cdp, config=config,
-        state=SimpleNamespace(urls=list(urls), recalculate_progress=lambda: None),
+        state=SimpleNamespace(urls=list(urls), images=[], recalculate_progress=lambda: None),
         _page_pool=pool if pool is not None else PagePool(),
         _log=lambda msg, level="info": logs.append((level, msg)),
         logs=logs,
@@ -420,9 +420,12 @@ async def test_auto_scan_pass_end_to_end(cdp_server, cfg):
     assert any(u.url == "https://arena.ai/c/direct" for u in bridge.state.urls)
     assert pool.get_page("t1") is not None and pool.get_page("t2") is None
     assert any("Reconcile:" in msg for _, msg in bridge.logs)
-    # second scan: no changes, pool presence kept
+    # second manual scan (D-2, 2026-09-21): Reparse sweeps first — the row is rebuilt with a fresh id
+    first_id = bridge.state.urls[0].id
     await bt_mod.auto_scan_pass(bridge, "manual")
-    assert any("no changes" in msg for _, msg in bridge.logs)
+    assert any("🧹 Reparse: cleared 1 URL row(s)" in msg for _, msg in bridge.logs)
+    assert len(bridge.state.urls) == 1 and bridge.state.urls[0].id != first_id
+    assert pool.get_page("t1") is not None and pool.get_page("t2") is None  # pool presence kept
     # busy guard + exception path (the pass owns the `_auto_scan_running` flag)
     bridge._auto_scan_running = True
     await bt_mod.auto_scan_pass(bridge, "auto")  # no-op

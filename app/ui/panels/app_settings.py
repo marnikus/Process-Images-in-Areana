@@ -96,7 +96,7 @@ def apply_url_interval(bridge, data: dict) -> None:
     ms = debug_view.clamp_interval_ms(data[debug_view.INTERVAL_KEY])
     bridge.config.set_state(**{debug_view.INTERVAL_KEY: ms})
     live_bus(bridge).wake("interval")
-    bridge._log(f"🔁 URL reconcile interval set to {ms} ms (URL window setting)", "info")
+    bridge._log(f"🔁 URL reconcile interval set to {ms} ms (Settings)", "info")
 
 
 def apply_watcher_timeouts(bridge, data: dict) -> None:
