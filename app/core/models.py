@@ -23,6 +23,8 @@ class UrlRow:
     last_checked: Optional[str] = None
     error: Optional[str] = None
     tab_id: str = ""
+    receiver: bool = False         # S7: may take a run job NOW? (url_policy.mark_receivers writes)
+    receiver_reason: str = ""      # S7: "" when receiver, else unchecked/not linked/offline/busy
 
     @staticmethod
     def create(url: str, enabled: bool = True, tab_id: str = "") -> "UrlRow":

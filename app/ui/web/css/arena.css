@@ -990,3 +990,5 @@
 [data-theme="light"] .bc-badge-id { background: rgba(74,144,226,0.12); }
 [data-theme="light"] .bc-badge-cat { background: rgba(0,0,0,0.06); }
 
+
+.url-not-receiver { margin-left: 4px; font-size: 11px; color: var(--text-muted); cursor: help; }

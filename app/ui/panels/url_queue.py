@@ -114,6 +114,9 @@ def commit_urls(bridge) -> None:
     until the next unrelated refresh; `_save_arena` emits `arena_state_updated`
     and `push_urls_undo` records the global undo entry (RULE 12).
     """
+    state = bridge.state
+    url_policy.mark_receivers(state.urls, url_policy.allowed_tab_ids(state.urls),
+                              getattr(bridge, "_page_pool", None))
     bridge._save_arena()
     push_urls_undo(bridge)
 
