@@ -26,6 +26,7 @@ from app.services.cooldown_service import (
 )
 from app.services.live.bus import live_bus
 from app.services.live.tab_owner import resolve_owners
+from app.services.tab_release import start_tab_release
 from app.services.live.worker_badges import assert_badges, clear_badge
 from app.services.run_state import (
     cooldowns_path,
@@ -85,6 +86,31 @@ async def finish_pool_join(bridge, info, client, ctrl) -> None:
     bridge._log(f"✅ Pool added {label} steady — {info.title[:40]} — total {total} free {free}", "success")
     if total >= 2:
         bridge._log(f"✅ {total} tabs in pool ready for parallel — 2+ images will dispatch to different webpages", "success")
+
+
+def _do_stop_and_release(bridge, tab_id: str) -> str:
+    """Flag the job, release the tab, report what happened."""
+    flagged = request_tab_abort(bridge._page_pool, tab_id)
+    bridge._log(f"⛔ Stop requested for job on {tab_label_of(bridge._page_pool, tab_id)}", "warn")
+    started = start_tab_release(bridge, tab_id, "stopped by user")
+    bridge._emit_pool_status()
+    if flagged or started:
+        return json.dumps({"ok": True, "released": started})
+    return json.dumps({"ok": False, "error": "no live job on this tab"})
+
+
+def stop_and_release(bridge, tab_id: str) -> str:
+    """Stop this tab's job and hand the tab back usable (the Stop button).
+
+    The abort flag alone was a no-op whenever the job sat in a long await
+    (generation/captcha wait): nothing polled it, so the page kept its image
+    and never cooled. The release is what the operator actually sees — new
+    chat, no overlay, no image on the row, cooldown + penalty.
+    """
+    try:
+        return _do_stop_and_release(bridge, tab_id)
+    except Exception as e:
+        return json.dumps({"ok": False, "error": str(e)})
 
 
 def leave_pool(bridge, tab_id: str) -> bool:
@@ -274,15 +300,8 @@ class PagePoolMixin:
 
     @Slot(str, result=str)
     def stop_tab_job(self, tab_id: str):
-        """Abort the live job on this tab; it fails as Aborted."""
-        try:
-            if request_tab_abort(self._page_pool, tab_id):
-                self._log(f"⛔ Stop requested for job on {(tab_id or '')[:12]}", "warn")
-                self._emit_pool_status()
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "no live job on this tab"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
+        """Abort the live job on this tab, then release the tab itself."""
+        return stop_and_release(self, tab_id)
 
     @Slot(str, int, result=str)
     def set_page_cooldown(self, tab_id: str, seconds: int):

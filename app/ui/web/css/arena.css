@@ -1002,3 +1002,11 @@
 .run-sub[hidden] { display: none; }
 @keyframes runBadgePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 .worker-no { color: #fbbf24; margin-right: 2px; }
+
+/* Clear Time confirmation — the cleared countdown flashes green for ~1.5 s so
+   the user can see the button worked (the reset itself is instant). */
+.cool-cleared { color: #22c55e; font-weight: 700; animation: coolCleared 1.5s ease-out; }
+@keyframes coolCleared {
+  0% { background: rgba(34, 197, 94, 0.55); }
+  100% { background: transparent; }
+}

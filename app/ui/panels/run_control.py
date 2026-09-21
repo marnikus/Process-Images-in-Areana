@@ -17,6 +17,7 @@ from app.services.live.bus import live_bus
 from app.services.live.feed import commit_queue, queued_images
 from app.services.live.supervisor import announce_live, run_live, set_run_state
 from app.services.run_state import batch_active, schedule_batch
+from app.services.tab_release import start_release_active_tabs
 from app.ui.panels.queue_scan import find_image, push_queue_undo
 from app.ui.panels.url_queue import _URL_GATE_MSG, _urls_gate_error, enabled_urls
 from app.ui.qt_compat import Slot
@@ -271,4 +272,8 @@ class RunControlMixin:
         # Try to cancel running batch future immediately
         cancel_batch_future(self)
         fail_processing_images(self)
+        # …and release the *tabs* the cancelled jobs were holding: killing the
+        # future skips the in-task cleanup, so the pages would keep their image
+        # and never cool down (the reported bug).
+        start_release_active_tabs(self, "cancelled by user")
         return json.dumps({"ok": True})

@@ -214,6 +214,23 @@ def test_pool_stop_tab_job(cfg):
     assert json.loads(host.stop_tab_job("ghost"))["ok"] is False
 
 
+def test_stop_tab_job_starts_the_release_pipeline(cfg, monkeypatch):
+    """The reported bug: Stop logged a line and released nothing (RULE 7)."""
+    calls = []
+    monkeypatch.setattr(pp_mod, "start_tab_release",
+                        lambda bridge, tab_id, reason: calls.append((tab_id, reason)) or True)
+    pool = PagePool()
+    pool.add_page(PageInfo(tab_id="tj", ws_url="ws://x/j", title="J", url="u"))
+    pool.get_page("tj").current_image = "img.png"
+    logs = []
+    host, _ = make_host((PagePoolMixin,), _page_pool=pool, config=cfg,
+                        page_pool_updated=Emitter(), _log=lambda m, l="info": logs.append(m),
+                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)
+    res = json.loads(host.stop_tab_job("tj"))
+    assert res["ok"] is True and res["released"] is True
+    assert calls == [("tj", "stopped by user")]
+
+
 # ── browser_tabs: debounce / identity / pool-join ──
 
 async def test_claim_connect_slot_debounce(cfg):

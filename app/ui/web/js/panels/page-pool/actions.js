@@ -64,12 +64,29 @@ window.PagePoolActions = {
     });
   },
 
+  /* Clear Time: the countdown must read 00:00 *at once* and say so visibly —
+     waiting for the next poll looked like the button had done nothing. */
+  flashCleared(tabId) {
+    if (typeof document === 'undefined') return 0;
+    let flashed = 0;
+    document.querySelectorAll(`[data-cool-tab="${tabId}"]`).forEach((el) => {
+      el.setAttribute('data-cool-left', '0');
+      el.setAttribute('data-cool-at', String(Date.now()));
+      el.textContent = '00:00';
+      el.classList.add('cool-cleared');
+      flashed += 1;
+      setTimeout(() => { try { el.classList.remove('cool-cleared'); } catch {} }, 1500);
+    });
+    return flashed;
+  },
+
   resetCooldown(tabId) {
     const b = this._bridge();
     if (!b?.reset_page_cooldown) return;
     b.reset_page_cooldown(tabId, (res)=>{
       try {
         const r = JSON.parse(res);
+        if (r.ok) this.flashCleared(tabId);
         LogConsole.log(r.ok ? `♻️ Cooldown reset for ${window.TabLabel.of(tabId)} — tab ready` : 'Reset failed: '+r.error, r.ok?'success':'error');
         this.refresh();
       } catch {}

@@ -212,6 +212,19 @@ def test_run_control_pause_resume_stop_cancel_guards(cfg):
     assert json.loads(host.cancel_current())["ok"] is True and host._cancel_requested is True
 
 
+def test_cancel_releases_the_tabs_the_run_was_holding(cfg, monkeypatch):
+    """Cancelling kills the future, so the in-task cleanup never runs — the
+    cancel action itself has to release the tabs (the reported bug)."""
+    calls = []
+    monkeypatch.setattr(rc_mod, "start_release_active_tabs",
+                        lambda bridge, reason: calls.append(reason) or True)
+    host, _ = make_host((RunControlMixin,), state=make_state(), config=cfg, cdp=None,
+                        _cancel_requested=False, _pause_requested=False,
+                        _stop_after=False, _run_state="running", _batch_future=None)
+    assert json.loads(host.cancel_current())["ok"] is True
+    assert calls == ["cancelled by user"]
+
+
 def test_run_control_retry_and_reset_targets(cfg):
     img = make_img(); img.status = "failed"; img.error = "boom"; img.selected = True
     host, _ = make_host((RunControlMixin,), state=make_state(images=[img]), config=cfg, cdp=None,
