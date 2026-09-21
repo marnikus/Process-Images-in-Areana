@@ -805,6 +805,28 @@ the log line is removed); `supervisor.py` is now 100 % line. Lane: pytest
 795 lines against RULE 18.4's 200 — recommended S11 housekeeping moves the
 per-stage entries to the archive and leaves the ten-stage table here.
 
+### 2026-09-20 run-status badges + worker-id overlay (D-1…D-6, I-55)
+
+Design and the per-symbol recheck: `archive/2026-09-20-run-badges-and-worker-overlay/design.md` §3 / §5.
+RED-first: `tests/test_worker_numbering.py` (5 — join order 1, 2, 3; a revive keeps
+its number; removal never reuses; `to_dict` / snapshot carry it),
+`tests/test_worker_badge.py` (10 — builder markers incl. `pointer-events:none`,
+z-index below the watcher, `textContent` only, idempotent replace; the payload
+registry `node --check`s both builders; `assert_badges` counts one per connected
+page with a client, skips the rest, swallows errors; join asserts; disconnect
+captures the client *before* `remove_page`; a reconciler pass re-asserts),
+`tests/js/test_run_badge.mjs` (5 — four-state mapping, hidden while running,
+every `[data-run-badge]` painted, bind-once, exactly two slots in `index.html`,
+`_PANEL_INITS`, CSS modifiers; pool row and live line lead with `#n`).
+New: `browser/worker_badge.py` 69, `services/live/worker_badges.py` 65,
+`js/core/run-badge.js` 32. Legacy touched and **shrunk**: `PageInfo.to_dict`
+22 → 16 (`_cooldown_dict`), `PagePool.add_page` 23 → 19 (`_revive`),
+`disconnect_page_pool` 13 → 12 (`leave_pool`); `finish_pool_join` is `async`.
+Measured: max CC 6 / cog 5 / params 4 / nest 2; gate fails = only the
+`max_cog`-0 baseline artefact (file maxima pre-exist: 2 / 11 / 6) and the two
+`libGL` floors. Lane: pytest **1,790 / 0** (4 skipped), JS **280 / 0**,
+coverage 87.89 / 84.54, jscpd 1.072 %, Σ slots 135. Baseline not re-recorded.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

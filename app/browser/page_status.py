@@ -45,6 +45,7 @@ class PageInfo:
     cooldown_reason: str = ""
     jobs_completed: int = 0
     current_image: Optional[str] = None
+    worker_no: int = 0  # pool join order, 1-based, assigned once by PagePool (D-3)
 
     def is_free(self) -> bool:
         return self.status == PageStatus.STEADY and self.is_connected
@@ -86,21 +87,29 @@ class PageInfo:
         return {
             "ws_url": self.ws_url,
             "tab_id": self.tab_id,
+            "worker_no": self.worker_no,
             "title": self.title,
             "url": self.url,
             "status": self.status.value if isinstance(self.status, Enum) else str(self.status),
             "is_connected": self.is_connected,
             "current_job_id": self.current_job_id,
-            "busy_since": self.busy_since,
-            "last_steady_at": self.last_steady_at,
-            "error": self.error,
-            "cooldown_until": self.cooldown_until,
-            "cooldown_total": self.cooldown_total,
-            "captcha_count": self.captcha_count,
-            "rate_limit_count": self.rate_limit_count,
-            "pending_penalty": self.pending_penalty,
-            "last_job_at": self.last_job_at,
-            "cooldown_reason": self.cooldown_reason,
-            "jobs_completed": self.jobs_completed,
             "current_image": self.current_image or "",
+            "busy_since": self.busy_since,
+            "error": self.error,
+            "jobs_completed": self.jobs_completed,
+            **_cooldown_dict(self),
         }
+
+
+def _cooldown_dict(p: "PageInfo") -> dict:
+    """The cooldown/penalty half of the wire form."""
+    return {
+        "last_steady_at": p.last_steady_at,
+        "cooldown_until": p.cooldown_until,
+        "cooldown_total": p.cooldown_total,
+        "captcha_count": p.captcha_count,
+        "rate_limit_count": p.rate_limit_count,
+        "pending_penalty": p.pending_penalty,
+        "last_job_at": p.last_job_at,
+        "cooldown_reason": p.cooldown_reason,
+    }

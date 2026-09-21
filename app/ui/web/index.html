@@ -143,7 +143,7 @@
 
     <!-- RUN CONTROLS -->
     <div class="panel" id="winRun" data-window="run">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">play_circle</span> Run Controls</h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">play_circle</span> Run Controls <span class="run-badge" data-run-badge></span></h3>
       <div class="run-grid">
         <button id="runStartBtn" class="run-btn primary"><span class="material-icons" style="font-size:16px;">play_arrow</span> Start</button>
         <button id="runPauseBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">pause</span> Pause</button>
@@ -268,7 +268,7 @@
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">monitor_heart</span> Live Worker &amp; Queue Debug <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
       <div class="live-debug-body">
         <div class="live-debug-strip live-debug-head">
-          <span class="material-icons" style="font-size:14px;">playlist_play</span><span id="liveQueueHead">0 pending · queue empty</span>
+          <span class="material-icons" style="font-size:14px;">playlist_play</span><span id="liveQueueHead">0 pending · queue empty</span><span class="run-badge" data-run-badge></span>
           <span class="spacer"></span><span id="liveReceivers">no URL rows</span>
           <button id="liveRefreshBtn" class="btn-small" title="Re-read the worker snapshot"><span class="material-icons" style="font-size:14px;">refresh</span></button>
         </div>
@@ -703,6 +703,7 @@
 <script src="js/panels/url-list/actions.js"></script>
 <script src="js/panels/url-list/listeners.js"></script>
 <script src="js/panels/url-list/interval.js"></script>
+<script src="js/core/run-badge.js"></script>
 <script src="js/panels/url-list.js"></script>
 <script src="js/panels/folder-picker.js"></script>
 <script src="js/panels/image-queue/store.js"></script>

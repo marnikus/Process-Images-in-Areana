@@ -33,7 +33,7 @@ window.LiveDebugStore = {
 
   _workerLine(p) {
     return {
-      tabId: this._str(p.tab_id), title: this._str(p.title), status: this._str(p.status),
+      no: Number(p.worker_no) || 0, tabId: this._str(p.tab_id), title: this._str(p.title), status: this._str(p.status),
       connected: p.is_connected !== false, image: this._str(p.current_image), jobId: this._str(p.current_job_id),
       elapsed: this.elapsedSec(p.busy_since), cooldown: Number(p.cooldown_remaining) || 0,
       cooldownReason: this._str(p.cooldown_reason), jobs: Number(p.jobs_completed) || 0,

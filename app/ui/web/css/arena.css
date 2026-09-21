@@ -993,3 +993,12 @@
 [data-theme="light"] .bc-badge-id { background: rgba(74,144,226,0.12); }
 [data-theme="light"] .bc-badge-cat { background: rgba(0,0,0,0.06); }
 
+
+/* run-cycle badge (core/run-badge.js): hidden while running, loud otherwise */
+.run-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.6px; line-height: 16px; vertical-align: middle; }
+.run-badge[hidden] { display: none; }
+.run-badge--paused { background: #f59e0b; color: #1c1917; animation: runBadgePulse 1.4s ease-in-out infinite; }
+.run-badge--stopping { background: #fb923c; color: #1c1917; }
+.run-badge--stopped { background: #ef4444; color: #fff; }
+@keyframes runBadgePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.worker-no { color: #fbbf24; margin-right: 2px; }

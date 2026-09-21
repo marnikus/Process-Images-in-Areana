@@ -14,9 +14,10 @@
   padding: 4px; background: var(--bg-input); max-height: 180px; overflow: auto; font-size: 11px;
 }
 .live-debug-panel .live-worker {
-  display: grid; grid-template-columns: minmax(80px, 1fr) 96px minmax(120px, 2fr) 56px; gap: 8px; align-items: center;
+  display: grid; grid-template-columns: 28px minmax(80px, 1fr) 96px minmax(120px, 2fr) 56px; gap: 8px; align-items: center;
   padding: 4px 6px; border-radius: 4px; background: var(--bg-card); font-variant-numeric: tabular-nums;
 }
+.live-debug-panel .live-no { color: #fbbf24; font-weight: 700; }
 .live-debug-panel .live-tab { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .live-debug-panel .live-state { font-weight: 600; color: #4ade80; }
 .live-debug-panel .live-status-busy .live-state,

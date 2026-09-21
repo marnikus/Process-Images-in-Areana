@@ -24,6 +24,7 @@ from app.services.cooldown_service import (
     reset_cooldown,
     tab_has_live_job,
 )
+from app.services.live.worker_badges import assert_badges, clear_badge
 from app.services.run_state import cooldowns_path, resolve_tab_info, restore_page_state, schedule_coro
 from app.ui.qt_compat import Slot
 
@@ -63,16 +64,25 @@ async def connect_pool_client(bridge, ws_url: str):
     return None
 
 
-def finish_pool_join(bridge, info, client, ctrl) -> None:
-    """Register a joined tab: page + client, restore timers, announce."""
+async def finish_pool_join(bridge, info, client, ctrl) -> None:
+    """Register a joined tab: page + client, restore timers, badge the tab, announce."""
     bridge._page_pool.add_page(info)
     bridge._page_pool.register_client(info.tab_id, client, ctrl)
     restore_page_state(bridge, info.tab_id)
+    await assert_badges(bridge._page_pool)  # `#n + id` on the tab, right away (D-5)
     bridge._emit_pool_status()
     total, free = bridge._page_pool.get_counts()
     bridge._log(f"✅ Pool added {info.tab_id[:12]} steady — {info.title[:40]} — total {total} free {free}", "success")
     if total >= 2:
         bridge._log(f"✅ {total} tabs in pool ready for parallel — 2+ images will dispatch to different webpages", "success")
+
+
+def leave_pool(bridge, tab_id: str) -> bool:
+    """Badge off (client captured *before* the pool forgets it), then the page leaves."""
+    client, _ctrl = bridge._page_pool.get_clients(tab_id)
+    if client is not None:
+        schedule_coro(bridge, clear_badge(client, tab_id))
+    return bridge._page_pool.remove_page(tab_id)
 
 
 async def do_connect_page_pool(bridge, ws_url: str):
@@ -88,7 +98,7 @@ async def do_connect_page_pool(bridge, ws_url: str):
         ctrl = CDPArenaController(client, log_callback=lambda msg: bridge._log(msg, "info"))
         live_title, live_url = await resolve_tab_info(bridge, tab_id, ws_url)
         info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
-        finish_pool_join(bridge, info, client, ctrl)
+        await finish_pool_join(bridge, info, client, ctrl)
     except Exception as e:
         bridge._log(f"Pool connect exception {e}", "error")
 
@@ -154,7 +164,7 @@ class PagePoolMixin:
         try:
             if not self._page_pool:
                 return json.dumps({"ok": False, "error": "pool not initialized"})
-            ok = self._page_pool.remove_page(tab_id)
+            ok = leave_pool(self, tab_id)
             self._emit_pool_status()
             if ok:
                 self._log(f"Pool page {tab_id[:12]} removed", "info")

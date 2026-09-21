@@ -74,7 +74,7 @@ window.PagePoolRender = {
     const color = s.statusColor(status);
     const statusLabel = status==='steady' ? 'steady (ready)' : status;
     return `
-        <td title="${s.esc(p.tab_id)}">${s.esc((p.tab_id||'').slice(0,12))}</td>
+        <td title="${s.esc(p.tab_id)}"><b class="worker-no">#${Number(p.worker_no)||0}</b> ${s.esc((p.tab_id||'').slice(0,12))}</td>
         <td title="${s.esc(p.title)}">${s.esc((p.title||'').slice(0,30))}</td>
         <td title="${s.esc(p.url)}" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.esc((p.url||'').slice(0,50))}</td>
         <td><span style="color:${color}; font-weight:600;">● ${s.esc(statusLabel)}</span></td>

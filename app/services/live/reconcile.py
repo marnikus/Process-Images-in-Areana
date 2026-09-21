@@ -23,6 +23,7 @@ from app.services.live import url_policy as up
 from app.services.live.bus import live_bus
 from app.services.live.debug_view import interval_ms
 from app.services.live.feed import clear_row_assignments
+from app.services.live.worker_badges import assert_badges
 from app.services.run_state import pooled_ids, schedule_coro
 
 log = logging.getLogger(__name__)
@@ -163,6 +164,7 @@ async def _join_and_sync(p: _Pass, plan: ac.AutoConnectPlan) -> None:
     live = {(getattr(t, "id", "") or getattr(t, "ws_url", "")) for t in p.tabs or []} - {""}
     revived, stale = ac.sync_pool_presence(getattr(p.bridge, "_page_pool", None), live)
     p.report.revived, p.report.stale = revived, len(stale)
+    await assert_badges(getattr(p.bridge, "_page_pool", None))  # a navigation wipes the badge (D-5)
 
 
 def _commit(p: _Pass) -> None:

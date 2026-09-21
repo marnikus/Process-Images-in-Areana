@@ -62,6 +62,17 @@ def _snapshot_entry(page) -> dict:
     return entry
 
 
+def _revive(exist: PageInfo, info: PageInfo) -> None:
+    """A known tab re-joins: refresh identity, reconnect, keep its worker number."""
+    exist.title = info.title or exist.title
+    exist.url = info.url or exist.url
+    exist.ws_url = info.ws_url or exist.ws_url
+    exist.is_connected = True
+    if exist.status == PageStatus.DISCONNECTED:
+        exist.status = PageStatus.STEADY
+        exist.last_steady_at = now_iso()
+
+
 class PagePool:
     def __init__(self, logger=None):
         self._pages: Dict[str, PageInfo] = {}
@@ -72,6 +83,7 @@ class PagePool:
         self._logger = logger or (lambda m, l="info": log.info(m))
         self._host = "127.0.0.1"
         self._port = 9222
+        self._next_worker_no = 0  # session-stable join counter, never reused (D-3)
 
     def add_page(self, info: PageInfo):
         tid = info.tab_id or info.ws_url
@@ -80,17 +92,13 @@ class PagePool:
         with self._lock:
             exist = self._pages.get(tid)
             if exist:
-                exist.title = info.title or exist.title
-                exist.url = info.url or exist.url
-                exist.ws_url = info.ws_url or exist.ws_url
-                exist.is_connected = True
-                if exist.status == PageStatus.DISCONNECTED:
-                    exist.status = PageStatus.STEADY
-                    exist.last_steady_at = now_iso()
+                _revive(exist, info)
             else:
                 info.status = PageStatus.STEADY
                 info.is_connected = True
                 info.last_steady_at = now_iso()
+                self._next_worker_no += 1
+                info.worker_no = self._next_worker_no
                 self._pages[tid] = info
         try:
             self._logger(f"Pool add {tid[:12]} steady", "success")
