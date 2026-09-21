@@ -11,6 +11,7 @@ const UrlList = {
   _cooldown: null,
   _listeners: null,
   _cells: null,
+  _reset: null,
   _timersStarted: false,
   _coolSnapAt: 0,
   poolPages: [],
@@ -23,6 +24,7 @@ const UrlList = {
     this._cooldown = window.UrlListCooldown;
     this._listeners = window.UrlListListeners;
     this._cells = window.UrlListCells;
+    this._reset = window.UrlListReset;
     if (!this._listeners || !this._listeners.bind(this)) return;
     if (this._timersStarted) return;
     this._timersStarted = true;
@@ -67,7 +69,7 @@ const UrlList = {
   scorePoolPage(r,p) { return this._delegateMatching('scorePoolPage', r, p) ?? 0; },
   assignPoolPages(rows,pages) { return this._delegateMatching('assignPoolPages', rows, pages) ?? new Map(); },
   matchUnclaimedPage(rowUrl,pages,claimed) { return this._delegateMatching('matchUnclaimedPage', rowUrl, pages, claimed); },
-  jobLineForTab(pages,tabId) { return this._delegateMatching('jobLineForTab', pages, tabId) ?? ''; },
+  jobLineForTab(pages,tabId) { return this._reset ? this._reset.jobLine(pages, tabId) : (this._delegateMatching('jobLineForTab', pages, tabId) ?? ''); },
 
   onPoolUpdate(payload) {
     try {
@@ -101,6 +103,7 @@ const UrlList = {
       if (claimed.has(ri)) page = pages[claimed.get(ri)];
       else page = this.matchUnclaimedPage(tr.dataset.url || '', pages, claimed);
       this._fillTabCell(tr, page);
+      if (this._reset) this._reset.fillStatusCell(tr, page);  // D-7 working state
       this._fillCoolCell(tr, page);
       this._fillJobsCell(tr, page);
     });

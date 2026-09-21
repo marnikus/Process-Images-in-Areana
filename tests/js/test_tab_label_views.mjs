@@ -129,11 +129,16 @@ describe('log lines', () => {
   });
 
   test('no panel log line slices a tab id by hand any more', () => {
-    const rels = ['page-pool/actions.js', 'url-list/actions.js', 'captcha.js'];
-    for (const rel of rels) {
+    // 2026-09-21 (D-7): the URL row's Stop / Clear-time log lines moved to the
+    // new url-list/reset.js (the frozen actions.js only delegates now), so the
+    // label check follows the owner and the no-slicing rule covers both files.
+    for (const rel of ['page-pool/actions.js', 'url-list/actions.js', 'url-list/reset.js', 'captcha.js']) {
       const text = fs.readFileSync(path.join(PANELS, rel), 'utf8');
       assert.ok(!/tabId\.slice\(0, *8\)|solving_tab\.slice/.test(text),
-        `${rel} must use TabLabel.of`);
+        `${rel} must not slice a tab id by hand`);
+    }
+    for (const rel of ['page-pool/actions.js', 'url-list/reset.js', 'captcha.js']) {
+      const text = fs.readFileSync(path.join(PANELS, rel), 'utf8');
       assert.ok(text.includes('TabLabel.of('), `${rel} must name the tab by its label`);
     }
   });

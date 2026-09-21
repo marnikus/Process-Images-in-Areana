@@ -43,6 +43,16 @@
 .url-status-ok { background: rgba(74,222,128,.15); color: var(--green); }
 .url-status-error { background: rgba(248,113,113,.15); color: var(--red); }
 .url-status-checking { background: rgba(250,204,21,.15); color: var(--yellow); }
+/* D-7 (2026-09-21): the working state of the tab a row owns — derived in
+   js/panels/url-list/reset.js from the pool snapshot, never written in Python. */
+.url-status-processing { background: rgba(77,171,247,.18); color: #4dabf7; }
+.url-status-cooldown { background: rgba(250,204,21,.15); color: var(--yellow); }
+.url-status-ready { background: rgba(74,222,128,.15); color: var(--green); }
+.url-cool-cleared { /* Clear time: the visible confirmation the report asked for */
+  background: rgba(74,222,128,.22);
+  border-radius: 4px;
+  transition: background .15s ease-in;
+}
 
 /* Folder Picker */
 .folder-path {

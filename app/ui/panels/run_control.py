@@ -13,6 +13,7 @@ import logging
 from datetime import datetime
 
 from app.core.run_scope import run_scope
+from app.services import tab_reset
 from app.services.live.bus import live_bus
 from app.services.live.feed import commit_queue, queued_images
 from app.services.live.supervisor import announce_live, run_live, set_run_state
@@ -271,4 +272,7 @@ class RunControlMixin:
         # Try to cancel running batch future immediately
         cancel_batch_future(self)
         fail_processing_images(self)
+        # D-4: the tabs the run left behind are parked in cooldown by the same
+        # reset pipeline Stop uses — scheduled, never on the websocket thread.
+        tab_reset.cancel_request(self)
         return json.dumps({"ok": True})

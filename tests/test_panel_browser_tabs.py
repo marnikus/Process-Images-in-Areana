@@ -23,7 +23,6 @@ from app.ui.panels.page_pool import (
     PagePoolMixin,
     do_connect_page_pool,
     reset_pool_dicts,
-    reset_stuck_page,
 )
 from app.ui.qt_compat import Signal
 
@@ -114,20 +113,27 @@ async def test_reset_pool_dicts():
     assert pool._clients == {} and pool._controllers == {}
 
 
-async def test_reset_stuck_page_paths(cfg):
+async def test_clear_time_paths(cfg):
+    """Clear time (D-5) freed the stale page the old `reset_stuck_page` refused:
+    the run decides liveness, not a leftover `current_image` (round 2026-09-21)."""
     pool = PagePool()
     pool.add_page(PageInfo(tab_id="t1", ws_url="ws://x/1", title="A", url="u"))
+    bridge, _logs = make_host((PagePoolMixin,), _page_pool=pool, config=cfg,
+                              page_pool_updated=Emitter(), _log=lambda m, l="info": None,
+                              _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)
     page = pool.get_page("t1")
-    bridge = make_bridge(cdp=None, config=cfg, pool=pool)
-    page.status = PageStatus.BUSY  # stuck status → force reset
-    assert json.loads(reset_stuck_page(bridge, "t1", page))["ok"] is True
-    assert page.status == PageStatus.STEADY
-    # live job on the tab → refused even when stuck
+    page.status = PageStatus.BUSY  # stale: no run owns this tab any more
+    reply = json.loads(bridge.reset_page_cooldown("t1"))
+    assert reply["ok"] is True and reply["job_cleared"] is True
+    assert page.status == PageStatus.STEADY and page.current_image is None
+    # a live job keeps its page — only its countdown is cleared
     page.status = PageStatus.BUSY
     page.current_image = "i1.png"
-    assert "job still running" in json.loads(reset_stuck_page(bridge, "t1", page))["error"]
-    page.current_image = None
-    assert json.loads(reset_stuck_page(bridge, "ghost", page))["ok"] is False
+    bridge._batch_future = SimpleNamespace(done=lambda: False)
+    reply = json.loads(bridge.reset_page_cooldown("t1"))
+    assert reply == {"ok": True, "was": 0, "busy": True, "job_cleared": False}
+    assert page.current_image == "i1.png" and page.status == PageStatus.BUSY
+    assert json.loads(bridge.reset_page_cooldown("ghost"))["ok"] is False
 
 
 async def test_do_connect_page_pool_success_and_failure(cdp_server, cfg):

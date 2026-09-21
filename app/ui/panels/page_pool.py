@@ -14,15 +14,11 @@ import re
 
 from app.core.cooldown import clamp_seconds, config_to_dict, format_remaining
 from app.persistence.cooldown_store import save_entries
+from app.services import tab_reset
 from app.services.cooldown_service import (
     edit_cooldown,
-    force_reset_page,
-    is_stuck_status,
     load_config,
     refresh_expired,
-    request_tab_abort,
-    reset_cooldown,
-    tab_has_live_job,
 )
 from app.services.live.bus import live_bus
 from app.services.live.tab_owner import resolve_owners
@@ -45,19 +41,6 @@ def reset_pool_dicts(pool) -> None:
         pool._controllers.clear()
     except Exception:
         pass
-
-
-def reset_stuck_page(bridge, tab_id: str, page) -> str:
-    """Force-free a stuck page; refuses while its own job is alive."""
-    was = getattr(page.status, "value", page.status)
-    if tab_has_live_job(bridge._page_pool, tab_id):
-        bridge._log(f"⚠ Reset refused for {(tab_id or '')[:12]} — job still running on this tab; stop it first", "warn")
-        return json.dumps({"ok": False, "error": "job still running on this tab — stop it first"})
-    if force_reset_page(bridge._page_pool, tab_id):
-        bridge._emit_pool_status()
-        bridge._log(f"♻️ Stuck {was} reset for {(tab_id or '')[:12]} (no run active) — tab ready, fix and run again", "success")
-        return json.dumps({"ok": True})
-    return json.dumps({"ok": False, "error": "unknown tab"})
 
 
 async def connect_pool_client(bridge, ws_url: str):
@@ -256,33 +239,14 @@ class PagePoolMixin:
 
     @Slot(str, result=str)
     def reset_page_cooldown(self, tab_id: str):
-        try:
-            if not self._page_pool:
-                return json.dumps({"ok": False, "error": "pool not initialized"})
-            page = self._page_pool.get_page(tab_id)
-            if page is None:
-                return json.dumps({"ok": False, "error": "unknown tab"})
-            if is_stuck_status(page.status):
-                return reset_stuck_page(self, tab_id, page)
-            if reset_cooldown(self._page_pool, tab_id):
-                self._emit_pool_status()
-                self._log(f"♻️ Cooldown reset for {(tab_id or '')[:12]} — tab ready", "success")
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "unknown tab"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
+        """Clear time (D-5): the pause goes, the row is ready — and the reply says
+        exactly what was removed, so the row can show it."""
+        return json.dumps(tab_reset.clear_time(self, tab_id), ensure_ascii=False)
 
     @Slot(str, result=str)
     def stop_tab_job(self, tab_id: str):
-        """Abort the live job on this tab; it fails as Aborted."""
-        try:
-            if request_tab_abort(self._page_pool, tab_id):
-                self._log(f"⛔ Stop requested for job on {(tab_id or '')[:12]}", "warn")
-                self._emit_pool_status()
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "no live job on this tab"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
+        """Stop (D-3): abort a live job, or repair a tab no run owns any more."""
+        return json.dumps(tab_reset.stop_request(self, tab_id), ensure_ascii=False)
 
     @Slot(str, int, result=str)
     def set_page_cooldown(self, tab_id: str, seconds: int):

@@ -70,10 +70,18 @@ window.PagePoolActions = {
     b.reset_page_cooldown(tabId, (res)=>{
       try {
         const r = JSON.parse(res);
-        LogConsole.log(r.ok ? `♻️ Cooldown reset for ${window.TabLabel.of(tabId)} — tab ready` : 'Reset failed: '+r.error, r.ok?'success':'error');
+        // D-5: the reply now says what was removed — and a live job keeps its page.
+        LogConsole.log(r.ok ? this._clearMsg(tabId, r) : 'Reset failed: '+r.error, r.ok?(r.busy?'warn':'success'):'error');
         this.refresh();
       } catch {}
     });
+  },
+
+  _clearMsg(tabId, r) {
+    const label = window.TabLabel.of(tabId);
+    const was = (window.PagePoolPanel ? window.PagePoolPanel.fmt(r.was || 0) : `${r.was || 0}s`);
+    if (r.busy) return `⏳ Clear time: ${label} still busy — ${was} removed, the job keeps its page`;
+    return `♻️ Clear time: ${label} ready now — ${was} removed`;
   },
 
   _parseMinutes(val) {

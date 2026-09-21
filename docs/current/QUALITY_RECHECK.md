@@ -24,6 +24,12 @@ Bugfix round on top of the snapshot above (`docs/archive/2026-09-21-reparse-rejo
 | JS lane | same tool with the two changed `.js` files | no finding for `page-pool/render.js` / `url-list/render.js`; the one JS fail (`panels/captcha.js max_cc 12 > 10`) is identical on the base tree (pre-existing) |
 | Environment facts | — | the `max_cog 0→N` ratchet lines are the stale-baseline noise documented above (cog recorded as 0 repo-wide; identical on the untouched HEAD commit); `bash tools/pre_push_check.sh` additionally reports two `ratchet-coverage` drops (`app/browser/cdp/transport.py` 90.5→84.3 %, `app/ui/qt_compat.py` 60.7→39.3 %) — measured on the **stashed base tree in this sandbox** with identical values, i.e. the venv now has `websockets`/`PySide6-Essentials` where the baseline was recorded without them (the same family as the documented `libGL` floors), not a finding from this round; the bare `from PySide6 import QtWidgets` import still needs `libGL.so.1` |
 
+**Baseline decision: `tools/quality_baseline.json` is NOT re-recorded** — nothing needed to grow
+(every new symbol passes the absolute limits with room), so re-recording would only bake the current
+coverage drift into the floors. The stale per-symbol entry `reset_stuck_page: 11` under
+`app/ui/panels/page_pool.py` is inert (the symbol is deleted; per-symbol maps only gate legacy
+downgrades) and is left for the next integrator refresh, exactly like round 3's entry.
+
 Dishonest reductions rejected (RULE 16.6): catching the pool-phase error without committing (the rows stay lost),
 sweeping aside and swapping after the joins (same window, second writer), rejoining from the JS checkbox handler
 (second writer of pool membership), re-joining via a second `auto_connect_scan` (the interval would rule the
@@ -944,6 +950,40 @@ bug), letting the debt tick down during a job (the pause would expire unseen), m
 reconciler pass (up to one interval of a "ready" tab with hidden time on it), storing the number in the pruned
 `entries` map, allocating it in a render path, reading the account from the RSC payload, and rewriting every
 `tab_id[:12]` log line in the codebase (the views and the tab-lifecycle lines are the reference surface).
+
+## Addendum 2026-09-21 — Stop / Cancel / Clear time are one reset pipeline (I-60)
+
+The user-reported round (`docs/archive/2026-09-21-stop-cancel-reset-pipeline/design.md`, D-1…D-7),
+TDD from a RED suite at `71970e1` (the three test files were written first and failed on
+`ModuleNotFoundError: app.services.tab_reset` / missing `url-list/reset.js`).
+
+| Gate | Command | Result |
+|---|---|---|
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **1,966 passed · 4 skipped · 0 fail** (+30 net: `tests/test_tab_reset.py` 21, `tests/test_tab_reset_seam.py` 9); 1 legacy assertion re-pointed, none deleted (`test_panel_browser_tabs.py::test_reset_stuck_page_paths` → `test_clear_time_paths` — its `current_image ⇒ job alive` refusal *was* the reported bug F-1) |
+| JS tests | `npm run test:js` | **333 pass · 4 skipped · 0 fail** (337 subtests; new `tests/js/test_reset_actions.mjs` 24 — incl. 4 page-harness tests that drive the real per-row pass; `test_tab_label_views.mjs` re-pointed: the label check follows the log lines to the new owner and the no-hand-slicing rule now covers both files; `package.json` `test:js` gained the new file) |
+| Size/complexity | `python tools/verify_quality.py --changed-files …` (its own AST metrics) + `node tools/js_metrics.js app/ui/web/js/panels --json` | new Python symbols: 33 functions in `tab_reset.py`, longest 17 LOC (`clear_time`), ≤4 params, CC ≤10, nesting ≤2; new/edited JS: `reset.js` longest 12 LOC (`_onClear`), max CC 9, depth ≤2, params ≤4 — every limit met with room, and every symbol near the RULE 18 ideal (4–20 LOC) |
+| Coverage | `coverage run --branch --source=app -m pytest tests -q` then `coverage json` | **88.14 % line / 84.85 % branch** (base `71970e1` measured the same way: 88.09 / 84.73 — the round moves both **up**; floors 86.36 / 82.33) |
+| Changed-file lane | `python tools/verify_quality.py --changed-files app/services/tab_reset.py app/ui/panels/page_pool.py app/ui/panels/run_control.py --allow-legacy` | **no size/complexity/ratchet fail on the round's own files** (exit ≠ 0 only for the 4 inherited coverage lanes below). Those 4 were re-measured at the base commit `71970e1` in a clean worktree with base `coverage.json` and the *same* command on those same 4 paths: **identical fails and numbers** (`cdp/transport.py` 90.5→84.3, `cooldown_store.py` 93.9→87.8, `cooldown_service.py` 93.6→93.1, `qt_compat.py` 60.7→39.3) — pre-existing coverage drift against `tools/quality_baseline.json`, not a finding of this round; round 3 never saw them because the tool reads `coverage.json` only in the changed-file lanes and no report existed then |
+| Whole-repo gate | `python tools/verify_quality.py --coverage-ratchet` | 1 fail — `app/ui/web/js/panels/captcha.js max_cc 12 > 10`; that file is **not in this round's diff** (`git diff --name-only`), so its max_cc is byte-identical on the base tree |
+| JS lane | same tool on the changed JS paths (`url-list/reset.js`, `url-list/actions.js`, `url-list.js`, `page-pool/actions.js`) | **4 JS files checked, 0 JS fails** — `url-list/actions.js` 166 → 149 lines, `url-list.js` 137 → **136** lines with its function count unchanged at 37, new `url-list/reset.js` 144 lines; the six other url-list modules (incl. `cells.js`) are untouched |
+| Goldens | `tests/characterization/test_batch_goldens.py` | byte-identical: the round adds no writer to the run pipeline — the dispatcher, `_finish_cancelled` and the batch loop are untouched; only the UI layer parks tabs (the plan's D-2) |
+
+RULE 18 recheck (the user's "recheck at the end if code fit"): the first shape put the row's cells in
+`url-list/cells.js` (91/100 lines — no headroom) plus a `_fillStatusCell` delegate in the frozen facade; the JS
+ratchet caught the second one (`func_count grew 37→38`) and the fix was to **not add a function** — the per-row
+pass calls `this._reset.fillStatusCell(...)` inline, so the facade came out one line *shorter* than before
+(137 → 136). The Python lane caught the first `_clear_under_job` (5 params > 4) → the pool is resolved from the
+bridge inside `_drop_timer(bridge, tab_id)`. `tab_reset.py` is 362 lines against the 150–300 ideal with a stated
+reason at the top (one cohesive pipeline; a split would duplicate the park, its field reset and its three log
+lines) — the same shape as `cooldown_service.py` (866) and `run_state.py` (422). No `--record-baseline` was run:
+nothing needed to grow.
+
+Dishonest reductions rejected (RULE 16.6): clearing the stale fields inside `request_tab_abort` (it would kill
+the cooperative abort for live jobs), making Stop always `force_reset_page` (yanking a tab from under a running
+job — a second writer of page state), parking synchronously inside the Qt slots (the New Chat reset is async and
+bounded at 15 s), giving Cancel its own "steady, no cooldown" path (two behaviours for one user action is what
+produced the report), writing `UrlRow.status` from Python (it is the CDP validation status the row-removal policy
+rules on), and adding a second "stop penalty" setting next to the pause (one meaning, one knob).
 
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
