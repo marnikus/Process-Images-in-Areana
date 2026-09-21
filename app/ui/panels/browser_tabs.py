@@ -15,16 +15,11 @@ import logging
 import re
 import time
 
-from app.services.auto_connect import (
-    live_tab_keys,
-    pick_primary_ws,
-    plan_auto_connect,
-    prunable_row_ids,
-    sync_pool_presence,
-)
-from app.services.run_state import pooled_ids, resolve_tab_info, restore_page_state, schedule_coro
+from app.services.auto_connect import pick_primary_ws
+from app.services.live import reconcile as url_reconcile
+from app.services.live.reconcile import LiveDeps
+from app.services.run_state import resolve_tab_info, restore_page_state, schedule_coro
 from app.ui.panels.page_pool import do_connect_page_pool
-from app.ui.panels.url_queue import _add_missing_rows, _dedupe_state_rows
 from app.ui.qt_compat import Slot
 from app.utils.win_popup import raise_window_titles
 
@@ -295,108 +290,41 @@ async def do_diagnose_chrome(bridge) -> None:
         bridge._log(f"Diagnose failed: {e}", "error")
 
 
-def prune_auto_rows(bridge, plan) -> int:
-    """Drop auto-linked rows whose tabs vanished; returns removed count."""
-    if not plan.remove:
-        return 0
-    gone = set(plan.remove)
-    before = len(bridge.state.urls)
-    bridge.state.urls = [u for u in bridge.state.urls if u.id not in gone]
-    return before - len(bridge.state.urls)
+def live_deps(bridge) -> LiveDeps:
+    """The only services↔UI seam for the URL reconciler (round-1 D-10)."""
+    async def fetch_tabs():
+        return await bridge.cdp.fetch_tabs()
 
+    async def join_tab(ws_url: str):
+        return await do_connect_page_pool(bridge, ws_url)
 
-def claim_auto_rows(by_id, claims) -> bool:
-    """Link unlinked rows to their tabs; True when any row changed."""
-    changed = False
-    for row_id, tab_id in claims:
-        row = by_id.get(row_id)
-        if row is not None and not row.tab_id:
-            row.tab_id = tab_id
-            changed = True
-    return changed
-
-
-def apply_auto_plan(bridge, plan) -> bool:
-    """Claim/add/prune URL rows from the plan; True when rows changed."""
-    by_id = {u.id: u for u in bridge.state.urls}
-    changed = claim_auto_rows(by_id, plan.claim)
-    added = _add_missing_rows(bridge.state.urls, plan.add)
-    pruned = prune_auto_rows(bridge, plan)
-    changed = bool(added) or changed or pruned > 0
-    if changed:
-        # system action, reproducible by re-scan: no undo spam
+    def commit():            # system change — save + emit via deps, never an undo entry
         bridge._save_arena()
         bridge._emit_arena_state()
-    return changed
 
+    def log(msg, level="info"):         # late-bound: honours test/host overrides
+        bridge._log(msg, level)
 
-def plan_has_changes(plan, revived, stale) -> bool:
-    """True when the scan produced rows/joins/presence changes to report."""
-    return any((plan.add, plan.claim, plan.connect, revived, stale, plan.remove))
-
-
-def report_auto_plan(bridge, plan, presence, source) -> None:
-    """Pool emit + summary; manual scans always answer, auto only on change."""
-    revived, stale = presence
-    if not plan_has_changes(plan, revived, stale):
-        if source == "manual":
-            bridge._log("🤖 Reparse: no changes — rows and pool already match open tabs", "info")
-        return
-    if plan.connect or revived or stale or plan.remove:
-        bridge._emit_pool_status()
-    bridge._log(f"🤖 Auto-connect: +{len(plan.add)} rows, {len(plan.claim)} linked, "
-                f"{len(plan.connect)} joined, {revived} revived, {len(stale)} stale, "
-                f"{len(plan.remove)} removed", "info")
-
-
-async def join_new_tabs(bridge, sockets) -> None:
-    """Pool-join each connectable tab; skips empty sockets."""
-    for ws in sockets or []:
-        if ws:
-            await do_connect_page_pool(bridge, ws)
-
-
-def auto_prune_allowed(bridge, tabs) -> bool:
-    """Prune dead rows only with a healthy tab list and no live run."""
-    if getattr(bridge, "_run_state", "idle") != "idle":
-        return False
-    return any(getattr(t, "id", "") or getattr(t, "ws_url", "") for t in tabs or [])
-
-
-def plan_auto_sync(bridge, tabs, pattern, rows):
-    """Plan the scan; attach safe row pruning when allowed."""
-    plan = plan_auto_connect(tabs, pattern, rows, pooled_ids(bridge._page_pool))
-    if auto_prune_allowed(bridge, tabs):
-        plan.remove = prunable_row_ids(rows, live_tab_keys(tabs))
-    return plan
-
-
-async def auto_scan_pass(bridge, source: str) -> None:
-    """One scan: fetch tabs, plan, apply, join, sync presence, report."""
-    tabs = await bridge.cdp.fetch_tabs()
-    pattern = bridge.config.get_state("url_pattern", "arena.ai")
-    rows, removed = _dedupe_state_rows(bridge.state.urls)
-    if removed:  # legacy broken state: N rows on one tab -> keep one (I-33)
-        bridge._log(f"🤖 Auto-connect: removed {removed} extra row(s) — their tab already has a row", "warn")
-    plan = plan_auto_sync(bridge, tabs, pattern, rows)
-    apply_auto_plan(bridge, plan)
-    await join_new_tabs(bridge, plan.connect)
-    live = {(t.id or t.ws_url) for t in tabs or []} - {""}
-    presence = sync_pool_presence(bridge._page_pool, live)
-    report_auto_plan(bridge, plan, presence, source)
+    return LiveDeps(fetch_tabs=fetch_tabs, join_tab=join_tab,
+                    commit=commit, log=log)
 
 
 async def do_auto_connect_scan(bridge, source: str = "auto") -> None:
-    """Fetch tabs, sync rows + pool + presence; skips when busy."""
-    if bridge._auto_scan_running:
+    """One reconcile pass now; the loop's countdown is a floor, not a schedule."""
+    if getattr(bridge, "_auto_scan_running", False):
         return
     bridge._auto_scan_running = True
     try:
-        await auto_scan_pass(bridge, source)
+        await url_reconcile.reconcile_once(bridge, live_deps(bridge), source)
     except Exception as e:
         bridge._log(f"Auto-connect scan skipped: {e}", "warn")
     finally:
         bridge._auto_scan_running = False
+
+
+def start_url_reconciler(bridge) -> None:
+    """Boot-time start of the Python-owned reconcile loop (ids replace JS timer)."""
+    url_reconcile.start_reconciler(bridge, live_deps(bridge))
 
 
 def popup_row_title(pool, seen, u):

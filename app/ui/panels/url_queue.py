@@ -11,6 +11,7 @@ import json
 from datetime import datetime
 
 from app.core.models import UrlRow
+from app.services.live import url_policy
 from app.services.auto_connect import (
     claim_unlinked_from_pool,
     dedupe_linked_rows,
@@ -58,7 +59,7 @@ def _dedupe_state_rows(state_urls) -> tuple[list, int]:
     """Repair legacy N-rows-per-tab state; returns (plan rows, removed)."""
     rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id, "enabled": u.enabled}
             for u in state_urls]
-    kept, dropped = dedupe_linked_rows(rows)
+    kept, dropped = url_policy.dedupe_rows(rows)
     if not dropped:
         return rows, 0
     drop = {r["id"] for r in dropped}
@@ -67,22 +68,13 @@ def _dedupe_state_rows(state_urls) -> tuple[list, int]:
 
 
 def _tab_already_owned(urls, tab_id: str) -> bool:
-    """One row per tab (I-33): never add a second."""
-    for u in urls:
-        if u.tab_id == tab_id:
-            return True
-    return False
+    """One row per tab (I-33): never add a second — compat seam (bridge.py re-exports)."""
+    return any(getattr(u, "tab_id", "") == tab_id and tab_id for u in urls)
 
 
 def _add_missing_rows(urls, adds) -> int:
-    """Append rows for tabs none owns yet; returns count added."""
-    added = 0
-    for url, tab_id in adds:
-        if _tab_already_owned(urls, tab_id):
-            continue
-        urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
-        added += 1
-    return added
+    """One row per tab (I-33) — S6: body lives in live/url_policy."""
+    return url_policy.add_rows(urls, adds)
 
 
 def push_urls_undo(bridge) -> None:

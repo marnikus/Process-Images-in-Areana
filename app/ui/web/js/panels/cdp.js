@@ -29,8 +29,7 @@ const CDPPanel = {
     this.bindBridgeSignals();
     setTimeout(() => this.fetchTabs(), 800);
     setTimeout(() => this.loadBookmarks(), 900);
-    setTimeout(() => this.autoConnectScan(), 4000);
-    setInterval(() => this.autoConnectScan(), 15000);
+    setTimeout(() => this.autoConnectScan(), 4000);      // boot kick (S6: the Python reconciler owns cadence)
     setInterval(() => this.ensurePrimary(), 500);
   },
 

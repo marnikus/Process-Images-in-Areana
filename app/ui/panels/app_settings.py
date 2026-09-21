@@ -14,7 +14,8 @@ from pathlib import Path
 
 from app.core.models import UrlRow
 from app.core.persistence import load_preset, save_preset
-from app.services.live import feed
+from app.services.live import debug_view, feed
+from app.services.live.bus import live_bus
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import arena_serialize, undo_entries
 
@@ -48,6 +49,16 @@ def push_settings_undo(bridge) -> None:
         undo_entries.emit_undo_state(bridge)
     except Exception:
         pass
+
+
+def apply_url_interval(bridge, data: dict) -> None:
+    """URL reconcile cadence (S6/D-12R): clamped on write, wakes the live loop."""
+    if "url_reconcile_interval_ms" not in data:
+        return
+    ms = debug_view.clamp_interval_ms(data["url_reconcile_interval_ms"])
+    bridge.config.set_state(url_reconcile_interval_ms=ms)
+    live_bus(bridge).wake("interval")
+    bridge._log(f"🔁 URL reconcile interval: {ms} ms", "info")
 
 
 def apply_simple_key(state, data: dict, spec: tuple) -> None:

@@ -7,6 +7,7 @@ phase functions are driven directly or by awaiting the captured schedule_coro.
 
 import asyncio
 import json
+import sys
 import time
 from types import SimpleNamespace
 
@@ -376,68 +377,48 @@ async def test_fetch_tabs_slot_and_diagnose(cdp_server, cfg, monkeypatch):
     assert json.loads(none_host.diagnose_chrome())["error"] == "CDP not available"
 
 
-async def test_auto_scan_plan_apply_report(cfg):
-    from app.services.auto_connect import AutoConnectPlan
-    tabs = [tab("t1", "A", "https://arena.ai/c/direct")]
-    row = UrlRow.create("https://arena.ai/c/direct")  # unlinked row for the tab
-    bridge = make_bridge(cdp=None, config=cfg, urls=[row])
-    # planner works on row dicts (the _dedupe_state_rows shape)
-    rows = [{"id": row.id, "url": row.url, "tab_id": None, "enabled": True}]
-    plan = bt_mod.plan_auto_sync(bridge, tabs, "arena.ai", rows)
-    assert plan.add or plan.claim or plan.connect  # something to do
-    changed = bt_mod.apply_auto_plan(bridge, plan)
-    assert changed is True
-    linked = [u for u in bridge.state.urls if u.tab_id]
-    assert any(u.tab_id == "t1" for u in linked)  # claimed or added
-    # presence + report
-    presence = (0, [])
-    assert bt_mod.plan_has_changes(plan, *presence) is True
-    bridge._emit_pool_status = lambda: bridge.logs.append(("pool", "emitted"))
-    bt_mod.report_auto_plan(bridge, plan, presence, "manual")
-    assert any("Auto-connect:" in msg for _, msg in bridge.logs)
-    # no changes → manual still logs, auto stays quiet
-    quiet = []
-    b2 = make_bridge(cdp=None, config=cfg, urls=[UrlRow.create(
-        "https://arena.ai/c/direct", tab_id="t1")])
-    empty_plan = AutoConnectPlan()
-    assert bt_mod.apply_auto_plan(b2, empty_plan) is False
-    assert bt_mod.plan_has_changes(empty_plan, 0, []) is False
-    b2._log = lambda m, l="info": quiet.append(m)
-    bt_mod.report_auto_plan(b2, empty_plan, (0, []), "manual")
-    assert any("no changes" in m for m in quiet)
-    b3 = make_bridge(cdp=None, config=cfg)
-    b3._log = lambda m, l="info": quiet.append(m)
-    quiet_before = len(quiet)
-    bt_mod.report_auto_plan(b3, AutoConnectPlan(), (0, []), "auto")
-    assert len(quiet) == quiet_before  # auto source stays silent on no-change
-    # prune: plan.remove holds row ids whose tabs vanished
-    gone_row = UrlRow.create("https://arena.ai/c/direct", tab_id="t1")
-    b4 = make_bridge(cdp=None, config=cfg, urls=[gone_row])
-    gone_plan = AutoConnectPlan()
-    gone_plan.remove = [gone_row.id]
-    assert bt_mod.prune_auto_rows(b4, gone_plan) == 1
-    assert b4.state.urls == []
-    assert bt_mod.prune_auto_rows(b4, AutoConnectPlan()) == 0
+async def test_live_deps_wiring_flows_through_the_real_seam(cfg):
+    """S6: live_deps(bridge) wires fetch/join/commit/log onto the real bridge parts."""
+    bridge = make_bridge(cdp=SimpleNamespace(), config=cfg)
+
+    class CDP:
+        async def fetch_tabs(self):
+            return ["tabs"]
+
+    bridge.cdp = CDP()
+    deps = bt_mod.live_deps(bridge)
+    assert await deps.fetch_tabs() == ["tabs"]
+    state_emitted = []
+    bridge._save_arena = lambda: state_emitted.append("save")
+    bridge._emit_arena_state = lambda: state_emitted.append("emit")
+    deps.commit()
+    assert state_emitted == ["save", "emit"]      # system change: no undo push at all
+    logged = []
+    bridge._log = lambda m, l="info": logged.append((l, m))
+    deps.log("hello", "warn")
+    assert logged == [("warn", "hello")]
 
 
-async def test_auto_prune_allowed_and_join(cdp_server, cfg, monkeypatch):
-    pool = PagePool()
-    client = make_client(cdp_server)
-    bridge = make_bridge(cdp=client, config=cfg, pool=pool)
-    tabs = [tab("t1", "A", "https://arena.ai/c")]
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is True
-    bridge._run_state = "running"
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is False
-    bridge._run_state = "idle"
-    assert bt_mod.auto_prune_allowed(bridge, []) is False
-    # join skips empty sockets
-    joined = []
+async def test_do_auto_connect_scan_reports_manual_and_stays_auto_quiet(cfg):
+    """S6 module boundary: manual always answers; auto logs only on change."""
+    seen = []
 
-    async def fake_join(b, ws):
-        joined.append(ws)
-    monkeypatch.setattr(bt_mod, "do_connect_page_pool", fake_join)
-    await bt_mod.join_new_tabs(bridge, ["ws://a/1", "", "ws://a/2"])
-    assert joined == ["ws://a/1", "ws://a/2"]
+    async def fake_reconcile(bridge, deps, source="auto"):
+        seen.append(source)
+        if source == "manual":
+            deps.log("🤖 Reparse: no changes — rows and pool already match open tabs", "info")
+
+    bridge = make_bridge(cdp=None, config=cfg)
+    monkey_mod = sys.modules[bt_mod.__name__]
+    orig = monkey_mod.url_reconcile.reconcile_once
+    monkey_mod.url_reconcile.reconcile_once = fake_reconcile
+    try:
+        await bt_mod.do_auto_connect_scan(bridge, "manual")
+        await bt_mod.do_auto_connect_scan(bridge, "auto")
+    finally:
+        monkey_mod.url_reconcile.reconcile_once = orig
+    assert seen == ["manual", "auto"]
+    assert any("no changes" in msg for _, msg in bridge.logs)
 
 
 async def test_auto_scan_pass_end_to_end(cdp_server, cfg):
@@ -446,13 +427,13 @@ async def test_auto_scan_pass_end_to_end(cdp_server, cfg):
     client.fetch_tabs = fake_fetch([tab("t1", "A", "https://arena.ai/c/direct"),
                                     tab("t2", "B", "https://other.example.com/x")])
     bridge = make_bridge(cdp=client, config=cfg, pool=pool)
-    await bt_mod.auto_scan_pass(bridge, "manual")
+    await bt_mod.do_auto_connect_scan(bridge, "manual")
     # arena.ai row added + pool joined; non-matching tab ignored
     assert any(u.url == "https://arena.ai/c/direct" for u in bridge.state.urls)
     assert pool.get_page("t1") is not None and pool.get_page("t2") is None
     assert any("Auto-connect:" in msg for _, msg in bridge.logs)
     # second scan: no changes, pool presence kept
-    await bt_mod.auto_scan_pass(bridge, "manual")
+    await bt_mod.do_auto_connect_scan(bridge, "manual")
     assert any("no changes" in msg for _, msg in bridge.logs)
     # busy guard + exception path
     bridge._auto_scan_running = True

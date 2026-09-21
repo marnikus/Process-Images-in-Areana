@@ -28,6 +28,7 @@ DEFAULT_SESSION = {
     "cooldown_enabled": True,
     "cooldown_min_seconds": 300,
     "cooldown_captcha_penalty_seconds": 900,
+    "url_reconcile_interval_ms": 5000,
 }
 
 DEFAULT_WINDOW_PRESETS = {"window_presets": {}}
