@@ -215,3 +215,45 @@ describe('job_history window (content)', () => {
     assert.equal(cached, 'data:image/png;base64,ZZZ');
   });
 });
+
+/* ── part 3: readable tab handles (D-7, merged with the alias feature) ────── */
+describe('job_history tab column (readable ids)', () => {
+  const render = () => {
+    const sandbox = { console, JSON, Object, Array, Math, Number, String, parseInt, isNaN };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(readJs('core/boot.js'), sandbox, { filename: 'core/boot.js' });
+    vm.runInContext(readJs('core/tab-label.js'), sandbox, { filename: 'core/tab-label.js' });
+    vm.runInContext(readJs('panels/job-history/store.js'), sandbox, { filename: 'store.js' });
+    vm.runInContext(readJs('panels/job-history/render.js'), sandbox, { filename: 'render.js' });
+    return sandbox;
+  };
+
+  test('the frozen row label wins — a finished job keeps the name it ran under', () => {
+    const s = render();
+    s.PagePoolPanel = { snapshot: { pages: [] } }; // tab already closed
+    const cell = s.JobHistoryRender._tabCell(row({ tab_label: 'marnikus@gmail.com_3045' }));
+    assert.match(cell, /marnikus@gmail\.com_3045/, 'readable handle shown');
+    assert.ok(cell.includes("tab-abcdef123456"), "full hex still in the tooltip");
+  });
+
+  test('a legacy row with no stored label falls back to the live pool lookup', () => {
+    const s = render();
+    s.PagePoolPanel = { snapshot: { pages: [{ tab_id: 'tab-abcdef123456', tab_label: 'live@x.com_0007' }] } };
+    assert.match(s.JobHistoryRender._tabCell(row()), /live@x\.com_0007/);
+  });
+
+  test('no label anywhere degrades to the short id, never an empty cell', () => {
+    const s = render();
+    s.PagePoolPanel = { snapshot: { pages: [] } };
+    const cell = s.JobHistoryRender._tabCell(row());
+    assert.match(cell, />tab-abcd</, 'short id fallback');
+  });
+
+  test('history and the worker table agree on the same tab', () => {
+    const s = render();
+    s.PagePoolPanel = { snapshot: { pages: [{ tab_id: 'tab-abcdef123456', tab_label: 'a@b.com_0042' }] } };
+    const poolLabel = s.TabLabel.of('tab-abcdef123456');
+    assert.ok(s.JobHistoryRender._tabCell(row()).includes(poolLabel), 'one handle, both views');
+  });
+});

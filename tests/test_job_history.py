@@ -368,3 +368,61 @@ def test_clear_reports_a_failing_store(tmp_path):
     host._job_history = JobHistoryStore(blocker / "job_history.json")
     assert json.loads(host.clear_job_history())["ok"] is False
     assert not any("cleared" in m for _, m in logs)
+
+
+# ── readable tab ids in history (D-7, merged with the alias feature) ─────────
+
+def alias_pool(label="marnikus@gmail.com_3045", worker_no=2):
+    """A pool whose page carries the readable handle every view prints."""
+    page = SimpleNamespace(worker_no=worker_no, label=label,
+                           alias=label, tab_id="tab-abcdef123456")
+    return SimpleNamespace(get_page=lambda _tid: page)
+
+
+def test_the_history_row_freezes_the_readable_tab_handle():
+    """A row records the alias, not the raw hex — same handle the pool prints."""
+    pool = alias_pool()
+    assert jh.tab_label_for(pool, "tab-abcdef123456") == "marnikus@gmail.com_3045"
+    row = jh._identity_fields(HistoryInput(bridge=None, pool=pool, img=SimpleNamespace(),
+                                           tab_id="tab-abcdef123456", job_id="c1",
+                                           failed=False, err=""))
+    assert row["tab_label"] == "marnikus@gmail.com_3045"
+    assert row["tab_id"] == "tab-abcdef123456"  # identity is still the CDP id (RULE 15)
+
+
+def test_the_label_matches_the_pool_label_owner_exactly():
+    """History must never print a different handle than the worker table."""
+    from app.browser.page_pool import tab_label_of
+    pool = alias_pool()
+    for tid in ("tab-abcdef123456", "gone-tab", ""):
+        assert jh.tab_label_for(pool, tid) == tab_label_of(pool, tid)
+
+
+def test_a_vanished_tab_or_dead_pool_degrades_to_the_short_id():
+    """History outlives the tab: a closed tab still names itself, never blank."""
+    class Boom:
+        def get_page(self, _tid):
+            raise RuntimeError("pool gone")
+
+    assert jh.tab_label_for(Boom(), "tab-abcdef123456") == "tab-abcdef12"
+    assert jh.tab_label_for(None, "tab-abcdef123456") == "tab-abcdef12"
+    assert jh.tab_label_for(None, "") == ""
+
+
+def test_recorded_rows_carry_the_handle_through_the_settle_site(tmp_path):
+    """End to end: the row the window receives has the readable handle."""
+    bridge = make_bridge(tmp_path)
+    img = make_img("a.png")
+    img.output_path = "/tmp/out/a_AI.png"
+    jh.record_history(HistoryInput(bridge=bridge, pool=alias_pool(), img=img,
+                                   tab_id="tab-abcdef123456", job_id="corr-1",
+                                   failed=False, err=""))
+    sent = json.loads(bridge.job_history_updated.sent[-1])
+    assert sent["entries"][0]["tab_label"] == "marnikus@gmail.com_3045"
+
+
+def test_the_label_survives_an_unimportable_pool_module(monkeypatch):
+    """The import guard is real: history still names the tab if the pool module dies."""
+    import sys
+    monkeypatch.setitem(sys.modules, "app.browser.page_pool", None)  # import → ImportError
+    assert jh.tab_label_for(alias_pool(), "tab-abcdef123456") == "tab-abcdef12"

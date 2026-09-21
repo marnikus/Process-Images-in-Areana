@@ -216,6 +216,22 @@ def _take_context(bridge, job_id: str) -> tuple:
     return _take_started(bridge, job_id, now), _take_captcha(bridge, job_id)
 
 
+def tab_label_for(pool, tab_id: str) -> str:
+    """Readable `{email}_{4 digits}` handle for a recorded tab (D-7).
+
+    History rows are written once and read long after the tab is gone, so the
+    label is resolved at record time and frozen into the row. Delegates to the
+    pool's one label owner (`page_pool.tab_label_of`) — a history row can never
+    print a different handle than the worker table for the same tab. A vanished
+    tab or an unusable pool degrades to the short id, never to an empty cell.
+    """
+    try:
+        from app.browser.page_pool import tab_label_of
+        return tab_label_of(pool, tab_id)
+    except Exception:
+        return str(tab_id or "")[:12]
+
+
 def worker_no_of(pool, tab_id: str) -> Any:
     """The pool's numeric tab reference (D-3 `#n` badge); `""` when the tab is gone."""
     try:
@@ -238,6 +254,7 @@ def _identity_fields(rec: HistoryInput) -> Dict[str, Any]:
     """Who ran it + how it ended (ids, tab, status, error)."""
     return {
         "job_id": rec.job_id or "", "tab_id": rec.tab_id or "",
+        "tab_label": tab_label_for(rec.pool, rec.tab_id or ""),
         "worker_no": worker_no_of(rec.pool, rec.tab_id or ""),
         "status": "failed" if rec.failed else "completed",
         "error": str(rec.err or "")[:ERROR_KEEP],

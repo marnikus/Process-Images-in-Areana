@@ -62,10 +62,23 @@ window.JobHistoryRender = {
     return `<span class="history-captcha" title="${n} captcha encounter${n === 1 ? '' : 's'} during this job">🛡 ×${n}</span>`;
   },
 
+  /* The readable `{email}_{4 digits}` handle (D-7). The row froze its label at
+     record time, so a finished job keeps the name it ran under even after the
+     tab closed; a row written before labels existed falls back to the live
+     lookup, then to the short id. The full hex stays in the tooltip. */
+  _tabCell(e) {
+    const id = String(e.tab_id || '');
+    const live = window.TabLabel ? window.TabLabel.of(id) : '';
+    /* A real handle (frozen at record time, else the live pool lookup); the
+       short id is only a fallback, so it never pollutes the tooltip. */
+    const alias = e.tab_label || (live && live !== id.slice(0, 8) ? live : '');
+    const title = alias ? `${alias} · ${id}` : id;
+    return `<td title="${this.esc(title)}">${this.esc(this._short(alias || id.slice(0, 8), 30))}</td>`;
+  },
+
   _row(e) {
-    const tab = this.esc(e.tab_id || '');
     return '<tr>'
-      + `<td title="${tab}">${this.esc(this._short(e.tab_id || '', 8))}</td>`
+      + this._tabCell(e)
       + `<td>${this.esc(e.worker_no === '' || e.worker_no == null ? '—' : '#' + e.worker_no)}</td>`
       + `<td><b>${this.esc(e.job_no == null ? '' : e.job_no)}</b></td>`
       + `<td>${this._statusCell(e)}</td>`
