@@ -328,7 +328,7 @@ def test_layout_state_grid_validation_rejects_unreadable(cfg):
     assert host.get_grid_layout() == ""  # nothing stored yet
     assert host.save_grid_layout("{not json") is False  # RULE 13: unreadable rejected
     assert host.save_grid_layout(default_payload()) is True
-    assert json.loads(host.get_grid_layout())["v"] == 6  # canonical round trip (GRID_VERSION 5 → 6 in S8)
+    assert json.loads(host.get_grid_layout())["v"] == 7  # canonical round trip (GRID_VERSION 6 → 7: job_history)
     assert host.save_grid_layout(json.dumps({"v": 999, "tree": {}})) is False
     assert any("rejected" in msg for _, msg in logs)
     assert isinstance(host.reset_grid_layout(), str)  # slot returns JSON payload

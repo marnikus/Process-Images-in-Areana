@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="css/sash-layout.css">
 <link rel="stylesheet" href="css/stack-drag.css">
 <link rel="stylesheet" href="css/live-debug.css">
+<link rel="stylesheet" href="css/job-history.css">
 <link rel="stylesheet" href="css/arena.css">
 <link rel="stylesheet" href="css/captcha-recordings.css">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
@@ -299,6 +300,30 @@
       </div>
     </div>
 
+    <!-- JOB HISTORY (17th window) — finished jobs, newest first, beside the worker pool view -->
+    <div class="panel job-history-panel" id="winJobHistory" data-window="job_history">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">history</span> Job History <span class="spacer"></span><span id="historyCount" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 shown · 0 stored</span></h3>
+      <div class="job-history-body">
+        <div class="job-history-strip">
+          <span class="material-icons" style="font-size:14px;">filter_list</span><span>show last</span>
+          <input id="historyLimit" type="number" min="5" max="500" step="1" placeholder="50" title="How many finished jobs to display (5–500)">
+          <button id="historyLimitSaveBtn" class="btn-small" title="Apply this display count">Apply</button>
+          <span class="spacer"></span>
+          <button id="historyRefreshBtn" class="btn-small" title="Re-read finished jobs"><span class="material-icons" style="font-size:14px;">refresh</span></button>
+          <button id="historyClearBtn" class="btn-small" title="Clear the history log">Clear</button>
+        </div>
+        <div class="job-history-rows">
+          <table class="queue-table">
+            <thead><tr><th>Tab ID</th><th>Tab #</th><th>Job #</th><th>Status</th><th>Error log</th><th>Image</th><th>Folder</th><th>Link</th><th>Time start</th><th>Time finished</th><th>Captcha</th></tr></thead>
+            <tbody id="historyTableBody"><tr><td colspan="11" class="history-empty">no finished jobs yet — run the queue and they land here</td></tr></tbody>
+          </table>
+        </div>
+        <div class="job-history-strip job-history-hint">
+          <b>How history works:</b><span>every finished job lands here newest-first — ✓ completed with its output link, ✗ failed with its error log. 🛡 marks jobs that hit a captcha. The display count (Settings mirrors it) caps the rows; the log keeps the last 500 on disk.</span>
+        </div>
+      </div>
+    </div>
+
     <!-- ACTIVITY LOG -->
     <div class="panel log-panel" id="winLog" data-window="log">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">terminal</span> Activity Log <span class="spacer"></span><button id="clearLogBtn" class="btn-small">Clear</button></h3>
@@ -364,6 +389,11 @@
         <label>URL Reparse Interval (ms) — how often Python re-reads open Chrome tabs and rebuilds the URL list (500–60000; applies without restart)</label>
         <input id="setUrlIntervalMs" type="number" min="500" max="60000" step="100" placeholder="5000">
         <div style="font-size:10px; color:var(--text-muted);">Same setting as the URL window's "🔁 every … ms" — saving here or there updates both; Reparse itself clears the list and rebuilds it from open tabs.</div>
+      </div>
+      <div class="settings-group">
+        <label>Job History Rows — how many finished jobs the Job History window shows, newest first (5–500, default 50)</label>
+        <input id="setHistoryLimit" type="number" min="5" max="500" step="1" placeholder="50">
+        <div style="font-size:10px; color:var(--text-muted);">Same setting as the Job History header's "show last" — saving here or there updates both; the log itself keeps the last 500 on disk.</div>
       </div>
       <!-- Job Cycle & Cooldown — per-tab pause between generations (spec 01-04) -->
       <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin:10px 0; background:var(--bg-card);">
@@ -760,6 +790,11 @@
 <script src="js/panels/live-debug/render.js"></script>
 <script src="js/panels/live-debug/actions.js"></script>
 <script src="js/panels/live-debug.js"></script>
+<script src="js/panels/job-history/store.js"></script>
+<script src="js/panels/job-history/render.js"></script>
+<script src="js/panels/job-history/actions.js"></script>
+<script src="js/panels/job-history/limit.js"></script>
+<script src="js/panels/job-history.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app/listeners.js"></script>
 <script src="js/arena-app.js"></script>
