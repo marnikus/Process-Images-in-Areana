@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.core.models import UrlRow
 from app.core.persistence import load_preset, save_preset
+from app.services import job_history
 from app.services.live import debug_view
 from app.services.live.bus import live_bus
 from app.services.live.feed import commit_queue
@@ -97,6 +98,16 @@ def apply_url_interval(bridge, data: dict) -> None:
     bridge.config.set_state(**{debug_view.INTERVAL_KEY: ms})
     live_bus(bridge).wake("interval")
     bridge._log(f"🔁 URL reconcile interval set to {ms} ms (Settings)", "info")
+
+
+def apply_history_limit(bridge, data: dict) -> None:
+    """Job-history display count: clamp, persist, re-push the rows, log (mirrors apply_url_interval)."""
+    if job_history.LIMIT_KEY not in data:
+        return
+    n = job_history.clamp_history_limit(data[job_history.LIMIT_KEY])
+    bridge.config.set_state(**{job_history.LIMIT_KEY: n})
+    job_history.emit_history(bridge)
+    bridge._log(f"🗂 Job history shows last {n} jobs", "info")
 
 
 def apply_watcher_timeouts(bridge, data: dict) -> None:
@@ -281,6 +292,7 @@ class AppSettingsMixin:
             apply_highlight_duration(self.state, self.config, data)
             apply_watcher_timeouts(self, data)
             apply_url_interval(self, data)
+            apply_history_limit(self, data)
             self._save_arena()
             push_settings_undo(self)
             return json.dumps({"ok": True})

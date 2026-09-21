@@ -34,6 +34,7 @@ from app.ui.panels.undo_history import UndoHistoryMixin
 from app.ui.panels.url_queue import UrlQueueMixin
 from app.ui.panels.queue_scan import QueueScanMixin
 from app.ui.panels.app_settings import AppSettingsMixin
+from app.ui.panels.job_history import JobHistoryMixin
 from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
 from app.ui.panels.watcher_solver import WatcherSolverMixin
 from app.ui.panels.page_pool import PagePoolMixin
@@ -54,7 +55,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, WatcherSolverMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, WatcherSolverMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin, JobHistoryMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -79,6 +80,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     captcha_watcher_status = Signal(str)  # JSON: Captcha Watcher (SDK solver) counters
     page_pool_updated = Signal(str)  # JSON snapshot steady/busy
     thumbnail_ready = Signal(str, str)  # img_id, payload_json — non-blocking thumb
+    job_history_updated = Signal(str)  # JSON {entries, limit, total, next_job_no}
 
     def __init__(self, config_manager: ConfigManager, state_path: Path, cdp_client=None, parent=None):
         super().__init__(parent)
@@ -142,9 +144,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
         except Exception:
             pass
 
-    # WebChannel constraint: slots must live on this QObject (wire format);
-    # the lazy getter keeps __init__ untouched. Net line delta of this
-    # change is negative (inline captcha blocks replaced by choke point).
+    # WebChannel constraint: slots live on this QObject (wire format); lazy getters keep __init__ slim.
 
     def _captcha_service(self):
         # Seam for main_window + app/services/captcha (watcher_captcha owns the factory).
