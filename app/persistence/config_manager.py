@@ -14,10 +14,12 @@ DEFAULT_SESSION = {
     "last_folder": "",
     "highlight_duration": 3,
     "cdp_host": "127.0.0.1",
-    "cdp_port": 9222,
+    "cdp_port": 9222,  # the BASE port: each browser listens on base + its registry offset
     "cdp_user_data_dir": "C:\\arena-images-chrome",
     "cdp_extra_args": "",
-    "url_pattern": "arena.ai",
+    "active_browser": "chrome",  # which browser the automation connects to and the panel edits
+    "cdp_browsers": {},  # per-browser {user_data_dir, extra_args, enabled} overrides
+    "url_pattern": "arena.ai",  # one pattern for every browser
     "url_reconcile_interval_ms": 5000,  # S6: Python URL reconciler cadence (clamped 500…60000)
     "action_blocks": None,  # will be default stack if None
     "action_blocks_version": 1,

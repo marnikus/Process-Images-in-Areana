@@ -1047,6 +1047,27 @@ deleting the counter (the owner keeps it), a setting to switch order/balancing (
 and dropping the persistence so the number would reset every restart (the store is the counter's home; the
 `Jobs` column would lie about the tab's history).
 
+## Addendum 2026-09-21d — Firefox beside Chrome (I-62)
+
+Owner request: Firefox as a second supported browser, same host/port *setting*, per-browser data dir + launch
+command, a panel that covers both, parity with the Chrome CDP operations, both connectable and poolable at once —
+design `docs/archive/2026-09-21-firefox-browser-support/design.md`.
+
+| Gate | Command | Result |
+|---|---|---|
+| Tests first | the 4 new Python files + `tests/js/test_browser_selector.mjs` before implementation | RED: `ImportError: cannot import name 'bidi'` / `'endpoints'` (2 collection errors), 24 profile/bidi/endpoint tests failing, 9 slot-payload tests failing, JS **8 failed of 8** |
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **2,036 passed · 4 skipped · 0 fail** (+34 net: profiles 9, bidi 8, endpoints 8, config slots 9) |
+| JS tests | `npm run test:js` | **362 pass · 4 skipped · 0 fail** (366 subtests; the new file registered in `package.json`, 42 files) |
+| Coverage | fresh `coverage run --branch` + `coverage json` on this branch | **88.30 % line / 84.79 % branch** (floors 86.36 / 82.33); the new files: `browsers.py` 96/93, `bidi.py` 82/62, `endpoints.py` 73/56 — the BiDi client is exercised through a real socket, the uncovered lines are the defensive `except` arms |
+| Changed-file lane | `tools/verify_quality.py --changed-files <7 py + 4 js>` | **no size/complexity fail.** Three findings were fixed, not waived: `build_command`/`launch_commands` 6/5 params → one `endpoint` dict (≤4), `bidi.evaluate`/`navigate` 5 params → an `Endpoint` NamedTuple, and `PagePool` 16 methods > 15 → the pool's browser is set through the same `_host`/`_port` assignment the endpoint push already uses (no new method) |
+| Whole-repo gate | `tools/verify_quality.py` (fresh coverage.json in place) | **1 fail — the pre-existing untouched `captcha.js max_cc 12 > 10`** (base-identical drift carried since the JS ratchet; `captcha.js` is not part of this round) |
+| Real transport, not a stub | `tests/test_bidi.py` | the fake Remote Agent serves `POST /session` **and** the session socket on ONE port (hand-rolled RFC 6455 upgrade + frame loop) and enforces the `session.new`-first rule, so the client is tested against a socket, not a mock |
+| Freeze check | `tests/test_browser_config_slots.py::test_browser_support_added_payloads_not_bridge_slots` | the slot table stays exactly 137 — browser support adds payload keys, never slots |
+
+Protocol honesty (RULE 4): Firefox's CDP was deprecated in 129 and removed in 141; the registry therefore treats
+BiDi as a first-class protocol, the panel names the missing CDP-only operations per browser, and an ESR 128/140
+launch that re-enables CDP is detected by probing — not by assuming.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

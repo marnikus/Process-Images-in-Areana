@@ -46,6 +46,7 @@ On first run, browser launches with profile `./browser_profile`. Log in to arena
 - **Progress Summary:** total, selected, pending, processing, completed, skipped, failed, needs_review
 - **Activity Log:** timestamped events
 - **Settings:** timeouts, retry limits, output naming, supported file types, overwrite, highlight rect (enable, duration, color, border width), browser profile
+- **Browser Debug Connection (Chrome / Firefox / Edge):** one browser selector over a data-driven registry (`app/browser/browsers.py`) — shared debug host + base port + URL pattern, and per browser its own data dir, extra args, resolved endpoint (`base + offset`, so two browsers can run side by side) and copy-ready launch command. Chrome/Edge speak CDP, Firefox speaks WebDriver BiDi (`POST /session`); each row lists the operations its protocol supports, and BiDi-only gaps (screenshot / file attach / input / DOM) are named instead of timing out. Every payload rides the existing CDP slots — the bridge slot surface is unchanged.
 
 ## Workflow
 For each selected pending image (sequential, round-robin URLs):

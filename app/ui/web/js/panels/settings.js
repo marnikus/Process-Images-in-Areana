@@ -52,13 +52,8 @@ const SettingsPanel = {
 
   _applyCDPConfig(cfg) {
     this.cdpConfig = cfg;
-    this._setVal('cdpHost', cfg.host || '127.0.0.1');
-    this._setVal('cdpPort', cfg.port || 9222);
-    this._setVal('cdpUserDataDir', cfg.user_data_dir || 'C:\\arena-images-chrome');
-    this._setVal('cdpExtraArgs', cfg.extra_args || '');
-    this._setVal('cdpUrlPattern', (cfg.url_pattern === undefined || cfg.url_pattern === null) ? 'arena.ai' : cfg.url_pattern);
-    this.updateChromeCmdPreview();
-    if (typeof CDPPanel !== 'undefined' && CDPPanel.updateChromeToolbar) CDPPanel.updateChromeToolbar(cfg);
+    if (typeof BrowserConnection === 'undefined') return;
+    BrowserConnection.apply(cfg);   // selector + shared row + per-browser block (Chrome/Firefox)
   },
 
   _onCDPConfig(res) {
@@ -72,8 +67,7 @@ const SettingsPanel = {
   _onLaunchCmd(res) {
     try {
       const cmd = JSON.parse(res);
-      const el = document.getElementById('cdpLaunchCmd');
-      if (el) el.textContent = cmd.windows || '';
+      if (typeof BrowserConnection !== 'undefined') BrowserConnection.applyLaunch(cmd);
     } catch{}
   },
 
@@ -82,25 +76,11 @@ const SettingsPanel = {
     if (App.bridge?.get_chrome_launch_command) App.bridge.get_chrome_launch_command((res)=> this._onLaunchCmd(res));
   },
 
-  _buildChromeCmd(host, port, dir, extra) {
-    let cmd = `"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=${port} --user-data-dir="${dir}"`;
-    if (extra) cmd += ` ${extra}`;
-    return cmd;
-  },
-
   updateChromeCmdPreview() {
-    const host = document.getElementById('cdpHost')?.value || '127.0.0.1';
-    const port = document.getElementById('cdpPort')?.value || 9222;
-    const dir = document.getElementById('cdpUserDataDir')?.value || 'C:\\arena-images-chrome';
-    const extra = document.getElementById('cdpExtraArgs')?.value || '';
-    const el = document.getElementById('cdpLaunchCmd');
-    if (el) el.textContent = this._buildChromeCmd(host, port, dir, extra);
-    const testEl = document.getElementById('cdpTestUrl');
-    if (testEl) testEl.textContent = `http://${host}:${port}/json/list`;
-    if (typeof CDPPanel !== 'undefined') {
-      if (CDPPanel.updateChromeToolbar) CDPPanel.updateChromeToolbar({host, port, user_data_dir: dir, extra_args: extra});
-      CDPPanel.currentConfig = {host, port: parseInt(port)||9222, user_data_dir: dir, extra_args: extra};
-    }
+    if (typeof BrowserConnection === 'undefined') return;
+    BrowserConnection.updatePreview();          // the selected browser's own command
+    BrowserConnection.updateToolbar();
+    if (typeof CDPPanel !== 'undefined') CDPPanel.currentConfig = BrowserConnection.toolbarConfig();
   },
 
   _buildSettingsPayload() {
@@ -180,13 +160,8 @@ const SettingsPanel = {
   },
 
   _buildCDPPayload() {
-    const getVal = (id) => document.getElementById(id)?.value;
-    const host = (getVal('cdpHost')||'127.0.0.1').trim() || '127.0.0.1';
-    let port = parseInt(getVal('cdpPort'))||9222;
-    const user_data_dir = (getVal('cdpUserDataDir')||'C:\\arena-images-chrome').trim() || 'C:\\arena-images-chrome';
-    const extra = (getVal('cdpExtraArgs')||'').trim();
-    const url_pattern = (getVal('cdpUrlPattern')||'').trim();
-    return { host, port, user_data_dir, extra_args: extra, url_pattern };
+    if (typeof BrowserConnection === 'undefined') return null;
+    return BrowserConnection.payload();   // active browser + every per-browser block
   },
 
   _onSaveCDP(res, payload) {
@@ -204,6 +179,7 @@ const SettingsPanel = {
 
   saveCDP() {
     const payload = this._buildCDPPayload();
+    if (!payload) return;
     if (payload.port < 1 || payload.port > 65535) { LogConsole.log('⚠ Port must be 1-65535', 'warn'); return; }
     if (App.bridge?.set_cdp_config) App.bridge.set_cdp_config(JSON.stringify(payload), (res)=> this._onSaveCDP(res, payload));
   },

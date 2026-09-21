@@ -53,6 +53,7 @@ class PageInfo:
     cooldown_reason: str = ""
     jobs_completed: int = 0
     current_image: Optional[str] = None
+    browser: str = ""  # browser id of the endpoint ("chrome"/"firefox"/…); "" = the pool knows
     worker_no: int = 0  # pool join order, 1-based, assigned once by PagePool (D-3)
     alias_no: int = 0  # readable-id number, assigned once by PagePool, persisted (D-5)
     owner: str = ""    # logged-in account of this tab, from the owner probe (D-5)
@@ -117,6 +118,7 @@ class PageInfo:
         return {
             "ws_url": self.ws_url,
             "tab_id": self.tab_id,
+            "browser": self.browser,
             "worker_no": self.worker_no,
             "title": self.title,
             "url": self.url,

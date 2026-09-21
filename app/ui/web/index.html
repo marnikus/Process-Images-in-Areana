@@ -334,45 +334,58 @@
     <div class="panel" id="winSettings" data-window="settings">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">settings</span> Settings <span class="spacer"></span><button id="settingsSaveBtn" class="btn-small btn-primary">Save</button></h3>
 
-      <!-- CDP Chrome Config — user decides port and user-data-dir -->
+      <!-- Browser Debug Connection — Chrome / Firefox (more browsers later), one shared host+port -->
       <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:12px; background:var(--bg-card);">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
           <span class="material-icons" style="font-size:16px; color:var(--accent);">settings_ethernet</span>
-          <b style="font-size:12px;">Chrome Debug Connection (user configurable)</b>
+          <b style="font-size:12px;">Browser Debug Connection (Chrome / Firefox)</b>
           <span class="spacer"></span>
-          <button id="cdpSaveBtn" class="btn-small btn-primary" title="Save host/port/dir">Save CDP</button>
-          <button id="cdpTestBtn" class="btn-small" title="Diagnose Chrome on this port">Diagnose</button>
+          <button id="cdpSaveBtn" class="btn-small btn-primary" title="Save the host, base port and every browser's data dir">Save Browsers</button>
+          <button id="cdpTestBtn" class="btn-small" title="Diagnose the selected browser on its own port">Diagnose</button>
         </div>
         <div class="settings-row">
           <div class="settings-group">
-            <label>CDP Host</label>
+            <label>Browser (this block edits the selected one)</label>
+            <select id="browserSelect" title="Chrome needs --user-data-dir, Firefox needs --profile; each browser has its own dir and launch command"></select>
+          </div>
+          <div class="settings-group">
+            <label>Resolved debug port (base + this browser's offset)</label>
+            <code id="cdpResolvedPort" style="background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:12px; display:block;">—</code>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-group">
+            <label>Debug host (shared by every browser)</label>
             <input id="cdpHost" type="text" placeholder="127.0.0.1">
           </div>
           <div class="settings-group">
-            <label>CDP Port (you decide)</label>
+            <label>Base port (shared; Chrome = base, Firefox = base + 1, Edge = base + 2)</label>
             <input id="cdpPort" type="number" min="1" max="65535" placeholder="9222">
           </div>
         </div>
         <div class="settings-group">
-          <label>User Data Dir (you decide) — e.g. C:\arena-images-chrome or C:\arena-9223</label>
+          <label>URL pattern — auto-connect only tabs whose URL contains this (same for every browser; blank = all tabs)</label>
+          <input id="cdpUrlPattern" type="text" placeholder="arena.ai">
+        </div>
+        <div style="border-top:1px dashed var(--border); margin:10px 0 6px;"></div>
+        <div class="settings-group">
+          <label id="cdpDirLabel">User data dir (this browser)</label>
           <input id="cdpUserDataDir" type="text" placeholder="C:\arena-images-chrome">
         </div>
         <div class="settings-group">
-          <label>Extra Chrome args (optional)</label>
+          <label>Extra args for this browser (optional)</label>
           <input id="cdpExtraArgs" type="text" placeholder="--disable-extensions">
         </div>
-        <div class="settings-group">
-          <label>URL pattern — auto-connect only tabs whose URL contains this (blank = all tabs)</label>
-          <input id="cdpUrlPattern" type="text" placeholder="arena.ai">
-        </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Capabilities: <span id="cdpCapabilities">—</span></div>
+        <div id="cdpBrowserNotes" style="font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.4;"></div>
         <div style="margin-top:8px;">
-          <label style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:600;">Generated launch command (copy & run):</label>
+          <label style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:600;">Generated launch command for this browser (copy &amp; run):</label>
           <div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
-            <code id="cdpLaunchCmd" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:11px; word-break:break-all; display:block;">"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\arena-images-chrome"</code>
+            <code id="cdpLaunchCmd" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:11px; word-break:break-all; display:block;">— waiting for the bridge to build the command —</code>
             <button id="cdpCopyCmdBtn" class="btn-small" title="Copy command">Copy</button>
           </div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Test URL: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — open in browser, should show JSON.</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">💡 Run different ports/dirs: e.g. 9222 for arena, 9223 for virt-chat. App will remember your choice in <code>config/session.json</code> and presets.</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Test URL: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — open it in that browser: Chrome lists tabs at <code>/json/list</code>, Firefox's Remote Agent answers <code>/session</code> (BiDi).</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">💡 Chrome and Firefox run side by side: same host, one base port, separate data dirs — both connectable and poolable at the same time. The URL pattern above is the one rule for every browser.</div>
         </div>
       </div>
 
@@ -751,6 +764,7 @@
 <script src="js/panels/prompt-editor.js"></script>
 <script src="js/panels/run-controls.js"></script>
 <script src="js/panels/progress.js"></script>
+<script src="js/panels/browser-connection.js"></script>
 <script src="js/panels/settings.js"></script>
 <script src="js/panels/captcha.js"></script>
 <script src="js/panels/captcha-recording-comparison.js"></script>

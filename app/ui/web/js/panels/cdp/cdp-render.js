@@ -104,6 +104,9 @@ window.CDPRender = {
     if (!toolbar) return;
     const codeEl = toolbar.querySelector('code');
     if (!codeEl) return;
+    // The selected browser builds its own command (`command`); the Chrome
+    // fallback keeps the toolbar alive when the browser block is not loaded.
+    if (cfg.command) { codeEl.textContent = cfg.command; return; }
     let cmd = `\"C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe\" --remote-debugging-port=${cfg.port} --user-data-dir=\"${cfg.user_data_dir}\"`;
     if (cfg.extra_args) cmd += ` ${cfg.extra_args}`;
     codeEl.textContent = cmd;

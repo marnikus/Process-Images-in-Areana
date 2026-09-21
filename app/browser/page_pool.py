@@ -64,8 +64,11 @@ def _pick_free(pages) -> Optional[PageInfo]:
     return None
 
 
-def _snapshot_entry(tab_id: str, page) -> dict:
+def _snapshot_entry(tab_id: str, page, default_browser: str = "chrome") -> dict:
     """One page snapshot entry incl. live cooldown countdown.
+
+    `browser` follows the pool's endpoint when a page carries none, so two
+    browsers listed side by side still tell their rows apart.
 
     `tab_id` is the POOL KEY (`PageInfo.tab_id or ws_url`) — the same string
     the worker badge carries (I-55): the join path that parsed the socket and
@@ -74,6 +77,7 @@ def _snapshot_entry(tab_id: str, page) -> dict:
     """
     entry = page.to_dict()
     entry["tab_id"] = tab_id
+    entry["browser"] = entry.get("browser") or default_browser
     try:
         entry["cooldown_remaining"] = page.remaining_seconds()
     except Exception:
@@ -135,6 +139,7 @@ class PagePool:
         self._logger = logger or (lambda m, l="info": log.info(m))
         self._host = "127.0.0.1"
         self._port = 9222
+        self._browser = "chrome"  # which browser this endpoint belongs to (D-3)
         self._next_worker_no = 0  # session-stable join counter, never reused (D-3)
         self._alias = alias_book if alias_book is not None else AliasBook()
 
@@ -253,7 +258,7 @@ class PagePool:
 
     def status_snapshot(self) -> dict:
         with self._lock:
-            pages = [_snapshot_entry(tid, p) for tid, p in self._pages.items()]
+            pages = [_snapshot_entry(tid, p, self._browser) for tid, p in self._pages.items()]
             steady = len([p for p in self._pages.values() if p.is_free()])
             busy = len([p for p in self._pages.values() if p.is_busy()])
             cooling = len([p for p in self._pages.values() if p.is_cooling()])
