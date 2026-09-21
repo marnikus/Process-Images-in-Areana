@@ -118,18 +118,23 @@ describe('worker number #n (pool join order, from the pushed snapshot)', () => {
       document: { getElementById: () => null } };
     sandbox.window = sandbox;
     vm.createContext(sandbox);
-    for (const f of ['panels/page-pool/store.js', 'panels/page-pool/render.js', 'panels/live-debug/store.js', 'panels/live-debug/render.js']) {
+    for (const f of ['core/tab-label.js', 'panels/page-pool/store.js', 'panels/page-pool/cells.js',
+                     'panels/page-pool/render.js', 'panels/live-debug/store.js', 'panels/live-debug/render.js']) {
       vm.runInContext(readJs(f), sandbox, { filename: f });
     }
-    const p = { tab_id: 'ABCDEF0123456789XYZ', worker_no: 3, title: 'T', url: 'https://arena.ai', status: 'steady', is_connected: true, jobs_completed: 0 };
+    const p = { tab_id: 'ABCDEF0123456789XYZ', tab_label: 'm@gmail.com_0007', worker_no: 3,
+      title: 'T', url: 'https://arena.ai', status: 'steady', is_connected: true, jobs_completed: 0 };
     const row = vm.runInContext('PagePoolRender._rowHtml(' + JSON.stringify(p) + ')', sandbox);
-    // I-55 parity: the badge on the tab shows `#3` + the FULL id, so the pool
-    // row does too (user report: "the tabID in the POOL does not match the ID
-    // shown in the web-page badge" — the row used to slice to 12 chars).
-    assert.match(row, /<td[^>]*><b class="worker-no">#3<\/b> ABCDEF0123456789XYZ<\/td>/);
+    // I-55 parity, readable-id round (D-5/D-7): the badge on the tab prints
+    // `#3` + `{email}_{4 digits}`, and the pool row prints the very same string
+    // with the hex id kept as the tooltip.
+    assert.match(row, /<td[^>]*><b class="worker-no">#3<\/b> m@gmail\.com_0007<\/td>/);
+    assert.match(row, /title="ABCDEF0123456789XYZ"/);
     vm.runInContext('LiveDebugStore.pool = ' + JSON.stringify({ pages: [p] }), sandbox);
     const line = vm.runInContext('LiveDebugRender.workers()', sandbox);
     assert.match(line, /<span class="live-no">#3<\/span>/);
     assert.ok(line.indexOf('live-no') < line.indexOf('live-tab'), 'the number comes first');
+    assert.ok(line.includes('m@gmail.com_0007'), 'the same readable id as the pool row');
+    assert.ok(line.includes('title="ABCDEF0123456789XYZ"'), 'the hex id stays reachable');
   });
 });

@@ -305,8 +305,29 @@ def restore_cooldown_entry(pool: Any, tab_id: str, entry: dict, now: float | Non
         return False
 
 
+def _arm_timer(page, seconds: int, reason: str) -> bool:
+    """Start/extend this page's pause (call with the pool lock held).
+
+    Monotone by design: the longer of the live timer and the new one wins, so
+    no path can cut a running countdown short — that reset is what made the
+    user's timer vanish (D-1).
+    """
+    now = time.time()
+    if seconds <= 0:
+        if page.remaining_seconds(now) > 0:
+            return True                      # nothing to add; the live timer stays
+        return _settle_steady(page)
+    until = max(now + seconds, page.cooldown_until or 0.0)
+    page.status = PageStatus.COOLDOWN
+    page.cooldown_until = until
+    page.cooldown_total = int(round(until - now))
+    page.cooldown_reason = reason
+    page.current_job_id = None
+    return True
+
+
 def start_cooldown(pool, tab_id, base_seconds, reason="") -> bool:
-    """Start the per-tab pause; applies stacked captcha penalty."""
+    """Start (or extend) the per-tab pause; a stacked debt is consumed."""
     with pool._lock:
         page = pool._pages.get(tab_id)
         if page is None:
@@ -314,14 +335,47 @@ def start_cooldown(pool, tab_id, base_seconds, reason="") -> bool:
         total = cooldown_total(int(base_seconds or 0), page.pending_penalty)
         page.pending_penalty = 0
         page.last_job_at = now_iso()
-        if total <= 0:
-            return _settle_steady(page)
-        page.status = PageStatus.COOLDOWN
-        page.cooldown_until = time.time() + total
-        page.cooldown_total = total
-        page.cooldown_reason = reason or "job done"
-        page.current_job_id = None
-        return True
+        return _arm_timer(page, total, reason or "job done")
+
+
+def _materialise_debt(pool: Any, tab_id: str, reason: str = "stacked penalty") -> int:
+    """Turn a resting page's stacked debt into a live timer; returns the seconds.
+
+    A debt may only exist while a job is in flight. Whichever path settles the
+    page (Cancel, cooldown off, a job ending) hands it over to a real timer, so
+    the UI never shows a `+15:00` that is not elapsing (D-3).
+    """
+    try:
+        with pool._lock:
+            page = pool._pages.get(tab_id)
+            if page is None or page.is_busy() or page.is_cooling():
+                return 0
+            debt = max(0, int(page.pending_penalty or 0))
+            if debt <= 0:
+                return 0
+            page.pending_penalty = 0
+            _arm_timer(page, debt, reason)
+            return debt
+    except Exception:
+        return 0
+
+
+def _stack_penalty(page, extra: int, reason: str) -> None:
+    """Cooling extends, a job in flight keeps a debt, a resting tab cools now.
+
+    Owner decision 2026-09-21 (D0-1): a penalty is never a displayed number
+    that does not elapse — the reported `+15:00 pending` was exactly that.
+    """
+    if page.is_cooling():
+        page.cooldown_until += extra
+        page.cooldown_total += extra
+        return
+    owed = extra + max(0, int(page.pending_penalty or 0))
+    if page.is_busy():
+        page.pending_penalty = owed
+        return
+    page.pending_penalty = 0
+    _arm_timer(page, owed, reason)
 
 
 def add_captcha_penalty(pool, tab_id, penalty_seconds) -> int:
@@ -332,11 +386,7 @@ def add_captcha_penalty(pool, tab_id, penalty_seconds) -> int:
         if page is None:
             return -1
         page.captcha_count += 1
-        if page.status == PageStatus.COOLDOWN and page.is_cooling():
-            page.cooldown_until += extra
-            page.cooldown_total += extra
-        else:
-            page.pending_penalty += extra
+        _stack_penalty(page, extra, "captcha penalty")
         return page.captcha_count
 
 
@@ -362,12 +412,27 @@ def _persist_emit(bridge) -> None:
             pass
 
 
-def _cooldown_suffix(page, penalty) -> str:
-    """Log tail: live extension or stacked pending (shared by captcha + rate-limit)."""
-    if page is not None and page.status == PageStatus.COOLDOWN and page.is_cooling():
-        return f"live cooldown extended to {format_remaining(page.cooldown_total)}"
-    pending = page.pending_penalty if page else 0
-    return f"pending {format_remaining(pending)} stacks onto next cooldown"
+def _cooldown_suffix(page) -> str:
+    """Log tail: a live timer, a debt that waits for the job, or nothing (D-2)."""
+    if page is None:
+        return "no timer"
+    left = page.remaining_seconds()
+    if left > 0:
+        return f"live timer {format_remaining(left)}"
+    pending = max(0, int(page.pending_penalty or 0))
+    if pending > 0:
+        return f"debt {format_remaining(pending)} starts when the job ends"
+    return "no timer"
+
+
+def _label(pool: Any, tab_id: str) -> str:
+    """Readable tab handle for log lines (D-5); fallback: the id prefix."""
+    try:
+        page = pool.get_page(tab_id)
+    except Exception:
+        page = None
+    alias = getattr(page, "alias", "") if page is not None else ""
+    return alias or str(tab_id)[:12]
 
 
 def note_captcha_event(pool, tab_id, bridge, source="job") -> int:
@@ -384,7 +449,7 @@ def note_captcha_event(pool, tab_id, bridge, source="job") -> int:
         page = pool.get_page(tab_id)
     except Exception:
         page = None
-    _log(bridge, f"\U0001f6e1\ufe0f Captcha +{penalty // 60}m tab {str(tab_id)[:12]} (x{count}) via {source} — {_cooldown_suffix(page, penalty)}", "warn")
+    _log(bridge, f"\U0001f6e1\ufe0f Captcha +{penalty // 60}m tab {_label(pool, tab_id)} (x{count}) via {source} — {_cooldown_suffix(page)}", "warn")
     _persist_emit(bridge)
     return count
 
@@ -409,11 +474,7 @@ def add_rate_limit_penalty(pool, tab_id, penalty_seconds) -> int:
         if page is None:
             return -1
         page.rate_limit_count += 1
-        if page.status == PageStatus.COOLDOWN and page.is_cooling():
-            page.cooldown_until += extra
-            page.cooldown_total += extra
-        else:
-            page.pending_penalty += extra
+        _stack_penalty(page, extra, "rate-limit penalty")
         return page.rate_limit_count
 
 
@@ -430,7 +491,7 @@ def note_rate_limit_event(pool, tab_id, bridge) -> int:
         page = pool.get_page(tab_id)
     except Exception:
         page = None
-    _log(bridge, f"⛔ Rate limit +{penalty // 60}m tab {str(tab_id)[:12]} (x{count}) — {_cooldown_suffix(page, penalty)}", "warn")
+    _log(bridge, f"⛔ Rate limit +{penalty // 60}m tab {_label(pool, tab_id)} (x{count}) — {_cooldown_suffix(page)}", "warn")
     _persist_emit(bridge)
     return count
 
@@ -464,13 +525,19 @@ async def wait_captcha_cleared(ctrl, stop, timeout_sec, log) -> bool:
 
 
 def reset_cooldown(pool, tab_id) -> bool:
-    """User reset: ready now; keeps the job-cycle captcha debt."""
+    """User reset: ready now — the live timer **and** the stacked debt go.
+
+    A page with a job in flight is left alone: that debt belongs to the job and
+    starts cooling when the job ends (I-27), so a reset can never strand a
+    number that is not elapsing (D-2/D-3).
+    """
     with pool._lock:
         page = pool._pages.get(tab_id)
         if page is None:
             return False
-        if page.status != PageStatus.COOLDOWN:
+        if page.is_busy():
             return True
+        page.pending_penalty = 0
         return _settle_steady(page)
 
 
@@ -601,7 +668,7 @@ async def wait_for_tab_ready(pool, tab_id, bridge) -> bool:
         refresh_expired(pool)
         page = pool.get_page(tab_id)
         if page is None:
-            _log(bridge, f"Tab {str(tab_id)[:8]} unknown to pool — proceeding", "warn")
+            _log(bridge, f"Tab {_label(pool, tab_id)} unknown to pool — proceeding", "warn")
             return True
         if page.is_free() or page.remaining_seconds() <= 0:
             return True
@@ -609,7 +676,7 @@ async def wait_for_tab_ready(pool, tab_id, bridge) -> bool:
         if now_m - last_log >= _LOG_EVERY_SEC:
             last_log = now_m
             left = format_remaining(page.remaining_seconds())
-            _log(bridge, f"⏳ Tab {str(tab_id)[:8]} cooling {left} — next job waits", "info")
+            _log(bridge, f"⏳ Tab {_label(pool, tab_id)} cooling {left} — next job waits", "info")
         await asyncio.sleep(_POLL_SEC)
 
 
@@ -628,7 +695,7 @@ async def wait_for_batch_ready(pool, tab_ids, bridge) -> bool:
         if not tab_id:
             continue
         if _is_cooling_now(pool, tab_id):
-            _log(bridge, f"⏳ New Start during cooldown — tab {str(tab_id)[:8]} must reach 00:00 + ready first", "info")
+            _log(bridge, f"⏳ New Start during cooldown — tab {_label(pool, tab_id)} must reach 00:00 + ready first", "info")
         if not await wait_for_tab_ready(pool, tab_id, bridge):
             return False
     return True
@@ -642,10 +709,23 @@ async def finish_page_after_job(ctx: FinishCtx) -> bool:
 
 
 def _settle_pool_steady(ctx: FinishCtx) -> bool:
+    """Ready now — but a stacked debt starts cooling instead of being parked (D-3)."""
     try:
-        return bool(ctx.pool.mark_steady(ctx.tab_id))
+        ok = bool(ctx.pool.mark_steady(ctx.tab_id))
     except Exception:
         return False
+    _materialise_debt(ctx.pool, ctx.tab_id)
+    return ok
+
+
+def _ready_line(ctx: FinishCtx, tail: str) -> tuple:
+    """Finish log for the ready paths: (text, level) — honest when debt keeps cooling."""
+    left = remaining_for(ctx.pool, ctx.tab_id)
+    label = _label(ctx.pool, ctx.tab_id)
+    if left > 0:
+        return (f"⏳ Page {label} pause skipped — stacked penalty cooling "
+                f"{format_remaining(left)}", "warn")
+    return f"✅ Page {label} STEADY ready ({tail})", "success"
 
 
 def _emit_status(ctx: FinishCtx):
@@ -711,8 +791,7 @@ async def _finish_cancelled(ctx: FinishCtx) -> bool:
     await _best_effort_reset(ctx, timeout_sec=15.0)
     ok = _settle_pool_steady(ctx)
     _emit_status(ctx)
-    _log(ctx.bridge, f"✅ Page {str(ctx.tab_id)[:12]} STEADY ready (no cooldown after cancel)",
-         "success")
+    _log(ctx.bridge, *_ready_line(ctx, "no cooldown after cancel"))
     return ok
 
 
@@ -761,10 +840,10 @@ def _finish_detail(ctx) -> str:
 def _log_finish(ctx: FinishCtx, started: bool):
     """Report the new countdown (RULE 2)."""
     if not started:
-        _log(ctx.bridge, f"⚠ Page {str(ctx.tab_id)[:12]} cooldown not started (unknown tab)", "warn")
+        _log(ctx.bridge, f"⚠ Page {_label(ctx.pool, ctx.tab_id)} cooldown not started (unknown tab)", "warn")
         return
     left = remaining_for(ctx.pool, ctx.tab_id)
-    _log(ctx.bridge, f"⏳ Page {str(ctx.tab_id)[:12]} cooling {format_remaining(left)}{_finish_detail(ctx)} — next job after pause",
+    _log(ctx.bridge, f"⏳ Page {_label(ctx.pool, ctx.tab_id)} cooling {format_remaining(left)}{_finish_detail(ctx)} — next job after pause",
          "info")
 
 
@@ -778,7 +857,7 @@ async def _finish_normal(ctx: FinishCtx) -> bool:
     if not cfg.enabled or cfg.min_seconds <= 0:
         done = _settle_pool_steady(ctx)
         _emit_status(ctx)
-        _log(ctx.bridge, f"✅ Page {str(ctx.tab_id)[:12]} STEADY ready (cooldown off)", "success")
+        _log(ctx.bridge, *_ready_line(ctx, "cooldown off"))
         return done
     _capture_pending(ctx)
     started = start_cooldown(ctx.pool, ctx.tab_id, cfg.min_seconds, _reason_for(ctx))

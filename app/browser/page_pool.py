@@ -1,4 +1,10 @@
-"""PagePool — steady/busy tracking with RLock, event-driven wait (Phase 1+2)."""
+"""PagePool — steady/busy tracking with RLock, event-driven wait (Phase 1+2).
+
+The pool key is the CDP tab id (identity, RULE 15); every page also carries the
+display label the UIs print (`PageInfo.alias` = `{email}_{4 digits}`), numbered
+once per tab from the injected `AliasBook` (D-5) so a re-join never burns a new
+number and the number survives a restart (the book is persisted).
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,7 @@ import threading
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
+from ..core.tab_alias import AliasBook
 from .cdp_arena import CDPArenaController
 from .cdp_client import CDPClient
 from .page_status import PageInfo, PageStatus, now_iso
@@ -66,7 +73,40 @@ def _snapshot_entry(tab_id: str, page) -> dict:
         entry["cooldown_remaining"] = page.remaining_seconds()
     except Exception:
         entry["cooldown_remaining"] = 0
+    try:
+        entry["tab_label"] = page.alias      # readable id for every view (D-5)
+    except Exception:
+        entry["tab_label"] = ""
     return entry
+
+
+def tab_label_of(pool, tab_id: str) -> str:
+    """Readable label of a tab from a pool that may be absent (D-7).
+
+    One source for every log line and view that names a worker: the pool key
+    stays the identity (RULE 15), the label is what a human reads. A page
+    without a readable id, an unknown tab or a missing pool degrades to the
+    short id — never to an empty string.
+    """
+    try:
+        page = pool.get_page(tab_id)
+        return page.label if page is not None else str(tab_id or "")[:12]
+    except Exception:
+        return str(tab_id or "")[:12]
+
+
+def _assign_alias(page: PageInfo, tab_id: str, book: AliasBook) -> None:
+    """Give a page its readable id once: number from the book, account remembered.
+
+    Idempotent — a known page keeps the number it already carries (its persisted
+    one), and the book's last known account seeds `owner` until the probe
+    answers, so a restart never shows `aka_…` for a tab we have already seen.
+    """
+    if not page.alias_no:
+        page.alias_no = book.no_for(tab_id)
+    book.remember(tab_id, page.owner)
+    if not page.owner:
+        page.owner = book.owner_for(tab_id)
 
 
 def _revive(exist: PageInfo, info: PageInfo) -> None:
@@ -81,7 +121,7 @@ def _revive(exist: PageInfo, info: PageInfo) -> None:
 
 
 class PagePool:
-    def __init__(self, logger=None):
+    def __init__(self, logger=None, alias_book: Optional[AliasBook] = None):
         self._pages: Dict[str, PageInfo] = {}
         self._aborts: set = set()
         self._clients: Dict[str, CDPClient] = {}
@@ -91,6 +131,7 @@ class PagePool:
         self._host = "127.0.0.1"
         self._port = 9222
         self._next_worker_no = 0  # session-stable join counter, never reused (D-3)
+        self._alias = alias_book if alias_book is not None else AliasBook()
 
     def add_page(self, info: PageInfo):
         tid = info.tab_id or info.ws_url
@@ -100,15 +141,17 @@ class PagePool:
             exist = self._pages.get(tid)
             if exist:
                 _revive(exist, info)
+                _assign_alias(exist, tid, self._alias)
             else:
                 info.status = PageStatus.STEADY
                 info.is_connected = True
                 info.last_steady_at = now_iso()
                 self._next_worker_no += 1
                 info.worker_no = self._next_worker_no
+                _assign_alias(info, tid, self._alias)
                 self._pages[tid] = info
         try:
-            self._logger(f"Pool add {tid[:12]} steady", "success")
+            self._logger(f"Pool add {tab_label_of(self, tid)} steady", "success")
         except Exception:
             pass
 
@@ -208,7 +251,7 @@ class PagePool:
             pages = [_snapshot_entry(tid, p) for tid, p in self._pages.items()]
             steady = len([p for p in self._pages.values() if p.is_free()])
             busy = len([p for p in self._pages.values() if p.is_busy()])
-            cooling = len([p for p in self._pages.values() if p.status == PageStatus.COOLDOWN])
+            cooling = len([p for p in self._pages.values() if p.is_cooling()])
             return {"total": len(pages), "steady": steady, "busy": busy,
                     "cooling": cooling, "free": steady, "pages": pages}
 

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.browser.page_pool import tab_label_of
 from app.browser.page_status import PageInfo
 from app.persistence.cooldown_store import (
     consume_entry_for,
@@ -368,7 +369,7 @@ def _announce_restore(bridge, tab_id: str) -> None:
     """Announce a consumed entry and emit the pool snapshot."""
     page = bridge._page_pool.get_page(tab_id)
     left = page.remaining_seconds() if page else 0
-    bridge._log(f"⏳ Restored cooldown for {tab_id[:12]}: {left // 60:02d}:{left % 60:02d} left (timer kept running while app was closed)", "info")
+    bridge._log(f"⏳ Restored cooldown for {tab_label_of(getattr(bridge, '_page_pool', None), tab_id)}: {left // 60:02d}:{left % 60:02d} left (timer kept running while app was closed)", "info")
     bridge._emit_pool_status()
 
 

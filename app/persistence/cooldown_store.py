@@ -1,10 +1,13 @@
-"""Wall-clock cooldown persistence — timers survive app restart.
+"""Wall-clock cooldown persistence — timers + readable tab ids survive a restart.
 
 Entries keyed by tab_id (stable while Chrome runs); URL fallback covers
 Chrome restarts too. Real time counts: cooldown_until is epoch-based and
 expiry is checked against time.time() on load/restore. Plus per-URL job
-counters (stats) for load balancing; counters are never pruned. Reuses
-the same-layer JSON helpers; works on pool snapshots (no browser imports).
+counters (stats) for load balancing; counters are never pruned, while the
+`aliases` section (2026-09-21, D-5) keeps each tab's 4-digit readable number
+and last known account — capped by recency, never pruned by a timer ending.
+Reuses the same-layer JSON helpers; works on pool snapshots (no browser
+imports beyond the pure `core.tab_alias` validator).
 """
 
 from __future__ import annotations
@@ -13,10 +16,12 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from ..core.tab_alias import clean_entry
 from .json_store import load_json as _load_json, save_json_atomic as _atomic_write
 
 _VERSION = 1
 _MAX_ENTRIES = 25
+MAX_ALIASES = 200
 
 
 def _is_idle_expired(entry: dict, now: float) -> bool:
@@ -51,16 +56,59 @@ def _entry_sort_key(kv) -> float:
         return 0
 
 
-def _write_doc(path, entries: dict, stats: dict) -> None:
-    """Single atomic writer; oldest cooldown first out, stats intact."""
+def _write_doc(path, entries: dict, stats: dict, aliases: Optional[dict] = None) -> None:
+    """Single atomic writer; oldest cooldown first out, stats intact.
+
+    `aliases` is passed through unchanged; callers that do not own the section
+    hand the one already on disk, so no writer can drop it (D-5/D-6).
+    """
     items = sorted(entries.items(), key=_entry_sort_key)
     trimmed = dict(items[-_MAX_ENTRIES:])
-    _atomic_write(Path(path), {"version": _VERSION, "entries": trimmed, "stats": stats})
+    kept = load_aliases(path) if aliases is None else aliases
+    _atomic_write(Path(path), {"version": _VERSION, "entries": trimmed,
+                               "stats": stats, "aliases": kept})
 
 
 def save_entries(path, entries: dict) -> None:
-    """Atomic capped entry write; stats section preserved untouched."""
+    """Atomic capped entry write; stats + aliases sections preserved untouched."""
     _write_doc(path, entries, load_stats(path))
+
+
+# ---- readable tab ids (D-5/D-6) -------------------------------------------
+
+def load_aliases(path) -> dict:
+    """Per-tab readable ids: {tab_id: {no, email, seen}}; junk dropped."""
+    raw = _load_json(Path(path), {})
+    aliases = raw.get("aliases", {}) if isinstance(raw, dict) else {}
+    if not isinstance(aliases, dict):
+        return {}
+    clean: dict[str, dict] = {}
+    for tab_id, value in aliases.items():
+        if not isinstance(tab_id, str) or not tab_id or not isinstance(value, dict):
+            continue
+        entry = clean_entry(value.get("no"), value.get("email"), value.get("seen"))
+        if entry:
+            clean[tab_id] = entry
+    return clean
+
+
+def _trim_aliases(aliases: dict) -> dict:
+    """Newest first, capped — a number nobody has used for a while goes first."""
+    items = sorted(aliases.items(),
+                   key=lambda kv: float(kv[1].get("seen", 0) or 0), reverse=True)
+    return dict(items[:MAX_ALIASES])
+
+
+def save_aliases(path, aliases: dict) -> None:
+    """Merge + cap the alias section; timers and stats stay untouched."""
+    merged = load_aliases(path)
+    for tab_id, value in dict(aliases or {}).items():
+        if not isinstance(tab_id, str) or not tab_id or not isinstance(value, dict):
+            continue
+        entry = clean_entry(value.get("no"), value.get("email"), value.get("seen"))
+        if entry:
+            merged[tab_id] = entry
+    _write_doc(path, load_entries(path), load_stats(path), _trim_aliases(merged))
 
 
 def describe_cooldown_file(path) -> dict:
@@ -103,18 +151,16 @@ def load_stats(path) -> dict:
     return clean
 
 
-def _persistable(status: str, until: float, pending: int, moment: float) -> bool:
-    """Cooling with future time, or any stacked penalty, is worth keeping."""
-    if status != "cooldown":
-        return pending > 0
-    return until > moment
+def _persistable(until: float, pending: int, moment: float) -> bool:
+    """A live timer or a stacked debt is worth keeping — status is a label (D-1)."""
+    return until > moment or pending > 0
 
 
 def _entry_from_page(page: dict) -> Optional[dict]:
     """Persistable entry for cooling/pending pages, else None."""
     until = float(page.get("cooldown_until", 0) or 0)
     pending = int(page.get("pending_penalty", 0) or 0)
-    if not _persistable(page.get("status", ""), until, pending, time.time()):
+    if not _persistable(until, pending, time.time()):
         return None
     return {"tab_id": page.get("tab_id", ""), "url": page.get("url", ""),
             "title": page.get("title", ""), "cooldown_until": until,
@@ -134,6 +180,21 @@ def _merge_page_entry(entries: dict, page: dict) -> None:
         entries[page.get("tab_id", "")] = entry
 
 
+def _merge_page_alias(aliases: dict, page: dict) -> None:
+    """Fold one page's readable id in; the account is refreshed only when known."""
+    tab_id = page.get("tab_id", "")
+    entry = aliases.get(tab_id)
+    if entry is None:
+        fresh = clean_entry(page.get("alias_no"), page.get("owner", ""), time.time())
+        if fresh:
+            aliases[tab_id] = fresh
+        return
+    owner = page.get("owner", "")
+    if isinstance(owner, str) and owner.strip():
+        entry["email"] = owner.strip().lower()
+    entry["seen"] = time.time()
+
+
 def _merge_page_stats(stats: dict, page: dict) -> None:
     """Fold one page's job counter in; stored count never decreases."""
     key = normalize_url(page.get("url", ""))
@@ -151,12 +212,14 @@ def save_pool_snapshot(path, pool) -> None:
         return
     entries = load_entries(path)
     stats = load_stats(path)
+    aliases = load_aliases(path)
     for page in pages:
         if not isinstance(page, dict) or not page.get("tab_id", ""):
             continue
         _merge_page_entry(entries, page)
         _merge_page_stats(stats, page)
-    _write_doc(path, entries, stats)
+        _merge_page_alias(aliases, page)
+    _write_doc(path, entries, stats, _trim_aliases(aliases))
 
 
 def normalize_url(url: Any) -> str:

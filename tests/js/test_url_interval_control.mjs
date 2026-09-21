@@ -141,6 +141,9 @@ describe('UrlInterval (url-list/interval.js)', () => {
   });
 
   test('the six frozen url-list files did not grow (the control is a new module)', () => {
+    /* Still frozen (RULE 18 + the JS ratchet): the 2026-09-21 readable-id round
+       (D-4/D-7) put the row's cells in a NEW module (`cells.js`) instead of
+       growing render.js, which came out smaller than before. */
     const frozen = { 'panels/url-list/store.js': 38, 'panels/url-list/render.js': 73, 'panels/url-list/matching.js': 105,
       'panels/url-list/cooldown.js': 48, 'panels/url-list/actions.js': 166, 'panels/url-list/listeners.js': 62,
       'panels/url-list.js': 137 };
@@ -149,5 +152,6 @@ describe('UrlInterval (url-list/interval.js)', () => {
       assert.ok(lines <= max, `${rel}: ${lines} lines > frozen ${max}`);
     }
     assert.ok(lineCount('panels/url-list/interval.js') <= 80, 'interval.js stays small');
+    assert.ok(lineCount('panels/url-list/cells.js') <= 100, 'cells.js stays small');
   });
 });

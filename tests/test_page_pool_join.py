@@ -107,4 +107,5 @@ async def test_scheduled_coroutine_joins_the_pool(monkeypatch):
     assert page is not None and page.title == "T" and page.url == "https://arena.ai"
     assert isinstance(page, PageInfo)
     assert emitted == [True]
-    assert any("Pool added t9" in msg for _, msg in host.logs)
+    # D-7: the join line names the tab by its readable id, not the raw hex
+    assert any(f"Pool added {page.alias}" in msg for _, msg in host.logs)

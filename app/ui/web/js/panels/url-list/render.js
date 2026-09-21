@@ -1,11 +1,14 @@
-/* url-list/render.js — row + cooldown cells, ≤200 LOC, CC≤10 via helpers */
+/* url-list/render.js — URL row template + list render, ≤200 LOC, CC≤10.
+   The Tab/Cooldown cells live in cells.js (2026-09-21, D-4/D-7) so this file
+   stays at its frozen size; `fillTabCell`/`fillCoolCell`/`tick` are called
+   through `UrlList` (facade) with `window.UrlListCells`. */
 'use strict';
 window.UrlListRender = {
   _store() { return window.UrlListStore; },
 
   rowHtml(u) {
     const esc = this._store().esc.bind(this._store());
-    return `<td><input type="checkbox" ${u.enabled !== false ? 'checked' : ''} data-action="toggle" data-url-id="${u.id}"></td><td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(u.url)}${u.tab_id ? ' — linked tab ' + esc(u.tab_id) : ''}">${esc(u.url)}<div class="url-job-line" style="font-size:10px; color:var(--warning, #fbbf24);"></div></td><td><span class="url-status url-status-${u.status || 'pending'}">${esc(u.status || 'pending')}</span>${u.receiver === false ? `<span class="url-not-receiver" title="${esc(u.receiver_title || 'Not used as job receiver')}">⊘</span>` : ''}</td><td class="url-conn-status" style="font-size:11px;"><span style="color:var(--text-muted);">○ checking…</span></td><td class="url-cool-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td><td class="url-jobs-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td><td style="font-size:10px; color:var(--text-muted)">${esc(u.last_error || '')}</td><td style="white-space:nowrap;"><button class="btn-small" data-action="cool-reset" data-url-id="${u.id}" title="Reset cooldown">♻️</button><button class="btn-small" data-action="cool-edit" data-url-id="${u.id}" title="Edit cooldown">✎</button><button class="btn-small" data-action="connect" data-url-id="${u.id}" title="Find Chrome tab">Connect</button><button class="btn-small url-stop-btn" data-action="stop-job" data-url-id="${u.id}" title="Stop job" disabled>Stop</button><button class="btn-small" data-action="test" data-url-id="${u.id}">Test</button><button class="btn-small" data-action="edit" data-url-id="${u.id}">Edit</button><button class="btn-small" data-action="remove" data-url-id="${u.id}">✕</button></td>`;
+    return `<td><input type="checkbox" ${u.enabled !== false ? 'checked' : ''} data-action="toggle" data-url-id="${u.id}"></td><td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(u.url)}${u.tab_id ? ' — linked tab ' + esc(u.tab_id) : ''}">${esc(u.url)}<div class="url-job-line" style="font-size:10px; color:var(--warning, #fbbf24);"></div></td><td class="url-tab-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td><td><span class="url-status url-status-${u.status || 'pending'}">${esc(u.status || 'pending')}</span>${u.receiver === false ? `<span class="url-not-receiver" title="${esc(u.receiver_title || 'Not used as job receiver')}">⊘</span>` : ''}</td><td class="url-conn-status" style="font-size:11px;"><span style="color:var(--text-muted);">○ checking…</span></td><td class="url-cool-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td><td class="url-jobs-cell" style="font-size:11px; white-space:nowrap;"><span style="color:var(--text-muted);">—</span></td><td style="font-size:10px; color:var(--text-muted)">${esc(u.last_error || '')}</td><td style="white-space:nowrap;"><button class="btn-small" data-action="cool-reset" data-url-id="${u.id}" title="Reset cooldown">♻️</button><button class="btn-small" data-action="cool-edit" data-url-id="${u.id}" title="Edit cooldown">✎</button><button class="btn-small" data-action="connect" data-url-id="${u.id}" title="Find Chrome tab">Connect</button><button class="btn-small url-stop-btn" data-action="stop-job" data-url-id="${u.id}" title="Stop job" disabled>Stop</button><button class="btn-small" data-action="test" data-url-id="${u.id}">Test</button><button class="btn-small" data-action="edit" data-url-id="${u.id}">Edit</button><button class="btn-small" data-action="remove" data-url-id="${u.id}">✕</button></td>`;
   },
 
   render(urls) {
@@ -39,35 +42,4 @@ window.UrlListRender = {
     else { delete btn.dataset.tabId; btn.disabled = true; btn.style.opacity = '0.4'; }
   },
 
-  _fmt(s) { return window.PagePoolPanel ? window.PagePoolPanel.fmt(s) : `${s}s`; },
-
-  _badge(page) { return (page.captcha_count||0)>0 ? ` <span title="Captcha detections">🛡x${page.captcha_count}</span>` : ''; },
-
-  _isBusy(page) { return page.status==='busy'||page.status==='waiting_generation'||page.status==='waiting_captcha'; },
-
-  _cooldownHtml(page, badge) {
-    const total = page.cooldown_total || 0;
-    const of = total>0 ? ` / ${this._fmt(total)}` : '';
-    return `<span data-cool-left="${page.cooldown_remaining}" data-cool-at="${Date.now()}" title="${this._store().esc(page.cooldown_reason||'cooling')}">${this._fmt(page.cooldown_remaining)}${of}</span>${badge}`;
-  },
-
-  fillCoolCell(tr, page) {
-    const cell = tr.querySelector('.url-cool-cell');
-    if (!cell) return;
-    const resetBtn = tr.querySelector('button[data-action="cool-reset"]');
-    const editBtn = tr.querySelector('button[data-action="cool-edit"]');
-    if (!page) {
-      cell.innerHTML = '<span style="color:var(--text-muted);" title="Tab not in pool">—</span>';
-      this._setTabBtn(resetBtn, null);
-      this._setTabBtn(editBtn, null);
-      return;
-    }
-    this._setTabBtn(resetBtn, page.tab_id);
-    this._setTabBtn(editBtn, page.tab_id);
-    const badge = this._badge(page);
-    if (this._isBusy(page)) { cell.innerHTML = `<span style="color:#4dabf7;" title="Job running">🔵 busy</span>${badge}`; return; }
-    if (page.status==='cooldown' && (page.cooldown_remaining||0)>0) { cell.innerHTML = this._cooldownHtml(page, badge); return; }
-    if ((page.pending_penalty||0)>0) { cell.innerHTML = `<span title="Captcha penalty pending">+${this._fmt(page.pending_penalty)} pending</span>${badge}`; return; }
-    cell.innerHTML = `<span style="color:#4ade80;" title="Ready">✅ ready</span>${badge}`;
-  },
 };

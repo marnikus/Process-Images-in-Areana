@@ -1,22 +1,22 @@
 /**
- * Pool row ↔ worker badge identity (I-55): one tab, one id string.
+ * Pool row ↔ worker badge identity (I-55, restated for the readable id).
  *
- * The in-page badge (`app/browser/worker_badge.py`) prints `#n` + the FULL tab
- * id, while the pool table's Tab ID cell printed `tab_id.slice(0,12)` — a real
- * Chrome target id is 32 hex chars, so the two could never read the same (user
- * report: "the tabID in the POOL does not match the ID shown in the badge").
- * The cell renders the full id now (title keeps the identical string), and the
- * URL row tooltip does the same for its linked tab.
+ * Round 1 made the pool row print the FULL 32-hex tab id so it could match the
+ * in-page badge. The readable-id round (D-5/D-7) turns that around: every view
+ * prints `{email}_{4 digits}` and the hex id stays the identity — it survives in
+ * the `title` tooltip and in every action attribute, so a row can still be
+ * traced to Chrome's tab listing.
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { bootPage } from './page_harness.mjs';
 
 const FULL = '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d';  // 32 hex chars, like /json/list `id`
+const LABEL = 'marnikus@gmail.com_3045';
 
 const snapWith = (page) => ({ total: 1, steady: 1, busy: 0, cooling: 0, free: 1, pages: [page] });
-const worker = (extra = {}) => ({ tab_id: FULL, worker_no: 3, status: 'steady', title: 'Arena',
-  url: 'https://arena.ai/c/1', jobs_completed: 0, ...extra });
+const worker = (extra = {}) => ({ tab_id: FULL, tab_label: LABEL, worker_no: 3, status: 'steady',
+  title: 'Arena', url: 'https://arena.ai/c/1', jobs_completed: 0, ...extra });
 
 /* fake_dom stores one innerHTML per element: rows are CHILDREN of the tbody. */
 function rowsHtml(el) {
@@ -30,18 +30,28 @@ function poolHtml(page) {
 }
 
 describe('pool Tab ID cell (I-55 parity with the worker badge)', () => {
-  test('renders the full 32-char tab id, never the 12-char slice', () => {
+  test('renders the readable label, never the raw id as the visible text', () => {
     const html = poolHtml(worker());
-    assert.ok(html.includes(FULL), 'full tab id in the pool row');
-    assert.ok(!html.includes(`>${FULL.slice(0, 12)}<`), 'no truncated id text');
+    assert.ok(html.includes(LABEL), 'the label is the visible id');
+    assert.ok(!html.includes(`>${FULL}<`), 'no raw tab id text');
+    assert.ok(!html.includes(`>${FULL.slice(0, 12)}<`), 'no truncated id text either');
+    assert.ok(html.includes(`title="${FULL}"`), 'the hex id stays reachable');
   });
 
-  test('the worker number leads the id, exactly like the badge', () => {
-    assert.match(poolHtml(worker({ worker_no: 7 })), /#7<\/b>\s*1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/);
+  test('the worker number leads the label, exactly like the badge', () => {
+    assert.match(poolHtml(worker({ worker_no: 7 })), /#7<\/b>\s*marnikus@gmail\.com_3045/);
   });
 
-  test('a legacy row without worker_no still shows the full id', () => {
-    assert.ok(poolHtml(worker({ worker_no: 0 })).includes(`#0</b> ${FULL}`));
+  test('a row without a label falls back to the short id, never the 12-char slice', () => {
+    const html = poolHtml(worker({ tab_label: '' }));
+    assert.ok(html.includes(FULL.slice(0, 8)), 'the 8-char short id');
+    assert.ok(!html.includes(`>${FULL.slice(0, 12)}<`), 'never the 12-char slice');
+  });
+
+  test('the action buttons still carry the hex identity', () => {
+    const html = poolHtml(worker());
+    assert.ok(html.includes(`data-cool-reset="${FULL}"`), html);
+    assert.ok(html.includes(`data-disconnect="${FULL}"`), html);
   });
 
   test('the URL row tooltip carries the same full id for its linked tab', () => {

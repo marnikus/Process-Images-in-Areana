@@ -50,7 +50,7 @@ window.LiveDebugRender = {
 
   _workerLine(w) {
     const cls = `live-worker live-status-${this.esc(w.status)}`;
-    return `<div class="${cls}"><span class="live-no">#${w.no}</span><span class="live-tab" title="${this.esc(w.tabId)}">${this.esc(w.title || w.tabId)}</span>`
+    return `<div class="${cls}"><span class="live-no">#${w.no}</span><span class="live-tab" title="${this.esc(w.tabId)}">${this.esc(w.label || w.tabId)}</span>`
       + `<span class="live-state">${this.esc(w.status)}</span><span class="live-job">${this._jobText(w)}</span>`
       + `<span class="live-jobs">${w.jobs} done</span></div>`;
   },

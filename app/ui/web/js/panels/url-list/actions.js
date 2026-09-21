@@ -96,7 +96,7 @@ window.UrlListActions = {
   _onStop(tab, res) {
     try {
       const r = JSON.parse(res);
-      LogConsole.log(r.ok ? `⛔ Stop requested for tab ${String(tab).slice(0,8)}` : 'Stop: '+(r.error||'failed'), r.ok?'warn':'error');
+      LogConsole.log(r.ok ? `⛔ Stop requested for tab ${window.TabLabel.of(tab)}` : 'Stop: '+(r.error||'failed'), r.ok?'warn':'error');
     } catch { LogConsole.log('Stop failed','error'); }
   },
 

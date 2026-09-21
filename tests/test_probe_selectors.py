@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from app.browser import cdp_arena, new_chat, output_probes, probe_selectors
+from app.browser import cdp_arena, new_chat, output_probes, owner_probe, probe_selectors
 from app.browser.site_adapter import SELECTORS, get_readiness_requirements, get_selector
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,6 +30,7 @@ PROBE_FILES = [
     "app/browser/dom_highlight_js.py",
     "app/browser/new_chat.py",
     "app/browser/output_probes.py",
+    "app/browser/owner_probe.py",   # D-5: the logged-in account label probe
     "app/browser/processing_probe.py",  # B12: AWAIT_PROCESSING_IMAGE indicator probe
 ]
 
@@ -126,3 +127,27 @@ def test_no_leftover_placeholders_in_built_payloads():
         "JS_VERIFY_ATTACHMENT", "JS_PAGE_READY", "JS_IS_GENERATING",
     ):
         assert "__" not in getattr(cdp_arena, name), f"{name} has an unfilled placeholder"
+
+
+@pytest.mark.unit
+def test_owner_probe_payload_receives_the_account_email_selector():
+    """RULE 21 wiring for the logged-in-account probe (D-5)."""
+    sel = get_selector("account_email")
+    js = owner_probe.build_owner_probe()
+    assert "__" not in js, "owner probe has an unfilled placeholder"
+    for candidate in sel.all_selectors():
+        assert json.dumps(candidate) in js, candidate
+    if sel.scope:
+        assert json.dumps(sel.scope) in js
+
+
+@pytest.mark.unit
+def test_owner_probe_reply_is_read_as_an_email():
+    """The probe's own interpreter is the tolerant half of the seam."""
+    reply = owner_probe.interpret_owner(
+        json.dumps({"email": "marnikus@gmail.com", "via": "selector"})
+    )
+    assert reply == {"email": "marnikus@gmail.com", "via": "selector"}
+    assert owner_probe.interpret_owner("")["email"] == ""
+    assert owner_probe.interpret_owner("boom")["email"] == ""
+    assert owner_probe.interpret_owner(None)["email"] == ""

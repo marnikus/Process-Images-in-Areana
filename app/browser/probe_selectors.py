@@ -13,6 +13,12 @@ from typing import Dict, List
 from .site_adapter import get_readiness_requirements, get_selector
 
 
+def account_email_probe() -> Dict[str, str]:
+    """Logged-in account row: sidebar scope + candidate text selectors (D-5)."""
+    sel = get_selector("account_email")
+    return {"scope": sel.scope or "", "selectors": sel.all_selectors()}
+
+
 def textarea_selectors() -> List[str]:
     """Composer textarea list for find/insert probes — primary first."""
     return get_selector("prompt_textarea").all_selectors()

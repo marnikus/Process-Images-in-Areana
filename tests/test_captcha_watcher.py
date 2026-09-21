@@ -236,3 +236,43 @@ def test_status_and_result_types_are_log_safe():
     assert d["running"] is False and d["last_tick_at"] > 0 and "balance" in d
     r = SolveResult(ok=True, token=TOKEN, task_id="1", elapsed_s=3.14159)
     assert r.masked() == {"ok": True, "task_id": "1", "error": "", "elapsed_s": 3.1, "token_len": len(TOKEN)}
+
+
+@pytest.mark.unit
+def test_the_watcher_names_a_tab_the_way_the_tables_do():
+    """D-7: the solver log lines print the readable id when the panel supplies one.
+
+    The watcher stays Qt/pool-free — the label arrives as a dep, so the log
+    console can never disagree with the worker table. The default keeps the
+    short id, which is why no other watcher test changes.
+    """
+    tid = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+    deps = WatcherDeps(tabs=lambda: [tid], evaluate=lambda t, js: None,
+                       solver_factory=lambda: None,
+                       log=lambda m, l="info": None,
+                       label=lambda tid: f"marnikus@gmail.com_3045")
+    assert deps.label(tid) == "marnikus@gmail.com_3045"
+    default = WatcherDeps(tabs=lambda: [], evaluate=lambda t, js: None, solver_factory=lambda: None)
+    assert default.label(tid) == tid[:12]
+
+
+@pytest.mark.unit
+def test_the_solver_panel_injects_the_readable_label():
+    """The seam: `watcher_solver.captcha_watcher` hands the pool's own label in."""
+    from app.ui.panels import watcher_solver as ws
+
+    class FakePool:
+        """Only the pool's public read API — what `tab_label_of` is allowed to use."""
+
+        def get_page(self, tab_id):
+            return SimpleNamespace(label="marnikus@gmail.com_3045", tab_id=tab_id)
+
+    class FakeBridge:
+        _page_pool = FakePool()
+        _captcha_watcher = None
+
+        def _log(self, msg, level="info"):
+            pass
+
+    watcher = ws.captcha_watcher(FakeBridge())
+    assert watcher._deps.label("whatever") == "marnikus@gmail.com_3045"

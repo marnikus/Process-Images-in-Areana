@@ -317,7 +317,8 @@ async def test_the_instant_rejoin_puts_the_tab_back(tmp_path, monkeypatch):
     page = env.bridge._page_pool.get_page("t1")
     assert page is not None and page.worker_no == 1 and page.is_connected
     assert live_bus(env.bridge).reasons() == ["urls"]  # a live run picks the worker up
-    assert any("Pool added t1" in m for m, _l in env.recs["arena_log"].calls)
+    # D-7: the join line names the tab by its readable id, not the raw hex
+    assert any(f"Pool added {page.alias}" in m for m, _l in env.recs["arena_log"].calls)
 
 
 @pytest.mark.asyncio

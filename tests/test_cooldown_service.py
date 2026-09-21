@@ -131,17 +131,20 @@ def test_captcha_penalty_stacks_and_is_per_tab():
     assert svc.add_captcha_penalty(pool, "a", 900) == 2
     assert svc.add_captcha_penalty(pool, "nope", 900) == -1
     page_a = pool.get_page("a")
-    assert page_a.pending_penalty == 1800  # stacked while idle
+    # D0-1 (2026-09-21): a resting tab starts cooling at once, so the stacked
+    # 1800 s is a *live* timer — the frozen "+15:00 pending" was the user's bug.
+    assert page_a.pending_penalty == 0
+    assert page_a.is_cooling() and page_a.remaining_seconds() >= 1799
     assert pool.get_page("b").pending_penalty == 0  # tab B unaffected
     assert pool.get_page("b").captcha_count == 0
     svc.start_cooldown(pool, "a", 300)
-    assert page_a.cooldown_total == 2100  # 300 base + 2x900
-    assert page_a.pending_penalty == 0  # applied
+    assert page_a.cooldown_total == 1800   # a shorter base never cuts the timer
+    assert page_a.pending_penalty == 0
     # penalty during active cooldown extends immediately
     before = page_a.cooldown_until
     assert svc.add_captcha_penalty(pool, "a", 900) == 3
     assert page_a.cooldown_until == before + 900
-    assert page_a.cooldown_total == 3000
+    assert page_a.cooldown_total == 2700
 
 
 @pytest.mark.unit
@@ -532,7 +535,7 @@ def test_note_captcha_event_busy_stacks_and_logs_pending():
     assert page.captcha_count == 1
     text = " ".join(m for m, _ in bridge._logs)
     assert "🛡️" in text and "(x1)" in text and "+15m" in text
-    assert "via gen-wait" in text and "pending 15:00" in text
+    assert "via gen-wait" in text and "debt 15:00" in text
     assert ("emit", "") in bridge._logs  # rows re-render live
 
 
@@ -545,7 +548,7 @@ def test_note_captcha_event_cooling_extends_live_timer():
     assert svc.note_captcha_event(pool, "a", bridge, source="check") == 1
     assert pool.get_page("a").cooldown_total == 1200
     text = " ".join(m for m, _ in bridge._logs)
-    assert "🛡️" in text and "extended to 20:00" in text
+    assert "🛡️" in text and "live timer" in text   # the remaining value, as shown
 
 
 @pytest.mark.unit
@@ -564,7 +567,8 @@ def test_note_captcha_event_defaults_without_config():
     logs = []
     bare = SimpleNamespace(_log=lambda m, l="info": logs.append((m, l)))
     assert svc.note_captcha_event(pool, "a", bare) == 1
-    assert pool.get_page("a").pending_penalty == 900  # default, never 0
+    # the default penalty is never 0 — it arrives as a live timer (D0-1)
+    assert pool.get_page("a").is_cooling()
 
 
 @pytest.mark.unit
@@ -676,7 +680,7 @@ def test_note_captcha_event_raising_config_uses_default():
     bridge = SimpleNamespace(config=SimpleNamespace(get_state=boom),
                              _log=lambda m, l="info": logs.append((m, l)))
     assert svc.note_captcha_event(pool, "a", bridge) == 1
-    assert pool.get_page("a").pending_penalty == 900
+    assert pool.get_page("a").is_cooling()
 
 
 @pytest.mark.unit
@@ -692,7 +696,7 @@ def test_note_captcha_event_raising_emit_still_records():
         _log=lambda m, l="info": logs.append((m, l)),
         _emit_pool_status=boom)
     assert svc.note_captcha_event(pool, "a", bridge) == 1
-    assert pool.get_page("a").pending_penalty == 900
+    assert pool.get_page("a").is_cooling()
 
 
 @pytest.mark.unit
@@ -798,17 +802,19 @@ def test_rate_limit_penalty_stacks_and_is_per_tab():
     assert svc.add_rate_limit_penalty(pool, "a", 1800) == 2
     assert svc.add_rate_limit_penalty(pool, "nope", 1800) == -1
     page_a = pool.get_page("a")
-    assert page_a.pending_penalty == 3600  # stacked while idle
+    # D0-1: a resting tab cools at once — the stacked 3600 s is a live timer
+    assert page_a.pending_penalty == 0
+    assert page_a.is_cooling() and page_a.remaining_seconds() >= 3599
     assert pool.get_page("b").pending_penalty == 0  # tab B unaffected
     assert pool.get_page("b").rate_limit_count == 0
     svc.start_cooldown(pool, "a", 300)
-    assert page_a.cooldown_total == 3900  # 300 base + 2x1800
-    assert page_a.pending_penalty == 0  # consumed
+    assert page_a.cooldown_total == 3600  # a shorter base never cuts the timer
+    assert page_a.pending_penalty == 0
     # penalty during an active cooldown extends the live timer
     before = page_a.cooldown_until
     assert svc.add_rate_limit_penalty(pool, "a", 900) == 3
     assert page_a.cooldown_until == before + 900
-    assert page_a.cooldown_total == 4800
+    assert page_a.cooldown_total == 4500
 
 
 @pytest.mark.unit
@@ -823,7 +829,7 @@ def test_note_rate_limit_event_busy_stacks_and_logs_pending():
     assert page.rate_limit_count == 1
     text = " ".join(m for m, _ in bridge._logs)
     assert "⛔" in text and "(x1)" in text and "+30m" in text
-    assert "pending 30:00" in text
+    assert "debt 30:00" in text
     assert ("emit", "") in bridge._logs  # rows re-render live
 
 
@@ -836,7 +842,7 @@ def test_note_rate_limit_event_cooling_extends_live_timer():
     assert svc.note_rate_limit_event(pool, "a", bridge) == 1
     assert pool.get_page("a").cooldown_total == 2100  # 300 base + 1800
     text = " ".join(m for m, _ in bridge._logs)
-    assert "⛔" in text and "extended to 35:00" in text
+    assert "⛔" in text and "live timer" in text
 
 
 @pytest.mark.unit

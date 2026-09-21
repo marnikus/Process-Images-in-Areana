@@ -1,4 +1,11 @@
-"""Page status — steady/busy/cooldown tracking for multi-page pool."""
+"""Page status — steady/busy/cooldown tracking for multi-page pool.
+
+The **cooldown timer is the authority** (2026-09-21): `remaining_seconds` reads
+the clock only, `is_cooling` is that value, and `is_free` refuses a page whose
+timer still runs whatever the status label says. The status stays a label for
+the UI (steady / busy / waiting…), never a second source of truth — that
+divergence is what hid the user's countdown.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +15,7 @@ from enum import Enum
 from typing import Optional
 
 from app.core.cooldown import remaining_seconds as _remaining
+from app.core.tab_alias import format_alias
 
 
 def now_iso() -> str:
@@ -46,9 +54,23 @@ class PageInfo:
     jobs_completed: int = 0
     current_image: Optional[str] = None
     worker_no: int = 0  # pool join order, 1-based, assigned once by PagePool (D-3)
+    alias_no: int = 0  # readable-id number, assigned once by PagePool, persisted (D-5)
+    owner: str = ""    # logged-in account of this tab, from the owner probe (D-5)
+
+    @property
+    def alias(self) -> str:
+        """Readable handle `{email}_{4 digits}` — '' until the pool numbers the tab."""
+        return format_alias(self.owner, self.alias_no)
+
+    @property
+    def label(self) -> str:
+        """What every view and log prints: the alias, else the short id (D-7)."""
+        return self.alias or (self.tab_id or "")[:12]
 
     def is_free(self) -> bool:
-        return self.status == PageStatus.STEADY and self.is_connected
+        """Ready for a job: steady, connected, and **no live timer** (D-1)."""
+        return (self.status == PageStatus.STEADY and self.is_connected
+                and self.remaining_seconds() == 0)
 
     def is_busy(self) -> bool:
         return self.status in (
@@ -58,27 +80,35 @@ class PageInfo:
         )
 
     def remaining_seconds(self, now: float | None = None) -> int:
-        """Live countdown; 0 unless actively cooling."""
-        if self.status != PageStatus.COOLDOWN:
-            return 0
+        """Live countdown from the timer field only — never from the status (D-1)."""
         return _remaining(self.cooldown_until, now)
 
     def is_cooling(self, now: float | None = None) -> bool:
-        """True while the cooldown timer gates the next job."""
-        return self.status == PageStatus.COOLDOWN and self.remaining_seconds(now) > 0
+        """True while a live timer gates this tab, whatever the status says."""
+        return self.remaining_seconds(now) > 0
+
+    def clear_timer(self) -> None:
+        """Drop the pause fields and nothing else (history stays)."""
+        self.cooldown_until = 0.0
+        self.cooldown_total = 0
+        self.cooldown_reason = ""
 
     def try_expire(self, now: float | None = None) -> bool:
-        """Flip expired COOLDOWN to STEADY; single source (no copies)."""
-        if self.status != PageStatus.COOLDOWN:
-            return False
+        """Flip an expired COOLDOWN to STEADY; never voids a live timer.
+
+        Returns True only for a real COOLDOWN → STEADY flip (the value
+        `refresh_expired` reports as "freed"), while stale timer fields of any
+        other status are cleared silently.
+        """
         if self.is_cooling(now):
+            return False
+        flipped = self.status == PageStatus.COOLDOWN
+        self.clear_timer()
+        if not flipped:
             return False
         self.status = PageStatus.STEADY
         self.current_job_id = None
         self.current_image = None
-        self.cooldown_until = 0.0
-        self.cooldown_total = 0
-        self.cooldown_reason = ""
         self.last_steady_at = now_iso()
         self.error = None
         return True
@@ -94,6 +124,8 @@ class PageInfo:
             "is_connected": self.is_connected,
             "current_job_id": self.current_job_id,
             "current_image": self.current_image or "",
+            "alias_no": self.alias_no,
+            "owner": self.owner,
             "busy_since": self.busy_since,
             "error": self.error,
             "jobs_completed": self.jobs_completed,

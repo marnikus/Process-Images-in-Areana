@@ -152,7 +152,7 @@ const CaptchaPanel = {
 
   _solverText(r) {
     const via = r.provider_label ? ` via ${r.provider_label}` : '';
-    if (r.running) return r.solving_tab ? `solver: ON${via} (solving ${r.solving_tab.slice(0, 8)}…)` : `solver: ON${via}`;
+    if (r.running) return r.solving_tab ? `solver: ON${via} (solving ${window.TabLabel.of(r.solving_tab)}…)` : `solver: ON${via}`;
     if (!r.sdk_available) return 'solver: off (SDK missing — pip install 2captcha-python)';
     return r.has_key ? `solver: off${via} (turn the Watcher ON)` : `solver: off (no ${r.provider_label || 'provider'} key)`;
   },

@@ -174,3 +174,17 @@ def test_panel_export_lines_match_their_const():
             if re.search(rf"window\.{name}\s*=\s*{name}\s*;", src):
                 assert re.search(rf"^(?:const|let)\s+{name}\s*=|^function\s+{name}\b", src, re.M), (
                     f"{path.name}: `window.{name} = {name}` but no `const {name}` in this file")
+
+
+def test_url_table_header_declares_the_tab_column():
+    """D-5/D-7: the URL list shows the readable tab id in its own Tab column —
+    the header and the row template must stay in step, or every cell shifts."""
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    header = re.search(r'<table class="url-table">\s*<thead><tr>(.*?)</tr></thead>', html, re.S)
+    assert header, "URL table header not found"
+    heads = re.findall(r"<th>(.*?)</th>", header.group(1))
+    assert heads[:4] == ["En", "URL", "Tab", "Status"], heads
+    assert heads[-1] == "Actions"
+    src = (WEB / "js" / "panels" / "url-list" / "render.js").read_text(encoding="utf-8")
+    body = src[src.index("rowHtml(u) {"):src.index("  render(urls)")]
+    assert body.count("<td") == len(heads), "row cells must match the declared columns"

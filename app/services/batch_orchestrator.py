@@ -15,6 +15,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.browser.page_pool import tab_label_of
 from app.core.enums import ImageStatus
 from app.core.run_scope import claim_denied
 from app.services import auto_connect as ac
@@ -89,7 +90,7 @@ def _log_stay_reason(bridge, tab_id: str) -> None:
         page = pool.get_page(tab_id)
         if page is None or page.is_free():
             return
-        bridge._log(f"⏳ No ready tab — staying on {tab_id[:12]} ({page.status}) — pool: {pool_summary(pool)}", "warn")
+        bridge._log(f"⏳ No ready tab — staying on {tab_label_of(pool, tab_id)} ({page.status}) — pool: {pool_summary(pool)}", "warn")
     except Exception:
         pass
 

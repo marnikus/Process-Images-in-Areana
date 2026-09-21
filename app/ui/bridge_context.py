@@ -164,11 +164,23 @@ def _pool_endpoint(bridge) -> tuple:
     return host, port
 
 
+def _alias_book(bridge):
+    """The persisted readable-id registry (D-6); an empty book on any failure."""
+    from app.core.tab_alias import AliasBook
+    from app.persistence.cooldown_store import load_aliases
+    from app.services.run_state import cooldowns_path
+    try:
+        return AliasBook(load_aliases(cooldowns_path(bridge)))
+    except Exception:
+        return AliasBook()
+
+
 def wire_page_pool(bridge):
-    """PagePool tagged with host/port; None on any failure."""
+    """PagePool tagged with host/port + the saved numbers; None on any failure."""
     try:
         from app.browser.page_pool import PagePool
-        pool = PagePool(logger=lambda m, l="info": bridge._log(m, l))
+        pool = PagePool(logger=lambda m, l="info": bridge._log(m, l),
+                        alias_book=_alias_book(bridge))
         host, port = _pool_endpoint(bridge)
         pool._host = str(host)
         pool._port = int(port)

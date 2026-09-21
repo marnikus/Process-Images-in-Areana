@@ -90,7 +90,7 @@ def _mark_steady_emit(pool, bridge, tab_id):
     try:
         pool.mark_steady(tab_id)
         bridge._emit_pool_status()
-        bridge._log(f"✅ Page {tab_id[:12]} STEADY ready", "success")
+        bridge._log(f"✅ Page {tab_label_of(pool, tab_id)} STEADY ready", "success")
     except Exception:
         pass
 
@@ -336,7 +336,9 @@ def _log_no_free(bridge, img):
 
 def _log_no_ctrl(bridge, tab_id):
     try:
-        bridge._log(f"⚠ No controller {tab_id[:12]}", "warn")
+        pool = getattr(bridge, "_page_pool", None)
+        label = tab_label_of(pool, tab_id) if pool is not None else str(tab_id or "")[:12]
+        bridge._log(f"⚠ No controller {label}", "warn")
     except Exception:
         pass
 
@@ -344,7 +346,8 @@ def _log_no_ctrl(bridge, tab_id):
 def _log_assign(bridge, img, tab_id, free_page):
     try:
         title = getattr(free_page, "title", "")[:20]
-        bridge._log(f"📤 {img.relative_path} -> page {tab_id[:12]} {title} BUSY", "info")
+        label = getattr(free_page, "label", "") or str(tab_id or "")[:12]
+        bridge._log(f"📤 {img.relative_path} -> page {label} {title} BUSY", "info")
     except Exception:
         pass
 

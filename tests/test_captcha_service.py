@@ -271,7 +271,9 @@ async def test_every_helper_absorbs_failures(monkeypatch, isolated_config_dir):
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", log=boom)
     outcome = await handle_captcha(ctx)
     assert outcome.status == "manual"
-    assert page.pending_penalty == 900  # penalty survives all the chaos
+    # the penalty survives all the chaos as a live timer (D0-1: the page was
+    # resting, so it cools now instead of parking a frozen "+15:00")
+    assert page.is_cooling() and page.remaining_seconds() > 0
 
 
 @pytest.mark.unit

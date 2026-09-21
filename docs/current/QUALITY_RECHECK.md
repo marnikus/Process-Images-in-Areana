@@ -917,6 +917,34 @@ the `max_cog`-0 baseline artefact (dispatcher 8 at base → 5 now; orchestrator 
 unchanged) and the two `libGL` floors. Lane: pytest **1,797 / 0** (4 skipped),
 JS **281 / 0**, jscpd 1.071 %, goldens byte-identical, Σ slots 135.
 
+## Addendum 2026-09-21 — readable tab ids + a countdown that never hides (I-59)
+
+The user-reported round (`docs/archive/2026-09-21-readable-tab-ids-and-live-countdown/design.md`, D0-1…D0-3 + D-1…D-7),
+TDD from a RED suite at `8db8ec6`.
+
+| Gate | Command | Result |
+|---|---|---|
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **1,936 passed · 4 skipped · 0 fail** (+98 net: `tests/test_tab_alias.py` 47, `test_cooldown_timer_visible.py`, `test_tab_owner.py`, `test_page_pool_alias.py`, `test_restart_identity.py`, `test_pool_join_identity.py`, `test_probe_selectors.py` +2, `test_worker_badge.py` +2, `test_captcha_watcher.py` +2, `test_ui_wiring.py` +1); 15 legacy assertions re-pointed to the new rule (9 parked-debt / wording in `test_cooldown_service.py`, `test_cooldown_branches.py`, `test_captcha_service.py`, 2 join-log lines in `test_page_pool_join.py` / `test_reparse_pool_gate.py`, 2 badge call-count asserts in `test_worker_badge.py`) — none deleted |
+| JS tests | `npm run test:js` | **309 pass · 4 skipped · 0 fail** (313 subtests; new `tests/js/test_countdown_visible.mjs` 11, `test_tab_label_views.mjs` 10 incl. the log-line source guard; `test_pool_tab_id.mjs`, `test_run_badge.mjs`, `test_url_interval_control.mjs`, `test_url_list_receiver_icon.mjs` re-pinned to the label / the new module sizes) |
+| Size/complexity | `radon cc -s` + per-function cognitive | new/edited: `tab_label_of` 8 LOC, `PageInfo.label` 2, `normalize_owner`/`format_alias`/`email_from_probe`/`next_alias_no` ≤ 15 each, `AliasBook` 8 methods ≤ 8 LOC, `_stack_penalty` 12 / CC 3, `_materialise_debt` 9 / CC 2, `_arm_timer` 8 / CC 3, `resolve_owners` 9 / CC 3, `_read_owner` CC 3, `_assign_alias` CC 3 — all inside the RULE 16 fail lines and the RULE 18 ideals |
+| Coverage | `coverage run --branch --source=app -m pytest tests -q` then `coverage json` | **88.09 % line / 84.73 % branch** (gates ≥80 / ≥75; ratchet floor 86.36 / 82.33 — no decrease); new/changed modules: `owner_probe.py` 100 %, `page_status.py` 100 %, `worker_badges.py` 100 %, `probe_selectors.py` 100 %, `tab_alias.py` 93.3 %, `tab_owner.py` 93.5 %, `cooldown_service.py` 93.1 %, `cooldown_store.py` 87.8 % |
+| Changed-file ratchet | `python tools/verify_quality.py --changed-files <19 changed app/.py files>` | **✅ PASSED — 0 fails** (1 warn = `coverage.json` was not regenerated at that moment) |
+| Whole-repo gate | `python tools/verify_quality.py --coverage-ratchet` | 1 fail, **identical on the untouched base tree**: `app/ui/web/js/panels/captcha.js max_cc 12 > 10` (measured at base with `node tools/js_metrics.js`: `CC>10 1`) — pre-existing, not a finding of this round |
+| JS lane | same tool on the 12 changed `.js` files | **✅ 0 fails** — the round added three small modules (`panels/url-list/cells.js` 92 lines, `panels/page-pool/cells.js` 38, `panels/page-pool/ticker.js` 34, `core/tab-label.js` 19) so no frozen file grew: `page-pool/render.js` 119 → 95, `page-pool/actions.js` 134 → 121, `page-pool/store.js` 32 → 31, `url-list/render.js` 74 → 46; the ratchet sees no growth anywhere |
+
+RULE 18 recheck (the user's "recheck at the end if code fit"): the first shape put `tab_label` **inside**
+`PagePool` and the gate caught it (`class PagePool LOC 152 > 150`, `methods 16 > 15`) — fixed by making it a
+module-level `tab_label_of(pool, tab_id)` over the pool's public read API (`get_page`), not by a waiver; the JS
+side landed first with `page-pool/actions.js` at 146/134 and `store.js` at 41/32 and was then split the same way
+(the countdown cell, the 1 s ticker and the tab-label formatter are their own small modules, mirroring the
+`url-list/cells.js` precedent). No `--record-baseline` was run: nothing needed to grow.
+
+Dishonest reductions rejected (RULE 16.6): showing the countdown only while `status == cooldown` (that is the
+bug), letting the debt tick down during a job (the pause would expire unseen), materialising the debt only in a
+reconciler pass (up to one interval of a "ready" tab with hidden time on it), storing the number in the pruned
+`entries` map, allocating it in a render path, reading the account from the RSC payload, and rewriting every
+`tab_id[:12]` log line in the codebase (the views and the tab-lifecycle lines are the reference surface).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

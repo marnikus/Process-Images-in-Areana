@@ -53,9 +53,11 @@ describe('url-list receiver icon', () => {
   test('the icon sits in the status cell and the column count is unchanged', () => {
     const html = R.rowHtml({ id: 'u1', url: 'https://x', receiver: false, receiver_title: REASONS[1] });
     const cells = tds(html);
-    assert.equal(cells.length, 8, 'url-table header has 8 columns');
-    assert.match(cells[2], /url-status/);
-    assert.match(cells[2], /url-not-receiver/);
+    // 9 since the readable-tab-id round added the `Tab` column (D-7); the
+    // status cell moved with it and the icon still rides inside it.
+    assert.equal(cells.length, 9, 'url-table header has 9 columns (the new Tab one)');
+    assert.match(cells[3], /url-status/);
+    assert.match(cells[3], /url-not-receiver/);
   });
 
   test('the reason is the title (Python wording, escaped)', () => {
@@ -67,12 +69,15 @@ describe('url-list receiver icon', () => {
     assert.doesNotMatch(evil, /<b onmouseover/);
   });
 
+  /* The 2026-09-21 round moved the row's cells into cells.js (D-4/D-7), so the
+     template file came out SMALLER — the guard is re-pinned to the new numbers
+     (re-run the tool in the commit that grows it again). */
   test('render.js did not grow (net-zero guard, D-24a)', () => {
     const src = read('render.js');
-    assert.equal(src.split('\n').length, 74);  // tools/js_metrics.js fileLines (the ratchet's number)
+    assert.equal(src.split('\n').length, 46);  // tools/js_metrics.js fileLines (the ratchet's number)
     const metrics = JSON.parse(execFileSync('node', [TOOL, DIR, '--json'], { encoding: 'utf-8' }));
     const funcs = metrics.filter((e) => e.file && e.file.endsWith('url-list/render.js') && !e.isFile).length;
-    assert.equal(funcs, 12);  // the ratchet's own counter (tools/js_metrics.js)
+    assert.equal(funcs, 7);  // the ratchet's own counter (tools/js_metrics.js)
   });
 
   test('no JS side computes eligibility (the flag is authoritative)', () => {

@@ -235,6 +235,32 @@ SELECTORS: Dict[str, SelectorObject] = {
         evidence="Directly Chat...html",
         lastVerified="2026-09-15",
     ),
+    # D-5 (2026-09-21): the logged-in account label — the prefix of every
+    # readable tab id. Scopes are the sidebar's own regions; every candidate is
+    # a *leaf* text node ('div.font-heading.truncate' / 'button div.truncate'),
+    # so the probe can never pick a container's concatenated text.
+    "account_email": SelectorObject(
+        name="account_email",
+        primary='[data-sidebar="menu"] div.font-heading.truncate',
+        fallbacks=[
+            '[data-sidebar="menu"] button div.truncate',
+            '[data-sidebar="footer"] div.font-heading.truncate',
+            '[data-sidebar="footer"] button div.truncate',
+            '[data-sidebar="rail"] div.font-heading.truncate',
+        ],
+        scope='[data-sidebar="sidebar"]',
+        mustBeVisible=True,
+        mustBeEnabled=False,
+        expectedCount=1,
+        textCondition="@",
+        textConditionType="contains",
+        verification="visible sidebar row whose short text holds the signed-in account email",
+        evidence=("docs/research/Directly Chat with Frontier Image Generation AI Models.html: "
+                  "ul[data-sidebar=menu] > button > div.font-heading.truncate = zeusthunder1991@gmail.com "
+                  "(avatar span sibling); the same string also sits in the RSC script payload, which is "
+                  "not probed"),
+        lastVerified="2026-09-21",
+    ),
     "new_chat_button": SelectorObject(
         name="new_chat_button",
         primary='a[href="/image/direct"]',

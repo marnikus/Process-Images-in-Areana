@@ -25,8 +25,15 @@ from app.services.cooldown_service import (
     tab_has_live_job,
 )
 from app.services.live.bus import live_bus
+from app.services.live.tab_owner import resolve_owners
 from app.services.live.worker_badges import assert_badges, clear_badge
-from app.services.run_state import cooldowns_path, resolve_tab_info, restore_page_state, schedule_coro
+from app.services.run_state import (
+    cooldowns_path,
+    resolve_tab_info,
+    restore_page_state,
+    schedule_coro,
+    tab_label_of,
+)
 from app.ui.qt_compat import Slot
 
 
@@ -70,10 +77,12 @@ async def finish_pool_join(bridge, info, client, ctrl) -> None:
     bridge._page_pool.add_page(info)
     bridge._page_pool.register_client(info.tab_id, client, ctrl)
     restore_page_state(bridge, info.tab_id)
-    await assert_badges(bridge._page_pool)  # `#n + id` on the tab, right away (D-5)
-    bridge._emit_pool_status()
+    await resolve_owners(bridge._page_pool)  # `{email}_{4 digits}` before the badge (D-5)
+    await assert_badges(bridge._page_pool)   # `#n + label` on the tab, right away (D-5)
+    bridge._emit_pool_status()               # persists the number with the timers (D0-2)
     total, free = bridge._page_pool.get_counts()
-    bridge._log(f"✅ Pool added {info.tab_id[:12]} steady — {info.title[:40]} — total {total} free {free}", "success")
+    label = tab_label_of(bridge._page_pool, info.tab_id)
+    bridge._log(f"✅ Pool added {label} steady — {info.title[:40]} — total {total} free {free}", "success")
     if total >= 2:
         bridge._log(f"✅ {total} tabs in pool ready for parallel — 2+ images will dispatch to different webpages", "success")
 
@@ -212,7 +221,8 @@ class PagePoolMixin:
             ok = leave_pool(self, tab_id)
             self._emit_pool_status()
             if ok:
-                self._log(f"Pool page {tab_id[:12]} removed", "info")
+                pool = getattr(self, "_page_pool", None)
+                self._log(f"Pool page {tab_label_of(pool, tab_id)} removed", "info")
                 return json.dumps({"ok": True})
             return json.dumps({"ok": False, "error": "not found"})
         except Exception as e:

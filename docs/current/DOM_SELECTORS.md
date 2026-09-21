@@ -565,3 +565,26 @@ href="/image/direct"] > svg + span "New Chat"`.
 | **Action Blocks** | None — automatic post-job step (`app/browser/new_chat.py` via `app/services/cooldown_service.py`), not a toggleable block |
 | **Site adapter** | `new_chat_button` entry, lastVerified 2026-09-16 |
 
+## M. Logged-in Account Row — Readable Tab Id Prefix (2026-09-21, D-5)
+
+**Purpose:** the logged-in account label in the sidebar is the *prefix* of every
+readable tab id (`marnikus@gmail.com_3045`, `aka_3045` when it cannot be read).
+Read-only — the app never clicks it.
+
+| Field | Value |
+|---|---|
+| **Primary** | `[data-sidebar="menu"] div.font-heading.truncate` |
+| **Fallback 1** | `[data-sidebar="menu"] button div.truncate` |
+| **Fallback 2** | `[data-sidebar="footer"] div.font-heading.truncate` |
+| **Fallback 3** | `[data-sidebar="footer"] button div.truncate` |
+| **Fallback 4** | `[data-sidebar="rail"] div.font-heading.truncate` |
+| **Scope** | `[data-sidebar="sidebar"]` |
+| **mustBeVisible / mustBeEnabled** | true / false (a label is not a control) |
+| **expectedCount** | 1 |
+| **textCondition** | contains `@` |
+| **Probe** | `app/browser/owner_probe.py` builds the JS; selectors arrive from `probe_selectors.account_email_probe()` (RULE 21 — the file holds placeholders only) |
+| **Reading rule** | leaf text nodes only (a container's concatenated text is never used), ≤ 80 chars, an email-shaped match (`[A-Za-z0-9._%+-]+@…`) inside a visible element that is not inside a `script`/`style`/`textarea`/`contenteditable` (the user's own prompt can never label a tab); three widening nets — scoped candidates → document-wide candidates → a bounded walk of `[data-sidebar] aside nav header` descendants |
+| **Reply** | JSON `{email, via, candidates}` → `core.tab_alias.email_from_probe` (lowercased, ≤ 64 chars, anything else → `''`) |
+| **Written by** | `services/live/tab_owner.resolve_owners(pool)` — on every pool join and every reconciler pass; a silent/broken reply keeps the email already known (`aka_…` is never written over a known account) |
+| **Evidence** | sidebar account node in `docs/research/Directly Chat with Frontier Image Generation AI Models.html` |
+| **Site adapter** | `account_email` entry, lastVerified 2026-09-21 |

@@ -18,7 +18,13 @@ from functools import partial
 
 from app.services.auto_connect import pick_primary_ws
 from app.services.live.reconcile import LiveDeps, reconcile_once, start_reconciler
-from app.services.run_state import pooled_ids, resolve_tab_info, restore_page_state, schedule_coro
+from app.services.run_state import (
+    pooled_ids,
+    resolve_tab_info,
+    restore_page_state,
+    schedule_coro,
+    tab_label_of,
+)
 from app.ui.panels.page_pool import do_connect_page_pool, leave_pool
 from app.ui.panels.url_queue import commit_urls_system
 from app.ui.qt_compat import Slot
@@ -90,7 +96,8 @@ def reuse_pool_page(bridge, identity) -> None:
     tab_id, ws_url, title, url = identity
     bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
     bridge._emit_pool_status()
-    bridge._log(f"📦 Pool: tab {tab_id[:12]} already has dedicated client steady (reuse)", "info")
+    label = tab_label_of(getattr(bridge, "_page_pool", None), tab_id)
+    bridge._log(f"📦 Pool: tab {label} already has dedicated client steady (reuse)", "info")
 
 
 async def add_dedicated_pool_page(bridge, identity) -> None:
@@ -110,7 +117,8 @@ async def add_dedicated_pool_page(bridge, identity) -> None:
     bridge._page_pool.register_client(tab_id, dedicated, ctrl2)
     bridge._emit_pool_status()
     total, free = bridge._page_pool.get_counts()
-    bridge._log(f"📦 Pool: added tab {tab_id[:12]} steady with dedicated client — total {total} pages {free} free", "success")
+    label = tab_label_of(getattr(bridge, "_page_pool", None), tab_id)
+    bridge._log(f"📦 Pool: added tab {label} steady with dedicated client — total {total} pages {free} free", "success")
     if total >= 2:
         bridge._log(f"✅ {total} tabs in pool ready for parallel — when 2+ images selected, Run will dispatch to different webpages (steady/busy tracked, no double-send)", "success")
 
@@ -125,7 +133,8 @@ def add_fallback_pool_page(bridge, identity) -> None:
     bridge._page_pool.register_client(tab_id, bridge.cdp, ctrl)
     bridge._emit_pool_status()
     total_f, _ = bridge._page_pool.get_counts() if bridge._page_pool else (0, 0)
-    bridge._log(f"📦 Pool: added primary tab {tab_id[:12]} steady (dedicated failed, using primary) — total {total_f}", "warn")
+    label = tab_label_of(getattr(bridge, "_page_pool", None), tab_id)
+    bridge._log(f"📦 Pool: added primary tab {label} steady (dedicated failed, using primary) — total {total_f}", "warn")
 
 
 async def attach_connected_tab(bridge, ws_url: str) -> None:

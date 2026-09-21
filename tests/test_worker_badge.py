@@ -19,6 +19,7 @@ from app.browser.page_status import PageInfo
 import re
 
 from app.browser import dom_highlight as dh
+from app.browser import owner_probe
 from app.services.live import worker_badges as svc
 
 pytestmark = pytest.mark.unit
@@ -42,6 +43,27 @@ def pool_of(*tabs, clients=True):
         if clients:
             pool.register_client(tid, FakeClient(), object())
     return pool
+
+
+# ── readable id (D-5) ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_badge_shows_the_readable_tab_id():
+    """The badge must print what the pool table prints — the user matches them by eye."""
+    pool = pool_of("t1")
+    pool.get_page("t1").owner = "marnikus@gmail.com"
+    assert await svc.assert_badges(pool) == 1
+    js = pool.get_clients("t1")[0].calls[-1]
+    assert "marnikus@gmail.com_0001" in js
+    assert "#1" in js      # the worker number still leads
+
+
+@pytest.mark.asyncio
+async def test_the_badge_shows_the_aka_label_when_the_account_is_unknown():
+    pool = pool_of("t1")
+    assert await svc.assert_badges(pool) == 1
+    assert "aka_0001" in pool.get_clients("t1")[0].calls[-1]
 
 
 # ── builder ───────────────────────────────────────────────────────────
@@ -84,7 +106,9 @@ def test_assert_badges_pushes_one_badge_per_connected_page_with_a_client():
     shown = asyncio.run(svc.assert_badges(pool))
     assert shown == 1
     (a_client,) = pool.get_clients("a")[:1]
-    assert len(a_client.calls) == 1 and "#1" in a_client.calls[0] and '"a"' in a_client.calls[0]
+    # D-5: the badge prints the readable id (`aka_0001`), not the raw pool key.
+    assert len(a_client.calls) == 1 and "#1" in a_client.calls[0]
+    assert '"aka_0001"' in a_client.calls[0]
     assert pool.get_clients("b")[0].calls == []
 
 
@@ -128,7 +152,9 @@ async def test_pool_join_asserts_the_badge_immediately(monkeypatch):
     host = Host(PagePool())
     await do_connect_page_pool(host, "ws://x/devtools/page/t9")
     calls = host._page_pool.get_clients("t9")[0].calls
-    assert len(calls) == 1 and wb.WORKER_ATTR in calls[0] and "#1" in calls[0]
+    # D-5: the join reads the account first, then badges the tab with the label
+    assert len(calls) == 2 and calls[0] == owner_probe.build_owner_probe()
+    assert wb.WORKER_ATTR in calls[-1] and "#1" in calls[-1]
 
 
 def test_disconnect_clears_the_badge_with_the_client_captured_before_removal(monkeypatch):
@@ -155,4 +181,6 @@ async def test_a_reconcile_pass_reasserts_badges(tmp_path, monkeypatch):
     env.bridge._page_pool = pool_of("t1")
     await rc.reconcile_once(env.bridge, env.deps.as_deps(), "auto")
     calls = env.bridge._page_pool.get_clients("t1")[0].calls
-    assert len(calls) == 1 and wb.WORKER_ATTR in calls[0]
+    # a pass re-asserts the badge — and re-reads the account the page shows (D-5)
+    assert len(calls) == 2 and calls[0] == owner_probe.build_owner_probe()
+    assert wb.WORKER_ATTR in calls[-1]
