@@ -72,13 +72,14 @@ def receiver_counts(rows: List) -> Dict[str, int]:
 
 
 def live_view(bridge) -> Dict[str, Any]:
-    """`cadence` + queue head + receiver counts + run state (+ `captcha_cap_sec` only while the Watcher is ON)."""
+    """`cadence` + queue head + receiver counts + run state + wait reason (+ `captcha_cap_sec` only while the Watcher is ON)."""
     images = getattr(bridge.state, "images", None) or []
     view = {**cadence(bridge),
             "queued": len(live_scope(images)),
             "next_image": next_queued(images),
             "receivers": receiver_counts(getattr(bridge.state, "urls", None) or []),
-            "run_state": str(getattr(bridge, "_run_state", "idle"))}
+            "run_state": str(getattr(bridge, "_run_state", "idle")),
+            "wait_reason": str(getattr(bridge, "_live_reason", None) or "")}  # the badge's sub-label (A-2)
     if captcha_in_scope(bridge):
         view["captcha_cap_sec"] = pause_cap_seconds(bridge)
     return view

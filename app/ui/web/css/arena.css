@@ -994,11 +994,11 @@
 [data-theme="light"] .bc-badge-cat { background: rgba(0,0,0,0.06); }
 
 
-/* run-cycle badge (core/run-badge.js): hidden while running, loud otherwise */
+/* run-cycle badge (core/run-badge.js): ON / OFF, always visible; the sub-label sits beside it */
 .run-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.6px; line-height: 16px; vertical-align: middle; }
-.run-badge[hidden] { display: none; }
-.run-badge--paused { background: #f59e0b; color: #1c1917; animation: runBadgePulse 1.4s ease-in-out infinite; }
-.run-badge--stopping { background: #fb923c; color: #1c1917; }
-.run-badge--stopped { background: #ef4444; color: #fff; }
+.run-badge--on { background: #16a34a; color: #fff; }
+.run-badge--off { background: #ef4444; color: #fff; animation: runBadgePulse 1.4s ease-in-out infinite; }
+.run-sub { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; line-height: 16px; vertical-align: middle; background: #f59e0b; color: #1c1917; }
+.run-sub[hidden] { display: none; }
 @keyframes runBadgePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 .worker-no { color: #fbbf24; margin-right: 2px; }

@@ -29,7 +29,7 @@ class Emitter:
 class FakeBridge:
     def __init__(self, cancel=False, pause=False, stop_after=False):
         from types import SimpleNamespace
-        self.state = SimpleNamespace(prompt={"user_prompt": "go"},
+        self.state = SimpleNamespace(prompt={"user_prompt": "go"}, images=[],
                                      recalculate_progress=lambda: None)
         self.job_started = Emitter()
         self.job_finished = Emitter()
@@ -157,10 +157,9 @@ async def test_settled_image_never_acquires_a_page(runner_fakes):
     done = make_img("done.png")
     done.status, done.attempt_count, done.selected = ImageStatus.COMPLETED.value, 1, True
     fresh = make_img("fresh.png")
-    ctx = mpd.DispatchCtx(bridge=bridge, pool=pool, urls=make_urls(["t1"]),
-                          sem=asyncio.Semaphore(1), allowed={"t1"})
-    await mpd._run_with_sem(ctx, done)
-    await mpd._run_with_sem(ctx, fresh)
+    ctx = mpd.DispatchCtx(bridge=bridge, pool=pool, urls=make_urls(["t1"]), allowed={"t1"}, seed=[done, fresh])
+    await mpd._feed_tasks(ctx)  # B-1: the feeder replaced the per-image semaphore worker
+    await asyncio.gather(*ctx.tasks)
     assert (done.status, done.attempt_count) == (ImageStatus.COMPLETED.value, 1)
     assert fresh.status == ImageStatus.COMPLETED.value and fresh.attempt_count == 1
     assert runner_fakes["calls"] == 1

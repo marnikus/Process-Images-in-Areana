@@ -18,6 +18,8 @@ from app.utils.correlation import build_final_prompt, generate_correlation_id
 from . import auto_connect as ac
 from .job_events import job_finished_payload
 from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status, maybe_note_rate_limit
+from .live.bus import live_bus
+from .live.feed import queued_images
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
 
 log = logging.getLogger("arena")
@@ -26,12 +28,14 @@ _WAIT_POLL_SEC = 0.5
 
 
 @dataclass
-class DispatchCtx:
+class DispatchCtx:  # one open pass of the feeder (B-1): what was handed out, and to whom
     bridge: object
     pool: PagePool
     urls: List[UrlRow]
-    sem: asyncio.Semaphore
     allowed: set = field(default_factory=set)  # tab ids owned by checked rows (I-33)
+    seed: list = field(default_factory=list)   # the plan's images: served first, then the live queue
+    claimed: set = field(default_factory=set)  # image ids already given a task this pass
+    tasks: list = field(default_factory=list)
 
 
 @dataclass
@@ -140,28 +144,32 @@ class FreeWaitSpec:
     job_id: str
     timeout_sec: float
     cancel_check: object = None
+    wake_wait: object = asyncio.sleep  # async (seconds) -> None; the bus wait, so a freed page is taken at once (B-2)
+
+
+def _gave_up(spec: FreeWaitSpec, waited_sec: float) -> bool:
+    """Cancel asked, or the bounded wait ran out (RULE 7)."""
+    return bool(spec.cancel_check and spec.cancel_check()) or waited_sec > spec.timeout_sec
 
 
 async def _wait_free_in(spec: FreeWaitSpec):
-    """Wait for a checked free page; cancel and timeout bounded (RULE 7)."""
+    """Wait for a checked free page; the bus wake is the path, the poll the fallback."""
     loop = asyncio.get_event_loop()
     start = loop.time()
-    while True:
-        if spec.cancel_check and spec.cancel_check():
-            return None
+    while not _gave_up(spec, loop.time() - start):
         got = _acquire_free_in(spec.pool, spec.allowed, spec.job_id)
         if got:
             return got
-        if loop.time() - start > spec.timeout_sec:
-            return None
-        await asyncio.sleep(_WAIT_POLL_SEC)
+        await spec.wake_wait(_WAIT_POLL_SEC)
+    return None
 
 
 async def _acquire_page(pool, bridge, job_id: str, allowed: set):
     """One gate for both wait styles: only tabs owned by checked rows."""
     spec = FreeWaitSpec(pool=pool, allowed=allowed, job_id=job_id,
                         timeout_sec=cooldown_aware_timeout(pool),
-                        cancel_check=lambda: bridge._cancel_requested)
+                        cancel_check=lambda: not _feeding(bridge),
+                        wake_wait=live_bus(bridge).wait)
     return await _wait_free_in(spec)
 
 
@@ -264,7 +272,7 @@ def _clear_tab_image(pool, tab_id):
 
 
 async def _finish_page_safely(finish_ctx: FinishCtx) -> None:
-    """Finish the page after the job; always settle the stuck-emit on error."""
+    """Finish the page after the job; always settle the stuck-emit on error; then wake the waiters."""
     try:
         await finish_page_after_job(finish_ctx)
     except asyncio.CancelledError:
@@ -272,18 +280,26 @@ async def _finish_page_safely(finish_ctx: FinishCtx) -> None:
         raise
     except Exception:
         _settle_stuck_emit(finish_ctx.pool, finish_ctx.bridge, finish_ctx.tab_id)
+    finally:
+        live_bus(finish_ctx.bridge).wake("page free")
 
 
 async def run_one_image_on_page(bridge, pool, img, urls):
+    """Claim the first free checked page, then run `img` on it (the single-image entry)."""
     if bridge._cancel_requested:
         return
-    allowed = ac.enabled_tab_ids(urls)
-    free_page = await _acquire_page(pool, bridge, img.id, allowed)
+    ctx = DispatchCtx(bridge=bridge, pool=pool, urls=urls, allowed=ac.enabled_tab_ids(urls))
+    free_page = await _acquire_page(pool, bridge, img.id, ctx.allowed)
     if not free_page:
         _log_no_free(bridge, img)
         return
+    await run_claimed_image(ctx, img, free_page)
+
+
+async def run_claimed_image(ctx: DispatchCtx, img, free_page):
+    """Run `img` on a page the caller already claimed (the feeder path, B-1)."""
+    bridge, pool, tab_id = ctx.bridge, ctx.pool, free_page.tab_id
     _emit_status_safe(bridge)
-    tab_id = free_page.tab_id
     ctrl, client = _get_clients(pool, tab_id)
     if not ctrl or not client:
         _log_no_ctrl(bridge, tab_id)
@@ -292,17 +308,23 @@ async def run_one_image_on_page(bridge, pool, img, urls):
     _log_assign(bridge, img, tab_id, free_page)
     _start_tab_image(pool, tab_id, img)
     try:
-        url_row, corr_id, job_id, failed, err = await _run_image_job(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=urls, tab_id=tab_id, ctrl=ctrl, client=client))
-        _handle_result(ResultCtx(bridge=bridge, pool=pool, img=img, tab_id=tab_id, corr_id=corr_id, job_id=job_id, failed=failed, err=err))
-        maybe_note_rate_limit(pool, tab_id, bridge, err)
+        await _run_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ctx.urls, tab_id=tab_id, ctrl=ctrl, client=client))
+    finally:
+        _clear_tab_image(pool, tab_id)
+        await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client))
+
+
+async def _run_and_record(job: PageJobCtx) -> None:
+    """The job itself + its result bookkeeping; a crash becomes a failed image, a cancel propagates."""
+    try:
+        _url_row, corr_id, job_id, failed, err = await _run_image_job(job)
+        _handle_result(ResultCtx(bridge=job.bridge, pool=job.pool, img=job.img, tab_id=job.tab_id,
+                                 corr_id=corr_id, job_id=job_id, failed=failed, err=err))
+        maybe_note_rate_limit(job.pool, job.tab_id, job.bridge, err)
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        _handle_exception(bridge, img, tab_id, e)
-    finally:
-        _clear_tab_image(pool, tab_id)
-        finish_ctx = FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client)
-        await _finish_page_safely(finish_ctx)
+        _handle_exception(job.bridge, job.img, job.tab_id, e)
 
 
 def _log_no_free(bridge, img):
@@ -341,6 +363,8 @@ def _handle_exception(bridge, img, tab_id, e):
 
 
 async def dispatch_parallel(bridge, pool, images, urls):
+    """The feeder (B-1): serve the plan's images, then keep re-reading the live queue while the pass is
+    open, so an image queued mid-pass reaches an idle tab at once instead of waiting for the pass to end."""
     if not pool or not images:
         return
     allowed = ac.enabled_tab_ids(urls)
@@ -350,36 +374,57 @@ async def dispatch_parallel(bridge, pool, images, urls):
         except Exception:
             pass
         return
-    total, _ = ac.counts_in(pool, allowed)
-    sem = asyncio.Semaphore(max(1, total))
-    ctx = DispatchCtx(bridge=bridge, pool=pool, urls=urls, sem=sem, allowed=allowed)
-    tasks = await _create_tasks(ctx, images)
-    await _await_tasks(bridge, tasks)
+    ctx = DispatchCtx(bridge=bridge, pool=pool, urls=urls, allowed=allowed, seed=list(images))
+    await _feed_tasks(ctx)
+    await _await_tasks(bridge, ctx.tasks)
     _finalize_batch(bridge)
 
 
-async def _create_tasks(ctx: DispatchCtx, images):
-    tasks = []
-    for img in images:
-        if ctx.bridge._cancel_requested:
-            break
-        if getattr(ctx.bridge, "_stop_after", False):
-            break
+def _feeding(bridge) -> bool:
+    """The feeder hands out work only while neither Stop nor Stop-after was asked."""
+    return not bridge._cancel_requested and not getattr(bridge, "_stop_after", False)
+
+
+def _take_next(ctx: DispatchCtx):
+    """Claim the next image this pass has not handed out: the plan's list first, then the live queue (one rule)."""
+    for img in list(ctx.seed) + list(queued_images(ctx.bridge)):
+        if img.id not in ctx.claimed:
+            ctx.claimed.add(img.id)
+            return img
+    return None
+
+
+async def _feed_tasks(ctx: DispatchCtx) -> None:
+    """Hand out images until the queue is empty and every task is done (or Stop / Stop-after)."""
+    while _feeding(ctx.bridge):
         await _wait_pause(ctx.bridge)
-        if ctx.bridge._cancel_requested:
-            break
-        t = asyncio.create_task(_run_with_sem(ctx, img))
-        tasks.append(t)
-        await asyncio.sleep(0.2)
-    return tasks
-
-
-async def _run_with_sem(ctx: DispatchCtx, img):
-    """One worker slot; the claim-time re-check (I-44) runs right before the page is taken."""
-    async with ctx.sem:
-        if claim_denied(img, ctx.bridge._log):
+        img = _take_next(ctx)
+        if img is None and not _pending(ctx.tasks):
             return
-        await run_one_image_on_page(ctx.bridge, ctx.pool, img, ctx.urls)
+        await _serve(ctx, img)
+
+
+async def _serve(ctx: DispatchCtx, img) -> None:
+    """One feeder step: nothing to hand out → wait for a wake; else claim-check and start."""
+    if img is None:
+        await live_bus(ctx.bridge).wait(_WAIT_POLL_SEC)  # a finishing job may free a page or re-queue an image
+    elif not claim_denied(img, ctx.bridge._log):
+        await _start_on_free_page(ctx, img)
+
+
+async def _start_on_free_page(ctx: DispatchCtx, img) -> None:
+    """Wait for a checked free page, then run `img` on it as its own task."""
+    page = await _acquire_page(ctx.pool, ctx.bridge, img.id, ctx.allowed)
+    if page is None:
+        if _feeding(ctx.bridge):
+            _log_no_free(ctx.bridge, img)
+        return
+    ctx.tasks.append(asyncio.create_task(run_claimed_image(ctx, img, page)))
+    await asyncio.sleep(0)  # let the task take its page before the next claim
+
+
+def _pending(tasks) -> list:
+    return [t for t in tasks if not t.done()]
 
 
 async def _await_tasks(bridge, tasks):

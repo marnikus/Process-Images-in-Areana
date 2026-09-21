@@ -392,10 +392,10 @@ def _log_parallel_fallback(ctx: BatchCtx, total: int) -> None:
 
 
 async def _try_parallel(ctx: BatchCtx) -> bool:
-    """Parallel dispatch when 2+ pages and 2+ images; else sequential."""
+    """Parallel (feeder) dispatch whenever 2+ checked pages exist — any image count (B-3); else sequential."""
     try:
         pool = _pool_of(ctx.bridge)
-        if not (pool and len(ctx.images) >= 2):
+        if not pool:
             return False
         total, free = ac.counts_in(pool, ctx.allowed)
         if total >= 2 and free >= 1:

@@ -827,6 +827,27 @@ Measured: max CC 6 / cog 5 / params 4 / nest 2; gate fails = only the
 `libGL` floors. Lane: pytest **1,790 / 0** (4 skipped), JS **280 / 0**,
 coverage 87.89 / 84.54, jscpd 1.072 %, Σ slots 135. Baseline not re-recorded.
 
+### 2026-09-21 run-cycle ON/OFF badge + idle-worker instant start (A-1…A-4, B-1…B-4, I-56)
+
+Design, root cause and per-symbol recheck: `archive/2026-09-21-run-cycle-badge-and-instant-dispatch/design.md`.
+RED-first: `tests/test_instant_dispatch.py` (6 — the reported bug: an image
+queued mid-pass starts on the idle tab while the other tab is held; a freed
+tab is taken on the wake with the poll stretched to 5 s; queue order kept;
+no double send + `claim_denied`; Cancel / Stop-after stop the feeder; a single
+image on a 2-tab pool goes parallel), `tests/test_live_debug_view.py` (+1
+`wait_reason`), `tests/js/test_run_badge.mjs` (6, rewritten to ON/OFF + sub-label).
+`multi_page_dispatcher.py` 402 → 447 lines but **simpler**: file max LOC 29 → 18
+(`run_one_image_on_page` split into claim / `run_claimed_image` /
+`_run_and_record`), max cog 8 → 5, nest 2, CC 8 unchanged; `_create_tasks` /
+`_run_with_sem` / the semaphore replaced by `_feed_tasks` / `_serve` /
+`_take_next` / `_start_on_free_page` (all ≤ 9 lines); `FreeWaitSpec.wake_wait`
++ `_gave_up`. `batch_orchestrator._try_parallel` 16 lines, one condition fewer.
+`live/__init__` no longer re-exports `supervisor` (the dispatcher now imports
+`live.bus` / `live.feed`; eager re-export would be a cycle). Gate fails = only
+the `max_cog`-0 baseline artefact (dispatcher 8 at base → 5 now; orchestrator 8
+unchanged) and the two `libGL` floors. Lane: pytest **1,797 / 0** (4 skipped),
+JS **281 / 0**, jscpd 1.071 %, goldens byte-identical, Σ slots 135.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

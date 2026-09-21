@@ -96,3 +96,13 @@ def test_no_captcha_wording_while_the_watcher_is_off(tmp_path):
     on = env_with(tmp_path / "on", watcher_on=True)
     on.bridge.config.set_state(watcher_captcha_timeout_sec=120)
     assert dv.live_view(on.bridge)["captcha_cap_sec"] == 120  # the cap the JS shows next to a waiting worker
+
+
+def test_the_wait_reason_rides_the_live_view(tmp_path):
+    """A-2: the supervisor's per-pass wait reason is published so the badge's sub-label can name it."""
+    env = env_with(tmp_path)
+    assert dv.live_view(env.bridge)["wait_reason"] == ""  # no loop yet → nothing to say
+    env.bridge._live_reason = "all cooling"
+    assert dv.live_view(env.bridge)["wait_reason"] == "all cooling"
+    env.bridge._live_reason = None  # a pass is dispatching
+    assert dv.live_view(env.bridge)["wait_reason"] == ""
