@@ -95,7 +95,11 @@ class JobHistoryStore:
         self._next_no, self._entries = _coerce_saved(load_json(self._path, {}) if self._path else {})
 
     def append(self, entry: Dict[str, Any]) -> Dict[str, Any]:
-        """Stamp the next sequential job_no, trim to cap, persist; returns the stored row."""
+        """Stamp the next sequential job_no, trim to cap, persist; returns the stored row.
+
+        Memory first, disk second: a failed save keeps the row for this session
+        and the caller warns (RULE 2) — the next successful save heals the file.
+        """
         with self._lock:
             row = {**entry, "job_no": self._next_no}
             self._next_no += 1
@@ -118,13 +122,10 @@ class JobHistoryStore:
             self._save_locked()
 
     def _save_locked(self) -> None:
-        """Persist `next_job_no` + entries (best effort, never raises out of the log)."""
+        """Persist `next_job_no` + entries (errors propagate — the caller reports, RULE 2)."""
         if self._path is None:
             return
-        try:
-            save_json_atomic(self._path, {"next_job_no": self._next_no, "entries": self._entries})
-        except Exception:
-            pass
+        save_json_atomic(self._path, {"next_job_no": self._next_no, "entries": self._entries})
 
     @property
     def total(self) -> int:
@@ -182,22 +183,37 @@ def note_captcha_count(bridge, job_id: str, count: int) -> None:
         noted[job_id] = max(0, int(count or 0))
 
 
+def _pop_note(bridge, job_id: str, name: str):
+    """One raw side-channel note (None when missing — never raises, never creates)."""
+    try:
+        noted = getattr(bridge, name, None)
+        if isinstance(noted, dict):
+            return noted.pop(job_id, None)
+    except Exception:
+        pass
+    return None
+
+
+def _take_started(bridge, job_id: str, now: float) -> float:
+    """Pop the gate note for a finished job (garbage/missing → now)."""
+    try:
+        return float(_pop_note(bridge, job_id, "_job_started_at") or now)
+    except (TypeError, ValueError):
+        return now
+
+
+def _take_captcha(bridge, job_id: str) -> int:
+    """Pop the captcha count for a finished job (garbage/missing → 0)."""
+    try:
+        return max(0, int(_pop_note(bridge, job_id, "_job_captcha") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _take_context(bridge, job_id: str) -> tuple:
-    """Pop (started_at, captcha) for a finished job (defaults: now, 0 — never raises)."""
+    """Pop (started_at, captcha) for a finished job (defaults: now, 0)."""
     now = time.time()
-    started, captcha = now, 0
-    for name, cast in (("_job_started_at", float), ("_job_captcha", int)):
-        try:
-            noted = getattr(bridge, name, None)
-            if isinstance(noted, dict) and job_id in noted:
-                started_or_n = cast(noted.pop(job_id))
-                if name == "_job_started_at":
-                    started = started_or_n
-                else:
-                    captcha = max(0, started_or_n)
-        except Exception:
-            continue
-    return started, captcha
+    return _take_started(bridge, job_id, now), _take_captcha(bridge, job_id)
 
 
 def worker_no_of(pool, tab_id: str) -> Any:
@@ -256,14 +272,25 @@ def _build_entry(rec: HistoryInput, started: float, captcha: int) -> Dict[str, A
     return {**_identity_fields(rec), **_file_fields(rec), **_time_fields(started, captcha)}
 
 
+def _log_history_failure(rec, error) -> None:
+    """One warn line when a history row is lost (best effort — never raises, RULE 2)."""
+    try:
+        log = getattr(getattr(rec, "bridge", None), "_log", None)
+        if callable(log):
+            log(f"\U0001F5C2 History row lost ({error})", "warn")
+    except Exception:
+        pass
+
+
 def record_history(rec: HistoryInput) -> Optional[Dict[str, Any]]:
-    """Append one finished job + push the window (best effort — a settle site never breaks)."""
+    """Append one finished job + push the window (a settle site never breaks; losses warn)."""
     try:
         started, captcha = _take_context(rec.bridge, rec.job_id or "")
         row = store_of(rec.bridge).append(_build_entry(rec, started, captcha))
         emit_history(rec.bridge)
         return row
-    except Exception:
+    except Exception as e:
+        _log_history_failure(rec, e)
         return None
 
 

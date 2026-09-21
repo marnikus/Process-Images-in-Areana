@@ -38,18 +38,20 @@ const JobHistoryLimit = {
     this.applyValue(this.clamp(payload.limit));
   },
 
+  _announceSave(n, res) {
+    try {
+      const r = JSON.parse(res);
+      if (typeof LogConsole !== 'undefined') LogConsole.log(r.ok ? `Job history shows last ${n} jobs` : 'History limit save failed: ' + r.error, r.ok ? 'success' : 'error');
+    } catch {}
+  },
+
   save(inputId) {
     const input = document.getElementById(inputId || 'historyLimit');
     const n = this.clamp(input ? input.value : this.DEFAULT);
     if (input) input.value = String(n);
     const call = Boot.needBridge('save_settings');
     if (!call) return;
-    call(JSON.stringify({ job_history_limit: n }), (res) => {
-      try {
-        const r = JSON.parse(res);
-        if (typeof LogConsole !== 'undefined') LogConsole.log(r.ok ? `Job history shows last ${n} jobs` : 'History limit save failed: ' + r.error, r.ok ? 'success' : 'error');
-      } catch {}
-    });
+    call(JSON.stringify({ job_history_limit: n }), (res) => this._announceSave(n, res));
   },
 };
 window.JobHistoryLimit = JobHistoryLimit;
