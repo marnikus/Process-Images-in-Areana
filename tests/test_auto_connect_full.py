@@ -1,9 +1,8 @@
 """D5 mutation triage: auto_connect internals, branch-complete.
 
 Targets _live_tabs (14), _tab_key (10), _row_action (9), plan_auto_connect (8),
-_wins_over (6), pick_primary_ws (4), matches_pattern (3),
+prunable_row_ids (6), _wins_over (6), pick_primary_ws (4), matches_pattern (3),
 _row_index (3), _best_per_tab (3) + ownership/run-gate helpers.
-S6: prunable_row_ids deleted — hysteresis in live/url_policy.py replaces it.
 """
 
 import threading
@@ -27,6 +26,7 @@ from app.services.auto_connect import (
     pick_primary_ws,
     pick_url_for_tab,
     plan_auto_connect,
+    prunable_row_ids,
     row_for_tab,
     sync_pool_presence,
 )

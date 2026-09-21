@@ -116,27 +116,42 @@ async def test_a_new_tab_is_added_claimed_and_joined(tmp_path):
     by_tab = {u.tab_id: u for u in bridge.state.urls}
     assert by_tab["t2"].url == "https://arena.ai/c/new" and by_tab["t2"].enabled is True
     assert by_tab["t3"].url == "https://arena.ai/c/unlinked"  # the old row, claimed
+    assert bridge._reconcile_passes == 1
+    assert bridge._reconcile_last_pass_at > 0
+
+
+@pytest.mark.unit
+def test_claim_rows_skips_owned_and_unknown():
+    mine = UrlRow.create("https://arena.ai/c/a", tab_id="t1")  # already owned
+    assert rc._claim_rows({mine.id: mine}, [(mine.id, "t9"), ("nope", "t2")]) == 0
+    assert mine.tab_id == "t1"
+    free = UrlRow.create("https://arena.ai/c/b")
+    assert rc._claim_rows({free.id: free}, [(free.id, "t2")]) == 1
+    assert free.tab_id == "t2"
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_a_closed_tab_is_removed_and_a_busy_tab_defers(tmp_path):
-    from app.services.cooldown_service import set_tab_image, tab_has_live_job
-    from tests.test_captcha_service import make_info
+async def test_a_closed_tab_is_removed_with_a_reason_and_wakes_the_loop(tmp_path):
+    from app.browser.page_status import PageInfo
+    from app.services.cooldown_service import set_tab_image
     env = build_bridge(tmp_path, build_stack([]), n_images=0, tab_ids=["t1"],
                        pool=PagePool())
     bridge = env.bridge
-    bridge.state.urls.append(UrlRow.create("https://arena.ai/c/busy", tab_id="t2"))
-    bridge._page_pool.add_page(make_info("t2"))
-    set_tab_image(bridge._page_pool, "t2", "a.png")
-    assert tab_has_live_job(bridge._page_pool, "t2") is True
-    bridge._reconcile_misses = {"t1": 2, "t2": 9}  # t1: third miss removes; t2: busy defers anyway
+    bridge._reconcile_misses = {"t1": 2, "tbusy": 9}  # third miss for t1
+    busy = UrlRow.create("https://arena.ai/c/busy", tab_id="tbusy")
+    bridge.state.urls.append(busy)
+    bridge.state.urls.append(UrlRow.create("https://arena.ai/c/dup", tab_id="t1"))  # I-33 warn path
+    bridge._page_pool.add_page(PageInfo(tab_id="tbusy", ws_url="ws://x/busy",
+                                        title="B", url=busy.url))
+    set_tab_image(bridge._page_pool, "tbusy", "b.png")
     d, rec = fake_deps(fetch_tabs=[])
     report = await rc.reconcile_once(bridge, d, "auto")
     assert report.removed == 1
-    assert report.stale == 1  # the pooled t2 page is flagged, not deleted
-    assert [u.tab_id for u in bridge.state.urls] == ["t2"]
-    assert bridge._url_memory == {"t1": True}  # only the removed checkbox is remembered
+    assert [u.tab_id for u in bridge.state.urls] == ["tbusy"]  # busy survives
+    assert report.deferred == 1
+    assert report.stale == 1  # the pooled busy page is flagged, not deleted
+    assert bridge._url_memory == {"t1": True}  # the checkbox is remembered
     assert live_bus(bridge).reasons() == ["urls"]
     assert rec["commit"] == 1
     assert any("tab_gone" in m for m, _ in rec["log"])
@@ -190,6 +205,7 @@ async def test_the_manual_slot_and_reparse_buttons_trigger_an_immediate_pass(tmp
         joins.append(ws)
 
     async def manual_fetch():
+        await real_sleep(0.05)  # the loop spins (and skips) during the manual pass
         return [manual]
 
     monkeypatch.setattr(bt, "fetch_open_tabs", lambda b: manual_fetch())
@@ -253,6 +269,25 @@ async def test_commit_goes_through_the_single_row_funnel(tmp_path, monkeypatch):
     assert joins == ["ws-x"]
     deps2.log("probe", "info")
     assert ("probe", "info") in env.recs["arena_log"].calls
+    submitted = []
+    monkeypatch.setattr(rc, "schedule_coro",
+                        lambda b, coro: submitted.append(coro) or "task")
+    bt.start_url_reconciler(bridge)
+    bt.start_url_reconciler(bridge)
+    assert len(submitted) == 1  # the second start is a no-op
+    submitted[0].close()
+    # a failing commit still releases the guard and logs the skip line
+    async def new_tab_fetch():
+        return [tab("t3", "https://arena.ai/c/three")]
+
+    def boom_commit(b, undo=True):
+        raise RuntimeError("commit down")
+
+    monkeypatch.setattr(bt, "fetch_open_tabs", lambda b: new_tab_fetch())
+    monkeypatch.setattr(bt, "commit_urls", boom_commit)
+    await bt.do_auto_connect_scan(bridge, "auto")
+    assert bridge._auto_scan_running is False
+    assert any("scan skipped" in m for m, _ in env.recs["arena_log"].calls)
 
 
 @pytest.mark.unit

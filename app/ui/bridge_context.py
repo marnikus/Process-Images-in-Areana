@@ -53,9 +53,6 @@ def init_tracking_state(bridge) -> None:
     bridge._find_in_progress = False
     bridge._connect_in_progress = False
     bridge._auto_scan_running = False
-    bridge._reconcile_task = None
-    bridge._reconcile_misses = {}
-    bridge._url_memory = {}
     bridge._ensure_running = False
     bridge._persist_ok = True
     bridge._restore_note_done = False

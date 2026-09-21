@@ -16,7 +16,7 @@ import re
 import time
 
 from app.services.auto_connect import pick_primary_ws
-from app.services.live.reconcile import LiveDeps, reconcile_loop, reconcile_once
+from app.services.live.reconcile import LiveDeps, reconcile_once, start_reconciler
 from app.services.run_state import resolve_tab_info, restore_page_state, schedule_coro
 from app.ui.panels.page_pool import do_connect_page_pool
 from app.ui.panels.url_queue import commit_urls
@@ -307,9 +307,7 @@ def live_deps(bridge) -> LiveDeps:
 
 def start_url_reconciler(bridge) -> None:
     """Launch the reconcile loop once (idempotent across rebuilds)."""
-    if getattr(bridge, "_reconcile_task", None) is not None:
-        return
-    bridge._reconcile_task = schedule_coro(bridge, reconcile_loop(bridge, live_deps(bridge)))
+    start_reconciler(bridge, live_deps(bridge))
 
 
 async def do_auto_connect_scan(bridge, source: str = "auto") -> None:
@@ -318,7 +316,7 @@ async def do_auto_connect_scan(bridge, source: str = "auto") -> None:
         return
     bridge._auto_scan_running = True
     try:
-        report = await reconcile_once(bridge, live_deps(bridge), source or "auto")
+        report = await reconcile_once(bridge, live_deps(bridge), source)
         if report.joined or report.revived or report.stale or report.removed:
             bridge._emit_pool_status()
     except Exception as e:

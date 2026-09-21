@@ -2144,7 +2144,7 @@
     "max_cc": 8,
     "max_cog": 0,
     "max_nest": 2,
-    "max_params": 4,
+    "max_params": 5,
     "file_lines": 398,
     "coverage": 88.51
   },
@@ -2723,7 +2723,7 @@
   },
   "app/ui/main_window.py": {
     "max_func_loc": 26,
-    "max_class_loc": 123,
+    "max_class_loc": 124,
     "func_count": 11,
     "funcs": {
       "_is_valid_geometry": 10,
@@ -2910,7 +2910,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 544,
-    "coverage": 89.13
+    "coverage": 88.41
   },
   "app/ui/panels/cdp_tools.py": {
     "max_func_loc": 19,
@@ -3201,7 +3201,7 @@
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 251,
-    "coverage": 96.88
+    "coverage": 96.23
   },
   "app/ui/panels/watcher_captcha.py": {
     "max_func_loc": 17,

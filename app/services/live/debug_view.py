@@ -23,4 +23,6 @@ def interval_ms(bridge):
 
 def cadence(bridge):
     """The live block published in progress_updated."""
-    return {"url_interval_ms": interval_ms(bridge)}
+    return {"url_interval_ms": interval_ms(bridge),
+            "last_pass_at": getattr(bridge, "_reconcile_last_pass_at", 0.0),
+            "passes": getattr(bridge, "_reconcile_passes", 0)}

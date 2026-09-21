@@ -24,8 +24,7 @@ class Removal:
 
 @dataclass
 class RemovalSpec:
-    """Everything the policy needs; `deferred` is an OUT-field (span 9)."""
-
+    """Everything the policy needs; `deferred` is an OUT-field."""
     rows: list
     live_keys: set
     pattern: str
@@ -46,14 +45,9 @@ def _valid_new_url(url: str):
     return url, ""
 
 
-def row_tab(row):
-    """The tab a row links, '' when the row is unlinked."""
-    return getattr(row, "tab_id", "") or ""
-
-
 def _tab_gone(row, spec):
     """Tri-state: False (live/unlinked), 'defer' (busy), True (gone 3+)."""
-    tab_id = row_tab(row)
+    tab_id = getattr(row, "tab_id", "") or ""
     if not tab_id or tab_id in spec.live_keys:
         return False
     if tab_id in spec.busy_tabs:
@@ -65,7 +59,7 @@ def _tab_gone(row, spec):
 
 
 def _pattern_mismatch(row, spec):
-    tab_id = row_tab(row)
+    tab_id = getattr(row, "tab_id", "") or ""
     if not tab_id:
         return False
     pattern = (spec.pattern or "").strip()
@@ -75,7 +69,7 @@ def _pattern_mismatch(row, spec):
 
 
 def _invalid(row, spec):
-    tab_id = row_tab(row)
+    tab_id = getattr(row, "tab_id", "") or ""
     if not tab_id:
         return False
     _, err = _valid_new_url(getattr(row, "url", "") or "")
@@ -98,25 +92,21 @@ def _first_reason(row, spec):
     return None
 
 
-def _duplicate_reason(row, seen):
-    """'duplicate' when the tab already kept a row; else claims the tab."""
-    tab_id = row_tab(row)
-    if tab_id and tab_id in seen:
-        return "duplicate"
-    seen.add(tab_id)
-    return None
-
-
 def removable_rows(spec):
     """Removals in row order; duplicates resolved after the table."""
     out, seen = [], set()
     for row in spec.rows or []:
-        reason = _first_reason(row, spec) or _duplicate_reason(row, seen)
+        reason = _first_reason(row, spec)
         if reason is None:
-            continue
+            tab_id = getattr(row, "tab_id", "") or ""
+            if tab_id and tab_id in seen:
+                reason = "duplicate"
+            else:
+                seen.add(tab_id)
+                continue
         out.append(Removal(row.id, getattr(row, "url", "") or "", reason))
         if reason != "duplicate":
-            seen.add(row_tab(row))
+            seen.add(getattr(row, "tab_id", "") or "")
     return out
 
 
@@ -125,17 +115,14 @@ def advance_misses(rows, live_keys, misses):
     live = live_keys or set()
     next_misses = {}
     for row in rows or []:
-        tab_id = row_tab(row)
+        tab_id = getattr(row, "tab_id", "") or ""
         if tab_id and tab_id not in live:
             next_misses[tab_id] = (misses or {}).get(tab_id, 0) + 1
     return next_misses
 
 
 def dedupe_rows(state_urls):
-    """Repair legacy N-rows-per-tab state; returns (plan rows, removed).
-
-    Moved from url_queue verbatim (still delegates to dedupe_linked_rows).
-    """
+    """Repair legacy N-rows-per-tab state; S6: moved from url_queue."""
     rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id, "enabled": u.enabled}
             for u in state_urls]
     kept, dropped = dedupe_linked_rows(rows)
