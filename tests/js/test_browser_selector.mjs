@@ -5,7 +5,7 @@
  * The owner's acceptance: one panel covering Chrome AND Firefox, one shared
  * host/port/URL-pattern, a per-browser block (data dir, extra args, resolved
  * endpoint, launch command) and a capability line that NAMES what the selected
- * browser cannot do yet (a BiDi Firefox has no screenshot / file-attach), so the
+ * browser cannot do yet (an RDP Firefox has no screenshot / file-attach), so the
  * panel never pretends parity it does not have.
  *
  * The browser table itself lives in Python (`app/browser/browsers.py`); the
@@ -39,13 +39,14 @@ const CONFIG = {
       test_url: 'http://127.0.0.1:9223/json/list',
       commands: { windows: '"C:\\chrome.exe" --remote-debugging-port=9223 --user-data-dir="C:\\arena-images-chrome"',
                   windows_with_url: 'chrome-url', linux: 'google-chrome', macos: 'mac-chrome' } },
-    { id: 'firefox', label: 'Firefox (Mozilla)', protocol: 'bidi', port_offset: 1, resolved_port: 9224,
+    { id: 'firefox', label: 'Firefox (Mozilla)', protocol: 'rdp', port_offset: 1, resolved_port: 9224,
       user_data_dir: 'C:\\arena-images-firefox', extra_args: '-no-remote',
-      dir_flag: '--profile', binary: '"C:\\firefox.exe"', notes: 'BiDi (Remote Agent). CDP removed in FF 141.',
+      dir_flag: '--profile', debug_arg: '--start-debugger-server', binary: '"C:\\firefox.exe"',
+      notes: 'Stealth RDP (debugger server).',
       capabilities: ['evaluate', 'navigate', 'tabs'],
       unavailable: ['dom', 'input', 'screenshot', 'set_files'],
-      test_url: 'http://127.0.0.1:9224/session',
-      commands: { windows: '"C:\\firefox.exe" --remote-debugging-port=9224 --profile="C:\\arena-images-firefox" -no-remote',
+      test_url: 'tcp://127.0.0.1:9224',
+      commands: { windows: '"C:\\firefox.exe" --start-debugger-server=9224 --profile="C:\\arena-images-firefox" -no-remote',
                   windows_with_url: 'ff-url', linux: 'firefox', macos: 'mac-firefox' } },
   ],
 };
@@ -105,7 +106,7 @@ describe('browser debug connection panel (Firefox round)', () => {
     assert.equal(val(h, 'cdpExtraArgs'), '-no-remote');
     assert.equal(txt(h, 'cdpResolvedPort'), '9224', 'Firefox derives base + 1 — one port cannot host two servers');
     assert.ok(txt(h, 'cdpLaunchCmd').includes('firefox.exe'), 'its own launch command');
-    assert.equal(txt(h, 'cdpTestUrl'), 'http://127.0.0.1:9224/session', 'BiDi answers /session, not /json/list');
+    assert.equal(txt(h, 'cdpTestUrl'), 'tcp://127.0.0.1:9224', 'RDP is plain TCP, no HTTP surface');
     assert.equal(val(h, 'cdpHost'), '127.0.0.1', 'shared host untouched');
     assert.equal(val(h, 'cdpPort'), '9223', 'shared port untouched');
     assert.equal(val(h, 'cdpUrlPattern'), 'arena.ai', 'one pattern for all browsers');
@@ -121,7 +122,7 @@ describe('browser debug connection panel (Firefox round)', () => {
     for (const missing of ['screenshot', 'set_files', 'input']) {
       assert.ok(caps.includes(missing), `${missing} is named as unavailable, never a silent timeout`);
     }
-    assert.ok(txt(h, 'cdpBrowserNotes').includes('BiDi'), 'the note explains which protocol is in use');
+    assert.ok(txt(h, 'cdpBrowserNotes').includes('RDP'), 'the note explains which protocol is in use');
   });
 
   test('one Save posts the active browser plus every per-browser block', () => {
@@ -179,5 +180,7 @@ describe('browser debug connection panel (Firefox round)', () => {
     if (h.sb.BrowserConnection) h.sb.BrowserConnection.updatePreview();
     assert.ok(txt(h, 'cdpLaunchCmd').includes('9334'), `Firefox preview follows base+1: ${txt(h, 'cdpLaunchCmd')}`);
     assert.ok(txt(h, 'cdpLaunchCmd').includes('--profile='), 'and keeps its own dir flag');
+    assert.ok(txt(h, 'cdpLaunchCmd').includes('--start-debugger-server='), 'and its own debug flag');
+    assert.ok(!txt(h, 'cdpLaunchCmd').includes('--remote-debugging-port'), 'never the tainting flag');
   });
 });

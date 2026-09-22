@@ -2,10 +2,12 @@
 
 `endpoints.list_targets(browser_id, host, port)` is what the pool, the URL
 reconciler and the panel ask; it detects which protocol the endpoint speaks
-(CDP answers `GET /json/version`, Firefox's Remote Agent answers `POST /session`)
-and returns the same `TargetRef` rows either way, each carrying its browser id.
+(CDP answers `GET /json/version`, Firefox's debugger server answers the RDP
+greeting on plain TCP) and returns the same `TargetRef` rows either way, each
+carrying its browser id.
 
 RED at `bce5a01`: `app.browser.endpoints` did not exist.
+Stealth fix 2026-09-22: the Firefox fixture is the RDP `FakeDebuggerServer`.
 """
 
 import json
@@ -17,6 +19,7 @@ import pytest
 
 from app.browser import browsers as br
 from app.browser import endpoints
+from tests.test_rdp import FakeDebuggerServer
 
 pytestmark = pytest.mark.unit
 
@@ -89,12 +92,11 @@ def chrome():
 
 @pytest.fixture
 def firefox():
-    from tests.test_bidi import FakeRemoteAgent
-    a = FakeRemoteAgent()
+    srv = FakeDebuggerServer()
     try:
-        yield a
+        yield srv
     finally:
-        a.close()
+        srv.close()
 
 
 # ---- protocol detection ----------------------------------------------------
@@ -102,7 +104,7 @@ def firefox():
 
 def test_detect_protocol_reads_the_endpoint(chrome, firefox):
     assert endpoints.detect_protocol("127.0.0.1", chrome.port, timeout=1.0) == "cdp"
-    assert endpoints.detect_protocol("127.0.0.1", firefox.port, timeout=1.0) == "bidi"
+    assert endpoints.detect_protocol("127.0.0.1", firefox.port, timeout=1.0) == "rdp"
     assert endpoints.detect_protocol("127.0.0.1", _free_port(), timeout=0.5) == ""
 
 
@@ -112,7 +114,7 @@ def test_detect_prefers_cdp_when_a_browser_answers_both(firefox):
     both = _free_port()
     assert endpoints.detect_protocol("127.0.0.1", cdp_like.port) == "cdp"
     cdp_like.close()
-    assert endpoints.detect_protocol("127.0.0.1", firefox.port) == "bidi"
+    assert endpoints.detect_protocol("127.0.0.1", firefox.port) == "rdp"
     assert endpoints.detect_protocol("127.0.0.1", both) == ""
 
 
@@ -129,13 +131,13 @@ def test_chrome_targets_carry_the_browser_and_the_protocol(chrome):
     assert targets[0].port == chrome.port
 
 
-def test_firefox_targets_come_from_the_bidi_tree(firefox):
+def test_firefox_targets_come_from_the_rdp_tree(firefox):
     targets, err = endpoints.list_targets("firefox", "127.0.0.1", firefox.port, timeout=2.0)
     assert err == ""
-    assert [t.id for t in targets] == ["ctx-a", "ctx-b", "ctx-b-1"]
-    assert all(t.browser == "firefox" and t.protocol == "bidi" for t in targets)
+    assert [t.id for t in targets] == ["11", "12"], "numeric browserIds, stringified"
+    assert all(t.browser == "firefox" and t.protocol == "rdp" for t in targets)
     assert targets[0].url == "https://arena.ai/c/1"
-    assert targets[0].ws_url == f"ws://127.0.0.1:{firefox.port}/session"
+    assert targets[0].ws_url == f"rdp://127.0.0.1:{firefox.port}"
 
 
 def test_both_browsers_list_at_once_so_both_can_be_pooled(chrome, firefox):
@@ -144,8 +146,8 @@ def test_both_browsers_list_at_once_so_both_can_be_pooled(chrome, firefox):
     ff_targets, _ = endpoints.list_targets("firefox", "127.0.0.1", firefox.port)
     both = chrome_targets + ff_targets
     assert {t.browser for t in both} == {"chrome", "firefox"}
-    assert len(both) == 5, "2 Chrome tabs + the 3 Firefox contexts, in one pass"
-    assert len({(t.browser, t.id) for t in both}) == 5, "identities never collide across browsers"
+    assert len(both) == 4, "2 Chrome tabs + the 2 Firefox tabs, in one pass"
+    assert len({(t.browser, t.id) for t in both}) == 4, "identities never collide across browsers"
 
 
 # ---- honesty ---------------------------------------------------------------
@@ -178,10 +180,10 @@ def test_pool_rows_name_the_browser_of_their_endpoint():
     assert PageInfo().browser == "", "a page alone does not know its browser — the pool does"
     pool = PagePool()
     pool._browser = "firefox"   # what apply_cdp_config sets when Firefox is the active browser
-    pool.add_page(PageInfo(tab_id="ctx-a", ws_url="ws://127.0.0.1:9223/session",
+    pool.add_page(PageInfo(tab_id="tab-1", ws_url="rdp://127.0.0.1:9223",
                            title="Arena", url="https://arena.ai/c/1"))
     row = pool.status_snapshot()["pages"][0]
-    assert row["browser"] == "firefox" and row["tab_id"] == "ctx-a"
+    assert row["browser"] == "firefox" and row["tab_id"] == "tab-1"
     chrome, _ = PagePool(), None
     chrome.add_page(PageInfo(tab_id="AAA111", ws_url="ws://127.0.0.1:9222/devtools/page/AAA111"))
     assert chrome.status_snapshot()["pages"][0]["browser"] == "chrome"

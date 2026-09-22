@@ -18,7 +18,7 @@ def test_the_registry_has_firefox_beside_chrome_and_is_extensible():
     assert br.profile_ids() == ["chrome", "firefox", "edge"]
     chrome, firefox = br.profile_of("chrome"), br.profile_of("firefox")
     assert chrome.protocol == br.PROTOCOL_CDP
-    assert firefox.protocol == br.PROTOCOL_BIDI
+    assert firefox.protocol == br.PROTOCOL_RDP
     assert br.profile_of("CHROME").id == "chrome", "ids are case-insensitive"
     assert br.profile_of("netscape") is None
     assert br.default_profile().id == "chrome", "a fresh install keeps Chrome"
@@ -57,10 +57,11 @@ def test_firefox_command_uses_its_binary_profile_flag_and_no_remote_default():
     firefox = br.profile_of("firefox")
     cmd = br.build_command(firefox, "linux", br.endpoint(9224, "/home/me/.arena-firefox"))
     assert cmd.startswith("firefox ")
-    assert "--remote-debugging-port=9224" in cmd
+    assert "--start-debugger-server=9224" in cmd
     assert '--profile="/home/me/.arena-firefox"' in cmd
     assert "-no-remote" in cmd, "without it the port never opens while Firefox runs"
     assert "--user-data-dir" not in cmd, "Chrome's flag is meaningless to Firefox"
+    assert "--remote-debugging-port" not in cmd, "that flag taints the session (webdriver=true)"
 
 
 def test_every_browser_gets_commands_for_every_os_and_a_url_variant():
@@ -77,7 +78,9 @@ def test_capabilities_state_what_each_protocol_can_do_today():
     assert br.supports("chrome", "set_files") is True
     assert br.supports("firefox", "tabs") is True
     assert br.supports("firefox", "evaluate") is True
-    assert br.supports("firefox", "screenshot") is False, "CDP-only, still missing in BiDi"
+    assert br.supports("firefox", "screenshot") is False, "CDP-only, still missing in RDP"
+    assert br.profile_of("firefox").debug_arg == "--start-debugger-server"
+    assert br.profile_of("chrome").debug_arg == "--remote-debugging-port"
     assert br.supports("firefox", "set_files") is False
     assert br.supports("netscape", "tabs") is False
     assert br.supports("firefox", "screenshot", protocol=br.PROTOCOL_CDP) is True, \

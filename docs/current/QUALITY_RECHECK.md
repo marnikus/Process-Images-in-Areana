@@ -1068,6 +1068,33 @@ Protocol honesty (RULE 4): Firefox's CDP was deprecated in 129 and removed in 14
 BiDi as a first-class protocol, the panel names the missing CDP-only operations per browser, and an ESR 128/140
 launch that re-enables CDP is detected by probing — not by assuming.
 
+## Addendum 2026-09-22 — Firefox stealth RDP (I-63)
+
+Owner report: "the last Firefox approach is not working as expected". Root cause: I-62 drove Firefox
+over WebDriver BiDi (`--remote-debugging-port`), which sets `navigator.webdriver=true` by design —
+the opposite of the stealth pipeline (manually launched Firefox, real profile, `webdriver=false`,
+attach/detach without restart). Deep-research redesign in
+`docs/archive/2026-09-22-firefox-rdp-stealth/design.md`: the DevTools Remote Debugging Protocol
+(`--start-debugger-server`, plain-TCP `length:JSON`) replaces BiDi; `bidi.py` + `test_bidi.py` deleted,
+`rdp.py` + `test_rdp.py` written RED-first, the registry gains a per-browser `debug_arg`, endpoints and
+the panel migrate to greeting-only probing and `rdp://` / `tcp://` debug endpoints.
+
+| Gate | Command | Result |
+|---|---|---|
+| Tests first | `tests/test_rdp.py` (11 tests) before `app/browser/rdp.py` existed | RED: `ImportError: cannot import name 'rdp'`; GREEN run 11 passed after implementation |
+| Mutants killed | break event-skipping / ack-as-result / oversize-check / resultID-matching, re-run | 5 failed, 4 failed, 1 failed, 1 failed — every break is caught, file restored, 28 passed |
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **2,049 passed · 11 skipped · 0 fail** (+13 net: rdp 28 − bidi 8 + endpoint/profile/slot expectation migrations) |
+| JS tests | `npm run test:js` (after `npm ci`) | **362 pass · 4 skipped · 0 fail** (366 subtests; selector fixture migrated to `protocol: rdp`, `tcp://` debug endpoint, `--start-debugger-server` preview) |
+| Coverage | fresh `coverage run --branch` + `coverage json` on this branch | **88.55 % line / 85.26 % branch** (was 88.30 / 84.79 → up; floors 86.36 / 82.33); `rdp.py` **100/100** — every transport/protocol/shape arm is pinned by a real-socket test (mid-frame close, RST, silence, oversize, non-JSON, broken grips), `browsers.py` 96/93, `endpoints.py` 73/56 (unchanged — pure rename) |
+| Changed-file lane | `tools/verify_quality.py --changed-files <4 py + compose.js>` | **no size/complexity fail on the round's files** (rdp.py: func ≤18, CC ≤9, cog ≤10, nest ≤2, params ≤4, methods ≤10; `ideal-size:` note for 314 lines). Delta vs the true base `464185a`: zero maxima growth anywhere, +7 prod lines, −1 module |
+| Vulture + jscpd | `vulture --min-confidence 90` + `jscpd --min-tokens 60` on the round's files | clean, 0 clones |
+| Freeze check | `test_browser_support_added_payloads_not_bridge_slots` | the slot table stays exactly 137 — the fix adds payload keys (`debug_arg`, `tcp://`), never slots |
+| Whole-repo gate | `tools/verify_quality.py --changed --allow-legacy` | **cannot pass in this clone for pre-existing reasons, none from this round**: (1) `--changed` finds no merge-base with `origin/main` and falls back to all 172 files; (2) the committed baseline predates I-62 (`cdp_tools` without `browser_row`, `max_cog` all 0 — generated without the cognitive tool installed) so even the parent commit fails the ratchet; (3) the JS lane scans the whole dir, flagging the untouched `captcha.js max_cc 12`. Recorded here instead of fixed: repairing the baseline/ancestry is integrator work, out of this round's scope |
+
+Stealth honesty (RULE 4): the probe test asserts the client sends zero bytes during detection, and
+Python + JS tests assert `--remote-debugging-port` never appears in a Firefox launch command — the
+taint the last approach shipped is now a failing test if it ever returns.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

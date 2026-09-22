@@ -5,11 +5,13 @@ dir + launch command, other browsers later. This module is the ONE place that
 knows a browser's binaries, flags, default profile dir and protocol; adding a
 browser later is one row here, not a new code path.
 
-Protocol reality (measured 2026-09-21):
+Protocol reality (measured 2026-09-21, stealth-fixed 2026-09-22):
 * Chrome/Edge/Chromium speak CDP (`GET /json/list`, one socket per tab).
-* Firefox's Remote Agent speaks **WebDriver BiDi**; CDP was deprecated in
-  Firefox 129 and removed in 141, so an ESR 128/140 profile with
-  `remote.active-protocols=2` is the only Firefox that still answers CDP.
+* Firefox speaks the DevTools Remote Debugging Protocol (RDP) over plain TCP
+  (`--start-debugger-server`): no Marionette, no WebDriver session, so
+  `navigator.webdriver` stays `false`. WebDriver BiDi was tried and removed —
+  `--remote-debugging-port` taints the browser by design.
+* An ESR 128/140 profile with `remote.active-protocols=2` still answers CDP.
 `detect_protocol` in `endpoints.py` decides per endpoint; `capabilities` states
 what each protocol can do, so a CDP-only operation can refuse by name.
 
@@ -23,13 +25,13 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 PROTOCOL_CDP = "cdp"
-PROTOCOL_BIDI = "bidi"
+PROTOCOL_RDP = "rdp"
 
 # What each protocol can do today (the one gate a CDP-only op asks, D-3).
 CAPABILITIES: Dict[str, frozenset] = {
     PROTOCOL_CDP: frozenset({"tabs", "evaluate", "navigate", "screenshot",
                              "set_files", "input", "dom"}),
-    PROTOCOL_BIDI: frozenset({"tabs", "evaluate", "navigate"}),
+    PROTOCOL_RDP: frozenset({"tabs", "evaluate", "navigate"}),
 }
 
 
@@ -43,6 +45,7 @@ class BrowserProfile:
     port_offset: int
     dir_flag: str
     data_dir_default: str
+    debug_arg: str = "--remote-debugging-port"
     extra_args_default: str = ""
     executables: Dict[str, str] = field(default_factory=dict)
     notes: str = ""
@@ -65,19 +68,20 @@ PROFILES: Tuple[BrowserProfile, ...] = (
         notes="Full automation (CDP): tabs, JS, screenshots, file attach, input.",
     ),
     BrowserProfile(
-        id="firefox", label="Firefox (Mozilla)", protocol=PROTOCOL_BIDI, port_offset=1,
+        id="firefox", label="Firefox (Mozilla)", protocol=PROTOCOL_RDP, port_offset=1,
         dir_flag="--profile", data_dir_default="C:\\arena-images-firefox",
+        debug_arg="--start-debugger-server",
         extra_args_default="-no-remote",
         executables={
             "windows": '"C:\\Program Files\\Mozilla Firefox\\firefox.exe"',
             "linux": "firefox",
             "macos": '"/Applications/Firefox.app/Contents/MacOS/firefox"',
         },
-        notes=("WebDriver BiDi (Remote Agent): tabs, JS, navigation. CDP was removed in "
-               "Firefox 141 — for full CDP automation use ESR 128/140 with "
-               'user_pref("remote.active-protocols", 2); in the profile. -no-remote '
-               "(default) or --new-instance is required or the debug port never opens "
-               "while Firefox is already running."),
+        notes=("Stealth RDP (debugger server): tabs, JS, navigation, with "
+               "navigator.webdriver=false. Use --start-debugger-server, never "
+               "--remote-debugging-port (that taints the session). -no-remote "
+               "(default) or --new-instance is required or the debugger server "
+               "never opens while Firefox is already running."),
     ),
     BrowserProfile(
         id="edge", label="Edge (Chromium)", protocol=PROTOCOL_CDP, port_offset=2,
@@ -148,8 +152,8 @@ def endpoint(port, data_dir: str, extra_args: str = "", url: str = "") -> dict:
 
 
 def build_command(profile: BrowserProfile, os_name: str, target: dict) -> str:
-    """One launch command: binary + remote-debugging port + profile dir + args (+ URL)."""
-    parts = [profile.binary(os_name), f"--remote-debugging-port={int(target['port'])}",
+    """One launch command: binary + debug-server flag + profile dir + args (+ URL)."""
+    parts = [profile.binary(os_name), f"{profile.debug_arg}={int(target['port'])}",
              f'{profile.dir_flag}="{target["data_dir"]}"']
     extra = target.get("extra_args") or profile.extra_args_default
     if (extra or "").strip():
@@ -187,6 +191,6 @@ def default_data_dir(browser_id: str) -> str:
 
 
 def endpoint_kind(browser_id: str) -> str:
-    """`cdp` / `bidi` / `''` — the protocol this browser is expected to speak."""
+    """`cdp` / `rdp` / `''` — the protocol this browser is expected to speak."""
     profile = profile_of(browser_id)
     return profile.protocol if profile else ""

@@ -154,15 +154,18 @@ def browser_row(cfg, profile) -> dict:
     extra = entry.get("extra_args") if entry.get("extra_args") is not None else profile.extra_args_default
     caps = browsers.capabilities(profile)
     host = cfg["host"]
+    test_url = (f"tcp://{host}:{port}" if profile.protocol == browsers.PROTOCOL_RDP
+                else f"http://{host}:{port}/json/list")
     return {
         "id": profile.id, "label": profile.label, "protocol": profile.protocol,
         "port_offset": profile.port_offset, "resolved_port": port,
         "user_data_dir": data_dir, "extra_args": extra, "dir_flag": profile.dir_flag,
+        "debug_arg": profile.debug_arg,
         "binary": profile.binary(browsers.current_os()), "notes": profile.notes,
         "enabled": bool(entry.get("enabled", True)),
         "capabilities": caps,
         "unavailable": sorted(browsers.CAPABILITIES[browsers.PROTOCOL_CDP] - set(caps)),
-        "test_url": f"http://{host}:{port}/" + ("session" if profile.protocol == browsers.PROTOCOL_BIDI else "json/list"),
+        "test_url": test_url,
         "commands": browsers.launch_commands(profile, browsers.endpoint(port, data_dir, extra)),
     }
 

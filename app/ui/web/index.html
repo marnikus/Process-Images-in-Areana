@@ -384,7 +384,7 @@
             <code id="cdpLaunchCmd" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:11px; word-break:break-all; display:block;">— waiting for the bridge to build the command —</code>
             <button id="cdpCopyCmdBtn" class="btn-small" title="Copy command">Copy</button>
           </div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Test URL: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — open it in that browser: Chrome lists tabs at <code>/json/list</code>, Firefox's Remote Agent answers <code>/session</code> (BiDi).</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Debug endpoint: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — Chrome lists tabs at <code>/json/list</code>; Firefox's debugger server speaks the RDP handshake on <code>tcp://host:port</code> (plain TCP, no HTTP).</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">💡 Chrome and Firefox run side by side: same host, one base port, separate data dirs — both connectable and poolable at the same time. The URL pattern above is the one rule for every browser.</div>
         </div>
       </div>

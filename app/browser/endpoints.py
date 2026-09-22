@@ -2,14 +2,14 @@
 
 The pool, the URL reconciler and the panel all ask the same question — "which
 tabs does this browser have open right now?" — and the answer must look the same
-whether the browser speaks CDP (Chrome/Edge: one socket per tab) or WebDriver
-BiDi (Firefox 141+: one session, `browsingContext` tabs). `list_targets` answers
-it with `TargetRef` rows that carry the browser id and the endpoint port, so two
+whether the browser speaks CDP (Chrome/Edge: one socket per tab) or RDP
+(Firefox: debugger server, `browserId` tabs). `list_targets` answers it with
+`TargetRef` rows that carry the browser id and the endpoint port, so two
 browsers can be listed, joined and pooled in the same pass.
 
 `detect_protocol` probes the endpoint instead of trusting the registry: an ESR
 Firefox launch with `remote.active-protocols=2` answers CDP and therefore keeps
-the full automation matrix, while a modern Firefox is driven over BiDi.
+the full automation matrix, while a modern Firefox is driven over RDP.
 
 RULE 18: leaf module; listing is sync (the CDP path already is) and runs in an
 executor at the call sites.
@@ -22,11 +22,11 @@ import urllib.request
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from . import bidi, browsers
+from . import browsers, rdp
 from .cdp.tabs import fetch_tabs_sync
 
 CDP = browsers.PROTOCOL_CDP
-BIDI = browsers.PROTOCOL_BIDI
+RDP = browsers.PROTOCOL_RDP
 
 
 @dataclass(frozen=True)
@@ -55,14 +55,14 @@ def _get_json(url: str, timeout: float) -> Optional[dict]:
 
 
 def detect_protocol(host: str, port: int, timeout: float = 1.0) -> str:
-    """`cdp` / `bidi` / `''` — what this endpoint answers (CDP wins when both do)."""
+    """`cdp` / `rdp` / `''` — what this endpoint answers (CDP wins when both do)."""
     try:
         version = _get_json(f"http://{host}:{int(port)}/json/version", timeout)
         if isinstance(version, dict) and version:
             return CDP
     except Exception:
         pass
-    return BIDI if bidi.open_session(bidi.Endpoint(host, int(port)), timeout) else ""
+    return RDP if rdp.probe(rdp.Endpoint(host, int(port)), timeout) else ""
 
 
 def _cdp_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[List[TargetRef], str]:
@@ -74,12 +74,12 @@ def _cdp_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[Li
     return refs, ("" if refs else (err or "no tabs listed"))
 
 
-def _bidi_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[List[TargetRef], str]:
-    """BiDi listing: the session socket is shared, the tab id is the context id."""
-    rows, err = bidi.list_contexts(bidi.Endpoint(host, int(port)), timeout)
-    ws_url = f"ws://{host}:{int(port)}{bidi.SESSION_PATH}"
+def _rdp_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[List[TargetRef], str]:
+    """RDP listing: the TCP endpoint is shared, the tab id is the stable browserId."""
+    rows, err = rdp.list_tabs(rdp.Endpoint(host, int(port)), timeout)
+    ws_url = f"rdp://{host}:{int(port)}"
     refs = [TargetRef(id=r["id"], title=r.get("title") or r.get("url", ""), url=r.get("url", ""),
-                      ws_url=ws_url, browser=browser_id, port=int(port), protocol=BIDI)
+                      ws_url=ws_url, browser=browser_id, port=int(port), protocol=RDP)
             for r in rows or []]
     return refs, ("" if refs else (err or "no tabs listed"))
 
@@ -100,10 +100,10 @@ def list_targets(browser_id: str, host: str, port, timeout: float = 3.0) -> Tupl
     protocol = detect_protocol(host, port_i, min(timeout, 1.0))
     if protocol == CDP:
         return _cdp_refs(host, port_i, timeout, profile.id)
-    if protocol == BIDI:
-        return _bidi_refs(host, port_i, timeout, profile.id)
+    if protocol == RDP:
+        return _rdp_refs(host, port_i, timeout, profile.id)
     return [], (f"{profile.label} not reachable on {host}:{port_i} — start it with "
-                f"--remote-debugging-port={port_i} ({profile.notes.split('.')[0]})")
+                f"{profile.debug_arg}={port_i} ({profile.notes.split('.')[0]})")
 
 
 def enabled_targets(settings, host: str, timeout: float = 3.0) -> Tuple[List[TargetRef], List[str]]:
