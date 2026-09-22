@@ -101,7 +101,7 @@ const CDPPanel = {
   _extractUrl(q) { return this._store._extractUrl(q); },
 
   onTabsReceived(payload) { this._listeners.onTabsReceived(this, payload); },
-  onConnectionStatus(status) { this._listeners.onConnectionStatus(this, status); },
+  onConnectionStatus(status, browser) { this._listeners.onConnectionStatus(this, status, browser); },
   onTabMatchResult(query, payload) { this._listeners.onTabMatchResult(this, query, payload); },
 
   renderTabSelect(tabs) {

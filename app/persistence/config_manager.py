@@ -17,6 +17,11 @@ DEFAULT_SESSION = {
     "cdp_port": 9222,
     "cdp_user_data_dir": "C:\\arena-images-chrome",
     "cdp_extra_args": "",
+    # Multi-browser scan (I-63). Each row declares the protocol for its port,
+    # because Chrome CDP and Firefox RDP are not interchangeable. A row with no
+    # "port" takes base_port + its index. Empty list = scan cdp_host/cdp_port only.
+    "browser_base_port": 9223,
+    "browser_endpoints": [],
     "url_pattern": "arena.ai",
     "url_reconcile_interval_ms": 5000,  # S6: Python URL reconciler cadence (clamped 500…60000)
     "action_blocks": None,  # will be default stack if None
