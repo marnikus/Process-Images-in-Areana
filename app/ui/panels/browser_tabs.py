@@ -116,6 +116,11 @@ async def add_dedicated_pool_page(bridge, identity) -> None:
     ctrl2 = CDPArenaController(dedicated, log_callback=lambda m: bridge._log(m, "info"))
     bridge._page_pool.register_client(tab_id, dedicated, ctrl2)
     bridge._emit_pool_status()
+    _log_dedicated_join(bridge, tab_id)
+
+
+def _log_dedicated_join(bridge, tab_id: str) -> None:
+    """Announce a dedicated-client join and the parallel-ready milestone."""
     total, free = bridge._page_pool.get_counts()
     label = tab_label_of(getattr(bridge, "_page_pool", None), tab_id)
     bridge._log(f"📦 Pool: added tab {label} steady with dedicated client — total {total} pages {free} free", "success")
@@ -272,13 +277,16 @@ async def fetch_all_tabs(bridge) -> list:
     Chrome answers `/json/list`; Firefox answers RDP. One browser being down
     never hides another, and each failure is logged under its real name.
     """
-    from app.services.browser_connect import log_scan_report, scan_all
+    from app.services.browser_connect import (endpoints_from_settings, log_firefox_hint,
+                                              log_scan_report, scan_all)
     settings = browser_settings(bridge)
-    endpoints = settings.get("browser_endpoints") or []
-    if not endpoints:
+    if not (settings.get("browser_endpoints") or []):
         return await bridge.cdp.fetch_tabs()  # legacy single-Chrome path, unchanged
+    log = getattr(bridge, "_log", None)
+    for endpoint in endpoints_from_settings(settings):
+        log_firefox_hint(endpoint, log)  # explains the connection prompt, once (I-64)
     report = await scan_all(settings)
-    log_scan_report(report, getattr(bridge, "_log", None))
+    log_scan_report(report, log)
     return report.tabs
 
 

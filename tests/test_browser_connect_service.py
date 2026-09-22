@@ -75,3 +75,40 @@ def test_a_healthy_scan_logs_one_info_summary():
 
 def test_logging_without_a_logger_is_harmless():
     log_scan_report(ScanReport([]), None)
+
+
+def test_the_connection_prompt_is_explained_once_not_every_scan():
+    """The user saw a dialog per scan; the hint must not become spam too (I-64)."""
+    import app.services.browser_connect as bc
+    bc._hinted.clear()
+    firefox = BrowserEndpoint("127.0.0.1", 9224, FIREFOX)
+    lines = []
+    log = lambda msg, level="info": lines.append(msg)
+    assert bc.log_firefox_hint(firefox, log) is True
+    first = len(lines)
+    assert bc.log_firefox_hint(firefox, log) is False
+    assert len(lines) == first
+    assert any("prompt-connection" in m for m in lines)
+    assert any("9224" in m for m in lines)
+
+
+def test_chrome_gets_no_firefox_prompt_hint():
+    import app.services.browser_connect as bc
+    bc._hinted.clear()
+    lines = []
+    chrome = BrowserEndpoint("127.0.0.1", 9223, CHROME)
+    assert bc.log_firefox_hint(chrome, lambda m, l="info": lines.append(m)) is False
+    assert lines == []
+
+
+def test_the_hint_is_silent_without_a_logger():
+    import app.services.browser_connect as bc
+    bc._hinted.clear()
+    assert bc.log_firefox_hint(BrowserEndpoint("127.0.0.1", 9224, FIREFOX), None) is False
+
+
+def test_the_user_js_snippet_turns_the_prompt_off():
+    from app.browser.rdp.prefs_help import user_js_snippet
+    text = user_js_snippet()
+    assert 'user_pref("devtools.debugger.prompt-connection", false);' in text
+    assert 'user_pref("devtools.debugger.remote-enabled", true);' in text

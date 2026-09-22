@@ -7,10 +7,19 @@ import pytest
 from app.browser.rdp.discovery import (build_locator, find_tab_by_url, is_rdp_locator,
                                        list_firefox_tabs, parse_locator)
 from app.browser.rdp.session import RDPSession
-from app.browser.rdp.transport import RDPTransport
+from app.browser.rdp.session_cache import shared_cache
+from app.browser.rdp.transport import RDPClosed, RDPTransport
 from tests.rdp_fake_firefox import FakeFirefox
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+
+
+@pytest.fixture(autouse=True)
+async def clean_cache():
+    """The shared session cache is process-wide; never leak one test into the next."""
+    await shared_cache.close_all()
+    yield
+    await shared_cache.close_all()
 
 
 @pytest.fixture
@@ -47,16 +56,23 @@ async def test_firefox_tabs_arrive_in_the_app_wide_tab_shape(firefox):
     assert is_rdp_locator(tab.ws_url) and tab.id == tab.ws_url and tab.type == "page"
 
 
-async def test_discovery_detaches_and_leaves_the_browser_running(firefox):
-    """Each listing opens and closes its own connection; the server stays up."""
-    await list_firefox_tabs("127.0.0.1", firefox.port, timeout=3)
-    await list_firefox_tabs("127.0.0.1", firefox.port, timeout=3)
+async def test_repeated_scans_reuse_one_connection(firefox):
+    """The popup fix (I-64): Firefox prompts per *connection*, so scans share one.
+
+    Ten passes of the reconciler used to mean ten "Incoming Connection" dialogs.
+    """
+    for _ in range(10):
+        await list_firefox_tabs("127.0.0.1", firefox.port, timeout=3)
+    assert firefox.connections == 1
+
+
+async def test_a_dropped_connection_is_re_established_once(firefox):
+    """The browser really going away is the one case that may reconnect."""
+    assert await list_firefox_tabs("127.0.0.1", firefox.port, timeout=3)
+    session = shared_cache.peek("127.0.0.1", firefox.port)
+    await session.transport.close()          # the link dies under us
+    assert await list_firefox_tabs("127.0.0.1", firefox.port, timeout=3)
     assert firefox.connections == 2
-    for _ in range(100):  # the server notices EOF asynchronously
-        if firefox.disconnections == 2:
-            break
-        await asyncio.sleep(0.01)
-    assert firefox.disconnections == 2
 
 
 async def test_a_browser_with_no_tabs_lists_empty(firefox):
@@ -79,3 +95,26 @@ async def test_a_tab_is_re_resolved_by_url_after_a_reconnect(firefox):
     assert await find_tab_by_url(session, "https://nowhere.test") is None
     assert await find_tab_by_url(session, "") is None
     await session.detach()
+
+
+async def test_a_stale_cached_session_is_retried_transparently(firefox):
+    """A connection that dies between scans must not surface as a scan failure."""
+    await list_firefox_tabs("127.0.0.1", firefox.port, timeout=3)
+    session = shared_cache.peek("127.0.0.1", firefox.port)
+
+    async def dead_list():
+        raise RDPClosed("connection went away")
+
+    session.list_tabs = dead_list          # the cached link is stale
+    tabs = await list_firefox_tabs("127.0.0.1", firefox.port, timeout=3)
+    assert [t.url for t in tabs] == ["https://arena.ai/chat"]
+    assert firefox.connections == 2        # exactly one reconnect, not a storm
+
+
+async def test_a_browser_that_really_died_still_raises(firefox):
+    """RULE 4: after the retry also fails, the caller must hear about it."""
+    await list_firefox_tabs("127.0.0.1", firefox.port, timeout=3)
+    await shared_cache.close_all()
+    await firefox.stop()
+    with pytest.raises(OSError):
+        await list_firefox_tabs("127.0.0.1", firefox.port, timeout=2)

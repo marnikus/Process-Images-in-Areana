@@ -17,9 +17,11 @@ from __future__ import annotations
 from typing import Any, Callable, List, Optional
 
 from ..browser.browser_scan import ScanReport, scan_endpoints
-from ..browser.endpoints import BrowserEndpoint, default_endpoints, parse_endpoints
+from ..browser.endpoints import FIREFOX, BrowserEndpoint, default_endpoints, parse_endpoints
 
-__all__ = ["endpoints_from_settings", "scan_all", "log_scan_report"]
+__all__ = ["endpoints_from_settings", "scan_all", "log_scan_report", "log_firefox_hint"]
+
+_hinted: set = set()  # one prompt hint per Firefox endpoint per app run, not per scan
 
 
 def _setting(settings: Any, key: str, fallback: Any = None) -> Any:
@@ -58,3 +60,18 @@ def log_scan_report(report: ScanReport, log: Optional[Callable[..., Any]]) -> No
     log(f"🔎 Browser scan — {report.summary()}", "info" if report.any_ok else "warn")
     for message in report.errors:
         log(f"❌ {message}", "error")
+
+
+def log_firefox_hint(endpoint: BrowserEndpoint, log: Optional[Callable[..., Any]]) -> bool:
+    """Explain the "Incoming Connection" dialog — once per endpoint, not per scan.
+
+    Returns whether it printed, so the caller (and the test) can tell the
+    difference between "explained" and "already explained".
+    """
+    from ..browser.rdp.prefs_help import prompt_help_lines
+    if log is None or endpoint.kind != FIREFOX or endpoint.key in _hinted:
+        return False
+    _hinted.add(endpoint.key)
+    for line in prompt_help_lines(endpoint.port):
+        log(line, "info")
+    return True

@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any, List, Optional, Tuple
 
 from .session import FirefoxTab, RDPSession
-from .transport import RDPTransport
+from .transport import RDPClosed
 
 __all__ = ["RDP_SCHEME", "build_locator", "parse_locator", "is_rdp_locator",
            "list_firefox_tabs", "find_tab_by_url"]
@@ -60,17 +60,26 @@ def _as_tab_info(tab: FirefoxTab, host: str, port: Any) -> Any:
 
 async def list_firefox_tabs(host: str = "127.0.0.1", port: int = 6000,
                             timeout: float = 5.0) -> List[Any]:
-    """Attach, list the tabs, detach — the browser is left running.
+    """List the tabs over the **shared** connection for this Firefox.
+
+    Reuses one long-lived session per endpoint (`session_cache`) instead of
+    attaching per call: Firefox prompts the user to authorise every incoming
+    debugger connection, so reconnecting each scan produced a dialog every few
+    seconds. A dropped connection is retried once, which is the case where the
+    browser really did go away and a fresh attach is warranted.
 
     Raises on a broken connection; an empty list means Firefox answered and
     genuinely has no tabs (RULE 4).
     """
-    session = RDPSession(RDPTransport(host=host, port=port, timeout=timeout))
-    await session.attach()
+    from .session_cache import shared_cache
+    session = await shared_cache.acquire(host, port, timeout)
     try:
-        return [_as_tab_info(tab, host, port) for tab in await session.list_tabs()]
-    finally:
-        await session.detach()
+        tabs = await session.list_tabs()
+    except (RDPClosed, OSError):
+        await shared_cache.release(host, port)
+        session = await shared_cache.acquire(host, port, timeout)
+        tabs = await session.list_tabs()
+    return [_as_tab_info(tab, host, port) for tab in tabs]
 
 
 async def find_tab_by_url(session: RDPSession, url: str) -> Optional[FirefoxTab]:
