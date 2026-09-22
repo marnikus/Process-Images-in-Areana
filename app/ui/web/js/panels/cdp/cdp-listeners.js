@@ -56,7 +56,7 @@ window.CDPListeners = {
     }
   },
 
-  onConnectionStatus(panel, status, browser) {
+  onConnectionStatus(panel, status) {
     const dot = document.getElementById('connectionStatus');
     if (dot) {
       dot.className = 'status-dot ' + (status === 'connected' ? 'connected' : status === 'error' ? 'error' : 'disconnected');
@@ -66,12 +66,9 @@ window.CDPListeners = {
     if (status === 'connected') store.connected = true;
     if (status === 'disconnected') store.connected = false;
     if (typeof LogConsole !== 'undefined') {
-      // Name the browser this status is actually about (I-63): saying "Chrome"
-      // while pointing at Firefox on 9224 is what made the old log unreadable.
-      const who = browser || 'Browser';
-      if (status === 'connected') LogConsole.log(`✅ ${who} connected`, 'success');
-      if (status === 'disconnected') LogConsole.log(`🔌 ${who} disconnected`, 'warn');
-      if (status === 'error') LogConsole.log(`❌ ${who} connection error`, 'error');
+      if (status === 'connected') LogConsole.log('✅ Chrome connected', 'success');
+      if (status === 'disconnected') LogConsole.log('🔌 Chrome disconnected', 'warn');
+      if (status === 'error') LogConsole.log('❌ Chrome connection error', 'error');
     }
     panel.updateUrlRowsConnection();
   },

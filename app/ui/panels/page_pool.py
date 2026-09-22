@@ -61,18 +61,8 @@ def reset_stuck_page(bridge, tab_id: str, page) -> str:
     return json.dumps({"ok": False, "error": "unknown tab"})
 
 
-async def _connect_firefox_client(bridge, locator: str):
-    """Firefox RDP client for a pool join — no WebSocket exists for these tabs."""
-    from app.browser.rdp.pool_client import FirefoxPoolClient
-    client = FirefoxPoolClient()
-    if await client.connect(locator):
-        return client
-    bridge._log(f"❌ Firefox pool connect failed — {client.last_error}", "error")
-    return None
-
-
-async def _connect_cdp_client(bridge, ws_url: str):
-    """CDP client for a Chrome pool join (None + error log when refused)."""
+async def connect_pool_client(bridge, ws_url: str):
+    """CDP client for a pool join (None + error log when refused)."""
     from app.browser.cdp_client import CDPClient
     host = bridge._page_pool._host if bridge._page_pool else "127.0.0.1"
     port = bridge._page_pool._port if bridge._page_pool else 9222
@@ -81,18 +71,6 @@ async def _connect_cdp_client(bridge, ws_url: str):
         return client
     bridge._log(f"❌ Pool connect failed {ws_url[:80]}", "error")
     return None
-
-
-async def connect_pool_client(bridge, ws_url: str):
-    """Browser client for a pool join, routed by locator (None + log when refused).
-
-    An `rdp://` key is a Firefox tab (I-63) and must never be handed to the CDP
-    client — asking Firefox for a WebSocket is what produced the old retry loop.
-    """
-    from app.browser.rdp.discovery import is_rdp_locator
-    if is_rdp_locator(ws_url):
-        return await _connect_firefox_client(bridge, ws_url)
-    return await _connect_cdp_client(bridge, ws_url)
 
 
 async def finish_pool_join(bridge, info, client, ctrl) -> None:
@@ -187,52 +165,20 @@ async def rejoin_checked_rows(bridge, tab_ids) -> int:
     return joined
 
 
-def pool_tab_id(ws_url: str) -> str:
-    """The pool key for a locator — the CDP page id, or the whole `rdp://` key.
-
-    Firefox actor ids are renumbered every connection, so the locator itself is
-    the stable handle for a Firefox tab; only Chrome has an id inside its URL.
-    """
-    from app.browser.rdp.discovery import is_rdp_locator
-    if is_rdp_locator(ws_url):
-        return ws_url
-    m = re.search(r'/devtools/page/([^/]+)$', ws_url)
-    return m.group(1) if m else ws_url
-
-
-async def _firefox_join_info(client, tab_id: str, ws_url: str):
-    """PageInfo for a Firefox tab — its title/url come from the RDP client itself."""
-    from app.browser.page_status import PageInfo
-    return PageInfo(tab_id=tab_id, ws_url=ws_url,
-                    title=client.tab_url or tab_id, url=client.tab_url or "")
-
-
-async def _join_chrome_tab(bridge, client, tab_id: str, ws_url: str) -> None:
-    """Join a CDP tab: arena controller + live title/url from the browser."""
-    from app.browser.cdp_arena import CDPArenaController
-    from app.browser.page_status import PageInfo
-    ctrl = CDPArenaController(client, log_callback=lambda msg: bridge._log(msg, "info"))
-    live_title, live_url = await resolve_tab_info(bridge, tab_id, ws_url)
-    info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
-    await finish_pool_join(bridge, info, client, ctrl)
-
-
-async def _join_firefox_tab(bridge, client, tab_id: str, ws_url: str) -> None:
-    """Join an RDP tab: click-only, so no CDP arena controller (I-63)."""
-    await finish_pool_join(bridge, await _firefox_join_info(client, tab_id, ws_url),
-                           client, None)
-
-
 async def do_connect_page_pool(bridge, ws_url: str):
-    """Attach one browser tab to the pool, routed by protocol (I-63)."""
-    from app.browser.rdp.discovery import is_rdp_locator
+    """Attach one Chrome tab to the pool (client + controller + restore)."""
     try:
-        tab_id = pool_tab_id(ws_url)
+        from app.browser.cdp_arena import CDPArenaController
+        from app.browser.page_status import PageInfo
+        m = re.search(r'/devtools/page/([^/]+)$', ws_url)
+        tab_id = m.group(1) if m else ws_url
         client = await connect_pool_client(bridge, ws_url)
         if client is None:
             return
-        join = _join_firefox_tab if is_rdp_locator(ws_url) else _join_chrome_tab
-        await join(bridge, client, tab_id, ws_url)
+        ctrl = CDPArenaController(client, log_callback=lambda msg: bridge._log(msg, "info"))
+        live_title, live_url = await resolve_tab_info(bridge, tab_id, ws_url)
+        info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
+        await finish_pool_join(bridge, info, client, ctrl)
     except Exception as e:
         bridge._log(f"Pool connect exception {e}", "error")
 

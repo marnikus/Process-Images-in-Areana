@@ -1,11 +1,11 @@
-"""S8 · one window contract, 17 windows, and the L-5 rescue (I-51).
+"""S8 · one window contract, 18 windows, and the L-5 rescue (I-51).
 
 `core/window_catalog.WINDOWS` is the ONE ordered table; `WINDOW_IDS` /
 `WINDOW_TITLES` are derived (L-8 drift: the two hand-written lists disagreed
 on `recordings`' position), JS `constants.js` mirrors it exactly, every
 registered window has a mountable element in `index.html` (L-5: the Page
 Pool markup carried an id no registry knew and `SashGrid.render()` threw it
-away), `GRID_VERSION` is 7 and stored v6 layouts migrate.
+away), `GRID_VERSION` is 8 and stored v7 layouts migrate.
 
 RED at base: `ModuleNotFoundError: app.core.window_catalog`.
 """
@@ -62,8 +62,8 @@ def test_every_registered_window_has_a_mountable_element():
 
 
 def test_ids_and_titles_have_no_duplicates_and_no_legacy_names():
-    assert len(wc.WINDOW_IDS) == 17 == len(set(wc.WINDOW_IDS))
-    assert len(set(wc.WINDOW_TITLES.values())) == 17
+    assert len(wc.WINDOW_IDS) == 18 == len(set(wc.WINDOW_IDS))
+    assert len(set(wc.WINDOW_TITLES.values())) == 18
     assert "captcha_records" not in wc.WINDOW_IDS and "recordings" in wc.WINDOW_IDS
     assert "page_pool" not in wc.WINDOW_IDS and "live_debug" in wc.WINDOW_IDS  # rescued, not registered (D-21)
     assert wc.LEGACY_WINDOW_IDS == {"captcha_records": "recordings"}
@@ -86,26 +86,26 @@ def test_default_tree_leaf_set_equals_the_registry():
         assert len(split["sizes"]) == len(split["children"])
 
 
-def test_grid_version_is_seven_and_v6_layouts_migrate():
-    assert wc.GRID_VERSION == 7
+def test_grid_version_is_eight_and_v7_layouts_migrate():
+    assert wc.GRID_VERSION == 8
     v6_tree = json.loads(json.dumps(wc.default_grid_tree()))
-    # drop the job_history leaf → the shape a v6 file on disk has (16 leaves)
+    # drop the uivision leaf → the shape a v7 file on disk has (17 leaves)
     def strip(node):
         if node.get("t") != "split":
             return node
-        keep = [i for i, k in enumerate(node["children"]) if not (k.get("t") == "leaf" and k["id"] == "job_history")]
+        keep = [i for i, k in enumerate(node["children"]) if not (k.get("t") == "leaf" and k["id"] == "uivision")]
         kids = [strip(node["children"][i]) for i in keep]
         total = sum(node["sizes"][i] for i in keep)
         return {**node, "children": kids, "sizes": [round(node["sizes"][i] * 100 / total, 4) for i in keep]}
     v6_tree = strip(v6_tree)
-    assert "job_history" not in layout_service.leaf_ids(v6_tree)
-    payload, err = layout_service.canonical_grid_payload(json.dumps({"v": 6, "tree": v6_tree}))
+    assert "uivision" not in layout_service.leaf_ids(v6_tree)
+    payload, err = layout_service.canonical_grid_payload(json.dumps({"v": 7, "tree": v6_tree}))
     assert err is None
     doc = json.loads(payload)
-    assert doc["v"] == 7 and sorted(layout_service.leaf_ids(doc["tree"])) == sorted(wc.WINDOW_IDS)
-    v7, err = layout_service.canonical_grid_payload(layout_service.default_payload())
-    assert err is None and layout_service.canonical_grid_payload(v7) == (v7, None)  # canonical v7 is a fixed point
-    assert layout_service.canonical_grid_payload(json.dumps({"v": 8, "tree": wc.default_grid_tree()}))[1] == "unsupported version 8"
+    assert doc["v"] == 8 and sorted(layout_service.leaf_ids(doc["tree"])) == sorted(wc.WINDOW_IDS)
+    v8, err = layout_service.canonical_grid_payload(layout_service.default_payload())
+    assert err is None and layout_service.canonical_grid_payload(v8) == (v8, None)  # canonical v8 is a fixed point
+    assert layout_service.canonical_grid_payload(json.dumps({"v": 9, "tree": wc.default_grid_tree()}))[1] == "unsupported version 9"
 
 
 def test_legacy_rename_still_works():

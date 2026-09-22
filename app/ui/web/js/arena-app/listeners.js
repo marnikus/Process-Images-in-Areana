@@ -86,8 +86,8 @@ window.ArenaAppListeners = {
     if (typeof CDPPanel !== 'undefined') CDPPanel.onTabsReceived(payload);
   },
 
-  _handleConnectionStatus(status, browser) {
-    if (typeof CDPPanel !== 'undefined') CDPPanel.onConnectionStatus(status, browser);
+  _handleConnectionStatus(status) {
+    if (typeof CDPPanel !== 'undefined') CDPPanel.onConnectionStatus(status);
     if (typeof PagePoolPanel !== 'undefined' && status === 'connected') setTimeout(()=>PagePoolPanel.refresh(), 800);
   },
 

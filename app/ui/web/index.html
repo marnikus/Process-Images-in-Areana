@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="css/stack-drag.css">
 <link rel="stylesheet" href="css/live-debug.css">
 <link rel="stylesheet" href="css/job-history.css">
+<link rel="stylesheet" href="css/uivision.css">
 <link rel="stylesheet" href="css/arena.css">
 <link rel="stylesheet" href="css/captcha-recordings.css">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
@@ -321,6 +322,38 @@
         <div class="job-history-strip job-history-hint">
           <b>How history works:</b><span>every finished job lands here newest-first — ✓ completed with its output link, ✗ failed with its error log. 🛡 marks jobs that hit a captcha. The display count (Settings mirrors it) caps the rows; the log keeps the last 500 on disk.</span>
         </div>
+      </div>
+    </div>
+
+    <!-- FIREFOX AUTO WITH EXTENSION (Ui.Vision RPA) -->
+    <div class="panel uivision-panel" id="winUivision" data-window="uivision">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">smart_toy</span> Firefox auto with Extension <span class="spacer"></span><span id="uivStatus" class="uiv-status">idle</span></h3>
+      <div class="uivision-body">
+        <p class="uiv-note">Firefox stays a normal browser — no debugger port, no driver. The signed Ui.Vision extension sends native OS clicks (<code>XClick</code>, <code>isTrusted:true</code>) via XModules. Firefox must be visible and in the foreground.</p>
+
+        <label class="uiv-row"><span>ui.vision.html</span>
+          <input id="uivHtmlPath" type="text" placeholder="C:\rpa\ui.vision.html" title="The extension's autorun page (Ui.Vision → Command Line API)"></label>
+        <label class="uiv-row"><span>Macro</span>
+          <input id="uivMacro" type="text" placeholder="Python_XClick_Demo" title="Name of the macro stored in Ui.Vision"></label>
+        <label class="uiv-row"><span>Log file</span>
+          <input id="uivLogPath" type="text" placeholder="C:\rpa\uivision_log.txt" title="Absolute path — Ui.Vision writes the log directly instead of downloading it"></label>
+        <label class="uiv-row"><span>Firefox</span>
+          <input id="uivFirefoxPath" type="text" placeholder="C:\Program Files\Mozilla Firefox\firefox.exe" title="Launched with NO automation flags"></label>
+        <label class="uiv-row"><span>Tab pattern</span>
+          <input id="uivTabPattern" type="text" placeholder="arena.ai" title="Which tab the macro should open — matched against your URL rows"></label>
+        <label class="uiv-row"><span>XClick target</span>
+          <input id="uivTarget" type="text" placeholder="xpath=//a[span[text()='New Chat']]" title="XPath, image name or x,y — never a DOM Click"></label>
+        <label class="uiv-row"><span>Timeout (s)</span>
+          <input id="uivTimeout" type="number" min="5" max="600" step="5" placeholder="60" title="How long to poll the log for a verdict"></label>
+
+        <div class="uiv-actions">
+          <button id="uivSaveBtn" class="btn-small btn-primary" title="Save this configuration">Save</button>
+          <button id="uivRunBtn" class="btn-small" title="Open the matching tab and XClick the target">Run XClick test</button>
+          <button id="uivMacroBtn" class="btn-small" title="Show the macro JSON to import into Ui.Vision">Show macro</button>
+        </div>
+
+        <div id="uivMatch" class="uiv-match"></div>
+        <pre id="uivOutput" class="uiv-output"></pre>
       </div>
     </div>
 
@@ -795,6 +828,9 @@
 <script src="js/panels/job-history/actions.js"></script>
 <script src="js/panels/job-history/limit.js"></script>
 <script src="js/panels/job-history.js"></script>
+<script src="js/panels/uivision/form.js"></script>
+<script src="js/panels/uivision/render.js"></script>
+<script src="js/panels/uivision.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app/listeners.js"></script>
 <script src="js/arena-app.js"></script>

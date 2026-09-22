@@ -35,6 +35,7 @@ from app.ui.panels.url_queue import UrlQueueMixin
 from app.ui.panels.queue_scan import QueueScanMixin
 from app.ui.panels.app_settings import AppSettingsMixin
 from app.ui.panels.job_history import JobHistoryMixin
+from app.ui.panels.uivision import UiVisionMixin
 from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
 from app.ui.panels.watcher_solver import WatcherSolverMixin
 from app.ui.panels.page_pool import PagePoolMixin
@@ -55,7 +56,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, WatcherSolverMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin, JobHistoryMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, WatcherSolverMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin, JobHistoryMixin, UiVisionMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -67,6 +68,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     history_changed = Signal()
     undo_state_changed = Signal(str)  # JSON {history,index,canUndo,canRedo}
     tabs_received = Signal(str)
+    uivision_result = Signal(str)  # Ui.Vision macro verdict (arrives after polling)
     connection_status = Signal(str)
     tab_match_result = Signal(str, str)
     url_presets_updated = Signal(str)

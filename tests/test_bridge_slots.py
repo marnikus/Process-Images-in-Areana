@@ -29,6 +29,8 @@ REQUIRED_SLOTS = (
     "get_recording_diff", "set_recording_label", "delete_recording",
     "set_recording_settings", "get_recording_settings",
     "get_job_history", "clear_job_history",
+    "get_uivision_settings", "save_uivision_settings", "get_uivision_macro",
+    "run_uivision_test",
 )
 
 # Private helpers that must never capture a @Slot by accident.
@@ -137,6 +139,8 @@ FROZEN_SLOTS = frozenset({
     'get_stack_history',
     'get_stack_presets',
     'get_tabs',
+    'get_uivision_macro',
+    'get_uivision_settings',
     'get_undo_history',
     'get_url_presets',
     'get_watcher_config',
@@ -173,6 +177,7 @@ FROZEN_SLOTS = frozenset({
     'retry_failed',
     'retry_image',
     'reveal_in_explorer',
+    'run_uivision_test',
     'save_action_blocks',
     'save_arena_preset',
     'save_custom_block',
@@ -181,6 +186,7 @@ FROZEN_SLOTS = frozenset({
     'save_settings',
     'save_stack_history',
     'save_stack_preset',
+    'save_uivision_settings',
     'save_window_preset',
     'save_window_states',
     'scan_folder',
@@ -237,6 +243,7 @@ EXPECTED_PACKING = {
     'watcher_captcha': 10,
     'watcher_solver': 7,
     'job_history': 2,
+    'uivision': 4,
 }
 
 
@@ -273,7 +280,7 @@ def test_panel_packing():
     counts = _panel_slot_counts()
     assert counts == EXPECTED_PACKING, f"packing drift: {counts}"
     # 127 + 6 Captcha Watcher + restore_default_blocks (2026-10-02) + set_captcha_provider (B10, 2026-10-06)
-    assert sum(counts.values()) == 137  # +2 job_history slots
+    assert sum(counts.values()) == 141  # +4 uivision slots
 
 
 @pytest.mark.unit

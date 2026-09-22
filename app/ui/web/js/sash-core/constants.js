@@ -16,9 +16,9 @@ window.SashCoreConstants = (() => {
     { id: 'browser', title: 'Browser Preview' },
     { id: 'action_blocks', title: 'Action Blocks — Stacking Jobs' },
     { id: 'block_config', title: 'Block Config — Security Check' },
-    { id: 'arena_presets', title: 'Arena Presets' }, { id: 'live_debug', title: 'Live Worker & Queue Debug' }, { id: 'job_history', title: 'Job History' },
+    { id: 'arena_presets', title: 'Arena Presets' }, { id: 'live_debug', title: 'Live Worker & Queue Debug' }, { id: 'job_history', title: 'Job History' }, { id: 'uivision', title: 'Firefox auto with Extension' },
   ];
   const WINDOW_IDS = WINDOWS.map(w => w.id);
   const WINDOW_TITLES = Object.fromEntries(WINDOWS.map(w => [w.id, w.title]));
-  return { WINDOWS, WINDOW_IDS, WINDOW_TITLES, V1_WINDOW_IDS: WINDOW_IDS, V2_WINDOW_IDS: WINDOW_IDS, V3_WINDOW_IDS: WINDOW_IDS, VERSION: 7, MAX_DEPTH: 12, MIN_SIZE: 4 };
+  return { WINDOWS, WINDOW_IDS, WINDOW_TITLES, V1_WINDOW_IDS: WINDOW_IDS, V2_WINDOW_IDS: WINDOW_IDS, V3_WINDOW_IDS: WINDOW_IDS, VERSION: 8, MAX_DEPTH: 12, MIN_SIZE: 4 };
 })();

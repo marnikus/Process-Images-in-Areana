@@ -1,0 +1,20 @@
+/* uivision.css — the "Firefox auto with Extension" window.
+   A plain label/field form; the output area is monospace because it shows
+   Ui.Vision log lines and macro JSON verbatim. */
+.uivision-body { display: flex; flex-direction: column; gap: 6px; padding: 8px; overflow: auto; }
+.uiv-note { margin: 0 0 4px; font-size: 11px; line-height: 1.45; color: var(--text-muted); }
+.uiv-note code { background: var(--bg-input); padding: 0 3px; border-radius: 3px; }
+.uiv-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.uiv-row > span { flex: 0 0 104px; color: var(--text-muted); }
+.uiv-row input { flex: 1 1 auto; min-width: 0; }
+.uiv-actions { display: flex; gap: 6px; margin-top: 4px; }
+.uiv-match { font-size: 11px; color: var(--text-muted); word-break: break-all; }
+.uiv-match.uiv-warn { color: var(--warn, #d08a30); }
+.uiv-output { flex: 1 1 auto; min-height: 60px; margin: 0; padding: 6px; overflow: auto;
+  font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; }
+.uiv-status { font-size: 10px; padding: 2px 6px; border-radius: 10px;
+  background: var(--bg-input); color: var(--text-muted); }
+.uiv-status.uiv-running { color: var(--accent); }
+.uiv-status.uiv-ok { color: var(--ok, #3fa860); }
+.uiv-status.uiv-failed { color: var(--err, #c9524a); }

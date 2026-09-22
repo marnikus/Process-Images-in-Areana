@@ -259,41 +259,10 @@ async def do_find_tab(bridge, query: str) -> None:
         bridge._find_in_progress = False
 
 
-_BROWSER_KEYS = (("cdp_host", "127.0.0.1"), ("cdp_port", 9222),
-                 ("browser_base_port", 0), ("browser_endpoints", []))
-
-
-def browser_settings(bridge) -> dict:
-    """The declared multi-browser configuration, read from app config (I-63)."""
-    config = getattr(bridge, "config", None)
-    if config is None or not hasattr(config, "get_state"):
-        return {}
-    return {key: config.get_state(key, default) for key, default in _BROWSER_KEYS}
-
-
-async def fetch_all_tabs(bridge) -> list:
-    """Tabs from every declared browser, each over its own protocol (I-63).
-
-    Chrome answers `/json/list`; Firefox answers RDP. One browser being down
-    never hides another, and each failure is logged under its real name.
-    """
-    from app.services.browser_connect import (endpoints_from_settings, log_firefox_hint,
-                                              log_scan_report, scan_all)
-    settings = browser_settings(bridge)
-    if not (settings.get("browser_endpoints") or []):
-        return await bridge.cdp.fetch_tabs()  # legacy single-Chrome path, unchanged
-    log = getattr(bridge, "_log", None)
-    for endpoint in endpoints_from_settings(settings):
-        log_firefox_hint(endpoint, log)  # explains the connection prompt, once (I-64)
-    report = await scan_all(settings)
-    log_scan_report(report, log)
-    return report.tabs
-
-
 async def do_fetch_tabs(bridge) -> None:
     """Fetch live tabs; an empty list also drops a diagnose summary."""
     try:
-        tabs = await fetch_all_tabs(bridge)
+        tabs = await bridge.cdp.fetch_tabs()
         payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs], ensure_ascii=False)
         bridge.tabs_received.emit(payload)
         if not tabs:
@@ -339,7 +308,7 @@ async def do_diagnose_chrome(bridge) -> None:
 def live_deps(bridge) -> LiveDeps:
     """The reconciler's callables, wired in ui land (the service never imports ui/browser)."""
     async def fetch_tabs():
-        return await fetch_all_tabs(bridge)  # every declared browser, not just Chrome (I-63)
+        return await bridge.cdp.fetch_tabs()
 
     async def join_tab(ws: str):
         await do_connect_page_pool(bridge, ws)

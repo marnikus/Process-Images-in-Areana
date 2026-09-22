@@ -105,11 +105,11 @@ describe('live_debug window (S8 — mount + L-5 rescue)', () => {
     vm.runInContext("LiveDebugPanel.init()", sandbox);  // no DOM, no bridge: must not throw
   });
 
-  test('the three JS registries and Python agree on 17 windows, order and titles', () => {
+  test('the three JS registries and Python agree on 18 windows, order and titles', () => {
     const constants = readJs('sash-core/constants.js');
     const jsWindows = [...constants.matchAll(/\{\s*id:\s*'([^']+)',\s*title:\s*'([^']+)'\s*\}/g)].map((m) => [m[1], m[2]]);
-    assert.equal(jsWindows.length, 17);
-    assert.match(constants, /VERSION:\s*7\b/);
+    assert.equal(jsWindows.length, 18);
+    assert.match(constants, /VERSION:\s*8\b/);
     const py = JSON.parse(execFileSync(path.resolve(__dirname, '../../.venv/bin/python'), ['-c',
       'import json; from app.core.window_catalog import WINDOWS; print(json.dumps([[w["id"], w["title"]] for w in WINDOWS]))'],
       { cwd: path.resolve(__dirname, '../..'), encoding: 'utf-8' }));
