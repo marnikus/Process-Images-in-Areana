@@ -116,38 +116,61 @@ def detect_protocol(host: str, port: int, timeout: float = DETECT_TIMEOUT, prefe
     return ""
 
 
-def _cdp_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[List[TargetRef], str]:
-    """CDP listing through the existing tab fetcher (unchanged behaviour)."""
+def _cdp_refs(host: str, port: int, timeout: float, browser_id: str):
+    """CDP listing through the existing tab fetcher — (refs, reason, did_it_answer)."""
     tabs, err, _tried = fetch_tabs_sync(host, port, timeout)
     refs = [TargetRef(id=t.id, title=t.title, url=t.url, ws_url=t.ws_url,
                       browser=browser_id, port=int(port), protocol=CDP, host=host)
             for t in tabs if t.id or t.ws_url]
-    return refs, ("" if refs else (err or "no tabs listed"))
+    return refs, ("" if refs else (err or "no tabs listed")), bool(refs) or not err
 
 
-def _rdp_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[List[TargetRef], str]:
+def _rdp_refs(host: str, port: int, timeout: float, browser_id: str):
     """RDP listing: one socket for the browser, each tab a stable `ctx-N` handle."""
     rows, err = rdp.list_targets(rdp.Endpoint(host, int(port)), timeout)
     refs = [TargetRef(id=t.id, title=t.title, url=t.url, ws_url=t.ws_url, browser=browser_id,
                       port=int(port), protocol=RDP, host=host) for t in rows]
-    return refs, ("" if refs else (err or "no tabs listed"))
+    return refs, ("" if refs else (err or "no tabs listed")), bool(refs) or not err
 
 
-def _bidi_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[List[TargetRef], str]:
+def _bidi_refs(host: str, port: int, timeout: float, browser_id: str):
     """BiDi listing: the session socket is shared, the tab id is the context id."""
     rows, err = bidi.list_contexts(bidi.Endpoint(host, int(port)), timeout)
     ws_url = f"ws://{host}:{int(port)}{bidi.SESSION_PATH}"
     refs = [TargetRef(id=r["id"], title=r.get("title") or r.get("url", ""), url=r.get("url", ""),
                       ws_url=ws_url, browser=browser_id, port=int(port), protocol=BIDI, host=host)
             for r in rows or []]
-    return refs, ("" if refs else (err or "no tabs listed"))
+    return refs, ("" if refs else (err or "no tabs listed")), bool(refs) or not err
+
+
+LISTERS = {"cdp": _cdp_refs, "rdp": _rdp_refs, "bidi": _bidi_refs}
+
+
+@dataclass(frozen=True)
+class _Endpoint:
+    """The three things a listing needs — one argument, so the helpers stay small (RULE 16)."""
+
+    host: str
+    port: int
+    browser: str
+
+
+def _list_over(point: _Endpoint, protocol: str, timeout: float):
+    """One protocol's listing: `(refs, reason, did_it_answer)`."""
+    lister = LISTERS.get(protocol)
+    if lister is None:
+        return [], f"{protocol} cannot list", False
+    return lister(point.host, point.port, timeout, point.browser)
 
 
 def list_targets(browser_id: str, host: str, port, timeout: float = 3.0) -> Tuple[List[TargetRef], str]:
     """Every tab of one browser, or ([] + the reason) — the pool's one entry point.
 
-    An unknown browser id is refused by name (the panel shows the message); a
-    reachable endpoint that answers neither protocol reports that too.
+    The row's DECLARED protocol is asked first and on ONE connection (round 10): for a Firefox
+    row that single attach lists the tabs *and* proves the channel, where round 9 opened a probe
+    socket first and then the real one — two connections, two "Allow connection?" prompts per
+    pass on a profile whose `devtools.debugger.prompt-connection` is still true. Detection is
+    only the fallback, so an ESR Firefox answering CDP on the same port still works.
     """
     profile = browsers.profile_of(browser_id)
     if profile is None:
@@ -156,14 +179,14 @@ def list_targets(browser_id: str, host: str, port, timeout: float = 3.0) -> Tupl
         port_i = int(port)
     except Exception:
         return [], f"invalid port for {browser_id}: {port!r}"
+    point = _Endpoint(host, port_i, profile.id)
+    refs, err, answered = _list_over(point, profile.protocol, timeout)
+    if refs or answered:
+        return refs, err          # it spoke: an empty list is an answer, not a failure
     protocol = detect_protocol(host, port_i, min(timeout, DETECT_TIMEOUT), prefer=profile.protocol)
-    if protocol == CDP:
-        return _cdp_refs(host, port_i, timeout, profile.id)
-    if protocol == RDP:
-        return _rdp_refs(host, port_i, timeout, profile.id)
-    if protocol == BIDI:
-        return _bidi_refs(host, port_i, timeout, profile.id)
-    return [], _unreachable(profile, host, port_i, timeout)
+    if protocol and protocol != profile.protocol:
+        return _list_over(point, protocol, timeout)[:2]
+    return [], _unreachable(profile, host, port_i, timeout) or err
 
 
 def _unreachable(profile, host: str, port: int, timeout: float = DETECT_TIMEOUT) -> str:

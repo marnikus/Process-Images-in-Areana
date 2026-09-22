@@ -480,6 +480,31 @@ def report_diag_checks(bridge, diag) -> None:
             bridge._log(f"    - {t.get('title', '')[:60]} — {t.get('url', '')}", "success")
 
 
+async def report_stealth(bridge) -> None:
+    """Measure what this page can see — `navigator.webdriver` — and say it out loud (D-5).
+
+    The URL-bar robot icon is Firefox's own chrome and no website can read it; what a website
+    CAN read is `navigator.webdriver`, and that flag belongs to Marionette / the Remote Agent,
+    not to the DevTools socket this app uses. So instead of asserting it, the app measures it in
+    the attached tab (whichever channel is connected) and prints the answer.
+    """
+    from app.browser import stealth
+    client = getattr(bridge, "cdp", None)
+    if client is None or not getattr(client, "is_connected", False):
+        bridge._log("🔎 Stealth check skipped — no tab is connected yet (Connect a tab first)", "info")
+        return
+    try:
+        raw = await client.evaluate(stealth.STEALTH_JS)
+    except Exception as e:
+        bridge._log(f"⚠ Stealth check failed: {e}", "warn")
+        return
+    facts, err = stealth.parse(raw)
+    if err:
+        bridge._log(f"⚠ {err}", "warn")
+        return
+    bridge._log(stealth.line(facts), "success" if not stealth.verdict(facts) else "warn")
+
+
 async def do_diagnose_rdp(bridge) -> None:
     """Executor-diagnose the Firefox DevTools socket: greeting, prefix, tabs."""
     from app.browser import rdp
@@ -504,6 +529,7 @@ async def do_diagnose_chrome(bridge) -> None:
     """Executor-diagnose the active browser: CDP checks, or the DevTools socket."""
     if uses_rdp(bridge):
         await do_diagnose_rdp(bridge)
+        await report_stealth(bridge)
         return
     try:
         loop = asyncio.get_event_loop()
@@ -518,6 +544,7 @@ async def do_diagnose_chrome(bridge) -> None:
                 pass
     except Exception as e:
         bridge._log(f"Diagnose failed: {e}", "error")
+    await report_stealth(bridge)
 
 
 def live_deps(bridge) -> LiveDeps:

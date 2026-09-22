@@ -1160,6 +1160,55 @@ the browser); RDP has no input synthesis, screenshot or file chooser — the pan
 timing out; a Firefox row whose endpoint is closed yet whose tab is still trusted by the settings is reported, not
 silently dropped; the app still never starts a browser.
 
+## Addendum 2026-09-22 — the robot cue, the Allow prompt, and the profile Firefox really uses (I-62, round 10)
+
+Owner report with screenshots: Firefox shows the URL-bar robot icon after start, the launch command uses
+`-profile` / `-no-remote`, and Firefox asks *"An incoming request to permit remote debugging connection was
+detected … Allow connection?"* over and over. Design and the source receipts:
+[`2026-09-22-firefox-cue-and-prompt/design.md`](../archive/2026-09-22-firefox-cue-and-prompt/design.md).
+
+Three of the four report points were checked against Firefox's own code and docs before anything changed:
+
+* the icon is Firefox's `#remote-control-box` / `#remote-control-icon` in the URL bar
+  (`browser/base/content/navigator-toolbox.inc.xhtml:172-176`, `browser/themes/shared/urlbar.css:992-1010`,
+  string `Browser is under remote control (reason: {component})`, `browser.ftl:623`) and it follows the
+  **devices server**, not the flags — a Mozilla developer states the cue is also shown for
+  `--start-debugger-server`. It is browser chrome: web pages cannot read it;
+* `-profile` / `-no-remote` do **not** cause it. `-no-remote` is what makes the socket open at all (without it
+  the flag is handed to the running Firefox and no server starts) — dropping it, as the report suggests, would
+  break the channel, so it stays and the panel now explains it;
+* the prompt IS ours to fix, twice over: the Firefox row forced a private dir, so `Prepare Profile` wrote
+  `devtools.debugger.prompt-connection=false` into a profile that was not running, and one pass opened **two**
+  connections per browser (a probe, then the real `listTabs`) — up to two prompts per pass.
+
+| Piece | Where | Numbers |
+|---|---|---|
+| `profiles.ini` resolution (`[Install*] Default`, `Default=1`, single profile, `ARENA_FIREFOX_*` overrides) | `app/browser/firefox_profiles.py` (new, 118 lines, 11 funcs) | 92% line / 80% branch |
+| The measured stealth probe (`navigator.webdriver`, UA, plugins, headless) | `app/browser/stealth.py` (new, 70 lines) | 97% line / 90% branch |
+| Own profile by default; an empty dir is no dir flag; honest notes/stealth text | `app/browser/browsers.py` | 92% line / 88% branch |
+| Declared protocol first on ONE connection (detection only as fallback) | `app/browser/endpoints.py` | 97% line / 94% branch |
+| `prepare_profile` resolves the running profile; an unresolvable one is a named refusal | `app/browser/rdp/profile.py` | unchanged surface |
+| Row `profile_dir` / `profile_is_default` / resolved `prefs_file`, `debug_flag`, Prepare Profile uses the same resolution | `app/ui/panels/cdp_tools.py` | 71% line |
+| `report_stealth` — the one measured line, wired into Diagnose on both channels | `app/ui/panels/browser_tabs.py` | 83% line / 85% branch |
+| Empty-dir preview + the honest dir label (`your own profile: <path>`) | `app/ui/web/js/panels/browser-connection.js` | JS lane 0 fails |
+
+Evidence: `tests/test_firefox_cue.py` (17, RED at `9abda34`) drives a real `profiles.ini` + profile tree, a real
+fake Firefox (whose connection counter proves **one** connection per listing, where round 9 made two), and the
+stealth expression end-to-end through the DevTools socket. Two round-8 pins moved to the new truth on purpose:
+a Firefox row without a configured dir has no `-profile=`, and its `prefs_file` names the real profile — or says
+the profile could not be located instead of naming a path that was never used.
+
+Gates: pytest **2,171 passed / 4 skipped**, JS **377 tests / 375 pass / 0 fail / 4 skipped**, coverage
+**89.17 % line / 84.58 % branch** (baseline 86.36 / 82.33), `verify_quality.py --changed-files` **0 fails** (the
+whole-repo lane keeps only the pre-existing untouched `captcha.js max_cc`), `js_metrics` worst level on the
+touched JS file: `dirLabel` loc 7 / cc 7 / depth 1. During the round one new RULE 16 fail was fixed rather than
+baselined: `_list_over` had 5 parameters → the endpoint is now one `_Endpoint` value object (3 parameters).
+
+Honest limits, stated in the panel and in the design doc: the robot cue cannot be removed while any DevTools
+server runs (no pref drives it; hiding it would mean patching Firefox's UI, which is its own fingerprint), the
+Allow dialog must be answered once per connection unless the pref is in the running profile, and the app never
+starts, restarts or kills a browser.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

@@ -166,10 +166,19 @@ const BrowserConnection = {
   renderFacts(b) {
     this._text('cdpCapabilities', this.capabilityText(b));
     this._text('cdpBrowserNotes', (b.dir_flag ? `${b.dir_flag} — ` : '') + (b.notes || ''));
-    this._text('cdpDirLabel', b.dir_flag ? `Profile dir for ${b.label || b.id} (${b.dir_flag})` : 'User data dir (this browser)');
+    this._text('cdpDirLabel', this.dirLabel(b));
     this._text('cdpPrefs', this.prefsText(b));
     this._text('cdpPrefsFile', b.prefs_file || '—');
     this._text('cdpStealth', b.stealth || '');
+  },
+
+  /* Which profile the app would touch: the configured dir, else the browser's own (round 10). */
+  dirLabel(b) {
+    const flag = b.dir_flag ? ` (${b.dir_flag})` : '';
+    const configured = b.user_data_dir || this._val('cdpUserDataDir');
+    if (configured) return `Profile dir for ${b.label || b.id}${flag}`;
+    const own = b.profile_dir ? ` — your own profile: ${b.profile_dir}` : ' — your own profile';
+    return `No dir configured for ${b.label || b.id}${flag}: the browser's own profile is used${own}`;
   },
 
   /* The channel's prefs as pasteable user.js lines (or why none are needed). */
@@ -216,8 +225,8 @@ const BrowserConnection = {
 
   compose(b) {
     const dir = this._val('cdpUserDataDir');
-    const parts = [b.binary, this.debugFlag(b),
-      `${b.dir_flag || '--user-data-dir'}="${dir}"`];
+    const parts = [b.binary, this.debugFlag(b)];
+    if (dir) parts.push(`${b.dir_flag || '--user-data-dir'}="${dir}"`);
     const extra = (this._val('cdpExtraArgs') || '').trim();
     if (extra) parts.push(extra);
     return parts.join(' ');

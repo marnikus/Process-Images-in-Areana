@@ -86,17 +86,21 @@ PROFILES: Tuple[BrowserProfile, ...] = (
     ),
     BrowserProfile(
         id="firefox", label="Firefox (Mozilla)", protocol=PROTOCOL_RDP, port_offset=1,
-        dir_flag="-profile", data_dir_default="C:\\arena-images-firefox",
+        dir_flag="-profile", data_dir_default="",
         extra_args_default="-no-remote",
         executables={
             "windows": '"C:\\Program Files\\Mozilla Firefox\\firefox.exe"',
             "linux": "firefox",
             "macos": '"/Applications/Firefox.app/Contents/MacOS/firefox"',
         },
-        notes=("DevTools RDP (--start-debugger-server): tabs, JS, click — attach and "
-               "detach without touching the browser, and no automation flag. There is no "
-               "input, screenshot or file API, and the Remote Agent "
-               "(--remote-debugging-port) would set navigator.webdriver for the session."),
+        notes=("DevTools RDP (--start-debugger-server): tabs, JS, click — attach and detach "
+               "without touching the browser, and no automation flag. Starts with YOUR profile "
+               "by default (leave the dir empty), which is the session you browse in — real "
+               "history, cookies and extensions. -no-remote is what makes the socket open at "
+               "all: without it the flag is handed to the already-running Firefox and no server "
+               "starts. Neither flag is a remote-control switch. There is no input, screenshot "
+               "or file API, and the Remote Agent (--remote-debugging-port) would set "
+               "navigator.webdriver for the session."),
         debug_flag=START_DEBUGGER_SERVER,
         prefs=(
             ("devtools.chrome.enabled", True),
@@ -104,10 +108,17 @@ PROFILES: Tuple[BrowserProfile, ...] = (
             ("devtools.debugger.prompt-connection", False),
             ("devtools.debugger.force-local", True),
         ),
-        stealth=("Keeps the browser unflagged: no geckodriver, no Marionette, no Remote "
-                 "Agent — navigator.webdriver stays false. Start it with "
-                 "--start-debugger-server, never with --remote-debugging-port (Firefox "
-                 "bug 1719505 sets that flag for the whole session)."),
+        stealth=("What the URL-bar robot icon really is: Firefox's own 'under remote control' "
+                 "cue (#remote-control-icon, tooltip 'reason: DevTools'). It appears whenever a "
+                 "DevTools server is running — it is NOT caused by -profile/-no-remote, and no "
+                 "preference removes it while the socket is open. It is browser chrome: web pages "
+                 "cannot see it, and the app measures what they CAN see — navigator.webdriver="
+                 "false, no headless marker, a real profile. The 'Allow connection?' dialog is "
+                 "devtools.debugger.prompt-connection: click Allow once, or let Prepare Profile "
+                 "write that pref into the profile Firefox is actually running (it asks once per "
+                 "connection, so the app opens one connection per pass). Never start Firefox with "
+                 "--remote-debugging-port (Firefox bug 1719505 sets navigator.webdriver for the "
+                 "whole session)."),
     ),
     BrowserProfile(
         id="edge", label="Edge (Chromium)", protocol=PROTOCOL_CDP, port_offset=2,
@@ -191,8 +202,10 @@ def debug_arg(profile: BrowserProfile, port) -> str:
 
 def build_command(profile: BrowserProfile, os_name: str, target: dict) -> str:
     """One launch command: binary + debug-channel flag + profile dir + args (+ URL)."""
-    parts = [profile.binary(os_name), debug_arg(profile, target["port"]),
-             f'{profile.dir_flag}="{target["data_dir"]}"']
+    parts = [profile.binary(os_name), debug_arg(profile, target["port"])]
+    data_dir = (target.get("data_dir") or "").strip()
+    if data_dir:                          # empty = the browser's own profile (D-1, round 10)
+        parts.append(f'{profile.dir_flag}="{data_dir}"')
     extra = target.get("extra_args") or profile.extra_args_default
     if (extra or "").strip():
         parts.append(extra.strip())

@@ -44,6 +44,7 @@ const CONFIG = {
     { id: 'firefox', label: 'Firefox (Mozilla)', protocol: 'rdp', port_offset: 1, resolved_port: 9224,
       enabled: true, user_data_dir: 'C:\\arena-images-firefox', extra_args: '-no-remote',
       dir_flag: '-profile', binary: '"C:\\firefox.exe"', notes: 'DevTools RDP socket.',
+      debug_flag: 'start-debugger-server',
       capabilities: ['click', 'evaluate', 'tabs'], unavailable: ['dom', 'input', 'screenshot', 'set_files'],
       test_url: 'tcp 127.0.0.1:9224', commands: { windows: 'ff-cmd' } },
     { id: 'edge', label: 'Edge (Chromium)', protocol: 'cdp', port_offset: 2, resolved_port: 9225,
@@ -142,6 +143,33 @@ describe('one pass over every browser (round 9)', () => {
     h.emit('connection_status', 'connected');
     const line = h.logs.find((m) => m.includes('connected'));
     assert.ok(line && !line.includes('Chrome'), `neutral wording: ${line}`);
+  });
+
+  test('the Firefox preview leaves the profile flag out when no dir is configured', () => {
+    const h = boot();
+    const sel = h.anyEl('browserSelect');
+    sel.value = 'firefox';
+    sel.dispatch('change', { target: sel });
+    h.anyEl('cdpUserDataDir').value = '';
+    if (h.sb.BrowserConnection) h.sb.BrowserConnection.updatePreview();
+    const cmd = String(h.anyEl('cdpLaunchCmd').textContent);
+    assert.ok(cmd.includes('--start-debugger-server'), `the DevTools flag is still there: ${cmd}`);
+    assert.ok(cmd.includes('-no-remote'), `and the flag that makes the socket open: ${cmd}`);
+    assert.ok(!cmd.includes('-profile'), `no forced dir means Firefox's own profile: ${cmd}`);
+  });
+
+  test('the dir label says when the browser\'s own profile is used', () => {
+    const h = boot();
+    const sel = h.anyEl('browserSelect');
+    sel.value = 'firefox';
+    sel.dispatch('change', { target: sel });
+    const ff = h.sb.BrowserConnection.browsers.find((b) => b.id === 'firefox');
+    ff.user_data_dir = '';
+    ff.profile_dir = 'C:\\Users\\me\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles\\xy.default-release';
+    h.sb.BrowserConnection.showBrowser('firefox');
+    const label = String(h.anyEl('cdpDirLabel').textContent);
+    assert.ok(label.toLowerCase().includes('own profile'), `the label is honest: ${label}`);
+    assert.ok(label.includes('xy.default-release'), `and names the dir Prepare Profile writes: ${label}`);
   });
 
   test('the empty tab-select placeholder does not promise Chrome only', () => {

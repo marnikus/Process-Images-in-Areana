@@ -225,6 +225,11 @@ class _Session:
         if ".click()" in expression:
             found = self.server.click_found
             return json.dumps({"ok": found, "why": "clicked" if found else "not found"})
+        if "navigator.webdriver" in expression:
+            return json.dumps({"webdriver": False, "plugins": 5, "languages": "en-US",
+                               "headless": False,
+                               "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:141.0) "
+                                     "Gecko/20100101 Firefox/141.0"})
         if "document.title" in expression and "JSON.stringify" in expression:
             return json.dumps(tab["title"])
         if "1+1" in expression:

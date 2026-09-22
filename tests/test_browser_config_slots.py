@@ -69,7 +69,10 @@ def test_each_browser_row_carries_its_own_port_dir_command_and_capabilities(cfg)
         assert firefox["commands"][key], f"firefox {key} command missing"
     assert chrome["test_url"].endswith("/json/list")
     assert "debugger" in firefox["test_url"], "Firefox has no /json/list — it has a debugger socket"
-    assert firefox["prefs"] and firefox["prefs_file"].endswith("user.js")
+    assert firefox["prefs"], "the row carries the prefs the DevTools socket needs"
+    assert firefox["prefs_file"].endswith("user.js") or "not located" in firefox["prefs_file"], \
+        "and names the file — or says the profile could not be found (round 10: an empty dir means " \
+        "the browser's own profile, never a made-up path)"
     assert firefox["stealth"], "the row explains why this channel keeps the browser unflagged"
     assert "screenshot" in chrome["capabilities"] and chrome["unavailable"] == []
     assert "screenshot" in firefox["unavailable"], "the panel must be able to name the gap"
@@ -140,7 +143,9 @@ def test_get_chrome_launch_command_follows_the_active_browser(cfg):
     launch = json.loads(host.get_chrome_launch_command())
     assert launch["browser"] == "firefox" and launch["protocol"] == "rdp"
     assert launch["resolved_port"] == 9223
-    assert "firefox" in launch["windows"] and "-profile=" in launch["windows"]
+    assert "firefox" in launch["windows"] and "-profile" not in launch["windows"], \
+        "round 10: no dir configured means Firefox starts with its OWN profile"
+    assert "-no-remote" in launch["windows"], "which is what makes the socket open at all"
     assert "--start-debugger-server 9223" in launch["windows"]
     assert "--remote-debugging-port" not in launch["windows"], "the stealth guard"
     assert launch["macos"] and launch["linux_with_url"]

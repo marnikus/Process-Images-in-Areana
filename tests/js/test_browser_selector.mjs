@@ -42,6 +42,7 @@ const CONFIG = {
     { id: 'firefox', label: 'Firefox (Mozilla)', protocol: 'rdp', port_offset: 1, resolved_port: 9224,
       user_data_dir: 'C:\\arena-images-firefox', extra_args: '-no-remote',
       dir_flag: '-profile', binary: '"C:\\firefox.exe"',
+      debug_flag: 'start-debugger-server',
       notes: 'DevTools RDP — attach/detach freely; navigator.webdriver stays false.',
       capabilities: ['click', 'evaluate', 'tabs'],
       unavailable: ['dom', 'input', 'screenshot', 'set_files'],

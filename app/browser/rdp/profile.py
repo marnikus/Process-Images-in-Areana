@@ -80,12 +80,25 @@ def merged_body(path: Path, ours: str) -> Tuple[str, bool]:
 
 
 def prepare_profile(profile, data_dir) -> Tuple[dict, str]:
-    """Write one browser's DevTools prefs into its profile; (result, error)."""
+    """Write one browser's DevTools prefs into its profile; (result, error).
+
+    An empty dir means the browser's own profile (round 10): for Firefox that is resolved from
+    `profiles.ini`, because the pref that removes the Allow prompt only counts in the profile that
+    is actually running.
+    """
     ours = user_js_text(profile)
     if not ours:
         reason = NO_PREFS.format(label=profile.label)
         return {"ok": False, "changed": False, "message": reason}, reason
-    return _write_prefs(Path(str(data_dir or "")), ours, data_dir)
+    target_dir = str(data_dir or "").strip()
+    if not target_dir:
+        from .. import firefox_profiles
+        target_dir = firefox_profiles.used_profile_dir("")
+    if not target_dir:
+        reason = ("profile directory not found — this browser's own profile could not be located "
+                  "(no profiles.ini) and the settings row names none")
+        return {"ok": False, "changed": False, "message": reason}, reason
+    return _write_prefs(Path(target_dir), ours, target_dir)
 
 
 def _write_prefs(path: Path, ours: str, data_dir) -> Tuple[dict, str]:

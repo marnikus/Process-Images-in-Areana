@@ -156,18 +156,29 @@ def test_hint(profile, host: str, port) -> str:
     return f"http://{host}:{port}/json/list"
 
 
+NO_PROFILE_FOUND = ("(this browser's own profile was not located — start it once so "
+                    "profiles.ini exists, or set the dir above)")
+
+
 def devtools_prefs(profile, data_dir) -> dict:
     """The prefs this browser's channel needs + the file they belong in (D-5).
 
     Empty for a browser that needs none (Chrome/Edge), so the panel block simply
     has nothing to show instead of showing an empty instruction.
+
+    Round 10: an empty dir means the browser's own profile, so the path shown (and the path
+    Prepare Profile writes) is resolved from `profiles.ini` — the file that only counts in the
+    profile Firefox is actually running.
     """
+    from app.browser import firefox_profiles
     from app.browser.rdp import profile as rdp_profile
     if not profile.prefs:
         return {"prefs": [], "prefs_file": "", "user_js": "", "stealth": profile.stealth}
+    resolved = firefox_profiles.used_profile_dir(data_dir)
+    prefs_file = (f"{str(resolved).rstrip('/')}/{rdp_profile.USER_JS_NAME}" if resolved
+                  else NO_PROFILE_FOUND)
     return {"prefs": [{"name": name, "value": value} for name, value in profile.prefs],
-            "prefs_file": f"{str(data_dir).rstrip('/')}/{rdp_profile.USER_JS_NAME}",
-            "user_js": rdp_profile.user_js_text(profile),
+            "prefs_file": prefs_file, "user_js": rdp_profile.user_js_text(profile),
             "stealth": profile.stealth}
 
 
@@ -183,6 +194,7 @@ def browser_row(cfg, profile) -> dict:
         "id": profile.id, "label": profile.label, "protocol": profile.protocol,
         "port_offset": profile.port_offset, "resolved_port": port,
         "user_data_dir": data_dir, "extra_args": extra, "dir_flag": profile.dir_flag,
+        "debug_flag": profile.debug_flag,
         "binary": profile.binary(browsers.current_os()), "notes": profile.notes,
         "enabled": bool(entry.get("enabled", True)),
         "capabilities": caps,
@@ -190,8 +202,18 @@ def browser_row(cfg, profile) -> dict:
         "test_url": test_hint(profile, host, port),
         "commands": browsers.launch_commands(profile, browsers.endpoint(port, data_dir, extra)),
     }
+    row["profile_dir"] = resolved_profile_dir(profile, data_dir)
+    row["profile_is_default"] = not (data_dir or "").strip() and bool(row["profile_dir"])
     row.update(devtools_prefs(profile, data_dir))
     return row
+
+
+def resolved_profile_dir(profile, data_dir: str) -> str:
+    """Where this browser's profile work happens: the configured dir, else the browser's own."""
+    from app.browser import firefox_profiles
+    if (data_dir or "").strip():
+        return data_dir
+    return firefox_profiles.default_profile_dir() if profile.prefs else ""
 
 
 def prepare_active_profile(cfg) -> tuple:
@@ -201,9 +223,11 @@ def prepare_active_profile(cfg) -> tuple:
     touches a real profile — and a browser whose channel needs no prefs is
     refused by name.
     """
+    from app.browser import firefox_profiles
     from app.browser.rdp import profile as rdp_profile
     profile = browsers.profile_of(cfg["browser"]) or browsers.default_profile()
-    return rdp_profile.prepare_profile(profile, cfg["user_data_dir"])
+    data_dir = (cfg["user_data_dir"] or "").strip() or firefox_profiles.used_profile_dir("")
+    return rdp_profile.prepare_profile(profile, data_dir)
 
 
 def browser_rows(config) -> list:
