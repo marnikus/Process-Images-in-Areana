@@ -384,7 +384,16 @@
             <code id="cdpLaunchCmd" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:11px; word-break:break-all; display:block;">— waiting for the bridge to build the command —</code>
             <button id="cdpCopyCmdBtn" class="btn-small" title="Copy command">Copy</button>
           </div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Test URL: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — open it in that browser: Chrome lists tabs at <code>/json/list</code>, Firefox's Remote Agent answers <code>/session</code> (BiDi).</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Debug channel: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — Chrome/Edge list tabs at <code>/json/list</code>; Firefox is attached over the DevTools socket opened by <code>--start-debugger-server</code> (RDP: attach/detach as often as you like, no automation flag).</div>
+          <div style="margin-top:8px;">
+            <div style="display:flex; gap:6px; align-items:center;">
+              <label style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:600; flex:1;">Profile prefs this channel needs (<code id="cdpPrefsFile">—</code>):</label>
+              <button id="cdpPrepareProfileBtn" class="btn-small" title="Write these prefs into the selected browser's profile (user.js)">Prepare Profile</button>
+            </div>
+            <code id="cdpPrefs" style="display:block; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:11px; margin-top:4px; white-space:pre-wrap; word-break:break-all;">—</code>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Prepare Profile writes those lines into that profile's <code>user.js</code> (your own lines are kept) and asks for a Firefox restart — a running instance does not re-read the file. A plain Save never touches your profile.</div>
+          </div>
+          <div id="cdpStealth" style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.4;"></div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">💡 Chrome and Firefox run side by side: same host, one base port, separate data dirs — both connectable and poolable at the same time. The URL pattern above is the one rule for every browser.</div>
         </div>
       </div>

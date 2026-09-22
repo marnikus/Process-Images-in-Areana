@@ -57,20 +57,23 @@ def test_each_browser_row_carries_its_own_port_dir_command_and_capabilities(cfg)
     chrome, firefox = by_id["chrome"], by_id["firefox"]
     assert chrome["resolved_port"] == 9222 and firefox["resolved_port"] == 9223, "base + offset"
     assert chrome["user_data_dir"] != firefox["user_data_dir"]
-    assert chrome["dir_flag"] == "--user-data-dir" and firefox["dir_flag"] == "--profile"
+    assert chrome["dir_flag"] == "--user-data-dir" and firefox["dir_flag"] == "-profile"
     os_key = br.current_os()
     assert chrome["binary"] == br.profile_of("chrome").binary(os_key), "the row carries this OS's binary"
     assert firefox["binary"] == br.profile_of("firefox").binary(os_key)
     assert "chrome.exe" in chrome["commands"]["windows"]
-    assert "--remote-debugging-port=9223" in firefox["commands"]["windows"]
+    assert "--start-debugger-server 9223" in firefox["commands"]["windows"], \
+        "the DevTools socket — never the flagged --remote-debugging-port"
     assert "-no-remote" in firefox["commands"]["windows"], "or the port never opens"
     for key in ("windows", "windows_with_url", "linux", "linux_with_url", "macos", "macos_with_url"):
         assert firefox["commands"][key], f"firefox {key} command missing"
     assert chrome["test_url"].endswith("/json/list")
-    assert firefox["test_url"].endswith("/session"), "BiDi has no /json/list"
+    assert "debugger" in firefox["test_url"], "Firefox has no /json/list — it has a debugger socket"
+    assert firefox["prefs"] and firefox["prefs_file"].endswith("user.js")
+    assert firefox["stealth"], "the row explains why this channel keeps the browser unflagged"
     assert "screenshot" in chrome["capabilities"] and chrome["unavailable"] == []
     assert "screenshot" in firefox["unavailable"], "the panel must be able to name the gap"
-    assert firefox["protocol"] == "bidi" and chrome["protocol"] == "cdp"
+    assert firefox["protocol"] == "rdp" and chrome["protocol"] == "cdp"
     assert firefox["notes"], "a note explains the protocol / the ESR CDP path"
 
 
@@ -132,13 +135,44 @@ def test_get_chrome_launch_command_follows_the_active_browser(cfg):
     host, _ = _host(cfg)
     host.set_cdp_config(json.dumps({"browser": "firefox", "port": 9222, "url_pattern": "arena.ai"}))
     launch = json.loads(host.get_chrome_launch_command())
-    assert launch["browser"] == "firefox" and launch["protocol"] == "bidi"
+    assert launch["browser"] == "firefox" and launch["protocol"] == "rdp"
     assert launch["resolved_port"] == 9223
-    assert "firefox" in launch["windows"] and "--profile=" in launch["windows"]
+    assert "firefox" in launch["windows"] and "-profile=" in launch["windows"]
+    assert "--start-debugger-server 9223" in launch["windows"]
+    assert "--remote-debugging-port" not in launch["windows"], "the stealth guard"
     assert launch["macos"] and launch["linux_with_url"]
-    assert launch["test_url"].endswith(":9223/session")
-    assert "screenshot" in launch["unavailable"]
+    assert "9223" in launch["test_url"] and "screenshot" in launch["unavailable"]
     assert launch["url_pattern"] == "arena.ai"
+
+
+def test_a_plain_save_never_touches_the_real_firefox_profile(cfg, tmp_path):
+    host, _ = _host(cfg)
+    profile_dir = tmp_path / "prof"
+    profile_dir.mkdir()
+    reply = json.loads(host.set_cdp_config(json.dumps({
+        "browser": "firefox", "port": 9222,
+        "browsers": {"firefox": {"user_data_dir": str(profile_dir)}}})))
+    assert reply["ok"] is True
+    assert not (profile_dir / "user.js").exists(), "writing into the owner's profile is opt-in"
+
+
+def test_prepare_profile_writes_the_devtools_prefs_when_asked(cfg, tmp_path):
+    host, logs = _host(cfg)
+    profile_dir = tmp_path / "prof"
+    profile_dir.mkdir()
+    reply = json.loads(host.set_cdp_config(json.dumps({
+        "browser": "firefox", "port": 9222, "prepare_profile": True,
+        "browsers": {"firefox": {"user_data_dir": str(profile_dir)}}})))
+    assert reply["ok"] is True and reply["prepare_profile"]["changed"] is True
+    written = (profile_dir / "user.js").read_text(encoding="utf-8")
+    assert 'user_pref("devtools.debugger.remote-enabled", true);' in written
+    assert any("profile" in msg.lower() for _lvl, msg in logs), "the log says what happened and where"
+
+
+def test_prepare_profile_is_refused_by_name_for_a_browser_without_devtools_prefs(cfg):
+    host, _ = _host(cfg)
+    reply = json.loads(host.set_cdp_config(json.dumps({"browser": "chrome", "prepare_profile": True})))
+    assert reply["ok"] is False and "DevTools" in reply["error"]
 
 
 def test_the_shared_port_stays_one_setting_for_both_browsers(cfg):

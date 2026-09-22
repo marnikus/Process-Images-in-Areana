@@ -110,6 +110,14 @@ is already running) and, for CDP on ESR, the `user.js` line `user_pref("remote.a
 
 ## Outcome (2026-09-21)
 
+> **Superseded for Firefox (round 8, same day).** The BiDi/Remote Agent connection described here is a
+> `--remote-debugging-port` session, and the Remote Agent sets `navigator.webdriver = true` for the whole
+> browser (Firefox bug 1719505). Firefox now connects over the legacy DevTools RDP socket instead — see
+> [`2026-09-21-firefox-rdp-stealth-connection`](../2026-09-21-firefox-rdp-stealth-connection/design.md) and
+> I-62 (rewritten). The registry, panel and pool-row structure delivered here stand unchanged; BiDi remains a
+> **detected** fallback (with its flag consequence named in the panel).
+
+
 Delivered as designed; gate record in `docs/current/QUALITY_RECHECK.md` addendum 2026-09-21d, the living rule in
 `docs/current/SYSTEM_OF_RECORD.md` I-62.
 

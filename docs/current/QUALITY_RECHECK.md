@@ -1068,6 +1068,46 @@ Protocol honesty (RULE 4): Firefox's CDP was deprecated in 129 and removed in 14
 BiDi as a first-class protocol, the panel names the missing CDP-only operations per browser, and an ESR 128/140
 launch that re-enables CDP is detected by probing — not by assuming.
 
+## Addendum 2026-09-21e — Firefox over the DevTools RDP socket (I-62, round 8)
+
+Owner report: the round-7 Firefox connection "is not working as expecting" — a `--remote-debugging-port` Firefox is a
+Remote Agent session, and the Remote Agent sets `navigator.webdriver = true` for the whole browser (Firefox bug
+1719505, fixed in 101). Round 8 replaces that channel for Firefox with the legacy DevTools RDP socket
+(`--start-debugger-server`), which does not.
+
+What was added (all RED-first, `app/browser/rdp/` + the seams that call it):
+
+| Piece | Where | Numbers |
+|---|---|---|
+| RDP codec (UTF-16 length prefix, exact reads, leftover re-buffer, `select` deadlines) | `app/browser/rdp/wire.py` | 177 lines, line cov. 93% |
+| Socket (greeting, paired replies, event queue, typed `noSuchActor`) | `app/browser/rdp/connection.py` | 148 lines, 87% |
+| Packet parsers + the click-only expression (identity = `browsingContextID`) | `app/browser/rdp/actors.py` | 227 lines, 100% |
+| Client + facade (`(value, reason)`, one stale-actor retry, long strings) | `app/browser/rdp/client.py` | 244 lines, 91% |
+| Prefs / `user.js` writer (opt-in, idempotent, owner's lines kept) | `app/browser/rdp/profile.py` | 104 lines, 96% |
+| Handle rules (an `rdp://` tab is not dialable) | `app/browser/protocols.py` | 58 lines, 93% |
+| Registry (`debug_flag`/`prefs`/`stealth`, Firefox row, `debug_arg`) | `app/browser/browsers.py` | 94% |
+| Detection CDP → RDP → BiDi, `TargetRef` host, `evaluate`/`click` dispatch, `enabled_targets` | `app/browser/endpoints.py` | 75% (was 74.8% before the round) |
+| Panel: prefs block, stealth line, Prepare Profile, per-browser debug flag | `index.html`, `browser-connection.js` | JS lane 0 fails |
+| Tab panel: RDP listing + diagnose + fix tip for the active browser | `app/ui/panels/browser_tabs.py` | — |
+| Payload keys (`prefs`, `prefs_file`, `user_js`, `stealth`) + `prepare_profile` on the existing slot | `app/ui/panels/cdp_tools.py` | slots unchanged (137) |
+
+Evidence: `fakes/rdp_stub_server.py` is a **real** fake DevTools server on one TCP port (greeting, `listTabs`,
+`getTarget`/`attach`, `requestTypes`, `evaluateJSAsync` + `evaluationResult`, legacy `evaluateJS`, long-string
+`substring`, rotating/expiring actors, byte-counted-prefix mode, silent mode) — so the client is exercised over a real
+socket, including three attach/detach cycles against one browser session. Acceptance: `navigator.webdriver` stays
+untouched by this channel and **no generated Firefox command contains `--remote-debugging-port`** (test-pinned);
+click-only actions; a plain Save never writes a profile, only Prepare Profile does (idempotent, additive).
+
+Gates: pytest **2,108 passed / 11 skipped** (environment-conditional skips only: Qt-metaobject + verify-quality
+ancestor lanes), JS **369 tests / 365 pass / 0 fail / 4 skipped**, coverage **88.31 % line / 84.76 % branch**,
+`verify_quality.py --changed-files` 0 fails, whole-repo lane only the pre-existing `captcha.js max_cc 12 > 10`, and
+`js_metrics` 0 new violations across 95 files. RULE 16 fixes during the round: `tab_of_descriptor` CC 11 → split into
+`text_field`/`int_field`; `RdpClient` 16 methods → 15 (`_supports_async` folded into `_eval_once`, where the
+`requestTypes` negotiation belongs).
+
+Honest limits, named in the design doc §5: RDP has no input synthesis (a trusted click needs the OS), no screenshot,
+no file-chooser, and no CDP-style `Network.*` — the panel lists those under `unavailable` instead of pretending.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

@@ -146,6 +146,31 @@ def resolved_port(cfg, browser_id: str) -> int:
     return browsers.resolve_port(cfg["port"], profile, (cfg["browsers"].get(profile.id) or {}).get("port"))
 
 
+def test_hint(profile, host: str, port) -> str:
+    """How to reach this browser's debug channel — per protocol, never a guess."""
+    if profile.protocol == browsers.PROTOCOL_RDP:
+        return (f"tcp://{host}:{port} — Firefox DevTools socket: start Firefox with "
+                f"--start-debugger-server {port} (RDP: no Remote Agent, no webdriver flag)")
+    if profile.protocol == browsers.PROTOCOL_BIDI:
+        return f"http://{host}:{port}/session"
+    return f"http://{host}:{port}/json/list"
+
+
+def devtools_prefs(profile, data_dir) -> dict:
+    """The prefs this browser's channel needs + the file they belong in (D-5).
+
+    Empty for a browser that needs none (Chrome/Edge), so the panel block simply
+    has nothing to show instead of showing an empty instruction.
+    """
+    from app.browser.rdp import profile as rdp_profile
+    if not profile.prefs:
+        return {"prefs": [], "prefs_file": "", "user_js": "", "stealth": profile.stealth}
+    return {"prefs": [{"name": name, "value": value} for name, value in profile.prefs],
+            "prefs_file": f"{str(data_dir).rstrip('/')}/{rdp_profile.USER_JS_NAME}",
+            "user_js": rdp_profile.user_js_text(profile),
+            "stealth": profile.stealth}
+
+
 def browser_row(cfg, profile) -> dict:
     """One browser as the panel needs it: endpoint, dir, commands, capabilities."""
     entry = cfg["browsers"].get(profile.id) or {}
@@ -154,7 +179,7 @@ def browser_row(cfg, profile) -> dict:
     extra = entry.get("extra_args") if entry.get("extra_args") is not None else profile.extra_args_default
     caps = browsers.capabilities(profile)
     host = cfg["host"]
-    return {
+    row = {
         "id": profile.id, "label": profile.label, "protocol": profile.protocol,
         "port_offset": profile.port_offset, "resolved_port": port,
         "user_data_dir": data_dir, "extra_args": extra, "dir_flag": profile.dir_flag,
@@ -162,9 +187,23 @@ def browser_row(cfg, profile) -> dict:
         "enabled": bool(entry.get("enabled", True)),
         "capabilities": caps,
         "unavailable": sorted(browsers.CAPABILITIES[browsers.PROTOCOL_CDP] - set(caps)),
-        "test_url": f"http://{host}:{port}/" + ("session" if profile.protocol == browsers.PROTOCOL_BIDI else "json/list"),
+        "test_url": test_hint(profile, host, port),
         "commands": browsers.launch_commands(profile, browsers.endpoint(port, data_dir, extra)),
     }
+    row.update(devtools_prefs(profile, data_dir))
+    return row
+
+
+def prepare_active_profile(cfg) -> tuple:
+    """Write the active browser's DevTools prefs when the panel asked (D-5).
+
+    Only the explicit Prepare Profile action gets here — a plain Save never
+    touches a real profile — and a browser whose channel needs no prefs is
+    refused by name.
+    """
+    from app.browser.rdp import profile as rdp_profile
+    profile = browsers.profile_of(cfg["browser"]) or browsers.default_profile()
+    return rdp_profile.prepare_profile(profile, cfg["user_data_dir"])
 
 
 def browser_rows(config) -> list:
@@ -415,12 +454,21 @@ class CdpToolsMixin:
             data = json.loads(config_json or "{}")
             cfg = parse_cdp_config(data, self.config)
             apply_cdp_config(self, cfg)
+            prepared = None
+            if data.get("prepare_profile"):
+                prepared, err = prepare_active_profile(cfg)
+                if err:
+                    return json.dumps({"ok": False, "error": err})
+                self._log(prepared["message"], "success")
             port = resolved_port(cfg, cfg["browser"])
             self._log(f"Browser config saved: {cfg['browser']} on {cfg['host']}:{port} "
                       f"(base {cfg['port']}) dir={cfg['user_data_dir']}", "success")
-            return json.dumps({"ok": True, "browser": cfg["browser"], "host": cfg["host"],
-                               "port": port, "base_port": cfg["port"],
-                               "user_data_dir": cfg["user_data_dir"]})
+            reply = {"ok": True, "browser": cfg["browser"], "host": cfg["host"],
+                     "port": port, "base_port": cfg["port"],
+                     "user_data_dir": cfg["user_data_dir"]}
+            if prepared:
+                reply["prepare_profile"] = prepared
+            return json.dumps(reply)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
@@ -443,6 +491,8 @@ class CdpToolsMixin:
                 "unavailable": row["unavailable"],
                 "notes": row["notes"],
                 "test_url": row["test_url"],
+                "prefs": row["prefs"], "prefs_file": row["prefs_file"],
+                "user_js": row["user_js"], "stealth": row["stealth"],
                 "browsers": browser_rows(self.config),
             }
             payload.update(row["commands"])

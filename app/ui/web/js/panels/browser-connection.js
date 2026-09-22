@@ -13,6 +13,11 @@
    BASE port and each browser derives base + its registry offset (Chrome +0,
    Firefox +1, Edge +2). The panel always shows the resolved number.
 
+   Firefox round 8: the block also renders the profile prefs its DevTools socket
+   needs (and where they live), the stealth line that says what stays unflagged,
+   and a Prepare Profile button that asks the bridge to write `user.js` — only
+   when clicked, never as a side effect of Save.
+
    RULE18: file ≤300, func ≤30, CC≤10, ≤4 params.
 */
 'use strict';
@@ -51,6 +56,12 @@ const BrowserConnection = {
   bind() {
     const sel = this._el('browserSelect');
     if (sel) sel.addEventListener('change', () => this.onSelectChange());
+    const prep = this._el('cdpPrepareProfileBtn');
+    if (prep) prep.addEventListener('click', () => this.prepareProfile());
+  },
+
+  _bridge() {
+    return (typeof App !== 'undefined' && App.bridge) ? App.bridge : null;
   },
 
   rows() { return (this.browsers && this.browsers.length) ? this.browsers : this.FALLBACK; },
@@ -137,6 +148,17 @@ const BrowserConnection = {
     this._text('cdpCapabilities', this.capabilityText(b));
     this._text('cdpBrowserNotes', (b.dir_flag ? `${b.dir_flag} — ` : '') + (b.notes || ''));
     this._text('cdpDirLabel', b.dir_flag ? `Profile dir for ${b.label || b.id} (${b.dir_flag})` : 'User data dir (this browser)');
+    this._text('cdpPrefs', this.prefsText(b));
+    this._text('cdpPrefsFile', b.prefs_file || '—');
+    this._text('cdpStealth', b.stealth || '');
+  },
+
+  /* The channel's prefs as pasteable user.js lines (or why none are needed). */
+  prefsText(b) {
+    if (b.user_js) return b.user_js;
+    const names = (b.prefs || []).map((p) => `user_pref("${p.name}", ${p.value});`);
+    if (names.length) return names.join('\n');
+    return 'No profile prefs needed — this browser opens its own debug port.';
   },
 
   /* ✅ what works, ⛔ what this protocol cannot do yet — named, never a silent timeout */
@@ -166,9 +188,16 @@ const BrowserConnection = {
     this._text('cdpLaunchCmd', b.binary ? this.compose(b) : this.commandText(b));
   },
 
+  /* The debug flag is the browser's own (Chrome `=`, Firefox DevTools ` `). */
+  debugFlag(b) {
+    const flag = String(b.debug_flag || 'remote-debugging-port');
+    const port = this.resolvedPort(b);
+    return flag === 'start-debugger-server' ? `--${flag} ${port}` : `--${flag}=${port}`;
+  },
+
   compose(b) {
     const dir = this._val('cdpUserDataDir');
-    const parts = [b.binary, `--remote-debugging-port=${this.resolvedPort(b)}`,
+    const parts = [b.binary, this.debugFlag(b),
       `${b.dir_flag || '--user-data-dir'}="${dir}"`];
     const extra = (this._val('cdpExtraArgs') || '').trim();
     if (extra) parts.push(extra);
@@ -191,6 +220,26 @@ const BrowserConnection = {
   updateToolbar() {
     if (!this.browsers) return;   // no payload yet — the CDP panel paints itself at its own init
     if (typeof CDPPanel !== 'undefined' && CDPPanel.updateChromeToolbar) CDPPanel.updateChromeToolbar(this.toolbarConfig());
+  },
+
+  /* ── Prepare Profile (explicit, opt-in — Save never writes a profile) ── */
+
+  prepareProfile() {
+    const payload = this.payload();
+    payload.prepare_profile = true;
+    const bridge = this._bridge();
+    if (bridge && bridge.set_cdp_config) {
+      bridge.set_cdp_config(JSON.stringify(payload), (res) => this.onPrepared(res));
+    }
+  },
+
+  onPrepared(res) {
+    try {
+      const r = JSON.parse(res);
+      const msg = r.ok ? (r.prepare_profile && r.prepare_profile.message) || 'Profile prepared'
+        : 'Prepare profile failed: ' + (r.error || 'unknown error');
+      if (typeof LogConsole !== 'undefined' && LogConsole.log) LogConsole.log(msg, r.ok ? 'success' : 'error');
+    } catch (e) { /* unreadable reply — nothing invented to show */ }
   },
 
   /* ── what Save sends to the bridge ──────────────────────────────────── */

@@ -4,6 +4,10 @@ Owner request: same host/port *setting* for both browsers, a separate data dir
 and launch command per browser, other browsers addable later, and an honest
 answer about what each protocol can do.
 
+2026-09-21 (round 8): Firefox's row moved to the DevTools Remote Debugging
+Protocol — `--start-debugger-server`, never the flagged `--remote-debugging-port`
+— so the launch-command test doubles as the stealth guard.
+
 RED at `bce5a01`: `app.browser.browsers` did not exist.
 """
 
@@ -18,7 +22,7 @@ def test_the_registry_has_firefox_beside_chrome_and_is_extensible():
     assert br.profile_ids() == ["chrome", "firefox", "edge"]
     chrome, firefox = br.profile_of("chrome"), br.profile_of("firefox")
     assert chrome.protocol == br.PROTOCOL_CDP
-    assert firefox.protocol == br.PROTOCOL_BIDI
+    assert firefox.protocol == br.PROTOCOL_RDP, "the DevTools channel, not the flagged Remote Agent"
     assert br.profile_of("CHROME").id == "chrome", "ids are case-insensitive"
     assert br.profile_of("netscape") is None
     assert br.default_profile().id == "chrome", "a fresh install keeps Chrome"
@@ -27,7 +31,7 @@ def test_the_registry_has_firefox_beside_chrome_and_is_extensible():
 def test_per_browser_data_dirs_and_dir_flags_differ():
     chrome, firefox = br.profile_of("chrome"), br.profile_of("firefox")
     assert chrome.dir_flag == "--user-data-dir"
-    assert firefox.dir_flag == "--profile", "Firefox takes a profile dir, not a Chrome dir"
+    assert firefox.dir_flag == "-profile", "Firefox takes a profile dir, not a Chrome dir"
     assert chrome.data_dir_default != firefox.data_dir_default
     assert br.default_data_dir("firefox") == firefox.data_dir_default
     assert br.default_data_dir("netscape") == ""
@@ -53,14 +57,32 @@ def test_chrome_command_carries_binary_dir_flag_port_and_extra_args():
     assert win.endswith("--disable-extensions")
 
 
-def test_firefox_command_uses_its_binary_profile_flag_and_no_remote_default():
+def test_firefox_command_starts_the_devtools_server_instead_of_the_remote_agent():
     firefox = br.profile_of("firefox")
     cmd = br.build_command(firefox, "linux", br.endpoint(9224, "/home/me/.arena-firefox"))
     assert cmd.startswith("firefox ")
-    assert "--remote-debugging-port=9224" in cmd
-    assert '--profile="/home/me/.arena-firefox"' in cmd
+    assert "--start-debugger-server 9224" in cmd, "the RDP socket the app attaches to"
+    assert "-profile=\"/home/me/.arena-firefox\"" in cmd
     assert "-no-remote" in cmd, "without it the port never opens while Firefox runs"
     assert "--user-data-dir" not in cmd, "Chrome's flag is meaningless to Firefox"
+
+
+def test_no_firefox_command_ever_enables_the_flagged_remote_agent():
+    """R3 guard: --remote-debugging-port sets navigator.webdriver=true (bug 1719505)."""
+    firefox = br.profile_of("firefox")
+    for key, cmd in br.launch_commands(firefox, br.endpoint(9224, "/tmp/ff")).items():
+        assert "--remote-debugging-port" not in cmd, f"{key} would flip navigator.webdriver"
+    assert firefox.debug_flag == "start-debugger-server"
+    assert br.profile_of("chrome").debug_flag == "remote-debugging-port"
+
+
+def test_the_firefox_row_carries_the_prefs_the_socket_needs():
+    firefox = br.profile_of("firefox")
+    prefs = dict(firefox.prefs)
+    assert prefs["devtools.debugger.remote-enabled"] is True
+    assert prefs["devtools.debugger.prompt-connection"] is False
+    assert prefs["devtools.chrome.enabled"] is True
+    assert firefox.stealth, "the row explains why this channel keeps the browser unflagged"
 
 
 def test_every_browser_gets_commands_for_every_os_and_a_url_variant():
@@ -77,11 +99,13 @@ def test_capabilities_state_what_each_protocol_can_do_today():
     assert br.supports("chrome", "set_files") is True
     assert br.supports("firefox", "tabs") is True
     assert br.supports("firefox", "evaluate") is True
-    assert br.supports("firefox", "screenshot") is False, "CDP-only, still missing in BiDi"
+    assert br.supports("firefox", "click") is True, "a click-only action is a JS click over RDP"
+    assert br.supports("firefox", "screenshot") is False, "CDP-only, not in RDP either"
     assert br.supports("firefox", "set_files") is False
     assert br.supports("netscape", "tabs") is False
     assert br.supports("firefox", "screenshot", protocol=br.PROTOCOL_CDP) is True, \
-        "an ESR Firefox launched with CDP gets the full matrix"
+        "an ESR Firefox launched with CDP gets the full matrix — at the flag's price"
+    assert br.endpoint_kind("firefox") == br.PROTOCOL_RDP
     assert br.capabilities(br.profile_of("chrome")) == sorted(br.CAPABILITIES[br.PROTOCOL_CDP])
     assert br.endpoint_kind("edge") == br.PROTOCOL_CDP
     assert br.endpoint_kind("netscape") == ""

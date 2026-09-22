@@ -33,6 +33,53 @@ from app.utils.win_popup import raise_window_titles
 log = logging.getLogger("arena")
 
 
+def connect_refusal(ws_url: str, endpoint_port=None) -> str:
+    """Why this tab handle cannot be connected as its own socket ("" when it can).
+
+    One seam for the slot, one place that knows the rule (`protocols`), and the
+    browser import stays lazy — panels never import the browser layer at module
+    level.
+    """
+    from app.browser import protocols
+    return protocols.connect_refusal(ws_url, endpoint_port)
+
+
+def active_browser(bridge):
+    """The registry row of the selected browser (None when the registry says no)."""
+    from app.browser import browsers
+    try:
+        stored = bridge.config.get_state("active_browser", "")
+        return browsers.profile_of(stored) or browsers.default_profile()
+    except Exception:
+        return None
+
+
+def uses_rdp(bridge) -> bool:
+    """Is the panel pointed at a Firefox DevTools socket (not a CDP endpoint)?"""
+    from app.browser import browsers
+    profile = active_browser(bridge)
+    return bool(profile and profile.protocol == browsers.PROTOCOL_RDP)
+
+
+async def live_tab_rows(bridge):
+    """The active browser's tabs — CDP sockets, or Firefox's RDP tab handles.
+
+    Firefox has no per-tab socket, so its rows come from the same one-seam listing
+    the pool and the reconciler use (`endpoints.list_targets`), each carrying the
+    `rdp://` handle that says which tab it is.
+    """
+    from app.browser import endpoints
+    profile = active_browser(bridge)
+    if uses_rdp(bridge):
+        loop = asyncio.get_event_loop()
+        rows, err = await loop.run_in_executor(None, lambda: endpoints.list_targets(
+            profile.id, bridge.cdp._host, bridge.cdp._port, 3.0))
+        if err and not rows:
+            bridge._log(f"❌ {err}", "warn")
+        return rows
+    return await bridge.cdp.fetch_tabs()
+
+
 def claim_connect_slot(bridge, ws_url: str) -> bool:
     """Debounce same-ws reconnects (1.5s / in-progress); True to proceed."""
     try:
@@ -201,8 +248,20 @@ def claim_find_slot(bridge, query: str):
         return (query or "").strip()
 
 
+def firefox_fix_tip(bridge) -> str:
+    """What to do when a Firefox DevTools socket answers with no tabs."""
+    return (f"💡 Fix: 1) Start Firefox with --start-debugger-server {bridge.cdp._port} "
+            '(profile prefs: devtools.debugger.remote-enabled=true, '
+            'devtools.debugger.prompt-connection=false). 2) Open https://arena.ai in that '
+            "Firefox. 3) Click Refresh or Diagnose — attach/detach never restarts it.")
+
+
 async def report_no_tabs(bridge, query: str) -> None:
     """Diagnose an empty tab list (executor diag + fix tip), answer []."""
+    if uses_rdp(bridge):
+        bridge._log(firefox_fix_tip(bridge), "warn")
+        bridge.tab_match_result.emit(query, "[]")
+        return
     try:
         loop = asyncio.get_event_loop()
         diag = await loop.run_in_executor(None, lambda: bridge.cdp.diagnose_sync())
@@ -228,8 +287,8 @@ def report_tab_matches(bridge, query: str, tabs) -> None:
 
 
 async def match_live_tabs(bridge, query: str) -> None:
-    """Fetch tabs; route to no-tabs / no-match / matches reporting."""
-    tabs = await bridge.cdp.fetch_tabs()
+    """Fetch tabs (whichever protocol the active browser speaks); route the report."""
+    tabs = await live_tab_rows(bridge)
     if not tabs:
         await report_no_tabs(bridge, query)
         return
@@ -255,9 +314,9 @@ async def do_find_tab(bridge, query: str) -> None:
 
 
 async def do_fetch_tabs(bridge) -> None:
-    """Fetch live tabs; an empty list also drops a diagnose summary."""
+    """Fetch live tabs (CDP or Firefox RDP); an empty list also drops a diagnose."""
     try:
-        tabs = await bridge.cdp.fetch_tabs()
+        tabs = await live_tab_rows(bridge)
         payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs], ensure_ascii=False)
         bridge.tabs_received.emit(payload)
         if not tabs:
@@ -283,8 +342,31 @@ def report_diag_checks(bridge, diag) -> None:
             bridge._log(f"    - {t.get('title', '')[:60]} — {t.get('url', '')}", "success")
 
 
+async def do_diagnose_rdp(bridge) -> None:
+    """Executor-diagnose the Firefox DevTools socket: greeting, prefix, tabs."""
+    from app.browser import rdp
+    loop = asyncio.get_event_loop()
+    info, err = await loop.run_in_executor(None, lambda: rdp.session_info(
+        rdp.Endpoint(bridge.cdp._host, bridge.cdp._port), 3.0))
+    if err:
+        bridge._log(f"❌ {err}", "warn")
+        bridge._log(firefox_fix_tip(bridge), "warn")
+        return
+    bridge._log(f"✅ Firefox DevTools (RDP) on {info['host']}:{info['port']} — "
+                f"{info['application']} session, {info['tabs']} tab(s), actor prefix "
+                f"{info['prefix']}* (actors are re-resolved on every attach)", "success")
+    rows = await live_tab_rows(bridge)
+    if rows:
+        payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url,
+                               "ws_url": t.ws_url} for t in rows], ensure_ascii=False)
+        bridge.tabs_received.emit(payload)
+
+
 async def do_diagnose_chrome(bridge) -> None:
-    """Executor-diagnose Chrome; summary + checks + tabs to the UI."""
+    """Executor-diagnose the active browser: CDP checks, or the DevTools socket."""
+    if uses_rdp(bridge):
+        await do_diagnose_rdp(bridge)
+        return
     try:
         loop = asyncio.get_event_loop()
         diag = await loop.run_in_executor(None, lambda: bridge.cdp.diagnose_sync())
@@ -415,7 +497,8 @@ class BrowserTabsMixin:
         """
         if not self.cdp:
             return json.dumps({"error": "CDP not available"}, ensure_ascii=False)
-        self._log(f"🩺 Diagnosing Chrome remote debugging on {self.cdp._host}:{self.cdp._port}… (non-blocking)", "info")
+        self._log(f"🩺 Diagnosing {active_browser(self).label if active_browser(self) else 'browser'} "
+                  f"on {self.cdp._host}:{self.cdp._port}… (non-blocking)", "info")
         schedule_coro(self, do_diagnose_chrome(self))
         return "pending"
 
@@ -454,6 +537,10 @@ class BrowserTabsMixin:
     def connect_tab(self, ws_url: str):
         if not self.cdp:
             self._log("CDP client not available", "error")
+            return
+        refusal = connect_refusal(ws_url, self.cdp._port)
+        if refusal:
+            self._log(f"❌ {refusal}", "warn")
             return
         if not claim_connect_slot(self, ws_url):
             return

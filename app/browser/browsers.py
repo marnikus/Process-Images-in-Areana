@@ -2,16 +2,21 @@
 
 Owner request: Firefox next to Chrome, same host/port setting, per-browser data
 dir + launch command, other browsers later. This module is the ONE place that
-knows a browser's binaries, flags, default profile dir and protocol; adding a
-browser later is one row here, not a new code path.
+knows a browser's binaries, flags, default profile dir, protocol **and the flag
+that opens its debug channel**; adding a browser later is one row here, not a
+new code path.
 
-Protocol reality (measured 2026-09-21):
+Protocol reality (measured 2026-09-21, round 8):
 * Chrome/Edge/Chromium speak CDP (`GET /json/list`, one socket per tab).
-* Firefox's Remote Agent speaks **WebDriver BiDi**; CDP was deprecated in
-  Firefox 129 and removed in 141, so an ESR 128/140 profile with
-  `remote.active-protocols=2` is the only Firefox that still answers CDP.
-`detect_protocol` in `endpoints.py` decides per endpoint; `capabilities` states
-what each protocol can do, so a CDP-only operation can refuse by name.
+* Firefox is attached over the legacy **DevTools RDP** socket that
+  `--start-debugger-server` opens. Its Remote Agent (`--remote-debugging-port`,
+  WebDriver BiDi and the removed CDP) sets `navigator.webdriver = true` for the
+  whole browser session (Firefox bug 1719505) — that is exactly the automation
+  signal the stealth requirement forbids, so this registry never generates that
+  flag for Firefox (pinned by a test).
+`detect_protocol` in `endpoints.py` decides per endpoint (CDP → RDP → BiDi);
+`capabilities` states what each protocol can do, so a missing operation can
+refuse by name instead of timing out.
 
 RED at `bce5a01`: this module did not exist.
 """
@@ -22,20 +27,32 @@ import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-PROTOCOL_CDP = "cdp"
-PROTOCOL_BIDI = "bidi"
+from . import protocols as PROTOCOLS
+
+REMOTE_DEBUGGING_PORT = "remote-debugging-port"
+START_DEBUGGER_SERVER = "start-debugger-server"
+
+PROTOCOL_CDP = PROTOCOLS.PROTOCOL_CDP
+PROTOCOL_RDP = PROTOCOLS.PROTOCOL_RDP
+PROTOCOL_BIDI = PROTOCOLS.PROTOCOL_BIDI
 
 # What each protocol can do today (the one gate a CDP-only op asks, D-3).
 CAPABILITIES: Dict[str, frozenset] = {
     PROTOCOL_CDP: frozenset({"tabs", "evaluate", "navigate", "screenshot",
                              "set_files", "input", "dom"}),
+    PROTOCOL_RDP: frozenset({"tabs", "evaluate", "click"}),
     PROTOCOL_BIDI: frozenset({"tabs", "evaluate", "navigate"}),
 }
 
 
 @dataclass(frozen=True)
 class BrowserProfile:
-    """One browser: identity, endpoint offset, profile dir, binaries, flags."""
+    """One browser: identity, endpoint offset, profile dir, binaries, flags.
+
+    `debug_flag` is the flag that opens the debug channel; `prefs` are the
+    profile preferences that channel needs (empty for browsers that need none);
+    `stealth` is the sentence the panel shows about automation signals.
+    """
 
     id: str
     label: str
@@ -46,6 +63,9 @@ class BrowserProfile:
     extra_args_default: str = ""
     executables: Dict[str, str] = field(default_factory=dict)
     notes: str = ""
+    debug_flag: str = REMOTE_DEBUGGING_PORT
+    prefs: Tuple[Tuple[str, object], ...] = ()
+    stealth: str = ""
 
     def binary(self, os_name: str) -> str:
         """Executable path/name for an OS key (`windows` / `linux` / `macos`)."""
@@ -65,19 +85,29 @@ PROFILES: Tuple[BrowserProfile, ...] = (
         notes="Full automation (CDP): tabs, JS, screenshots, file attach, input.",
     ),
     BrowserProfile(
-        id="firefox", label="Firefox (Mozilla)", protocol=PROTOCOL_BIDI, port_offset=1,
-        dir_flag="--profile", data_dir_default="C:\\arena-images-firefox",
+        id="firefox", label="Firefox (Mozilla)", protocol=PROTOCOL_RDP, port_offset=1,
+        dir_flag="-profile", data_dir_default="C:\\arena-images-firefox",
         extra_args_default="-no-remote",
         executables={
             "windows": '"C:\\Program Files\\Mozilla Firefox\\firefox.exe"',
             "linux": "firefox",
             "macos": '"/Applications/Firefox.app/Contents/MacOS/firefox"',
         },
-        notes=("WebDriver BiDi (Remote Agent): tabs, JS, navigation. CDP was removed in "
-               "Firefox 141 — for full CDP automation use ESR 128/140 with "
-               'user_pref("remote.active-protocols", 2); in the profile. -no-remote '
-               "(default) or --new-instance is required or the debug port never opens "
-               "while Firefox is already running."),
+        notes=("DevTools RDP (--start-debugger-server): tabs, JS, click — attach and "
+               "detach without touching the browser, and no automation flag. There is no "
+               "input, screenshot or file API, and the Remote Agent "
+               "(--remote-debugging-port) would set navigator.webdriver for the session."),
+        debug_flag=START_DEBUGGER_SERVER,
+        prefs=(
+            ("devtools.chrome.enabled", True),
+            ("devtools.debugger.remote-enabled", True),
+            ("devtools.debugger.prompt-connection", False),
+            ("devtools.debugger.force-local", True),
+        ),
+        stealth=("Keeps the browser unflagged: no geckodriver, no Marionette, no Remote "
+                 "Agent — navigator.webdriver stays false. Start it with "
+                 "--start-debugger-server, never with --remote-debugging-port (Firefox "
+                 "bug 1719505 sets that flag for the whole session)."),
     ),
     BrowserProfile(
         id="edge", label="Edge (Chromium)", protocol=PROTOCOL_CDP, port_offset=2,
@@ -147,9 +177,21 @@ def endpoint(port, data_dir: str, extra_args: str = "", url: str = "") -> dict:
     return {"port": port, "data_dir": data_dir, "extra_args": extra_args, "url": url}
 
 
+def debug_arg(profile: BrowserProfile, port) -> str:
+    """The flag that opens this browser's debug channel.
+
+    Chrome/Edge take `--remote-debugging-port=<n>`; Firefox's DevTools server
+    takes a space (`--start-debugger-server <n>`) and is a different channel from
+    the flagged Remote Agent — which is the whole point of this row (D-4).
+    """
+    if profile.debug_flag == START_DEBUGGER_SERVER:
+        return f"--{START_DEBUGGER_SERVER} {int(port)}"
+    return f"--{profile.debug_flag}={int(port)}"
+
+
 def build_command(profile: BrowserProfile, os_name: str, target: dict) -> str:
-    """One launch command: binary + remote-debugging port + profile dir + args (+ URL)."""
-    parts = [profile.binary(os_name), f"--remote-debugging-port={int(target['port'])}",
+    """One launch command: binary + debug-channel flag + profile dir + args (+ URL)."""
+    parts = [profile.binary(os_name), debug_arg(profile, target["port"]),
              f'{profile.dir_flag}="{target["data_dir"]}"']
     extra = target.get("extra_args") or profile.extra_args_default
     if (extra or "").strip():
@@ -186,7 +228,13 @@ def default_data_dir(browser_id: str) -> str:
     return profile.data_dir_default if profile else ""
 
 
+def prefs_of(browser_id: str) -> Tuple[Tuple[str, object], ...]:
+    """The profile preferences this browser's debug channel needs (() when none)."""
+    profile = profile_of(browser_id)
+    return profile.prefs if profile else ()
+
+
 def endpoint_kind(browser_id: str) -> str:
-    """`cdp` / `bidi` / `''` — the protocol this browser is expected to speak."""
+    """`cdp` / `rdp` / `bidi` / `''` — the protocol this browser is expected to speak."""
     profile = profile_of(browser_id)
     return profile.protocol if profile else ""
