@@ -272,3 +272,16 @@ RAW_TABS = [
 ]
 
 
+
+
+@pytest.fixture(autouse=True)
+def _fast_firefox_allow_wait(monkeypatch):
+    """Never sit through the real 25 s "waiting for the Allow dialog" in a test (round 11).
+
+    The number itself is a UI decision (`rdp/session.ALLOW_WAIT`); tests that exercise the
+    dialog care about *whether* a connection is waited for, not how many real seconds pass.
+    """
+    from app.browser.rdp import session
+    monkeypatch.setattr(session, "ALLOW_WAIT", 0.4)
+    yield
+    session.close_all()          # one registry per app run: a test must not inherit a verdict

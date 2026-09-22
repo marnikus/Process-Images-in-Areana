@@ -145,11 +145,23 @@ class MainWindow(QMainWindow):
             self.view.page().runJavaScript("typeof SashGrid !== 'undefined' && SashGrid.flushPersistence && SashGrid.flushPersistence()")
         except Exception:
             pass
-        # disconnect CDP
+        self._drop_browser_sockets()
+        super().closeEvent(event)
+
+    def _drop_browser_sockets(self):
+        """Close what the app keeps open in a browser — never a reason to fail a close.
+
+        The CDP client disconnects itself; the Firefox DevTools socket is the shared
+        per-endpoint one the app keeps for the whole run (round 11), so it is dropped here.
+        """
         if self.cdp_client:
             try:
                 import asyncio
                 asyncio.ensure_future(self.cdp_client.disconnect())
             except Exception:
                 pass
-        super().closeEvent(event)
+        try:
+            from app.browser.rdp import session as rdp_session
+            rdp_session.close_all()
+        except Exception:
+            pass

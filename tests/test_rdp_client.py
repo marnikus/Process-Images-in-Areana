@@ -53,13 +53,22 @@ def test_list_targets_names_tabs_by_browsing_context_not_by_actor(stub):
 
 
 def test_the_tab_identity_survives_a_reconnect(stub):
+    """Re-pointed in round 11: `ctx-N` is stable, and the two listings share one socket.
+
+    The old pin asserted `stub.connections == 2` — a fresh socket per call. That is what
+    made Firefox ask for permission on every listing (see `tests/test_rdp_session.py`),
+    so the identity is now proven across an explicit reconnect instead of a silent one.
+    """
+    from app.browser.rdp import session as sess
     first, _ = rdp.list_targets(_point(stub.port))
     second, _ = rdp.list_targets(_point(stub.port))
     assert [t.id for t in first] == [t.id for t in second], "ctx ids are stable (R2)"
+    assert stub.connections == 1, "and the second listing reused the socket"
+    sess.close_all()                       # an explicit reconnect, as a restart would be
+    third, _ = rdp.list_targets(_point(stub.port))
+    assert [t.id for t in third] == [t.id for t in first], "the identity outlives the socket"
     assert stub.connections == 2
-    actors_first = [t.actor for t in first]
-    actors_second = [t.actor for t in second]
-    assert actors_first != actors_second, "while the underlying actors are not"
+    assert [t.actor for t in third] != [t.actor for t in first], "while the actors do not"
 
 
 def test_a_dead_socket_returns_a_reason_and_never_raises():
@@ -147,12 +156,13 @@ def test_a_stale_actor_is_resolved_again_and_the_call_still_succeeds():
 
 
 def test_a_reconnecting_client_keeps_working_while_the_firefox_session_never_restarts():
+    """Round 11 re-point: three operations, **one** socket — a new one per call asks Firefox again."""
     server = RdpStubServer()
     try:
         for _ in range(3):
             value, err = rdp.evaluate_json(_point(server.port), "ctx-3", "JSON.stringify(document.title)")
             assert (value, err) == ("Arena", "")
-        assert server.connections == 3, "three attach/detach cycles, one browser session"
+        assert server.connections == 1, "three evaluations, one browser session, one socket"
     finally:
         server.close()
 

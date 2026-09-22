@@ -47,8 +47,14 @@ class RdpConnection:
 
     # ── lifecycle ────────────────────────────────────────────────────────
 
-    def connect(self) -> "RdpConnection":
-        """Open the socket and drain the greeting (idempotent)."""
+    def connect(self, greeting_wait: float = GREETING_TIMEOUT) -> "RdpConnection":
+        """Open the socket and drain the greeting (idempotent).
+
+        `greeting_wait` is how long the greeting may take. The default is a fraction of a
+        second — a DevTools server answers at once, so silence means "not an RDP port".
+        Firefox waiting on its "Allow connection?" dialog is the one case that deserves
+        seconds, and `session.ALLOW_WAIT` is where that number lives (round 11).
+        """
         if self.ready:
             return self
         try:
@@ -57,13 +63,13 @@ class RdpConnection:
             raise RdpError(f"{base_url(self.endpoint)} — {e}", "transport") from e
         self._reader = PacketReader(self._sock, self.timeout)
         self.ready = True
-        self.greeting = self._read_greeting()
+        self.greeting = self._read_greeting(greeting_wait)
         return self
 
-    def _read_greeting(self) -> dict:
+    def _read_greeting(self, greeting_wait: float = GREETING_TIMEOUT) -> dict:
         """The root form; a silent endpoint costs one short wait, never a hang."""
         try:
-            packet = self._reader.read_packet(GREETING_TIMEOUT)
+            packet = self._reader.read_packet(greeting_wait)
         except RdpError:
             return {}
         if str(packet.get("from") or "") == "root" and not packet.get("error"):

@@ -183,10 +183,21 @@ def list_targets(browser_id: str, host: str, port, timeout: float = 3.0) -> Tupl
     refs, err, answered = _list_over(point, profile.protocol, timeout)
     if refs or answered:
         return refs, err          # it spoke: an empty list is an answer, not a failure
+    if _parked(host, port_i):
+        return [], err            # ...and never probe a parked browser: the probe is a dialog
     protocol = detect_protocol(host, port_i, min(timeout, DETECT_TIMEOUT), prefer=profile.protocol)
     if protocol and protocol != profile.protocol:
         return _list_over(point, protocol, timeout)[:2]
     return [], _unreachable(profile, host, port_i, timeout) or err
+
+
+def _parked(host: str, port: int) -> bool:
+    """Is this endpoint parked on Firefox's Allow dialog? (Round 11, D-2/D-6.)
+
+    Detection must not run then: the probe is another incoming connection, i.e. another
+    dialog, and the reason to show is the park, not “nothing listens there”.
+    """
+    return bool(rdp.session.parked_reason(rdp.Endpoint(host, int(port))))
 
 
 def _unreachable(profile, host: str, port: int, timeout: float = DETECT_TIMEOUT) -> str:

@@ -11,6 +11,10 @@ codebase: `(value, reason)` and never an exception, because these calls run
 inside Qt slots. The class is the seam the tests drive; the module-level
 functions are what `endpoints` and the panel call.
 
+Round 11: the module-level functions and `attached` no longer open a socket each —
+they take the **one** socket `session` keeps for this endpoint (fifteen connections per
+pass was fifteen permission dialogs; see `session.py`).
+
 RULE 18: class ≤150 LOC / ≤15 methods; funcs ≤20; ≤3 params.
 """
 
@@ -23,6 +27,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from . import actors
 from .actors import click_expression
+from .chrome import ChromeMixin
 from .connection import RdpConnection
 from .wire import (DEFAULT_TIMEOUT, GREETING_TIMEOUT, PROTOCOL, Endpoint, RdpError,
                    tab_handle)
@@ -57,8 +62,13 @@ def probe(point: Endpoint, timeout: float = GREETING_TIMEOUT) -> bool:
         connection.close()
 
 
-class RdpClient:
-    """A connection to one running Firefox's DevTools server."""
+class RdpClient(ChromeMixin):
+    """A connection to one running Firefox's DevTools server.
+
+    Tab operations live here; chrome-scope operations (the browser's own process, which
+    is what switches its permission dialog off) come from `ChromeMixin` — RULE 16 keeps
+    the class small, and the split is the real seam: same socket, different actor.
+    """
 
     def __init__(self, endpoint: Endpoint, timeout: float = DEFAULT_TIMEOUT,
                  opener: Optional[Callable] = None) -> None:
@@ -77,10 +87,15 @@ class RdpClient:
         self.close()
         return False
 
-    def connect(self) -> "RdpClient":
-        """Open the socket and read the greeting."""
-        self._connection.connect()
+    def connect(self, greeting_wait: float = GREETING_TIMEOUT) -> "RdpClient":
+        """Open the socket and read the greeting (`greeting_wait` covers the Allow dialog)."""
+        self._connection.connect(greeting_wait)
         return self
+
+    @property
+    def greeting(self) -> dict:
+        """The root form ({} when this endpoint connected but never answered)."""
+        return self._connection.greeting
 
     def close(self) -> None:
         """Drop the socket (idempotent); Firefox keeps running with every tab open."""
@@ -155,23 +170,8 @@ class RdpClient:
     # ── actor resolution ─────────────────────────────────────────────────
 
     def _eval_once(self, tab: actors.RdpTab, expression: str, timeout) -> dict:
-        """One evaluation — the async command when this server knows it, else legacy.
-
-        `requestTypes` answers which packet types the actor implements, is asked
-        once per attach, and is what keeps this working on servers that predate
-        `evaluateJSAsync` (they answer the async packet with an error otherwise).
-        """
-        console = self._console_actor(tab, timeout)
-        if self._async_known is None:
-            names = actors.actor_types(self._connection.request(
-                {"to": console, "type": "requestTypes"}, timeout))
-            self._async_known = ASYNC_COMMAND in names
-        command = ASYNC_COMMAND if self._async_known else LEGACY_COMMAND
-        reply = self._connection.request({"to": console, "type": command,
-                                          "text": str(expression)}, timeout)
-        if not self._async_known:
-            return reply
-        return self._await_result(console, actors.result_id(reply), timeout)
+        """One evaluation in a tab, through the shared per-actor machinery."""
+        return self._eval_on(self._console_actor(tab, timeout), expression, timeout)
 
     def _console_actor(self, tab: actors.RdpTab, timeout) -> str:
         """The tab's console actor (cached per attach — actors die with the socket)."""
@@ -179,26 +179,18 @@ class RdpClient:
         return cached or self._resolve_console(tab, timeout)
 
     def _resolve_console(self, tab: actors.RdpTab, timeout) -> str:
-        """`getTarget` on the descriptor; `attach` when the form hides the actor."""
-        form = actors.target_form(self._connection.request(
-            {"to": tab.actor, "type": "getTarget"}, timeout))
-        console = actors.console_actor_of(form)
-        if not console:
-            attached = self._connection.request({"to": tab.actor, "type": "attach"}, timeout)
-            console = actors.console_actor_of(actors.target_form(attached))
-        self._actor_cache[tab.id] = actors.require_actor(console)
-        return self._actor_cache[tab.id]
-
-    def _await_result(self, console: str, result_id: str, timeout) -> dict:
-        """The `evaluationResult` event that answers an async evaluation."""
-        if not result_id:
-            raise RdpError(f"{console} answered without a resultID", "protocol")
-        return self._connection.wait_for(lambda p: actors.result_matches(p, result_id), timeout)
+        """The console actor behind one tab descriptor (`ctx-N` is the cache key)."""
+        return self._resolve_actor(tab.actor, tab.id, timeout)
 
 
 @contextmanager
 def attach(point: Endpoint, timeout: float = DEFAULT_TIMEOUT):
-    """A connected client for one operation, closed again whatever happens."""
+    """A connected client for one operation, closed again whatever happens.
+
+    Kept for a caller that really wants its own socket; the app's own paths use the
+    shared session instead (round 11 — one socket per endpoint, or Firefox asks for
+    permission once per operation).
+    """
     client = RdpClient(point, timeout)
     client.connect()
     try:
@@ -207,10 +199,23 @@ def attach(point: Endpoint, timeout: float = DEFAULT_TIMEOUT):
         client.close()
 
 
+def _shared(point: Endpoint):
+    """The one session for this endpoint (imported lazily: `session` builds on this file)."""
+    from .session import session_for
+    return session_for(point)
+
+
 def list_targets(point: Endpoint, timeout: float = DEFAULT_TIMEOUT) -> Tuple[List[actors.RdpTab], str]:
-    """Every tab of this Firefox, or ([] + why) — never raises."""
+    """Every tab of this Firefox, or ([] + why) — never raises.
+
+    A parked endpoint answers its reason **without opening a socket**: that is what keeps
+    the permission dialog from coming back on every pass.
+    """
+    session = _shared(point)
+    if session.parked:
+        return [], session.parked
     try:
-        with attach(point, timeout) as client:
+        with session.use(timeout) as client:
             return client.tabs(timeout), ""
     except RdpError as e:
         return [], str(e)
@@ -218,18 +223,35 @@ def list_targets(point: Endpoint, timeout: float = DEFAULT_TIMEOUT) -> Tuple[Lis
 
 def evaluate_json(point: Endpoint, tab_id: str, expression: str, timeout: float = DEFAULT_TIMEOUT):
     """Evaluate JS and return the parsed value, or (None + why)."""
+    value, err, _kind = evaluate_typed(point, tab_id, expression, timeout)
+    return value, err
+
+
+def evaluate_typed(point: Endpoint, tab_id: str, expression: str, timeout: float = DEFAULT_TIMEOUT):
+    """Evaluate JS and say what kind of failure it was: `(value, reason, kind)`.
+
+    `kind` is `""` / `"js"` (the page threw) / `"timeout"` / `"transport"` — `attached`
+    maps it onto its own `Answer`, so a page error is never reported as a dead socket.
+    """
+    session = _shared(point)
+    if session.parked:
+        return None, session.parked, "prompt"
     try:
-        with attach(point, timeout) as client:
+        with session.use(timeout) as client:
             reply = client.evaluate(tab_id, expression, timeout)
-            return client.value_of(reply, timeout)
+            value, err = client.value_of(reply, timeout)
+            return (None, err, "js") if err else (value, "", "")
     except RdpError as e:
-        return None, str(e)
+        return None, str(e), ("timeout" if e.kind == "timeout" else "transport")
 
 
 def click(point: Endpoint, tab_id: str, selector: str, timeout: float = DEFAULT_TIMEOUT):
     """Click one element (True + "" when it happened, else False + why)."""
+    session = _shared(point)
+    if session.parked:
+        return False, session.parked
     try:
-        with attach(point, timeout) as client:
+        with session.use(timeout) as client:
             return client.click(tab_id, selector, timeout)
     except RdpError as e:
         return False, str(e)
@@ -237,8 +259,24 @@ def click(point: Endpoint, tab_id: str, selector: str, timeout: float = DEFAULT_
 
 def session_info(point: Endpoint, timeout: float = DEFAULT_TIMEOUT) -> Tuple[dict, str]:
     """Greeting + tab count of one DevTools server, or ({} + why)."""
+    session = _shared(point)
+    if session.parked:
+        return {}, session.parked
     try:
-        with attach(point, timeout) as client:
+        with session.use(timeout) as client:
             return client.info(), ""
     except RdpError as e:
         return {}, str(e)
+
+
+def suppress_prompt(point: Endpoint, timeout: float = DEFAULT_TIMEOUT) -> Tuple[bool, str]:
+    """Tell the **running** Firefox to stop asking for permission (round 11, D-3)."""
+    from . import prefs
+    session = _shared(point)
+    if session.parked:
+        return False, session.parked
+    try:
+        with session.use(timeout) as client:
+            return prefs.ask_to_stop(client, timeout)
+    except RdpError as e:
+        return False, str(e)

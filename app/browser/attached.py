@@ -247,16 +247,16 @@ def evaluate(handle: Handle, expression: str, timeout: float = DEFAULT_TIMEOUT) 
 
 
 def _evaluate_rdp(handle: Handle, expression: str, timeout: float) -> Answer:
-    """One JS evaluation over the DevTools socket (a page exception is `kind='js'`)."""
+    """One JS evaluation over the DevTools socket (a page exception is `kind='js'`).
+
+    Round 11: through the shared per-endpoint session — evaluating used to open its own
+    socket, and Firefox asks for permission on every new connection.
+    """
     point = rdp.Endpoint(handle.host, handle.port)
-    try:
-        with rdp.attach(point, timeout) as client:
-            reply = client.evaluate(handle.tab_id, expression, timeout)
-            value, err = client.value_of(reply, timeout)
-            return Answer(None, err, "js") if err else Answer(value, "", "")
-    except rdp.RdpError as e:
-        kind = "timeout" if e.kind == "timeout" else "transport"
-        return Answer(None, str(e), kind)
+    value, err, kind = rdp.evaluate_typed(point, handle.tab_id, expression, timeout)
+    if not err:
+        return Answer(value, "", "")
+    return Answer(None, err, "js" if kind == "js" else ("timeout" if kind == "timeout" else "transport"))
 
 
 def _evaluate_bidi(handle: Handle, expression: str, timeout: float) -> Answer:

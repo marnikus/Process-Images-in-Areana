@@ -149,25 +149,44 @@ def plan_auto_connect(tabs: Any, pattern: Any, rows: Any, pooled: Any) -> AutoCo
     return plan
 
 
-def sync_pool_presence(pool: Any, live_ids: Any) -> tuple[int, list]:
-    """Flag pooled tabs gone from Chrome; revive returnees. Never deletes."""
+def sync_pool_presence(pool: Any, live_ids: Any, unconfirmed: Any = None) -> tuple[int, list]:
+    """Flag pooled tabs gone from the browser that owns them; revive returnees. Never deletes.
+
+    A page whose browser did not answer this pass is left exactly as it was (round 11,
+    D-4): its worker is not dead, its tab list simply did not arrive.
+    """
     try:
         pages = pool._pages
         lock = pool._lock
     except AttributeError:
         return 0, []
     live = set(live_ids or [])
+    quiet = set(unconfirmed or [])
     revived = 0
     stale = []
     with lock:
         for tab_id, page in pages.items():
-            if tab_id in live and not page.is_connected:
+            verdict = _presence(page, tab_id, live, quiet)
+            if verdict == "revive":
                 page.is_connected = True
                 revived += 1
-            elif tab_id not in live and page.is_connected:
+            elif verdict == "stale":
                 page.is_connected = False
                 stale.append(tab_id)
     return revived, sorted(stale)
+
+
+def _presence(page: Any, tab_id: str, live: set, quiet: set) -> str:
+    """What one pooled page should become: `"revive"`, `"stale"` or `""` (leave it).
+
+    A quiet browser's pages are left exactly as they are (round 11, D-4): its tab list
+    never arrived, so it has said nothing about the worker either way.
+    """
+    if getattr(page, "browser", "") in quiet:
+        return ""
+    if tab_id in live:
+        return "revive" if not page.is_connected else ""
+    return "stale" if page.is_connected else ""
 
 
 # ── Ownership repair + run gating (I-33: one live tab ↔ one row) ──

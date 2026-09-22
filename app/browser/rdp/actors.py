@@ -109,6 +109,24 @@ def console_actor_of(form: dict) -> str:
     return str((form or {}).get("consoleActor") or "")
 
 
+def parent_process(packet: dict) -> str:
+    """The parent (browser) process descriptor of a `listProcesses` reply — "" when absent.
+
+    Only Firefox started with `--start-debugger-server` answers this: the flag sets
+    `DevToolsServer.allowChromeProcess`, and the descriptor it returns carries
+    `isParent`. Older builds list content processes only, in which case there is no
+    chrome scope to evaluate in and the caller degrades by name.
+    """
+    rows = packet.get("processes") if isinstance(packet, dict) else None
+    if not isinstance(rows, list):
+        return ""
+    forms = [r for r in rows if isinstance(r, dict) and r.get("actor")]
+    for row in forms:
+        if row.get("isParent") or row.get("isParentProcess"):
+            return str(row["actor"])
+    return str(forms[0]["actor"]) if forms else ""
+
+
 def actor_types(packet: dict) -> Set[str]:
     """The command names an actor announced for `requestTypes`."""
     if not isinstance(packet, dict):

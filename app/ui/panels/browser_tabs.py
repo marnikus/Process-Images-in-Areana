@@ -151,6 +151,9 @@ async def live_tab_rows(bridge):
         bridge._log(f"❌ Scan failed: {e}", "error")
         return []
     bridge._scan_failed = ""
+    from app.browser.rdp import session as rdp_session
+    for line in rdp_session.drain_news():
+        bridge._log(line, "info")
     report_scan_notes(bridge, notes)
     bridge._scan_missing = {n.browser: n.reason for n in notes}   # one dict, aliased on purpose
     if rows:
@@ -452,7 +455,12 @@ async def do_find_tab(bridge, query: str) -> None:
 
 
 async def do_fetch_tabs(bridge) -> None:
-    """Fetch live tabs (CDP or Firefox RDP); an empty list also drops a diagnose."""
+    """Fetch live tabs (CDP or Firefox RDP); an empty list also drops a diagnose.
+
+    Refresh is an explicit user action, so it is allowed to ask a parked Firefox once
+    more (`retry_firefox`) — an automatic pass never does.
+    """
+    retry_firefox(bridge)
     try:
         tabs = await live_tab_rows(bridge)
         payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs], ensure_ascii=False)
@@ -505,9 +513,26 @@ async def report_stealth(bridge) -> None:
     bridge._log(stealth.line(facts), "success" if not stealth.verdict(facts) else "warn")
 
 
+def retry_firefox(bridge) -> None:
+    """Explicit action: clear a parked Firefox and let one more "Allow" be asked (D-6).
+
+    The park is what stops the dialog from coming back on every pass; a user pressing
+    Refresh / Reparse / Diagnose is asking for one more try, so it is cleared here and
+    only here.
+    """
+    from app.browser import rdp
+    rdp.session.retry_all()
+    for line in rdp.session.drain_news():
+        try:
+            bridge._log(line, "info")
+        except Exception:
+            pass
+
+
 async def do_diagnose_rdp(bridge) -> None:
     """Executor-diagnose the Firefox DevTools socket: greeting, prefix, tabs."""
     from app.browser import rdp
+    retry_firefox(bridge)
     loop = asyncio.get_event_loop()
     info, err = await loop.run_in_executor(None, lambda: rdp.session_info(
         rdp.Endpoint(bridge.cdp._host, bridge.cdp._port), 3.0))
@@ -568,6 +593,7 @@ def live_deps(bridge) -> LiveDeps:
         return left
 
     return LiveDeps(fetch_tabs=fetch_tabs, join_tab=join_tab, leave_tab=leave_tab,
+                    retry_browser=partial(retry_firefox, bridge),
                     commit=partial(commit_urls_system, bridge), log=bridge._log)
 
 
@@ -577,7 +603,11 @@ def start_url_reconciler(bridge) -> bool:
 
 
 async def auto_scan_pass(bridge, source: str) -> None:
-    """One scan (delegation: the body lives in `live.reconcile.reconcile_once`)."""
+    """One scan (delegation: the body lives in `live.reconcile.reconcile_once`).
+
+    `source == "manual"` is the Reparse button; the reconciler clears a parked browser
+    through `LiveDeps.retry_browser` before the pass (round 11, D-6).
+    """
     await reconcile_once(bridge, live_deps(bridge), source)
 
 

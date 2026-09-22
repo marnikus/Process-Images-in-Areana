@@ -13,15 +13,29 @@ Real-server facts this stub mirrors (see the round-8 design §2):
 * `getTarget` on a descriptor answers the target form with `consoleActor`;
 * commands to a dead actor answer `{"error":"noSuchActor"}`;
 * a big value comes back as a `longString` grip, fetched with `substring`;
-* actor ids change per connection (`server1.connN.…`), `browsingContextID` does not.
+* actor ids change per connection (`server1.connN.…`), `browsingContextID` does not;
+* with `prompt=True` the server behaves like a Firefox whose
+  `devtools.debugger.prompt-connection` is still true: a connection is greeted only
+  after it is allowed (`allow_pending()` is the user clicking Allow), and every
+  connection that has to ask is counted in `prompts` (round 11);
+* `listProcesses` answers the parent process descriptor (possible because
+  `--start-debugger-server` sets `allowChromeProcess`), whose target form carries a
+  chrome console actor — the only actor that may touch `Services.prefs`
+  (`prompt=False` servers answer it too; a *tab* console refuses).
 """
 from __future__ import annotations
 
 import json
+import select
+import socket
 import socketserver
 import threading
+import time
 
 LONG_THRESHOLD = 32
+
+PROMPT_PREF = "devtools.debugger.prompt-connection"
+SETPROMPT_JS = f'Services.prefs.setBoolPref("{PROMPT_PREF}", false)'
 
 STUB_TABS = [
     {"title": "Arena", "url": "https://arena.ai/c/1"},
@@ -32,6 +46,17 @@ STUB_TABS = [
 def utf16_len(text: str) -> int:
     """Firefox's prefix counts UTF-16 code units, not bytes."""
     return sum(1 if ord(ch) <= 0xFFFF else 2 for ch in text)
+
+
+def _still_open(conn) -> bool:
+    """Is the client still on the socket? (peek, so its bytes stay for the handler.)"""
+    try:
+        ready, _, _ = select.select([conn], [], [], 0)
+        if not ready:
+            return True
+        return bool(conn.recv(1, socket.MSG_PEEK))
+    except OSError:
+        return False
 
 
 def frame(payload: dict, byte_prefixed: bool = False) -> bytes:
@@ -114,6 +139,8 @@ class _Session:
                                for index, desc in enumerate(self.descriptors)}
         self.tab_index = {desc["actor"]: index for index, desc in enumerate(self.descriptors)}
         self.console_actor = self.console_actors[self.descriptors[0]["actor"]]
+        self.parent_console = f"{self.prefix}parentConsoleActor"
+        self.process_descriptor = f"{self.prefix}processDescriptor1"
         self.evals = 0
         self.stale_left = max(0, int(server.stale_evals))
         self.long_strings = {}
@@ -129,6 +156,10 @@ class _Session:
         target, kind = str(packet.get("to", "")), str(packet.get("type", ""))
         if kind == "listTabs":
             return [{"from": "root", "tabs": self.descriptors}]
+        if kind == "listProcesses":
+            return [{"from": "root", "processes": self._processes()}]
+        if kind == "getTarget" and target == self.process_descriptor:
+            return [{"from": target, "form": self._process_form()}]
         if kind == "getTarget":
             return [self._target_form(target)]
         if kind == "attach":
@@ -171,6 +202,19 @@ class _Session:
             form["frame"] = {"actor": f"{self.prefix}windowGlobal1"}
         return {"from": descriptor_actor, "form": form}
 
+    def _processes(self) -> list:
+        """The parent process descriptor (only visible with `allowChromeProcess`)."""
+        if self.server.no_chrome:
+            return []                      # a build that refuses the chrome process
+        return [{"actor": self.process_descriptor, "id": 0, "isParent": True,
+                 "traits": {"watcher": True, "supportsReloadDescriptor": True}}]
+
+    def _process_form(self) -> dict:
+        """A process target form — same `consoleActor` slot a tab target form has."""
+        return {"actor": f"{self.prefix}processTarget1", "isParentProcess": True,
+                "traits": {"isBrowsingContext": False, "watcher": True},
+                "consoleActor": self.parent_console}
+
     def _expired(self, actor: str) -> bool:
         """True when the console actor should answer `noSuchActor` now.
 
@@ -208,6 +252,8 @@ class _Session:
 
     def _evaluate(self, packet: dict, async_reply: bool) -> dict:
         actor = str(packet.get("to", ""))
+        if actor == self.parent_console:
+            return self._chrome_evaluate(packet, async_reply)
         if self._expired(actor):
             return {"from": actor, "error": "noSuchActor", "message": f"no such actor {actor}"}
         self.evals += 1
@@ -220,8 +266,31 @@ class _Session:
         reply["result"] = self._grip(self._value(str(packet.get("text", "")), self._tab_of(actor)))
         return reply
 
+    def _chrome_evaluate(self, packet: dict, async_reply: bool) -> dict:
+        """The parent process console: `Services` is in scope here, and nowhere else.
+
+        This is the actor that makes the prompt-connection pref reachable while Firefox
+        runs. A *tab* console asking the same thing is refused below (`_value`), because
+        a page cannot touch preferences — so a client that gets this wrong fails loudly.
+        """
+        self.evals += 1
+        reply = {"from": self.parent_console, "input": packet.get("text", ""), "timestamp": 1}
+        if async_reply:
+            reply["resultID"] = f"result-{self.evals}"
+        text = str(packet.get("text", ""))
+        if SETPROMPT_JS in text or PROMPT_PREF in text:
+            with self.server._lock:
+                self.server.prefs[PROMPT_PREF] = False
+                self.server.pref_writes.append(text)
+            reply["result"] = self._grip("prompt-connection=false")
+            return reply
+        reply["result"] = self._grip(None)
+        return reply
+
     def _value(self, expression: str, tab: dict = None):
         tab = tab or self.server.tabs[0]
+        if "Services.prefs" in expression:
+            return json.dumps({"ok": False, "why": "Services is not defined in a page"})
         if ".click()" in expression:
             found = self.server.click_found
             return json.dumps({"ok": found, "why": "clicked" if found else "not found"})
@@ -283,16 +352,22 @@ class RdpStubServer:
 
     def __init__(self, tabs=None, greet: bool = True, byte_prefixed: bool = False,
                  async_eval: bool = True, legacy_attach: bool = False, stale_evals: int = 0,
-                 expire_hard: bool = False, silent: bool = False, click_found: bool = True):
+                 expire_hard: bool = False, silent: bool = False, click_found: bool = True,
+                 prompt: bool = False, prompt_wait: float = 20.0, no_chrome: bool = False):
         self.tabs = [dict(t) for t in (tabs if tabs is not None else STUB_TABS)]
         self.greet, self.byte_prefixed, self.async_eval = greet, byte_prefixed, async_eval
         self.legacy_attach, self.stale_evals, self.expire_hard = legacy_attach, stale_evals, expire_hard
         self.silent, self.click_found = silent, click_found
+        self.prompt, self.prompt_wait, self.no_chrome = prompt, float(prompt_wait), no_chrome
+        self.prompts, self.connections, self.evals = 0, 0, 0
+        self.prefs = {PROMPT_PREF: True}
+        self.pref_writes: list = []
+        self._allowed = 0
         self.long_text = "Z" * 80
         self.received: list = []
         self.raw: list = []          # every byte the client sent (round 9)
-        self.connections = 0
         self._lock = threading.Lock()
+        self._open: list = []        # sockets still being served (dropped by close())
         stub = self
 
         class Handler(socketserver.BaseRequestHandler):
@@ -311,9 +386,12 @@ class RdpStubServer:
         with self._lock:
             self.connections += 1
             conn_no = self.connections
+            self._open.append(conn)
         session = _Session(self, conn_no)
         watched = _Recorder(conn, self.raw, self._lock)
         try:
+            if self.prompt and not self._gate(conn):
+                return
             if self.greet and not self.silent:
                 conn.sendall(frame(session.greeting(), self.byte_prefixed))
             if self.silent:
@@ -334,8 +412,57 @@ class RdpStubServer:
                     conn.sendall(frame(reply, self.byte_prefixed))
         except OSError:
             return
+        finally:
+            with self._lock:
+                if conn in self._open:
+                    self._open.remove(conn)
+
+    # ── the "Allow connection?" dialog (round 11) ────────────────────────
+
+    def prompting(self) -> bool:
+        """Would a new connection have to ask? Exactly Firefox's `prompt-connection`."""
+        return bool(self.prompt and self.prefs.get(PROMPT_PREF, True))
+
+    def allow_pending(self, count: int = 1) -> None:
+        """The user clicks **Allow** — the next `count` waiting connections proceed."""
+        with self._lock:
+            self._allowed += int(count)
+
+    def _gate(self, conn) -> bool:
+        """Hold the greeting back until the dialog is answered (or the client gives up)."""
+        if not self.prompting():
+            return True
+        with self._lock:
+            if self._allowed:
+                self._allowed -= 1
+                return True
+            self.prompts += 1
+        deadline = time.time() + self.prompt_wait
+        while time.time() < deadline:
+            with self._lock:
+                if self._allowed:
+                    self._allowed -= 1
+                    return True
+            if not self.prompting():          # the pref was set on another connection
+                return True
+            if not _still_open(conn):         # the client closed: the dialog goes away
+                return False
+            time.sleep(0.02)
+        return False
 
     def close(self):
+        """Stop listening **and drop the live sockets** — closing a browser does both."""
+        with self._lock:
+            open_sockets = list(self._open)
+        for conn in open_sockets:
+            try:
+                conn.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                conn.close()
+            except OSError:
+                pass
         self._server.shutdown()
         self._server.server_close()
         self._thread.join(timeout=5)

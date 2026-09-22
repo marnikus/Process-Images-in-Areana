@@ -247,6 +247,10 @@ class PagePoolMixin:
                 return json.dumps({"ok": False, "error": "pool not initialized"})
             if not ws_url:
                 return json.dumps({"ok": False, "error": "empty ws_url"})
+            # An explicit Connect is the user asking for one more try at a parked Firefox
+            # (round 11, D-6): the auto passes never re-ask, this one may.
+            from app.ui.panels.browser_tabs import retry_firefox
+            retry_firefox(self)
             self._log(f"🔗 Adding tab to pool {ws_url[:80]}… steady", "info")
             schedule_coro(self, do_connect_page_pool(self, ws_url))
             return json.dumps({"ok": True})

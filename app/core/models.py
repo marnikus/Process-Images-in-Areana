@@ -23,6 +23,7 @@ class UrlRow:
     last_checked: Optional[str] = None
     error: Optional[str] = None
     tab_id: str = ""
+    browser: str = ""       # which browser listed this tab ("" = before round 11 / unknown)
     receiver: bool = False  # S7: can receive a job now (one owner: live/url_policy.mark_receivers)
 
     @staticmethod

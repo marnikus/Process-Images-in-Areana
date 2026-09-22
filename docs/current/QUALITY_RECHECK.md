@@ -1160,6 +1160,56 @@ the browser); RDP has no input synthesis, screenshot or file chooser — the pan
 timing out; a Firefox row whose endpoint is closed yet whose tab is still trusted by the settings is reported, not
 silently dropped; the app still never starts a browser.
 
+## Addendum 2026-09-22b — one socket, one dialog, and a Firefox that is detectable (I-62, round 11)
+
+Owner report (still open after round 10): *"App sends never-ending permission request
+messages … Popup keeps reappearing — user must click Allow repeatedly. remove it completely.
+should stop sending it"* + *"fireFox is not detectable URL as Chrome does … should be able
+detect URL with pattern and add it to url list"*. Design and sources:
+[`2026-09-22-one-firefox-connection-and-partial-passes/design.md`](../archive/2026-09-22-one-firefox-connection-and-partial-passes/design.md).
+
+**Both symptoms had one root cause, and it was measured, not guessed.** Instrumenting
+`RdpConnection.connect()` and running one reconcile pass against a two-tab stub Firefox:
+**15 sockets per pass** — 3 listings, 2 pool joins, 10 evaluates, because `rdp.attach()` is a
+context manager that closes after every operation and `GREETING_TIMEOUT` is 0.6 s. Firefox
+decides the permission dialog per **incoming connection** (`devtools/shared/security/auth.js`
+reads `devtools.debugger.prompt-connection` at accept time), so the browser was asked fifteen
+times per pass, roughly every second, and the same listing failure meant Firefox's tabs were
+never planned as URL rows while Chrome's were.
+
+| Fix | Where | Effect |
+|---|---|---|
+| One live socket per endpoint, every operation through it, request-serialised | `app/browser/rdp/session.py` (new, 119 L, 95 % line) | **15 → 1** connection per pass, passes reuse it |
+| The first attach waits `ALLOW_WAIT` and says so before waiting; a silent endpoint parks with one named reason; auto passes open nothing | `session.py`, `endpoints.list_targets` (`_parked`) | the dialog cannot come back per pass — the loop is what was reported |
+| After the first allowed attach the running browser is told to stop asking | `app/browser/rdp/prefs.py` + `rdp/chrome.py` (new; chrome scope via `listProcesses` → parent process → console) | one Allow, then no dialog — now or on the next run (the pref is sticky) |
+| A browser that did not answer is not evidence its tabs closed | `UrlRow.browser`, `RemovalSpec.unconfirmed`, `advance_misses(..., unconfirmed)`, `_sweep_rows`, `sync_pool_presence(..., unconfirmed)` | Firefox rows and workers survive a parked/closed Firefox — the "not detectable" half |
+| Firefox tabs become URL rows like Chrome's, with their browser recorded | `live/reconcile._apply_plan` (`_browser_of`) + `url_policy.add_rows(browsers=…)` | detection parity is a test, not a claim |
+| Reparse / Refresh / Diagnose / Connect are the only places a dialog may be asked for | `LiveDeps.retry_browser` (manual passes), `browser_tabs.retry_firefox`, `page_pool.connect_page_pool` | explicit retry clears the park; nothing else does |
+
+Evidence, RED-first: `tests/test_rdp_session.py` (18 — socket reuse, the wait, the park, the
+retry, suppression through the chrome console, degradation, and that a **tab** console can
+never touch prefs), `tests/test_partial_pass.py` (10 — pattern parity for both browsers, the
+owner's parked-dialog flow, misses/removal/sweep/pool-presence skipping a quiet browser), and
+the stub grew the two servers they need: a Firefox that asks for permission until allowed
+(`prompt=True`, with `prompts`/`connections` counters) and a parent process whose console has
+`Services` in scope. Two round-8 pins were re-pointed on purpose (`tests/test_rdp_client.py`:
+a listing no longer dials per call, and reconnection is explicit).
+
+Gates: pytest **2,199 passed / 4 skipped**, JS **76 suites / 375 pass / 0 fail / 4 skipped**,
+coverage **89.26 % line / 84.61 % branch** (baseline 86.36 / 82.33), `verify_quality
+--changed-files` **0 fails** (the whole-repo lane keeps only the pre-existing untouched
+`captcha.js max_cc`). RULE 16 fixed two violations instead of baselining them: `RdpClient`
+had grown to 172 LOC / 20 methods → the chrome-scope capability moved to `ChromeMixin` (the
+`cdp.remote.RemoteMixin` pattern), and `sync_pool_presence` reached CC 11 → the page verdict
+is `_presence(...)`.
+
+Honest limits, in the panel text and the design doc: a dialog already on screen cannot be
+retracted (the first run shows it once — answering it is what lets the app switch the pref
+off); identifying an endpoint that never greets costs one extra connection the first time
+(it is what keeps a BiDi Firefox, which never asks, from being parked as if it had); and the
+pref switch needs Firefox to expose its own process, which a hardened build may refuse — the
+panel then names the single Allow click that still works for the session.
+
 ## Addendum 2026-09-22 — the robot cue, the Allow prompt, and the profile Firefox really uses (I-62, round 10)
 
 Owner report with screenshots: Firefox shows the URL-bar robot icon after start, the launch command uses
