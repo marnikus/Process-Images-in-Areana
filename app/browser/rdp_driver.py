@@ -97,7 +97,7 @@ class RdpDriver(CDPTransport):
         return True
 
     async def disconnect(self) -> None:
-        """Drop the session (no socket to close — RDP is per-operation)."""
+        """Drop the session (the endpoint's pooled socket stays — reconnecting reuses it)."""
         self._connected = False
         try:
             self.disconnected.emit()

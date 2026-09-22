@@ -9,7 +9,7 @@ Goals:
 - Worker-isolated resources: config, media, logs, preset store (Phase 4).
 - Mark-based grouping for fast/slow lanes (Phase 4).
 
-RULE 18: file ideal 150-300 LOC, current ~220 LOC.
+RULE 18: file ideal 150-300 LOC, current ~230 LOC.
 RULE 16: no function >30 LOC, CC ≤10, nesting ≤4.
 """
 
@@ -272,3 +272,14 @@ RAW_TABS = [
 ]
 
 
+
+
+@pytest.fixture(autouse=True)
+def _reset_browser_connection_state():
+    """Fresh RDP pool + protocol cache per test (no cross-test endpoint memory)."""
+    from app.browser import endpoints, rdp
+    rdp.reset_pool()
+    endpoints.reset_protocol_cache()
+    yield
+    rdp.reset_pool()
+    endpoints.reset_protocol_cache()

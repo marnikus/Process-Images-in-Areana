@@ -84,7 +84,11 @@ PROFILES: Tuple[BrowserProfile, ...] = (
                "first (or add -no-remote), or the flag joins the running "
                "instance and no server starts. Add --profile=\"...\" in extra "
                "args for an isolated profile; never --remote-debugging-port "
-               "(that taints the session)."),
+               "(that taints the session). "
+               "First contact shows one \"Incoming Connection\" prompt in "
+               "Firefox — click OK once. The app then switches the prompt off "
+               "(devtools.debugger.prompt-connection=false) so later scans "
+               "stay silent; flip it back in about:config to be asked again."),
     ),
     BrowserProfile(
         id="edge", label="Edge (Chromium)", protocol=PROTOCOL_CDP, port_offset=2,

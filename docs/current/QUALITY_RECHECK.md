@@ -1127,6 +1127,54 @@ diagnoses the ACTIVE browser in its own protocol; the Firefox default command is
 (`firefox --start-debugger-server=PORT`, no `-profile`, no `-no-remote`) in Python profile, slot and
 JS preview tests — the manual-launch requirement is a failing test if it ever regresses.
 
+## Addendum 2026-09-22 — Firefox prompts once, then stays silent (I-65)
+
+Owner report: Firefox shows an "Incoming Connection" popup for 127.0.0.1:9224
+that regenerates about every second. Root cause: the prompt fires once per
+accepted TCP connection, I-64 opened one connection per op, and every listing
+re-detected (CDP-GET + RDP probe + list ≈ 3 connections per pass per endpoint
+over 5 s cycles) — with short timeouts making approval a lottery. Design in
+`docs/archive/2026-09-22-firefox-connection-prompt/design.md` (D-1…D-8): one
+pooled socket per endpoint (mutex, drop-on-error, `_revive`), a pinned 10 s
+first-contact approval window, a best-effort remote PreferenceActor flip of
+`devtools.debugger.prompt-connection` (actor id from the `listTabs` reply,
+persisted server-side), registry-directed-first listing with a self-correcting
+TTL cache (300 s positive, 5 s negative short-circuit; only failures
+re-measure; ESR falls back to CDP; confirmed failures report the attempt), a
+Disable-naming failure tip, and an autouse conftest fixture isolating endpoint
+memory per test. Image attach on RDP stays a NAMED non-goal. No new slots
+(137 frozen).
+
+| Gate | Command | Result |
+|---|---|---|
+| Tests first | `tests/test_rdp.py` (+9: RED before `rdp.py`), `tests/test_browser_endpoints.py` (+5: RED before `endpoints.py`), Disable pin (RED before the tip); T14/T15 then forced the cache-means-answers flip, T16/T16b the revive arms | RED on missing behaviour; GREEN after implementation (+18: 11 + 7) |
+| Mutants killed | pool bypass / flip skip / cache bypass / same-arm re-attempt / cross-arm bury-on-fail / revive-arm removal | 3 + 3 + 2 + 1 + 1 + 1 fail; production restored byte-identical (`grep -c MUTANT` = 0) |
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **2,096 passed · 4 skipped · 0 fail** (+18 net; the I-64-clone 2,071 → same-tree-here 2,078 is 7 environment skips turning to passes in the rebuilt venv) |
+| JS tests | `npm run test:js` (no JS touched this round) | **366 pass · 4 skipped · 0 fail** (unchanged) |
+| Coverage | fresh `coverage run --branch` + `coverage json` on this branch | **88.68 % line / 85.45 % branch** — UP from the I-64 tree measured in the same venv (88.61 / 85.35; the I-64-clone 89.36 is venv drift, proven by rerunning b504d39 in a linked worktree); round modules: `rdp.py` 100, `endpoints.py` new code 100 |
+| Changed-file lane | `tools/verify_quality.py --changed-files <5 py>` | **0 fails** (hard gates; `_run` was caught at LOC 36 and split by decision — `_revive` + a trimmed contract docstring, RULE 19, no `part1` split) |
+| Size/complexity | gate AST primitives + cognitive-complexity 1.3.0 | new/edited: `_run` 28 LOC / CC 9 / cog 9, `_list_known` 21 / 6 / 5, `_recalled` 15 / 3 / 2, `_silence_prompt` 14 / 5 / 4, `list_targets` 14 / 3 / 2, `_connect_fresh` 10 / 2 / 1, `_revive` 9 / 2 / 1, `reset_pool` 7 / 3 / 1, `_attempt` 6 / 2 / 1, `_unreachable` 4 / 1 / 0, `_remember` 4 / 2 / 1, `reset_protocol_cache` 3 / 1 / 0 — all inside the RULE 16 fail lines (nest ≤3, params ≤4); `_run`/`_list_known` sit over the RULE 18 20-line prefer (lock-scope cohesion, two-line signature — readability over gaming) |
+| Vulture | `vulture --min-confidence 90` on the round's files (jscpd: no JS touched) | clean, 0 findings |
+| Freeze check | `test_panel_packing` + `test_browser_support_added_payloads_not_bridge_slots` | the slot table stays exactly 137 — notes/tip/docstring/data only, no slots |
+| Whole-repo gate | `bash tools/pre_push_check.sh` (base restored via explicit `origin/<branch>` fetch — this clone is single-branch) | pytest + node + coverage green; the `--changed` quality lane still reports the I-63/I-64-vs-I-62-baseline drift (browser_tabs class/CC/coverage, transport/cooldown/qt coverage — none touched by this round; my browser_tabs diff is one line, zero added) + the known beyond-scope coverage ratchet. Same standing as I-64: changed-files 0-0, whole-repo unpassable until the baseline is regenerated. Baseline NOT regenerated (would enshrine unreviewed drift). |
+
+Honesty notes (RULE 4): the flip is best-effort (a flip failure never breaks a
+listing), logged (`arena`, one line when it flips), and reversible (notes +
+about:config); the 10 s approval window is a pinned constant, not a tuning
+accident; the cache means *what the endpoint answers* (an empty-but-answering
+endpoint reports its stable error — the (b)→(a) flip was forced RED-first by
+T15); T16's white-box fd-close documents a real CPython subtlety (closing the
+socket alone defers to the open makefile — both streams must die to simulate
+the race); the coverage delta was proven environmental by rerunning b504d39 in
+this venv (88.61, not 89.36) before claiming it.
+
+RULE 18 recheck (final tree): `rdp.py` 391 lines vs its `# ideal-size: 400`
+(cohesion reason, RULE 18.2 — framing + pooled lifecycle + flip share the
+packet helpers and one lock scope); `endpoints.py` 196, `browsers.py` 207,
+`rdp_driver.py` 182, `conftest.py` 285 — all inside 150–300; every new
+function inside 4–20 LOC except `_run` (28) and `_list_known` (21),
+justified above.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

@@ -126,6 +126,7 @@ async def test_firefox_connect_failure_names_the_browser_and_the_flag(cfg):
     assert "error" in bridge.connection_status.emitted
     text = " ".join(msg for _lvl, msg in logs)
     assert "Firefox" in text and "--start-debugger-server" in text and "tcp://" in text
+    assert "Disable" in text, "clicking Disable stops the debugger server — say so"
 
 
 async def test_pool_join_constructs_the_matching_driver(firefox, cfg):

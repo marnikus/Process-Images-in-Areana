@@ -3,10 +3,14 @@
 Firefox's debugger server (`--start-debugger-server`, plain TCP `length:JSON`)
 loads no Marionette and creates no WebDriver session, so `navigator.webdriver`
 stays `false` — unlike `--remote-debugging-port` (BiDi), which taints the
-browser by design. One connection per operation: greeting → `listTabs` →
+browser by design. One pooled socket per endpoint: greeting → `listTabs` →
 `getTarget` → `evaluateJSAsync` (ack + `evaluationResult` event) /
-`navigateTo` → close. Actors die with the connection, the browser and its real
-profile keep running, and attach/detach needs no restart.
+`navigateTo`, reused across ops (Firefox prompts once per CONNECTION, so a
+fresh socket per op would re-prompt every fetch cycle). Actors die with the
+connection, the browser and its real profile keep running, and attach/detach
+needs no restart. A fresh connection also switches the approval prompt itself
+off (`PreferenceActor.setBoolPref`, persisted by the server) — best-effort,
+one log line when it flips, detection (`probe`) never touches it.
 
 Sync on purpose: the CDP listing path (`cdp/tabs.fetch_tabs_sync`) is sync too
 and runs in an executor, so both protocols look the same to their caller.
@@ -15,15 +19,18 @@ RULE 18: leaf module, funcs ≤20 LOC; every public helper degrades to a
 (result, error-text) answer instead of raising, so a dead Firefox can never
 break the pool or the reconciler loop.
 
-ideal-size: 314 lines reason=one leaf RDP client (framing + connection + module
-API share the packet helpers); splitting would scatter request/reply pairs.
+# ideal-size: 400 lines reason=one leaf RDP client (framing + connection + pooled lifecycle + prompt flip share the packet helpers); splitting would scatter request/reply pairs.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import socket
+import threading
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+
+log = logging.getLogger("arena")
 
 DEFAULT_TIMEOUT = 3.0
 MAX_FRAME = 32 * 1024 * 1024
@@ -281,21 +288,88 @@ def probe(target: Endpoint, timeout: float = DEFAULT_TIMEOUT) -> bool:
         conn.close()
 
 
-def _run(target: Endpoint, timeout: float, action):
-    """Open → act → close; a failure is returned, never raised."""
-    conn = RdpConnection(target, timeout)
+_pool: Dict[Endpoint, Tuple[RdpConnection, "threading.Lock"]] = {}
+_pool_guard = threading.Lock()
+APPROVAL_WAIT = 10.0
+PROMPT_PREF = "devtools.debugger.prompt-connection"
+
+
+def reset_pool() -> None:
+    """Close every pooled socket (tests + shutdown); the next op reconnects."""
+    with _pool_guard:
+        entries = list(_pool.values())
+        _pool.clear()
+    for conn, _lock in entries:
+        conn.close()  # never raises (nulls first, closes guarded)
+
+
+def _silence_prompt(conn: RdpConnection) -> None:
+    """Best-effort: switch the per-connection approval prompt off (persists)."""
+    try:
+        tabs_reply = conn.request("root", "listTabs")
+        pref = str(tabs_reply.get("preferenceActor") or "")
+        if not pref:
+            return
+        current = conn.request(pref, "getBoolPref", {"value": PROMPT_PREF}).get("value")
+        if current is False:
+            return
+        conn.request(pref, "setBoolPref", {"name": PROMPT_PREF, "value": False})
+        log.info("Firefox connection prompt switched off (devtools.debugger.prompt-connection=false)")
+    except Exception:
+        return
+
+
+def _connect_fresh(conn: RdpConnection) -> str:
+    """Connect with the approval window ("" when live, prompt silenced)."""
+    conn.timeout = APPROVAL_WAIT
     try:
         conn.connect()
     except RdpError as e:
-        return None, str(e)
-    try:
-        return action(conn), ""
-    except RdpError as e:
-        return None, str(e)
-    except Exception as e:
-        return None, f"{type(e).__name__}: {e}"
-    finally:
         conn.close()
+        return str(e)
+    _silence_prompt(conn)
+    return ""
+
+
+def _revive(conn: RdpConnection, timeout: float) -> str:
+    """Re-apply the caller timeout; a raced-close redials ("" when live)."""
+    conn.timeout = timeout
+    try:
+        conn._sock.settimeout(timeout)
+    except OSError:
+        conn.close()
+        return _connect_fresh(conn)
+    return ""
+
+
+def _run(target: Endpoint, timeout: float, action):
+    """One pooled op: reuse the endpoint socket, reconnect when dead.
+
+    Mutex-serialized; fresh conns wait the approval window; errors drop it.
+    """
+    with _pool_guard:
+        entry = _pool.get(target)
+        if entry is None:
+            entry = (RdpConnection(target, timeout), threading.Lock())
+            _pool[target] = entry
+    conn, lock = entry
+    with lock:
+        if conn._sock is None:
+            err = _connect_fresh(conn)
+            if err:
+                return None, err
+        else:
+            err = _revive(conn, timeout)
+            if err:
+                return None, err
+        try:
+            return action(conn), ""
+        except RdpError as e:
+            conn.close()
+            return None, str(e)
+        except Exception as e:
+            conn.close()
+            return None, f"{type(e).__name__}: {e}"
 
 
 def list_tabs(target: Endpoint, timeout: float = DEFAULT_TIMEOUT) -> Tuple[List[dict], str]:

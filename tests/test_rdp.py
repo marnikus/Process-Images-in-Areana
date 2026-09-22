@@ -64,19 +64,42 @@ def _recv_frame(fp):
     return json.loads(fp.read(int(prefix)).decode("utf-8"))
 
 
+PREF_ACTOR = "server1.conn0.preference1"
+PROMPT_PREF = "devtools.debugger.prompt-connection"
+
+
 class FakeDebuggerServer:
     """TCP `length:JSON` like Firefox's `--start-debugger-server` endpoint."""
 
-    def __init__(self, tabs=None, greeting=None):
+    def __init__(self, tabs=None, greeting=None, preference_actor=True,
+                 prompt_connection=True, pref_error=False, require_approval=False):
         self.tabs = TABS if tabs is None else tabs
         self.greeting = GREETING if greeting is None else greeting
         self.seen = []
         self._result_no = 0
+        self.prompt_connection = prompt_connection
+        self.pref_sets = []
+        self.pref_gets = []
+        self._has_pref_actor = preference_actor
+        self._pref_error = pref_error
+        self.connections = 0
+        self._count_lock = threading.Lock()
+        self._sockets = []
+        self._sockets_lock = threading.Lock()
+        self._approved = threading.Event()
+        if not require_approval:
+            self._approved.set()
         agent = self
 
         class Handler(socketserver.BaseRequestHandler):
             def handle(self):
+                with agent._count_lock:
+                    agent.connections += 1
+                if not agent._approved.wait(timeout=30):
+                    return
                 _send_frame(self.request, agent.greeting)
+                with agent._sockets_lock:
+                    agent._sockets.append(self.request)
                 fp = self.request.makefile("rb")
                 try:
                     while True:
@@ -86,6 +109,12 @@ class FakeDebuggerServer:
                             _send_frame(self.request, reply)
                 except Exception:
                     return
+                finally:
+                    with agent._sockets_lock:
+                        try:
+                            agent._sockets.remove(self.request)
+                        except ValueError:
+                            pass
 
         self._server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Handler)
         self._server.daemon_threads = True
@@ -103,7 +132,22 @@ class FakeDebuggerServer:
             event = {"from": first.get("actor", ""), "type": "tabNavigated",
                      "state": "stop", "url": first.get("url", ""),
                      "title": first.get("title", "")}
-            return [event, {"from": "root", "tabs": self.tabs}]
+            reply = {"from": "root", "tabs": self.tabs}
+            if self._has_pref_actor:
+                reply["preferenceActor"] = PREF_ACTOR
+            return [event, reply]
+        if to == PREF_ACTOR and rtype == "getBoolPref":
+            self.pref_gets.append(msg.get("value"))
+            if self._pref_error:
+                return [{"from": to, "error": "noSuchActor", "message": "no pref actor"}]
+            return [{"from": to, "value": self.prompt_connection}]
+        if to == PREF_ACTOR and rtype == "setBoolPref":
+            if self._pref_error:
+                return [{"from": to, "error": "noSuchActor", "message": "no pref actor"}]
+            self.pref_sets.append((msg.get("name"), msg.get("value")))
+            if msg.get("name") == PROMPT_PREF:
+                self.prompt_connection = bool(msg.get("value"))
+            return [{"from": to}]
         if rtype == "getTarget":
             for tab in self.tabs:
                 if tab.get("actor") == to:
@@ -185,7 +229,28 @@ class FakeDebuggerServer:
         return [ack, noise, {"from": console, "type": "evaluationResult",
                               "resultID": rid, "result": f"ran:{text}"}]
 
+    def approve(self):
+        """Release the approval gate (current + future connections proceed)."""
+        self._approved.set()
+
+    def kill_clients(self):
+        """Drop every open client socket (the next op must reconnect)."""
+        with self._sockets_lock:
+            sockets, self._sockets = self._sockets, []
+        for sock in sockets:
+            try:
+                # Shutdown first: the handler's makefile dup'd the fd, so a bare
+                # close would leave the kernel socket (and the op) alive.
+                sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                sock.close()
+            except Exception:
+                pass
+
     def close(self):
+        self.kill_clients()
         self._server.shutdown()
         self._server.server_close()
         self._thread.join(timeout=5)
@@ -225,7 +290,14 @@ def test_list_tabs_returns_stable_ids_and_skips_the_interleaved_event(agent):
     assert [(r["id"], r["title"], r["url"]) for r in rows] == [
         ("11", "Arena A", "https://arena.ai/c/1"),
         ("12", "Arena B", "https://arena.ai/c/2")]
-    assert agent.seen == [{"to": "root", "type": "listTabs"}]
+    assert agent.seen == [
+        {"to": "root", "type": "listTabs"},  # the fresh-connect flip reads first
+        {"to": "server1.conn0.preference1", "type": "getBoolPref",
+         "value": "devtools.debugger.prompt-connection"},
+        {"to": "server1.conn0.preference1", "type": "setBoolPref",
+         "name": "devtools.debugger.prompt-connection", "value": False},
+        {"to": "root", "type": "listTabs"},  # then the op itself
+    ]
 
 
 def test_evaluate_resolves_the_tab_and_returns_the_js_value(agent):
@@ -234,8 +306,11 @@ def test_evaluate_resolves_the_tab_and_returns_the_js_value(agent):
     assert value.startswith("ran:(async()=>{"), value[:60]
     assert "document.title" in value
     kinds = [(m["to"], m["type"]) for m in agent.seen]
-    assert kinds[0] == ("root", "listTabs")
-    assert kinds[1] == ("server1.conn1.tabDescriptor1", "getTarget")
+    assert kinds[:3] == [("root", "listTabs"),
+                         ("server1.conn0.preference1", "getBoolPref"),
+                         ("server1.conn0.preference1", "setBoolPref")]
+    assert kinds[3] == ("root", "listTabs")
+    assert kinds[4] == ("server1.conn1.tabDescriptor1", "getTarget")
     sent = agent.seen[-1]
     assert sent["type"] == "evaluateJSAsync"
     assert sent["to"] == "server1.conn1.tabDescriptor1/console1"
@@ -319,7 +394,11 @@ def test_helpers_never_raise_on_a_hostile_server():
 
 
 class RawScript:
-    """A scripted byte server: greeting, then one canned answer per test."""
+    """A scripted byte server: greeting, then the canned answer twice.
+
+    Every fresh connection runs the prompt-silencing flip (one listTabs read)
+    before the op under test, so the script serves two identical reads.
+    """
 
     def __init__(self, answer: bytes, delay: float = 0.0, rst: bool = False):
         self.answer, self.delay, self.rst = answer, delay, rst
@@ -341,6 +420,7 @@ class RawScript:
                         import time
                         time.sleep(script.delay)
                     if script.answer:
+                        self.request.sendall(script.answer)
                         self.request.sendall(script.answer)
                 except OSError:
                     pass
@@ -386,7 +466,8 @@ def test_a_reset_connection_is_a_transport_error_not_an_eof(raw):
     assert rows == [] and err.startswith("transport: connection lost")
 
 
-def test_a_silent_server_times_out_instead_of_hanging(raw):
+def test_a_silent_server_times_out_instead_of_hanging(raw, monkeypatch):
+    monkeypatch.setattr(rdp, "APPROVAL_WAIT", 0.3)  # shrink the window, pin the bound
     srv = raw(b"", delay=5.0)
     rows, err = rdp.list_tabs(target(srv.port), timeout=0.2)
     assert rows == [] and "timed out" in err
@@ -508,3 +589,130 @@ def test_exceptions_carry_preview_text_or_a_fallback(agent):
 def test_a_broken_longstring_falls_back_to_its_initial_text(agent):
     assert rdp.evaluate(target(agent.port), "11", "BADLONG big", timeout=3.0) == ("part", "")
     assert rdp.evaluate(target(agent.port), "11", "NONUMLEN big", timeout=3.0) == ("part", "")
+
+
+# ---- persistent connections + the approval prompt (2026-09-22) ----------------
+#
+# Firefox shows its "Incoming Connection" dialog once per TCP CONNECTION. One
+# connection per operation therefore re-prompts every fetch cycle; the pool
+# below holds one socket per endpoint, and the first fresh connection flips
+# `devtools.debugger.prompt-connection` off (via PreferenceActor, discovered
+# from the listTabs reply exactly as Mozilla documents) so the dialog never
+# returns. RED: no pool, no flip — every op dials and nothing silences.
+
+
+def test_repeated_ops_reuse_one_tcp_connection(agent):
+    first, err1 = rdp.list_tabs(target(agent.port), timeout=3.0)
+    second, err2 = rdp.list_tabs(target(agent.port), timeout=3.0)
+    assert err1 == err2 == "" and len(first) == len(second) == 2
+    assert agent.connections == 1, f"two ops, one socket — saw {agent.connections}"
+
+
+def test_concurrent_ops_serialize_onto_one_connection(agent):
+    results = []
+
+    def one():
+        results.append(rdp.list_tabs(target(agent.port), timeout=5.0))
+
+    threads = [threading.Thread(target=one) for _ in range(5)]
+    [t.start() for t in threads]
+    [t.join(timeout=15) for t in threads]
+    assert all(err == "" and len(rows) == 2 for rows, err in results)
+    assert agent.connections == 1, f"five threads, one socket — saw {agent.connections}"
+
+
+def test_a_fresh_connection_flips_the_approval_prompt_off(agent):
+    rows, err = rdp.list_tabs(target(agent.port), timeout=3.0)
+    assert err == "" and len(rows) == 2
+    assert agent.pref_gets == [PROMPT_PREF], "the flip reads the pref first"
+    assert agent.pref_sets == [(PROMPT_PREF, False)], "then switches it off"
+    assert agent.prompt_connection is False
+
+
+def test_no_redundant_set_when_the_prompt_is_already_off():
+    srv = FakeDebuggerServer(prompt_connection=False)
+    try:
+        rows, err = rdp.list_tabs(target(srv.port), timeout=3.0)
+        assert err == "" and len(rows) == 2
+        assert srv.pref_sets == [], "already false — nothing to write"
+    finally:
+        srv.close()
+
+
+def test_tabs_still_list_when_no_preference_actor_exists():
+    srv = FakeDebuggerServer(preference_actor=False)
+    try:
+        rows, err = rdp.list_tabs(target(srv.port), timeout=3.0)
+        assert err == "" and len(rows) == 2, "an old server must not break listing"
+    finally:
+        srv.close()
+
+
+def test_pref_errors_never_break_an_op():
+    srv = FakeDebuggerServer(pref_error=True)
+    try:
+        rows, err = rdp.list_tabs(target(srv.port), timeout=3.0)
+        assert err == "" and len(rows) == 2, "best-effort means best-effort"
+        assert srv.pref_sets == [], "a failed set is not recorded as applied"
+    finally:
+        srv.close()
+
+
+def test_a_dropped_socket_fails_once_then_heals_on_reconnect(agent):
+    assert rdp.list_tabs(target(agent.port), timeout=3.0)[1] == ""
+    agent.kill_clients()
+    rows, err = rdp.list_tabs(target(agent.port), timeout=3.0)
+    assert rows == [] and err != "", "the dead socket fails honestly"
+    rows, err = rdp.list_tabs(target(agent.port), timeout=3.0)
+    assert err == "" and len(rows) == 2, "the next op redials"
+    assert agent.connections == 2
+
+
+def test_first_contact_waits_for_approval_instead_of_abandoning():
+    assert rdp.APPROVAL_WAIT == 10.0, "the user gets ten seconds to click OK"
+    srv = FakeDebuggerServer(require_approval=True)
+    try:
+        box = []
+        worker = threading.Thread(
+            target=lambda: box.append(rdp.list_tabs(target(srv.port), timeout=1.0)))
+        worker.start()
+        assert worker.is_alive()
+        threading.Event().wait(2.0)  # past the caller's 1 s timeout: approve late
+        srv.approve()
+        worker.join(timeout=15)
+        assert not worker.is_alive(), "the op must finish once approved"
+        rows, err = box[0]
+        assert err == "" and len(rows) == 2
+        assert srv.connections == 1, "one wait, not a reconnect storm"
+    finally:
+        srv.close()
+
+
+def test_probe_neither_pools_nor_flips(agent):
+    assert rdp.probe(target(agent.port), timeout=1.0) is True
+    assert rdp.probe(target(agent.port), timeout=1.0) is True
+    assert agent.connections == 2, "detection stays one-shot and silent"
+    assert agent.pref_gets == [] and agent.pref_sets == [], "detection taints nothing"
+
+
+def test_a_reset_mid_op_heals_by_redialing(agent):
+    assert rdp.list_tabs(target(agent.port), timeout=3.0)[1] == ""
+    # White-box: a concurrent reset_pool closed everything after the pool
+    # handoff (both streams: closing the socket alone defers to the makefile).
+    conn, _lock = rdp._pool[rdp.Endpoint("127.0.0.1", agent.port)]
+    conn._sock.close()
+    conn._fp.close()
+    rows, err = rdp.list_tabs(target(agent.port), timeout=3.0)
+    assert err == "" and len(rows) == 2
+    assert agent.connections == 2, "the dead fd redials once"
+
+
+def test_a_failed_redial_reports_not_reachable_without_a_storm(agent):
+    assert rdp.list_tabs(target(agent.port), timeout=3.0)[1] == ""
+    conn, _lock = rdp._pool[rdp.Endpoint("127.0.0.1", agent.port)]
+    conn._sock.close()
+    conn._fp.close()
+    agent.close()  # the listener dies too: the redial has nowhere to go
+    rows, err = rdp.list_tabs(target(agent.port), timeout=1.0)
+    assert rows == [] and "not reachable" in err
+    assert agent.connections == 1, "one redial, no reconnect storm"

@@ -1,4 +1,4 @@
-"""One listing seam for every browser (2026-09-21).
+"""One listing seam for every browser (2026-09-22).
 
 The pool, the URL reconciler and the panel all ask the same question — "which
 tabs does this browser have open right now?" — and the answer must look the same
@@ -7,9 +7,12 @@ whether the browser speaks CDP (Chrome/Edge: one socket per tab) or RDP
 `TargetRef` rows that carry the browser id and the endpoint port, so two
 browsers can be listed, joined and pooled in the same pass.
 
-`detect_protocol` probes the endpoint instead of trusting the registry: an ESR
-Firefox launch with `remote.active-protocols=2` answers CDP and therefore keeps
-the full automation matrix, while a modern Firefox is driven over RDP.
+The registry's protocol is tried first and a working answer is trusted for
+five minutes, so a steady browser costs one listing per cycle: no probe
+round-trips, and — what matters for Firefox — no per-cycle approval prompts.
+Only a failure re-measures, through `detect_protocol` (an ESR Firefox with
+`remote.active-protocols=2` still answers CDP and keeps the full automation
+matrix), and a dead endpoint stays quiet for five seconds before it re-probes.
 
 RULE 18: leaf module; listing is sync (the CDP path already is) and runs in an
 executor at the call sites.
@@ -18,15 +21,21 @@ executor at the call sites.
 from __future__ import annotations
 
 import json
+import time
 import urllib.request
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from . import browsers, rdp
 from .cdp.tabs import fetch_tabs_sync
 
 CDP = browsers.PROTOCOL_CDP
 RDP = browsers.PROTOCOL_RDP
+
+_POS_TTL = 300.0  # a working protocol stays trusted for five minutes
+_NEG_TTL = 5.0    # a dead endpoint re-probes next cycle, not next pass
+
+_cache: Dict[Tuple[str, int], Tuple[str, float]] = {}
 
 
 @dataclass(frozen=True)
@@ -84,6 +93,71 @@ def _rdp_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[Li
     return refs, ("" if refs else (err or "no tabs listed"))
 
 
+def _attempt(protocol: str, endpoint: rdp.Endpoint, timeout: float,
+             browser_id: str) -> Tuple[List[TargetRef], str]:
+    """List through one protocol (the directed guess or the fallback winner)."""
+    if protocol == CDP:
+        return _cdp_refs(endpoint.host, endpoint.port, timeout, browser_id)
+    return _rdp_refs(endpoint.host, endpoint.port, timeout, browser_id)
+
+
+def _unreachable(profile: browsers.BrowserProfile, host: str, port: int) -> str:
+    """The composed not-reachable line (one text for the cache and the probe)."""
+    return (f"{profile.label} not reachable on {host}:{port} — start it with "
+            f"{profile.debug_arg}={port} ({profile.notes.split('.')[0]})")
+
+
+def _recalled(host: str, port: int) -> Optional[str]:
+    """The cached protocol for this endpoint, or None when unknown/expired.
+
+    A recalled miss ("") means a freshly dead endpoint — the caller stays
+    quiet instead of re-probing. Races are benign: a stale recall fails the
+    directed attempt and self-corrects through the fallback.
+    """
+    hit = _cache.get((host, int(port)))
+    if hit is None:
+        return None
+    protocol, deadline = hit
+    if time.monotonic() >= deadline:
+        _cache.pop((host, int(port)), None)
+        return None
+    return protocol
+
+
+def _remember(host: str, port: int, protocol: str) -> None:
+    """Cache this endpoint's protocol ("" = dead: a short memory, not a grudge)."""
+    ttl = _POS_TTL if protocol else _NEG_TTL
+    _cache[(host, int(port))] = (protocol, time.monotonic() + ttl)
+
+
+def reset_protocol_cache() -> None:
+    """Forget every endpoint's protocol (tests start here; production never calls)."""
+    _cache.clear()
+
+
+def _list_known(profile: browsers.BrowserProfile, host: str, port: int,
+                timeout: float) -> Tuple[List[TargetRef], str]:
+    """List one known browser: the directed attempt, then at most one fallback."""
+    endpoint = rdp.Endpoint(host, port)
+    recalled = _recalled(host, port)
+    if recalled == "":
+        return [], _unreachable(profile, host, port)
+    directed = recalled or profile.protocol
+    refs, err = _attempt(directed, endpoint, timeout, profile.id)
+    if not err:
+        _remember(host, port, directed)
+        return refs, ""
+    found = detect_protocol(host, port, min(timeout, 1.0))
+    if not found:
+        _remember(host, port, "")
+        return [], _unreachable(profile, host, port)
+    if found == directed:
+        return refs, err
+    refs, err = _attempt(found, endpoint, timeout, profile.id)
+    _remember(host, port, found)  # the probe proved it answers; trust that
+    return refs, err
+
+
 def list_targets(browser_id: str, host: str, port, timeout: float = 3.0) -> Tuple[List[TargetRef], str]:
     """Every tab of one browser, or ([] + the reason) — the pool's one entry point.
 
@@ -97,13 +171,7 @@ def list_targets(browser_id: str, host: str, port, timeout: float = 3.0) -> Tupl
         port_i = int(port)
     except Exception:
         return [], f"invalid port for {browser_id}: {port!r}"
-    protocol = detect_protocol(host, port_i, min(timeout, 1.0))
-    if protocol == CDP:
-        return _cdp_refs(host, port_i, timeout, profile.id)
-    if protocol == RDP:
-        return _rdp_refs(host, port_i, timeout, profile.id)
-    return [], (f"{profile.label} not reachable on {host}:{port_i} — start it with "
-                f"{profile.debug_arg}={port_i} ({profile.notes.split('.')[0]})")
+    return _list_known(profile, host, port_i, timeout)
 
 
 def enabled_targets(settings, host: str, base=9222, timeout: float = 3.0) -> Tuple[List[TargetRef], List[str]]:

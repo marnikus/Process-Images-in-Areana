@@ -187,3 +187,115 @@ def test_pool_rows_name_the_browser_of_their_endpoint():
     chrome, _ = PagePool(), None
     chrome.add_page(PageInfo(tab_id="AAA111", ws_url="ws://127.0.0.1:9222/devtools/page/AAA111"))
     assert chrome.status_snapshot()["pages"][0]["browser"] == "chrome"
+
+
+# ---- one connection per endpoint per cycle (2026-09-22) -----------------------
+#
+# Every TCP connection to the debugger server raises Firefox's "Incoming
+# Connection" dialog. Re-detecting the protocol on every cycle (a CDP probe
+# plus an RDP probe) plus a fresh listing socket therefore re-prompts every
+# few seconds. `list_targets` now goes straight to the registry's protocol on
+# a pooled socket, measures only when that fails, and remembers the answer:
+# positive for minutes, negative for seconds (a restarted browser must come
+# back at once, and a dead port probes silently — nothing listens to prompt).
+# RED: cold listing probes CDP first and re-detects every call.
+
+
+def _counting(monkeypatch, module, name):
+    calls = []
+    real = getattr(module, name)
+
+    def counted(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(module, name, counted)
+    return calls
+
+
+def test_a_cold_firefox_listing_skips_the_cdp_probe(firefox, monkeypatch):
+    http_calls = _counting(monkeypatch, endpoints, "_get_json")
+    detects = _counting(monkeypatch, endpoints, "detect_protocol")
+    targets, err = endpoints.list_targets("firefox", "127.0.0.1", firefox.port, timeout=2.0)
+    assert err == "" and len(targets) == 2
+    assert http_calls == [], "no HTTP knock on a debugger-server port"
+    assert detects == [], "the registry's protocol is tried first, not measured"
+
+
+def test_a_second_listing_reuses_the_answer_and_the_socket(firefox, monkeypatch):
+    detects = _counting(monkeypatch, endpoints, "detect_protocol")
+    first, err1 = endpoints.list_targets("firefox", "127.0.0.1", firefox.port, timeout=2.0)
+    second, err2 = endpoints.list_targets("firefox", "127.0.0.1", firefox.port, timeout=2.0)
+    assert err1 == err2 == "" and len(first) == len(second) == 2
+    assert detects == [] and firefox.connections == 1
+    firefox.close()
+    targets, err = endpoints.list_targets("firefox", "127.0.0.1", firefox.port, timeout=1.0)
+    assert targets == [] and "not reachable" in err
+    assert len(detects) == 1, "only a failure re-measures"
+
+
+def test_a_cdp_only_port_behind_a_firefox_entry_falls_back_and_is_remembered(chrome, monkeypatch):
+    from app.browser import rdp
+    monkeypatch.setattr(rdp, "APPROVAL_WAIT", 0.5)
+    real_list_tabs = rdp.list_tabs
+    rdp_calls = []
+
+    def counted_list(target, timeout=3.0):
+        rdp_calls.append(target)
+        return real_list_tabs(target, timeout)
+
+    monkeypatch.setattr(rdp, "list_tabs", counted_list)
+    detects = _counting(monkeypatch, endpoints, "detect_protocol")
+    targets, err = endpoints.list_targets("firefox", "127.0.0.1", chrome.port, timeout=2.0)
+    assert err == "" and len(targets) == 2, "an ESR-style endpoint still lists"
+    assert len(detects) == 1 and len(rdp_calls) == 1
+    targets, err = endpoints.list_targets("firefox", "127.0.0.1", chrome.port, timeout=2.0)
+    assert err == "" and len(targets) == 2
+    assert len(rdp_calls) == 1, "the fallback answer sticks — no RDP knock per cycle"
+
+
+def test_a_dead_port_reprobes_within_seconds_not_cycles(monkeypatch):
+    port = _free_port()
+    detects = _counting(monkeypatch, endpoints, "detect_protocol")
+    _, err1 = endpoints.list_targets("firefox", "127.0.0.1", port, timeout=0.5)
+    _, err2 = endpoints.list_targets("firefox", "127.0.0.1", port, timeout=0.5)
+    assert "not reachable" in err1 and "not reachable" in err2
+    assert len(detects) == 1, "one probe, then quiet — nothing listens to prompt"
+
+
+def test_a_dead_port_is_forgiven_once_its_short_memory_expires(monkeypatch):
+    port = _free_port()
+    monkeypatch.setattr(endpoints, "_NEG_TTL", 0.0)  # the memory expires instantly
+    detects = _counting(monkeypatch, endpoints, "detect_protocol")
+    _, err1 = endpoints.list_targets("firefox", "127.0.0.1", port, timeout=0.5)
+    _, err2 = endpoints.list_targets("firefox", "127.0.0.1", port, timeout=0.5)
+    assert "not reachable" in err1 and "not reachable" in err2
+    assert len(detects) == 2, "an expired memory re-measures"
+
+
+def test_an_empty_but_answering_endpoint_stays_trusted(monkeypatch):
+    from app.browser import rdp
+    monkeypatch.setattr(rdp, "APPROVAL_WAIT", 0.5)
+    empty = FakeChrome(tabs=[])
+    try:
+        rdp_calls = _counting(monkeypatch, rdp, "list_tabs")
+        detects = _counting(monkeypatch, endpoints, "detect_protocol")
+        first, err1 = endpoints.list_targets("firefox", "127.0.0.1", empty.port, timeout=2.0)
+        second, err2 = endpoints.list_targets("firefox", "127.0.0.1", empty.port, timeout=2.0)
+        assert first == second == [] and err1 == err2 != ""
+        assert "not reachable" not in err2, "an answering endpoint is never buried"
+        assert len(rdp_calls) == 1, "the cache directs CDP — no RDP knock per cycle"
+        assert len(detects) == 2, "an empty listing is still a failure, so it re-measures"
+    finally:
+        empty.close()
+
+
+def test_a_confirmed_failure_reports_the_attempt_not_a_second_guess(firefox, monkeypatch):
+    first, err1 = endpoints.list_targets("firefox", "127.0.0.1", firefox.port, timeout=2.0)
+    assert err1 == "" and len(first) == 2
+    firefox.kill_clients()  # the pooled socket dies; the server lives on
+    seen_before, conns_before = len(firefox.seen), firefox.connections
+    targets, err = endpoints.list_targets("firefox", "127.0.0.1", firefox.port, timeout=2.0)
+    assert targets == [] and err != "" and "not reachable" not in err
+    assert firefox.connections == conns_before + 2, "only the HTTP knock + the re-probe redial"
+    assert len(firefox.seen) == seen_before, "no second listing attempt"

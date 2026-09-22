@@ -247,7 +247,7 @@ def _report_connect_failure(bridge, ws_url: str) -> None:
     profile = _profile_for_ws(bridge, ws_url)
     if profile is not None and profile.protocol == browsers.PROTOCOL_RDP:
         bridge._log(f"❌ Connect failed for {ws_url[:120]} — check Firefox still open with --start-debugger-server on port {bridge.cdp._port}, try Diagnose", "error")
-        bridge._log(f"💡 Tip: launch Firefox with --start-debugger-server={bridge.cdp._port} first (close other Firefox windows), then Scan — the debugger answers on tcp://{bridge.cdp._host}:{bridge.cdp._port} (Firefox has no /json/list)", "warn")
+        bridge._log(f"💡 Tip: launch Firefox with --start-debugger-server={bridge.cdp._port} first (close other Firefox windows), then Scan — the debugger answers on tcp://{bridge.cdp._host}:{bridge.cdp._port} (Firefox has no /json/list); if you clicked Disable on its connection prompt instead of OK, relaunch Firefox — Disable stops the debugger server until restart", "warn")
     else:
         bridge._log(f"❌ Connect failed for {ws_url[:120]} — check Chrome still open on port {bridge.cdp._port}, try Diagnose", "error")
         bridge._log(f"💡 Tip: Ensure Chrome was started with --remote-debugging-port={bridge.cdp._port} --user-data-dir=... and that http://{bridge.cdp._host}:{bridge.cdp._port}/json/list shows JSON in browser", "warn")
