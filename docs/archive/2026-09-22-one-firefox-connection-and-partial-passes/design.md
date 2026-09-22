@@ -135,8 +135,8 @@ through its own process console), `attached`/`client` routed through the session
 removal), and Reparse/Refresh/Diagnose/Connect as the only places a new dialog may be
 asked for.
 
-Numbers: pytest **2,199 passed / 4 skipped**, JS **76 suites / 375 pass / 0 fail**, coverage
-**89.26 % line / 84.61 % branch** (baseline 86.36 / 82.33), `verify_quality --changed-files`
+Numbers: pytest **2,200 passed / 4 skipped**, JS **76 suites / 375 pass / 0 fail**, coverage
+**89.22 % line / 84.61 % branch** (baseline 86.36 / 82.33), `verify_quality --changed-files`
 **0 fails**; the whole-repo lane keeps only the pre-existing untouched `captcha.js max_cc`.
 Two round-8 pins were re-pointed on purpose (a listing no longer dials per call), and RULE
 16 forced two splits during the round rather than baselines: `ChromeMixin` (the class was

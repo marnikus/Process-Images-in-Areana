@@ -188,3 +188,55 @@ def test_url_table_header_declares_the_tab_column():
     src = (WEB / "js" / "panels" / "url-list" / "render.js").read_text(encoding="utf-8")
     body = src[src.index("rowHtml(u) {"):src.index("  render(urls)")]
     assert body.count("<td") == len(heads), "row cells must match the declared columns"
+
+
+# ── the app's one Firefox socket is released on close (round 11) ─────────────
+
+def _class_methods(tree: ast.Module, name: str) -> dict:
+    """{method name: node} of one class in the module under test."""
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == name:
+            return {item.name: item for item in node.body
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    return {}
+
+
+def _called_names(node: ast.AST) -> set:
+    """Every attribute/keyword-less name called inside a function body."""
+    out = set()
+    for item in ast.walk(node):
+        if isinstance(item, ast.Call):
+            func = item.func
+            out.add(func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", ""))
+    return out
+
+
+def _imported_names(node: ast.AST) -> set:
+    """Module paths imported anywhere inside a function body (lazy imports count)."""
+    out = set()
+    for item in ast.walk(node):
+        if isinstance(item, ast.ImportFrom) and item.module:
+            out.add(item.module)
+        elif isinstance(item, ast.Import):
+            out.update(alias.name for alias in item.names)
+    return out
+
+
+def test_closing_the_window_releases_the_firefox_socket():
+    """One DevTools socket is kept per endpoint for the whole run — close must drop it.
+
+    `QMainWindow` cannot be imported in this sandbox (no libGL, as everywhere else in
+    this file), so the wiring is pinned by AST: `closeEvent` must route through
+    `_drop_browser_sockets`, and that helper must close the RDP session inside a guard —
+    a browser that stopped answering must never make the window fail to close.
+    """
+    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
+    methods = _class_methods(tree, "MainWindow")
+    assert "closeEvent" in methods and "_drop_browser_sockets" in methods, sorted(methods)
+    assert "_drop_browser_sockets" in _called_names(methods["closeEvent"]), \
+        "closing the window must drop the browser sockets"
+    body = methods["_drop_browser_sockets"]
+    assert "app.browser.rdp" in _imported_names(body), "the shared session is what gets closed"
+    assert "close_all" in _called_names(body), "and it is closed by name"
+    assert any(isinstance(item, ast.Try) for item in ast.walk(body)), \
+        "a browser that stopped answering must not break the close"

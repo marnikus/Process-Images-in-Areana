@@ -1195,8 +1195,9 @@ the stub grew the two servers they need: a Firefox that asks for permission unti
 `Services` in scope. Two round-8 pins were re-pointed on purpose (`tests/test_rdp_client.py`:
 a listing no longer dials per call, and reconnection is explicit).
 
-Gates: pytest **2,199 passed / 4 skipped**, JS **76 suites / 375 pass / 0 fail / 4 skipped**,
-coverage **89.26 % line / 84.61 % branch** (baseline 86.36 / 82.33), `verify_quality
+Gates: pytest **2,200 passed / 4 skipped** (the app's close path in `main_window.py` is pinned by AST in
+`test_ui_wiring.py` — Qt WebEngine cannot be imported in this sandbox), JS **76 suites / 375 pass / 0 fail /
+4 skipped**, coverage **89.22 % line / 84.61 % branch** (baseline 86.36 / 82.33), `verify_quality
 --changed-files` **0 fails** (the whole-repo lane keeps only the pre-existing untouched
 `captcha.js max_cc`). RULE 16 fixed two violations instead of baselining them: `RdpClient`
 had grown to 172 LOC / 20 methods → the chrome-scope capability moved to `ChromeMixin` (the
