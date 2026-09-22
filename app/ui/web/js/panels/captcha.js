@@ -58,18 +58,20 @@ const CaptchaPanel = {
     return `${p.label}${p.has_key ? ' ✓ key set' : ' — no key'}`;
   },
 
+  _syncProviderOptions(sel, r) {
+    const opts = Array.from(sel.options || []);
+    r.providers.forEach((p) => {
+      const opt = opts.find((o) => o.value === p.id);
+      if (opt) opt.textContent = this._optionLabel(p);
+    });
+    sel.value = r.provider;
+  },
+
   renderProviders(r) {
     if (!r || !Array.isArray(r.providers)) return;
     this._providers = r;
     const sel = document.getElementById('captchaProvider');
-    if (sel) {
-      const opts = Array.from(sel.options || []);
-      r.providers.forEach((p) => {
-        const opt = opts.find((o) => o.value === p.id);
-        if (opt) opt.textContent = this._optionLabel(p);
-      });
-      sel.value = r.provider;
-    }
+    if (sel) this._syncProviderOptions(sel, r);
     const active = r.providers.find((p) => p.id === r.provider) || {};
     const hint = document.getElementById('captchaProviderHint');
     if (hint) hint.textContent = active.has_key ? `key: ${active.masked_key || 'set'}` : 'key: (not set)';

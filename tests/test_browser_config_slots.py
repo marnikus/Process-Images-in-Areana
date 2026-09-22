@@ -57,15 +57,17 @@ def test_each_browser_row_carries_its_own_port_dir_command_and_capabilities(cfg)
     chrome, firefox = by_id["chrome"], by_id["firefox"]
     assert chrome["resolved_port"] == 9222 and firefox["resolved_port"] == 9223, "base + offset"
     assert chrome["user_data_dir"] != firefox["user_data_dir"]
-    assert chrome["dir_flag"] == "--user-data-dir" and firefox["dir_flag"] == "--profile"
+    assert chrome["dir_flag"] == "--user-data-dir" and firefox["dir_flag"] == "", \
+        "manual-launch Firefox carries no dir flag"
     os_key = br.current_os()
     assert chrome["binary"] == br.profile_of("chrome").binary(os_key), "the row carries this OS's binary"
     assert firefox["binary"] == br.profile_of("firefox").binary(os_key)
     assert "chrome.exe" in chrome["commands"]["windows"]
-    assert "--start-debugger-server=9223" in firefox["commands"]["windows"]
-    assert "--remote-debugging-port" not in firefox["commands"]["windows"], \
-        "stealth: the tainting flag must never appear in a Firefox command"
-    assert "-no-remote" in firefox["commands"]["windows"], "or the port never opens"
+    assert firefox["commands"]["windows"] == \
+        '"C:\\Program Files\\Mozilla Firefox\\firefox.exe" --start-debugger-server=9223', \
+        "the manual-launch line: attach needs nothing but the flag"
+    assert "--profile" not in firefox["commands"]["windows"]
+    assert "-no-remote" not in firefox["commands"]["windows"], "isolation is opt-in via extra args"
     for key in ("windows", "windows_with_url", "linux", "linux_with_url", "macos", "macos_with_url"):
         assert firefox["commands"][key], f"firefox {key} command missing"
     assert chrome["test_url"].endswith("/json/list")
@@ -125,7 +127,7 @@ def test_empty_per_browser_fields_never_erase_the_stored_ones(cfg):
     host.set_cdp_config(json.dumps({"browser": "firefox", "port": 9222,
                                     "browsers": {"firefox": {"user_data_dir": "", "extra_args": ""}}}))
     assert cfg.get_state("cdp_browsers")["firefox"]["user_data_dir"] == br.default_data_dir("firefox")
-    assert cfg.get_state("cdp_browsers")["firefox"]["extra_args"] == "-no-remote"
+    assert cfg.get_state("cdp_browsers")["firefox"]["extra_args"] == ""
 
 
 # ── the launch command slot ──
@@ -137,7 +139,8 @@ def test_get_chrome_launch_command_follows_the_active_browser(cfg):
     launch = json.loads(host.get_chrome_launch_command())
     assert launch["browser"] == "firefox" and launch["protocol"] == "rdp"
     assert launch["resolved_port"] == 9223
-    assert "firefox" in launch["windows"] and "--profile=" in launch["windows"]
+    assert launch["windows"] == \
+        '"C:\\Program Files\\Mozilla Firefox\\firefox.exe" --start-debugger-server=9223'
     assert launch["macos"] and launch["linux_with_url"]
     assert launch["test_url"] == "tcp://127.0.0.1:9223"
     assert "screenshot" in launch["unavailable"]

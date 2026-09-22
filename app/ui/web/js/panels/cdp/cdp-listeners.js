@@ -18,7 +18,7 @@ window.CDPListeners = {
     const devCount = store.tabs.length - real.length;
     if (typeof LogConsole === 'undefined') return;
     if (devCount > 0) LogConsole.log(`📑 Received ${store.tabs.length} tab(s) (${real.length} real + ${devCount} devtools)`, 'success');
-    else LogConsole.log(`📑 Received ${store.tabs.length} unique Chrome tab(s)`, 'success');
+    else LogConsole.log(`📑 Received ${store.tabs.length} unique tab(s)`, 'success');
   },
 
   _isDebouncedAuto(only, store, now) {
@@ -56,6 +56,14 @@ window.CDPListeners = {
     }
   },
 
+  _statusBrowser(store) {
+    const tabs = store.tabs || [];
+    const ws = store.selectedWs || store._lastAutoConnectWs || '';
+    const tab = tabs.find((t) => t.ws_url === ws) || null;
+    const names = { chrome: 'Chrome ', firefox: 'Firefox ', edge: 'Edge ' };
+    return (tab && names[tab.browser]) || '';
+  },
+
   onConnectionStatus(panel, status) {
     const dot = document.getElementById('connectionStatus');
     if (dot) {
@@ -66,15 +74,16 @@ window.CDPListeners = {
     if (status === 'connected') store.connected = true;
     if (status === 'disconnected') store.connected = false;
     if (typeof LogConsole !== 'undefined') {
-      if (status === 'connected') LogConsole.log('✅ Chrome connected', 'success');
-      if (status === 'disconnected') LogConsole.log('🔌 Chrome disconnected', 'warn');
-      if (status === 'error') LogConsole.log('❌ Chrome connection error', 'error');
+      const who = this._statusBrowser(store);
+      if (status === 'connected') LogConsole.log(`✅ ${who}connected`, 'success');
+      if (status === 'disconnected') LogConsole.log(`🔌 ${who}disconnected`, 'warn');
+      if (status === 'error') LogConsole.log(`❌ ${who}connection error`, 'error');
     }
     panel.updateUrlRowsConnection();
   },
 
   _handleNoMatches(query, store) {
-    if (typeof LogConsole !== 'undefined') LogConsole.log(`❌ No Chrome tab matches “${query}”`, 'error');
+    if (typeof LogConsole !== 'undefined') LogConsole.log(`❌ No tab matches “${query}”`, 'error');
     if (store.tabs.length === 0) setTimeout(() => { if (window.CDPActions) window.CDPActions.diagnose(); }, 500);
   },
 

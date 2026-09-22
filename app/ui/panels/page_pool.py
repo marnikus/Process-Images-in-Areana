@@ -10,7 +10,6 @@ at top level). Imports go panels -> services/core only.
 """
 
 import json
-import re
 
 from app.core.cooldown import clamp_seconds, config_to_dict, format_remaining
 from app.persistence.cooldown_store import save_entries
@@ -44,11 +43,11 @@ def reset_pool_dicts(pool) -> None:
 
 
 async def connect_pool_client(bridge, ws_url: str):
-    """CDP client for a pool join (None + error log when refused)."""
-    from app.browser.cdp_client import CDPClient
+    """Tab driver for a pool join (None + error log when refused)."""
+    from app.ui.panels.browser_fetch import make_driver
     host = bridge._page_pool._host if bridge._page_pool else "127.0.0.1"
     port = bridge._page_pool._port if bridge._page_pool else 9222
-    client = CDPClient(host=host, port=port)
+    client = make_driver(host, port, ws_url)
     if await client.connect(ws_url):
         return client
     bridge._log(f"❌ Pool connect failed {ws_url[:80]}", "error")
@@ -123,18 +122,21 @@ async def rejoin_checked_rows(bridge, tab_ids) -> int:
 
 
 async def do_connect_page_pool(bridge, ws_url: str):
-    """Attach one Chrome tab to the pool (client + controller + restore)."""
+    """Attach one browser tab to the pool (driver + controller + restore)."""
     try:
         from app.browser.cdp_arena import CDPArenaController
         from app.browser.page_status import PageInfo
-        m = re.search(r'/devtools/page/([^/]+)$', ws_url)
-        tab_id = m.group(1) if m else ws_url
+        from app.ui.panels.browser_fetch import browser_for_ws, tab_id_from_ws
+        tab_id = tab_id_from_ws(ws_url) or ws_url
         client = await connect_pool_client(bridge, ws_url)
         if client is None:
             return
         ctrl = CDPArenaController(client, log_callback=lambda msg: bridge._log(msg, "info"))
         live_title, live_url = await resolve_tab_info(bridge, tab_id, ws_url)
-        info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
+        config = getattr(bridge, "config", None)
+        browser_id = browser_for_ws(config, ws_url) if config is not None else ""
+        info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id,
+                        url=live_url or "", browser=browser_id)
         await finish_pool_join(bridge, info, client, ctrl)
     except Exception as e:
         bridge._log(f"Pool connect exception {e}", "error")

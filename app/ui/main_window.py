@@ -56,13 +56,17 @@ class MainWindow(QMainWindow):
         self._attach_web_channel()
 
     def _init_cdp_client(self) -> None:
-        # CDP client for Chrome remote debugging — host/port from config so user can choose
+        # Primary tab driver — host/port from config so user can choose; the tab
+        # source lists EVERY enabled browser each cycle (read live, never rewired)
         self.cdp_client = None
         if CDPClient:
             try:
+                from app.ui.panels.browser_fetch import fetch_all_tabs_async
                 host = self.config_manager.get_state("cdp_host", "127.0.0.1")
                 port = self.config_manager.get_state("cdp_port", 9222)
                 self.cdp_client = CDPClient(host=host, port=port, parent=self)
+                config = self.config_manager
+                self.cdp_client.set_tab_source(lambda: fetch_all_tabs_async(config))
             except Exception as e:
                 print(f"CDP client init failed: {e}")
 

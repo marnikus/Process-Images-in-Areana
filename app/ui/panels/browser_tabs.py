@@ -12,18 +12,19 @@ services never import ui).
 import asyncio
 import json
 import logging
-import re
 import time
 from functools import partial
 
 from app.services.auto_connect import pick_primary_ws
 from app.services.live.reconcile import LiveDeps, reconcile_once, start_reconciler
 from app.services.run_state import (
-    pooled_ids,
     resolve_tab_info,
     restore_page_state,
     schedule_coro,
     tab_label_of,
+)
+from app.ui.panels.browser_fetch import (
+    browser_for_ws, diagnose_active_async, make_driver, tab_id_from_ws,
 )
 from app.ui.panels.page_pool import do_connect_page_pool, leave_pool
 from app.ui.panels.url_queue import commit_urls_system
@@ -54,8 +55,8 @@ async def connect_reused(bridge, ws_url: str) -> bool:
     """True when already on this tab (announced, nothing to do)."""
     try:
         if bridge.cdp and bridge.cdp.is_connected and bridge.cdp._current_tab_id:
-            m = re.search(r'/devtools/page/([^/]+)$', ws_url)
-            if m and m.group(1) == bridge.cdp._current_tab_id:
+            tab_id = tab_id_from_ws(ws_url)
+            if tab_id and tab_id == bridge.cdp._current_tab_id:
                 bridge._log(f"✅ Already connected to {ws_url[:80]} (reuse)", "success")
                 bridge.connection_status.emit("connected")
                 return True
@@ -65,9 +66,8 @@ async def connect_reused(bridge, ws_url: str) -> bool:
 
 
 def cached_tab_identity(bridge, ws_url: str):
-    """(tab_id, title, url) from the URL + cached cdp attrs."""
-    m_id = re.search(r'/devtools/page/([^/]+)$', ws_url)
-    tab_id = m_id.group(1) if m_id else getattr(bridge.cdp, '_current_tab_id', '') or ws_url
+    """(tab_id, title, url) from the handle + cached cdp attrs."""
+    tab_id = tab_id_from_ws(ws_url) or getattr(bridge.cdp, '_current_tab_id', '') or ws_url
     title = getattr(bridge.cdp, '_current_title', '') or ''
     url = getattr(bridge.cdp, '_current_url', '') or ''
     return tab_id, title, url
@@ -84,35 +84,63 @@ async def pool_tab_identity(bridge, ws_url: str):
 
 
 def announce_tab_connected(bridge, ws_url: str) -> None:
-    """Success logs + status for a fresh connection."""
+    """Success logs + status for a fresh connection (names the browser)."""
+    from app.browser import browsers
+    profile = _profile_for_ws(bridge, ws_url)
+    label = profile.label if profile else "Browser"
     bridge._log(f"✅ Connected to {ws_url[:80]} (tab {bridge.cdp._current_tab_id[:20]}…)", "success")
     bridge.connection_status.emit("connected")
-    bridge._log(f"CDP session active on ws://{bridge.cdp._host}:{bridge.cdp._port}/devtools/page/{bridge.cdp._current_tab_id[:30]}", "info")
+    if profile is not None and profile.protocol == browsers.PROTOCOL_RDP:
+        bridge._log(f"{label} session on rdp://{bridge.cdp._host}:{bridge.cdp._port} "
+                    f"(tab {bridge.cdp._current_tab_id[:30]} — one connection per op)", "info")
+    else:
+        bridge._log(f"CDP session active on ws://{bridge.cdp._host}:{bridge.cdp._port}/devtools/page/{bridge.cdp._current_tab_id[:30]}", "info")
+
+
+def _profile_for_ws(bridge, ws_url: str):
+    """Registry row owning this handle (scheme fallback when no endpoint matches)."""
+    from app.browser import browsers
+    try:
+        config = getattr(bridge, "config", None)
+        browser_id = browser_for_ws(config, ws_url) if config is not None else ""
+        profile = browsers.profile_of(browser_id)
+        if profile is None and (ws_url or "").strip().lower().startswith("rdp://"):
+            profile = next((p for p in browsers.PROFILES
+                            if p.protocol == browsers.PROTOCOL_RDP), None)
+        return profile
+    except Exception:
+        return None
+
+
+def _page_info(bridge, identity):
+    """Pool row for a joined tab, stamped with its endpoint's browser."""
+    from app.browser.page_status import PageInfo
+    tab_id, ws_url, title, url = identity
+    config = getattr(bridge, "config", None)
+    browser_id = browser_for_ws(config, ws_url) if config is not None else ""
+    return PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url, browser=browser_id)
 
 
 def reuse_pool_page(bridge, identity) -> None:
     """Pool already holds a live dedicated client: refresh info only."""
-    from app.browser.page_status import PageInfo
     tab_id, ws_url, title, url = identity
-    bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
+    bridge._page_pool.add_page(_page_info(bridge, identity))
     bridge._emit_pool_status()
     label = tab_label_of(getattr(bridge, "_page_pool", None), tab_id)
     bridge._log(f"📦 Pool: tab {label} already has dedicated client steady (reuse)", "info")
 
 
 async def add_dedicated_pool_page(bridge, identity) -> None:
-    """Pool-join with an independent per-tab client (parallel-safe)."""
-    from app.browser.page_status import PageInfo
+    """Pool-join with an independent per-tab driver (parallel-safe)."""
     from app.browser.cdp_arena import CDPArenaController
-    from app.browser.cdp_client import CDPClient
     tab_id, ws_url, title, url = identity
     host = getattr(bridge.cdp, '_host', '127.0.0.1')
     port = getattr(bridge.cdp, '_port', 9222)
-    dedicated = CDPClient(host=host, port=port)
+    dedicated = make_driver(host, port, ws_url)
     if not await dedicated.connect(ws_url):
         add_fallback_pool_page(bridge, identity)
         return
-    bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
+    bridge._page_pool.add_page(_page_info(bridge, identity))
     ctrl2 = CDPArenaController(dedicated, log_callback=lambda m: bridge._log(m, "info"))
     bridge._page_pool.register_client(tab_id, dedicated, ctrl2)
     bridge._emit_pool_status()
@@ -125,10 +153,9 @@ async def add_dedicated_pool_page(bridge, identity) -> None:
 
 def add_fallback_pool_page(bridge, identity) -> None:
     """Pool-join reusing the primary client (dedicated connect failed)."""
-    from app.browser.page_status import PageInfo
     from app.browser.cdp_arena import CDPArenaController
     tab_id, ws_url, title, url = identity
-    bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
+    bridge._page_pool.add_page(_page_info(bridge, identity))
     ctrl = CDPArenaController(bridge.cdp, log_callback=lambda m: bridge._log(m, "info"))
     bridge._page_pool.register_client(tab_id, bridge.cdp, ctrl)
     bridge._emit_pool_status()
@@ -157,19 +184,88 @@ async def attach_connected_tab(bridge, ws_url: str) -> None:
         bridge._log(f"Pool add primary failed: {e} {_tb.format_exc()[-500:]}", "warn")
 
 
+def _driver_cache(bridge, current) -> dict:
+    """The per-scheme driver cache (seeded with the live driver)."""
+    from app.browser.rdp_driver import RdpDriver
+    cache = getattr(bridge, "_drivers", None)
+    if cache is None:
+        cache = {}
+        bridge._drivers = cache
+    if current is not None:
+        cache.setdefault("rdp" if isinstance(current, RdpDriver) else "cdp", current)
+    return cache
+
+
+def _fresh_tab_driver(bridge, current, ws_url: str):
+    """A new driver for this handle's scheme (temp host/port, live tab source)."""
+    from app.ui.panels.browser_fetch import fetch_all_tabs_async
+    host = getattr(current, "_host", "127.0.0.1") or "127.0.0.1"
+    try:
+        port = int(getattr(current, "_port", 9222) or 9222)
+    except Exception:
+        port = 9222
+    driver = make_driver(host, port, ws_url)
+    driver.set_tab_source(lambda: fetch_all_tabs_async(getattr(bridge, "config", None)))
+    return driver
+
+
+async def _adopt_tab_driver(bridge, current, driver):
+    """Idle-disconnect the old driver, adopt + wire the new one."""
+    from app.ui.bridge_context import wire_cdp
+    if current is not None and current is not driver:
+        try:
+            await current.disconnect()
+        except Exception:
+            pass
+    bridge.cdp = driver
+    try:
+        wire_cdp(bridge)
+    except Exception:
+        pass
+
+
+async def use_tab_driver(bridge, ws_url: str):
+    """The primary driver for this handle's scheme (adopted + wired, cached per scheme)."""
+    from app.browser.rdp_driver import RdpDriver
+    want_rdp = (ws_url or "").strip().lower().startswith("rdp://")
+    current = getattr(bridge, "cdp", None)
+    if current is not None and isinstance(current, RdpDriver) == want_rdp:
+        return current
+    cache = _driver_cache(bridge, current)
+    key = "rdp" if want_rdp else "cdp"
+    driver = cache.get(key)
+    if driver is None:
+        driver = _fresh_tab_driver(bridge, current, ws_url)
+        cache[key] = driver
+    await _adopt_tab_driver(bridge, current, driver)
+    return driver
+
+
+def _report_connect_failure(bridge, ws_url: str) -> None:
+    """Failed-connect logs naming the handle's browser and its flag."""
+    from app.browser import browsers
+    profile = _profile_for_ws(bridge, ws_url)
+    if profile is not None and profile.protocol == browsers.PROTOCOL_RDP:
+        bridge._log(f"❌ Connect failed for {ws_url[:120]} — check Firefox still open with --start-debugger-server on port {bridge.cdp._port}, try Diagnose", "error")
+        bridge._log(f"💡 Tip: launch Firefox with --start-debugger-server={bridge.cdp._port} first (close other Firefox windows), then Scan — the debugger answers on tcp://{bridge.cdp._host}:{bridge.cdp._port} (Firefox has no /json/list)", "warn")
+    else:
+        bridge._log(f"❌ Connect failed for {ws_url[:120]} — check Chrome still open on port {bridge.cdp._port}, try Diagnose", "error")
+        bridge._log(f"💡 Tip: Ensure Chrome was started with --remote-debugging-port={bridge.cdp._port} --user-data-dir=... and that http://{bridge.cdp._host}:{bridge.cdp._port}/json/list shows JSON in browser", "warn")
+    bridge.connection_status.emit("error")
+
+
 async def do_connect_tab(bridge, ws_url: str) -> None:
     """Connect + pool-join one tab (reuses live sessions)."""
     bridge._connect_in_progress = True
     try:
+        await use_tab_driver(bridge, ws_url)
         if await connect_reused(bridge, ws_url):
             return
         if await bridge.cdp.connect(ws_url):
             announce_tab_connected(bridge, ws_url)
             await attach_connected_tab(bridge, ws_url)
         else:
-            bridge._log(f"❌ Connect failed for {ws_url[:120]} — check Chrome still open on port {bridge.cdp._port}, try Diagnose", "error")
-            bridge._log(f"💡 Tip: Ensure Chrome was started with --remote-debugging-port={bridge.cdp._port} --user-data-dir=... and that http://{bridge.cdp._host}:{bridge.cdp._port}/json/list shows JSON in browser", "warn")
-            bridge.connection_status.emit("error")
+            _report_connect_failure(bridge, ws_url)
     except Exception as e:
         import traceback
         bridge._log(f"❌ Connect exception for {ws_url[:80]}: {e} — {traceback.format_exc()[-1000:]}", "error")
@@ -204,12 +300,11 @@ def claim_find_slot(bridge, query: str):
 async def report_no_tabs(bridge, query: str) -> None:
     """Diagnose an empty tab list (executor diag + fix tip), answer []."""
     try:
-        loop = asyncio.get_event_loop()
-        diag = await loop.run_in_executor(None, lambda: bridge.cdp.diagnose_sync())
-        bridge._log(diag.get("summary", "⚠ No Chrome tabs found"), "warn")
-        bridge._log(f"💡 Fix: 1) Close ALL Chrome windows. 2) Run: \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port={bridge.cdp._port} --user-data-dir=\"C:\\arena-images-chrome\" 3) Open https://arena.ai in that NEW Chrome window. 4) Click Diagnose. 5) Open http://{bridge.cdp._host}:{bridge.cdp._port}/json/list — you should see JSON.", "warn")
+        diag = await diagnose_active_async(getattr(bridge, "config", None))
+        bridge._log(diag.get("summary", "⚠ No tabs found on any enabled browser"), "warn")
+        bridge._log("💡 Fix: start the browser with its debug flag (copy the launch command from the Browser block), open https://arena.ai in it, then click Diagnose.", "warn")
     except Exception:
-        bridge._log(f"⚠ No Chrome tabs found — start Chrome with --remote-debugging-port={bridge.cdp._port} --user-data-dir=\"C:\\arena-images-chrome\"", "warn")
+        bridge._log("⚠ No tabs found on any enabled browser — check the debug flags, then Diagnose", "warn")
     bridge.tab_match_result.emit(query, "[]")
 
 
@@ -255,15 +350,17 @@ async def do_find_tab(bridge, query: str) -> None:
 
 
 async def do_fetch_tabs(bridge) -> None:
-    """Fetch live tabs; an empty list also drops a diagnose summary."""
+    """Fetch live tabs (every enabled browser); errors + diag summary when empty."""
     try:
         tabs = await bridge.cdp.fetch_tabs()
-        payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs], ensure_ascii=False)
+        payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url,
+                               "browser": getattr(t, "browser", "")} for t in tabs], ensure_ascii=False)
         bridge.tabs_received.emit(payload)
+        for line in getattr(bridge.cdp, "_last_fetch_errors", None) or []:
+            bridge._log(f"⚠ {line}", "warn")
         if not tabs:
             try:
-                loop = asyncio.get_event_loop()
-                diag = await loop.run_in_executor(None, lambda: bridge.cdp.diagnose_sync())
+                diag = await diagnose_active_async(getattr(bridge, "config", None))
                 bridge._log(diag.get("summary", ""), "warn")
             except Exception:
                 pass
@@ -271,28 +368,30 @@ async def do_fetch_tabs(bridge) -> None:
         bridge._log(f"❌ Tab fetch failed: {e}", "error")
 
 
-def report_diag_checks(bridge, diag) -> None:
+def report_diag_checks(bridge, diag, port=None) -> None:
     """Per-host port state + first tabs of each check."""
+    shown = port or diag.get("port") or getattr(bridge.cdp, "_port", 9222)
     for chk in diag.get("checks", []):
         host = chk.get("host")
         if chk.get("port_open"):
-            bridge._log(f"  · {host}:{bridge.cdp._port} open — list: {chk.get('list_count')} tabs", "info")
+            bridge._log(f"  · {host}:{shown} open — list: {chk.get('list_count')} tabs", "info")
         else:
-            bridge._log(f"  · {host}:{bridge.cdp._port} closed — {chk.get('list_error') or chk.get('version_error') or 'no response'}", "warn")
+            bridge._log(f"  · {host}:{shown} closed — {chk.get('list_error') or chk.get('version_error') or 'no response'}", "warn")
         for t in chk.get("tabs", [])[:5]:
             bridge._log(f"    - {t.get('title', '')[:60]} — {t.get('url', '')}", "success")
 
 
 async def do_diagnose_chrome(bridge) -> None:
-    """Executor-diagnose Chrome; summary + checks + tabs to the UI."""
+    """Executor-diagnose the ACTIVE browser (legacy name); summary + checks + tabs to the UI."""
     try:
-        loop = asyncio.get_event_loop()
-        diag = await loop.run_in_executor(None, lambda: bridge.cdp.diagnose_sync())
+        diag = await diagnose_active_async(getattr(bridge, "config", None))
         bridge._log(diag.get("summary", ""), "info" if "✅" in diag.get("summary", "") else "warn")
         report_diag_checks(bridge, diag)
         if diag.get("tabs"):
             try:
-                payload = json.dumps([{"id": t.get("id"), "title": t.get("title"), "url": t.get("url"), "ws_url": t.get("ws_url")} for t in diag.get("tabs", [])], ensure_ascii=False)
+                payload = json.dumps([{"id": t.get("id"), "title": t.get("title"), "url": t.get("url"),
+                                       "ws_url": t.get("ws_url"), "browser": t.get("browser", "")}
+                                      for t in diag.get("tabs", [])], ensure_ascii=False)
                 bridge.tabs_received.emit(payload)
             except Exception:
                 pass
@@ -385,7 +484,8 @@ async def do_ensure_primary(bridge) -> None:
         bridge._ensure_running = True
         try:
             ws = primary_ws(bridge)
-            if ws and await bridge.cdp.connect(ws):
+            driver = await use_tab_driver(bridge, ws) if ws else None
+            if driver is not None and await driver.connect(ws):
                 bridge._log("✅ Primary auto-connected — runs can start", "success")
                 bridge.connection_status.emit("connected")
         finally:
@@ -411,11 +511,12 @@ class BrowserTabsMixin:
     @Slot(result=str)
     def diagnose_chrome(self):
         """Non-blocking diagnose: schedule in thread, return pending, emit logs via signals.
+        Legacy name — diagnoses the ACTIVE browser's endpoint in its own protocol.
         Previous sync version blocked UI for several seconds doing DNS + socket checks.
         """
         if not self.cdp:
             return json.dumps({"error": "CDP not available"}, ensure_ascii=False)
-        self._log(f"🩺 Diagnosing Chrome remote debugging on {self.cdp._host}:{self.cdp._port}… (non-blocking)", "info")
+        self._log("🩺 Diagnosing the active browser's debug endpoint… (non-blocking)", "info")
         schedule_coro(self, do_diagnose_chrome(self))
         return "pending"
 

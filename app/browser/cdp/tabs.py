@@ -27,6 +27,8 @@ class TabInfo:
     url: str
     ws_url: str
     type: str = "page"
+    browser: str = "chrome"  # endpoint owner ("firefox"/"edge"/…); the fetch stamps it
+    protocol: str = "cdp"    # "cdp" / "rdp" — the driver the join must speak
 
 
 CANDIDATE_HOSTS = ["127.0.0.1", "localhost"]

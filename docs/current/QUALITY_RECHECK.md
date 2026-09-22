@@ -1095,6 +1095,38 @@ Stealth honesty (RULE 4): the probe test asserts the client sends zero bytes dur
 Python + JS tests assert `--remote-debugging-port` never appears in a Firefox launch command — the
 taint the last approach shipped is now a failing test if it ever returns.
 
+## Addendum 2026-09-22 — Firefox runtime attach (I-64)
+
+Owner report: Firefox never connects — the log showed the app querying the Firefox endpoint with
+Chrome's `/json/list`, labelling the failure `Chrome connection error`, and never attaching to a
+manually launched `firefox --start-debugger-server 9224`. Root cause: I-63 built the protocol seam
+(`endpoints.list_targets`) but nothing at runtime called it — every fetch went through one
+`CDPClient` on one endpoint, every join through a `/devtools/page/` regex. Design in
+`docs/archive/2026-09-22-firefox-runtime-attach/design.md` (D-1…D-8): all-browser fetch,
+per-tab `rdp://#id` handles, `RdpDriver(CDPTransport)`, the injected `tab_source`, per-scheme
+`use_tab_driver` adoption, scheme routing + override-aware endpoint→browser lookup, manual-launch
+registry defaults, browser-aware labels. Image attach on RDP stays a NAMED non-goal (`⛔ not in
+RDP` — no `DOM.setFileInputFiles` equivalent; a JS File-injection attach needs the owner's live
+verification against arena.ai and was not shipped, RULE 4).
+
+| Gate | Command | Result |
+|---|---|---|
+| Tests first | `tests/test_browser_fetch.py` (6), `tests/test_rdp_driver.py` (9), `tests/test_tab_drivers.py` (6), `tests/js/test_cdp_browser_labels.mjs` (4) before the code existed | RED on missing modules; GREEN after implementation (21 + 4) |
+| Mutants killed | break scheme routing in `make_driver`; break `#fragment` parsing in `tab_id_from_ws` | 4 failed / 2 passed (routing is load-bearing); the pure id test fails while the integration survives via the designed `_current_tab_id` fallback — the fallback is the specified behaviour, files restored |
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **2,071 passed · 11 skipped · 0 fail** (+22 net: fetch 6 + driver 9 + routing 6 + profile command split, packing + endpoint/profile/slot/selector migrations) |
+| JS tests | `npm run test:js` (after `npm ci`; the new label file added to the script list) | **366 pass · 4 skipped · 0 fail** (370 subtests; was 362 — the 4 label tests are the delta) |
+| Coverage | fresh `coverage run --branch` + `coverage json` on this branch | **89.36 % line / 85.35 % branch** (was 88.55 / 85.26 → up); round modules: `rdp.py` 100, `browser_fetch.py` 94, `endpoints.py` 93, `browsers.py` 96, `rdp_driver.py` 89 |
+| Changed-file lane | `tools/verify_quality.py --changed-files <11 py + 6 js>` | **0 fails · 0 warns** (Python + JS lanes, coverage present). `use_tab_driver` was caught at LOC 37 / CC 16 and split by decision (`_driver_cache` / `_fresh_tab_driver` / `_adopt_tab_driver`, RULE 19 — no `part1` split) |
+| Vulture + jscpd | `vulture --min-confidence 90` + `jscpd --min-tokens 60` on the round's files | clean after two honest fixes (signature-parity `_ =` in `RdpDriver.send`, one dead import); **0 clones** |
+| Freeze check | `test_panel_packing` + `test_browser_support_added_payloads_not_bridge_slots` | the slot table stays exactly 137 — `browser_fetch` registers as a slot-free helper module (`'browser_fetch': 0`), the fix adds payload keys (`browser`, `debug_arg`, `tcp://`), never slots |
+| Whole-repo gate | `tools/verify_quality.py --changed --allow-legacy` | still unpassable in this clone for the I-63 row's reasons (1) no merge-base, (2) stale baseline — **but item (3) is fixed by this round**: `captcha.js renderProviders` CC 12 → 9 via a pure `_syncProviderOptions` extraction (verified by 41 passing captcha tests), so the JS lane is clean |
+
+Honesty notes (RULE 4): a dead endpoint yields one NAMED error line per fetch (`firefox: …`), never
+silence and never another browser's tabs hidden; `diagnose_chrome` keeps its frozen slot name but
+diagnoses the ACTIVE browser in its own protocol; the Firefox default command is asserted EXACTLY
+(`firefox --start-debugger-server=PORT`, no `-profile`, no `-no-remote`) in Python profile, slot and
+JS preview tests — the manual-launch requirement is a failing test if it ever regresses.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

@@ -8,9 +8,7 @@ window.CDPActions = {
   },
 
   fetchTabs() {
-    const store = window.CDPStore;
-    const cfg = store.currentConfig || { host: '127.0.0.1', port: 9222 };
-    this._log(`🔍 Fetching Chrome tabs from http://${cfg.host}:${cfg.port}/json/list …`, 'info');
+    this._log('🔍 Fetching tabs from every enabled browser …', 'info');
     const bridge = this._bridge();
     if (!bridge || !bridge.get_tabs) { this._log('Bridge not ready for tabs', 'warn'); return; }
     try {
@@ -34,9 +32,7 @@ window.CDPActions = {
   },
 
   diagnose() {
-    const store = window.CDPStore;
-    const cfg = store.currentConfig || { host: '127.0.0.1', port: 9222 };
-    this._log(`🩺 Diagnosing Chrome on ${cfg.host}:${cfg.port}…`, 'info');
+    this._log('🩺 Diagnosing the active browser …', 'info');
     const bridge = this._bridge();
     if (!bridge || !bridge.diagnose_chrome) { this._log('diagnose_chrome not available', 'error'); return; }
     try {

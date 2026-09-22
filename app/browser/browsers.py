@@ -69,19 +69,22 @@ PROFILES: Tuple[BrowserProfile, ...] = (
     ),
     BrowserProfile(
         id="firefox", label="Firefox (Mozilla)", protocol=PROTOCOL_RDP, port_offset=1,
-        dir_flag="--profile", data_dir_default="C:\\arena-images-firefox",
+        dir_flag="", data_dir_default="C:\\arena-images-firefox",
         debug_arg="--start-debugger-server",
-        extra_args_default="-no-remote",
+        extra_args_default="",
         executables={
             "windows": '"C:\\Program Files\\Mozilla Firefox\\firefox.exe"',
             "linux": "firefox",
             "macos": '"/Applications/Firefox.app/Contents/MacOS/firefox"',
         },
         notes=("Stealth RDP (debugger server): tabs, JS, navigation, with "
-               "navigator.webdriver=false. Use --start-debugger-server, never "
-               "--remote-debugging-port (that taints the session). -no-remote "
-               "(default) or --new-instance is required or the debugger server "
-               "never opens while Firefox is already running."),
+               "navigator.webdriver=false. Launch Firefox yourself with "
+               "--start-debugger-server=PORT on your real profile — no -profile, "
+               "no -no-remote needed to attach. Close other Firefox windows "
+               "first (or add -no-remote), or the flag joins the running "
+               "instance and no server starts. Add --profile=\"...\" in extra "
+               "args for an isolated profile; never --remote-debugging-port "
+               "(that taints the session)."),
     ),
     BrowserProfile(
         id="edge", label="Edge (Chromium)", protocol=PROTOCOL_CDP, port_offset=2,
@@ -152,9 +155,13 @@ def endpoint(port, data_dir: str, extra_args: str = "", url: str = "") -> dict:
 
 
 def build_command(profile: BrowserProfile, os_name: str, target: dict) -> str:
-    """One launch command: binary + debug-server flag + profile dir + args (+ URL)."""
-    parts = [profile.binary(os_name), f"{profile.debug_arg}={int(target['port'])}",
-             f'{profile.dir_flag}="{target["data_dir"]}"']
+    """One launch command: binary + debug-server flag + profile dir + args (+ URL).
+
+    An empty `dir_flag` (manual-launch Firefox) skips the dir part entirely.
+    """
+    parts = [profile.binary(os_name), f"{profile.debug_arg}={int(target['port'])}"]
+    if profile.dir_flag:
+        parts.append(f'{profile.dir_flag}="{target["data_dir"]}"')
     extra = target.get("extra_args") or profile.extra_args_default
     if (extra or "").strip():
         parts.append(extra.strip())

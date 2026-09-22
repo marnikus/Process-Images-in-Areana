@@ -40,13 +40,13 @@ const CONFIG = {
       commands: { windows: '"C:\\chrome.exe" --remote-debugging-port=9223 --user-data-dir="C:\\arena-images-chrome"',
                   windows_with_url: 'chrome-url', linux: 'google-chrome', macos: 'mac-chrome' } },
     { id: 'firefox', label: 'Firefox (Mozilla)', protocol: 'rdp', port_offset: 1, resolved_port: 9224,
-      user_data_dir: 'C:\\arena-images-firefox', extra_args: '-no-remote',
-      dir_flag: '--profile', debug_arg: '--start-debugger-server', binary: '"C:\\firefox.exe"',
+      user_data_dir: 'C:\\arena-images-firefox', extra_args: '',
+      dir_flag: '', debug_arg: '--start-debugger-server', binary: '"C:\\firefox.exe"',
       notes: 'Stealth RDP (debugger server).',
       capabilities: ['evaluate', 'navigate', 'tabs'],
       unavailable: ['dom', 'input', 'screenshot', 'set_files'],
       test_url: 'tcp://127.0.0.1:9224',
-      commands: { windows: '"C:\\firefox.exe" --start-debugger-server=9224 --profile="C:\\arena-images-firefox" -no-remote',
+      commands: { windows: '"C:\\firefox.exe" --start-debugger-server=9224',
                   windows_with_url: 'ff-url', linux: 'firefox', macos: 'mac-firefox' } },
   ],
 };
@@ -103,7 +103,8 @@ describe('browser debug connection panel (Firefox round)', () => {
     sel.value = 'firefox';
     sel.dispatch('change', { target: sel });
     assert.equal(val(h, 'cdpUserDataDir'), 'C:\\arena-images-firefox');
-    assert.equal(val(h, 'cdpExtraArgs'), '-no-remote');
+    assert.equal(val(h, 'cdpExtraArgs'), '', 'manual launch: no extra args by default');
+    assert.equal(txt(h, 'cdpDirLabel'), 'User data dir (this browser)', 'no dir flag, no per-flag label');
     assert.equal(txt(h, 'cdpResolvedPort'), '9224', 'Firefox derives base + 1 — one port cannot host two servers');
     assert.ok(txt(h, 'cdpLaunchCmd').includes('firefox.exe'), 'its own launch command');
     assert.equal(txt(h, 'cdpTestUrl'), 'tcp://127.0.0.1:9224', 'RDP is plain TCP, no HTTP surface');
@@ -179,8 +180,9 @@ describe('browser debug connection panel (Firefox round)', () => {
     h.anyEl('cdpPort').value = '9333';
     if (h.sb.BrowserConnection) h.sb.BrowserConnection.updatePreview();
     assert.ok(txt(h, 'cdpLaunchCmd').includes('9334'), `Firefox preview follows base+1: ${txt(h, 'cdpLaunchCmd')}`);
-    assert.ok(txt(h, 'cdpLaunchCmd').includes('--profile='), 'and keeps its own dir flag');
     assert.ok(txt(h, 'cdpLaunchCmd').includes('--start-debugger-server='), 'and its own debug flag');
+    assert.ok(!txt(h, 'cdpLaunchCmd').includes('--profile'), 'manual launch: the preview carries no dir flag');
+    assert.ok(!txt(h, 'cdpLaunchCmd').includes('-no-remote'), 'manual launch: no -no-remote by default');
     assert.ok(!txt(h, 'cdpLaunchCmd').includes('--remote-debugging-port'), 'never the tainting flag');
   });
 });

@@ -20,7 +20,9 @@ window.CDPRender = {
     const isDev = store.isDevTab(t);
     const title = (t.title || '').slice(0, 60);
     const url = (t.url || '').slice(0, 80);
-    opt.textContent = isDev ? `[DEV] ${title} — ${url}` : `${title} — ${url}`;
+    const names = { chrome: 'Chrome', firefox: 'Firefox', edge: 'Edge' };
+    const tag = t.browser ? `[${names[t.browser] || t.browser}] ` : '';
+    opt.textContent = isDev ? `[DEV] ${title} — ${url}` : `${tag}${title} — ${url}`;
     opt.title = `${t.title}\n${t.url}${isDev ? '\n(DevTools)' : ''}`;
     if (isDev) opt.style.color = 'var(--text-muted)';
     return opt;
@@ -31,7 +33,7 @@ window.CDPRender = {
     if (!sel) return;
     const store = window.CDPStore;
     const prev = prevValue || sel.value;
-    sel.innerHTML = '<option value=\"\">— Select Chrome Tab —</option>';
+    sel.innerHTML = '<option value=\"\">— Select Tab —</option>';
     this._sortTabs(tabs, store).forEach(t => sel.appendChild(this._makeOption(t, store)));
     if (prev) sel.value = prev;
   },

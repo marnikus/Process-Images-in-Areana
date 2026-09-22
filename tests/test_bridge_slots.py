@@ -237,6 +237,7 @@ EXPECTED_PACKING = {
     'watcher_captcha': 10,
     'watcher_solver': 7,
     'job_history': 2,
+    'browser_fetch': 0,  # slot-free helper module: all-browser fetch + driver routing
 }
 
 

@@ -27,7 +27,7 @@ def test_the_registry_has_firefox_beside_chrome_and_is_extensible():
 def test_per_browser_data_dirs_and_dir_flags_differ():
     chrome, firefox = br.profile_of("chrome"), br.profile_of("firefox")
     assert chrome.dir_flag == "--user-data-dir"
-    assert firefox.dir_flag == "--profile", "Firefox takes a profile dir, not a Chrome dir"
+    assert firefox.dir_flag == "", "manual launch: no dir flag unless extra args add one"
     assert chrome.data_dir_default != firefox.data_dir_default
     assert br.default_data_dir("firefox") == firefox.data_dir_default
     assert br.default_data_dir("netscape") == ""
@@ -53,13 +53,19 @@ def test_chrome_command_carries_binary_dir_flag_port_and_extra_args():
     assert win.endswith("--disable-extensions")
 
 
-def test_firefox_command_uses_its_binary_profile_flag_and_no_remote_default():
+def test_firefox_command_defaults_to_the_manual_launch_line():
     firefox = br.profile_of("firefox")
     cmd = br.build_command(firefox, "linux", br.endpoint(9224, "/home/me/.arena-firefox"))
-    assert cmd.startswith("firefox ")
-    assert "--start-debugger-server=9224" in cmd
-    assert '--profile="/home/me/.arena-firefox"' in cmd
-    assert "-no-remote" in cmd, "without it the port never opens while Firefox runs"
+    assert cmd == "firefox --start-debugger-server=9224", \
+        "attach needs nothing but the flag — no -profile, no -no-remote"
+    assert firefox.dir_flag == "" and firefox.extra_args_default == ""
+
+
+def test_firefox_isolation_is_opt_in_through_extra_args():
+    firefox = br.profile_of("firefox")
+    cmd = br.build_command(firefox, "linux", br.endpoint(
+        9224, "/home/me/.arena-firefox", extra_args='--profile="/tmp/ff" -no-remote'))
+    assert cmd == 'firefox --start-debugger-server=9224 --profile="/tmp/ff" -no-remote'
     assert "--user-data-dir" not in cmd, "Chrome's flag is meaningless to Firefox"
     assert "--remote-debugging-port" not in cmd, "that flag taints the session (webdriver=true)"
 

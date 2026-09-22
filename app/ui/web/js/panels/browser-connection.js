@@ -168,8 +168,8 @@ const BrowserConnection = {
 
   compose(b) {
     const dir = this._val('cdpUserDataDir');
-    const parts = [b.binary, `${b.debug_arg || '--remote-debugging-port'}=${this.resolvedPort(b)}`,
-      `${b.dir_flag || '--user-data-dir'}="${dir}"`];
+    const parts = [b.binary, `${b.debug_arg || '--remote-debugging-port'}=${this.resolvedPort(b)}`];
+    if (b.dir_flag) parts.push(`${b.dir_flag}="${dir}"`);
     const extra = (this._val('cdpExtraArgs') || '').trim();
     if (extra) parts.push(extra);
     return parts.join(' ');

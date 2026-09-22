@@ -78,7 +78,7 @@ const CDPPanel = {
   },
 
   showHelp() {
-    const msg = `How to start Chrome for Arena:\n1) Close ALL Chrome windows\n2) Run: start-arena-chrome.bat\n3) In THAT window open https://arena.ai\n4) Click Diagnose, Refresh tabs, Connect`;
+    const msg = `How to start a browser for Arena:\n1) Pick the browser + port in the browser panel\n2) Launch it with the shown command (Firefox: your own profile + --start-debugger-server)\n3) In THAT window open https://arena.ai\n4) Click Diagnose, Refresh tabs, Connect`;
     if (typeof LogConsole !== 'undefined') LogConsole.log(msg, 'info');
     alert(msg);
   },

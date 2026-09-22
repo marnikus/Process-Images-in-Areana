@@ -75,11 +75,11 @@ def _cdp_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[Li
 
 
 def _rdp_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[List[TargetRef], str]:
-    """RDP listing: the TCP endpoint is shared, the tab id is the stable browserId."""
+    """RDP listing: one `rdp://host:port#id` handle per tab (endpoint = text before `#`)."""
     rows, err = rdp.list_tabs(rdp.Endpoint(host, int(port)), timeout)
-    ws_url = f"rdp://{host}:{int(port)}"
     refs = [TargetRef(id=r["id"], title=r.get("title") or r.get("url", ""), url=r.get("url", ""),
-                      ws_url=ws_url, browser=browser_id, port=int(port), protocol=RDP)
+                      ws_url=f"rdp://{host}:{int(port)}#{r['id']}",
+                      browser=browser_id, port=int(port), protocol=RDP)
             for r in rows or []]
     return refs, ("" if refs else (err or "no tabs listed"))
 
@@ -106,12 +106,13 @@ def list_targets(browser_id: str, host: str, port, timeout: float = 3.0) -> Tupl
                 f"{profile.debug_arg}={port_i} ({profile.notes.split('.')[0]})")
 
 
-def enabled_targets(settings, host: str, timeout: float = 3.0) -> Tuple[List[TargetRef], List[str]]:
+def enabled_targets(settings, host: str, base=9222, timeout: float = 3.0) -> Tuple[List[TargetRef], List[str]]:
     """List every enabled browser's tabs at once (the reconciler's multi-browser call).
 
     `settings` is the per-browser map (`{id: {enabled, port}}`); each browser is
-    asked at its own resolved endpoint and one browser being down never hides the
-    other's tabs. Returns (targets, one error line per browser that failed).
+    asked at its own resolved endpoint (`base + offset`, hand-set `port` wins)
+    and one browser being down never hides the other's tabs. Returns (targets,
+    one error line per browser that failed).
     """
     refs: List[TargetRef] = []
     errors: List[str] = []
@@ -119,7 +120,8 @@ def enabled_targets(settings, host: str, timeout: float = 3.0) -> Tuple[List[Tar
         entry = (settings or {}).get(profile.id) or {}
         if entry.get("enabled") is False:
             continue
-        got, err = list_targets(profile.id, host, entry.get("port") or profile.port_offset, timeout)
+        port = browsers.resolve_port(base, profile, entry.get("port"))
+        got, err = list_targets(profile.id, host, port, timeout)
         refs.extend(got)
         if err:
             errors.append(f"{profile.id}: {err}")

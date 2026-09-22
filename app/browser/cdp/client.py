@@ -73,6 +73,12 @@ class CDPClient(CDPTransport):
         self._connect_lock = None
         self._connecting = False
         self._last_exc = None
+        self._tab_source = None
+        self._last_fetch_errors: list = []
+
+    def set_tab_source(self, source) -> None:
+        """Async `fetch_tabs` callable (the multi-browser fetch); None = own endpoint."""
+        self._tab_source = source
 
     def fetch_tabs_sync(self, host: str = None, port: int = None):
         h = host or self._host
@@ -89,6 +95,10 @@ class CDPClient(CDPTransport):
         return diagnose_sync(h, p)
 
     async def fetch_tabs(self):
+        if self._tab_source is not None:
+            tabs, errors = await self._tab_source()
+            self._last_fetch_errors = list(errors or [])
+            return tabs
         merged = await _fetch_tabs_aiohttp(self._host, self._port)
         if merged:
             return list(merged.values())

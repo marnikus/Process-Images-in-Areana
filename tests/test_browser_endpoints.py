@@ -137,7 +137,7 @@ def test_firefox_targets_come_from_the_rdp_tree(firefox):
     assert [t.id for t in targets] == ["11", "12"], "numeric browserIds, stringified"
     assert all(t.browser == "firefox" and t.protocol == "rdp" for t in targets)
     assert targets[0].url == "https://arena.ai/c/1"
-    assert targets[0].ws_url == f"rdp://127.0.0.1:{firefox.port}"
+    assert targets[0].ws_url == f"rdp://127.0.0.1:{firefox.port}#11", "per-tab handle, not the bare endpoint"
 
 
 def test_both_browsers_list_at_once_so_both_can_be_pooled(chrome, firefox):
@@ -180,7 +180,7 @@ def test_pool_rows_name_the_browser_of_their_endpoint():
     assert PageInfo().browser == "", "a page alone does not know its browser — the pool does"
     pool = PagePool()
     pool._browser = "firefox"   # what apply_cdp_config sets when Firefox is the active browser
-    pool.add_page(PageInfo(tab_id="tab-1", ws_url="rdp://127.0.0.1:9223",
+    pool.add_page(PageInfo(tab_id="tab-1", ws_url="rdp://127.0.0.1:9223#tab-1",
                            title="Arena", url="https://arena.ai/c/1"))
     row = pool.status_snapshot()["pages"][0]
     assert row["browser"] == "firefox" and row["tab_id"] == "tab-1"

@@ -142,6 +142,12 @@ class FakeDebuggerServer:
             fresh = {"from": console, "type": "evaluationResult",
                      "resultID": rid, "result": "kept"}
             return [ack, stray, stale, fresh]
+        if "DICT" in text:
+            return [ack, {"from": console, "type": "evaluationResult",
+                           "resultID": rid, "result": '{"ok":true,"n":1}'}]
+        if "STR" in text:
+            return [ack, {"from": console, "type": "evaluationResult",
+                           "resultID": rid, "result": '"hi"'}]
         if "BOOM" in text:
             return [ack, {"from": console, "type": "evaluationResult",
                            "resultID": rid, "hasException": True,
