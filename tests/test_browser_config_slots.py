@@ -101,14 +101,17 @@ def test_set_cdp_config_switches_the_active_browser_and_keeps_its_port(cfg):
 
 
 def test_saving_pushes_the_active_browsers_endpoint_to_the_client_and_the_pool(cfg):
+    """Round 9: the channel is pushed too — protocol first, then the endpoint (D-2)."""
     host, _ = _host(cfg)
     host.cdp = make_cdp(connected=True)
-    pushed = []
+    pushed, channels = [], []
     host.cdp.set_host_port = lambda h, p: pushed.append((h, p))
+    host.cdp.set_protocol = lambda protocol, browser="": channels.append((protocol, browser))
     pool = type("Pool", (), {"_host": "", "_port": 0, "_browser": ""})()
     host._page_pool = pool
     host.set_cdp_config(json.dumps({"browser": "firefox", "host": "127.0.0.1", "port": 9500}))
     assert pushed == [("127.0.0.1", 9501)], "the live client follows the selected browser"
+    assert channels == [("rdp", "firefox")], "and it knows which channel 9501 speaks"
     assert (pool._host, pool._port) == ("127.0.0.1", 9501)
     assert pool._browser == "firefox", "pool rows carry the browser the endpoint belongs to"
 

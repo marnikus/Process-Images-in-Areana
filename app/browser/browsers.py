@@ -228,6 +228,37 @@ def default_data_dir(browser_id: str) -> str:
     return profile.data_dir_default if profile else ""
 
 
+def profile_for_protocol(protocol: str) -> Optional[BrowserProfile]:
+    """The first registered browser that speaks this protocol (None when none does).
+
+    Handles carry a channel rather than a browser id (a url cannot name a row), so
+    this is how a handle with no id — `rdp://host:port/ctx-3` — still gets a label,
+    a registry row and the flag that opens it.
+    """
+    want = (protocol or "").strip().lower()
+    for profile in PROFILES:
+        if profile.protocol == want:
+            return profile
+    return None
+
+
+def browser_for_port(port, base_port=9222, overrides: Optional[Dict[str, Dict]] = None) -> str:
+    """Which browser owns this endpoint — the ids are `base + offset` (round 9, D-1).
+
+    One rule instead of an extra field on every handle: a pooled row's browser, an
+    `rdp://` handle's owner and the Settings scan line all come from this lookup.
+    """
+    try:
+        want = int(port)
+    except Exception:
+        return ""
+    for profile in PROFILES:
+        entry = (overrides or {}).get(profile.id) or {}
+        if resolve_port(base_port, profile, entry.get("port")) == want:
+            return profile.id
+    return ""
+
+
 def prefs_of(browser_id: str) -> Tuple[Tuple[str, object], ...]:
     """The profile preferences this browser's debug channel needs (() when none)."""
     profile = profile_of(browser_id)

@@ -1,7 +1,10 @@
-"""CDP client facade ≤150 LOC (C2).
+"""CDP client facade ≤150 LOC (C2) — now also the app's *any-channel* client (round 9).
 
-Composes transport + connect + tabs + dom + probe.
-Public API same as old cdp_client.CDPClient for backward compat.
+Composes transport + connect + tabs + dom + probe, and (through `RemoteMixin`) the RDP/BiDi
+routing that lets one object drive whichever channel an endpoint speaks: a Chrome websocket
+per tab, Firefox's DevTools socket per browser, or a BiDi session. Public API is the same as
+the old `cdp_client.CDPClient`; `set_protocol(protocol, browser)` declares the channel and
+`protocol()` detects it when nobody declared one.
 """
 from __future__ import annotations
 
@@ -9,10 +12,11 @@ import asyncio
 import logging
 from typing import List, Tuple
 
+from .remote import RemoteMixin
 from .transport import CDPTransport
-from .connect import connect_with_lock
 from .tabs import TabInfo, fetch_tabs_sync, _build_hosts_to_try, _merge_by_id
 from .probe import diagnose_sync
+from .. import attached
 from .dom import (
     HighlightSpec,
     get_document as dom_get_document,
@@ -65,37 +69,34 @@ async def _fetch_tabs_sync_fallback(transport, host: str, port: int) -> List[Tab
         return []
 
 
-class CDPClient(CDPTransport):
-    """Facade — keeps same API, delegates heavy logic to submodules."""
+class CDPClient(RemoteMixin, CDPTransport):
+    """Facade — keeps same API, delegates heavy logic to submodules and channel routing."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 9222, parent=None):
+    def __init__(self, host: str = "127.0.0.1", port: int = 9222, parent=None, protocol: str = ""):
         super().__init__(host=host, port=port, parent=parent)
         self._connect_lock = None
         self._connecting = False
         self._last_exc = None
+        self._declared_protocol = str(protocol or "").strip().lower()
+        self._detected_protocol = None
+        self._attachment = None
+        self._browser = ""
+        self._channel_timeout = attached.DEFAULT_TIMEOUT
 
-    def fetch_tabs_sync(self, host: str = None, port: int = None):
-        h = host or self._host
-        p = port or self._port
-        tabs, err, tried = fetch_tabs_sync(h, p)
-        if err:
-            log.warning(f"fetch_tabs_sync failed: {err} tried={tried}")
-            self.error.emit(err)
-        return tabs
-
-    def diagnose_sync(self, host: str = None, port: int = None) -> dict:
-        h = host or self._host
-        p = port or self._port
-        return diagnose_sync(h, p)
-
-    async def fetch_tabs(self):
-        merged = await _fetch_tabs_aiohttp(self._host, self._port)
-        if merged:
-            return list(merged.values())
-        return await _fetch_tabs_sync_fallback(self, self._host, self._port)
+    def set_host_port(self, host: str = None, port: int = None):
+        """The endpoint moved, so a previous detection belongs to a different endpoint."""
+        CDPTransport.set_host_port(self, host, port)
+        self._detected_protocol = None
+        self._attachment = None
 
     async def connect(self, ws_url: str) -> bool:
-        return await connect_with_lock(self, ws_url)
+        """QObject shadow guard, the same trap as `disconnect` below.
+
+        PySide6 resolves an *inherited* `connect` on a QObject subclass to
+        `QObject.connect` (built-in), so the call raises "not enough arguments"
+        instead of attaching/dialling — the routing itself lives in `RemoteMixin`.
+        """
+        return await RemoteMixin.connect(self, ws_url)
 
     async def disconnect(self):
         """QObject shadow guard: PySide6 resolves an INHERITED `disconnect`
@@ -104,6 +105,7 @@ class CDPClient(CDPTransport):
         arguments". Defining it in this class keeps the coroutine in the
         instance's own MRO lookup. Regression: tests/test_cdp_client_stub.py
         ::test_disconnect_is_not_shadowed_by_qobject."""
+        self._attachment = None      # detach = drop our socket; the browser keeps running
         await CDPTransport.disconnect(self)
 
     # ---- DOM delegations ----

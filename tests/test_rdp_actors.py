@@ -13,7 +13,7 @@ RED at `464185a`: `app.browser.rdp` did not exist.
 
 import pytest
 
-from app.browser import protocols
+from app.browser import attached, protocols
 from app.browser.rdp import actors, wire
 
 pytestmark = pytest.mark.unit
@@ -185,15 +185,18 @@ def test_a_click_verdict_is_only_read_from_a_json_object():
     assert actors.click_verdict({}) == {}
 
 
-# ── handle rules (the leaf module the panel asks) ──
+# ── handle rules (what a channel can do, read from the handle) ──
 
 
-def test_an_rdp_handle_is_refused_by_name_and_a_tab_socket_is_not():
-    refusal = protocols.connect_refusal("rdp://127.0.0.1:6000/ctx-3")
-    assert "DevTools" in refusal and "one socket" in refusal.lower()
-    assert protocols.connect_refusal("ws://127.0.0.1:9222/devtools/page/AAA111") == ""
-    assert protocols.refuses_tab_socket("rdp://h/ctx-1") is True
-    assert protocols.refuses_tab_socket("ws://h/devtools/page/x") is False
+def test_an_rdp_handle_refuses_cdp_domains_by_name_and_attaches_otherwise():
+    handle = attached.parse_handle("rdp://127.0.0.1:6000/ctx-3")
+    refusal = attached.refusal(handle, "DOM.getDocument")
+    assert "DevTools" in refusal and "dom" in refusal.lower()
+    assert attached.refusal(attached.parse_handle("ws://127.0.0.1:9222/devtools/page/AAA111"),
+                            "DOM.getDocument") == "", "a CDP handle refuses nothing"
+    assert attached.refusal(attached.parse_handle("rdp://h/ctx-1"), "connect") == "", \
+        "round 9: an rdp:// handle attaches (the client opens the browser's own socket)"
+    assert protocols.PROTOCOL_RDP == "rdp" and protocols.PROTOCOL_BIDI == "bidi"
 
 
 def test_the_port_in_a_handle_is_read_when_it_is_there():

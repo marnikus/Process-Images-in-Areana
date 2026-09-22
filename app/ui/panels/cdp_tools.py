@@ -219,6 +219,17 @@ def active_browser_row(config) -> dict:
     return next((r for r in rows if r["id"] == cfg["browser"]), rows[0])
 
 
+def scan_targets(rows, host: str) -> list:
+    """Every endpoint one pass will ask — the Settings window shows what is scanned (D-9).
+
+    Built from the same browser rows the panel renders, so the line cannot drift from
+    what `live_tab_rows` actually does: `base + offset` per browser (or the row's own
+    port), its own channel, and a browser switched off marked as off.
+    """
+    return [{"id": r["id"], "label": r["label"], "host": host, "port": r["resolved_port"],
+             "protocol": r["protocol"], "enabled": bool(r["enabled"])} for r in rows]
+
+
 def cdp_config_payload(bridge) -> str:
     """Configured + live CDP values as a JSON payload (+ the whole browser table)."""
     cfg = read_cdp_config(bridge.config)
@@ -237,11 +248,19 @@ def cdp_config_payload(bridge) -> str:
         "resolved_port": row["resolved_port"],
         "browsers": rows,
         "base_url": f"http://{host}:{base}",
+        "scan_targets": scan_targets(rows, host),
+        "scan_line": _scan_line(scan_targets(rows, host)),
         "is_connected": bool(bridge.cdp and bridge.cdp.is_connected),
-        "current_host": bridge.cdp._host if bridge.cdp else host,
-        "current_port": bridge.cdp._port if bridge.cdp else base,
+        "current_host": getattr(bridge.cdp, "_host", host) if bridge.cdp else host,
+        "current_port": getattr(bridge.cdp, "_port", base) if bridge.cdp else base,
     }
     return json.dumps(payload, ensure_ascii=False)
+
+
+def _scan_line(targets) -> str:
+    """The one-sentence Settings line ("a browser off says off") — lazy browser import."""
+    from app.browser import attached
+    return attached.scan_line(targets)
 
 
 def first_present(data, keys, default):
@@ -319,18 +338,33 @@ def apply_cdp_config(bridge, cfg) -> None:
                             active_browser=cfg["browser"], cdp_browsers=rows,
                             cdp_user_data_dir=rows[default]["user_data_dir"],
                             cdp_extra_args=rows[default]["extra_args"])
-    port = resolved_port(cfg, cfg["browser"])
-    if bridge.cdp:
+    profile = browsers.profile_of(cfg["browser"]) or browsers.default_profile()
+    push_endpoint(bridge, profile, cfg["host"], resolved_port(cfg, cfg["browser"]))
+
+
+def push_endpoint(bridge, profile, host, port) -> None:
+    """Tell the live client (and its pool) which endpoint and channel it now drives.
+
+    The channel is pushed first and on its own: `set_host_port` invalidates a previous
+    detection, and the client must know that 9224 is a DevTools socket *before* anything
+    asks that port for Chrome's JSON (round 9, D-2). Each push is best effort, so a
+    duck-typed client that only has one of them still gets that one.
+    """
+    cdp = getattr(bridge, "cdp", None)
+    for push in (lambda: cdp.set_protocol(profile.protocol, profile.id),
+                 lambda: cdp.set_host_port(host, port)):
+        if cdp is None:
+            break
         try:
-            bridge.cdp.set_host_port(cfg["host"], port)
+            push()
         except Exception:
             pass
-    pool = bridge._page_pool
-    if pool:
+    pool = getattr(bridge, "_page_pool", None)
+    if pool is not None:
         try:
-            pool._host = str(cfg["host"])
+            pool._host = str(host)
             pool._port = int(port)
-            pool._browser = cfg["browser"]  # pool rows then name their browser (D-3)
+            pool._browser = profile.id   # pool rows then name their browser (D-3)
         except Exception:
             pass
 

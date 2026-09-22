@@ -25,23 +25,12 @@ from app.services.run_state import (
     schedule_coro,
     tab_label_of,
 )
-from app.ui.panels.page_pool import do_connect_page_pool, leave_pool
+from app.ui.panels.page_pool import connect_pool_client, do_connect_page_pool, leave_pool
 from app.ui.panels.url_queue import commit_urls_system
 from app.ui.qt_compat import Slot
 from app.utils.win_popup import raise_window_titles
 
 log = logging.getLogger("arena")
-
-
-def connect_refusal(ws_url: str, endpoint_port=None) -> str:
-    """Why this tab handle cannot be connected as its own socket ("" when it can).
-
-    One seam for the slot, one place that knows the rule (`protocols`), and the
-    browser import stays lazy — panels never import the browser layer at module
-    level.
-    """
-    from app.browser import protocols
-    return protocols.connect_refusal(ws_url, endpoint_port)
 
 
 def active_browser(bridge):
@@ -61,23 +50,129 @@ def uses_rdp(bridge) -> bool:
     return bool(profile and profile.protocol == browsers.PROTOCOL_RDP)
 
 
-async def live_tab_rows(bridge):
-    """The active browser's tabs — CDP sockets, or Firefox's RDP tab handles.
+def _base_port(value, default: int = 9222) -> int:
+    """A usable shared base port from stored state (bad or empty values fall back)."""
+    try:
+        base = int(value)
+    except Exception:
+        return default
+    return base if 1 <= base <= 65535 else default
 
-    Firefox has no per-tab socket, so its rows come from the same one-seam listing
-    the pool and the reconciler use (`endpoints.list_targets`), each carrying the
-    `rdp://` handle that says which tab it is.
+
+def scan_settings(bridge) -> tuple:
+    """What one pass scans: (browser rows, shared base port, host) from the settings window.
+
+    Round 9: the pass follows the *settings*, not whichever browser happens to be
+    selected — "if it starts from 9223 then app should parse all page on ws: 9223,
+    ws: 9224 and ws: 9225 … all that defined in win settings".
     """
+    try:
+        config = bridge.config
+        rows = config.get_state("cdp_browsers", {}) or {}
+        host = config.get_state("cdp_host", "127.0.0.1") or "127.0.0.1"
+        return rows, _base_port(config.get_state("cdp_port", 9222)), host
+    except Exception:
+        cdp = getattr(bridge, "cdp", None)
+        return {}, 9222, getattr(cdp, "_host", "127.0.0.1") or "127.0.0.1"
+
+
+def report_scan_notes(bridge, notes) -> None:
+    """Log each browser that did not answer — once per reason, never once per pass.
+
+    A note is only news when it changes: the same missing browser on the same endpoint
+    must not reprint its line every pass (the owner's log was a loop). The reason is
+    dropped as soon as the browser answers again, so a later failure prints again.
+    """
+    seen = getattr(bridge, "_scan_note_reasons", None)
+    if seen is None:                       # one dict per bridge — recording must alias it
+        seen = {}
+        bridge._scan_note_reasons = seen
+    current = {note.browser: note.reason for note in notes}
+    for note in notes:
+        if seen.get(note.browser) != note.reason:
+            bridge._log(f"❌ {note.browser}: {note.reason}", "warn")
+    seen.clear()
+    seen.update(current)
+
+
+def row_key(row) -> str:
+    """A tab row's id, whichever channel's shape it is (`id` for both today)."""
+    return getattr(row, "id", "") or getattr(row, "tab_id", "") or ""
+
+
+def merge_rows(scanned, extra) -> list:
+    """Scanned rows first, then the client's own tabs the scan did not already name."""
+    merged, seen = list(scanned), {row_key(r) for r in scanned if row_key(r)}
+    for row in extra:
+        key = row_key(row)
+        if key and key in seen:
+            continue
+        seen.add(key)
+        merged.append(row)
+    return merged
+
+
+async def active_client_rows(bridge) -> list:
+    """The active client's own tab list — the last resort when the scan listed nothing.
+
+    A client attached to a tab on an endpoint the settings do not describe still knows
+    that tab exists; before reporting an empty list, ask it. (Every channel routes here:
+    the client lists over its own protocol, never HTTP on a DevTools socket.)
+    """
+    fetch = getattr(getattr(bridge, "cdp", None), "fetch_tabs", None)
+    if fetch is None:
+        return []
+    try:
+        return list(await fetch() or [])
+    except Exception:
+        return []
+
+
+def scan_targets(bridge) -> list:
+    """Every enabled browser's tabs in one pass, each from its own endpoint/channel."""
     from app.browser import endpoints
-    profile = active_browser(bridge)
-    if uses_rdp(bridge):
-        loop = asyncio.get_event_loop()
-        rows, err = await loop.run_in_executor(None, lambda: endpoints.list_targets(
-            profile.id, bridge.cdp._host, bridge.cdp._port, 3.0))
-        if err and not rows:
-            bridge._log(f"❌ {err}", "warn")
+    rows, base, host = scan_settings(bridge)
+    return endpoints.enabled_targets(rows, base, host, 3.0)
+
+
+async def live_tab_rows(bridge):
+    """Parse every enabled browser in one pass — Chrome's sockets, Firefox's `rdp://` rows.
+
+    One seam for the whole app: the reconciler, the pool panel and this panel's own
+    listing all read through here, so a browser switched off is never scanned, a browser
+    that is down never hides a live one, and no HTTP request is ever sent to a DevTools
+    socket (Round 9: that was the owner's `URLError …/json/list: Not Found` loop).
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        rows, notes = await loop.run_in_executor(None, lambda: scan_targets(bridge))
+    except Exception as e:
+        bridge._scan_failed, bridge._scan_missing = str(e), {}
+        bridge._log(f"❌ Scan failed: {e}", "error")
+        return []
+    bridge._scan_failed = ""
+    report_scan_notes(bridge, notes)
+    bridge._scan_missing = {n.browser: n.reason for n in notes}   # one dict, aliased on purpose
+    if rows:
         return rows
-    return await bridge.cdp.fetch_tabs()
+    return merge_rows(rows, await active_client_rows(bridge))
+
+
+async def reconcile_tabs(bridge):
+    """`live_tab_rows` for the reconciler — a pass no browser answered is a failure (D-1).
+
+    Returning `[]` there would look exactly like "every tab was closed": the rows would
+    advance their miss counts and, after the threshold, be removed for tabs that are
+    still open. The reconciler already knows how to wait (`_fetch` → "Reconcile
+    skipped"), so an unusable pass says so instead of pretending to be empty.
+    """
+    from app.browser.endpoints import ScanUnavailable
+    rows = await live_tab_rows(bridge)
+    missing = getattr(bridge, "_scan_missing", None) or {}
+    reason = getattr(bridge, "_scan_failed", "") or ("; ".join(missing.values()) if missing else "")
+    if not rows and reason:
+        raise ScanUnavailable(reason[:300])
+    return rows
 
 
 def claim_connect_slot(bridge, ws_url: str) -> bool:
@@ -131,17 +226,38 @@ async def pool_tab_identity(bridge, ws_url: str):
 
 
 def announce_tab_connected(bridge, ws_url: str) -> None:
-    """Success logs + status for a fresh connection."""
-    bridge._log(f"✅ Connected to {ws_url[:80]} (tab {bridge.cdp._current_tab_id[:20]}…)", "success")
+    """Success logs + status for a fresh connection (one line per channel, D-8)."""
+    from app.browser import attached
+    tab_id = getattr(bridge.cdp, "_current_tab_id", "") or ""
+    bridge._log(f"✅ Connected to {ws_url[:80]} (tab {tab_id[:20]}…)", "success")
     bridge.connection_status.emit("connected")
-    bridge._log(f"CDP session active on ws://{bridge.cdp._host}:{bridge.cdp._port}/devtools/page/{bridge.cdp._current_tab_id[:30]}", "info")
+    if attached.is_remote(attached.parse_handle(ws_url)):
+        bridge._log(f"🦊 Attached to {tab_id} over the browser's DevTools socket — one socket for "
+                    f"the whole browser, actions run as JS in this tab, detach leaves it running", "info")
+        return
+    bridge._log(f"CDP session active on ws://{bridge.cdp._host}:{bridge.cdp._port}/devtools/page/{tab_id[:30]}", "info")
+
+
+def pool_page_for(bridge, identity):
+    """The pool row for a connect-path join — named with the tab's own browser (D-5).
+
+    The connect path joins tabs from any enabled browser, so the row cannot be built from
+    the pool's active endpoint: `pool_page_info` reads the handle's owner from the settings
+    rows, which is what labels a Firefox row `firefox` instead of leaving it blank.
+    """
+    from app.browser import attached
+    from app.ui.panels.page_pool import pool_page_info
+    tab_id, ws_url, title, url = identity
+    pool = getattr(bridge, "_page_pool", None)
+    host = getattr(pool, "_host", "127.0.0.1") or "127.0.0.1"
+    port = getattr(pool, "_port", 9222) or 9222
+    return pool_page_info(bridge, attached.parse_handle(ws_url, host, port), title, url)
 
 
 def reuse_pool_page(bridge, identity) -> None:
     """Pool already holds a live dedicated client: refresh info only."""
-    from app.browser.page_status import PageInfo
-    tab_id, ws_url, title, url = identity
-    bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
+    tab_id, _ws_url, _title, _url = identity
+    bridge._page_pool.add_page(pool_page_for(bridge, identity))
     bridge._emit_pool_status()
     label = tab_label_of(getattr(bridge, "_page_pool", None), tab_id)
     bridge._log(f"📦 Pool: tab {label} already has dedicated client steady (reuse)", "info")
@@ -149,17 +265,13 @@ def reuse_pool_page(bridge, identity) -> None:
 
 async def add_dedicated_pool_page(bridge, identity) -> None:
     """Pool-join with an independent per-tab client (parallel-safe)."""
-    from app.browser.page_status import PageInfo
     from app.browser.cdp_arena import CDPArenaController
-    from app.browser.cdp_client import CDPClient
-    tab_id, ws_url, title, url = identity
-    host = getattr(bridge.cdp, '_host', '127.0.0.1')
-    port = getattr(bridge.cdp, '_port', 9222)
-    dedicated = CDPClient(host=host, port=port)
-    if not await dedicated.connect(ws_url):
+    tab_id, ws_url, _title, _url = identity
+    dedicated = await connect_pool_client(bridge, ws_url)   # endpoint + channel from the handle
+    if dedicated is None:
         add_fallback_pool_page(bridge, identity)
         return
-    bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
+    bridge._page_pool.add_page(pool_page_for(bridge, identity))
     ctrl2 = CDPArenaController(dedicated, log_callback=lambda m: bridge._log(m, "info"))
     bridge._page_pool.register_client(tab_id, dedicated, ctrl2)
     bridge._emit_pool_status()
@@ -171,11 +283,22 @@ async def add_dedicated_pool_page(bridge, identity) -> None:
 
 
 def add_fallback_pool_page(bridge, identity) -> None:
-    """Pool-join reusing the primary client (dedicated connect failed)."""
-    from app.browser.page_status import PageInfo
+    """Pool-join reusing the primary client (dedicated connect failed) — CDP tabs only.
+
+    A tab on another browser's endpoint must never fall back to the primary client: that
+    would send its actions to a different browser, silently. A remote handle whose own
+    attach failed stays out of the pool and says why (D-8).
+    """
+    from app.browser import attached
     from app.browser.cdp_arena import CDPArenaController
-    tab_id, ws_url, title, url = identity
-    bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
+    tab_id, ws_url, _title, _url = identity
+    handle = attached.parse_handle(ws_url, getattr(bridge.cdp, "_host", "127.0.0.1"),
+                                   getattr(bridge.cdp, "_port", 9222))
+    if attached.is_remote(handle):
+        bridge._log(f"⚠ Pool: {tab_id} stayed out — its own {handle.channel.upper()} attach failed; "
+                    f"the primary client cannot drive a tab on {handle.host}:{handle.port}", "warn")
+        return
+    bridge._page_pool.add_page(pool_page_for(bridge, identity))
     ctrl = CDPArenaController(bridge.cdp, log_callback=lambda m: bridge._log(m, "info"))
     bridge._page_pool.register_client(tab_id, bridge.cdp, ctrl)
     bridge._emit_pool_status()
@@ -214,8 +337,7 @@ async def do_connect_tab(bridge, ws_url: str) -> None:
             announce_tab_connected(bridge, ws_url)
             await attach_connected_tab(bridge, ws_url)
         else:
-            bridge._log(f"❌ Connect failed for {ws_url[:120]} — check Chrome still open on port {bridge.cdp._port}, try Diagnose", "error")
-            bridge._log(f"💡 Tip: Ensure Chrome was started with --remote-debugging-port={bridge.cdp._port} --user-data-dir=... and that http://{bridge.cdp._host}:{bridge.cdp._port}/json/list shows JSON in browser", "warn")
+            bridge._log(f"❌ Connect failed for {ws_url[:120]}: {connect_reason(bridge, ws_url)}", "error")
             bridge.connection_status.emit("error")
     except Exception as e:
         import traceback
@@ -223,6 +345,22 @@ async def do_connect_tab(bridge, ws_url: str) -> None:
         bridge.connection_status.emit("error")
     finally:
         bridge._connect_in_progress = False
+
+
+def connect_reason(bridge, ws_url: str) -> str:
+    """Why that attach failed, in the words of the endpoint that was asked (D-7).
+
+    Round 8 printed Chrome's tip for every channel — including `--remote-debugging-port`
+    and a `/json/list` link for a Firefox DevTools socket, which is exactly the loop the
+    owner pasted. The reason is now classified per endpoint and per channel.
+    """
+    from app.browser import attached, browsers
+    handle = attached.parse_handle(ws_url, getattr(bridge.cdp, "_host", "127.0.0.1"),
+                                   getattr(bridge.cdp, "_port", 9222))
+    profile = (browsers.profile_of(handle.browser) or browsers.profile_for_protocol(handle.channel)
+               or browsers.default_profile())
+    return (getattr(bridge.cdp, "last_error", "") or "").strip() or attached.explain_failure(
+        handle, profile, 1.0)
 
 
 def find_dupe_recent(bridge, q: str, now: float) -> bool:
@@ -319,8 +457,8 @@ async def do_fetch_tabs(bridge) -> None:
         tabs = await live_tab_rows(bridge)
         payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs], ensure_ascii=False)
         bridge.tabs_received.emit(payload)
-        if not tabs:
-            try:
+        if not tabs and not (getattr(bridge, "_scan_missing", None) or {}):
+            try:                     # every endpoint answered — ask the active one for details
                 loop = asyncio.get_event_loop()
                 diag = await loop.run_in_executor(None, lambda: bridge.cdp.diagnose_sync())
                 bridge._log(diag.get("summary", ""), "warn")
@@ -352,7 +490,7 @@ async def do_diagnose_rdp(bridge) -> None:
         bridge._log(f"❌ {err}", "warn")
         bridge._log(firefox_fix_tip(bridge), "warn")
         return
-    bridge._log(f"✅ Firefox DevTools (RDP) on {info['host']}:{info['port']} — "
+    bridge._log(f"✅ Firefox DevTools (RDP) socket on {info['host']}:{info['port']} — "
                 f"{info['application']} session, {info['tabs']} tab(s), actor prefix "
                 f"{info['prefix']}* (actors are re-resolved on every attach)", "success")
     rows = await live_tab_rows(bridge)
@@ -383,9 +521,16 @@ async def do_diagnose_chrome(bridge) -> None:
 
 
 def live_deps(bridge) -> LiveDeps:
-    """The reconciler's callables, wired in ui land (the service never imports ui/browser)."""
+    """The reconciler's callables, wired in ui land (the service never imports ui/browser).
+
+    `fetch_tabs` is the panel's own one-pass listing — every enabled browser at its own
+    endpoint (`chrome` 9223, `firefox` 9224, `edge` 9225 …), each row tagged with the
+    browser and channel it came from. Round 9: the reconciler used to see only the active
+    browser's endpoint, which is why a Firefox tab could never be planned, joined or
+    labelled (D-1).
+    """
     async def fetch_tabs():
-        return await bridge.cdp.fetch_tabs()
+        return await reconcile_tabs(bridge)
 
     async def join_tab(ws: str):
         await do_connect_page_pool(bridge, ws)
@@ -535,10 +680,13 @@ class BrowserTabsMixin:
 
     @Slot(str)
     def connect_tab(self, ws_url: str):
+        from app.browser import attached
         if not self.cdp:
             self._log("CDP client not available", "error")
             return
-        refusal = connect_refusal(ws_url, self.cdp._port)
+        handle = attached.parse_handle(ws_url, getattr(self.cdp, "_host", "127.0.0.1"),
+                                       getattr(self.cdp, "_port", 9222))
+        refusal = attached.refusal(handle, "connect")
         if refusal:
             self._log(f"❌ {refusal}", "warn")
             return

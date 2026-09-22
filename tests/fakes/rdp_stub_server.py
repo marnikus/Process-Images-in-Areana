@@ -107,7 +107,13 @@ class _Session:
                 "title": tab["title"], "url": tab["url"],
                 "traits": {"watcher": True, "supportsReloadDescriptor": True},
             })
-        self.console_actor = f"{self.prefix}consoleActor1"
+        # one console actor per tab, as a real Firefox has: `getTarget` on a descriptor
+        # answers *that* tab's console actor, which is how a client's JS lands in the tab
+        # it asked for (round 9 — the pool join of ctx-4 must not evaluate in ctx-3)
+        self.console_actors = {desc["actor"]: f"{self.prefix}consoleActor{index + 1}"
+                               for index, desc in enumerate(self.descriptors)}
+        self.tab_index = {desc["actor"]: index for index, desc in enumerate(self.descriptors)}
+        self.console_actor = self.console_actors[self.descriptors[0]["actor"]]
         self.evals = 0
         self.stale_left = max(0, int(server.stale_evals))
         self.long_strings = {}
@@ -161,7 +167,7 @@ class _Session:
                 "traits": {"isBrowsingContext": True, "watcher": True},
                 "screenshotActor": f"{self.prefix}screenshotActor1"}
         if not self.server.legacy_attach:
-            form["consoleActor"] = self.console_actor
+            form["consoleActor"] = self.console_actors.get(descriptor_actor, self.console_actor)
             form["frame"] = {"actor": f"{self.prefix}windowGlobal1"}
         return {"from": descriptor_actor, "form": form}
 
@@ -173,15 +179,32 @@ class _Session:
         re-resolve and retry once) and `expire_hard` the second (no actor ever
         works — the call must fail by name, not loop).
         """
-        if actor != self.console_actor:
+        if actor not in self.console_actors.values():
             return True
         if self.server.expire_hard:
             return True
         if self.stale_left <= 0:
             return False
         self.stale_left -= 1
-        self.console_actor = f"{self.prefix}consoleActor{self.stale_left + 2}"
+        self._rename_console(actor)
         return True
+
+    def _rename_console(self, actor: str) -> None:
+        """Rename this tab's console actor (what a navigation does to the real server)."""
+        fresh = f"{self.prefix}consoleActor{self.stale_left + 2}"
+        for descriptor, console in list(self.console_actors.items()):
+            if console == actor:
+                self.console_actors[descriptor] = fresh
+                if descriptor == self.descriptors[0]["actor"]:
+                    self.console_actor = fresh
+                return
+
+    def _tab_of(self, actor: str) -> dict:
+        """The tab whose console actor this is (tab 0 when the actor is not a console)."""
+        for descriptor, console in self.console_actors.items():
+            if console == actor:
+                return self.server.tabs[self.tab_index[descriptor]]
+        return self.server.tabs[0]
 
     def _evaluate(self, packet: dict, async_reply: bool) -> dict:
         actor = str(packet.get("to", ""))
@@ -194,15 +217,16 @@ class _Session:
         if "boom" in str(packet.get("text", "")):
             return dict(reply, result={"type": "undefined"},
                         exceptionMessage="Error: boom", exception={"type": "undefined"})
-        reply["result"] = self._grip(self._value(str(packet.get("text", ""))))
+        reply["result"] = self._grip(self._value(str(packet.get("text", "")), self._tab_of(actor)))
         return reply
 
-    def _value(self, expression: str):
+    def _value(self, expression: str, tab: dict = None):
+        tab = tab or self.server.tabs[0]
         if ".click()" in expression:
             found = self.server.click_found
             return json.dumps({"ok": found, "why": "clicked" if found else "not found"})
         if "document.title" in expression and "JSON.stringify" in expression:
-            return json.dumps(self.server.tabs[0]["title"])
+            return json.dumps(tab["title"])
         if "1+1" in expression:
             return 2
         if "longString" in expression:
@@ -228,6 +252,27 @@ class _Session:
         return {"type": "string", "value": value}
 
 
+class _Recorder:
+    """A socket that records what the client sends.
+
+    Round 9 needs to prove a negative — that no HTTP request is ever spoken to a
+    DevTools socket ("CDP error: URLError http://localhost:9224/json/list") — and
+    the only honest way to test that is to keep the bytes the client sent.
+    """
+
+    def __init__(self, conn, sink, lock) -> None:
+        self._conn, self._sink, self._lock = conn, sink, lock
+
+    def recv(self, size):
+        chunk = self._conn.recv(size)
+        with self._lock:
+            self._sink.append(chunk)
+        return chunk
+
+    def sendall(self, data):
+        return self._conn.sendall(data)
+
+
 class RdpStubServer:
     """A fake Firefox on 127.0.0.1:ephemeral — start/close from any test."""
 
@@ -240,6 +285,7 @@ class RdpStubServer:
         self.silent, self.click_found = silent, click_found
         self.long_text = "Z" * 80
         self.received: list = []
+        self.raw: list = []          # every byte the client sent (round 9)
         self.connections = 0
         self._lock = threading.Lock()
         stub = self
@@ -261,14 +307,15 @@ class RdpStubServer:
             self.connections += 1
             conn_no = self.connections
         session = _Session(self, conn_no)
+        watched = _Recorder(conn, self.raw, self._lock)
         try:
             if self.greet and not self.silent:
                 conn.sendall(frame(session.greeting(), self.byte_prefixed))
             if self.silent:
-                while conn.recv(4096):
+                while watched.recv(4096):
                     pass
                 return
-            framer = ClientFramer(conn)
+            framer = ClientFramer(watched)
             while True:
                 try:
                     packet = framer.packet()
@@ -287,6 +334,12 @@ class RdpStubServer:
         self._server.shutdown()
         self._server.server_close()
         self._thread.join(timeout=5)
+
+    def raw_text(self) -> str:
+        """Everything the client sent us this far, as text (never-HTTP proof)."""
+        with self._lock:
+            chunks = list(self.raw)
+        return b"".join(c for c in chunks if c).decode("utf-8", errors="ignore")
 
     def was_sent(self, kind: str) -> bool:
         """Did the client ask for this packet type?"""

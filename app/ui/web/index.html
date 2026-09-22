@@ -30,7 +30,7 @@
     </div>
     <div class="header-right">
       <div class="tab-select-wrap" style="display:flex; align-items:center; gap:6px;">
-        <select id="tabSelect" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; min-width:260px;"><option value="">— Select Chrome Tab —</option></select>
+        <select id="tabSelect" title="Every enabled browser's tabs: Chrome/Edge pages and Firefox DevTools tabs — the tag says which browser a row belongs to" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; min-width:260px;"><option value="">— Select Browser Tab —</option></select>
         <button id="refreshTabsBtn" class="btn-icon" title="Refresh tabs"><span class="material-icons">refresh</span></button>
         <button id="reparseTabsBtn" class="btn-icon" title="Reparse now: clear the URL list and rebuild it from open tabs (rows with a running job are kept)"><span class="material-icons">autorenew</span></button>
       </div>
@@ -343,6 +343,7 @@
           <button id="cdpSaveBtn" class="btn-small btn-primary" title="Save the host, base port and every browser's data dir">Save Browsers</button>
           <button id="cdpTestBtn" class="btn-small" title="Diagnose the selected browser on its own port">Diagnose</button>
         </div>
+        <div id="cdpScanLine" style="font-size:11px; color:var(--text-secondary); margin-bottom:8px; line-height:1.4; word-break:break-word;">Scanning: —</div>
         <div class="settings-row">
           <div class="settings-group">
             <label>Browser (this block edits the selected one)</label>

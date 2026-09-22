@@ -184,11 +184,20 @@ def test_evaluate_and_click_are_dispatched_by_protocol(chrome, firefox, bidi_onl
         "Chrome clicks run through the connected CDP client, not this listing seam"
 
 
-def test_an_rdp_firefox_is_not_poolable_through_a_tab_socket(chrome, firefox):
-    """connect_tab must refuse an rdp:// handle by name — there is no per-tab socket."""
-    from app.ui.panels.browser_tabs import connect_refusal
-    assert connect_refusal(f"rdp://127.0.0.1:{firefox.port}/ctx-3") != ""
-    assert connect_refusal(f"ws://127.0.0.1:{chrome.port}/devtools/page/AAA111") == ""
+def test_an_rdp_firefox_handle_is_attachable_and_a_bidi_session_is_not(chrome, firefox):
+    """Round 9 deleted the old "RDP handles cannot be dialled" rule (D-8).
+
+    An `rdp://` handle is attachable — the client opens the browser's own DevTools socket
+    and runs JS in the tab it names. A BiDi session handle is the one the app refuses by
+    name: it is the flagged Remote Agent (`navigator.webdriver=true`, Bug 1719505).
+    """
+    from app.browser import attached
+    assert attached.refusal(attached.parse_handle(f"rdp://127.0.0.1:{firefox.port}/ctx-3"),
+                            "connect") == ""
+    assert attached.refusal(attached.parse_handle(f"ws://127.0.0.1:{chrome.port}/devtools/page/AAA111"),
+                            "connect") == ""
+    refusal = attached.refusal(attached.parse_handle("ws://127.0.0.1:9224/session#ctx-a"), "connect")
+    assert refusal and "BIDI" in refusal.upper()
 
 
 # ---- honesty ---------------------------------------------------------------
@@ -219,22 +228,23 @@ def test_an_unusable_port_is_refused_with_the_value_it_got(chrome):
     assert targets == [] and "invalid port" in err and "9222x" in err
 
 
-def test_enabled_targets_asks_every_enabled_browser_at_its_own_port(chrome, firefox, bidi_only):
-    """The multi-browser call the reconciler makes: one browser down never hides another."""
-    settings = {"chrome": {"enabled": True, "port": chrome.port},
-                "firefox": {"enabled": False, "port": firefox.port},
-                "edge": {"enabled": False, "port": 9225}}
-    refs, errors = endpoints.enabled_targets(settings, "127.0.0.1", timeout=2.0)
-    assert [t.browser for t in refs] == ["chrome", "chrome"] and errors == []
-    settings["firefox"] = {"enabled": True, "port": firefox.port}
-    refs, errors = endpoints.enabled_targets(settings, "127.0.0.1", timeout=2.0)
+def test_enabled_targets_asks_every_enabled_browser_at_its_own_endpoint(chrome, firefox):
+    """The multi-browser call the reconciler makes: one browser down never hides another.
+
+    Round 9 moved the "all endpoints" scan here (`base + offset` per browser, notes
+    instead of bare error strings) — see tests/test_browser_scan.py for the panel seam.
+    """
+    rows = {"chrome": {"enabled": True, "port": chrome.port},
+            "firefox": {"enabled": True, "port": firefox.port}, "edge": {"enabled": False}}
+    refs, notes = endpoints.enabled_targets(rows, 9222, "127.0.0.1", timeout=2.0)
     assert {t.browser for t in refs} == {"chrome", "firefox"}, "both browsers, one pass"
-    assert errors == []
-    settings["firefox"] = {"enabled": True, "port": _free_port()}
-    refs, errors = endpoints.enabled_targets(settings, "127.0.0.1", timeout=0.5)
-    assert [t.browser for t in refs] == ["chrome", "chrome"], "a down Firefox hides nothing"
-    assert errors and "firefox" in errors[0] and "start-debugger-server" in errors[0], \
-        "and the reason names the flag that opens its channel"
+    assert notes == []
+    rows["firefox"] = {"enabled": True, "port": _free_port()}
+    refs, notes = endpoints.enabled_targets(rows, 9222, "127.0.0.1", timeout=0.5)
+    assert {t.browser for t in refs} == {"chrome"}, "a down Firefox hides nothing"
+    assert [n.browser for n in notes] == ["firefox"], "and it is named once"
+    assert notes[0].port == _free_port() or notes[0].reason, "with its endpoint and its reason"
+    assert "--start-debugger-server" in notes[0].reason, notes[0].reason
 
 
 def test_evaluate_on_a_cdp_ref_is_named_not_timed_out(chrome):

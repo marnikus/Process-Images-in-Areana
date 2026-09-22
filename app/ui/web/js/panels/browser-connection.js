@@ -92,6 +92,21 @@ const BrowserConnection = {
     }
     this.renderOptions(payload && payload.active_browser);
     this.showBrowser((payload && payload.active_browser) || '');
+    this.renderScanLine(payload);
+  },
+
+  /* What one Refresh pass asks — built in Python (`attached.scan_line`), shown as-is.
+     Round 9: the app parses every enabled browser at its own endpoint in ONE pass, so
+     the panel says which endpoints those are (and which browser is switched off). */
+  renderScanLine(payload) {
+    const el = this._el('cdpScanLine');
+    if (!el) return;
+    if (payload && payload.scan_line) { el.textContent = payload.scan_line; return; }
+    const host = (payload && payload.host) || this._val('cdpHost') || '127.0.0.1';
+    const parts = this.rows().map((b) => (b.enabled === false
+      ? `${b.id} — off`
+      : `${b.id} ${host}:${b.resolved_port} (${String(b.protocol || 'cdp').toUpperCase()})`));
+    el.textContent = parts.length ? `Scanning: ${parts.join(' · ')}` : 'Scanning: —';
   },
 
   renderOptions(activeId) {
@@ -108,7 +123,11 @@ const BrowserConnection = {
     const opt = document.createElement('option');
     opt.value = b.id;
     opt.textContent = b.label || b.id;
-    opt.title = b.protocol ? `${b.label || b.id} — ${String(b.protocol).toUpperCase()}` : (b.label || b.id);
+    const where = b.resolved_port ? ` on ${b.resolved_port}` : '';
+    opt.title = b.protocol
+      ? `${b.label || b.id} — ${String(b.protocol).toUpperCase()}${where}`
+      : (b.label || b.id);
+    opt.textContent = b.label || b.id;
     return opt;
   },
 

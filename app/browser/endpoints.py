@@ -30,12 +30,24 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from . import bidi, browsers, rdp
+from .attached import ScanNote, endpoint_handle
 from .cdp.tabs import fetch_tabs_sync
+
+class ScanUnavailable(RuntimeError):
+    """No enabled browser answered a pass — an empty listing is a wait, not a removal.
+
+    `enabled_targets` distinguishes "these browsers have no tabs" from "these browsers
+    said nothing": the second is a note, and a pass made only of notes must not look
+    like a browser with every tab closed (the reconciler would drop URL rows for tabs
+    that are still open — round 8's "a failed fetch is a wait, not a removal").
+    """
+
 
 CDP = browsers.PROTOCOL_CDP
 RDP = browsers.PROTOCOL_RDP
 BIDI = browsers.PROTOCOL_BIDI
 DETECT_TIMEOUT = 1.0
+PROBE_ORDER = (CDP, RDP, BIDI)
 
 
 @dataclass(frozen=True)
@@ -54,6 +66,7 @@ class TargetRef:
     port: int = 9222
     protocol: str = CDP
     host: str = "127.0.0.1"
+    type: str = "page"      # duck-type parity with `cdp.tabs.TabInfo`
 
 
 def _get_json(url: str, timeout: float) -> Optional[dict]:
@@ -68,17 +81,39 @@ def _get_json(url: str, timeout: float) -> Optional[dict]:
         return None
 
 
-def detect_protocol(host: str, port: int, timeout: float = DETECT_TIMEOUT) -> str:
-    """`cdp` / `rdp` / `bidi` / `''` — what this endpoint answers, in that order."""
+def _answers(protocol: str, host: str, port: int, timeout: float) -> bool:
+    """Does this endpoint speak that protocol right now (one cheap question each)?"""
     try:
-        version = _get_json(f"http://{host}:{int(port)}/json/version", timeout)
-        if isinstance(version, dict) and version:
-            return CDP
+        if protocol == CDP:
+            version = _get_json(f"http://{host}:{int(port)}/json/version", timeout)
+            return isinstance(version, dict) and bool(version)
+        if protocol == RDP:
+            return rdp.probe(rdp.Endpoint(host, int(port)), min(timeout, DETECT_TIMEOUT))
+        return bool(bidi.open_session(bidi.Endpoint(host, int(port)), timeout))
     except Exception:
-        pass
-    if rdp.probe(rdp.Endpoint(host, int(port)), min(timeout, DETECT_TIMEOUT)):
-        return RDP
-    return BIDI if bidi.open_session(bidi.Endpoint(host, int(port)), timeout) else ""
+        return False
+
+
+def probe_order(prefer: str = "") -> Tuple[str, ...]:
+    """CDP → RDP → BiDi, with the protocol this browser's row declares asked first.
+
+    The registry order matters for what the browser sees: a Firefox row asks the
+    DevTools socket before anything sends HTTP to it (round 9: the owner's log was
+    Chrome's `/json/list` being asked of a DevTools port). A row that declares CDP
+    keeps asking CDP first, so an ESR Firefox with CDP enabled is still found.
+    """
+    want = (prefer or "").strip().lower()
+    if want not in PROBE_ORDER:
+        return PROBE_ORDER
+    return (want,) + tuple(p for p in PROBE_ORDER if p != want)
+
+
+def detect_protocol(host: str, port: int, timeout: float = DETECT_TIMEOUT, prefer: str = "") -> str:
+    """`cdp` / `rdp` / `bidi` / `''` — what this endpoint answers (`prefer` asked first)."""
+    for protocol in probe_order(prefer):
+        if _answers(protocol, host, int(port), timeout):
+            return protocol
+    return ""
 
 
 def _cdp_refs(host: str, port: int, timeout: float, browser_id: str) -> Tuple[List[TargetRef], str]:
@@ -121,21 +156,26 @@ def list_targets(browser_id: str, host: str, port, timeout: float = 3.0) -> Tupl
         port_i = int(port)
     except Exception:
         return [], f"invalid port for {browser_id}: {port!r}"
-    protocol = detect_protocol(host, port_i, min(timeout, DETECT_TIMEOUT))
+    protocol = detect_protocol(host, port_i, min(timeout, DETECT_TIMEOUT), prefer=profile.protocol)
     if protocol == CDP:
         return _cdp_refs(host, port_i, timeout, profile.id)
     if protocol == RDP:
         return _rdp_refs(host, port_i, timeout, profile.id)
     if protocol == BIDI:
         return _bidi_refs(host, port_i, timeout, profile.id)
-    return [], _unreachable(profile, host, port_i)
+    return [], _unreachable(profile, host, port_i, timeout)
 
 
-def _unreachable(profile, host: str, port: int) -> str:
-    """What to say when a browser is not answering — with the flag that opens it."""
-    hint = browsers.debug_arg(profile, port).replace("--", "", 1)
-    return (f"{profile.label} not reachable on {host}:{port} — start it with {hint} "
-            f"({profile.notes.split('.')[0]})")
+def _unreachable(profile, host: str, port: int, timeout: float = DETECT_TIMEOUT) -> str:
+    """What to say when a browser is not answering — classified, not guessed (D-7).
+
+    One probe classifies the endpoint: nothing there, another channel answering, or
+    HTTP that is not CDP (the Firefox Remote Agent case from the owner's log) — each
+    with the one action that fixes it.
+    """
+    from .attached import explain_failure      # lazy: attached reads this module back
+    handle = endpoint_handle(host, port, profile.protocol, profile.id)
+    return explain_failure(handle, profile, timeout)
 
 
 def _named_refusal(protocol: str, op: str, why: str) -> Tuple[None, str]:
@@ -171,21 +211,25 @@ def click(ref: TargetRef, selector: str, timeout: float = 3.0) -> Tuple[bool, st
     return False, "CDP clicks run through the connected CDP client (see the pool), not this listing seam"
 
 
-def enabled_targets(settings, host: str, timeout: float = 3.0) -> Tuple[List[TargetRef], List[str]]:
-    """List every enabled browser's tabs at once (the reconciler's multi-browser call).
+def enabled_targets(rows, base_port, host: str, timeout: float = 3.0) -> Tuple[List[TargetRef], List[ScanNote]]:
+    """Every enabled browser's tabs in ONE pass — the app's whole scan (round 9, D-5).
 
-    `settings` is the per-browser map (`{id: {enabled, port}}`); each browser is
-    asked at its own resolved endpoint and one browser being down never hides the
-    other's tabs. Returns (targets, one error line per browser that failed).
+    `rows` is the settings map (`{id: {enabled, port}}`), `base_port` the shared
+    setting every browser derives its endpoint from (`base + offset`, or the row's
+    own hand-edited port). A browser switched off is skipped; a browser that is down
+    contributes one note naming its endpoint and the flag that opens it, and never
+    hides the others. Returns `(targets, notes)`.
     """
     refs: List[TargetRef] = []
-    errors: List[str] = []
+    notes: List[ScanNote] = []
     for profile in browsers.PROFILES:
-        entry = (settings or {}).get(profile.id) or {}
+        entry = (rows or {}).get(profile.id) or {}
         if entry.get("enabled") is False:
             continue
-        got, err = list_targets(profile.id, host, entry.get("port") or profile.port_offset, timeout)
+        port = browsers.resolve_port(base_port, profile, entry.get("port"))
+        got, err = list_targets(profile.id, host, port, timeout)
         refs.extend(got)
         if err:
-            errors.append(f"{profile.id}: {err}")
-    return refs, errors
+            notes.append(ScanNote(browser=profile.id, host=host, port=port, reason=err,
+                                  protocol=profile.protocol))
+    return refs, notes

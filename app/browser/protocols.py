@@ -1,17 +1,14 @@
-"""Protocol names + the rule about which tab handles can be dialled.
+"""The protocol names themselves — the vocabulary every layer shares.
 
-Why this module exists (2026-09-21, round 8): the panel layer has to decide
-things like "can this tab be connected as a socket of its own?" without naming a
-browser, and it must not import the browser layer at module level. It asks this
-leaf module instead, so adding a browser never edits a UI file — the same reason
-`browsers.py` is the only place a browser name is written down.
+Leaf module (stdlib only, no browser or UI imports) so a panel can name a channel
+without importing the browser layer, and `browsers.py` stays the only place a
+browser name is written down.
 
-The one rule here is honest rather than clever: an `rdp://` handle is **not** a
-socket. Firefox's DevTools server keeps a single socket for the whole browser and
-its tabs are handles on it, so a tab picker that tried to dial one would fail in
-a way nobody could read. Saying so, by name, is the whole point.
-
-Stdlib only — no browser imports, no UI imports.
+Round 8 also kept the "can this tab handle be dialled?" rule here. Round 9 deleted
+it (D-8): an `rdp://` handle *is* attachable — the client opens the browser's own
+DevTools socket for it — so the rule had become the bug the owner reported
+("i can not connect the Firefox browser"). What each channel can do now lives with
+the handles: `attached.refusal(handle, op)`.
 """
 
 from __future__ import annotations
@@ -38,21 +35,3 @@ def port_in(ws_url) -> int:
         return int(match.group(1))
     except Exception:
         return 0
-
-
-def refuses_tab_socket(ws_url, endpoint_port=None) -> bool:
-    """True when this tab handle cannot become a socket of its own.
-
-    Only one case today, and it is structural rather than a guess: RDP shares one
-    socket across every tab, so its handles are not connectable URLs.
-    """
-    return str(ws_url or "").startswith(RDP_SCHEME)
-
-
-def connect_refusal(ws_url, endpoint_port=None) -> str:
-    """Why this tab cannot be connected as a socket — "" when it can."""
-    if not refuses_tab_socket(ws_url, endpoint_port):
-        return ""
-    return (f"{ws_url} is a Firefox DevTools tab handle — RDP uses ONE socket for the whole "
-            "browser, per tab there is nothing to dial. Keep the browser on Firefox and use "
-            "Refresh / Diagnose: the app attaches per action and detaches again.")

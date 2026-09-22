@@ -1108,6 +1108,58 @@ ancestor lanes), JS **369 tests / 365 pass / 0 fail / 4 skipped**, coverage **88
 Honest limits, named in the design doc §5: RDP has no input synthesis (a trusted click needs the OS), no screenshot,
 no file-chooser, and no CDP-style `Network.*` — the panel lists those under `unavailable` instead of pretending.
 
+## Addendum 2026-09-21f — every browser, one pass + Firefox that actually connects (I-62, round 9)
+
+Owner, pasting the loop: `CDP error: URLError http://localhost:9224/json/list: Not Found` → `❌ Chrome connection
+error` → `+0 added, …, 1 stale`, plus "i cn not connect the Firefox brawser". Two defects, one shape: the
+execution client never learned *protocols* (it asked every endpoint for Chrome's HTTP tab list) and only one
+endpoint was scanned per pass. Design: [`2026-09-21-every-browser-one-pass/design.md`](../archive/2026-09-21-every-browser-one-pass/design.md).
+
+| Piece | Where | Numbers |
+|---|---|---|
+| Handle grammar (CDP / `rdp://…/ctx-N` / BiDi `#ctx`), attach, list, evaluate, diagnose, per-channel failure classification, named refusals, scan line | `app/browser/attached.py` (new, 447 lines) | 85% line |
+| Protocol-routed listing: `enabled_targets` = every enabled browser at `base + offset`, `probe_order` per row, `ScanUnavailable` | `app/browser/endpoints.py` | 97% line / 97% branch |
+| The client actually attaches: `RemoteMixin` (RDP attach/detach, `is_connected`, attachment-following `_endpoint_handle`) | `app/browser/cdp/remote.py` (new) | 79% line |
+| Channel declarations on the client / DOM refusals by name | `app/browser/cdp/client.py`, `cdp/dom.py` | 88% / 92% |
+| Registry lookups the routing needs (`browser_for_port`, `profile_for_protocol`) | `app/browser/browsers.py`, `protocols.py` (D-8: the rdp-handle refusal deleted) | 92% / 88% |
+| One listing seam + honest connect reasons + browser-named pool rows + per-browser diagnose | `app/ui/panels/browser_tabs.py` | 84% line / 86% branch |
+| Pool join on any channel (`connect_pool_client`, `pool_page_info`, `own_tab_info`) | `app/ui/panels/page_pool.py` | 86% |
+| Settings payload `scan_targets` + `scan_line`, protocol pushed on Save | `app/ui/panels/cdp_tools.py` | 69% line (unchanged surface) |
+| Per-tab identity for any channel | `app/services/run_state.py` | 83% |
+| Scan line, tab tags, receive breakdown | `browser-connection.js` (292), `cdp/cdp-render.js` (121), `cdp/cdp-listeners.js` (130) | JS lane 0 fails |
+
+Evidence: `tests/fakes/rdp_stub_server.py` counts every byte it receives, so "no HTTP on a DevTools socket" is a
+hard assertion (`GET ` and `/json` never appear), and `enabled_targets` is driven against a **real** CDP stub
+(`FakeChrome`) and a **real** fake Firefox at the same time in one pass. New suites: `tests/test_attached.py`
+(20), `tests/test_browser_scan.py` (12), `tests/test_pool_rdp_join.py` (7), `tests/js/test_browser_one_pass.mjs`
+(8, now part of `npm run test:js`). The JS suite was proven RED against the pristine `741b771` files (0 pass /
+8 fail) and restored to 8/8, so every assertion is real.
+
+Acceptance, mapped: (1) a manually started Firefox **connects** — `connect_tab` accepts `rdp://…/ctx-N`, attaches
+one socket, logs the one "🦊 Attached …" line, `client.evaluate(...)` runs the job path's actions in that tab and a
+detach leaves the browser running; the `rdp://` refusal of round 8 is gone (D-8). (2) One pass lists Chrome
+(`base+0`), Firefox (`base+1`) and Edge (`base+2`), each over its own protocol, skips a browser switched off in
+Settings, and reports a down browser once per distinct reason — never once per pass. (3) No HTTP request can reach
+an RDP socket, and a Firefox answering HTTP but not its DevTools socket is explained with `--start-debugger-server`
+plus why `--remote-debugging-port` is disqualified (Bug 1719505) — the same classification serves `Diagnose` and
+the connect failure line. (4) Round-8 stealth rules hold: click-only over `evaluate`, no spawned browser, no
+geckodriver/Selenium/Playwright, `navigator.webdriver` untouched; BiDi stays detected-but-refused-by-name. (5) A
+pass no enabled browser answered raises `endpoints.ScanUnavailable` to the reconciler ("Reconcile skipped"), so an
+unusable pass can never look like "every tab closed" and advance removal misses.
+
+Gates: pytest **2,147 passed / 11 skipped** (143.5 s), JS **377 tests / 373 pass / 0 fail / 4 skipped**, coverage
+**89.14 % line / 84.57 % branch** (baseline 86.36 / 82.33 — the line lane never decreased; branch is 2.2 points above
+the 75 % floor), `verify_quality.py --changed-files` **0 fails**, whole-repo lane only the pre-existing untouched
+`captcha.js max_cc 12 > 10`, and `js_metrics` worst levels on the three touched JS files: loc 17 / cc 10 / depth 2.
+RULE 16 work during the round: `renderScanLine` extracted (loc 10, cc 10) and `browserTag` (loc 4, cc 3); in Python
+`_rdp_session_line` split out of `diagnose`, `pool_page_for` shared by the three join paths, and `reconcile_tabs`
+separated from `live_tab_rows` so each keeps one responsibility.
+
+Honest limits, named in the design doc §4: BiDi is detected, listed and refused **by name** (driving it would flag
+the browser); RDP has no input synthesis, screenshot or file chooser — the panel lists those gaps instead of
+timing out; a Firefox row whose endpoint is closed yet whose tab is still trusted by the settings is reported, not
+silently dropped; the app still never starts a browser.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

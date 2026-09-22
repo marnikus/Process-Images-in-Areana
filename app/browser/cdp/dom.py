@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from ..attached import block as _block
+
 log = logging.getLogger("arena")
 
 
@@ -22,6 +24,8 @@ class HighlightSpec:
 
 
 async def get_document(transport) -> Optional[dict]:
+    if _block(transport, "DOM.getDocument"):
+        return None       # round 9: a non-CDP channel refuses by name (never a silent None)
     try:
         r = await transport.send("DOM.getDocument", {"depth": 0})
         return r.get("result", {}).get("root")
@@ -31,6 +35,8 @@ async def get_document(transport) -> Optional[dict]:
 
 
 async def query_selector(transport, node_id: int, selector: str) -> Optional[int]:
+    if _block(transport, "DOM.querySelector"):
+        return None
     try:
         r = await transport.send("DOM.querySelector", {"nodeId": node_id, "selector": selector})
         return r.get("result", {}).get("nodeId") or None
@@ -40,6 +46,8 @@ async def query_selector(transport, node_id: int, selector: str) -> Optional[int
 
 
 async def query_selector_all(transport, node_id: int, selector: str) -> List[int]:
+    if _block(transport, "DOM.querySelectorAll"):
+        return []
     try:
         r = await transport.send("DOM.querySelectorAll", {"nodeId": node_id, "selector": selector})
         return r.get("result", {}).get("nodeIds") or []
@@ -49,6 +57,8 @@ async def query_selector_all(transport, node_id: int, selector: str) -> List[int
 
 
 async def set_file_input_files(transport, node_id: int, files: List[str]) -> bool:
+    if _block(transport, "DOM.setFileInputFiles"):
+        return False
     try:
         r = await transport.send("DOM.setFileInputFiles", {"nodeId": node_id, "files": files})
         # CDP error reply → failure; an empty result is a valid success
@@ -84,6 +94,9 @@ DEFAULT_FILE_INPUT_SELECTORS = [
 
 
 async def attach_image_cdp(transport, image_path: str, selectors: List[str] = None) -> Tuple[bool, str]:
+    refused = _block(transport, "DOM.setFileInputFiles (image attach)")
+    if refused:
+        return False, refused
     if selectors is None:
         selectors = DEFAULT_FILE_INPUT_SELECTORS
     try:

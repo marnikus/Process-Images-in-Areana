@@ -9,6 +9,18 @@ window.CDPListeners = {
     } catch (e) { console.warn('CDP bind failed', e); }
   },
 
+  /* Which browsers answered this pass — "chrome 2 · firefox 2" (round 9).
+     One pass lists every enabled browser at its own endpoint, so the count alone no
+     longer says where the tabs came from; the breakdown does. */
+  _browserBreakdown(tabs) {
+    const counts = {};
+    (tabs || []).forEach((t) => {
+      const id = t.browser || 'browser';
+      counts[id] = (counts[id] || 0) + 1;
+    });
+    return Object.keys(counts).map((id) => `${id} ${counts[id]}`).join(' · ');
+  },
+
   _logTabsReceived(store) {
     if (store.tabs.length === 0) {
       if (typeof LogConsole !== 'undefined') LogConsole.log('⚠ Received 0 tabs', 'warn');
@@ -17,8 +29,9 @@ window.CDPListeners = {
     const real = store.getRealTabs(store.tabs);
     const devCount = store.tabs.length - real.length;
     if (typeof LogConsole === 'undefined') return;
-    if (devCount > 0) LogConsole.log(`📑 Received ${store.tabs.length} tab(s) (${real.length} real + ${devCount} devtools)`, 'success');
-    else LogConsole.log(`📑 Received ${store.tabs.length} unique Chrome tab(s)`, 'success');
+    const where = this._browserBreakdown(store.tabs);
+    if (devCount > 0) LogConsole.log(`📑 Received ${store.tabs.length} tab(s) (${real.length} real + ${devCount} devtools) — ${where}`, 'success');
+    else LogConsole.log(`📑 Received ${store.tabs.length} tab(s) — ${where}`, 'success');
   },
 
   _isDebouncedAuto(only, store, now) {
@@ -66,15 +79,15 @@ window.CDPListeners = {
     if (status === 'connected') store.connected = true;
     if (status === 'disconnected') store.connected = false;
     if (typeof LogConsole !== 'undefined') {
-      if (status === 'connected') LogConsole.log('✅ Chrome connected', 'success');
-      if (status === 'disconnected') LogConsole.log('🔌 Chrome disconnected', 'warn');
-      if (status === 'error') LogConsole.log('❌ Chrome connection error', 'error');
+      if (status === 'connected') LogConsole.log('✅ Tab connected', 'success');
+      if (status === 'disconnected') LogConsole.log('🔌 Tab disconnected', 'warn');
+      if (status === 'error') LogConsole.log('❌ Connection error', 'error');
     }
     panel.updateUrlRowsConnection();
   },
 
   _handleNoMatches(query, store) {
-    if (typeof LogConsole !== 'undefined') LogConsole.log(`❌ No Chrome tab matches “${query}”`, 'error');
+    if (typeof LogConsole !== 'undefined') LogConsole.log(`❌ No tab matches “${query}”`, 'error');
     if (store.tabs.length === 0) setTimeout(() => { if (window.CDPActions) window.CDPActions.diagnose(); }, 500);
   },
 

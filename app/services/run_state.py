@@ -221,7 +221,7 @@ def _cdp_attrs(bridge) -> Tuple[str, str]:
 
 
 async def _fetch_tabs_safe(bridge) -> List[Any]:
-    """Live tabs, [] on any failure."""
+    """Live tabs of the active browser, [] on any failure."""
     try:
         return await bridge.cdp.fetch_tabs() or []
     except Exception:
