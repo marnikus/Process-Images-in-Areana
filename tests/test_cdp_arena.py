@@ -8,6 +8,7 @@ real output_wait module (fast timeouts).
 
 import asyncio
 import json
+import time
 
 import pytest
 
@@ -294,6 +295,31 @@ async def test_wait_times_out_and_settles_security_gate(arena):
     status, data = await ctrl.wait_for_new_output({"output_srcs": []}, timeout_ms=400)
     assert status == "failed" and "Timeout" in data["error"]
     assert len(settled) >= 1  # security gate ran inside the wait loop
+    assert "captcha wait" not in data["error"]  # no clock installed ⇒ no pause, no note
+
+
+async def test_settle_inside_the_wait_is_charged_to_the_pause_clock(arena):
+    """S3 / I-52: the settle's duration is absorbed — a wait shorter than the
+    settle still times out only after the *paused* elapsed passes the timeout,
+    and the failure text carries the evidence."""
+    from app.core.pause_clock import PauseClock
+    ctrl = await _connected(arena)
+    resp = arena[2]
+    resp.state["security"] = True
+    async def slow_settle():
+        await asyncio.sleep(0.3)
+        resp.state["security"] = False  # the dialog clears after one settle
+
+    ctrl.security_settler = slow_settle
+    ctrl.pause_clock = PauseClock(cap_s=300)
+    t0 = time.monotonic()
+    status, data = await ctrl.wait_for_new_output({"output_srcs": []}, timeout_ms=400)
+    wall = time.monotonic() - t0
+    assert status == "failed" and "Timeout after 400ms" in data["error"]
+    assert ctrl.pause_clock.total >= 0.3  # the settle was charged
+    assert wall >= 0.4 + 0.3  # the wait outlived timeout + the absorbed settle
+    assert "captcha wait" in data["error"]  # `_timeout_text` carried the note
+    assert data["last_check"]["paused_s"] == ctrl.pause_clock.total
 
 
 # ── download ──

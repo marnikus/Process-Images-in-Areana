@@ -35,3 +35,45 @@ def test_dummy_signal_wire_smoke():
     sig.emit("x")
     obj = qt_compat.QObject()
     assert obj is not None and qt_compat.QFileDialog is None
+
+
+needs_qt = pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None,
+    reason="needs PySide6 installed",
+)
+
+
+def _qt_app():
+    try:
+        from PySide6.QtWidgets import QApplication
+    except Exception:
+        return None
+    return QApplication.instance()
+
+
+@needs_qt
+def test_get_clipboard_none_without_app():
+    if _qt_app() is not None:
+        pytest.skip("a QApplication already exists in this run")
+    assert qt_compat.get_clipboard() is None
+
+
+@needs_qt
+def test_clipboard_copy_without_app_returns_false_none():
+    if _qt_app() is not None:
+        pytest.skip("a QApplication already exists in this run")
+    assert qt_compat.clipboard_copy("hello") == (False, None)
+
+
+@needs_qt
+def test_clipboard_paths_with_offscreen_app():
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+    except Exception as e:
+        pytest.skip(f"PySide6 QtWidgets unavailable here: {e}")
+    app = _qt_app() or QApplication([])
+    assert qt_compat.get_clipboard() is app.clipboard()
+    ok, err = qt_compat.clipboard_copy("arena-clipboard-check")
+    assert ok is True and err is None

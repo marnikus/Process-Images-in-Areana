@@ -1,4 +1,10 @@
-"""PagePool — steady/busy tracking with RLock, event-driven wait (Phase 1+2)."""
+"""PagePool — steady/busy tracking with RLock, event-driven wait (Phase 1+2).
+
+The pool key is the CDP tab id (identity, RULE 15); every page also carries the
+display label the UIs print (`PageInfo.alias` = `{email}_{4 digits}`), numbered
+once per tab from the injected `AliasBook` (D-5) so a re-join never burns a new
+number and the number survives a restart (the book is persisted).
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,7 @@ import threading
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
+from ..core.tab_alias import AliasBook
 from .cdp_arena import CDPArenaController
 from .cdp_client import CDPClient
 from .page_status import PageInfo, PageStatus, now_iso
@@ -44,26 +51,86 @@ def _expire_all(pages) -> None:
             continue
 
 
-def _pick_lowest_count(pages) -> Optional[PageInfo]:
-    """Free page with fewest completed jobs; ties keep default order."""
-    free = [p for p in pages if p.is_free()]
-    if not free:
-        return None
-    return min(free, key=lambda p: p.jobs_completed)
+def _pick_free(pages) -> Optional[PageInfo]:
+    """First free page in pool order (join order = the `#n` worker number).
+
+    2026-09-21: the per-tab job counter is display-only — it never decides who
+    works next (the load-balancing concept I-28 is gone), so this pick is the
+    pool's own insertion order and nothing else.
+    """
+    for page in pages:
+        if page.is_free():
+            return page
+    return None
 
 
-def _snapshot_entry(page) -> dict:
-    """One page snapshot entry incl. live cooldown countdown."""
+def _snapshot_entry(tab_id: str, page, default_browser: str = "chrome") -> dict:
+    """One page snapshot entry incl. live cooldown countdown.
+
+    `browser` follows the pool's endpoint when a page carries none, so two
+    browsers listed side by side still tell their rows apart.
+
+    `tab_id` is the POOL KEY (`PageInfo.tab_id or ws_url`) — the same string
+    the worker badge carries (I-55): the join path that parsed the socket and
+    the path that cached the tab must never show two different ids for one
+    worker, so the snapshot reports the key, never a fallback field.
+    """
     entry = page.to_dict()
+    entry["tab_id"] = tab_id
+    entry["browser"] = entry.get("browser") or default_browser
     try:
         entry["cooldown_remaining"] = page.remaining_seconds()
     except Exception:
         entry["cooldown_remaining"] = 0
+    try:
+        entry["tab_label"] = page.alias      # readable id for every view (D-5)
+    except Exception:
+        entry["tab_label"] = ""
     return entry
 
 
+def tab_label_of(pool, tab_id: str) -> str:
+    """Readable label of a tab from a pool that may be absent (D-7).
+
+    One source for every log line and view that names a worker: the pool key
+    stays the identity (RULE 15), the label is what a human reads. A page
+    without a readable id, an unknown tab or a missing pool degrades to the
+    short id — never to an empty string.
+    """
+    try:
+        page = pool.get_page(tab_id)
+        return page.label if page is not None else str(tab_id or "")[:12]
+    except Exception:
+        return str(tab_id or "")[:12]
+
+
+def _assign_alias(page: PageInfo, tab_id: str, book: AliasBook) -> None:
+    """Give a page its readable id once: number from the book, account remembered.
+
+    Idempotent — a known page keeps the number it already carries (its persisted
+    one), and the book's last known account seeds `owner` until the probe
+    answers, so a restart never shows `aka_…` for a tab we have already seen.
+    """
+    if not page.alias_no:
+        page.alias_no = book.no_for(tab_id)
+    book.remember(tab_id, page.owner)
+    if not page.owner:
+        page.owner = book.owner_for(tab_id)
+
+
+def _revive(exist: PageInfo, info: PageInfo) -> None:
+    """A known tab re-joins: refresh identity, reconnect, keep its worker number."""
+    exist.title = info.title or exist.title
+    exist.url = info.url or exist.url
+    exist.ws_url = info.ws_url or exist.ws_url
+    exist.is_connected = True
+    if exist.status == PageStatus.DISCONNECTED:
+        exist.status = PageStatus.STEADY
+        exist.last_steady_at = now_iso()
+
+
 class PagePool:
-    def __init__(self, logger=None):
+    def __init__(self, logger=None, alias_book: Optional[AliasBook] = None):
         self._pages: Dict[str, PageInfo] = {}
         self._aborts: set = set()
         self._clients: Dict[str, CDPClient] = {}
@@ -72,6 +139,9 @@ class PagePool:
         self._logger = logger or (lambda m, l="info": log.info(m))
         self._host = "127.0.0.1"
         self._port = 9222
+        self._browser = "chrome"  # which browser this endpoint belongs to (D-3)
+        self._next_worker_no = 0  # session-stable join counter, never reused (D-3)
+        self._alias = alias_book if alias_book is not None else AliasBook()
 
     def add_page(self, info: PageInfo):
         tid = info.tab_id or info.ws_url
@@ -80,20 +150,18 @@ class PagePool:
         with self._lock:
             exist = self._pages.get(tid)
             if exist:
-                exist.title = info.title or exist.title
-                exist.url = info.url or exist.url
-                exist.ws_url = info.ws_url or exist.ws_url
-                exist.is_connected = True
-                if exist.status == PageStatus.DISCONNECTED:
-                    exist.status = PageStatus.STEADY
-                    exist.last_steady_at = now_iso()
+                _revive(exist, info)
+                _assign_alias(exist, tid, self._alias)
             else:
                 info.status = PageStatus.STEADY
                 info.is_connected = True
                 info.last_steady_at = now_iso()
+                self._next_worker_no += 1
+                info.worker_no = self._next_worker_no
+                _assign_alias(info, tid, self._alias)
                 self._pages[tid] = info
         try:
-            self._logger(f"Pool add {tid[:12]} steady", "success")
+            self._logger(f"Pool add {tab_label_of(self, tid)} steady", "success")
         except Exception:
             pass
 
@@ -160,13 +228,13 @@ class PagePool:
         with self._lock:
             for p in self._pages.values():
                 p.try_expire()
-            return _pick_lowest_count(self._pages.values())
+            return _pick_free(self._pages.values())
 
     async def acquire_free_page(self, job_id: str) -> Optional[PageInfo]:
         with self._lock:
             for p in self._pages.values():
                 p.try_expire()
-            page = _pick_lowest_count(self._pages.values())
+            page = _pick_free(self._pages.values())
             if page is None:
                 return None
             page.status = PageStatus.BUSY
@@ -190,10 +258,10 @@ class PagePool:
 
     def status_snapshot(self) -> dict:
         with self._lock:
-            pages = [_snapshot_entry(p) for p in self._pages.values()]
+            pages = [_snapshot_entry(tid, p, self._browser) for tid, p in self._pages.items()]
             steady = len([p for p in self._pages.values() if p.is_free()])
             busy = len([p for p in self._pages.values() if p.is_busy()])
-            cooling = len([p for p in self._pages.values() if p.status == PageStatus.COOLDOWN])
+            cooling = len([p for p in self._pages.values() if p.is_cooling()])
             return {"total": len(pages), "steady": steady, "busy": busy,
                     "cooling": cooling, "free": steady, "pages": pages}
 

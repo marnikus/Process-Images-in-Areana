@@ -1,5 +1,8 @@
 """Browser tabs panel — CDP tab list/diagnose/auto-scan/popup/primary/connect/find.
 
+One listing seam for the whole app (`live_tab_rows`): the reconciler, the pool
+panel and this panel's own listing all read Chrome's endpoint through it.
+
 ideal-size(reason): 7-slot tab surface plus async phase splits — connect, find
 and diagnose each exceed 20 LOC / CC 7 as one function, so phases live beside
 their single callers per RULE 16; splitting the file would scatter
@@ -14,21 +17,178 @@ import json
 import logging
 import re
 import time
+from functools import partial
 
-from app.services.auto_connect import (
-    live_tab_keys,
-    pick_primary_ws,
-    plan_auto_connect,
-    prunable_row_ids,
-    sync_pool_presence,
+from app.services.auto_connect import pick_primary_ws
+from app.services.live.reconcile import LiveDeps, reconcile_once, start_reconciler
+from app.services.run_state import (
+    pooled_ids,
+    resolve_tab_info,
+    restore_page_state,
+    schedule_coro,
+    tab_label_of,
 )
-from app.services.run_state import pooled_ids, resolve_tab_info, restore_page_state, schedule_coro
-from app.ui.panels.page_pool import do_connect_page_pool
-from app.ui.panels.url_queue import _add_missing_rows, _dedupe_state_rows
+from app.ui.panels.page_pool import connect_pool_client, do_connect_page_pool, leave_pool
+from app.ui.panels.url_queue import commit_urls_system
 from app.ui.qt_compat import Slot
 from app.utils.win_popup import raise_window_titles
 
 log = logging.getLogger("arena")
+
+
+def active_browser(bridge):
+    """The registry row of the selected browser (None when the registry says no)."""
+    from app.browser import browsers
+    try:
+        stored = bridge.config.get_state("active_browser", "")
+        return browsers.profile_of(stored) or browsers.default_profile()
+    except Exception:
+        return None
+
+
+def _base_port(value, default: int = 9222) -> int:
+    """A usable shared base port from stored state (bad or empty values fall back)."""
+    try:
+        base = int(value)
+    except Exception:
+        return default
+    return base if 1 <= base <= 65535 else default
+
+
+def scan_settings(bridge) -> tuple:
+    """What one pass scans: (browser rows, shared base port, host) from the settings window.
+
+    The pass follows the *settings*: `cdp_port` is the shared base, and a registry row's
+    own hand-edited port overrides it (`resolve_port`). One browser is registered today
+    (Chrome), so one endpoint is asked per pass.
+    """
+    try:
+        config = bridge.config
+        rows = config.get_state("cdp_browsers", {}) or {}
+        host = config.get_state("cdp_host", "127.0.0.1") or "127.0.0.1"
+        return rows, _base_port(config.get_state("cdp_port", 9222)), host
+    except Exception:
+        cdp = getattr(bridge, "cdp", None)
+        return {}, 9222, getattr(cdp, "_host", "127.0.0.1") or "127.0.0.1"
+
+
+def report_scan_notes(bridge, notes) -> None:
+    """Log each browser that did not answer — once per reason, never once per pass.
+
+    A note is only news when it changes: the same missing browser on the same endpoint
+    must not reprint its line every pass (the owner's log was a loop). The reason is
+    dropped as soon as the browser answers again, so a later failure prints again.
+    """
+    seen = getattr(bridge, "_scan_note_reasons", None)
+    if seen is None:                       # one dict per bridge — recording must alias it
+        seen = {}
+        bridge._scan_note_reasons = seen
+    current = {note.browser: note.reason for note in notes}
+    for note in notes:
+        if seen.get(note.browser) != note.reason:
+            bridge._log(f"❌ {note.browser}: {note.reason}", "warn")
+    seen.clear()
+    seen.update(current)
+
+
+def row_key(row) -> str:
+    """A tab row's id (`cdp.tabs.TabInfo` — the one row shape a scan returns)."""
+    return getattr(row, "id", "") or getattr(row, "tab_id", "") or ""
+
+
+def merge_rows(scanned, extra) -> list:
+    """Scanned rows first, then the client's own tabs the scan did not already name."""
+    merged, seen = list(scanned), {row_key(r) for r in scanned if row_key(r)}
+    for row in extra:
+        key = row_key(row)
+        if key and key in seen:
+            continue
+        seen.add(key)
+        merged.append(row)
+    return merged
+
+
+async def active_client_rows(bridge) -> list:
+    """The active client's own tab list — the last resort when the scan listed nothing.
+
+    A client attached to a tab on an endpoint the settings do not describe still knows
+    that tab exists; before reporting an empty list, ask it.
+    """
+    fetch = getattr(getattr(bridge, "cdp", None), "fetch_tabs", None)
+    if fetch is None:
+        return []
+    try:
+        return list(await fetch() or [])
+    except Exception:
+        return []
+
+
+def scan_answer(tabs, err, note) -> tuple:
+    """`(rows, notes)` — rows when the endpoint answered, else the one waiting note.
+
+    An empty list from the endpoint is an answer, not a failure; only a pass that
+    said nothing reports the note naming where it asked and why that is news (the
+    reconciler treats a pass of only notes as a wait, not a removal).
+    """
+    rows = [t for t in (tabs or []) if t.id or t.ws_url]
+    if rows or not err:
+        return rows, []
+    return [], [note]
+
+
+def scan_targets(bridge) -> tuple:
+    """Chrome's tabs in one pass — `(rows, notes)`, the app's whole scan."""
+    from app.browser import browsers
+    from app.browser.cdp import fetch_tabs_sync
+    rows_cfg, base, host = scan_settings(bridge)
+    profile = browsers.default_profile()
+    entry = (rows_cfg or {}).get(profile.id) or {}
+    if entry.get("enabled") is False:
+        return [], []          # switched off in the settings: nothing is scanned, nothing is news
+    port = browsers.resolve_port(base, profile, entry.get("port"))
+    tabs, err, _tried = fetch_tabs_sync(host, port, 3.0)
+    note = browsers.ScanNote(browser=profile.id, host=host, port=port, reason=err or "",
+                             protocol=profile.protocol)
+    return scan_answer(tabs, err, note)
+
+
+async def live_tab_rows(bridge):
+    """Parse Chrome's endpoint in one pass — one seam for the whole app.
+
+    The reconciler, the pool panel and this panel's own listing all read through here,
+    so a down endpoint is reported by name (never a silent empty list) and the client's
+    own tab list is the last resort before reporting nothing.
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        rows, notes = await loop.run_in_executor(None, lambda: scan_targets(bridge))
+    except Exception as e:
+        bridge._scan_failed, bridge._scan_missing = str(e), {}
+        bridge._log(f"❌ Scan failed: {e}", "error")
+        return []
+    bridge._scan_failed = ""
+    report_scan_notes(bridge, notes)
+    bridge._scan_missing = {n.browser: n.reason for n in notes}   # one dict, aliased on purpose
+    if rows:
+        return rows
+    return merge_rows(rows, await active_client_rows(bridge))
+
+
+async def reconcile_tabs(bridge):
+    """`live_tab_rows` for the reconciler — a pass the endpoint did not answer is a wait (D-1).
+
+    Returning `[]` there would look exactly like "every tab was closed": the rows would
+    advance their miss counts and, after the threshold, be removed for tabs that are
+    still open. The reconciler already knows how to wait (`_fetch` → "Reconcile
+    skipped"), so an unusable pass says so instead of pretending to be empty.
+    """
+    from app.services.live.reconcile import ScanUnavailable
+    rows = await live_tab_rows(bridge)
+    missing = getattr(bridge, "_scan_missing", None) or {}
+    reason = getattr(bridge, "_scan_failed", "") or ("; ".join(missing.values()) if missing else "")
+    if not rows and reason:
+        raise ScanUnavailable(reason[:300])
+    return rows
 
 
 def claim_connect_slot(bridge, ws_url: str) -> bool:
@@ -82,54 +242,59 @@ async def pool_tab_identity(bridge, ws_url: str):
 
 
 def announce_tab_connected(bridge, ws_url: str) -> None:
-    """Success logs + status for a fresh connection."""
-    bridge._log(f"✅ Connected to {ws_url[:80]} (tab {bridge.cdp._current_tab_id[:20]}…)", "success")
+    """Success logs + status for a fresh connection (D-8)."""
+    tab_id = getattr(bridge.cdp, "_current_tab_id", "") or ""
+    bridge._log(f"✅ Connected to {ws_url[:80]} (tab {tab_id[:20]}…)", "success")
     bridge.connection_status.emit("connected")
-    bridge._log(f"CDP session active on ws://{bridge.cdp._host}:{bridge.cdp._port}/devtools/page/{bridge.cdp._current_tab_id[:30]}", "info")
+    bridge._log(f"CDP session active on ws://{bridge.cdp._host}:{bridge.cdp._port}/devtools/page/{tab_id[:30]}", "info")
+
+
+def pool_page_for(bridge, identity):
+    """The pool row for a connect-path join — named with the tab's own title/url."""
+    from app.ui.panels.page_pool import pool_page_info
+    tab_id, ws_url, title, url = identity
+    return pool_page_info(bridge, (tab_id, ws_url), title, url)
 
 
 def reuse_pool_page(bridge, identity) -> None:
     """Pool already holds a live dedicated client: refresh info only."""
-    from app.browser.page_status import PageInfo
-    tab_id, ws_url, title, url = identity
-    bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
+    tab_id, _ws_url, _title, _url = identity
+    bridge._page_pool.add_page(pool_page_for(bridge, identity))
     bridge._emit_pool_status()
-    bridge._log(f"📦 Pool: tab {tab_id[:12]} already has dedicated client steady (reuse)", "info")
+    label = tab_label_of(getattr(bridge, "_page_pool", None), tab_id)
+    bridge._log(f"📦 Pool: tab {label} already has dedicated client steady (reuse)", "info")
 
 
 async def add_dedicated_pool_page(bridge, identity) -> None:
     """Pool-join with an independent per-tab client (parallel-safe)."""
-    from app.browser.page_status import PageInfo
     from app.browser.cdp_arena import CDPArenaController
-    from app.browser.cdp_client import CDPClient
-    tab_id, ws_url, title, url = identity
-    host = getattr(bridge.cdp, '_host', '127.0.0.1')
-    port = getattr(bridge.cdp, '_port', 9222)
-    dedicated = CDPClient(host=host, port=port)
-    if not await dedicated.connect(ws_url):
+    tab_id, ws_url, _title, _url = identity
+    dedicated = await connect_pool_client(bridge, ws_url)   # endpoint parsed from the ws URL
+    if dedicated is None:
         add_fallback_pool_page(bridge, identity)
         return
-    bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
+    bridge._page_pool.add_page(pool_page_for(bridge, identity))
     ctrl2 = CDPArenaController(dedicated, log_callback=lambda m: bridge._log(m, "info"))
     bridge._page_pool.register_client(tab_id, dedicated, ctrl2)
     bridge._emit_pool_status()
     total, free = bridge._page_pool.get_counts()
-    bridge._log(f"📦 Pool: added tab {tab_id[:12]} steady with dedicated client — total {total} pages {free} free", "success")
+    label = tab_label_of(getattr(bridge, "_page_pool", None), tab_id)
+    bridge._log(f"📦 Pool: added tab {label} steady with dedicated client — total {total} pages {free} free", "success")
     if total >= 2:
         bridge._log(f"✅ {total} tabs in pool ready for parallel — when 2+ images selected, Run will dispatch to different webpages (steady/busy tracked, no double-send)", "success")
 
 
 def add_fallback_pool_page(bridge, identity) -> None:
     """Pool-join reusing the primary client (dedicated connect failed)."""
-    from app.browser.page_status import PageInfo
     from app.browser.cdp_arena import CDPArenaController
-    tab_id, ws_url, title, url = identity
-    bridge._page_pool.add_page(PageInfo(tab_id=tab_id, ws_url=ws_url, title=title, url=url))
+    tab_id, _ws_url, _title, _url = identity
+    bridge._page_pool.add_page(pool_page_for(bridge, identity))
     ctrl = CDPArenaController(bridge.cdp, log_callback=lambda m: bridge._log(m, "info"))
     bridge._page_pool.register_client(tab_id, bridge.cdp, ctrl)
     bridge._emit_pool_status()
     total_f, _ = bridge._page_pool.get_counts() if bridge._page_pool else (0, 0)
-    bridge._log(f"📦 Pool: added primary tab {tab_id[:12]} steady (dedicated failed, using primary) — total {total_f}", "warn")
+    label = tab_label_of(getattr(bridge, "_page_pool", None), tab_id)
+    bridge._log(f"📦 Pool: added primary tab {label} steady (dedicated failed, using primary) — total {total_f}", "warn")
 
 
 async def attach_connected_tab(bridge, ws_url: str) -> None:
@@ -162,8 +327,7 @@ async def do_connect_tab(bridge, ws_url: str) -> None:
             announce_tab_connected(bridge, ws_url)
             await attach_connected_tab(bridge, ws_url)
         else:
-            bridge._log(f"❌ Connect failed for {ws_url[:120]} — check Chrome still open on port {bridge.cdp._port}, try Diagnose", "error")
-            bridge._log(f"💡 Tip: Ensure Chrome was started with --remote-debugging-port={bridge.cdp._port} --user-data-dir=... and that http://{bridge.cdp._host}:{bridge.cdp._port}/json/list shows JSON in browser", "warn")
+            bridge._log(f"❌ Connect failed for {ws_url[:120]}: {connect_reason(bridge, ws_url)}", "error")
             bridge.connection_status.emit("error")
     except Exception as e:
         import traceback
@@ -171,6 +335,16 @@ async def do_connect_tab(bridge, ws_url: str) -> None:
         bridge.connection_status.emit("error")
     finally:
         bridge._connect_in_progress = False
+
+
+def connect_reason(bridge, ws_url: str) -> str:
+    """Why the connect failed: the client's own error, else the Chrome launch hint (D-7)."""
+    err = (getattr(bridge.cdp, "last_error", "") or "").strip()
+    if err:
+        return err
+    port = getattr(bridge.cdp, "_port", 9222)
+    return (f"Chrome is not answering on the websocket — start it with "
+            f"--remote-debugging-port={port} and open the tab first")
 
 
 def find_dupe_recent(bridge, q: str, now: float) -> bool:
@@ -223,8 +397,8 @@ def report_tab_matches(bridge, query: str, tabs) -> None:
 
 
 async def match_live_tabs(bridge, query: str) -> None:
-    """Fetch tabs; route to no-tabs / no-match / matches reporting."""
-    tabs = await bridge.cdp.fetch_tabs()
+    """Fetch the live tab rows; route the report."""
+    tabs = await live_tab_rows(bridge)
     if not tabs:
         await report_no_tabs(bridge, query)
         return
@@ -250,13 +424,13 @@ async def do_find_tab(bridge, query: str) -> None:
 
 
 async def do_fetch_tabs(bridge) -> None:
-    """Fetch live tabs; an empty list also drops a diagnose summary."""
+    """Fetch live Chrome tabs; an empty list also drops a diagnose."""
     try:
-        tabs = await bridge.cdp.fetch_tabs()
+        tabs = await live_tab_rows(bridge)
         payload = json.dumps([{"id": t.id, "title": t.title, "url": t.url, "ws_url": t.ws_url} for t in tabs], ensure_ascii=False)
         bridge.tabs_received.emit(payload)
-        if not tabs:
-            try:
+        if not tabs and not (getattr(bridge, "_scan_missing", None) or {}):
+            try:                     # the endpoint answered — ask it for details
                 loop = asyncio.get_event_loop()
                 diag = await loop.run_in_executor(None, lambda: bridge.cdp.diagnose_sync())
                 bridge._log(diag.get("summary", ""), "warn")
@@ -279,7 +453,7 @@ def report_diag_checks(bridge, diag) -> None:
 
 
 async def do_diagnose_chrome(bridge) -> None:
-    """Executor-diagnose Chrome; summary + checks + tabs to the UI."""
+    """Executor-diagnose Chrome's CDP endpoint: per-host port state, tabs, summary."""
     try:
         loop = asyncio.get_event_loop()
         diag = await loop.run_in_executor(None, lambda: bridge.cdp.diagnose_sync())
@@ -295,108 +469,35 @@ async def do_diagnose_chrome(bridge) -> None:
         bridge._log(f"Diagnose failed: {e}", "error")
 
 
-def prune_auto_rows(bridge, plan) -> int:
-    """Drop auto-linked rows whose tabs vanished; returns removed count."""
-    if not plan.remove:
-        return 0
-    gone = set(plan.remove)
-    before = len(bridge.state.urls)
-    bridge.state.urls = [u for u in bridge.state.urls if u.id not in gone]
-    return before - len(bridge.state.urls)
+def live_deps(bridge) -> LiveDeps:
+    """The reconciler's callables, wired in ui land (the service never imports ui/browser).
 
+    `fetch_tabs` is the panel's own one-pass listing — the settings' endpoint, every row
+    a live `cdp.tabs.TabInfo` (D-1).
+    """
+    async def fetch_tabs():
+        return await reconcile_tabs(bridge)
 
-def claim_auto_rows(by_id, claims) -> bool:
-    """Link unlinked rows to their tabs; True when any row changed."""
-    changed = False
-    for row_id, tab_id in claims:
-        row = by_id.get(row_id)
-        if row is not None and not row.tab_id:
-            row.tab_id = tab_id
-            changed = True
-    return changed
+    async def join_tab(ws: str):
+        await do_connect_page_pool(bridge, ws)
 
-
-def apply_auto_plan(bridge, plan) -> bool:
-    """Claim/add/prune URL rows from the plan; True when rows changed."""
-    by_id = {u.id: u for u in bridge.state.urls}
-    changed = claim_auto_rows(by_id, plan.claim)
-    added = _add_missing_rows(bridge.state.urls, plan.add)
-    pruned = prune_auto_rows(bridge, plan)
-    changed = bool(added) or changed or pruned > 0
-    if changed:
-        # system action, reproducible by re-scan: no undo spam
-        bridge._save_arena()
-        bridge._emit_arena_state()
-    return changed
-
-
-def plan_has_changes(plan, revived, stale) -> bool:
-    """True when the scan produced rows/joins/presence changes to report."""
-    return any((plan.add, plan.claim, plan.connect, revived, stale, plan.remove))
-
-
-def report_auto_plan(bridge, plan, presence, source) -> None:
-    """Pool emit + summary; manual scans always answer, auto only on change."""
-    revived, stale = presence
-    if not plan_has_changes(plan, revived, stale):
-        if source == "manual":
-            bridge._log("🤖 Reparse: no changes — rows and pool already match open tabs", "info")
-        return
-    if plan.connect or revived or stale or plan.remove:
+    def leave_tab(tab_id: str) -> bool:
+        left = leave_pool(bridge, tab_id)  # badge cleared, page removed (the one leave mechanic)
         bridge._emit_pool_status()
-    bridge._log(f"🤖 Auto-connect: +{len(plan.add)} rows, {len(plan.claim)} linked, "
-                f"{len(plan.connect)} joined, {revived} revived, {len(stale)} stale, "
-                f"{len(plan.remove)} removed", "info")
+        return left
+
+    return LiveDeps(fetch_tabs=fetch_tabs, join_tab=join_tab, leave_tab=leave_tab,
+                    commit=partial(commit_urls_system, bridge), log=bridge._log)
 
 
-async def join_new_tabs(bridge, sockets) -> None:
-    """Pool-join each connectable tab; skips empty sockets."""
-    for ws in sockets or []:
-        if ws:
-            await do_connect_page_pool(bridge, ws)
-
-
-def auto_prune_allowed(bridge, tabs) -> bool:
-    """Prune dead rows only with a healthy tab list and no live run."""
-    if getattr(bridge, "_run_state", "idle") != "idle":
-        return False
-    return any(getattr(t, "id", "") or getattr(t, "ws_url", "") for t in tabs or [])
-
-
-def plan_auto_sync(bridge, tabs, pattern, rows):
-    """Plan the scan; attach safe row pruning when allowed."""
-    plan = plan_auto_connect(tabs, pattern, rows, pooled_ids(bridge._page_pool))
-    if auto_prune_allowed(bridge, tabs):
-        plan.remove = prunable_row_ids(rows, live_tab_keys(tabs))
-    return plan
+def start_url_reconciler(bridge) -> bool:
+    """Boot-time start of the Python-owned URL loop (idempotent; False when already running)."""
+    return start_reconciler(bridge, live_deps(bridge))
 
 
 async def auto_scan_pass(bridge, source: str) -> None:
-    """One scan: fetch tabs, plan, apply, join, sync presence, report."""
-    tabs = await bridge.cdp.fetch_tabs()
-    pattern = bridge.config.get_state("url_pattern", "arena.ai")
-    rows, removed = _dedupe_state_rows(bridge.state.urls)
-    if removed:  # legacy broken state: N rows on one tab -> keep one (I-33)
-        bridge._log(f"🤖 Auto-connect: removed {removed} extra row(s) — their tab already has a row", "warn")
-    plan = plan_auto_sync(bridge, tabs, pattern, rows)
-    apply_auto_plan(bridge, plan)
-    await join_new_tabs(bridge, plan.connect)
-    live = {(t.id or t.ws_url) for t in tabs or []} - {""}
-    presence = sync_pool_presence(bridge._page_pool, live)
-    report_auto_plan(bridge, plan, presence, source)
-
-
-async def do_auto_connect_scan(bridge, source: str = "auto") -> None:
-    """Fetch tabs, sync rows + pool + presence; skips when busy."""
-    if bridge._auto_scan_running:
-        return
-    bridge._auto_scan_running = True
-    try:
-        await auto_scan_pass(bridge, source)
-    except Exception as e:
-        bridge._log(f"Auto-connect scan skipped: {e}", "warn")
-    finally:
-        bridge._auto_scan_running = False
+    """One scan (delegation: the body lives in `live.reconcile.reconcile_once`)."""
+    await reconcile_once(bridge, live_deps(bridge), source)
 
 
 def popup_row_title(pool, seen, u):
@@ -471,9 +572,7 @@ class BrowserTabsMixin:
 
     @Slot(result=str)
     def get_tabs(self):
-        """Non-blocking: always schedule async fetch in thread, return pending immediately.
-        Previous sync fetch_tabs_sync did blocking DNS/socket in UI thread causing freeze.
-        """
+        """Non-blocking: schedule the async fetch in a thread (the old sync fetch froze the UI)."""
         if not self.cdp:
             return json.dumps([], ensure_ascii=False)
         # Schedule async fetch in background thread, return pending instantly
@@ -487,7 +586,8 @@ class BrowserTabsMixin:
         """
         if not self.cdp:
             return json.dumps({"error": "CDP not available"}, ensure_ascii=False)
-        self._log(f"🩺 Diagnosing Chrome remote debugging on {self.cdp._host}:{self.cdp._port}… (non-blocking)", "info")
+        self._log(f"🩺 Diagnosing {active_browser(self).label if active_browser(self) else 'browser'} "
+                  f"on {self.cdp._host}:{self.cdp._port}… (non-blocking)", "info")
         schedule_coro(self, do_diagnose_chrome(self))
         return "pending"
 
@@ -497,8 +597,8 @@ class BrowserTabsMixin:
         if not self.cdp or not self._page_pool:
             return json.dumps({"ok": False, "error": "CDP or pool not ready"})
         if self._auto_scan_running:
-            return "pending"
-        schedule_coro(self, do_auto_connect_scan(self, source or "auto"))
+            return "pending"  # a pass is in flight; the reconciler owns the flag
+        schedule_coro(self, reconcile_once(self, live_deps(self), source or "auto"))
         return "pending"
 
     @Slot(result=str)

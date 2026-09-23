@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.browser.page_pool import tab_label_of
 from app.browser.page_status import PageInfo
 from app.persistence.cooldown_store import (
     consume_entry_for,
@@ -115,15 +116,6 @@ def ensure_bg_loop(bridge):
 
 # ---- scheduling ----
 
-def _track_batch_future(bridge, coro, future) -> None:
-    """Keep the batch future for immediate cancel_current."""
-    try:
-        if hasattr(coro, "cr_code") and coro.cr_code.co_name == "run_batch":
-            bridge._batch_future = future
-    except Exception:
-        pass
-
-
 def batch_active(bridge) -> bool:
     """True while a batch future is alive — running, paused, stopping or still unwinding (I-45)."""
     fut = getattr(bridge, "_batch_future", None)
@@ -163,9 +155,8 @@ def _on_coro_done(bridge, fut) -> None:
 
 
 def _submit_tracked(bridge, loop, coro):
-    """Submit + track + done-callback on the live bg loop."""
+    """Submit + done-callback on the live bg loop (the batch future is tracked by `schedule_batch`)."""
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    _track_batch_future(bridge, coro, future)
     future.add_done_callback(lambda fut: _on_coro_done(bridge, fut))
     return future
 
@@ -213,6 +204,14 @@ def schedule_coro(bridge, coro):
         return None
 
 
+def schedule_batch(bridge, coro):
+    """Schedule THE run coroutine and always track it as the batch future (S4: no name sniffing)."""
+    future = schedule_coro(bridge, coro)
+    if future is not None:
+        bridge._batch_future = future
+    return future
+
+
 # ---- tab identity ----
 
 def _cdp_attrs(bridge) -> Tuple[str, str]:
@@ -222,7 +221,7 @@ def _cdp_attrs(bridge) -> Tuple[str, str]:
 
 
 async def _fetch_tabs_safe(bridge) -> List[Any]:
-    """Live tabs, [] on any failure."""
+    """Live tabs of the active browser, [] on any failure."""
     try:
         return await bridge.cdp.fetch_tabs() or []
     except Exception:
@@ -370,7 +369,7 @@ def _announce_restore(bridge, tab_id: str) -> None:
     """Announce a consumed entry and emit the pool snapshot."""
     page = bridge._page_pool.get_page(tab_id)
     left = page.remaining_seconds() if page else 0
-    bridge._log(f"⏳ Restored cooldown for {tab_id[:12]}: {left // 60:02d}:{left % 60:02d} left (timer kept running while app was closed)", "info")
+    bridge._log(f"⏳ Restored cooldown for {tab_label_of(getattr(bridge, '_page_pool', None), tab_id)}: {left // 60:02d}:{left % 60:02d} left (timer kept running while app was closed)", "info")
     bridge._emit_pool_status()
 
 

@@ -13,9 +13,12 @@ import logging
 from datetime import datetime
 
 from app.core.run_scope import run_scope
-from app.services.batch_orchestrator import run_batch
-from app.services.run_state import batch_active, schedule_coro
-from app.ui.panels.queue_scan import push_queue_undo
+from app.services import tab_reset
+from app.services.live.bus import live_bus
+from app.services.live.feed import commit_queue, queued_images
+from app.services.live.supervisor import announce_live, run_live, set_run_state
+from app.services.run_state import batch_active, schedule_batch
+from app.ui.panels.queue_scan import find_image, push_queue_undo
 from app.ui.panels.url_queue import _URL_GATE_MSG, _urls_gate_error, enabled_urls
 from app.ui.qt_compat import Slot
 
@@ -44,10 +47,10 @@ def clear_image_state(bridge) -> int:
     return count
 
 
-def reset_image_state(img, selected: bool) -> None:
-    """Return one image to pending (run-scope selection as given)."""
+def reset_image_state(img) -> None:
+    """Return one image to pending AND back into the run (D-6R: a reset re-queues)."""
     img.status = "pending"
-    img.selected = selected
+    img.selected = True
     img.error = None
     img.output_path = None
     img.assigned_url_id = None
@@ -72,17 +75,19 @@ def check_start_inputs(bridge):
 
 
 def check_start_ready(bridge):
-    """CDP/run-state gates; error JSON when blocked, else None."""
+    """CDP / one-run gates; error JSON when blocked, else None (a live run is handled by `start_run`)."""
     if not bridge.cdp or not bridge.cdp.is_connected:
         bridge._log("❌ Chrome not connected — click Diagnose, Refresh, Connect first. CDP must be connected to automate.", "error")
         return json.dumps({"ok": False, "error": "cdp not connected"})
-    if bridge._run_state == "running":
-        bridge._log("⚠ Already running", "warn")
-        return json.dumps({"ok": False, "error": "already running"})
     if batch_active(bridge):
         bridge._log("⚠ A batch is still active (paused / stopping / unwinding) — Resume or Cancel it first", "warn")
         return json.dumps({"ok": False, "error": "batch still active"})
     return None
+
+
+def run_is_live(bridge) -> bool:
+    """Start while the live loop runs: wake it instead of refusing (S5, D-5)."""
+    return bridge._run_state == "running" and batch_active(bridge)
 
 
 def cancel_batch_future(bridge) -> None:
@@ -168,9 +173,8 @@ class RunControlMixin:
     @Slot(result=str)
     def retry_failed(self):
         count = revive_failed_images(self.state.images)
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        queued = commit_queue(self, "retry_failed")
+        self._log(f"↻ Retry failed: {count} images re-queued ({queued} queued)", "info")
         return json.dumps({"ok": True, "count": count})
 
     @Slot(result=str)
@@ -191,89 +195,84 @@ class RunControlMixin:
     @Slot(result=str)
     def reset_all(self):
         for img in self.state.images:
-            reset_image_state(img, False)
+            reset_image_state(img)
         self.state.jobs = []
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
-        return json.dumps({"ok": True})
+        count = commit_queue(self, "reset_all")
+        self._log(f"↻ Reset all: {count} images re-queued", "info")
+        return json.dumps({"ok": True, "count": count})
 
     @Slot(str, result=str)
     def retry_image(self, img_id: str):
-        for img in self.state.images:
-            if img.id == img_id:
-                img.status = "pending"
-                img.selected = True
-                img.error = None
-                self.state.recalculate_progress()
-                self._save_arena()
-                push_queue_undo(self)
-                return json.dumps({"ok": True})
-        return json.dumps({"ok": False, "error": "not found"})
+        img = find_image(self.state.images, img_id)
+        if img is None:
+            return json.dumps({"ok": False, "error": "not found"})
+        img.status, img.selected, img.error = "pending", True, None
+        queued = commit_queue(self, "retry_image")
+        self._log(f"↻ Retry {img.relative_path} — re-queued ({queued} queued)", "info")
+        return json.dumps({"ok": True})
 
     @Slot(str, result=str)
     def reset_image(self, img_id: str):
-        for img in self.state.images:
-            if img.id == img_id:
-                reset_image_state(img, False)
-                self.state.recalculate_progress()
-                self._save_arena()
-                push_queue_undo(self)
-                return json.dumps({"ok": True})
-        return json.dumps({"ok": False, "error": "not found"})
+        img = find_image(self.state.images, img_id)
+        if img is None:
+            return json.dumps({"ok": False, "error": "not found"})
+        reset_image_state(img)
+        queued = commit_queue(self, "reset_image")
+        self._log(f"↻ Reset {img.relative_path} — re-queued ({queued} queued)", "info")
+        return json.dumps({"ok": True})
 
     @Slot(result=str)
     def start_run(self):
+        if run_is_live(self):
+            announce_live(self, len(queued_images(self)))
+            live_bus(self).wake("start")
+            return json.dumps({"ok": True, "live": True})
         err = check_start_inputs(self) or check_start_ready(self)
         if err:
             return err
         prompt = self.state.prompt.get("user_prompt", "").strip()
         selected = run_scope(self.state.images)
         urls = enabled_urls(self.state.urls)
-        self._run_state = "running"
         self._cancel_requested = False
         self._pause_requested = False
         self._stop_after = False
         self._log(f"🚀 Run started: {len(selected)} images, {len(urls)} urls, prompt len {len(prompt)}", "success")
-        self._emit_arena_state()
-        fut = schedule_coro(self, run_batch(self))
-        if fut:
-            self._batch_future = fut
+        set_run_state(self, "running")
+        schedule_batch(self, run_live(self))
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def pause_run(self):
         self._pause_requested = True
-        self._run_state = "paused"
         self._log("⏸ Paused — will pause after current step", "warn")
-        self._emit_arena_state()
+        set_run_state(self, "paused")
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def resume_run(self):
         self._pause_requested = False
-        self._run_state = "running"
         self._log("▶ Resumed", "info")
-        self._emit_arena_state()
+        set_run_state(self, "running")
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def stop_after_current(self):
         self._stop_after = True
-        self._run_state = "stopping"
         self._log("⏹ Will stop after current image", "warn")
-        self._emit_arena_state()
+        set_run_state(self, "stopping")
         return json.dumps({"ok": True})
 
     @Slot(result=str)
     def cancel_current(self):
         self._cancel_requested = True
-        self._run_state = "idle"
         self._pause_requested = False
         self._stop_after = False
         self._log("✖ Cancel requested — stopping immediately", "error")
-        self._emit_arena_state()
+        set_run_state(self, "idle")
         # Try to cancel running batch future immediately
         cancel_batch_future(self)
         fail_processing_images(self)
+        # D-4: the tabs the run left behind are parked in cooldown by the same
+        # reset pipeline Stop uses — scheduled, never on the websocket thread.
+        tab_reset.cancel_request(self)
         return json.dumps({"ok": True})

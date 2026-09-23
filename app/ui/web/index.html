@@ -10,6 +10,8 @@
 <link rel="stylesheet" href="css/window-presets.css">
 <link rel="stylesheet" href="css/sash-layout.css">
 <link rel="stylesheet" href="css/stack-drag.css">
+<link rel="stylesheet" href="css/live-debug.css">
+<link rel="stylesheet" href="css/job-history.css">
 <link rel="stylesheet" href="css/arena.css">
 <link rel="stylesheet" href="css/captcha-recordings.css">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
@@ -28,9 +30,9 @@
     </div>
     <div class="header-right">
       <div class="tab-select-wrap" style="display:flex; align-items:center; gap:6px;">
-        <select id="tabSelect" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; min-width:260px;"><option value="">— Select Chrome Tab —</option></select>
+        <select id="tabSelect" title="Every enabled browser's tabs: Chrome/Edge pages and Firefox DevTools tabs — the tag says which browser a row belongs to" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; min-width:260px;"><option value="">— Select Browser Tab —</option></select>
         <button id="refreshTabsBtn" class="btn-icon" title="Refresh tabs"><span class="material-icons">refresh</span></button>
-        <button id="reparseTabsBtn" class="btn-icon" title="Reparse now: rescan open tabs, add new matches, drop dead rows"><span class="material-icons">autorenew</span></button>
+        <button id="reparseTabsBtn" class="btn-icon" title="Reparse now: clear the URL list and rebuild it from open tabs (rows with a running job are kept)"><span class="material-icons">autorenew</span></button>
       </div>
       <span id="connectionStatus" class="status-dot disconnected" title="Disconnected"></span>
       <button id="connectBtn" class="btn-primary" title="Connect to selected tab"><span class="material-icons">link</span> Connect</button>
@@ -60,7 +62,7 @@
 
     <!-- URL LIST -->
     <div class="panel" id="winUrlList" data-window="url_list">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List <button id="urlReparseBtn" class="btn-small" title="Reparse now: rescan open tabs, add new matches, drop dead rows">🔄 Reparse</button><button id="urlPopupBtn" class="btn-small" title="Popup on top: bring every active URL tab and its window to the front">⏫ Popup tabs</button> <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move · drop on edge to split">drag_indicator</span><span class="material-icons">link</span> URL List <button id="urlReparseBtn" class="btn-small" title="Reparse now: clear the URL list and rebuild it from open tabs (rows with a running job are kept)">🔄 Reparse</button><button id="urlPopupBtn" class="btn-small" title="Popup on top: bring every active URL tab and its window to the front">⏫ Popup tabs</button> <span class="spacer"></span><span id="urlCount" style="font-size:10px; color:var(--text-muted)">0 URLs</span></h3>
       <div style="display:flex; gap:6px; margin-bottom:8px;">
         <input id="urlInput" type="text" placeholder="https://example.com/page" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text-primary); font-size:12px;">
         <button id="urlAddBtn" class="btn-primary" style="padding:6px 12px;">Add</button>
@@ -71,10 +73,12 @@
         <span title="Extra wait when the site shows a rate-limit / limit-reached banner (0 = off)">⛔ +<input id="urlCooldownRateLimit" type="number" min="0" max="1440" placeholder="30" style="width:52px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">m/limit</span>
         <label style="display:flex; align-items:center; gap:3px;"><input id="urlCooldownEnabled" type="checkbox" checked> on</label>
         <button id="urlCooldownSaveBtn" class="btn-small">Save</button>
+        <span title="How often Python re-reads open Chrome tabs and updates this table (500–60000 ms; applies without restart — also in the Settings panel)">🔁 every <input id="urlIntervalMs" type="number" min="500" max="60000" step="100" placeholder="5000" style="width:60px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">ms</span>
+        <button id="urlIntervalSaveBtn" class="btn-small" title="Save the reconcile interval">Save</button>
       </div>
       <div style="flex:1; overflow:auto; border:1px solid var(--border); border-radius:4px;">
         <table class="url-table">
-          <thead><tr><th>En</th><th>URL</th><th>Status</th><th>Conn</th><th>Cooldown</th><th>Jobs</th><th>Error</th><th>Actions</th></tr></thead>
+          <thead><tr><th>En</th><th>URL</th><th>Tab</th><th>Status</th><th>Conn</th><th>Cooldown</th><th>Jobs</th><th>Error</th><th>Actions</th></tr></thead>
           <tbody id="urlTableBody"></tbody>
         </table>
       </div>
@@ -140,7 +144,7 @@
 
     <!-- RUN CONTROLS -->
     <div class="panel" id="winRun" data-window="run">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">play_circle</span> Run Controls</h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">play_circle</span> Run Controls <span class="run-badge" data-run-badge></span><span class="run-sub" data-run-sub></span></h3>
       <div class="run-grid">
         <button id="runStartBtn" class="run-btn primary"><span class="material-icons" style="font-size:16px;">play_arrow</span> Start</button>
         <button id="runPauseBtn" class="run-btn"><span class="material-icons" style="font-size:16px;">pause</span> Pause</button>
@@ -259,10 +263,18 @@
       </div>
     </div>
 
-    <!-- PAGE POOL — multi-page steady/busy tracking -->
-    <div class="panel" id="winPagePool" data-window="page_pool">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">tab</span> Page Pool — Multi-Tab Parallel <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
-      <div style="display:flex; flex-direction:column; gap:10px; padding:4px;">
+    <!-- LIVE WORKER & QUEUE DEBUG (16th window, S8) — hosts the Page Pool table (L-5 rescue: the old
+         data-window="page_pool" panel was unregistered and destroyed by the first grid render) -->
+    <div class="panel live-debug-panel" id="winLiveDebug" data-window="live_debug">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">monitor_heart</span> Live Worker &amp; Queue Debug <span class="spacer"></span><span id="poolStatusBadge" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 pages</span></h3>
+      <div class="live-debug-body">
+        <div class="live-debug-strip live-debug-head">
+          <span class="material-icons" style="font-size:14px;">playlist_play</span><span id="liveQueueHead">0 pending · queue empty</span><span class="run-badge" data-run-badge></span><span class="run-sub" data-run-sub></span>
+          <span class="spacer"></span><span id="liveReceivers">no URL rows</span>
+          <button id="liveRefreshBtn" class="btn-small" title="Re-read the worker snapshot"><span class="material-icons" style="font-size:14px;">refresh</span></button>
+        </div>
+        <div id="liveWorkers" class="live-debug-workers"><div class="live-debug-empty">no worker tabs — add arena.ai tabs to the pool</div></div>
+        <div id="liveCadence" class="live-debug-strip live-debug-cadence">reconcile every 5.0 s · last pass never · 0 passes · run idle</div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
           <button id="poolRefreshBtn" class="btn-small" title="Refresh pool status"><span class="material-icons" style="font-size:14px;">refresh</span> Refresh</button>
           <button id="poolConnectBtn" class="btn-small btn-primary" title="Add selected Chrome tab to pool as steady page"><span class="material-icons" style="font-size:14px;">add_link</span> Add Selected Tab to Pool</button>
@@ -288,6 +300,88 @@
       </div>
     </div>
 
+    <!-- JOB HISTORY (17th window) — finished jobs, newest first, beside the worker pool view -->
+    <div class="panel job-history-panel" id="winJobHistory" data-window="job_history">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">history</span> Job History <span class="spacer"></span><span id="historyCount" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">0 shown · 0 stored</span></h3>
+      <div class="job-history-body">
+        <div class="job-history-strip">
+          <span class="material-icons" style="font-size:14px;">filter_list</span><span>show last</span>
+          <input id="historyLimit" type="number" min="5" max="500" step="1" placeholder="50" title="How many finished jobs to display (5–500)">
+          <button id="historyLimitSaveBtn" class="btn-small" title="Apply this display count">Apply</button>
+          <span class="spacer"></span>
+          <button id="historyRefreshBtn" class="btn-small" title="Re-read finished jobs"><span class="material-icons" style="font-size:14px;">refresh</span></button>
+          <button id="historyClearBtn" class="btn-small" title="Clear the history log">Clear</button>
+        </div>
+        <div class="job-history-rows">
+          <table class="queue-table">
+            <thead><tr><th>Tab ID</th><th>Tab #</th><th>Job #</th><th>Status</th><th>Error log</th><th>Image</th><th>Folder</th><th>Link</th><th>Time start</th><th>Time finished</th><th>Captcha</th></tr></thead>
+            <tbody id="historyTableBody"><tr><td colspan="11" class="history-empty">no finished jobs yet — run the queue and they land here</td></tr></tbody>
+          </table>
+        </div>
+        <div class="job-history-strip job-history-hint">
+          <b>How history works:</b><span>every finished job lands here newest-first — ✓ completed with its output link, ✗ failed with its error log. 🛡 marks jobs that hit a captcha. The display count (Settings mirrors it) caps the rows; the log keeps the last 500 on disk.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FIREFOX AUTO WITH EXTENSION -->
+    <div class="panel firefox-auto-panel" id="winFirefoxAuto" data-window="firefox_auto">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">smart_display</span> Firefox auto with Extension <span class="spacer"></span><span id="faState" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">idle</span></h3>
+      <div class="firefox-auto-body" style="display:flex; flex-direction:column; gap:8px; overflow-y:auto; padding:2px;">
+        <div class="settings-group">
+          <label>Firefox window-title pattern — the OS window whose title contains this is “your” Firefox (raised to front before a run)</label>
+          <input id="faPattern" type="text" placeholder="Arena">
+        </div>
+        <div class="settings-group">
+          <label>Macro name — hard-drive storage: &lt;home&gt;/macros/&lt;name&gt;.json</label>
+          <input id="faMacro" type="text" placeholder="Python_XClick_Demo">
+        </div>
+        <div class="settings-group">
+          <label>XClick target (cmd_var2) — xpath=…, css=…, id=…, image file, or x,y. ALWAYS XClick (native OS input), never DOM click</label>
+          <input id="faTarget" type="text" placeholder="xpath=//a[span[text()='New Chat']]">
+        </div>
+        <div class="settings-row">
+          <div class="settings-group">
+            <label>Macro storage</label>
+            <select id="faStorage" title="xfile = the extension reads the macro from the Ui.Vision home folder (XModules); browser = import the macro once through the extension UI">
+              <option value="xfile">Hard drive (xfile) — recommended</option>
+              <option value="browser">Browser storage — import once</option>
+            </select>
+          </div>
+          <div class="settings-group">
+            <label>Ui.Vision home folder (blank = &lt;Desktop&gt;/uivision)</label>
+            <input id="faHome" type="text" placeholder="">
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-group">
+            <label>Firefox binary (blank = default install path)</label>
+            <input id="faBinary" type="text" placeholder="">
+          </div>
+          <div class="settings-group">
+            <label>Wait for result (s)</label>
+            <input id="faTimeout" type="number" min="15" max="600" step="1" placeholder="90">
+          </div>
+          <div class="settings-group">
+            <label title="How long the macro waits for the element on the found tab, and how long the RED confirmation rectangle stays visible before the XClick (500–30000)">Wait for element + confirm rect (ms)</label>
+            <input id="faPause" type="number" min="500" max="30000" step="100" placeholder="3000">
+          </div>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button id="faSaveBtn" class="btn-small btn-primary" title="Validate + save this window's config">Save</button>
+          <button id="faRunBtn" class="btn-small" title="Run the framework test: reuse the found tab (never open a page) → RED rectangle on the element → XClick → wait for the savelog verdict"><span class="material-icons" style="font-size:14px;">play_arrow</span> Run test</button>
+          <button id="faStopBtn" class="btn-small" title="Stop waiting for the result — Firefox itself is never killed (it stays your normal browser)">Stop</button>
+        </div>
+        <div id="faPaths" style="font-size:10px; color:var(--text-muted); line-height:1.5; word-break:break-all; white-space:pre-line;"></div>
+        <div id="faStatus" style="font-size:11px; color:var(--text-secondary); line-height:1.4;"></div>
+        <pre id="faSteps" style="font-size:10px; color:var(--text-muted); background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; margin:0; max-height:140px; overflow-y:auto; white-space:pre-wrap; word-break:break-word;"></pre>
+        <div style="font-size:10px; color:var(--text-muted); line-height:1.5; border-top:1px dashed var(--border); padding-top:6px;">
+          <b>How it works:</b> Firefox stays a NORMAL visible browser — no debug port, no geckodriver / Selenium / Playwright / Puppeteer. The signed Ui.Vision RPA add-on runs the macro from its official command-line API: this app writes the macro + the autostart page, starts Firefox on the <code>file:///</code> URL, and the macro <b>reuses the tab matching the pattern — it never opens a page</b> (no matching tab = the macro fails with E210, so open the page in Firefox first) → bringBrowserToForeground → waits for the element and draws the <b>RED confirmation rectangle</b> over it → <b>XClick</b> (native OS input, isTrusted:true) → echo done. The rectangle covers element-locator targets (xpath= / css= / id= / dom= / text= / link=); image, OCR and x,y targets get the extension's own vision box. The verdict arrives in the savelog file (<code>Status=OK</code> / <code>Status=Error</code>).<br>
+          <b>Needs:</b> 1) the Ui.Vision RPA add-on in Firefox with <i>“Allow access to file URLs”</i> switched on; 2) the Ui.Vision Desktop App (XModules) — XClick is native input, and full-path savelog + hard-drive macros need it; 3) an unlocked desktop, Firefox visible and in front while the macro's desktop steps run.
+        </div>
+      </div>
+    </div>
+
     <!-- ACTIVITY LOG -->
     <div class="panel log-panel" id="winLog" data-window="log">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">terminal</span> Activity Log <span class="spacer"></span><button id="clearLogBtn" class="btn-small">Clear</button></h3>
@@ -298,45 +392,59 @@
     <div class="panel" id="winSettings" data-window="settings">
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">settings</span> Settings <span class="spacer"></span><button id="settingsSaveBtn" class="btn-small btn-primary">Save</button></h3>
 
-      <!-- CDP Chrome Config — user decides port and user-data-dir -->
+      <!-- Browser Debug Connection — Chrome (CDP), one host+port -->
       <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:12px; background:var(--bg-card);">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
           <span class="material-icons" style="font-size:16px; color:var(--accent);">settings_ethernet</span>
-          <b style="font-size:12px;">Chrome Debug Connection (user configurable)</b>
+          <b style="font-size:12px;">Browser Debug Connection (Chrome)</b>
           <span class="spacer"></span>
-          <button id="cdpSaveBtn" class="btn-small btn-primary" title="Save host/port/dir">Save CDP</button>
-          <button id="cdpTestBtn" class="btn-small" title="Diagnose Chrome on this port">Diagnose</button>
+          <button id="cdpSaveBtn" class="btn-small btn-primary" title="Save the host, base port and the browser data dir">Save Browsers</button>
+          <button id="cdpTestBtn" class="btn-small" title="Diagnose the selected browser on its own port">Diagnose</button>
+        </div>
+        <div id="cdpScanLine" style="font-size:11px; color:var(--text-secondary); margin-bottom:8px; line-height:1.4; word-break:break-word;">Scanning: —</div>
+        <div class="settings-row">
+          <div class="settings-group">
+            <label>Browser (this block edits the selected one)</label>
+            <select id="browserSelect" title="The registered browsers — each has its own dir and launch command"></select>
+          </div>
+          <div class="settings-group">
+            <label>Resolved debug port (base + this browser's offset)</label>
+            <code id="cdpResolvedPort" style="background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:12px; display:block;">—</code>
+          </div>
         </div>
         <div class="settings-row">
           <div class="settings-group">
-            <label>CDP Host</label>
+            <label>Debug host (shared by every browser)</label>
             <input id="cdpHost" type="text" placeholder="127.0.0.1">
           </div>
           <div class="settings-group">
-            <label>CDP Port (you decide)</label>
+            <label>Base port (shared; each browser = base + its registry offset)</label>
             <input id="cdpPort" type="number" min="1" max="65535" placeholder="9222">
           </div>
-        </div>
-        <div class="settings-group">
-          <label>User Data Dir (you decide) — e.g. C:\arena-images-chrome or C:\arena-9223</label>
-          <input id="cdpUserDataDir" type="text" placeholder="C:\arena-images-chrome">
-        </div>
-        <div class="settings-group">
-          <label>Extra Chrome args (optional)</label>
-          <input id="cdpExtraArgs" type="text" placeholder="--disable-extensions">
         </div>
         <div class="settings-group">
           <label>URL pattern — auto-connect only tabs whose URL contains this (blank = all tabs)</label>
           <input id="cdpUrlPattern" type="text" placeholder="arena.ai">
         </div>
+        <div style="border-top:1px dashed var(--border); margin:10px 0 6px;"></div>
+        <div class="settings-group">
+          <label id="cdpDirLabel">User data dir (this browser)</label>
+          <input id="cdpUserDataDir" type="text" placeholder="C:\arena-images-chrome">
+        </div>
+        <div class="settings-group">
+          <label>Extra args for this browser (optional)</label>
+          <input id="cdpExtraArgs" type="text" placeholder="--disable-extensions">
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Capabilities: <span id="cdpCapabilities">—</span></div>
+        <div id="cdpBrowserNotes" style="font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.4;"></div>
         <div style="margin-top:8px;">
-          <label style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:600;">Generated launch command (copy & run):</label>
+          <label style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:600;">Generated launch command for this browser (copy &amp; run):</label>
           <div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
-            <code id="cdpLaunchCmd" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:11px; word-break:break-all; display:block;">"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\arena-images-chrome"</code>
+            <code id="cdpLaunchCmd" style="flex:1; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; font-size:11px; word-break:break-all; display:block;">— waiting for the bridge to build the command —</code>
             <button id="cdpCopyCmdBtn" class="btn-small" title="Copy command">Copy</button>
           </div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Test URL: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — open in browser, should show JSON.</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">💡 Run different ports/dirs: e.g. 9222 for arena, 9223 for virt-chat. App will remember your choice in <code>config/session.json</code> and presets.</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Debug channel: <code id="cdpTestUrl" style="background:var(--bg-input); padding:2px 6px; border-radius:3px;">http://127.0.0.1:9222/json/list</code> — Chrome lists its tabs at <code>/json/list</code>.</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">💡 This block is Chrome's debug endpoint only. Firefox stays a normal, visible browser — its automation runs through the Ui.Vision extension in the “Firefox auto with Extension” window (native OS input, no debug port).</div>
         </div>
       </div>
 
@@ -348,6 +456,16 @@
         <label>Generation / Waiting Max Time (seconds) — user configurable, e.g. 120 = 2 min, now synced to watcher win (30-3600s)</label>
         <input id="setGenerationTimeout" type="number" min="30" max="3600" placeholder="120">
         <div style="font-size:10px; color:var(--text-muted);">User setting from win — controls rect overlay timeout for "wait for finish generation" and watcher generation timeout</div>
+      </div>
+      <div class="settings-group">
+        <label>URL Reparse Interval (ms) — how often Python re-reads open Chrome tabs and rebuilds the URL list (500–60000; applies without restart)</label>
+        <input id="setUrlIntervalMs" type="number" min="500" max="60000" step="100" placeholder="5000">
+        <div style="font-size:10px; color:var(--text-muted);">Same setting as the URL window's "🔁 every … ms" — saving here or there updates both; Reparse itself clears the list and rebuilds it from open tabs.</div>
+      </div>
+      <div class="settings-group">
+        <label>Job History Rows — how many finished jobs the Job History window shows, newest first (5–500, default 50)</label>
+        <input id="setHistoryLimit" type="number" min="5" max="500" step="1" placeholder="50">
+        <div style="font-size:10px; color:var(--text-muted);">Same setting as the Job History header's "show last" — saving here or there updates both; the log itself keeps the last 500 on disk.</div>
       </div>
       <!-- Job Cycle & Cooldown — per-tab pause between generations (spec 01-04) -->
       <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin:10px 0; background:var(--bg-card);">
@@ -687,10 +805,14 @@
 <script src="js/log-console.js"></script>
 <script src="js/panels/url-list/store.js"></script>
 <script src="js/panels/url-list/render.js"></script>
+<script src="js/panels/url-list/cells.js"></script>
 <script src="js/panels/url-list/matching.js"></script>
 <script src="js/panels/url-list/cooldown.js"></script>
+<script src="js/panels/url-list/reset.js"></script>
 <script src="js/panels/url-list/actions.js"></script>
 <script src="js/panels/url-list/listeners.js"></script>
+<script src="js/panels/url-list/interval.js"></script>
+<script src="js/core/run-badge.js"></script>
 <script src="js/panels/url-list.js"></script>
 <script src="js/panels/folder-picker.js"></script>
 <script src="js/panels/image-queue/store.js"></script>
@@ -701,6 +823,7 @@
 <script src="js/panels/prompt-editor.js"></script>
 <script src="js/panels/run-controls.js"></script>
 <script src="js/panels/progress.js"></script>
+<script src="js/panels/browser-connection.js"></script>
 <script src="js/panels/settings.js"></script>
 <script src="js/panels/captcha.js"></script>
 <script src="js/panels/captcha-recording-comparison.js"></script>
@@ -730,10 +853,23 @@
 <script src="js/panels/watcher/render.js"></script>
 <script src="js/panels/watcher/actions.js"></script>
 <script src="js/panels/watcher.js"></script>
+<script src="js/core/tab-label.js"></script>
 <script src="js/panels/page-pool/store.js"></script>
+<script src="js/panels/page-pool/cells.js"></script>
+<script src="js/panels/page-pool/ticker.js"></script>
 <script src="js/panels/page-pool/render.js"></script>
 <script src="js/panels/page-pool/actions.js"></script>
 <script src="js/panels/page-pool.js"></script>
+<script src="js/panels/live-debug/store.js"></script>
+<script src="js/panels/live-debug/render.js"></script>
+<script src="js/panels/live-debug/actions.js"></script>
+<script src="js/panels/live-debug.js"></script>
+<script src="js/panels/job-history/store.js"></script>
+<script src="js/panels/job-history/render.js"></script>
+<script src="js/panels/job-history/actions.js"></script>
+<script src="js/panels/job-history/limit.js"></script>
+<script src="js/panels/job-history.js"></script>
+<script src="js/panels/firefox-auto.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app/listeners.js"></script>
 <script src="js/arena-app.js"></script>

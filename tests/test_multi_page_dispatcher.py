@@ -26,14 +26,22 @@ def pool_with(*pages):
     return pool
 
 
-def test_acquire_free_in_takes_only_allowed_lowest_jobs():
+def test_acquire_free_in_takes_only_allowed_in_pool_order():
+    """2026-09-21: the first free checked page takes the job — counts are display only."""
     pool = pool_with(make_page("free1", jobs=4), make_page("free2", jobs=1),
                      make_page("checked", jobs=9))
+    got = mpd._acquire_free_in(pool, {"checked", "free2"}, "job1")
+    assert got is not None and got.tab_id == "free2"  # first allowed in pool order
+    assert got.status == PageStatus.BUSY and got.current_job_id == "job1"
+    assert pool.get_page("free1").status == PageStatus.STEADY  # not checked: untouched
+    assert pool.get_page("checked").status == PageStatus.STEADY
+
+
+def test_acquire_free_in_only_ever_touches_the_checked_set():
+    pool = pool_with(make_page("free1", jobs=4), make_page("checked", jobs=9))
     got = mpd._acquire_free_in(pool, {"checked"}, "job1")
     assert got is not None and got.tab_id == "checked"
-    assert got.status == PageStatus.BUSY and got.current_job_id == "job1"
-    assert pool.get_page("free1").status == PageStatus.STEADY  # untouched
-    assert pool.get_page("free2").status == PageStatus.STEADY
+    assert pool.get_page("free1").status == PageStatus.STEADY
 
 
 def test_acquire_free_in_none_when_only_foreign_free():
@@ -108,3 +116,38 @@ async def test_acquire_page_returns_free_checked_page():
     got = await mpd._acquire_page(pool, bridge, "job1", {"checked"})
     assert got is not None and got.tab_id == "checked"
     assert pool.get_page("foreign").status == PageStatus.STEADY
+
+
+class _LogBridge:
+    """Minimal log/emit recorder (RULE 8: no Qt)."""
+
+    def __init__(self, pool=None):
+        self.logs = []
+        self.emitted = 0
+        self._page_pool = pool
+
+    def _log(self, msg, level="info"):
+        self.logs.append((level, msg))
+
+    def _emit_pool_status(self):
+        self.emitted += 1
+
+
+def test_mark_steady_emit_logs_the_readable_label():
+    """A silent NameError never eats the ✅ line again (2026-09-22, pyflakes lane:
+    `tab_label_of` was used unimported and the helper's try/except swallowed it)."""
+    pool = pool_with(make_page("tab-abcdef123456"))
+    bridge = _LogBridge(pool)
+    mpd._mark_steady_emit(pool, bridge, "tab-abcdef123456")
+    assert bridge.emitted == 1
+    assert any(lvl == "success" and "STEADY ready" in msg for lvl, msg in bridge.logs)
+
+
+def test_log_no_ctrl_names_the_tab():
+    pool = pool_with(make_page("tab-abcdef123456"))
+    bridge = _LogBridge(pool)
+    mpd._log_no_ctrl(bridge, "tab-abcdef123456")
+    assert any(lvl == "warn" and "No controller" in msg for lvl, msg in bridge.logs)
+    bridge2 = _LogBridge(None)                 # no pool: short id, still a line
+    mpd._log_no_ctrl(bridge2, "tab-abcdef123456")
+    assert any("No controller" in msg for _lvl, msg in bridge2.logs)

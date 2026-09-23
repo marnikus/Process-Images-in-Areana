@@ -21,6 +21,7 @@ def urls_to_js(d: Dict[str, Any]) -> List[Dict[str, Any]]:
             "last_error": u.get("error", ""),
             "last_checked": u.get("last_checked"),
             "tab_id": u.get("tab_id", ""),
+            "receiver": bool(u.get("receiver", False)),
         })
     return out
 

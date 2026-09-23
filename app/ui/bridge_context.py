@@ -9,7 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import threading
+
 from app.core.undo_service import UndoService
+from app.services.live.bus import LiveBus
+from app.ui.panels.queue_scan import push_queue_undo
 from app.ui.panels.watcher_captcha import (
     get_watcher_cdp_controller, on_watcher_state)
 
@@ -25,13 +29,16 @@ class BridgeContext:
 
 
 def init_run_state(bridge) -> None:
-    """Run-lifecycle flags + per-run stores."""
+    """Run-lifecycle flags + per-run stores + the live bus / queue lock (S4)."""
     bridge._run_state = "idle"
     bridge._cancel_requested = False
     bridge._pause_requested = False
     bridge._stop_after = False
     bridge._batch_future = None
     bridge._exported_paths = {}
+    bridge._live_bus = LiveBus()
+    bridge._state_lock = threading.RLock()
+    bridge._push_queue_undo = lambda: push_queue_undo(bridge)  # the funnel's undo seam (services stay ui-free)
 
 
 def init_tracking_state(bridge) -> None:
@@ -157,11 +164,23 @@ def _pool_endpoint(bridge) -> tuple:
     return host, port
 
 
+def _alias_book(bridge):
+    """The persisted readable-id registry (D-6); an empty book on any failure."""
+    from app.core.tab_alias import AliasBook
+    from app.persistence.cooldown_store import load_aliases
+    from app.services.run_state import cooldowns_path
+    try:
+        return AliasBook(load_aliases(cooldowns_path(bridge)))
+    except Exception:
+        return AliasBook()
+
+
 def wire_page_pool(bridge):
-    """PagePool tagged with host/port; None on any failure."""
+    """PagePool tagged with host/port + the saved numbers; None on any failure."""
     try:
         from app.browser.page_pool import PagePool
-        pool = PagePool(logger=lambda m, l="info": bridge._log(m, l))
+        pool = PagePool(logger=lambda m, l="info": bridge._log(m, l),
+                        alias_book=_alias_book(bridge))
         host, port = _pool_endpoint(bridge)
         pool._host = str(host)
         pool._port = int(port)

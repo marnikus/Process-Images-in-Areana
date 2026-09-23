@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
-from app.services.run_state import schedule_coro
+from app.services.run_state import tab_label_of, schedule_coro
 from app.ui.qt_compat import Slot
 
 KEY_MIN_LEN = 16
@@ -155,6 +155,7 @@ def captcha_watcher(bridge):
         solver_factory=lambda: make_solver(bridge),
         log=lambda m, l="info": bridge._log(m, l),
         on_status=lambda p: on_solver_status(bridge, p),
+        label=lambda tab_id: tab_label_of(getattr(bridge, "_page_pool", None), tab_id),
     )
     watcher = bridge._captcha_watcher = CaptchaWatcher(deps)
     return watcher

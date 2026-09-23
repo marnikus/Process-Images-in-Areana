@@ -270,5 +270,3 @@ RAW_TABS = [
      "webSocketDebuggerUrl": "ws://10.0.0.9:9222/devtools/page/t1", "type": "page"},
     {"id": "t2", "title": "New Tab", "url": "chrome://newtab/", "type": "page"},
 ]
-
-

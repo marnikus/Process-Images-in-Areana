@@ -149,10 +149,12 @@ def test_rate_limit_penalty_paths():
     assert add_rate_limit_penalty(pool, "t1", 60) == 2
     assert page.cooldown_until > before
     assert add_rate_limit_penalty(pool, "ghost", 60) == -1
-    # steady page banks it as pending penalty
+    # a resting page (no timer left) starts cooling at once (D0-1) instead of
+    # banking an invisible debt
     page.status = PageStatus.STEADY
+    page.cooldown_until = 0.0
     assert add_rate_limit_penalty(pool, "t1", 60) == 3
-    assert page.pending_penalty >= 60
+    assert page.is_cooling() and page.pending_penalty == 0
 
 
 def test_refresh_and_timeout_arms():

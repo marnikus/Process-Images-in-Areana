@@ -6,6 +6,7 @@ Every assertion checks real slot output, so gutting a slot body fails it.
 """
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -137,9 +138,13 @@ def test_url_queue_add_remove_toggle_edit_test(cfg):
     assert json.loads(host.edit_url(row_id, ""))["error"] == "empty URL"
     assert json.loads(host.test_url(row_id))["status"] == "ready"
     assert json.loads(host.test_url("ghost"))["error"] == "not found"
+    host.state.urls[0].url = "ftp://not-http"  # a non-http row is reported, not crashed on
+    assert json.loads(host.test_url(row_id))["error"] == "Invalid URL" and host.state.urls[0].last_status == "error"
     assert json.loads(host.remove_url(row_id))["ok"] is True
     assert json.loads(host.remove_url(row_id))["error"] == "not found"
     assert json.loads(host.toggle_url("ghost"))["error"] == "not found"
+    host.config = SimpleNamespace(presets=SimpleNamespace(get_url_presets=lambda: (_ for _ in ()).throw(RuntimeError("io"))))
+    assert host.get_url_presets() == "[]"  # a broken preset store answers an empty list, never raises
 
 
 def test_url_queue_presets_emit_update_signals(cfg):
@@ -182,8 +187,9 @@ def test_run_control_start_run_ok_schedules_batch(cfg, monkeypatch):
 
     def fake_schedule(self, coro):
         scheduled.append(coro)
+        self._batch_future = coro  # what the real schedule_batch does (S4)
         return coro
-    monkeypatch.setattr(rc_mod, "schedule_coro", fake_schedule)
+    monkeypatch.setattr(rc_mod, "schedule_batch", fake_schedule)
     img = make_img(); img.selected = True; img.status = "pending"
     host, _ = make_host((RunControlMixin,), config=cfg, cdp=make_cdp(connected=True),
                         state=make_state(images=[img], urls=[UrlRow.create("https://arena.ai/c",
@@ -280,6 +286,21 @@ def test_app_settings_theme_prompt_and_save(cfg):
     assert isinstance(json.loads(host.list_arena_presets()), list)
 
 
+def test_app_settings_export_preset_and_refresh_users(cfg, tmp_path, monkeypatch):
+    """`export_preset` writes the state as a preset doc (the ok/error pair); `refresh_users` re-emits."""
+    monkeypatch.chdir(tmp_path)
+    from app.core.models import AppState
+    emitted = []
+    host, _ = make_host((AppSettingsMixin,), config=cfg, state=AppState(), _watcher=None,
+                        _emit_arena_state=lambda: emitted.append(1))
+    res = json.loads(host.export_preset("p"))
+    assert res["ok"] is True and (tmp_path / "config" / "p.json").exists()
+    host.state = None  # save_preset raises → the slot answers with the error, never raises
+    assert json.loads(host.export_preset("p"))["ok"] is False
+    host.refresh_users()
+    assert emitted == [1]
+
+
 def test_app_settings_arena_preset_round_trip(cfg):
     host, _ = make_host((AppSettingsMixin,), config=cfg, state=make_state(),
                         presets_changed=Signal(str, str), _watcher=None, cdp=None)
@@ -307,7 +328,7 @@ def test_layout_state_grid_validation_rejects_unreadable(cfg):
     assert host.get_grid_layout() == ""  # nothing stored yet
     assert host.save_grid_layout("{not json") is False  # RULE 13: unreadable rejected
     assert host.save_grid_layout(default_payload()) is True
-    assert json.loads(host.get_grid_layout())["v"] == 5  # canonical round trip
+    assert json.loads(host.get_grid_layout())["v"] == 8  # canonical round trip (GRID_VERSION 7 → 8: firefox_auto)
     assert host.save_grid_layout(json.dumps({"v": 999, "tree": {}})) is False
     assert any("rejected" in msg for _, msg in logs)
     assert isinstance(host.reset_grid_layout(), str)  # slot returns JSON payload

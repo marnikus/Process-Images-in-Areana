@@ -85,28 +85,11 @@ window.UrlListActions = {
     if (inp) inp.value = url;
   },
 
-  stopJob(urlId) {
-    const u = this._store().snapshotUrls().find(x => String(x.id) === String(urlId));
-    const tab = u ? u.tab_id : null;
-    if (!tab) { LogConsole.log('Stop: row has no linked tab yet', 'warn'); return; }
-    const b = this._bridge();
-    if (b && b.stop_tab_job) b.stop_tab_job(tab, (res)=> this._onStop(tab, res));
-  },
+  /* Stop / Clear time moved to url-list/reset.js (2026-09-21, D-7): this frozen
+     file has no headroom, and both actions must report the richer honest reply. */
+  stopJob(urlId) { return window.UrlListReset && window.UrlListReset.stopJob(urlId); },
 
-  _onStop(tab, res) {
-    try {
-      const r = JSON.parse(res);
-      LogConsole.log(r.ok ? `⛔ Stop requested for tab ${String(tab).slice(0,8)}` : 'Stop: '+(r.error||'failed'), r.ok?'warn':'error');
-    } catch { LogConsole.log('Stop failed','error'); }
-  },
-
-  coolAction(action, btn) {
-    const tabId = btn.dataset.tabId;
-    if (!tabId) { LogConsole.log('⚠ Tab not in pool — Connect it, then add to pool first', 'warn'); return; }
-    if (typeof PagePoolPanel === 'undefined') return;
-    if (action === 'cool-reset') PagePoolPanel.resetCooldown(tabId);
-    else PagePoolPanel.editCooldown(tabId);
-  },
+  coolAction(action, btn) { return window.UrlListReset && window.UrlListReset.coolAction(action, btn); },
 
   reparseTabs() {
     LogConsole.log('🔄 Reparse requested — scanning open tabs…', 'info');

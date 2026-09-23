@@ -336,3 +336,18 @@ class TestLegacyWindowMigration:
         payload, err = ls.canonical_grid_payload(json.dumps({"v": ls.GRID_VERSION, "tree": tree}))
         assert payload is None
         assert err  # the migration's own reason wins over "window set mismatch"
+
+    def test_migration_path_edge_branches(self):
+        # a payload whose tree is not a dict cannot be migrated → the original error stands (L207)
+        assert ls._try_migrate(json.dumps({"v": ls.GRID_VERSION, "tree": [1, 2]}), "window set mismatch") == \
+            (None, "window set mismatch")
+        # a v5 tree already at max depth cannot take another leaf → the migration's own reason is reported
+        ids = [i for i in ls.WINDOW_IDS if i not in ("live_debug", "job_history", "firefox_auto")]
+        tree = {"t": "split", "dir": "row", "children": [{"t": "leaf", "id": i} for i in ids[:4]], "sizes": [25] * 4}
+        for i in ids[4:]:
+            tree = {"t": "split", "dir": "col", "children": [tree, {"t": "leaf", "id": i}], "sizes": [50, 50]}
+        assert ls.parse_grid_payload(json.dumps({"v": 5, "tree": tree}))[1] == "window set mismatch"
+        assert ls.canonical_grid_payload(json.dumps({"v": 5, "tree": tree})) == (None, "tree too deep")
+        # a split node with a non-list `children` is left untouched by the rename pass (L236)
+        odd = {"t": "split", "children": "nope"}
+        assert ls._rename_legacy_windows(odd) is odd

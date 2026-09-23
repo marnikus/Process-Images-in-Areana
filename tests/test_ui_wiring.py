@@ -174,3 +174,70 @@ def test_panel_export_lines_match_their_const():
             if re.search(rf"window\.{name}\s*=\s*{name}\s*;", src):
                 assert re.search(rf"^(?:const|let)\s+{name}\s*=|^function\s+{name}\b", src, re.M), (
                     f"{path.name}: `window.{name} = {name}` but no `const {name}` in this file")
+
+
+def test_url_table_header_declares_the_tab_column():
+    """D-5/D-7: the URL list shows the readable tab id in its own Tab column —
+    the header and the row template must stay in step, or every cell shifts."""
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    header = re.search(r'<table class="url-table">\s*<thead><tr>(.*?)</tr></thead>', html, re.S)
+    assert header, "URL table header not found"
+    heads = re.findall(r"<th>(.*?)</th>", header.group(1))
+    assert heads[:4] == ["En", "URL", "Tab", "Status"], heads
+    assert heads[-1] == "Actions"
+    src = (WEB / "js" / "panels" / "url-list" / "render.js").read_text(encoding="utf-8")
+    body = src[src.index("rowHtml(u) {"):src.index("  render(urls)")]
+    assert body.count("<td") == len(heads), "row cells must match the declared columns"
+
+
+# ── the app's one Firefox socket is released on close (round 11) ─────────────
+
+def _class_methods(tree: ast.Module, name: str) -> dict:
+    """{method name: node} of one class in the module under test."""
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == name:
+            return {item.name: item for item in node.body
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    return {}
+
+
+def _called_names(node: ast.AST) -> set:
+    """Every attribute/keyword-less name called inside a function body."""
+    out = set()
+    for item in ast.walk(node):
+        if isinstance(item, ast.Call):
+            func = item.func
+            out.add(func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", ""))
+    return out
+
+
+def _imported_names(node: ast.AST) -> set:
+    """Module paths imported anywhere inside a function body (lazy imports count)."""
+    out = set()
+    for item in ast.walk(node):
+        if isinstance(item, ast.ImportFrom) and item.module:
+            out.add(item.module)
+        elif isinstance(item, ast.Import):
+            out.update(alias.name for alias in item.names)
+    return out
+
+
+def test_closing_the_window_drops_the_cdp_socket_inside_a_guard():
+    """The client disconnect is what close owes the browser — and it must never fail the close.
+
+    `QMainWindow` cannot be imported in this sandbox (no libGL, as everywhere else in
+    this file), so the wiring is pinned by AST: `closeEvent` must route through
+    `_drop_browser_sockets`, and that helper must disconnect the CDP client inside a
+    guard. The deleted Firefox DevTools session (I-62) must not come back here.
+    """
+    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
+    methods = _class_methods(tree, "MainWindow")
+    assert "closeEvent" in methods and "_drop_browser_sockets" in methods, sorted(methods)
+    assert "_drop_browser_sockets" in _called_names(methods["closeEvent"]), \
+        "closing the window must drop the browser sockets"
+    body = methods["_drop_browser_sockets"]
+    assert "disconnect" in _called_names(body), "the CDP client is disconnected by name"
+    assert not any("rdp" in name for name in _imported_names(body)), \
+        "the Firefox debugger approach is deleted (I-62)"
+    assert any(isinstance(item, ast.Try) for item in ast.walk(body)), \
+        "a browser that stopped answering must not break the close"

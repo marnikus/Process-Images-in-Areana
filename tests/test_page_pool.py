@@ -204,7 +204,8 @@ def test_no_double_send_to_busy():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_get_free_page_prefers_lowest_jobs():
+async def test_get_free_page_uses_pool_order_not_job_count():
+    """2026-09-21: the counter is display-only — the pick is the first free tab."""
     pool = PagePool()
     pool.add_page(make_info("a"))
     pool.add_page(make_info("b"))
@@ -214,20 +215,20 @@ async def test_get_free_page_prefers_lowest_jobs():
     pool.get_page("c").jobs_completed = 3
     pool.mark_busy("b", "other")
     got = await pool.get_free_page()
-    assert got.tab_id == "c"  # b lowest but busy, c next lowest
+    assert got.tab_id == "a"  # first free in pool order, whatever the counts say
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_acquire_prefers_lowest_and_marks_busy():
+async def test_acquire_uses_pool_order_and_marks_busy():
     pool = PagePool()
     pool.add_page(make_info("a"))
     pool.add_page(make_info("b"))
     pool.get_page("a").jobs_completed = 4
     pool.get_page("b").jobs_completed = 1
     got = await pool.acquire_free_page("j1")
-    assert got.tab_id == "b"
-    assert pool.get_page("b").status == PageStatus.BUSY
+    assert got.tab_id == "a"  # pool order: the count no longer reorders the queue
+    assert pool.get_page("a").status == PageStatus.BUSY
     assert pool.get_counts() == (2, 1)
 
 
@@ -241,3 +242,14 @@ async def test_pick_ties_keep_default_order():
     assert got.tab_id == "x"
     got2 = await pool.get_free_page()
     assert got2.tab_id == "y"
+
+
+@pytest.mark.unit
+def test_snapshot_reports_the_pool_key_as_the_tab_id():
+    """I-55 / worker badge: one worker, one id string — the key, never a fallback field."""
+    pool = PagePool()
+    key = "ws://127.0.0.1:9222/devtools/page/1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+    pool.add_page(PageInfo(ws_url=key, tab_id="", title="T"))
+    pool._pages[key].tab_id = "stale-fallback"  # a later join path rewriting the field must not leak
+    (entry,) = pool.status_snapshot()["pages"]
+    assert entry["tab_id"] == key

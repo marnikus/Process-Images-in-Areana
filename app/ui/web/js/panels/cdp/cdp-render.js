@@ -14,14 +14,20 @@ window.CDPRender = {
     });
   },
 
+  browserTag(t) {
+    // Round 9: one pass lists every enabled browser, so a row says which one it is.
+    return t && t.browser ? `[${t.browser}] ` : '';
+  },
+
   _makeOption(t, store) {
     const opt = document.createElement('option');
     opt.value = t.ws_url;
     const isDev = store.isDevTab(t);
     const title = (t.title || '').slice(0, 60);
     const url = (t.url || '').slice(0, 80);
-    opt.textContent = isDev ? `[DEV] ${title} — ${url}` : `${title} — ${url}`;
-    opt.title = `${t.title}\n${t.url}${isDev ? '\n(DevTools)' : ''}`;
+    const tag = this.browserTag(t);
+    opt.textContent = isDev ? `[DEV] ${tag}${title} — ${url}` : `${tag}${title} — ${url}`;
+    opt.title = `${t.title}\n${t.url}${t.browser ? `\nBrowser: ${t.browser}` : ''}${isDev ? '\n(DevTools)' : ''}`;
     if (isDev) opt.style.color = 'var(--text-muted)';
     return opt;
   },
@@ -31,7 +37,7 @@ window.CDPRender = {
     if (!sel) return;
     const store = window.CDPStore;
     const prev = prevValue || sel.value;
-    sel.innerHTML = '<option value=\"\">— Select Chrome Tab —</option>';
+    sel.innerHTML = '<option value=\"\">— Select Browser Tab —</option>';
     this._sortTabs(tabs, store).forEach(t => sel.appendChild(this._makeOption(t, store)));
     if (prev) sel.value = prev;
   },
@@ -104,6 +110,9 @@ window.CDPRender = {
     if (!toolbar) return;
     const codeEl = toolbar.querySelector('code');
     if (!codeEl) return;
+    // The selected browser builds its own command (`command`); the Chrome
+    // fallback keeps the toolbar alive when the browser block is not loaded.
+    if (cfg.command) { codeEl.textContent = cfg.command; return; }
     let cmd = `\"C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe\" --remote-debugging-port=${cfg.port} --user-data-dir=\"${cfg.user_data_dir}\"`;
     if (cfg.extra_args) cmd += ` ${cfg.extra_args}`;
     codeEl.textContent = cmd;

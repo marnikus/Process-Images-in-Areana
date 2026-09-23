@@ -1,7 +1,9 @@
-"""CDP client facade ≤150 LOC (C2).
+"""CDP client facade ≤150 LOC (C2) — one browser, one channel: Chrome's CDP.
 
-Composes transport + connect + tabs + dom + probe.
-Public API same as old cdp_client.CDPClient for backward compat.
+Composes transport + connect + tabs + dom + probe. Public API is the same as the
+old `cdp_client.CDPClient`. (Rounds 9-11 added RDP/BiDi channel routing here;
+that is deleted with the Firefox/Edge debugger approach — a normal Firefox has
+no debug channel, and Firefox automation lives in `app/browser/uivision/`.)
 """
 from __future__ import annotations
 
@@ -10,7 +12,6 @@ import logging
 from typing import List, Tuple
 
 from .transport import CDPTransport
-from .connect import connect_with_lock
 from .tabs import TabInfo, fetch_tabs_sync, _build_hosts_to_try, _merge_by_id
 from .probe import diagnose_sync
 from .dom import (
@@ -74,37 +75,37 @@ class CDPClient(CDPTransport):
         self._connecting = False
         self._last_exc = None
 
-    def fetch_tabs_sync(self, host: str = None, port: int = None):
-        h = host or self._host
-        p = port or self._port
+    async def connect(self, ws_url: str) -> bool:
+        """QObject shadow guard — the same PySide6 trap as `disconnect` below."""
+        from .connect import connect_with_lock
+        return await connect_with_lock(self, ws_url)
+
+    async def disconnect(self):
+        """QObject shadow guard: PySide6 resolves an INHERITED connect/disconnect on a
+        QObject subclass to the QObject built-ins ("not enough arguments"); defining both
+        here keeps the coroutines in the instance's own MRO lookup. Regression:
+        tests/test_cdp_client_stub.py::test_disconnect_is_not_shadowed_by_qobject."""
+        await CDPTransport.disconnect(self)
+
+    def fetch_tabs_sync(self, host: str = None, port: int = None) -> List[TabInfo]:
+        """This endpoint's tabs over CDP (`GET /json/list`, one websocket per tab)."""
+        h, p = host or self._host, port or self._port
         tabs, err, tried = fetch_tabs_sync(h, p)
-        if err:
+        if err and not tabs:
             log.warning(f"fetch_tabs_sync failed: {err} tried={tried}")
             self.error.emit(err)
         return tabs
 
     def diagnose_sync(self, host: str = None, port: int = None) -> dict:
-        h = host or self._host
-        p = port or self._port
-        return diagnose_sync(h, p)
+        """Endpoint diagnostics for the Settings panel's Test button."""
+        return diagnose_sync(host or self._host, port or self._port)
 
-    async def fetch_tabs(self):
+    async def fetch_tabs(self) -> List[TabInfo]:
+        """`fetch_tabs_sync` without blocking the loop: aiohttp first, executor second."""
         merged = await _fetch_tabs_aiohttp(self._host, self._port)
         if merged:
             return list(merged.values())
         return await _fetch_tabs_sync_fallback(self, self._host, self._port)
-
-    async def connect(self, ws_url: str) -> bool:
-        return await connect_with_lock(self, ws_url)
-
-    async def disconnect(self):
-        """QObject shadow guard: PySide6 resolves an INHERITED `disconnect`
-        on a QObject subclass to QObject.disconnect (built-in) instead of
-        CDPTransport.disconnect — connect() then raises "not enough
-        arguments". Defining it in this class keeps the coroutine in the
-        instance's own MRO lookup. Regression: tests/test_cdp_client_stub.py
-        ::test_disconnect_is_not_shadowed_by_qobject."""
-        await CDPTransport.disconnect(self)
 
     # ---- DOM delegations ----
     async def get_document(self):

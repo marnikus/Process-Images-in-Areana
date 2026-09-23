@@ -14,17 +14,22 @@ import re
 
 from app.core.cooldown import clamp_seconds, config_to_dict, format_remaining
 from app.persistence.cooldown_store import save_entries
+from app.services import tab_reset
 from app.services.cooldown_service import (
     edit_cooldown,
-    force_reset_page,
-    is_stuck_status,
     load_config,
     refresh_expired,
-    request_tab_abort,
-    reset_cooldown,
-    tab_has_live_job,
 )
-from app.services.run_state import cooldowns_path, resolve_tab_info, restore_page_state
+from app.services.live.bus import live_bus
+from app.services.live.tab_owner import resolve_owners
+from app.services.live.worker_badges import assert_badges, clear_badge
+from app.services.run_state import (
+    cooldowns_path,
+    resolve_tab_info,
+    restore_page_state,
+    schedule_coro,
+    tab_label_of,
+)
 from app.ui.qt_compat import Slot
 
 
@@ -38,24 +43,26 @@ def reset_pool_dicts(pool) -> None:
         pass
 
 
-def reset_stuck_page(bridge, tab_id: str, page) -> str:
-    """Force-free a stuck page; refuses while its own job is alive."""
-    was = getattr(page.status, "value", page.status)
-    if tab_has_live_job(bridge._page_pool, tab_id):
-        bridge._log(f"⚠ Reset refused for {(tab_id or '')[:12]} — job still running on this tab; stop it first", "warn")
-        return json.dumps({"ok": False, "error": "job still running on this tab — stop it first"})
-    if force_reset_page(bridge._page_pool, tab_id):
-        bridge._emit_pool_status()
-        bridge._log(f"♻️ Stuck {was} reset for {(tab_id or '')[:12]} (no run active) — tab ready, fix and run again", "success")
-        return json.dumps({"ok": True})
-    return json.dumps({"ok": False, "error": "unknown tab"})
+def ws_endpoint(bridge, ws_url: str) -> tuple:
+    """(host, port, tab_id) of a pool join — parsed from the ws URL, pool as the fallback.
+
+    A pooled row joins at its own endpoint: the ws URL names the host and port it came
+    from, and the trailing `/devtools/page/<id>` segment is the tab id.
+    """
+    pool = getattr(bridge, "_page_pool", None)
+    host = getattr(pool, "_host", "127.0.0.1") or "127.0.0.1"
+    port = getattr(pool, "_port", 9222) or 9222
+    m = re.match(r"ws://([^:/]+):(\d+)", ws_url or "")
+    if m:
+        host, port = m.group(1), int(m.group(2))
+    m_id = re.search(r"/devtools/page/([^/]+)$", ws_url or "")
+    return host, port, (m_id.group(1) if m_id else "")
 
 
 async def connect_pool_client(bridge, ws_url: str):
-    """CDP client for a pool join (None + error log when refused)."""
+    """A client dialled to this tab's own endpoint (None + a logged reason when refused)."""
     from app.browser.cdp_client import CDPClient
-    host = bridge._page_pool._host if bridge._page_pool else "127.0.0.1"
-    port = bridge._page_pool._port if bridge._page_pool else 9222
+    host, port, _tab_id = ws_endpoint(bridge, ws_url)
     client = CDPClient(host=host, port=port)
     if await client.connect(ws_url):
         return client
@@ -63,34 +70,127 @@ async def connect_pool_client(bridge, ws_url: str):
     return None
 
 
-def finish_pool_join(bridge, info, client, ctrl) -> None:
-    """Register a joined tab: page + client, restore timers, announce."""
+async def finish_pool_join(bridge, info, client, ctrl) -> None:
+    """Register a joined tab: page + client, restore timers, badge the tab, announce."""
     bridge._page_pool.add_page(info)
     bridge._page_pool.register_client(info.tab_id, client, ctrl)
     restore_page_state(bridge, info.tab_id)
-    bridge._emit_pool_status()
+    await resolve_owners(bridge._page_pool)  # `{email}_{4 digits}` before the badge (D-5)
+    await assert_badges(bridge._page_pool)   # `#n + label` on the tab, right away (D-5)
+    bridge._emit_pool_status()               # persists the number with the timers (D0-2)
     total, free = bridge._page_pool.get_counts()
-    bridge._log(f"✅ Pool added {info.tab_id[:12]} steady — {info.title[:40]} — total {total} free {free}", "success")
+    label = tab_label_of(bridge._page_pool, info.tab_id)
+    bridge._log(f"✅ Pool added {label} steady — {info.title[:40]} — total {total} free {free}", "success")
     if total >= 2:
         bridge._log(f"✅ {total} tabs in pool ready for parallel — 2+ images will dispatch to different webpages", "success")
 
 
+def leave_pool(bridge, tab_id: str) -> bool:
+    """Badge off (client captured *before* the pool forgets it), then the page leaves."""
+    client, _ctrl = bridge._page_pool.get_clients(tab_id)
+    if client is not None:
+        schedule_coro(bridge, clear_badge(client, tab_id))
+    return bridge._page_pool.remove_page(tab_id)
+
+
+def _sockets_by_tab(tabs) -> dict:
+    """Fetched tabs as {tab key: ws url} in one expression (no statement nesting)."""
+    return {(getattr(t, "id", "") or getattr(t, "tab_id", "")): (getattr(t, "ws_url", "") or "")
+            for t in tabs or []}
+
+
+async def _live_sockets(bridge) -> dict:
+    """Every live tab right now — the panel's one-pass listing.
+
+    {} when the pass fails — a rejoin is never a removal.
+    """
+    try:
+        from app.ui.panels.browser_tabs import live_tab_rows
+        return _sockets_by_tab(await live_tab_rows(bridge))
+    except Exception:
+        return {}
+
+
+async def _rejoin_one(bridge, pool, sockets: dict, tab_id: str) -> bool:
+    """Join one re-checked row's tab (False when it is pooled already or no longer open)."""
+    if pool.get_page(tab_id):
+        return False
+    ws = sockets.get(tab_id, "")
+    if not ws:
+        bridge._log(f"♻️ Rejoin skipped for {(tab_id or '')[:12]} — tab is not open; the next pass drops the row", "warn")
+        return False
+    await do_connect_page_pool(bridge, ws)  # same mechanic as the reconciler: badge + cooldown restored
+    return True
+
+
+async def rejoin_checked_rows(bridge, tab_ids) -> int:
+    """The join half of the checkbox gate (I-56): re-checked rows' tabs rejoin at once.
+
+    One fetch for the whole batch; the reconciler pass stays the fallback for a
+    tab Chrome had not listed yet. Returns how many tabs actually joined.
+    """
+    pool = getattr(bridge, "_page_pool", None)
+    if pool is None or not tab_ids:
+        return 0
+    sockets = await _live_sockets(bridge)
+    joined = 0
+    for tab_id in tab_ids:
+        joined += 1 if await _rejoin_one(bridge, pool, sockets, tab_id) else 0
+    if joined:
+        live_bus(bridge).wake("urls")  # a live run picks the worker up on its next pass
+    return joined
+
+
+def find_tab_row(rows, tab_id: str):
+    """The endpoint's own row for this tab id (None when it lists none)."""
+    def matches(row):
+        return (getattr(row, "id", "") or getattr(row, "tab_id", "")) == tab_id
+    return next((row for row in (rows or []) if matches(row)), None)
+
+
+async def own_tab_info(bridge, tab_id: str, ws_url: str, client) -> tuple:
+    """(title, url) from the tab's own endpoint — what the pool row's label is built from.
+
+    The list that knows the title is the one from the endpoint the join came from
+    (`client.fetch_tabs`). When that endpoint cannot answer, `resolve_tab_info` is the
+    fallback — and the tab id still labels the row.
+    """
+    try:
+        rows = await client.fetch_tabs() or []
+    except Exception:
+        rows = []
+    row = find_tab_row(rows, tab_id)
+    if row is not None:
+        return getattr(row, "title", "") or "", getattr(row, "url", "") or ""
+    return await resolve_tab_info(bridge, tab_id, ws_url)
+
+
+def pool_page_info(bridge, endpoint: tuple, title: str, url: str):
+    """The pool's row for a joined tab — `endpoint` is its (tab_id, ws_url) pair."""
+    from app.browser.page_status import PageInfo
+    tab_id, ws_url = endpoint
+    pool = getattr(bridge, "_page_pool", None)
+    browser = getattr(pool, "_browser", "chrome") or "chrome"
+    return PageInfo(tab_id=tab_id, ws_url=ws_url, title=title or tab_id,
+                    url=url or "", browser=browser)
+
+
 async def do_connect_page_pool(bridge, ws_url: str):
-    """Attach one Chrome tab to the pool (client + controller + restore)."""
+    """Attach one tab to the pool (client + controller + restore)."""
     try:
         from app.browser.cdp_arena import CDPArenaController
-        from app.browser.page_status import PageInfo
-        m = re.search(r'/devtools/page/([^/]+)$', ws_url)
-        tab_id = m.group(1) if m else ws_url
+        _host, _port, tab_id = ws_endpoint(bridge, ws_url)
         client = await connect_pool_client(bridge, ws_url)
         if client is None:
             return
         ctrl = CDPArenaController(client, log_callback=lambda msg: bridge._log(msg, "info"))
-        live_title, live_url = await resolve_tab_info(bridge, tab_id, ws_url)
-        info = PageInfo(tab_id=tab_id, ws_url=ws_url, title=live_title or tab_id, url=live_url or "")
-        finish_pool_join(bridge, info, client, ctrl)
+        title, url = await own_tab_info(bridge, tab_id or ws_url, ws_url, client)
+        await finish_pool_join(bridge,
+                               pool_page_info(bridge, (tab_id or ws_url, ws_url), title, url),
+                               client, ctrl)
     except Exception as e:
-        bridge._log(f"Pool connect exception {e}", "error")
+        import traceback
+        bridge._log(f"Pool connect exception {e} — {traceback.format_exc()[-800:]}", "error")
 
 
 class PagePoolMixin:
@@ -144,7 +244,7 @@ class PagePoolMixin:
             if not ws_url:
                 return json.dumps({"ok": False, "error": "empty ws_url"})
             self._log(f"🔗 Adding tab to pool {ws_url[:80]}… steady", "info")
-            self._schedule_coro(do_connect_page_pool(self, ws_url))
+            schedule_coro(self, do_connect_page_pool(self, ws_url))
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -154,10 +254,11 @@ class PagePoolMixin:
         try:
             if not self._page_pool:
                 return json.dumps({"ok": False, "error": "pool not initialized"})
-            ok = self._page_pool.remove_page(tab_id)
+            ok = leave_pool(self, tab_id)
             self._emit_pool_status()
             if ok:
-                self._log(f"Pool page {tab_id[:12]} removed", "info")
+                pool = getattr(self, "_page_pool", None)
+                self._log(f"Pool page {tab_label_of(pool, tab_id)} removed", "info")
                 return json.dumps({"ok": True})
             return json.dumps({"ok": False, "error": "not found"})
         except Exception as e:
@@ -191,33 +292,14 @@ class PagePoolMixin:
 
     @Slot(str, result=str)
     def reset_page_cooldown(self, tab_id: str):
-        try:
-            if not self._page_pool:
-                return json.dumps({"ok": False, "error": "pool not initialized"})
-            page = self._page_pool.get_page(tab_id)
-            if page is None:
-                return json.dumps({"ok": False, "error": "unknown tab"})
-            if is_stuck_status(page.status):
-                return reset_stuck_page(self, tab_id, page)
-            if reset_cooldown(self._page_pool, tab_id):
-                self._emit_pool_status()
-                self._log(f"♻️ Cooldown reset for {(tab_id or '')[:12]} — tab ready", "success")
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "unknown tab"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
+        """Clear time (D-5): the pause goes, the row is ready — and the reply says
+        exactly what was removed, so the row can show it."""
+        return json.dumps(tab_reset.clear_time(self, tab_id), ensure_ascii=False)
 
     @Slot(str, result=str)
     def stop_tab_job(self, tab_id: str):
-        """Abort the live job on this tab; it fails as Aborted."""
-        try:
-            if request_tab_abort(self._page_pool, tab_id):
-                self._log(f"⛔ Stop requested for job on {(tab_id or '')[:12]}", "warn")
-                self._emit_pool_status()
-                return json.dumps({"ok": True})
-            return json.dumps({"ok": False, "error": "no live job on this tab"})
-        except Exception as e:
-            return json.dumps({"ok": False, "error": str(e)})
+        """Stop (D-3): abort a live job, or repair a tab no run owns any more."""
+        return json.dumps(tab_reset.stop_request(self, tab_id), ensure_ascii=False)
 
     @Slot(str, int, result=str)
     def set_page_cooldown(self, tab_id: str, seconds: int):

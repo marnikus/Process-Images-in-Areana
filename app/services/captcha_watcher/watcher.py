@@ -43,6 +43,7 @@ class WatcherDeps:
     evaluate: Callable[[str, str], Awaitable[Any]]       # (tab_id, js) → value or None
     solver_factory: Callable[[], Optional[SdkSolver]]    # reads the key file at call time
     log: Callable[[str, str], None] = lambda m, l="info": log.info(m)
+    label: Callable[[str], str] = lambda tab_id: str(tab_id or "")[:12]  # D-7: readable id
     on_status: Optional[Callable[[Dict[str, Any]], None]] = None
 
 
@@ -74,7 +75,7 @@ async def _eval(deps: WatcherDeps, status: WatcherStatus, tab_id: str, js: str) 
     except asyncio.CancelledError:
         raise
     except Exception as exc:
-        status.last_error = f"eval {tab_id[:12]}: {exc}"[:200]
+        status.last_error = f"eval {deps.label(tab_id)}: {exc}"[:200]
         return None
 
 
@@ -98,14 +99,14 @@ class _Encounter:
         self._status.solved_total += 1
         self._status.last_solved_at = time.time()
         self._status.last_error = ""
-        _safe_log(self._deps, f"✅ Captcha Watcher: solved {tab_id[:12]} in {result.elapsed_s:.0f}s "
+        _safe_log(self._deps, f"✅ Captcha Watcher: solved {self._deps.label(tab_id)} in {result.elapsed_s:.0f}s "
                               f"— inject {probes.inject_summary(inj)}", "success")
         return True
 
     def _fail(self, tab_id: str, result: SolveResult) -> bool:
         self._status.failed_total += 1
         self._status.last_error = result.error[:200]
-        _safe_log(self._deps, f"❌ Captcha Watcher: solve failed on {tab_id[:12]} — {result.error}", "error")
+        _safe_log(self._deps, f"❌ Captcha Watcher: solve failed on {self._deps.label(tab_id)} — {result.error}", "error")
         return False
 
 
@@ -204,7 +205,7 @@ class CaptchaWatcher:
             self._attempts.pop(tab_id, None)   # challenge gone → fresh budget next time
             return
         if not signal.solvable:
-            self._log(f"Captcha Watcher: {signal.kind or 'unknown'} captcha on {tab_id[:12]} "
+            self._log(f"Captcha Watcher: {signal.kind or 'unknown'} captcha on {self._deps.label(tab_id)} "
                       f"is not SDK-solvable (sitekey={'set' if signal.sitekey else 'missing'})", "warn")
             return
         if self._attempts.get(tab_id, 0) >= MAX_SOLVE_ATTEMPTS:

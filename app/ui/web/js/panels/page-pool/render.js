@@ -1,4 +1,6 @@
-/* page-pool/render.js — rendering, ≤200 LOC, CC≤10 via helpers */
+/* page-pool/render.js — table + counters, ≤200 LOC, CC≤10.
+   The countdown cell lives in cells.js and the tab label in core/tab-label.js
+   (2026-09-21, D-4/D-7) so this file stays at its frozen size. */
 'use strict';
 window.PagePoolRender = {
   _store() { return window.PagePoolStore; },
@@ -41,32 +43,7 @@ window.PagePoolRender = {
     this._setText('poolFree', snap.free||snap.steady||0);
   },
 
-  _cooldownBadge(p) {
-    const captcha = p.captcha_count || 0;
-    return captcha > 0 ? ` <span title="Captcha detections on this tab">🛡x${captcha}</span>` : '';
-  },
-
-  _cooldownActiveHtml(p, badge) {
-    const remaining = p.cooldown_remaining || 0;
-    const total = p.cooldown_total || 0;
-    const of = total > 0 ? ` / ${this._store().fmt(total)}` : '';
-    const title = this._store().esc(p.cooldown_reason || 'cooling');
-    return `<span data-cool-tab="${this._store().esc(p.tab_id)}" data-cool-left="${remaining}" title="${title}">${this._store().fmt(remaining)}${of}</span>${badge}`;
-  },
-
-  _cooldownPendingHtml(pending, badge) {
-    return `<span title="Captcha penalty waiting for next cooldown">+${this._store().fmt(pending)} pending</span>${badge}`;
-  },
-
-  cooldownCell(p) {
-    const remaining = p.cooldown_remaining || 0;
-    const pending = p.pending_penalty || 0;
-    const badge = this._cooldownBadge(p);
-    if ((p.status || '') === 'cooldown' && remaining > 0) return this._cooldownActiveHtml(p, badge);
-    if (pending > 0) return this._cooldownPendingHtml(pending, badge);
-    if ((p.captcha_count||0) > 0) return `<span title="No active timer">—</span>${badge}`;
-    return '—';
-  },
+  cooldownCell(p) { return window.PagePoolCells.cooldownCell(p); },
 
   _rowHtml(p) {
     const s = this._store();
@@ -74,11 +51,11 @@ window.PagePoolRender = {
     const color = s.statusColor(status);
     const statusLabel = status==='steady' ? 'steady (ready)' : status;
     return `
-        <td title="${s.esc(p.tab_id)}">${s.esc((p.tab_id||'').slice(0,12))}</td>
+        <td class="pool-tab-cell" title="${s.esc(p.tab_id)}" style="white-space:nowrap;"><b class="worker-no">#${Number(p.worker_no)||0}</b> ${s.esc(window.TabLabel.of(p.tab_id, p))}</td>
         <td title="${s.esc(p.title)}">${s.esc((p.title||'').slice(0,30))}</td>
         <td title="${s.esc(p.url)}" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.esc((p.url||'').slice(0,50))}</td>
         <td><span style="color:${color}; font-weight:600;">● ${s.esc(statusLabel)}</span></td>
-        <td title="Jobs completed — next job goes to the free tab with the lowest count">${p.jobs_completed||0}</td>
+        <td title="Jobs completed">${p.jobs_completed||0}</td>
         <td>${s.esc(p.current_job_id||'—')}</td>
         <td style="white-space:nowrap;">${this.cooldownCell(p)}</td>
         <td style="white-space:nowrap;">

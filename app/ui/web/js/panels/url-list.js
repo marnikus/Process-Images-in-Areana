@@ -10,6 +10,8 @@ const UrlList = {
   _actions: null,
   _cooldown: null,
   _listeners: null,
+  _cells: null,
+  _reset: null,
   _timersStarted: false,
   _coolSnapAt: 0,
   poolPages: [],
@@ -21,6 +23,8 @@ const UrlList = {
     this._actions = window.UrlListActions;
     this._cooldown = window.UrlListCooldown;
     this._listeners = window.UrlListListeners;
+    this._cells = window.UrlListCells;
+    this._reset = window.UrlListReset;
     if (!this._listeners || !this._listeners.bind(this)) return;
     if (this._timersStarted) return;
     this._timersStarted = true;
@@ -65,7 +69,7 @@ const UrlList = {
   scorePoolPage(r,p) { return this._delegateMatching('scorePoolPage', r, p) ?? 0; },
   assignPoolPages(rows,pages) { return this._delegateMatching('assignPoolPages', rows, pages) ?? new Map(); },
   matchUnclaimedPage(rowUrl,pages,claimed) { return this._delegateMatching('matchUnclaimedPage', rowUrl, pages, claimed); },
-  jobLineForTab(pages,tabId) { return this._delegateMatching('jobLineForTab', pages, tabId) ?? ''; },
+  jobLineForTab(pages,tabId) { return this._reset ? this._reset.jobLine(pages, tabId) : (this._delegateMatching('jobLineForTab', pages, tabId) ?? ''); },
 
   onPoolUpdate(payload) {
     try {
@@ -98,21 +102,15 @@ const UrlList = {
       let page = null;
       if (claimed.has(ri)) page = pages[claimed.get(ri)];
       else page = this.matchUnclaimedPage(tr.dataset.url || '', pages, claimed);
+      this._fillTabCell(tr, page);
+      if (this._reset) this._reset.fillStatusCell(tr, page);  // D-7 working state
       this._fillCoolCell(tr, page);
       this._fillJobsCell(tr, page);
     });
   },
 
-  _tickCooldownCells(tbody) {
-    tbody.querySelectorAll('.url-cool-cell [data-cool-left]').forEach(el => {
-      const base = parseInt(el.getAttribute('data-cool-left') || '0', 10);
-      const at = parseInt(el.getAttribute('data-cool-at') || '0', 10);
-      const left = Math.max(0, base - Math.floor((Date.now() - at) / 1000));
-      const txt = el.textContent;
-      const suffix = txt.includes('/') ? txt.slice(txt.indexOf('/')) : '';
-      el.textContent = (window.PagePoolPanel ? window.PagePoolPanel.fmt(left) : `${left}s`) + (suffix ? ' ' + suffix : '');
-    });
-  },
+  /* D-4: the same element-anchored tick as the pool table, floored at 00:00. */
+  _tickCooldownCells(tbody) { return this._cells && this._cells.tick(tbody); },
 
   refreshCooldownCells() {
     if (typeof PagePoolPanel === 'undefined') return;
@@ -129,7 +127,8 @@ const UrlList = {
     this._tickCooldownCells(tbody);
   },
 
-  _fillCoolCell(tr, page) { return this._render?.fillCoolCell(tr, page); },
+  _fillTabCell(tr, page) { return this._cells?.fillTabCell(tr, page); },
+  _fillCoolCell(tr, page) { return this._cells?.fillCoolCell(tr, page); },
   _fillJobsCell(tr, page) { return this._render?.fillJobsCell(tr, page); },
 };
 

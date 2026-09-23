@@ -17,6 +17,7 @@ import json
 import threading
 from pathlib import Path
 
+from app.services.live.feed import PROCESSING_REFUSAL, commit_queue, in_flight
 from app.ui.qt_compat import Slot, clipboard_copy
 from app.ui.panels.queue_scan_folder import FolderPickMixin, as_folder_dict
 from app.ui.services import arena_serialize, undo_entries
@@ -78,11 +79,10 @@ def push_queue_undo(bridge) -> None:
 def clear_queue_images(bridge) -> int:
     """Empty images+jobs (undoable); returns cleared count. No log/JSON."""
     count = len(bridge.state.images)
-    push_queue_undo(bridge)
+    push_queue_undo(bridge)  # the snapshot BEFORE the clear is what undo restores
     bridge.state.images = []
     bridge.state.jobs = []
-    bridge.state.recalculate_progress()
-    bridge._save_arena()
+    commit_queue(bridge, "clear", undo=False)
     return count
 
 
@@ -93,8 +93,7 @@ def run_scan_merge(bridge, root_path: Path) -> None:
         ignore_ai = bridge.state.folder.get("ignore_ai_suffix", True)
         scanned = scan_folder_pure(root_path, supported, ignore_ai)
         added = merge_scanned(bridge.state.images, scanned)
-        bridge.state.recalculate_progress()
-        bridge._save_arena()
+        commit_queue(bridge, "scan", undo=False)  # worker thread: the funnel is thread-safe
         bridge._log(*scan_summary(scanned, added))
     except Exception as e:
         bridge._log(f"Scan failed: {e}", "error")
@@ -111,8 +110,7 @@ def run_scan_new_batch(bridge, root_path: Path, cleared: int) -> None:
         # Queue was cleared by the slot: merge appends all (selected=False),
         # identical to the original inline loop.
         added = merge_scanned(bridge.state.images, scanned)
-        bridge.state.recalculate_progress()
-        bridge._save_arena()
+        commit_queue(bridge, "scan", undo=False)
         summary, _level = scan_summary(scanned, added)  # a new batch is destructive: always warn
         bridge._log(f"🗑 New batch: cleared {cleared} old — {summary}", "warn")
     except Exception as e:
@@ -122,9 +120,9 @@ def run_scan_new_batch(bridge, root_path: Path, cleared: int) -> None:
 
 
 def run_folder_ai_request(bridge, mode: str) -> str:
-    """Disk _AI op guards + submit; refuses mid-run/mid-scan. Pending JSON."""
-    if getattr(bridge, "_run_state", "idle") != "idle":
-        return json.dumps({"ok": False, "error": "stop the run first"})
+    """Disk _AI op guards + submit; refuses while an image is processing or a scan runs (D-5). Pending JSON."""
+    if in_flight(bridge.state.images):
+        return json.dumps({"ok": False, "error": PROCESSING_REFUSAL})
     if getattr(bridge, "_scan_in_progress", False):
         return json.dumps({"ok": False, "pending": True, "error": "scan already in progress"})
     root_path, err = resolve_scan_root(bridge.state.folder)
@@ -281,17 +279,13 @@ class QueueScanMixin(FolderPickMixin):
         img.selected = bool(selected)
         if selected and img.status == "skipped":
             img.status = "pending"
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        commit_queue(self, "select")
         return json.dumps({"ok": True})
 
     @Slot(bool, str, result=str)
     def bulk_select(self, selected: bool, filter_status: str):
         count = apply_bulk_selection(self.state.images, bool(selected), filter_status)
-        self.state.recalculate_progress()
-        self._save_arena()
-        push_queue_undo(self)
+        commit_queue(self, "bulk_select")
         return json.dumps({"ok": True, "count": count})
 
     @Slot(result=str)

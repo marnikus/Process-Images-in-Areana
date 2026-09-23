@@ -28,6 +28,9 @@ REQUIRED_SLOTS = (
     "get_recordings_list", "get_recording_detail", "get_recording_snapshot",
     "get_recording_diff", "set_recording_label", "delete_recording",
     "set_recording_settings", "get_recording_settings",
+    "get_job_history", "clear_job_history",
+    "get_firefox_auto_config", "save_firefox_auto_config",
+    "run_firefox_auto_test", "stop_firefox_auto_test",
 )
 
 # Private helpers that must never capture a @Slot by accident.
@@ -96,6 +99,7 @@ FROZEN_SLOTS = frozenset({
     'check_watcher_now',
     'clear_highlights',
     'clear_images',
+    'clear_job_history',
     'clear_page_pool',
     'clear_queue',
     'clear_watcher_overlay',
@@ -130,6 +134,7 @@ FROZEN_SLOTS = frozenset({
     'get_custom_blocks',
     'get_grid_layout',
     'get_image_thumbnail',
+    'get_job_history',
     'get_page_pool_status',
     'get_stack_history',
     'get_stack_presets',
@@ -213,6 +218,11 @@ FROZEN_SLOTS = frozenset({
     'set_captcha_provider',
     'get_captcha_api_key',
     'captcha_balance',
+    # 2026-09-22 I-63: the "Firefox auto with Extension" window (panels/firefox_auto.py)
+    'get_firefox_auto_config',
+    'save_firefox_auto_config',
+    'run_firefox_auto_test',
+    'stop_firefox_auto_test',
 })
 
 
@@ -233,6 +243,8 @@ EXPECTED_PACKING = {
     'url_queue': 9,
     'watcher_captcha': 10,
     'watcher_solver': 7,
+    'job_history': 2,
+    'firefox_auto': 4,
 }
 
 
@@ -269,7 +281,8 @@ def test_panel_packing():
     counts = _panel_slot_counts()
     assert counts == EXPECTED_PACKING, f"packing drift: {counts}"
     # 127 + 6 Captcha Watcher + restore_default_blocks (2026-10-02) + set_captcha_provider (B10, 2026-10-06)
-    assert sum(counts.values()) == 135
+    # +2 job_history slots +4 firefox_auto slots (I-63, 2026-09-22)
+    assert sum(counts.values()) == 141
 
 
 @pytest.mark.unit

@@ -29,7 +29,7 @@ class Emitter:
 class FakeBridge:
     def __init__(self, cancel=False, pause=False, stop_after=False):
         from types import SimpleNamespace
-        self.state = SimpleNamespace(prompt={"user_prompt": "go"},
+        self.state = SimpleNamespace(prompt={"user_prompt": "go"}, images=[],
                                      recalculate_progress=lambda: None)
         self.job_started = Emitter()
         self.job_finished = Emitter()
@@ -157,10 +157,9 @@ async def test_settled_image_never_acquires_a_page(runner_fakes):
     done = make_img("done.png")
     done.status, done.attempt_count, done.selected = ImageStatus.COMPLETED.value, 1, True
     fresh = make_img("fresh.png")
-    ctx = mpd.DispatchCtx(bridge=bridge, pool=pool, urls=make_urls(["t1"]),
-                          sem=asyncio.Semaphore(1), allowed={"t1"})
-    await mpd._run_with_sem(ctx, done)
-    await mpd._run_with_sem(ctx, fresh)
+    ctx = mpd.DispatchCtx(bridge=bridge, pool=pool, urls=make_urls(["t1"]), allowed={"t1"}, seed=[done, fresh])
+    await mpd._feed_tasks(ctx)  # B-1: the feeder replaced the per-image semaphore worker
+    await asyncio.gather(*ctx.tasks)
     assert (done.status, done.attempt_count) == (ImageStatus.COMPLETED.value, 1)
     assert fresh.status == ImageStatus.COMPLETED.value and fresh.attempt_count == 1
     assert runner_fakes["calls"] == 1
@@ -252,7 +251,7 @@ async def test_dispatch_parallel_runs_all_images(runner_fakes):
     imgs = [make_img("a.png", id="i1"), make_img("b.png", id="i2")]
     await mpd.dispatch_parallel(bridge, pool, imgs, make_urls(["t1", "t2"]))
     assert all(img.status == ImageStatus.COMPLETED.value for img in imgs)
-    assert bridge._run_state == "idle"
+    assert bridge._run_state == "running"  # S5: the dispatcher's tail logs + emits only (D-8)
     assert bridge.arena_emits >= 1
     assert any("Parallel batch complete" in msg for _, msg in bridge.logs if isinstance(msg, str))
 
@@ -293,7 +292,7 @@ async def test_dispatch_parallel_honours_stop_after(runner_fakes):
     img = make_img()
     await mpd.dispatch_parallel(bridge, pool, [img], make_urls(["t1"]))
     assert runner_fakes["calls"] == 0 and img.status != ImageStatus.PROCESSING.value
-    assert bridge._run_state == "idle"  # finalization still runs
+    assert any("Parallel batch complete" in m for _, m in bridge.logs)  # finalization still runs (log + emits only, S5)
 
 
 @pytest.mark.asyncio

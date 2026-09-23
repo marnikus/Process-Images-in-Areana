@@ -204,3 +204,56 @@ def test_describe_live_and_dropped(tmp_path):
     rep = store.describe_cooldown_file(str(path))
     assert (rep["exists"], rep["raw"], rep["live"]) == (True, 3, 1)
     assert sorted(rep["dropped"]) == ["junk", "old"]
+
+
+# ── guard paths: junk-tolerant private helpers + alias round-trips ──
+
+def test_save_aliases_merges_caps_and_filters_junk(tmp_path):
+    p = tmp_path / "cd.json"
+    store.save_aliases(p, {"t1": {"no": 1, "email": "a@b.c", "seen": 5},
+                           "": {"no": 2}, "t3": "junk",
+                           "t4": {"no": 0, "email": "", "seen": 0}})
+    assert store.load_aliases(p) == {"t1": {"no": 1, "email": "a@b.c", "seen": 5}}
+    store.save_aliases(p, {"t2": {"no": 2, "email": "a2@b.c", "seen": 1}})
+    assert set(store.load_aliases(p)) == {"t1", "t2"}   # merge keeps earlier tabs
+
+
+def test_load_aliases_non_dict_doc_returns_empty(tmp_path):
+    p = tmp_path / "cd.json"
+    p.write_text(json.dumps({"aliases": []}), encoding="utf-8")
+    assert store.load_aliases(p) == {}
+
+
+def test_sort_key_guards_junk_values():
+    assert store._entry_sort_key(("k", "junk")) == 0
+    assert store._entry_sort_key(("k", {"cooldown_until": "not-a-number"})) == 0
+
+
+def test_saved_jobs_bool_is_zero():
+    assert store._saved_jobs(True) == 0
+
+
+def test_merge_page_stats_skips_blank_url():
+    stats = {}
+    store._merge_page_stats(stats, {"url": "", "jobs_completed": 3})
+    assert stats == {}
+
+
+def test_save_pool_snapshot_skips_junk_pages(tmp_path):
+    p = tmp_path / "cd.json"
+
+    class FakePool:
+        def status_snapshot(self):
+            return {"pages": ["junk", {},
+                              {"tab_id": "t1", "url": "https://arena.ai/c",
+                               "cooldown_until": time.time() + 60}]}
+
+    store.save_pool_snapshot(p, FakePool())
+    assert "t1" in store.load_entries(p)
+
+
+def test_consume_entry_for_skips_non_dict_entries():
+    entries = {"junk": "nope",
+               "k": {"url": "https://arena.ai/c", "cooldown_until": time.time() + 30}}
+    key, entry = store.consume_entry_for(entries, "", "https://arena.ai/c")
+    assert key == "k" and "junk" in entries   # junk row survived, match consumed

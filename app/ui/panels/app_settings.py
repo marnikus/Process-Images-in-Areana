@@ -14,6 +14,10 @@ from pathlib import Path
 
 from app.core.models import UrlRow
 from app.core.persistence import load_preset, save_preset
+from app.services import job_history
+from app.services.live import debug_view
+from app.services.live.bus import live_bus
+from app.services.live.feed import commit_queue
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import arena_serialize, undo_entries
 
@@ -84,6 +88,26 @@ def apply_highlight_duration(state, config, data: dict) -> None:
     if "highlight_duration" in data:
         state.settings.highlight["duration_seconds"] = int(data["highlight_duration"])
         config.set_state(highlight_duration=int(data["highlight_duration"]))
+
+
+def apply_url_interval(bridge, data: dict) -> None:
+    """URL reconcile interval: clamp, persist, wake the loop so the next pass uses it (S6)."""
+    if debug_view.INTERVAL_KEY not in data:
+        return
+    ms = debug_view.clamp_interval_ms(data[debug_view.INTERVAL_KEY])
+    bridge.config.set_state(**{debug_view.INTERVAL_KEY: ms})
+    live_bus(bridge).wake("interval")
+    bridge._log(f"🔁 URL reconcile interval set to {ms} ms (Settings)", "info")
+
+
+def apply_history_limit(bridge, data: dict) -> None:
+    """Job-history display count: clamp, persist, re-push the rows, log (mirrors apply_url_interval)."""
+    if job_history.LIMIT_KEY not in data:
+        return
+    n = job_history.clamp_history_limit(data[job_history.LIMIT_KEY])
+    bridge.config.set_state(**{job_history.LIMIT_KEY: n})
+    job_history.emit_history(bridge)
+    bridge._log(f"🗂 Job history shows last {n} jobs", "info")
 
 
 def apply_watcher_timeouts(bridge, data: dict) -> None:
@@ -167,7 +191,7 @@ def build_arena_preset_doc(name: str, js_state: dict, config) -> dict:
 def restore_import_sections(state, data: dict) -> None:
     """Restore urls/folder/prompt from an import doc (state wire format)."""
     if "urls" in data:
-        state.urls = [UrlRow(**u) for u in data["urls"]]
+        state.urls = [UrlRow.from_dict(u) for u in data["urls"]]
     if "folder" in data:
         state.folder.update(data["folder"])
     if "prompt" in data:
@@ -267,6 +291,8 @@ class AppSettingsMixin:
             apply_simple_key(self.state, data, _OVERWRITE_SPEC)
             apply_highlight_duration(self.state, self.config, data)
             apply_watcher_timeouts(self, data)
+            apply_url_interval(self, data)
+            apply_history_limit(self, data)
             self._save_arena()
             push_settings_undo(self)
             return json.dumps({"ok": True})
@@ -294,8 +320,7 @@ class AppSettingsMixin:
             restore_import_sections(self.state, data)
             if "settings" in data:
                 apply_preset_settings(self.state, data["settings"])
-            self.state.recalculate_progress()
-            self._save_arena()
+            commit_queue(self, "preset", undo=False)
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -335,8 +360,7 @@ class AppSettingsMixin:
             restore_preset_cdp(self, doc)
             restore_preset_action_blocks(self, doc)
             restore_preset_cooldown(self, doc)
-            self.state.recalculate_progress()
-            self._save_arena()
+            commit_queue(self, "preset", undo=False)
             self._log(f"Arena preset loaded: {name}", "success")
             return json.dumps({"ok": True, "name": name})
         except Exception as e:

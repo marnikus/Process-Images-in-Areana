@@ -165,6 +165,8 @@ Stop flag checked only in outermost loop is not stop. Long-running phases must a
 
 Distinguish "stopped" from "failed" in return value — reusing `None` for both produced bogus errors. `asyncio.CancelledError` always propagates untouched; only `RunStopped` maps to `"stopped"`.
 
+Corollary (S5, 2026-09-20, D-5 / I-47) — **the converse: nothing but the user stops a live run.** `live/supervisor.run_live` treats no work / no usable tab / all tabs cooling / CDP down as *wait* states (throttled line + `LiveBus.wait`), never as an exit; only `cancel_current` (future cancel) and `stop_after_current` (`_stop_after`, honoured between images) end it. A pass body (`batch_orchestrator`, `multi_page_dispatcher`) may end its pass but must not end the run or touch the run state.
+
 Same as Old App RULE 7.
 
 ---
@@ -199,6 +201,10 @@ Two corollaries (same as Old App):
 A setting must not duplicate decision another setting already makes. Example: Don't have both `supported_types` in folder picker and `file_types` in settings that both filter same list invisibly. One source of truth.
 
 When setting retired, constructor must accept and discard its key (`extra.pop(dead, None)`), because `to_dict()` re-emits and would otherwise write dead key back into presets forever.
+
+Corollaries (S4/S5, 2026-09-20): **one queue-write funnel** — every queue mutation ends in `live.feed.commit_queue` (I-49); **one eligibility rule** — `core/run_scope` (`in_run_scope` for a pass, `in_live_scope` for the live plan, incl. the `max_attempts` rest rule), re-exported never copied; **one run-state writer** — `live.supervisor.set_run_state` (D-8, I-47): no other module assigns `_run_state` (source-locked tests). **One periodic URL writer** (S6, I-50) — `live.reconcile.reconcile_loop` at the one cadence `url_reconcile_interval_ms` (clamped by the one owner `debug_view.clamp_interval_ms`; the JS timer that raced it is deleted, source-locked); URL rows change through `commit_urls` (user) / `commit_urls_system` (reconciler, no undo) — never by a slot that saves without emitting.
+
+Corollary (S8, 2026-09-20): **one window table** — `core/window_catalog.WINDOWS` is the only hand-written list of windows; `WINDOW_IDS` / `WINDOW_TITLES` are derived from it and `constants.js` / `store.js` / `_PANEL_INITS` / `index.html` mirror it (I-51, `tests/test_window_catalog.py`). Never add a second id list or an icon/title map keyed by window id (the dead `WIN_ICONS` and the drifted `WINDOW_IDS` were L-8); a panel whose `data-window` id is not in the table is destroyed by the first grid render (L-5).
 
 Same as Old App RULE 10.
 
@@ -238,6 +244,10 @@ Corollary for "reset to default": restoring default tree is not enough when hidd
 Same as Old App RULE 13.
 
 For Arena, also applies to `AppState` persistence: `load_state()` must handle corrupt JSON gracefully, never crash, and `save_state()` uses atomic write (temp file + replace).
+
+Corollary (S5, 2026-09-20, L-2) — a persisted field must have a writer: `AppState.run_state` was saved on every write but never assigned (always `idle`); `supervisor.set_run_state` now writes it together with `bridge._run_state`, so what is read back is what the run was.
+
+Corollary (S7, 2026-09-20, I-53) — a persisted flag needs every builder to carry it: `UrlRow.receiver` is appended last on the dataclass (positional constructors survive), defaults to `False` (an unmarked row never flashes healthy), and both undo builders (`url_rows_from_js`, `arena_url_rows_from_js`) read it back — `tab_id` was once lost exactly there (B7).
 
 Corollary (B10, 2026-10-06) — **the UI is not a side effect of the disk write.** `save_arena_state` saves in its own `try` and ALWAYS emits the live state afterwards; a failed write is logged (once per distinct error per 10 s) and never skips the push. The atomic replace retries transient Windows sharing violations. The same shape applies in JS: a live-state apply restores each panel in isolation and reports the failing one — `try { a(); b(); c(); } catch (e) {}` around several panels is banned (one throw froze the Image Queue at `pending` for a whole run). Invariant I-39.
 
@@ -480,9 +490,25 @@ Steps 1–3 quote **fail lines** (RULE 16: nesting 4, CC 10, cognitive 15). Step
 
 ## RULE 20 — CAPTCHA policy (default manual; opt-in owner-authorized 2Captcha), respect ToS, user-authorized URLs only
 
-* **Default (OFF): do not bypass/defeat/solve CAPTCHA** — pause with `USER_ACTION_REQUIRED`, let the user solve manually.
-* **Opt-in (owner-authorized) = the Watcher switch (amendment 2026-10-02):** the job pipeline
-  itself NEVER solves — `handle_captcha` only detects, pauses and waits for the dialog to clear.
+* **The Watcher switch owns pipeline captcha scope (amendment 2026-09-20, S2).** One predicate,
+  `app/services/captcha/policy.captcha_in_scope(bridge)` — the only reader of `watcher_enabled` —
+  gates every pipeline site (`check_security`, the `CHECK_SECURITY` block, the submit/download
+  boundaries, the mid-generation `security_settler`, and `handle_captcha` itself).
+  **Watcher OFF ⇒ no pipeline captcha activity of any kind**: no probe, no `waiting_captcha` row, no
+  stat, recording, overlay, penalty or 🛡 line; `handle_captcha` returns `out_of_scope` before
+  touching the page and the generation timeout runs untouched (counting test with positive control:
+  `tests/test_watcher_off_zero_activity.py`). The stored key and the solver loop change the wait's
+  *wording* only, never its scope (RULE 10). The switch is read on every call — live in both directions.
+* **Watcher ON = detect and wait only:** the job pipeline itself NEVER solves — `handle_captcha`
+  only detects, pauses and waits for the dialog to clear (`USER_ACTION_REQUIRED` semantics).
+* **The wait is bounded and the pause is capped (amendment 2026-09-20, S3, I-52).** The one knob
+  `watcher_captcha_timeout_sec` (`policy.pause_cap_seconds`, 10…3600 s, default 300, read per call)
+  bounds the captcha wait (`policy.WaitDeadline` composed into the `stop` predicate —
+  `cooldown_service.wait_captcha_cleared` stays untouched) **and** caps how long a mid-generation
+  captcha settle may pause the generation timeout (`core/pause_clock.PauseClock`, one per generation
+  wait, cumulative). At the cap the job fails honestly as `wait_timeout` — retryable, no captcha
+  penalty, normal cooldown — never a silent stall and never a free pass. The overlay countdown shows
+  the same number; its WHY line (`policy.wait_reason`) names the Watcher as solver only when a key exists.
   Solving is the exclusive job of the Captcha Watcher (`app/services/captcha_watcher/`), which
   runs only while the user turns the Watcher ON, has stored their own API key in the Captcha
   window, and talks to 2Captcha only through the official SDK (`2captcha-python`,

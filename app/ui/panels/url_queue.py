@@ -11,11 +11,11 @@ import json
 from datetime import datetime
 
 from app.core.models import UrlRow
-from app.services.auto_connect import (
-    claim_unlinked_from_pool,
-    dedupe_linked_rows,
-    enabled_tab_ids,
-)
+from app.services.live.url_policy import (add_rows, dedupe_rows, defer_line, exit_line,
+                                           mark_receivers, pool_exits)
+from app.services.auto_connect import claim_unlinked_from_pool, enabled_tab_ids
+from app.services.run_state import schedule_coro
+from app.ui.panels.page_pool import leave_pool, rejoin_checked_rows
 from app.ui.qt_compat import Slot
 from app.ui.services import arena_serialize, undo_entries
 
@@ -55,34 +55,13 @@ def _urls_gate_error(bridge, urls) -> str:
 
 
 def _dedupe_state_rows(state_urls) -> tuple[list, int]:
-    """Repair legacy N-rows-per-tab state; returns (plan rows, removed)."""
-    rows = [{"id": u.id, "url": u.url, "tab_id": u.tab_id, "enabled": u.enabled}
-            for u in state_urls]
-    kept, dropped = dedupe_linked_rows(rows)
-    if not dropped:
-        return rows, 0
-    drop = {r["id"] for r in dropped}
-    state_urls[:] = [u for u in state_urls if u.id not in drop]
-    return kept, len(dropped)
-
-
-def _tab_already_owned(urls, tab_id: str) -> bool:
-    """One row per tab (I-33): never add a second."""
-    for u in urls:
-        if u.tab_id == tab_id:
-            return True
-    return False
+    """Delegation: the repair lives in `live.url_policy.dedupe_rows`."""
+    return dedupe_rows(state_urls)
 
 
 def _add_missing_rows(urls, adds) -> int:
-    """Append rows for tabs none owns yet; returns count added."""
-    added = 0
-    for url, tab_id in adds:
-        if _tab_already_owned(urls, tab_id):
-            continue
-        urls.append(UrlRow.create(url, enabled=True, tab_id=tab_id))
-        added += 1
-    return added
+    """Delegation: the append lives in `live.url_policy.add_rows`."""
+    return add_rows(urls, adds)
 
 
 def push_urls_undo(bridge) -> None:
@@ -120,10 +99,55 @@ def commit_urls(bridge) -> None:
 
     Bug 2026-10-02: slots that saved without emitting left the table stale
     until the next unrelated refresh; `_save_arena` emits `arena_state_updated`
-    and `push_urls_undo` records the global undo entry (RULE 12).
+    and `push_urls_undo` records the global undo entry (RULE 12). Every
+    commit also re-asserts the checkbox→pool gate (D-4), so an undo restore
+    of an unchecked row leaves the pool again without waiting for a pass.
     """
+    mark_receivers(bridge.state.urls, getattr(bridge, "_page_pool", None))
+    enforce_pool_membership(bridge)
+    enter_pool_for_checked(bridge)
     bridge._save_arena()
     push_urls_undo(bridge)
+
+
+def commit_urls_system(bridge) -> None:
+    """`commit_urls` for SYSTEM changes (the reconciler): persist + emit, no undo entry (I-37)."""
+    mark_receivers(bridge.state.urls, getattr(bridge, "_page_pool", None))
+    bridge._save_arena()
+
+
+def _rejoin_targets(bridge, pool) -> list:
+    """Checked rows whose tab is not in the pool — the join half's input (I-56)."""
+    return [u.tab_id for u in bridge.state.urls
+            if u.enabled and u.tab_id and pool.get_page(u.tab_id) is None]
+
+
+def enter_pool_for_checked(bridge) -> list:
+    """I-56 join half: a re-checked row's tab rejoins NOW, not on the next pass.
+
+    The exit half (`enforce_pool_membership`) runs in the same commit, so a
+    re-check is instant; the pass stays the fallback for restore paths.
+    """
+    pool = getattr(bridge, "_page_pool", None)
+    if pool is None:
+        return []
+    targets = _rejoin_targets(bridge, pool)
+    if targets:
+        schedule_coro(bridge, rejoin_checked_rows(bridge, targets))
+        bridge._log(f"♻️ Checked URLs not pooled — rejoining {len(targets)} tab(s) now", "info")
+    return targets
+
+
+def enforce_pool_membership(bridge) -> None:
+    """The URL list owns pool membership (I-56/I-58): a hand-edited row's worker leaves now."""
+    leaves, deferred = pool_exits(bridge.state.urls, getattr(bridge, "_page_pool", None))
+    for exit in leaves:
+        if leave_pool(bridge, exit.tab_id):
+            bridge._log(exit_line(exit), "info")
+    for exit in deferred:
+        bridge._log(defer_line(exit), "info")
+    if leaves:
+        bridge._emit_pool_status()
 
 
 def _find_url(urls, url_id: str):

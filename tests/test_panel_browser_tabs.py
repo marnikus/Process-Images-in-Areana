@@ -17,12 +17,12 @@ from app.browser.page_status import PageInfo, PageStatus
 from app.core.models import UrlRow
 from app.persistence.config_manager import ConfigManager
 from app.ui.panels import browser_tabs as bt_mod
+from app.ui.panels import page_pool as pp_mod
 from app.ui.panels.browser_tabs import BrowserTabsMixin
 from app.ui.panels.page_pool import (
     PagePoolMixin,
     do_connect_page_pool,
     reset_pool_dicts,
-    reset_stuck_page,
 )
 from app.ui.qt_compat import Signal
 
@@ -71,7 +71,7 @@ def make_bridge(cdp, config, urls=(), pool=None, **extra):
     logs = []
     host = SimpleNamespace(
         cdp=cdp, config=config,
-        state=SimpleNamespace(urls=list(urls), recalculate_progress=lambda: None),
+        state=SimpleNamespace(urls=list(urls), images=[], recalculate_progress=lambda: None),
         _page_pool=pool if pool is not None else PagePool(),
         _log=lambda msg, level="info": logs.append((level, msg)),
         logs=logs,
@@ -79,7 +79,6 @@ def make_bridge(cdp, config, urls=(), pool=None, **extra):
         _emit_arena_state=lambda: None,
         _emit_pool_status=lambda: None,
         _persist_cooldowns=lambda: None,
-        _schedule_coro=lambda coro: None,
         connection_status=Emitter(), tab_match_result=Emitter(),
         tabs_received=Emitter(), page_pool_updated=Emitter(),
         _last_connect_ws="", _last_connect_ts=0.0, _connect_in_progress=False,
@@ -114,20 +113,27 @@ async def test_reset_pool_dicts():
     assert pool._clients == {} and pool._controllers == {}
 
 
-async def test_reset_stuck_page_paths(cfg):
+async def test_clear_time_paths(cfg):
+    """Clear time (D-5) freed the stale page the old `reset_stuck_page` refused:
+    the run decides liveness, not a leftover `current_image` (round 2026-09-21)."""
     pool = PagePool()
     pool.add_page(PageInfo(tab_id="t1", ws_url="ws://x/1", title="A", url="u"))
+    bridge, _logs = make_host((PagePoolMixin,), _page_pool=pool, config=cfg,
+                              page_pool_updated=Emitter(), _log=lambda m, l="info": None,
+                              _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)
     page = pool.get_page("t1")
-    bridge = make_bridge(cdp=None, config=cfg, pool=pool)
-    page.status = PageStatus.BUSY  # stuck status → force reset
-    assert json.loads(reset_stuck_page(bridge, "t1", page))["ok"] is True
-    assert page.status == PageStatus.STEADY
-    # live job on the tab → refused even when stuck
+    page.status = PageStatus.BUSY  # stale: no run owns this tab any more
+    reply = json.loads(bridge.reset_page_cooldown("t1"))
+    assert reply["ok"] is True and reply["job_cleared"] is True
+    assert page.status == PageStatus.STEADY and page.current_image is None
+    # a live job keeps its page — only its countdown is cleared
     page.status = PageStatus.BUSY
     page.current_image = "i1.png"
-    assert "job still running" in json.loads(reset_stuck_page(bridge, "t1", page))["error"]
-    page.current_image = None
-    assert json.loads(reset_stuck_page(bridge, "ghost", page))["ok"] is False
+    bridge._batch_future = SimpleNamespace(done=lambda: False)
+    reply = json.loads(bridge.reset_page_cooldown("t1"))
+    assert reply == {"ok": True, "was": 0, "busy": True, "job_cleared": False}
+    assert page.current_image == "i1.png" and page.status == PageStatus.BUSY
+    assert json.loads(bridge.reset_page_cooldown("ghost"))["ok"] is False
 
 
 async def test_do_connect_page_pool_success_and_failure(cdp_server, cfg):
@@ -152,8 +158,7 @@ def test_pool_slots_status_clear_disconnect(cfg):
     pool.add_page(PageInfo(tab_id="t1", ws_url="ws://x/1", title="A", url="u"))
     host, _ = make_host((PagePoolMixin,), _page_pool=pool, config=cfg,
                         page_pool_updated=Emitter(), _log=lambda m, l="info": None,
-                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None,
-                        _schedule_coro=lambda coro: None)
+                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)
     snap = json.loads(host.get_page_pool_status())
     assert snap["total"] == 1 and any(c == (json.dumps(snap, ensure_ascii=False),)
                                       for c in host.page_pool_updated.calls)
@@ -164,23 +169,24 @@ def test_pool_slots_status_clear_disconnect(cfg):
     assert json.loads(host.disconnect_page_pool("t2"))["error"] == "not found"
     empty = make_host((PagePoolMixin,), _page_pool=None, config=cfg,
                       page_pool_updated=Emitter(), _log=lambda m, l="info": None,
-                      _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None,
-                      _schedule_coro=lambda coro: None)[0]
+                      _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)[0]
     assert json.loads(empty.get_page_pool_status())["total"] == 0
     assert json.loads(empty.clear_page_pool())["cleared"] == 0
     assert json.loads(empty.disconnect_page_pool("t"))["error"] == "pool not initialized"
 
 
-def test_pool_slots_connect_and_cooldowns(cfg):
+def test_pool_slots_connect_and_cooldowns(cfg, monkeypatch):
     pool = PagePool()
     queued = []
+    # L-6 de-masked: spy on the real seam, no private scheduler on the host
+    monkeypatch.setattr(pp_mod, "schedule_coro", lambda bridge, coro: queued.append(coro))
     host, _ = make_host((PagePoolMixin,), _page_pool=pool, config=cfg,
                         page_pool_updated=Emitter(), _log=lambda m, l="info": None,
-                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None,
-                        _schedule_coro=queued.append)
+                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)
     assert json.loads(host.connect_page_pool(""))["error"] == "empty ws_url"
     assert json.loads(host.connect_page_pool("ws://127.0.0.1:9222/devtools/page/t1"))["ok"] is True
     assert len(queued) == 1
+    queued[0].close()
     assert json.loads(host.get_cooldown_config())["ok"] is True
     set_reply = json.loads(host.set_cooldown_config(json.dumps(
         {"enabled": True, "min_seconds": 60, "captcha_penalty_seconds": 4,
@@ -207,8 +213,7 @@ def test_pool_stop_tab_job(cfg):
     pool.add_page(PageInfo(tab_id="tj", ws_url="ws://x/j", title="J", url="u"))
     host, _ = make_host((PagePoolMixin,), _page_pool=pool, config=cfg,
                         page_pool_updated=Emitter(), _log=lambda m, l="info": None,
-                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None,
-                        _schedule_coro=lambda coro: None)
+                        _emit_pool_status=lambda: None, _persist_cooldowns=lambda: None)
     assert json.loads(host.stop_tab_job("tj"))["error"] == "no live job on this tab"
     pool.get_page("tj").current_image = "img.png"
     assert json.loads(host.stop_tab_job("tj"))["ok"] is True
@@ -378,68 +383,36 @@ async def test_fetch_tabs_slot_and_diagnose(cdp_server, cfg, monkeypatch):
     assert json.loads(none_host.diagnose_chrome())["error"] == "CDP not available"
 
 
-async def test_auto_scan_plan_apply_report(cfg):
-    from app.services.auto_connect import AutoConnectPlan
-    tabs = [tab("t1", "A", "https://arena.ai/c/direct")]
-    row = UrlRow.create("https://arena.ai/c/direct")  # unlinked row for the tab
-    bridge = make_bridge(cdp=None, config=cfg, urls=[row])
-    # planner works on row dicts (the _dedupe_state_rows shape)
-    rows = [{"id": row.id, "url": row.url, "tab_id": None, "enabled": True}]
-    plan = bt_mod.plan_auto_sync(bridge, tabs, "arena.ai", rows)
-    assert plan.add or plan.claim or plan.connect  # something to do
-    changed = bt_mod.apply_auto_plan(bridge, plan)
-    assert changed is True
-    linked = [u for u in bridge.state.urls if u.tab_id]
-    assert any(u.tab_id == "t1" for u in linked)  # claimed or added
-    # presence + report
-    presence = (0, [])
-    assert bt_mod.plan_has_changes(plan, *presence) is True
-    bridge._emit_pool_status = lambda: bridge.logs.append(("pool", "emitted"))
-    bt_mod.report_auto_plan(bridge, plan, presence, "manual")
-    assert any("Auto-connect:" in msg for _, msg in bridge.logs)
-    # no changes → manual still logs, auto stays quiet
-    quiet = []
-    b2 = make_bridge(cdp=None, config=cfg, urls=[UrlRow.create(
-        "https://arena.ai/c/direct", tab_id="t1")])
-    empty_plan = AutoConnectPlan()
-    assert bt_mod.apply_auto_plan(b2, empty_plan) is False
-    assert bt_mod.plan_has_changes(empty_plan, 0, []) is False
-    b2._log = lambda m, l="info": quiet.append(m)
-    bt_mod.report_auto_plan(b2, empty_plan, (0, []), "manual")
-    assert any("no changes" in m for m in quiet)
-    b3 = make_bridge(cdp=None, config=cfg)
-    b3._log = lambda m, l="info": quiet.append(m)
-    quiet_before = len(quiet)
-    bt_mod.report_auto_plan(b3, AutoConnectPlan(), (0, []), "auto")
-    assert len(quiet) == quiet_before  # auto source stays silent on no-change
-    # prune: plan.remove holds row ids whose tabs vanished
-    gone_row = UrlRow.create("https://arena.ai/c/direct", tab_id="t1")
-    b4 = make_bridge(cdp=None, config=cfg, urls=[gone_row])
-    gone_plan = AutoConnectPlan()
-    gone_plan.remove = [gone_row.id]
-    assert bt_mod.prune_auto_rows(b4, gone_plan) == 1
-    assert b4.state.urls == []
-    assert bt_mod.prune_auto_rows(b4, AutoConnectPlan()) == 0
-
-
-async def test_auto_prune_allowed_and_join(cdp_server, cfg, monkeypatch):
+async def test_popup_and_primary_guards(cfg, monkeypatch):
+    """Popup: no targets warns; raise failure counts 0. Primary: a broken pool answers '' and the tick never raises."""
+    bridge = make_bridge(cdp=None, config=cfg)
+    await bt_mod.do_popup_url_tabs(bridge)
+    assert any("no active URL tabs" in m for _, m in bridge.logs)
     pool = PagePool()
-    client = make_client(cdp_server)
-    bridge = make_bridge(cdp=client, config=cfg, pool=pool)
-    tabs = [tab("t1", "A", "https://arena.ai/c")]
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is True
-    bridge._run_state = "running"
-    assert bt_mod.auto_prune_allowed(bridge, tabs) is False
-    bridge._run_state = "idle"
-    assert bt_mod.auto_prune_allowed(bridge, []) is False
-    # join skips empty sockets
-    joined = []
+    pool.add_page(PageInfo(tab_id="t1", ws_url="ws://x/t1", title="Arena", url="https://arena.ai", is_connected=True))
+    bridge = make_bridge(cdp=None, config=cfg, pool=pool, urls=[UrlRow.create("https://arena.ai", tab_id="t1")])
+    monkeypatch.setattr(bt_mod, "raise_window_titles", lambda titles: (_ for _ in ()).throw(RuntimeError("no desktop")))
+    await bt_mod.do_popup_url_tabs(bridge)
+    assert any("0/1 windows" in m for _, m in bridge.logs)
+    bridge._page_pool = SimpleNamespace(_pages=None)  # `.values()` on None → guarded ''
+    assert bt_mod.primary_ws(bridge) == ""
+    bridge.cdp = SimpleNamespace(is_connected=False)
+    bridge._ensure_running = False
+    await bt_mod.do_ensure_primary(bridge)  # ws '' → nothing to connect, no exception
+    assert bridge._ensure_running is False
+    host = make_host((BrowserTabsMixin,), cdp=None, _page_pool=None)[0]
+    assert json.loads(host.popup_url_tabs())["error"] == "pool not initialized"
+    assert json.loads(host.ensure_primary_connected()) == {"ok": False}
 
-    async def fake_join(b, ws):
-        joined.append(ws)
-    monkeypatch.setattr(bt_mod, "do_connect_page_pool", fake_join)
-    await bt_mod.join_new_tabs(bridge, ["ws://a/1", "", "ws://a/2"])
-    assert joined == ["ws://a/1", "ws://a/2"]
+
+def test_live_deps_wires_the_ui_seam(cfg):
+    """S6: the reconciler's callables come from ui land — fetch via cdp, join via the pool, commit without undo."""
+    from app.services.live.reconcile import LiveDeps
+    bridge = make_bridge(cdp=None, config=cfg)
+    deps = bt_mod.live_deps(bridge)
+    assert isinstance(deps, LiveDeps) and deps.log is bridge._log
+    assert deps.commit.func.__name__ == "commit_urls_system"
+    assert deps.fetch_tabs.__name__ == "fetch_tabs" and deps.join_tab.__name__ == "join_tab"
 
 
 async def test_auto_scan_pass_end_to_end(cdp_server, cfg):
@@ -452,22 +425,26 @@ async def test_auto_scan_pass_end_to_end(cdp_server, cfg):
     # arena.ai row added + pool joined; non-matching tab ignored
     assert any(u.url == "https://arena.ai/c/direct" for u in bridge.state.urls)
     assert pool.get_page("t1") is not None and pool.get_page("t2") is None
-    assert any("Auto-connect:" in msg for _, msg in bridge.logs)
-    # second scan: no changes, pool presence kept
+    assert any("Reconcile:" in msg for _, msg in bridge.logs)
+    # second manual scan (D-2, 2026-09-21): Reparse sweeps first — the row is rebuilt with a fresh id
+    first_id = bridge.state.urls[0].id
     await bt_mod.auto_scan_pass(bridge, "manual")
-    assert any("no changes" in msg for _, msg in bridge.logs)
-    # busy guard + exception path
+    assert any("🧹 Reparse: cleared 1 URL row(s)" in msg for _, msg in bridge.logs)
+    assert len(bridge.state.urls) == 1 and bridge.state.urls[0].id != first_id
+    assert pool.get_page("t1") is not None and pool.get_page("t2") is None  # pool presence kept
+    # busy guard + exception path (the pass owns the `_auto_scan_running` flag)
     bridge._auto_scan_running = True
-    await bt_mod.do_auto_connect_scan(bridge, "auto")  # no-op
+    await bt_mod.auto_scan_pass(bridge, "auto")  # no-op
     assert bridge._auto_scan_running is True
     bridge._auto_scan_running = False
 
     async def boom():
         raise RuntimeError("scan down")
     client.fetch_tabs = boom
-    await bt_mod.do_auto_connect_scan(bridge, "auto")
+    await bt_mod.auto_scan_pass(bridge, "auto")
     assert bridge._auto_scan_running is False
-    assert any("scan skipped" in msg for _, msg in bridge.logs)
+    assert any("Reconcile skipped" in msg for _, msg in bridge.logs)
+    assert len(bridge.state.urls) == 1  # a failed fetch never removes
 
 
 # ── browser_tabs: popup / primary / slots ──
@@ -554,3 +531,102 @@ def test_browser_tab_slot_guards(cfg, monkeypatch):
     coro = queued.pop()
     assert coro.cr_frame is not None
     coro.close()
+
+
+# ── scan seam + connect-path helpers ──
+
+def test_scan_targets_follows_settings(monkeypatch, cfg):
+    from app.browser.browsers import ScanNote  # noqa: F401 (sibling import check)
+    bridge = make_bridge(cdp=None, config=cfg)
+    cfg.set_state(cdp_browsers={"chrome": {"enabled": False}})
+    assert bt_mod.scan_targets(bridge) == ([], [])
+    cfg.set_state(cdp_browsers={})
+    monkeypatch.setattr("app.browser.cdp.fetch_tabs_sync",
+                        lambda host, port, timeout=3.0: ([tab("t1")], "", ["http"]))
+    rows, notes = bt_mod.scan_targets(bridge)
+    assert [r.id for r in rows] == ["t1"] and notes == []
+    monkeypatch.setattr("app.browser.cdp.fetch_tabs_sync",
+                        lambda host, port, timeout=3.0: ([], "connection refused", ["http"]))
+    rows, notes = bt_mod.scan_targets(bridge)
+    assert rows == [] and len(notes) == 1 and notes[0].reason == "connection refused"
+
+
+def test_scan_settings_fallback_without_config():
+    rows, base, host = bt_mod.scan_settings(SimpleNamespace(cdp=None))
+    assert rows == {} and base == 9222 and host == "127.0.0.1"
+
+
+def test_report_scan_notes_logs_each_reason_once(cfg):
+    from app.browser.browsers import ScanNote
+    bridge = make_bridge(cdp=None, config=cfg)
+    note = ScanNote(browser="chrome", host="127.0.0.1", port=9222,
+                    reason="down", protocol="http")
+    bt_mod.report_scan_notes(bridge, [note])
+    bt_mod.report_scan_notes(bridge, [note])       # same reason → silent
+    downs = sum("chrome: down" in m for _lvl, m in bridge.logs)
+    assert downs == 1
+    bt_mod.report_scan_notes(bridge, [])           # recovered → reason dropped
+    bt_mod.report_scan_notes(bridge, [note])       # fails again → logged again
+    assert sum("chrome: down" in m for _lvl, m in bridge.logs) == 2
+
+
+def test_pool_page_for_and_announce(cfg):
+    bridge = make_bridge(cdp=SimpleNamespace(_current_tab_id="t1", _host="127.0.0.1",
+                                             _port=9222), config=cfg)
+    row = bt_mod.pool_page_for(bridge, ("t1", "ws://127.0.0.1:9222/devtools/page/t1",
+                                        "Arena", "https://arena.ai/c"))
+    assert isinstance(row, PageInfo) and row.tab_id == "t1"
+    bt_mod.announce_tab_connected(bridge, "ws://127.0.0.1:9222/devtools/page/t1")
+    assert bridge.connection_status.calls == [("connected",)]
+    assert any(lvl == "success" for lvl, _m in bridge.logs)
+
+
+async def test_report_no_tabs_survives_diagnose_failure(cfg):
+    def boom():
+        raise RuntimeError("diagnose down")
+
+    bridge = make_bridge(cdp=SimpleNamespace(diagnose_sync=boom, _host="127.0.0.1",
+                                             _port=9222), config=cfg)
+    await bt_mod.report_no_tabs(bridge, "arena")
+    assert bridge.tab_match_result.calls == [("arena", "[]")]
+    assert any(lvl == "warn" and "No Chrome tabs found" in m for lvl, m in bridge.logs)
+
+
+async def test_merge_rows_and_active_client_rows(cfg):
+    bridge = make_bridge(cdp=SimpleNamespace(fetch_tabs=fake_fetch([tab("t2")])), config=cfg)
+    merged = bt_mod.merge_rows([tab("t1")], [tab("t1"), tab("t2"), SimpleNamespace(id="", tab_id="", title="", url="", ws_url="")])
+    assert [r.id for r in merged] == ["t1", "t2", ""]   # dupe skipped, keyless kept
+    rows = await bt_mod.active_client_rows(bridge)
+    assert [r.id for r in rows] == ["t2"]
+    assert await bt_mod.active_client_rows(make_bridge(cdp=None, config=cfg)) == []
+
+    async def boom():
+        raise RuntimeError("x")
+
+    bad = make_bridge(cdp=SimpleNamespace(fetch_tabs=boom), config=cfg)
+    assert await bt_mod.active_client_rows(bad) == []
+
+
+def test_base_port_and_claim_guards(cfg):
+    assert bt_mod._base_port("junk") == 9222       # int() blows up → default
+    assert bt_mod._base_port(0) == 9222            # out of range → default
+    assert bt_mod._base_port(9333) == 9333
+    bridge = make_bridge(cdp=None, config=cfg)
+    bridge._last_find_ts = "junk"                  # dupe-check arithmetic blows up
+    assert bt_mod.claim_find_slot(bridge, " arena ") == "arena"   # except fallback
+
+
+async def test_live_tab_rows_scan_failure_and_fallback(cfg, monkeypatch):
+    bridge = make_bridge(cdp=SimpleNamespace(fetch_tabs=fake_fetch([tab("t9")])), config=cfg)
+
+    def explode(_bridge):
+        raise RuntimeError("scan blew up")
+
+    monkeypatch.setattr(bt_mod, "scan_targets", explode)
+    assert await bt_mod.live_tab_rows(bridge) == []
+    assert "scan blew up" in bridge._scan_failed
+
+    monkeypatch.setattr(bt_mod, "scan_targets", lambda _b: ([], []))
+    rows = await bt_mod.live_tab_rows(bridge)
+    assert [r.id for r in rows] == ["t9"]          # client's own list is the last resort
+    assert bridge._scan_failed == ""

@@ -1,13 +1,16 @@
 """Popup-on-top — raise desktop windows whose title matches a tab.
 
-Utils leaf: stdlib ctypes only, no app imports. Enumeration runs on
-Windows; every other platform is a no-op returning 0. All raising is
-best effort (the OS may refuse the foreground).
+Utils leaf: stdlib ctypes only; the window enumeration itself lives in the
+sibling `win_find` (one owner for "which windows exist"). Every non-Windows
+platform is a no-op returning 0. All raising is best effort (the OS may
+refuse the foreground).
 """
 
 from __future__ import annotations
 
 import sys
+
+from app.utils.win_find import visible_windows
 
 _CHROME_SUFFIX = " - google chrome"
 _SW_RESTORE = 9
@@ -51,50 +54,9 @@ def pick_windows(windows, wanted) -> list:
     return picked
 
 
-def _window_title(user32, hwnd) -> str:
-    """Window text or '' when unreadable."""
-    import ctypes
-
-    try:
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length <= 0:
-            return ""
-        buf = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(hwnd, buf, length + 1)
-        return buf.value or ""
-    except Exception:
-        return ""
-
-
-def _enum_callback(out: list, user32):
-    """EnumWindows callback collecting visible window titles."""
-    import ctypes
-    from ctypes import wintypes
-
-    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-    def _cb(hwnd, _lparam):
-        try:
-            if user32.IsWindowVisible(hwnd):
-                out.append((hwnd, _window_title(user32, hwnd)))
-        except Exception:
-            pass
-        return True
-
-    return _cb
-
-
 def _enum_visible_windows():
     """[(hwnd, title)] of visible titled windows (Windows only)."""
-    import ctypes
-
-    user32 = ctypes.windll.user32
-    out = []
-    try:
-        cb = _enum_callback(out, user32)
-        user32.EnumWindows(cb, 0)
-    except Exception:
-        return []
-    return [(h, t) for h, t in out if t]
+    return [(hwnd, title) for hwnd, title, _pid in visible_windows()]
 
 
 def _raise_handles(handles) -> int:
@@ -120,5 +82,15 @@ def raise_window_titles(wanted) -> int:
         return 0
     try:
         return _raise_handles(pick_windows(_enum_visible_windows(), want))
+    except Exception:
+        return 0
+
+
+def raise_handles(handles) -> int:
+    """Raise already-found window handles (the finder half lives in `win_find`)."""
+    if sys.platform != "win32":
+        return 0
+    try:
+        return _raise_handles(handles)
     except Exception:
         return 0

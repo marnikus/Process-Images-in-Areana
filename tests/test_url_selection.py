@@ -178,5 +178,4 @@ def test_add_missing_rows_never_doubles_a_tab():
     added = bridge_mod._add_missing_rows(urls, [(URL_A, "t1"), (URL_A, "t2")])
     assert added == 1 and len(urls) == 2
     assert urls[1].tab_id == "t2" and urls[1].enabled is True
-    assert bridge_mod._tab_already_owned(urls, "t1") is True
-    assert bridge_mod._tab_already_owned(urls, "t9") is False
+    assert bridge_mod._add_missing_rows(urls, [(URL_A, "t1"), (URL_A, "t2")]) == 0  # both owned now

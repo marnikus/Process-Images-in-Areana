@@ -66,7 +66,9 @@ def make_bridge(pool, config_dir=None, with_service=True):
         _page_pool=pool,
         _log=lambda m, l="info": logs.append((m, l)),
         _emit_pool_status=lambda: logs.append(("emit", "")),
-        config=SimpleNamespace(get_state=lambda k, d=None: ({"watcher_captcha_timeout_sec": 300}).get(k, d)),
+        # S2: the Watcher switch is load-bearing — these tests exercise the ON (detect → wait) path
+        config=SimpleNamespace(get_state=lambda k, d=None: (
+            {"watcher_captcha_timeout_sec": 300, "watcher_enabled": True}).get(k, d)),
         _logs=logs,
     )
     if with_service and config_dir is not None:
@@ -127,7 +129,9 @@ async def test_pipeline_waits_and_records_never_solves(monkeypatch, isolated_con
     d = bridge._captcha_service().stats.to_dict()
     assert d["detected_total"] == 1 and d["manual_solved"] == 1
     assert any("CAPTCHA_WAITING" in m and "awaiting your solve" in m for m, _ in bridge._logs)
-    assert ctrl.overlay_calls and "turn the Watcher ON" in ctrl.overlay_calls[-1]["sub"]
+    # S3 / D-15: no solver key ⇒ the WHY line asks the user and never promises a solve
+    assert ctrl.overlay_calls and "solve it in Chrome" in ctrl.overlay_calls[-1]["sub"]
+    assert "solving" not in ctrl.overlay_calls[-1]["sub"]
     assert all("findCfgCallback" not in js for js in probe_payloads(ctrl))  # never injects
 
 
@@ -151,12 +155,13 @@ async def test_key_present_does_not_make_pipeline_solve(monkeypatch, isolated_co
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_watcher_running_labels_the_wait(monkeypatch, isolated_config_dir):
-    """Watcher ON → the overlay says who is solving; outcome method = watcher."""
+    """Watcher loop running with a key → the overlay says who is solving; outcome method = watcher."""
     instant_sleep(monkeypatch)
     pool = PagePool()
     pool.add_page(make_info("t1"))
     bridge = make_bridge(pool, isolated_config_dir)
     bridge._captcha_watcher = SimpleNamespace(running=True)
+    bridge._captcha_service().apply_settings("k" * 32, 300)  # S3 / D-15: the wording follows the key
     ctrl = FakeCtrl(visible_seq=[True, False])
     outcome = await handle_captcha(CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1"))
     assert outcome.status == "manual" and outcome.method == "watcher"
@@ -248,7 +253,8 @@ async def test_every_helper_absorbs_failures(monkeypatch, isolated_config_dir):
     pool.get_page = boom  # after we captured `page`
     bridge = make_bridge(pool, isolated_config_dir)
     bridge._emit_pool_status = boom
-    bridge.config.get_state = boom
+    # S2: the scope read is the gate itself (fail-closed = OFF); every OTHER config read explodes
+    bridge.config.get_state = lambda k, d=None: True if k == "watcher_enabled" else boom()
     bridge._captcha_watcher = SimpleNamespace()  # no `running` attr → fail closed
     svc = CaptchaService(str(isolated_config_dir))
     svc.stats.record = boom
@@ -265,7 +271,9 @@ async def test_every_helper_absorbs_failures(monkeypatch, isolated_config_dir):
     ctx = CaptchaCtx(ctrl=ctrl, pool=pool, bridge=bridge, tab_id="t1", log=boom)
     outcome = await handle_captcha(ctx)
     assert outcome.status == "manual"
-    assert page.pending_penalty == 900  # penalty survives all the chaos
+    # the penalty survives all the chaos as a live timer (D0-1: the page was
+    # resting, so it cools now instead of parking a frozen "+15:00")
+    assert page.is_cooling() and page.remaining_seconds() > 0
 
 
 @pytest.mark.unit

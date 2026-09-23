@@ -58,7 +58,7 @@ window.PagePoolActions = {
     b.disconnect_page_pool(tabId, (res)=>{
       try {
         const r = JSON.parse(res);
-        LogConsole.log(r.ok ? `Pool page ${tabId.slice(0,8)} disconnected` : 'Disconnect failed '+r.error, r.ok?'info':'error');
+        LogConsole.log(r.ok ? `Pool page ${window.TabLabel.of(tabId)} disconnected` : 'Disconnect failed '+r.error, r.ok?'info':'error');
         this.refresh();
       } catch {}
     });
@@ -70,10 +70,18 @@ window.PagePoolActions = {
     b.reset_page_cooldown(tabId, (res)=>{
       try {
         const r = JSON.parse(res);
-        LogConsole.log(r.ok ? `♻️ Cooldown reset for ${tabId.slice(0,8)} — tab ready` : 'Reset failed: '+r.error, r.ok?'success':'error');
+        // D-5: the reply now says what was removed — and a live job keeps its page.
+        LogConsole.log(r.ok ? this._clearMsg(tabId, r) : 'Reset failed: '+r.error, r.ok?(r.busy?'warn':'success'):'error');
         this.refresh();
       } catch {}
     });
+  },
+
+  _clearMsg(tabId, r) {
+    const label = window.TabLabel.of(tabId);
+    const was = (window.PagePoolPanel ? window.PagePoolPanel.fmt(r.was || 0) : `${r.was || 0}s`);
+    if (r.busy) return `⏳ Clear time: ${label} still busy — ${was} removed, the job keeps its page`;
+    return `♻️ Clear time: ${label} ready now — ${was} removed`;
   },
 
   _parseMinutes(val) {
@@ -91,7 +99,7 @@ window.PagePoolActions = {
     b.set_page_cooldown(tabId, secs, (res)=>{
       try {
         const r = JSON.parse(res);
-        LogConsole.log(r.ok ? `⏳ Cooldown for ${tabId.slice(0,8)} set to ${this._store().fmt(secs)}` : 'Edit failed: '+r.error, r.ok?'info':'error');
+        LogConsole.log(r.ok ? `⏳ Cooldown for ${window.TabLabel.of(tabId)} set to ${this._store().fmt(secs)}` : 'Edit failed: '+r.error, r.ok?'info':'error');
         this.refresh();
       } catch {}
     });
@@ -117,17 +125,5 @@ window.PagePoolActions = {
     } catch(e){ console.warn('pool onUpdate failed', e); }
   },
 
-  tickCountdowns() {
-    if (!this._store().snapAt) return;
-    const elapsed = Math.floor((Date.now() - this._store().snapAt) / 1000);
-    let expired = false;
-    document.querySelectorAll('[data-cool-tab]').forEach(el => {
-      const left = Math.max(0, parseInt(el.getAttribute('data-cool-left') || '0', 10) - elapsed);
-      const txt = el.textContent;
-      const suffix = txt.includes('/') ? txt.slice(txt.indexOf('/')) : '';
-      el.textContent = this._store().fmt(left) + (suffix ? ' ' + suffix : '');
-      if (left <= 0) expired = true;
-    });
-    if (expired) { this._store().snapAt = 0; this.refresh(); }
-  },
+  tickCountdowns() { return window.PagePoolTicker.tick(); },
 };

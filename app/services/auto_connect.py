@@ -123,6 +123,15 @@ def prunable_row_ids(rows: Any, live_keys) -> list:
     return gone
 
 
+def _row_allows_rejoin(rows_by_tab: dict, key: str) -> bool:
+    """A tab owned by an UNCHECKED row never auto-rejoins the pool (D-5, 2026-09-21).
+
+    No row / legacy dict without the key counts as allowed (UrlRow.enabled's True default).
+    """
+    owner = rows_by_tab.get(key)
+    return owner is None or bool(owner.get("enabled", True))
+
+
 def plan_auto_connect(tabs: Any, pattern: Any, rows: Any, pooled: Any) -> AutoConnectPlan:
     """Pure plan: rows to add/claim, sockets to join, ids gone stale."""
     pooled = set(pooled or [])
@@ -134,31 +143,38 @@ def plan_auto_connect(tabs: Any, pattern: Any, rows: Any, pooled: Any) -> AutoCo
         if not matches_pattern(getattr(tab, "url", ""), pattern):
             continue
         _apply_row_action(plan, _row_action(rows_by_tab, unlinked, tab, key), tab, key)
-        if key not in pooled:
+        if key not in pooled and _row_allows_rejoin(rows_by_tab, key):
             plan.connect.append(getattr(tab, "ws_url", "") or "")
     plan.stale = sorted(pooled - live)
     return plan
 
 
 def sync_pool_presence(pool: Any, live_ids: Any) -> tuple[int, list]:
-    """Flag pooled tabs gone from Chrome; revive returnees. Never deletes."""
+    """Flag pooled tabs gone from the browser listing; revive returnees. Never deletes."""
     try:
         pages = pool._pages
         lock = pool._lock
     except AttributeError:
         return 0, []
     live = set(live_ids or [])
-    revived = 0
-    stale = []
+    revived, stale = 0, []
     with lock:
         for tab_id, page in pages.items():
-            if tab_id in live and not page.is_connected:
+            verdict = _presence(page, tab_id, live)
+            if verdict == "revive":
                 page.is_connected = True
                 revived += 1
-            elif tab_id not in live and page.is_connected:
+            elif verdict == "stale":
                 page.is_connected = False
                 stale.append(tab_id)
     return revived, sorted(stale)
+
+
+def _presence(page: Any, tab_id: str, live: set) -> str:
+    """What one pooled page should become: `"revive"`, `"stale"` or `""` (leave it)."""
+    if tab_id in live:
+        return "revive" if not page.is_connected else ""
+    return "stale" if page.is_connected else ""
 
 
 # ── Ownership repair + run gating (I-33: one live tab ↔ one row) ──

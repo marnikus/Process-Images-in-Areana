@@ -36,10 +36,23 @@
   font-size: 10px;
   font-weight: 600;
 }
+.url-not-receiver { /* S7: Python-computed "not a job receiver" marker (D-18); absence = healthy */
+  margin-left: 4px; font-size: 11px; color: var(--text-muted); cursor: help; user-select: none;
+}
 .url-status-pending { background: var(--bg-card); color: var(--text-muted); }
 .url-status-ok { background: rgba(74,222,128,.15); color: var(--green); }
 .url-status-error { background: rgba(248,113,113,.15); color: var(--red); }
 .url-status-checking { background: rgba(250,204,21,.15); color: var(--yellow); }
+/* D-7 (2026-09-21): the working state of the tab a row owns — derived in
+   js/panels/url-list/reset.js from the pool snapshot, never written in Python. */
+.url-status-processing { background: rgba(77,171,247,.18); color: #4dabf7; }
+.url-status-cooldown { background: rgba(250,204,21,.15); color: var(--yellow); }
+.url-status-ready { background: rgba(74,222,128,.15); color: var(--green); }
+.url-cool-cleared { /* Clear time: the visible confirmation the report asked for */
+  background: rgba(74,222,128,.22);
+  border-radius: 4px;
+  transition: background .15s ease-in;
+}
 
 /* Folder Picker */
 .folder-path {
@@ -990,3 +1003,12 @@
 [data-theme="light"] .bc-badge-id { background: rgba(74,144,226,0.12); }
 [data-theme="light"] .bc-badge-cat { background: rgba(0,0,0,0.06); }
 
+
+/* run-cycle badge (core/run-badge.js): ON / OFF, always visible; the sub-label sits beside it */
+.run-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.6px; line-height: 16px; vertical-align: middle; }
+.run-badge--on { background: #16a34a; color: #fff; }
+.run-badge--off { background: #ef4444; color: #fff; animation: runBadgePulse 1.4s ease-in-out infinite; }
+.run-sub { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; line-height: 16px; vertical-align: middle; background: #f59e0b; color: #1c1917; }
+.run-sub[hidden] { display: none; }
+@keyframes runBadgePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.worker-no { color: #fbbf24; margin-right: 2px; }
