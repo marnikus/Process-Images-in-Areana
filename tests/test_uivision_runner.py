@@ -50,7 +50,8 @@ async def test_detect_lists_every_tab_and_every_match(tmp_path, frozen_time):
 
 async def test_missing_binary_error_names_the_fix_and_the_places(tmp_path, frozen_time):
     rows, report = reports()
-    seams = RunSeams(tabs=lambda: [], addon=lambda: None, probe=lambda: False)
+    seams = RunSeams(tabs=lambda: [], addon=lambda: None, probe=lambda: False,
+                     running=lambda: True)
     result = await run_test(make_spec(tmp_path), report, seams)
     assert result.kind == "blocked"
     launch_lines = [m for _s, m, _l in rows if "Firefox not found" in m]
@@ -108,7 +109,7 @@ def make_spec(tmp_path, **over):
     kw = dict(pattern="Arena", url="https://arena.ai", target="xpath=//a[span[text()='New Chat']]",
               macro="Python_XClick_Demo", storage="xfile", home=str(tmp_path / "uivhome"),
               binary=str(tmp_path / "firefox"), timeout_sec=30, pause_ms=1500,
-              config_dir=str(tmp_path / "config"))
+              config_dir=str(tmp_path / "config"), mode="macro")
     kw.update(over)
     return RunSpec(**kw)
 
@@ -140,7 +141,7 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
     popen = FakePopen()
     rows, report = reports()
     seams = RunSeams(sleep=noop_sleep, popen=popen, tabs=lambda: OPEN_TABS,
-                     addon=lambda: True, probe=lambda: True)
+                     addon=lambda: True, probe=lambda: True, running=lambda: True)
     result = await run_test(make_spec(tmp_path), report, seams)
 
     assert result.kind == "ok" and "macro completed" in result.message
@@ -181,7 +182,8 @@ async def test_browser_storage_keeps_the_import_artifact_and_hints(tmp_path, fro
     log.write_text("Status=Error: XClick failed\n###\nno target", encoding="utf-8")
     rows, report = reports()
     result = await run_test(make_spec(tmp_path, storage="browser"), report,
-                            RunSeams(sleep=noop_sleep, popen=FakePopen()))
+                            RunSeams(sleep=noop_sleep, popen=FakePopen(),
+                                     running=lambda: True))
 
     assert result.kind == "error" and result.message == "XClick failed"
     artifact = tmp_path / "config" / "uivision" / "macros" / "Python_XClick_Demo.json"
@@ -195,7 +197,7 @@ async def test_missing_binary_blocks_the_run_before_any_launch(tmp_path, frozen_
     popen = FakePopen()
     rows, report = reports()
     result = await run_test(make_spec(tmp_path, binary=str(tmp_path / "no-firefox")), report,
-                            RunSeams(sleep=noop_sleep, popen=popen))
+                            RunSeams(sleep=noop_sleep, popen=popen, running=lambda: True))
     assert result.kind == "blocked"
     assert "not found" in result.message.lower()
     assert popen.calls == []
@@ -206,7 +208,7 @@ async def test_bad_macro_name_blocks_provision(tmp_path, frozen_time):
     popen = FakePopen()
     _rows, report = reports()
     result = await run_test(make_spec(tmp_path, macro="bad name"), report,
-                            RunSeams(sleep=noop_sleep, popen=popen))
+                            RunSeams(sleep=noop_sleep, popen=popen, running=lambda: True))
     assert result.kind == "blocked" and "not allowed" in result.message
     assert popen.calls == []
     assert not (tmp_path / "uivhome" / "macros" / "bad name.json").exists()
@@ -227,7 +229,7 @@ async def test_stop_during_the_poll_ends_the_wait(tmp_path, frozen_time):
     # checks 1+2 pass (before provision, before launch); check 3 (inside poll) stops
     result = await run_test(make_spec(tmp_path, timeout_sec=300), lambda *_a: None,
                             RunSeams(stop=lambda: next(checks) >= 3,
-                                     sleep=noop_sleep, popen=popen))
+                                     sleep=noop_sleep, popen=popen, running=lambda: True))
     assert result.kind == "stopped"
     assert "log file" in result.message
     assert len(popen.calls) == 1                        # the launch still happened
@@ -237,6 +239,75 @@ async def test_timeout_when_the_savelog_never_answers(tmp_path, frozen_time):
     binary = tmp_path / "firefox"
     binary.write_text("#!/bin/sh\n")
     result = await run_test(make_spec(tmp_path, timeout_sec=0), lambda *_a: None,
-                            RunSeams(sleep=noop_sleep, popen=FakePopen()))
+                            RunSeams(sleep=noop_sleep, popen=FakePopen(), running=lambda: True))
     assert result.kind == "timeout"
     assert "deadline" in result.message
+
+
+async def test_find_mode_parses_only_and_never_launches(tmp_path, frozen_time):
+    popen = FakePopen()
+    rows, report = reports()
+    seams = RunSeams(sleep=noop_sleep, popen=popen, tabs=lambda: OPEN_TABS,
+                     addon=lambda: None, probe=lambda: False)
+    result = await run_test(make_spec(tmp_path, mode="find", pattern="arena.ai"),
+                            report, seams)
+    assert result.kind == "ok" and "1 of 1 open tab(s) match" in result.message
+    assert popen.calls == []
+    assert not any(step in ("provision", "launch") for step, _m in result.steps)
+
+
+async def test_find_mode_no_match_names_the_pattern(tmp_path, frozen_time):
+    rows, report = reports()
+    seams = RunSeams(tabs=lambda: OPEN_TABS, addon=lambda: None, probe=lambda: False)
+    result = await run_test(make_spec(tmp_path, mode="find", pattern="zzz-nowhere"),
+                            report, seams)
+    assert result.kind == "error" and "no open tab matches" in result.message
+    assert "1 tab(s) seen" in result.message
+
+
+async def test_find_mode_silent_store_blocks_with_a_name(tmp_path, frozen_time):
+    rows, report = reports()
+    seams = RunSeams(tabs=lambda: [], addon=lambda: None, probe=lambda: False)
+    result = await run_test(make_spec(tmp_path, mode="find"), report, seams)
+    assert result.kind == "blocked" and "no open tabs" in result.message
+
+
+async def test_macro_mode_refuses_to_start_a_new_firefox(tmp_path, frozen_time):
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    popen = FakePopen()
+    rows, report = reports()
+    seams = RunSeams(sleep=noop_sleep, popen=popen, tabs=lambda: OPEN_TABS,
+                     addon=lambda: None, probe=lambda: False, running=lambda: False)
+    result = await run_test(make_spec(tmp_path), report, seams)
+    assert result.kind == "blocked" and popen.calls == []
+    assert any("never launches a new one" in m for _s, m, _l in rows)
+
+
+async def test_exec_access_denied_is_named_not_raised(tmp_path, frozen_time):
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+
+    def denied(argv):
+        raise OSError(5, "Access is denied")
+
+    rows, report = reports()
+    seams = RunSeams(sleep=noop_sleep, popen=denied, tabs=lambda: [],
+                     addon=lambda: None, probe=lambda: False, running=lambda: True)
+    result = await run_test(make_spec(tmp_path), report, seams)
+    assert result.kind == "blocked"
+    line = [m for _s, m, _l in rows if "refused to exec" in m]
+    assert line and "Access is denied" in line[0] and "REAL firefox.exe" in line[0]
+
+
+def test_firefox_running_uses_windows_then_the_store(monkeypatch):
+    from app.browser.uivision import runner as runner_mod
+    seams = RunSeams()
+    monkeypatch.setattr(runner_mod.desktop, "firefox_windows", lambda: [(1, "t")])
+    assert runner_mod._firefox_running(seams) is True
+    monkeypatch.setattr(runner_mod.desktop, "firefox_windows", lambda: [])
+    monkeypatch.setattr(runner_mod.tabs, "store_fresh", lambda sec: True)
+    assert runner_mod._firefox_running(seams) is True
+    monkeypatch.setattr(runner_mod.tabs, "store_fresh", lambda sec: False)
+    assert runner_mod._firefox_running(seams) is False
+    assert runner_mod._firefox_running(RunSeams(running=lambda: True)) is True

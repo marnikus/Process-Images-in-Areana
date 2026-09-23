@@ -113,3 +113,19 @@ def test_desktop_module_probe_refuses_and_accepts(monkeypatch):
 
     monkeypatch.setattr(socket, "create_connection", lambda *_a, **_k: FakeSock())
     assert desktop.desktop_module_listening() is True
+
+
+def test_store_mtime_and_freshness(tmp_path):
+    import os
+    import time as _time
+    profile = write_profile(tmp_path, store=STORE)
+    stamp = tabs.store_mtime(profiles=[profile])
+    assert stamp and abs(stamp - os.stat(profile / "sessionstore-backups" /
+                                         "recovery.json").st_mtime) < 1
+    assert tabs.store_mtime(profiles=[tmp_path / "gone"]) is None
+    assert tabs.store_fresh(60, now=stamp + 10, profiles=[profile]) is True
+    assert tabs.store_fresh(60, now=stamp + 61, profiles=[profile]) is False
+
+
+def test_store_fresh_without_any_profile():
+    assert tabs.store_fresh(60, now=1e12) is False

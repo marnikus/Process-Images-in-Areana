@@ -18,6 +18,7 @@ log = logging.getLogger("arena")
 
 CONFIG_KEY = "firefox_auto"
 STORAGE_MODES = ("xfile", "browser")
+RUN_MODES = ("find", "macro")
 TIMEOUT_RANGE = (15, 600)
 PAUSE_RANGE = (500, 30000)
 TEXT_FIELDS = ("pattern", "url", "target", "home", "binary")
@@ -36,6 +37,12 @@ def _clamp_int(value, bounds, fallback: int) -> int:
         return fallback
 
 
+def _choice(value, allowed, fallback: str) -> str:
+    """One sanitized choice field: trimmed + lowercased, else the default."""
+    text = str(value or "").strip().lower()
+    return text if text in allowed else fallback
+
+
 def validate_config(data) -> dict:
     """Sanitize one config dict: text trimmed, numbers clamped, storage one of two.
 
@@ -48,8 +55,10 @@ def validate_config(data) -> dict:
     for key in TEXT_FIELDS:
         cfg[key] = str(row.get(key, cfg[key]) or "").strip()
     cfg["macro"] = uiv_macro.validate_macro_name(row.get("macro", cfg["macro"]))
-    storage = str(row.get("storage", cfg["storage"]) or "").strip().lower()
-    cfg["storage"] = storage if storage in STORAGE_MODES else _defaults()["storage"]
+    defaults = _defaults()
+    cfg["storage"] = _choice(row.get("storage", cfg["storage"]), STORAGE_MODES,
+                             defaults["storage"])
+    cfg["mode"] = _choice(row.get("mode", cfg["mode"]), RUN_MODES, defaults["mode"])
     cfg["timeout_sec"] = _clamp_int(row.get("timeout_sec"), TIMEOUT_RANGE, cfg["timeout_sec"])
     cfg["pause_ms"] = _clamp_int(row.get("pause_ms"), PAUSE_RANGE, cfg["pause_ms"])
     return cfg
@@ -102,7 +111,8 @@ def build_spec(bridge, cfg):
     return RunSpec(pattern=cfg["pattern"], url=cfg["url"], target=cfg["target"],
                    macro=cfg["macro"], storage=cfg["storage"], home=cfg["home"],
                    binary=cfg["binary"], timeout_sec=cfg["timeout_sec"],
-                   pause_ms=cfg["pause_ms"], config_dir=_config_dir(bridge))
+                   pause_ms=cfg["pause_ms"], config_dir=_config_dir(bridge),
+                   mode=cfg["mode"])
 
 
 def emit_status(bridge, payload: dict) -> None:

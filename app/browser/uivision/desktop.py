@@ -44,6 +44,15 @@ def find_windows(pattern: str) -> list:
     return win_find.pick_matches(rows, pattern, FIREFOX_PROCESS)
 
 
+def firefox_windows() -> list:
+    """Every visible Firefox window, any title — is Firefox running at all?"""
+    from app.utils import win_find
+    rows = [(hwnd, title, win_find.process_name(pid))
+            for hwnd, title, pid in win_find.visible_windows()]
+    return [(hwnd, title) for hwnd, title, name in rows
+            if win_find.process_matches(name, FIREFOX_PROCESS)]
+
+
 def foreground(pattern: str) -> tuple:
     """(matches, raised): find the pattern's Firefox windows and put them on top.
 

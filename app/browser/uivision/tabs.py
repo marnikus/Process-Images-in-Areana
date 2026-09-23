@@ -118,6 +118,27 @@ def _flat(text: str) -> str:
     return "".join(ch for ch in text.lower() if ch.isalnum())
 
 
+def store_mtime(profiles=None):
+    """Newest recovery.json stamp (None when no profile answers) — liveness clue."""
+    stamps = []
+    for profile in (profiles if profiles is not None else profile_dirs()):
+        try:
+            stamp = (Path(profile) / "sessionstore-backups" / "recovery.json").stat().st_mtime
+        except OSError:
+            continue
+        stamps.append(stamp)
+    return max(stamps) if stamps else None
+
+
+def store_fresh(seconds: float, now: float = None, profiles=None) -> bool:
+    """A session store written within `seconds` — Firefox is probably live."""
+    stamp = store_mtime(profiles)
+    if stamp is None:
+        return False
+    import time as _time
+    return (now or _time.time()) - stamp <= seconds
+
+
 def match_urls(rows, pattern: str) -> list:
     """Open-tab URLs carrying the pattern (case-insensitive); blank matches none."""
     want = (pattern or "").strip().lower()

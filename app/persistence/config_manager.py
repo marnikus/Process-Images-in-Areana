@@ -37,6 +37,7 @@ DEFAULT_SESSION = {
         "target": "xpath=//a[span[text()='New Chat']]",  # the XClick locator (cmd_var2)
         "macro": "Python_XClick_Demo",
         "storage": "xfile",          # hard drive (XModule) | browser (import the macro once)
+        "mode": "find",              # find = parse already-open tabs only | macro = official trigger
         "home": "",                  # XModule home folder ('' = <User Desktop>/uivision)
         "binary": "",                # Firefox binary ('' = this OS's default)
         "timeout_sec": 90,           # how long one run waits for the savelog file (15…600)

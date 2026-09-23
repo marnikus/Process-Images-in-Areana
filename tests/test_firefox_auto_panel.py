@@ -205,3 +205,13 @@ def test_build_spec_maps_every_config_field(tmp_path):
         pattern=cfg["pattern"], url=cfg["url"], target=cfg["target"], macro=cfg["macro"],
         storage="xfile", home="/h", binary="/b", timeout_sec=120, pause_ms=2000,
         config_dir=str(fake.config.dir))
+
+
+def test_mode_validates_to_find_or_macro(tmp_path):
+    fake = make_bridge(tmp_path)
+    res = json.loads(FirefoxAutoMixin.save_firefox_auto_config(fake, json.dumps({
+        "mode": "  MACRO  "})))
+    assert res["ok"] and res["config"]["mode"] == "macro"
+    res = json.loads(FirefoxAutoMixin.save_firefox_auto_config(fake, json.dumps({
+        "mode": "launch-everything"})))
+    assert res["ok"] and res["config"]["mode"] == DEFAULTS["mode"] == "find"

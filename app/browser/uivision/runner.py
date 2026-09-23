@@ -23,7 +23,6 @@ from . import autorun, desktop, launch, logread, macro, paths, tabs
 @dataclass(frozen=True)
 class RunSpec:
     """One validated run: the window's config + where the app's files live."""
-
     pattern: str
     url: str
     target: str
@@ -34,6 +33,7 @@ class RunSpec:
     timeout_sec: int
     pause_ms: int
     config_dir: str
+    mode: str = "find"    # find = parse open tabs only | macro = official trigger
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,7 @@ class RunSeams:
     tabs: object = None       # callable → open-tab rows (tests fake the store)
     addon: object = None      # callable → extension-seen tri-state
     probe: object = None      # callable → desktop-module-listening bool
+    running: object = None    # callable → is a Firefox live right now
 
 
 @dataclass
@@ -100,13 +101,15 @@ def _provision(spec: RunSpec, report) -> tuple:
     return page, log_path
 
 
-def _detect_phase(spec: RunSpec, report, seams: RunSeams) -> None:
+def _detect_phase(spec: RunSpec, report, seams: RunSeams) -> tuple:
     """The pre-run eyes: what Firefox and the plugin show, before anything runs."""
-    _detect_tabs(spec, report, seams)
+    seen_rows = _detect_tabs(spec, report, seams)
     _detect_plugin(report, seams)
+    return seen_rows
 
 
 TAB_LOG_CAP = 50
+RUNNING_WINDOW_SEC = 120
 
 
 def _report_tab_rows(rows, report) -> None:
@@ -128,16 +131,18 @@ def _report_matches(spec: RunSpec, seen, report) -> None:
         report("detect", f"match {pos}: {url[:110]}")
 
 
-def _detect_tabs(spec: RunSpec, report, seams: RunSeams) -> None:
+def _detect_tabs(spec: RunSpec, report, seams: RunSeams) -> tuple:
     """What Firefox shows without a debugger: every open tab, the pattern, windows."""
     rows = seams.tabs() if seams.tabs else tabs.tab_rows()
+    seen = tabs.match_urls(rows, spec.pattern)
     quiet = "" if rows else " (no session store readable — is Firefox running?)"
     report("detect", f"firefox open tabs seen: {len(rows)}{quiet}")
     _report_tab_rows(rows, report)
-    _report_matches(spec, tabs.match_urls(rows, spec.pattern), report)
+    _report_matches(spec, seen, report)
     wins = desktop.find_windows(spec.pattern)
     note = "" if wins or os_is_windows() else " (window listing is Windows-only)"
     report("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
+    return rows, seen
 
 
 def os_is_windows() -> bool:
@@ -178,6 +183,54 @@ def _detect_plugin(report, seams: RunSeams) -> None:
                          f"(XModules) or XClick cannot fire", "warn")
 
 
+def _find_verdict(spec: RunSpec, rows, seen, recorder) -> RunResult:
+    """The parse-only answer — the owner's rule: read what exists, open nothing."""
+    if not rows:
+        recorder("find", "no Firefox session store readable — is Firefox running?", "error")
+        return _result("blocked", "Firefox shows no open tabs (session store unreadable)",
+                       recorder)
+    if not seen:
+        recorder("find", f"no open tab matches “{spec.pattern}” among {len(rows)} tab(s)",
+                 "error")
+        return _result("error", f"no open tab matches “{spec.pattern}” "
+                                 f"({len(rows)} tab(s) seen)", recorder)
+    recorder("find", f"{len(seen)} of {len(rows)} open tab(s) match “{spec.pattern}”",
+             "success")
+    return _result("ok", f"{len(seen)} of {len(rows)} open tab(s) match "
+                         f"“{spec.pattern}” — {seen[0][:80]}", recorder)
+
+
+def _firefox_running(seams: RunSeams) -> bool:
+    """A live Firefox: OS windows, or a session store written in the last 2 min."""
+    if seams.running:
+        return bool(seams.running())
+    if desktop.firefox_windows():
+        return True
+    return tabs.store_fresh(RUNNING_WINDOW_SEC)
+
+
+def _popen(argv, popen, report):
+    """The OS exec, named-failure style (a .lnk/folder/alias says Access denied)."""
+    try:
+        return launch.launch(argv, popen=popen)
+    except OSError as exc:
+        report("launch", f"the OS refused to exec {argv[0]!r}: {exc} — the binary field "
+                         f"needs the REAL firefox.exe (shortcut → Properties → Target); "
+                         f"a .lnk, a folder or a WindowsApps alias answers ‘Access "
+                         f"denied’", "error")
+        return None
+
+
+def _start(spec: RunSpec, files, recorder, seams: RunSeams):
+    """Running-gate + launch: this window never starts a NEW Firefox (owner)."""
+    if not _firefox_running(seams):
+        recorder("launch", "Firefox is NOT running — start your Firefox (with the "
+                           "extension) first; this window never launches a new one",
+                 "error")
+        return None
+    return _launch(spec, files, recorder, seams.popen)
+
+
 def _foreground(spec: RunSpec, report) -> None:
     """Find the pattern's Firefox windows and raise them (critical rule: visible+front)."""
     matches, raised = desktop.foreground(spec.pattern)
@@ -189,6 +242,14 @@ def _foreground(spec: RunSpec, report) -> None:
     report("foreground", f"{raised}/{len(matches)} Firefox window(s) on top — {titles}")
 
 
+def _missing_binary(binary: str, report) -> None:
+    """The not-found line: where to read the real path + every place looked."""
+    report("launch", f"Firefox not found at {binary!r} — put its FULL path in the "
+                     f"window’s Firefox binary field (Firefox shortcut → Properties → "
+                     f"Target, or `where firefox` in cmd); looked at: "
+                     f"{'; '.join(launch.candidate_binaries())}", "error")
+
+
 def _launch(spec: RunSpec, files, report, popen):
     """Resolve the binary, build the official launch URL and start Firefox.
 
@@ -198,17 +259,16 @@ def _launch(spec: RunSpec, files, report, popen):
     page, log_path = files
     binary = launch.resolve_binary(spec.binary)
     if not launch.binary_exists(binary):
-        report("launch", f"Firefox not found at {binary!r} — put its FULL path in the "
-                         f"window’s Firefox binary field (Firefox shortcut → Properties → "
-                         f"Target, or `where firefox` in cmd); looked at: "
-                         f"{'; '.join(launch.candidate_binaries())}", "error")
+        _missing_binary(binary, report)
         return None
     url = autorun.launch_url(autorun.LaunchSpec(
         page_path=str(page), macro=spec.macro, storage=spec.storage,
         log_path=str(log_path), url=spec.url, target=spec.target))
     report("launch", f"starting Firefox with the autorun URL (macro={spec.macro}, "
                      f"storage={spec.storage}, savelog={log_path.name})")
-    process = launch.launch(launch.build_argv(binary, url), popen=popen)
+    process = _popen(launch.build_argv(binary, url), popen, report)
+    if process is None:
+        return None
     report("launch", f"launched (pid {getattr(process, 'pid', '?')}) — waiting for the savelog file")
     return process
 
@@ -225,20 +285,29 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     """One framework test end to end; every phase reports through `report`."""
     seams = seams or RunSeams()
     recorder = _Recorder(report)
-    _detect_phase(spec, recorder, seams)
+    rows, seen = _detect_phase(spec, recorder, seams)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)
+    if spec.mode != "macro":
+        return _find_verdict(spec, rows, seen, recorder)
     try:
         page, log_path = _provision(spec, recorder)
     except (ValueError, OSError) as exc:
         recorder("provision", f"cannot prepare the run: {exc}", "error")
         return _result("blocked", str(exc), recorder)
+    return await _macro_phase(spec, (page, log_path), recorder, seams)
+
+
+async def _macro_phase(spec: RunSpec, files, recorder, seams: RunSeams) -> RunResult:
+    """foreground → running-gate → launch → poll the savelog verdict."""
+    page, log_path = files
     _foreground(spec, recorder)
     if _stopped(seams):
         return _result("stopped", "stopped before launching Firefox", recorder)
-    process = _launch(spec, (page, log_path), recorder, seams.popen)
+    process = _start(spec, files, recorder, seams)
     if process is None:
-        return _result("blocked", "Firefox was not found — nothing was launched", recorder)
+        return _result("blocked", "Firefox was not launched (not found, refused, or "
+                                  "not running) — see the launch line above", recorder)
     verdict = await logread.poll_log(log_path, time.time() + float(spec.timeout_sec),
                                      sleep=seams.sleep, stop=seams.stop)
     recorder("result", f"{verdict.kind}: {verdict.message}",

@@ -361,6 +361,15 @@
         </div>
         <div class="settings-row">
           <div class="settings-group">
+            <label>Run mode — <b>find</b> parses ONLY already-open Firefox tabs (opens nothing, starts nothing); <b>macro</b> adds the official extension trigger (one self-closing ui.vision tab in the ALREADY RUNNING Firefox — never a new Firefox)</label>
+            <select id="faMode" title="find = parse existing tabs only; macro = run the XClick test through the extension">
+              <option value="find">Find only — parse existing tabs (never opens anything)</option>
+              <option value="macro">Run macro — official trigger, Firefox must already run</option>
+            </select>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-group">
             <label>Firefox binary (blank = default install path)</label>
             <input id="faBinary" type="text" placeholder="">
           </div>
