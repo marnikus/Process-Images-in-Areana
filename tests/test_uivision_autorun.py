@@ -55,7 +55,7 @@ def test_launch_url_carries_the_whitelisted_params(tmp_path):
     parts = urlsplit(url)
     assert parts.scheme == "file"
     assert parts.path.endswith("/ui.vision.html")
-    query = parse_qs(parts.query)
+    query = parse_qs(parts.query, keep_blank_values=True)
     assert query["macro"] == ["Python_XClick_Demo"]   # case-sensitive name
     assert query["storage"] == ["xfile"]
     assert query["direct"] == ["1"]                   # skip the confirm dialog
@@ -64,7 +64,8 @@ def test_launch_url_carries_the_whitelisted_params(tmp_path):
     # percent-encoding round trip: the extension's parseQuery decodes these
     assert query["cmd_var1"] == [URL]
     assert query["cmd_var2"] == [TARGET]
-    assert query["cmd_var3"] == ["tab=open"]      # default: no tab to reuse
+    assert query["cmd_var3"] == [""]              # default: the macro fails honestly
+    assert query["continueInLastUsedTab"] == ["0"]  # run in the autorun tab (deterministic)
 
 
 def test_launch_url_carries_an_explicit_tab_target(tmp_path):

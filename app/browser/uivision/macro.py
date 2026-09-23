@@ -6,11 +6,16 @@ so the builder refuses to emit any JS-level mouse command and a test pins that.
 `bringBrowserToForeground` runs before the XClick because native input lands
 where the OS pointer is (the official demo macros pair the two).
 
-The macro reuses the run's tab instead of blindly navigating: `selectWindow`
-with `${!cmd_var3}` activates the existing tab (`title=*pattern*`, wildcards
-per the selectWindow docs); when no tab matches, `!errorignore` + `!statusOK`
-fall through to `selectWindow | tab=open`, which opens the run's URL in a
-fresh tab. A blank pattern skips the probe (`tab=open` straight away).
+The macro reuses the run's tab and NEVER opens or navigates anywhere (the
+owner's rule: the page is already open): `selectWindow` with `${!cmd_var3}`
+activates the existing tab (`title=*pattern*`) and fails loudly when it is
+gone — no fallback, no fresh tab. `highlight` then flashes the found element
+yellow (the visual confirmation, before any click), `pause` lets the page
+settle while it shows, and `XClick` fires the native click. The last two
+steps close the autorun tab the launch unavoidably opened (`tab=0` is the tab
+the macro started in — deterministic because the launch URL pins
+`continueInLastUsedTab=0`), so the run leaves net zero new pages; the cleanup
+rides `!errorignore` so it can never fail an otherwise good run.
 
 Per-run values ride the command line instead of the file: `${!cmd_var1}` is the
 URL, `${!cmd_var2}` the XClick target and `${!cmd_var3}` the tab target, so the
@@ -31,8 +36,8 @@ DEFAULT_MACRO_NAME = "Python_XClick_Demo"
 URL_VAR = "${!cmd_var1}"
 TARGET_VAR = "${!cmd_var2}"
 TAB_VAR = "${!cmd_var3}"
-OPEN_TAB = "tab=open"
-STATUS_FALSE = "${!statusOK} == false"
+TAB_HOME = "tab=0"
+TAB_CLOSE = "TAB=CLOSE"
 DONE_TEXT = "done — XClick fired (native OS input)"
 
 # DOM-level mouse commands are banned by the owner's rule (they synthesize
@@ -70,28 +75,27 @@ def refuse_dom_clicks(commands) -> None:
 
 
 def build_commands(pause_ms=3000, done_text: str = DONE_TEXT) -> list:
-    """Reuse the run's tab (else open it) → foreground → pause → XClick → echo done."""
+    """Use the open tab → flash the element → XClick → echo done → close the autorun tab."""
     commands = [
-        command("store", "true", "!statusOK",
-                "reset the status latch — the tab probe below sets it"),
-        command("store", "true", "!errorignore",
-                "a missing tab must fall through to open, not stop the macro"),
-        command("selectWindow", TAB_VAR, URL_VAR,
-                "reuse the tab matching cmd_var3 (title=*pattern*), or open cmd_var1 "
-                "in a fresh tab when cmd_var3 is tab=open"),
-        command("if", STATUS_FALSE, "",
-                "no matching tab — open the run's URL in a fresh tab"),
-        command("selectWindow", OPEN_TAB, URL_VAR,
-                "fresh tab at the run's URL (only when the probe above missed)"),
-        command("end", "", "", "the tab is ready either way"),
-        command("store", "false", "!errorignore",
-                "strict again — a failed XClick must fail the run, not pass silent"),
+        command("selectWindow", TAB_VAR, "",
+                "activate the run's already-open tab (title=*pattern*) — fails loudly "
+                "when it is gone; this macro never opens pages"),
         command("bringBrowserToForeground", "", "",
                 "native input needs Firefox visible and in front (owner's critical rule)"),
-        command("pause", str(int(pause_ms)), "", "let the page settle before the OS click"),
+        command("highlight", TARGET_VAR, "",
+                "flash the found element yellow — the visual confirmation before the click"),
+        command("pause", str(int(pause_ms)), "",
+                "let the page settle while the highlight shows"),
         command("XClick", TARGET_VAR, "",
                 "native OS click on the target passed on the command line (never DOM click)"),
         command("echo", done_text, "green", "completion marker — it lands in the savelog file"),
+        command("store", "true", "!errorignore",
+                "cleanup must never fail an otherwise good run"),
+        command("selectWindow", TAB_HOME, "",
+                "back to the tab the macro started in (the autorun tab)"),
+        command("selectWindow", TAB_CLOSE, "",
+                "close the autorun tab — the run leaves net zero new pages"),
+        command("store", "false", "!errorignore", "strict again (the macro ends here)"),
     ]
     refuse_dom_clicks(commands)
     return commands

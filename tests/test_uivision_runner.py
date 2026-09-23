@@ -94,15 +94,16 @@ async def test_detect_caps_a_flood_of_tabs(tmp_path, frozen_time):
     assert not any(m.startswith("firefox tab 51") for m in lines)
 
 
-async def test_detect_phase_silent_store_and_blank_pattern(tmp_path, frozen_time):
+async def test_blank_pattern_blocks_after_detect_with_guidance(tmp_path, frozen_time):
     rows, report = reports()
-    calls = iter(range(10))
-    seams = RunSeams(stop=lambda: next(calls) >= 1,   # detect runs, then stop wins
-                     tabs=lambda: [], addon=lambda: None, probe=lambda: False)
+    seams = RunSeams(tabs=lambda: [], addon=lambda: None, probe=lambda: False)
     result = await run_test(make_spec(tmp_path, pattern=""), report, seams)
-    assert result.kind == "stopped"                    # detect ran, stop honoured after
+    assert result.kind == "blocked"                    # the run never opens pages
+    assert "pattern is blank" in result.message
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "open tabs seen: 0" in text and "no session store readable" in text
+    assert "never opens pages" in text
+    assert not (tmp_path / "config" / "uivision").exists()   # detect ran, nothing else
 
 
 def make_spec(tmp_path, **over):
@@ -155,8 +156,8 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
     doc = json.loads(macro_file.read_text(encoding="utf-8"))
     assert doc["Name"] == "Python_XClick_Demo"
     assert [c["Command"] for c in doc["Commands"]] == [
-        "store", "store", "selectWindow", "if", "selectWindow", "end", "store",
-        "bringBrowserToForeground", "pause", "XClick", "echo"]
+        "selectWindow", "bringBrowserToForeground", "highlight", "pause", "XClick",
+        "echo", "store", "selectWindow", "selectWindow", "store"]
 
     # the launch line: exactly [binary, autorun-url] with the official params
     assert len(popen.calls) == 1
@@ -165,7 +166,8 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
     url = argv[1]
     assert url.startswith("file://") and "ui.vision.html?" in url
     for param in ("macro=Python_XClick_Demo", "storage=xfile", "direct=1",
-                  "savelog=", "cmd_var1=", "cmd_var2=", "cmd_var3=", "closeRPA=1"):
+                  "savelog=", "cmd_var1=", "cmd_var2=", "cmd_var3=",
+                  "continueInLastUsedTab=0", "closeRPA=1"):
         assert param in url, param
     query = parse_qs(urlsplit(url).query)
     assert query["cmd_var3"] == ["title=*Arena*"]     # the pattern's tab is reused
@@ -237,11 +239,13 @@ async def test_stop_during_the_poll_ends_the_wait(tmp_path, frozen_time):
     assert len(popen.calls) == 1                        # the launch still happened
 
 
-def test_tab_target_reuses_the_pattern_or_opens_fresh():
+def test_tab_target_reuses_the_pattern_and_refuses_blank():
     assert runner.tab_target("Arena") == "title=*Arena*"
     assert runner.tab_target("  Agent Arena  ") == "title=*Agent Arena*"
-    assert runner.tab_target("") == "tab=open"
-    assert runner.tab_target("   ") == "tab=open"
+    with pytest.raises(ValueError, match="never opens pages"):
+        runner.tab_target("")
+    with pytest.raises(ValueError, match="never opens pages"):
+        runner.tab_target("   ")
 
 
 async def test_refused_launch_blocks_with_the_cause_not_a_crash(tmp_path, frozen_time):
@@ -297,3 +301,50 @@ async def test_timeout_when_the_savelog_never_answers(tmp_path, frozen_time):
                             RunSeams(sleep=noop_sleep, popen=FakePopen()))
     assert result.kind == "timeout"
     assert "deadline" in result.message
+
+
+async def test_timeout_carries_the_extension_checklist(tmp_path, frozen_time):
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path, timeout_sec=0, home=""), report,
+                            RunSeams(sleep=noop_sleep, popen=FakePopen(),
+                                     tabs=lambda: OPEN_TABS, addon=lambda: False,
+                                     probe=lambda: True))
+    assert result.kind == "timeout"
+    assert "deadline" in result.message
+    assert "NOT found" in result.message and "Allow access to file URLs" in result.message
+
+
+def test_stray_savelog_finds_the_downloads_landing_spot(tmp_path):
+    downloads = tmp_path / "dl"
+    downloads.mkdir()
+    (downloads / "run-1.txt").write_text("Status=OK\n###\n", encoding="utf-8")
+    assert runner._stray_savelog("run-1.txt", roots=[downloads]) == downloads / "run-1.txt"
+    assert runner._stray_savelog("run-2.txt", roots=[downloads]) is None
+    assert runner._stray_savelog("run-1.txt", roots=[tmp_path / "gone"]) is None
+
+
+def test_timeout_note_names_the_stray_or_the_checklist(tmp_path, monkeypatch):
+    spec = make_spec(tmp_path, home="")
+    log_path = tmp_path / "logs" / "run-9.txt"
+    monkeypatch.setattr(runner, "_stray_savelog", lambda name: tmp_path / "Downloads" / name)
+    note = runner._timeout_note(spec, log_path, True)
+    assert "DID run" in note and "FileAccess" in note
+    monkeypatch.setattr(runner, "_stray_savelog", lambda name: None)
+    missing = runner._timeout_note(spec, log_path, False)
+    assert "NOT found" in missing and "Allow access to file URLs" in missing
+    assert "uivision" in missing                      # the expected Home dir rides along
+    unknown = runner._timeout_note(spec, log_path, None)
+    assert "no Firefox profile answered" in unknown
+    installed = runner._timeout_note(spec, log_path, True)
+    assert "IS installed" in installed and "never started" in installed
+
+
+def test_touch_savelog_fails_fast_on_unwritable_paths(tmp_path):
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file, not a dir", encoding="utf-8")
+    runner._touch_savelog(tmp_path / "ok.txt")          # no raise — and polls as a wait
+    assert (tmp_path / "ok.txt").read_text() == ""
+    with pytest.raises(OSError, match="not writable"):
+        runner._touch_savelog(blocker / "run.txt")

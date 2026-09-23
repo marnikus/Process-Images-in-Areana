@@ -12,10 +12,13 @@ extension's `INVOKE_URL_PARAMS` whitelist.
 
 Launch-URL parameters (ui.vision/rpa/docs — command line API): `macro` (name,
 case-sensitive), `storage=browser|xfile`, `direct=1` (skip the confirm dialog),
-`savelog=<full path>` (XModules write it straight to disk), `cmd_var1`–`cmd_var3`
-(the macro reads them as `${!cmd_var1}`…`${!cmd_var3}`: the URL, the XClick
-target, the `selectWindow` tab target), `closeRPA=1`. Values are
-percent-encoded; the extension decodes with `decodeURIComponent`.
+`continueInLastUsedTab=0` (the macro runs in the fresh autorun tab — its
+default `1` would continue in whatever tab was active, which would make the
+macro's closing `tab=0` + `TAB=CLOSE` cleanup ambiguous), `savelog=<full path>`
+(XModules write it straight to disk), `cmd_var1`–`cmd_var3` (the macro reads
+them as `${!cmd_var1}`…`${!cmd_var3}`: the run's URL, the XClick target, the
+`selectWindow` tab target), `closeRPA=1`. Values are percent-encoded; the
+extension decodes with `decodeURIComponent`.
 """
 
 from __future__ import annotations
@@ -128,8 +131,10 @@ class LaunchSpec:
     url: str              # cmd_var1 — the URL a fresh tab opens at
     target: str           # cmd_var2 — the XClick locator
     close_rpa: bool = True
-    tab: str = "tab=open"  # cmd_var3 — the selectWindow target (`title=*…*` reuses
-                           # the pattern's tab; `tab=open` always opens a fresh one)
+    tab: str = ""          # cmd_var3 — the selectWindow target (`title=*…*` activates
+                           # the pattern's already-open tab; empty fails the macro
+                           # honestly — the runner always passes an explicit target
+                           # and never anything that opens pages)
 
 
 def launch_url(spec: LaunchSpec) -> str:
@@ -143,6 +148,7 @@ def launch_url(spec: LaunchSpec) -> str:
         "cmd_var1": spec.url,
         "cmd_var2": spec.target,
         "cmd_var3": spec.tab,
+        "continueInLastUsedTab": "0",
         "closeRPA": "1" if spec.close_rpa else "0",
     }, quote_via=quote)
     return f"{base}?{query}"

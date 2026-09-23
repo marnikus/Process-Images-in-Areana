@@ -78,11 +78,20 @@ def _macro_target(spec: RunSpec):
     return paths.runtime_dir(spec.config_dir) / paths.MACROS_DIR / f"{spec.macro}.json"
 
 
+def _touch_savelog(log_path) -> None:
+    """Fail fast when the savelog path is unwritable (an empty file polls as a wait)."""
+    try:
+        log_path.touch(exist_ok=True)
+    except OSError as exc:
+        raise OSError(f"savelog file is not writable: {log_path} ({exc})") from exc
+
+
 def _provision(spec: RunSpec, report) -> tuple:
     """Write the macro + the autorun page; returns (page_path, log_path)."""
     stamp = time.strftime("%Y%m%d-%H%M%S")
     log_path = paths.log_file(spec.config_dir, stamp)
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    _touch_savelog(log_path)
     target = _macro_target(spec)
     target.parent.mkdir(parents=True, exist_ok=True)
     document = macro.build_macro(spec.macro, spec.pause_ms)
@@ -101,15 +110,15 @@ def _provision(spec: RunSpec, report) -> tuple:
     return page, log_path
 
 
-def _detect_phase(spec: RunSpec, report, seams: RunSeams) -> list:
+def _detect_phase(spec: RunSpec, report, seams: RunSeams) -> tuple:
     """The pre-run eyes: what Firefox and the plugin show, before anything runs.
 
-    Returns the session windows — the foreground phase targets the one holding
-    the pattern's tab instead of raising every title match.
+    Returns (session windows, extension tri-state) — the foreground targets the
+    window holding the pattern's tab, and a timeout explains itself against the
+    extension state instead of shrugging.
     """
     windows = _detect_tabs(spec, report, seams)
-    _detect_plugin(report, seams)
-    return windows
+    return windows, _detect_plugin(report, seams)
 
 
 TAB_LOG_CAP = 50
@@ -206,8 +215,8 @@ def _result_level(kind: str) -> str:
     return "warn" if kind == "timeout" else "error"
 
 
-def _detect_plugin(report, seams: RunSeams) -> None:
-    """Extension in the profile + the native-input module on its port."""
+def _detect_plugin(report, seams: RunSeams):
+    """Extension in the profile + the native-input module on its port (returns the tri-state)."""
     addon = seams.addon() if seams.addon else tabs.addon_seen()
     message, level = _addon_line(addon)
     report("detect", message, level)
@@ -219,12 +228,54 @@ def _detect_plugin(report, seams: RunSeams) -> None:
         report("detect", f"Desktop Automation module NOT listening on 127.0.0.1:"
                          f"{desktop.DESKTOP_APP_PORT} — install ‘Ui.Vision for Desktop’ "
                          f"(XModules) or XClick cannot fire", "warn")
+    return addon
 
 
 def tab_target(pattern: str) -> str:
-    """The macro's selectWindow target: reuse the pattern's tab, else open fresh."""
+    """The macro's selectWindow target — the pattern's already-open tab, never a new page."""
     text = (pattern or "").strip()
-    return f"title=*{text}*" if text else "tab=open"
+    if not text:
+        raise ValueError("the pattern is blank — the run never opens pages, "
+                         "so it needs the tab's title to find your tab")
+    return f"title=*{text}*"
+
+
+def _stray_savelog(name: str, roots=None):
+    """The savelog under a download dir (the no-FileAccess landing spot), else None."""
+    from pathlib import Path
+    for root in roots if roots is not None else [Path.home() / "Downloads"]:
+        try:
+            candidate = Path(root) / name
+        except Exception:
+            continue
+        try:
+            if candidate.is_file():
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
+def _timeout_note(spec: RunSpec, log_path, addon) -> str:
+    """What a silent savelog means: the stray-download case or the extension checklist."""
+    stray = _stray_savelog(log_path.name)
+    if stray is not None:
+        return (f" — but the macro DID run: its log landed in {stray} instead (the FileAccess "
+                f"XModule did not honour the full savelog= path — reinstall the XModules "
+                f"or check their setup)")
+    if addon is False:
+        where = ("the Ui.Vision extension was NOT found in any Firefox profile — install it "
+                 "from addons.mozilla.org/firefox/addon/rpa")
+    elif addon is None:
+        where = ("no Firefox profile answered the extension check — install Ui.Vision in the "
+                 "profile this Firefox uses")
+    else:
+        where = ("the Ui.Vision extension IS installed, so the macro never started from the "
+                 "autorun page")
+    expecting = spec.home or "<Desktop>/uivision"
+    return (f" — {where}; then switch on ‘Allow access to file URLs’ for it (the autorun page "
+            f"is a file:// URL) and set its own Home directory to “{expecting}” in hard-drive "
+            f"mode (Ui.Vision Settings → Setup XModules2)")
 
 
 def _foreground(spec: RunSpec, report, session_windows: list) -> None:
@@ -288,9 +339,13 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     """One framework test end to end; every phase reports through `report`."""
     seams = seams or RunSeams()
     recorder = _Recorder(report)
-    session_windows = _detect_phase(spec, recorder, seams)
+    session_windows, addon = _detect_phase(spec, recorder, seams)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)
+    if not (spec.pattern or "").strip():
+        recorder("run", "pattern is blank — set it to your tab's title (e.g. Arena); "
+                        "the run reuses your open tab and never opens pages", "error")
+        return _result("blocked", "pattern is blank — the run needs your tab's title", recorder)
     try:
         page, log_path = _provision(spec, recorder)
     except (ValueError, OSError) as exc:
@@ -308,6 +363,10 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
         return _result("blocked", "Firefox was not found — nothing was launched", recorder)
     verdict = await logread.poll_log(log_path, time.time() + float(spec.timeout_sec),
                                      sleep=seams.sleep, stop=seams.stop)
+    if verdict.kind == "timeout":
+        verdict = logread.LogResult(kind="timeout",
+                                    message=verdict.message + _timeout_note(spec, log_path, addon),
+                                    lines=verdict.lines)
     recorder("result", f"{verdict.kind}: {verdict.message}",
              "info" if verdict.kind == "stopped" else _result_level(verdict.kind))
     return _result(verdict.kind, verdict.message, recorder, verdict.lines)
