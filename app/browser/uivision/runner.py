@@ -87,6 +87,10 @@ def _provision(spec: RunSpec, report) -> tuple:
     document = macro.build_macro(spec.macro, spec.pause_ms)
     target.write_text(macro.to_json(document), encoding="utf-8")
     report("provision", f"macro written: {target}")
+    if spec.storage == "xfile":
+        report("provision", f"the extension’s own Home directory (Ui.Vision Settings → "
+                            f"Setup XModules2) must be “{spec.home or '<Desktop>/uivision'}” "
+                            f"in hard-drive mode, or it looks for the macro elsewhere")
     if spec.storage != "xfile":
         report("provision", "storage=browser: import this macro ONCE in the Ui.Vision UI "
                             "(Macros tab → Import) — the browser cannot read it from disk",
@@ -102,18 +106,35 @@ def _detect_phase(spec: RunSpec, report, seams: RunSeams) -> None:
     _detect_plugin(report, seams)
 
 
-def _detect_tabs(spec: RunSpec, report, seams: RunSeams) -> None:
-    """What Firefox shows without a debugger: windows, open tabs, the pattern."""
-    rows = seams.tabs() if seams.tabs else tabs.tab_rows()
-    seen = tabs.match_urls(rows, spec.pattern)
-    tail = "; ".join(r["url"][:60] for r in rows[:4]) if rows else \
-        "no session store readable — is Firefox running?"
-    report("detect", f"firefox open tabs seen: {len(rows)}" + (f" — {tail}" if rows else f" ({tail})"))
-    if seen:
-        report("detect", f"pattern “{spec.pattern}” matches {len(seen)} open tab(s) — {seen[0][:80]}")
-    else:
+TAB_LOG_CAP = 50
+
+
+def _report_tab_rows(rows, report) -> None:
+    """One detect line per open tab (capped) — the owner wants the whole list."""
+    for pos, row in enumerate(rows[:TAB_LOG_CAP], 1):
+        report("detect", f"firefox tab {pos}: {row['url'][:110]} — {row['title'][:40]}")
+    if len(rows) > TAB_LOG_CAP:
+        report("detect", f"+{len(rows) - TAB_LOG_CAP} more open tab(s)")
+
+
+def _report_matches(spec: RunSpec, seen, report) -> None:
+    """The pattern's verdict: every matching tab, or the macro's own open plan."""
+    if not seen:
         report("detect", f"no OPEN tab matches “{spec.pattern}” — the macro opens "
                          f"{(spec.url or 'the URL field')[:70]} itself", "warn")
+        return
+    report("detect", f"pattern “{spec.pattern}” matches {len(seen)} open tab(s):")
+    for pos, url in enumerate(seen, 1):
+        report("detect", f"match {pos}: {url[:110]}")
+
+
+def _detect_tabs(spec: RunSpec, report, seams: RunSeams) -> None:
+    """What Firefox shows without a debugger: every open tab, the pattern, windows."""
+    rows = seams.tabs() if seams.tabs else tabs.tab_rows()
+    quiet = "" if rows else " (no session store readable — is Firefox running?)"
+    report("detect", f"firefox open tabs seen: {len(rows)}{quiet}")
+    _report_tab_rows(rows, report)
+    _report_matches(spec, tabs.match_urls(rows, spec.pattern), report)
     wins = desktop.find_windows(spec.pattern)
     note = "" if wins or os_is_windows() else " (window listing is Windows-only)"
     report("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
@@ -177,8 +198,10 @@ def _launch(spec: RunSpec, files, report, popen):
     page, log_path = files
     binary = launch.resolve_binary(spec.binary)
     if not launch.binary_exists(binary):
-        report("launch", f"Firefox not found at {binary!r} — set the binary path in the window",
-               "error")
+        report("launch", f"Firefox not found at {binary!r} — put its FULL path in the "
+                         f"window’s Firefox binary field (Firefox shortcut → Properties → "
+                         f"Target, or `where firefox` in cmd); looked at: "
+                         f"{'; '.join(launch.candidate_binaries())}", "error")
         return None
     url = autorun.launch_url(autorun.LaunchSpec(
         page_path=str(page), macro=spec.macro, storage=spec.storage,

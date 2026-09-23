@@ -26,13 +26,41 @@ BANNED_ARG_MARKERS = ("start-debugger-server", "remote-debugging-port", "no-remo
                       "geckodriver", "selenium", "playwright", "puppeteer", "marionette")
 
 
-def resolve_binary(configured: str = "", os_name: str = "") -> str:
-    """The configured Firefox binary, else this OS's default install path/name."""
-    text = (configured or "").strip().strip('"')
-    if text:
-        return text
+_UNIX_CANDIDATES = ("firefox", "/usr/bin/firefox", "/snap/bin/firefox",
+                    "/usr/local/bin/firefox")
+
+
+def _win_candidates() -> list:
+    """Mozilla Firefox under each real program-files root of this machine."""
+    keys = ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA")
+    roots = [os.environ.get(k, "") or d
+             for k, d in zip(keys, (r"C:\Program Files", r"C:\Program Files (x86)", ""))]
+    return [os.path.join(r, "Mozilla Firefox", "firefox.exe") for r in roots if r]
+
+
+def candidate_binaries(os_name: str = "") -> list:
+    """Common install places of this OS (the search order for a blank field)."""
     from app.browser.browsers import current_os
-    return DEFAULT_BINARIES.get(os_name or current_os(), DEFAULT_BINARIES["linux"])
+    makers = {"windows": _win_candidates, "macos": lambda: [DEFAULT_BINARIES["macos"]]}
+    return makers.get(os_name or current_os(), lambda: list(_UNIX_CANDIDATES))()
+
+
+def _configured(configured: str) -> str:
+    """The field's value, quote-trimmed ('' when blank)."""
+    return (configured or "").strip().strip('"')
+
+
+def _first_existing(name: str) -> str:
+    """The first common install place that really holds Firefox ('' when none)."""
+    return next((c for c in candidate_binaries(name) if binary_exists(c)), "")
+
+
+def resolve_binary(configured: str = "", os_name: str = "") -> str:
+    """The configured binary, else the first existing common install, else default."""
+    from app.browser.browsers import current_os
+    name = os_name or current_os()
+    return _configured(configured) or _first_existing(name) or \
+        DEFAULT_BINARIES.get(name, DEFAULT_BINARIES["linux"])
 
 
 def binary_exists(binary: str) -> bool:

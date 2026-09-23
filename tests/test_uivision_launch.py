@@ -60,3 +60,17 @@ def test_launch_defaults_to_subprocess_popen(monkeypatch):
     monkeypatch.setattr(launch.subprocess, "Popen", lambda argv: seen.append(argv) or "proc")
     assert launch.launch(["firefox", "file:///x"]) == "proc"
     assert seen == [["firefox", "file:///x"]]
+
+
+def test_candidate_binaries_per_os(monkeypatch):
+    import os
+    monkeypatch.setenv("ProgramFiles", "/opt/pf")
+    monkeypatch.setenv("ProgramFiles(x86)", "")
+    monkeypatch.setenv("LOCALAPPDATA", "/opt/la")
+    win = launch.candidate_binaries("windows")
+    assert win[0] == os.path.join("/opt/pf", "Mozilla Firefox", "firefox.exe")
+    fallback = os.path.join(r"C:\Program Files (x86)", "Mozilla Firefox", "firefox.exe")
+    assert fallback in win and os.path.join("/opt/la", "Mozilla Firefox", "firefox.exe") in win
+    assert launch.candidate_binaries("macos") == [
+        "/Applications/Firefox.app/Contents/MacOS/firefox"]
+    assert launch.candidate_binaries("linux")[:2] == ["firefox", "/usr/bin/firefox"]

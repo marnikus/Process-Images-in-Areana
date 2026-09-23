@@ -77,7 +77,9 @@ def load_config(bridge) -> dict:
 
 
 def _config_dir(bridge) -> str:
-    return str(getattr(bridge.config, "dir", "config"))
+    """Absolute on purpose: the autorun page rides a file:/// URL (RULE 4)."""
+    from pathlib import Path
+    return str(Path(getattr(bridge.config, "dir", "config")).expanduser().resolve())
 
 
 def paths_info(bridge, cfg) -> dict:

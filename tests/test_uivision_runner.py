@@ -31,6 +31,34 @@ def frozen_time(monkeypatch):
 OPEN_TABS = [{"url": "https://arena.ai/image/direct?model_a=max", "title": "Arena"}]
 
 
+async def test_detect_lists_every_tab_and_every_match(tmp_path, frozen_time):
+    from app.browser.uivision import runner as runner_mod
+    many = [{"url": f"https://arena.ai/page{i}", "title": f"T{i}"} for i in range(3)]
+    many.append({"url": "https://other.example", "title": "O"})
+    rows, report = reports()
+    seams = RunSeams(stop=lambda: True, tabs=lambda: many,
+                     addon=lambda: None, probe=lambda: False)
+    await runner_mod.run_test(make_spec(tmp_path, pattern="arena.ai"), report, seams)
+    lines = [m for _s, m, _l in rows]
+    assert "firefox open tabs seen: 4" in lines
+    assert "firefox tab 1: https://arena.ai/page0 — T0" in lines
+    assert "firefox tab 4: https://other.example — O" in lines
+    assert "pattern “arena.ai” matches 3 open tab(s):" in lines
+    assert "match 3: https://arena.ai/page2" in lines
+    assert not any("other.example" in m for m in lines if m.startswith("match"))
+
+
+async def test_missing_binary_error_names_the_fix_and_the_places(tmp_path, frozen_time):
+    rows, report = reports()
+    seams = RunSeams(tabs=lambda: [], addon=lambda: None, probe=lambda: False)
+    result = await run_test(make_spec(tmp_path), report, seams)
+    assert result.kind == "blocked"
+    launch_lines = [m for _s, m, _l in rows if "Firefox not found" in m]
+    assert launch_lines and "where firefox" in launch_lines[0]
+    assert "FULL path" in launch_lines[0]
+    assert "Mozilla Firefox" in launch_lines[0] or "/usr/bin/firefox" in launch_lines[0]
+
+
 async def test_detect_phase_names_tabs_pattern_extension_and_module(tmp_path, frozen_time):
     binary = tmp_path / "firefox"
     binary.write_text("#!/bin/sh\n")
@@ -43,11 +71,26 @@ async def test_detect_phase_names_tabs_pattern_extension_and_module(tmp_path, fr
     await run_test(make_spec(tmp_path, pattern="arena.ai"), report, seams)
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "firefox open tabs seen: 1" in text
-    assert "matches 1 open tab(s)" in text
+    assert "firefox tab 1: https://arena.ai/image/direct?model_a=max" in text
+    assert "matches 1 open tab(s):" in text
+    assert "match 1: https://arena.ai/image/direct?model_a=max" in text
     assert "extension NOT found" in text
     assert "NOT listening" in text
     levels = {m: l for _s, m, l in rows}
     assert any(l == "warn" for m, l in levels.items() if "NOT listening" in m)
+
+
+async def test_detect_caps_a_flood_of_tabs(tmp_path, frozen_time):
+    many = [{"url": f"https://arena.ai/p{i}", "title": f"T{i}"} for i in range(55)]
+    rows, report = reports()
+    seams = RunSeams(stop=lambda: True, tabs=lambda: many,
+                     addon=lambda: None, probe=lambda: False)
+    await run_test(make_spec(tmp_path, pattern="zzz-no-match"), report, seams)
+    lines = [m for _s, m, _l in rows]
+    assert "firefox open tabs seen: 55" in lines
+    assert "firefox tab 50: https://arena.ai/p49 — T49" in lines
+    assert "+5 more open tab(s)" in lines
+    assert not any(m.startswith("firefox tab 51") for m in lines)
 
 
 async def test_detect_phase_silent_store_and_blank_pattern(tmp_path, frozen_time):
@@ -102,8 +145,9 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
 
     assert result.kind == "ok" and "macro completed" in result.message
     assert result.lines == ("echo: done — XClick fired (native OS input)",)
-    assert [step for step, _msg in result.steps] == ["detect"] * 5 + [
-        "provision", "provision", "foreground", "launch", "launch", "result"]
+    assert [step for step, _msg in result.steps] == ["detect"] * 7 + [
+        "provision", "provision", "provision", "foreground",
+        "launch", "launch", "result"]
 
     # the macro landed on the hard drive, XClick-only, values via cmd vars
     macro_file = tmp_path / "uivhome" / "macros" / "Python_XClick_Demo.json"
