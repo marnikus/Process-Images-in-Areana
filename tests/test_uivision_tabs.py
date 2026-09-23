@@ -156,3 +156,43 @@ def test_store_mtime_and_freshness(tmp_path):
 
 def test_store_fresh_without_any_profile():
     assert tabs.store_fresh(60, now=1e12) is False
+
+
+def _write_jsonlz4(profile, rel, doc):
+    import json as _json
+    import struct
+    from app.browser.uivision import lz4 as _lz4
+    path = profile / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _json.dumps(doc).encode()
+    head = 15 if len(payload) >= 15 else len(payload)
+    block = bytes([head << 4])
+    rem = len(payload) - head
+    if head == 15:
+        block += bytes([rem])
+    path.write_bytes(_lz4.MAGIC + struct.pack("<I", len(payload)) + block + payload)
+    return path
+
+
+def test_tab_rows_reads_compressed_stores_when_plain_is_absent(tmp_path):
+    profile = tmp_path / "p.default-release"
+    (profile / "sessionstore-backups").mkdir(parents=True)
+    _write_jsonlz4(profile, "sessionstore.jsonlz4", STORE)
+    rows = tabs.tab_rows(profiles=[profile])
+    assert [r["url"] for r in rows][0].startswith("https://arena.ai")
+    assert tabs.store_mtime(profiles=[profile])
+
+
+def test_tab_rows_junk_jsonlz4_is_not_an_error(tmp_path):
+    profile = tmp_path / "p.default-release"
+    (profile / "sessionstore-backups").mkdir(parents=True)
+    (profile / "sessionstore.jsonlz4").write_bytes(b"mozLZ4a" + b"\x01\x00\x00\x00garbage")
+    assert tabs.tab_rows(profiles=[profile]) == []
+
+
+def test_lock_held_names_the_running_profile(tmp_path):
+    profile = tmp_path / "p.default-release"
+    profile.mkdir()
+    assert tabs.lock_held(profile) is False
+    (profile / "parent.lock").write_text("", encoding="utf-8")
+    assert tabs.lock_held(profile) is True

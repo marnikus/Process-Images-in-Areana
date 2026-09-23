@@ -16,6 +16,16 @@ import os
 import sys
 from pathlib import Path
 
+from . import lz4
+
+# Every place a running Firefox may keep the open-tab list, freshest first:
+# the plain live backup, its compressed twins, the shutdown store.
+STORE_RELS = ("sessionstore-backups/recovery.json",
+              "sessionstore-backups/recovery.jsonlz4",
+              "sessionstore.jsonlz4",
+              "sessionstore-backups/previous.json",
+              "sessionstore-backups/previous.jsonlz4")
+
 # The add-on's store id/name both carry one of these (old name: Kantu).
 ADDON_NEEDLES = ("uivision", "kantu")
 
@@ -133,6 +143,46 @@ def _tab_row(tab) -> dict:
     return {"url": url, "title": str(last.get("title") or "")} if url else None
 
 
+def _read_store(path: Path):
+    """One session-store file, plain JSON or jsonlz4 (None on any refusal)."""
+    if str(path).endswith(".json"):
+        return _read_json(path)
+    try:
+        blob = path.read_bytes()
+    except OSError:
+        return None
+    try:
+        return json.loads(lz4.decompress(blob).decode("utf-8", "replace"))
+    except Exception:
+        return None
+
+
+def _stamp(path: Path) -> float:
+    """One file's mtime (0.0 when unreadable) — the freshness vote."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _profile_rows(profile) -> tuple:
+    """(rows, mtime) of the best readable store file inside one profile."""
+    best, stamp = [], -1.0
+    for rel in STORE_RELS:
+        file = Path(profile) / rel
+        doc = _read_store(file)
+        rows = _rows_of(doc) if isinstance(doc, dict) else []
+        if rows and _stamp(file) >= stamp:
+            best, stamp = rows, _stamp(file)
+    return best, stamp
+
+
+def lock_held(profile) -> bool:
+    """A running Firefox holds parent.lock / .parentlock in its profile dir."""
+    return any((Path(profile) / name).exists()
+               for name in ("parent.lock", ".parentlock"))
+
+
 def _rows_of(doc) -> list:
     """[{"url","title"}] — each tab's current entry in one session store."""
     rows = []
@@ -148,15 +198,7 @@ def tab_rows(profiles=None) -> list:
     """Open tabs of the freshest readable profile ([] when none answers)."""
     best, best_stamp = [], -1.0
     for profile in (profiles if profiles is not None else profile_dirs()):
-        store = Path(profile) / "sessionstore-backups" / "recovery.json"
-        doc = _read_json(store)
-        if not isinstance(doc, dict):
-            continue
-        try:
-            stamp = store.stat().st_mtime
-        except OSError:
-            stamp = 0.0
-        rows = _rows_of(doc)
+        rows, stamp = _profile_rows(profile)
         if rows and stamp >= best_stamp:
             best, best_stamp = rows, stamp
     return best
@@ -189,14 +231,11 @@ def _flat(text: str) -> str:
 
 
 def store_mtime(profiles=None):
-    """Newest recovery.json stamp (None when no profile answers) — liveness clue."""
-    stamps = []
-    for profile in (profiles if profiles is not None else profile_dirs()):
-        try:
-            stamp = (Path(profile) / "sessionstore-backups" / "recovery.json").stat().st_mtime
-        except OSError:
-            continue
-        stamps.append(stamp)
+    """Newest store-file stamp (None when no profile answers) — liveness clue."""
+    stamps = [_stamp(Path(profile) / rel)
+              for profile in (profiles if profiles is not None else profile_dirs())
+              for rel in STORE_RELS]
+    stamps = [s for s in stamps if s]
     return max(stamps) if stamps else None
 
 

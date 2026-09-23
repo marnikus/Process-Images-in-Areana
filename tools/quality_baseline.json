@@ -1,7 +1,7 @@
 {
   "coverage": {
-    "line": 88.93,
-    "branch": 85.69
+    "line": 89.07,
+    "branch": 85.9
   },
   "app/__init__.py": {
     "max_func_loc": 0,
@@ -961,10 +961,11 @@
   "app/browser/uivision/desktop.py": {
     "max_func_loc": 12,
     "max_class_loc": 0,
-    "func_count": 3,
+    "func_count": 4,
     "funcs": {
       "desktop_module_listening": 9,
       "find_windows": 8,
+      "firefox_windows": 7,
       "foreground": 12
     },
     "max_methods": 0,
@@ -978,9 +979,13 @@
   "app/browser/uivision/launch.py": {
     "max_func_loc": 7,
     "max_class_loc": 0,
-    "func_count": 4,
+    "func_count": 8,
     "funcs": {
-      "resolve_binary": 7,
+      "_win_candidates": 6,
+      "candidate_binaries": 5,
+      "_configured": 3,
+      "_first_existing": 3,
+      "resolve_binary": 6,
       "binary_exists": 5,
       "build_argv": 7,
       "launch": 4
@@ -1011,6 +1016,24 @@
     "max_params": 4,
     "file_lines": 92,
     "coverage": 100.0
+  },
+  "app/browser/uivision/lz4.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 0,
+    "func_count": 4,
+    "funcs": {
+      "_run_length": 11,
+      "_copy_match": 5,
+      "_one_sequence": 16,
+      "decompress": 8
+    },
+    "max_methods": 0,
+    "max_cc": 4,
+    "max_cog": 0,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 63,
+    "coverage": 96.23
   },
   "app/browser/uivision/macro.py": {
     "max_func_loc": 13,
@@ -1057,21 +1080,30 @@
   "app/browser/uivision/runner.py": {
     "max_func_loc": 23,
     "max_class_loc": 13,
-    "func_count": 15,
+    "func_count": 24,
     "funcs": {
       "_macro_target": 5,
-      "_provision": 17,
-      "_detect_phase": 4,
-      "_detect_tabs": 15,
+      "_provision": 21,
+      "_detect_phase": 5,
+      "_report_tab_rows": 6,
+      "_report_profiles": 7,
+      "_report_matches": 9,
+      "_detect_tabs": 14,
       "os_is_windows": 4,
       "_addon_line": 8,
       "_result_level": 5,
       "_detect_plugin": 13,
+      "_find_verdict": 15,
+      "_firefox_running": 7,
+      "_popen": 10,
+      "_start": 8,
       "_foreground": 9,
-      "_launch": 20,
+      "_missing_binary": 6,
+      "_launch": 21,
       "_stopped": 2,
       "_result": 2,
-      "run_test": 23,
+      "run_test": 15,
+      "_macro_phase": 15,
       "__init__": 3,
       "__call__": 3
     },
@@ -1081,23 +1113,36 @@
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 159,
-    "coverage": 98.08
+    "coverage": 98.76
   },
   "app/browser/uivision/tabs.py": {
     "max_func_loc": 16,
     "max_class_loc": 0,
-    "func_count": 11,
+    "func_count": 24,
     "funcs": {
-      "profile_roots": 8,
+      "_nt_roots": 8,
+      "profile_roots": 12,
+      "_ini_profiles": 10,
+      "_ini_line": 12,
       "_dirs_under": 9,
-      "profile_dirs": 4,
+      "_children": 3,
+      "profile_dirs": 13,
+      "_root_profiles": 4,
+      "ini_parent": 3,
       "_read_json": 6,
       "_list": 3,
       "_tab_row": 6,
+      "_read_store": 12,
+      "_stamp": 6,
+      "_profile_rows": 10,
+      "lock_held": 4,
       "_rows_of": 9,
-      "tab_rows": 16,
-      "addon_seen": 14,
+      "tab_rows": 8,
+      "addon_seen": 12,
+      "_addon_matches": 5,
       "_flat": 3,
+      "store_mtime": 7,
+      "store_fresh": 7,
       "match_urls": 6
     },
     "max_methods": 0,
@@ -1106,7 +1151,7 @@
     "max_nest": 3,
     "max_params": 4,
     "file_lines": 126,
-    "coverage": 98.1
+    "coverage": 100.0
   },
   "app/browser/visual_click.py": {
     "max_func_loc": 25,
@@ -3732,15 +3777,16 @@
   "app/ui/panels/firefox_auto.py": {
     "max_func_loc": 20,
     "max_class_loc": 53,
-    "func_count": 15,
+    "func_count": 16,
     "funcs": {
       "_defaults": 4,
       "_clamp_int": 5,
-      "validate_config": 17,
+      "_choice": 4,
+      "validate_config": 19,
       "load_config": 19,
-      "_config_dir": 2,
+      "_config_dir": 4,
       "paths_info": 12,
-      "build_spec": 7,
+      "build_spec": 8,
       "emit_status": 6,
       "_reporter": 6,
       "do_run_test": 20,
@@ -3756,7 +3802,7 @@
     "max_nest": 1,
     "max_params": 3,
     "file_lines": 196,
-    "coverage": 96.21
+    "coverage": 96.38
   },
   "app/ui/panels/job_history.py": {
     "max_func_loc": 9,

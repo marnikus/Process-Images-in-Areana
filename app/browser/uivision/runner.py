@@ -123,7 +123,9 @@ def _report_tab_rows(rows, report) -> None:
 def _report_profiles(report) -> None:
     """Name every profile dir checked — the remote-debug line when none answers."""
     dirs = tabs.profile_dirs()
-    tail = "; ".join(str(d)[:70] for d in dirs[:6]) if dirs else "none on this OS's roots"
+    named = [f"{str(d)[:60]}{' (running)' if tabs.lock_held(d) else ''}"
+             for d in dirs[:6]]
+    tail = "; ".join(named) if dirs else "none on this OS's roots"
     report("detect", f"profiles checked: {len(dirs)} — {tail}")
 
 
