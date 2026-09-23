@@ -7,9 +7,11 @@ come back as a JSON payload instead.
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
+from app.core.models import UrlRow
 from app.persistence.config_manager import ConfigManager
 from app.ui.panels import uivision as uiv
 from app.ui.panels.uivision import UiVisionMixin
@@ -29,7 +31,8 @@ def host(tmp_path):
     cfg = ConfigManager(str(tmp_path / "cfg.json"))
     emitted = []
     h, logs = make_host([UiVisionMixin], config=cfg,
-                        url_rows=[{"url": "https://arena.ai/image/direct"}])
+                        state=SimpleNamespace(
+                            urls=[UrlRow.create("https://arena.ai/image/direct")]))
     h.uivision_result = type("S", (), {"emit": staticmethod(lambda p: emitted.append(p))})()
     h._emitted = emitted
     h._logs = logs
@@ -119,7 +122,7 @@ class TestRunSlot:
     def test_the_verdict_arrives_on_the_signal(self, host, tmp_path, monkeypatch):
         self.configure(host, tmp_path)
 
-        async def fake(config, url):
+        async def fake(config, url, urls=()):
             return uiv.service.MacroOutcome(state="ok", message="done", lines=["[status] ok"])
 
         monkeypatch.setattr(uiv.service, "run_demo", fake)
@@ -129,7 +132,7 @@ class TestRunSlot:
     def test_a_failed_run_is_emitted_and_logged_as_a_warning(self, host, tmp_path, monkeypatch):
         self.configure(host, tmp_path)
 
-        async def fake(config, url):
+        async def fake(config, url, urls=()):
             return uiv.service.MacroOutcome(state="failed", message="no XModules")
 
         monkeypatch.setattr(uiv.service, "run_demo", fake)
@@ -140,7 +143,7 @@ class TestRunSlot:
     def test_the_run_names_the_macro_and_the_tab_in_the_log(self, host, tmp_path, monkeypatch):
         self.configure(host, tmp_path)
 
-        async def fake(config, url):
+        async def fake(config, url, urls=()):
             return uiv.service.MacroOutcome(state="ok", message="done")
 
         monkeypatch.setattr(uiv.service, "run_demo", fake)
@@ -156,12 +159,41 @@ class TestErrorPaths:
         assert "error" in payload(host.get_uivision_settings())
         assert payload(host.get_uivision_macro())["ok"] is False
 
-    def test_url_rows_from_a_callable_are_used(self):
-        h, _ = make_host([UiVisionMixin], _url_rows=lambda: [{"url": "https://arena.ai/x"}])
+    def test_plain_dict_rows_are_still_understood(self):
+        # older persisted shapes must not break the lookup
+        h, _ = make_host([UiVisionMixin],
+                         state=SimpleNamespace(urls=[{"url": "https://arena.ai/x"}]))
         assert payload(h.get_uivision_settings())["matched_url"] == "https://arena.ai/x"
 
-    def test_a_failing_url_source_does_not_break_the_panel(self):
-        def boom():
-            raise RuntimeError("no rows")
-        h, _ = make_host([UiVisionMixin], _url_rows=boom)
+    def test_a_state_without_urls_does_not_break_the_panel(self):
+        h, _ = make_host([UiVisionMixin], state=SimpleNamespace())
+        assert payload(h.get_uivision_settings())["matched_url"] == ""
+
+
+class TestRealBridgeUrls:
+    """I-66 · the panel must read `bridge.state.urls` — the app's real store.
+
+    The original bug: `_urls_of` looked for `bridge._url_rows()` or
+    `bridge.url_rows`, neither of which exists anywhere in the app. Every
+    lookup returned `[]`, so the pattern could never match and the window
+    always said "no tab matches the pattern" — the reported symptom.
+    """
+
+    def bridge_with_rows(self, tmp_path):
+        rows = [UrlRow.create("https://arena.ai/image/direct?model_a=max", tab_id="DAE4")]
+        h, logs = make_host([UiVisionMixin], config=ConfigManager(str(tmp_path / "c.json")),
+                            state=SimpleNamespace(urls=rows))
+        return h, logs
+
+    def test_the_panel_sees_the_apps_url_rows(self, tmp_path):
+        host, _ = self.bridge_with_rows(tmp_path)
+        assert uiv._urls_of(host) != [], "the panel must read bridge.state.urls"
+
+    def test_the_pattern_resolves_to_the_open_tab(self, tmp_path):
+        host, _ = self.bridge_with_rows(tmp_path)
+        got = payload(host.get_uivision_settings())
+        assert got["matched_url"] == "https://arena.ai/image/direct?model_a=max"
+
+    def test_a_bridge_without_state_still_answers(self):
+        h, _ = make_host([UiVisionMixin])
         assert payload(h.get_uivision_settings())["matched_url"] == ""

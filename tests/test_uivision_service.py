@@ -133,3 +133,86 @@ class TestMacroNameGap:
                                       "uivision_log_path": "/r/log.txt", "uivision_macro": ""})
         cfg.macro = ""  # the window's field cleared by hand
         assert cfg.missing() == ["macro name"] and not cfg.is_ready
+
+
+class TestRealUrlRows:
+    """I-66 · the app stores `UrlRow` dataclasses, not dicts or strings.
+
+    The original bug: `matching_urls` handled dicts and plain strings and fell
+    back to `str(row)` for everything else. A `UrlRow` stringifies to its whole
+    repr, which *contains* "arena.ai", so the pattern matched and the function
+    returned that repr as if it were a URL. Nothing raised — the run just
+    opened a garbage locator. These tests use the real type.
+    """
+
+    def rows(self):
+        from app.core.models import UrlRow
+        return [UrlRow.create("https://arena.ai/image/direct?model_a=max", tab_id="DAE4"),
+                UrlRow.create("https://example.test/other", tab_id="BEEF")]
+
+    def test_a_url_row_dataclass_matches_on_its_url(self):
+        assert service.matching_urls(self.rows(), "arena.ai") == \
+            ["https://arena.ai/image/direct?model_a=max"]
+
+    def test_the_match_is_the_url_not_the_repr(self):
+        # the old code returned "UrlRow(id='…', url='https://…', enabled=True, …)"
+        got = service.matching_urls(self.rows(), "arena.ai")[0]
+        assert got.startswith("https://") and "UrlRow(" not in got
+
+    def test_a_row_object_that_does_not_match_is_excluded(self):
+        assert service.matching_urls(self.rows(), "nowhere.test") == []
+
+    def test_an_unrelated_object_never_matches_through_its_repr(self):
+        # any object whose repr happens to contain the pattern must not match
+        class Bogus:
+            def __repr__(self):
+                return "<thing url=https://arena.ai/fake>"
+        assert service.matching_urls([Bogus()], "arena.ai") == []
+
+    def test_pick_url_returns_the_users_tab(self):
+        assert service.pick_url(self.rows(), "arena.ai") == \
+            "https://arena.ai/image/direct?model_a=max"
+
+    def test_a_disabled_row_is_still_matchable(self):
+        # unchecking a row governs the job pool, not which tab a macro opens
+        from app.core.models import UrlRow
+        row = UrlRow.create("https://arena.ai/x", enabled=False)
+        assert service.matching_urls([row], "arena.ai") == ["https://arena.ai/x"]
+
+
+class TestNoMatchDiagnostic:
+    """I-66 · a failed match must say what it compared, not just "no match".
+
+    The bug report had to be filed precisely because "no tab matches the
+    pattern" gave the operator nothing to act on — they could see the tab in
+    Firefox and had no way to tell the app was looking at an empty list.
+    """
+
+    def rows(self):
+        from app.core.models import UrlRow
+        return [UrlRow.create("https://arena.ai/image/direct?model_a=max"),
+                UrlRow.create("https://example.test/x")]
+
+    def test_it_names_the_pattern_that_failed(self):
+        assert "nope.test" in service.match_report([], "nope.test")
+
+    def test_it_says_when_the_app_knows_no_urls_at_all(self):
+        # the actual I-66 symptom: the list was empty, not the pattern wrong
+        report = service.match_report([], "arena.ai")
+        assert "no URL rows" in report
+
+    def test_it_lists_the_urls_that_were_compared(self):
+        report = service.match_report(self.rows(), "nowhere.test")
+        assert "arena.ai/image/direct" in report and "example.test" in report
+
+    def test_it_counts_the_rows_it_checked(self):
+        assert "2" in service.match_report(self.rows(), "nowhere.test")
+
+    def test_a_long_list_is_truncated_so_the_log_stays_readable(self):
+        from app.core.models import UrlRow
+        many = [UrlRow.create(f"https://site{i}.test/") for i in range(30)]
+        report = service.match_report(many, "nope")
+        assert len(report) < 500 and "more" in report
+
+    def test_a_blank_pattern_says_so_plainly(self):
+        assert "empty" in service.match_report(self.rows(), "").lower()

@@ -23,7 +23,10 @@ const UiVisionRender = {
       return;
     }
     const url = (payload && payload.matched_url) || '';
-    el.textContent = url ? '▶ macro will open: ' + url : '⚠ no tab matches the pattern';
+    // On a miss, show the reason the service worked out (which URLs it compared)
+    // rather than a bare "no match", which is what made I-66 unactionable.
+    const note = (payload && payload.match_note) || 'no tab matches the pattern';
+    el.textContent = url ? '▶ macro will open: ' + url : '⚠ ' + note;
     el.className = 'uiv-match' + (url ? '' : ' uiv-warn');
   },
 

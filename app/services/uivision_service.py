@@ -23,6 +23,7 @@ from ..browser.uivision.macro import NEW_CHAT_XPATH, new_chat_macro
 from ..browser.uivision.runner import DEFAULT_TIMEOUT_S, MacroOutcome, run_macro
 
 __all__ = ["UiVisionConfig", "config_from_settings", "matching_urls", "pick_url",
+           "url_of", "match_report",
            "demo_macro_json", "build_run", "preview_url", "run_demo", "DEFAULT_MACRO",
            "SETTING_KEYS"]
 
@@ -93,6 +94,22 @@ def config_from_settings(settings: Any) -> UiVisionConfig:
     return UiVisionConfig(values)
 
 
+def url_of(row: Any) -> str:
+    """The URL a row carries — `UrlRow.url`, a dict's `url`, or a plain string.
+
+    The app stores `core.models.UrlRow` dataclasses. An earlier version fell
+    back to `str(row)` for unknown shapes, which silently "matched" a UrlRow
+    through its *repr* (the repr contains the url) and then handed that repr on
+    as if it were a URL. Anything without a real url is now empty, so it cannot
+    match at all (I-66, RULE 4: no plausible-looking wrong answer).
+    """
+    if isinstance(row, str):
+        return row
+    if isinstance(row, dict):
+        return str(row.get("url") or "")
+    return str(getattr(row, "url", "") or "")
+
+
 def matching_urls(urls: Any, pattern: str) -> List[str]:
     """Every configured URL containing `pattern` (case-insensitive).
 
@@ -102,12 +119,31 @@ def matching_urls(urls: Any, pattern: str) -> List[str]:
     needle = str(pattern or "").strip().lower()
     if not needle:
         return []
-    found = []
-    for row in urls or []:
-        url = str((row.get("url") if isinstance(row, dict) else row) or "")
-        if needle in url.lower():
-            found.append(url)
-    return found
+    return [url for url in (url_of(row) for row in urls or [])
+            if url and needle in url.lower()]
+
+
+_REPORT_LIMIT = 5  # URLs to name before summarising; keeps one log line readable
+
+
+def match_report(urls: Any, pattern: str) -> str:
+    """Why the pattern found nothing, in terms the operator can act on.
+
+    "no tab matches the pattern" is what made I-66 unactionable: it looks
+    identical whether the pattern is wrong, the list is empty, or the app is
+    reading the wrong store. This names the pattern, the row count, and the
+    URLs actually compared.
+    """
+    needle = str(pattern or "").strip()
+    if not needle:
+        return "the tab pattern is empty — type the URL (or part of it) to open"
+    known = [u for u in (url_of(row) for row in urls or []) if u]
+    if not known:
+        return (f"pattern '{needle}' matched nothing — the app knows no URL rows yet; "
+                f"add the tab to the URL list, or type a full https:// URL as the pattern")
+    shown = ", ".join(known[:_REPORT_LIMIT])
+    extra = f" (+{len(known) - _REPORT_LIMIT} more)" if len(known) > _REPORT_LIMIT else ""
+    return f"pattern '{needle}' matched none of {len(known)} URL(s): {shown}{extra}"
 
 
 def pick_url(urls: Any, pattern: str) -> str:
@@ -143,10 +179,14 @@ def preview_url(config: UiVisionConfig, url: str) -> str:
     return build_autorun_url(build_run(config, url))
 
 
-async def run_demo(config: UiVisionConfig, url: str) -> MacroOutcome:
-    """Run the configured macro against `url` and return its logged outcome."""
+async def run_demo(config: UiVisionConfig, url: str, urls: Any = ()) -> MacroOutcome:
+    """Run the configured macro against `url` and return its logged outcome.
+
+    `urls` is only used to explain a failed match (I-66) — the run itself needs
+    nothing but the resolved URL.
+    """
     if not config.is_ready:
         return MacroOutcome(state="failed", message="; ".join(config.missing()))
     if not url:
-        return MacroOutcome(state="failed", message="no tab matches the pattern")
+        return MacroOutcome(state="failed", message=match_report(urls, config.tab_pattern))
     return await run_macro(build_run(config, url), config.firefox_path, config.timeout_s)

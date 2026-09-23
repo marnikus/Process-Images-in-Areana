@@ -29,23 +29,26 @@ def _settings_of(bridge) -> dict:
 
 
 def _urls_of(bridge):
-    """The app's URL rows, used to resolve the tab pattern."""
-    getter = getattr(bridge, "_url_rows", None)
-    if callable(getter):
-        try:
-            return getter()
-        except Exception:
-            return []
-    return getattr(bridge, "url_rows", []) or []
+    """The app's URL rows (`bridge.state.urls`) — the one store every panel reads.
+
+    `state.urls` holds `UrlRow` dataclasses and is what `url_queue`,
+    `run_control` and `browser_tabs` all use. An earlier version invented
+    `bridge._url_rows()` / `bridge.url_rows`, which exist nowhere, so the
+    lookup always returned [] and no pattern could ever match (I-66).
+    """
+    state = getattr(bridge, "state", None)
+    return list(getattr(state, "urls", None) or [])
 
 
 def settings_json(bridge) -> str:
     """Form values + the tab the pattern currently resolves to."""
     try:
         config = config_of(bridge)
-        url = service.pick_url(_urls_of(bridge), config.tab_pattern)
+        rows = _urls_of(bridge)
+        url = service.pick_url(rows, config.tab_pattern)
         payload = config.as_dict()
         payload.update({"matched_url": url, "missing": config.missing(),
+                        "match_note": "" if url else service.match_report(rows, config.tab_pattern),
                         "ready": config.is_ready and bool(url)})
         return json.dumps(payload, ensure_ascii=False)
     except Exception as e:
@@ -84,9 +87,11 @@ def _outcome_json(outcome, url: str) -> str:
 async def run_test(bridge) -> None:
     """Launch the demo macro and emit what the Ui.Vision log said."""
     config = config_of(bridge)
-    url = service.pick_url(_urls_of(bridge), config.tab_pattern)
-    bridge._log(f"🦊 Ui.Vision macro '{config.macro}' → {url or '(no tab match)'}", "info")
-    outcome = await service.run_demo(config, url)
+    urls = _urls_of(bridge)
+    url = service.pick_url(urls, config.tab_pattern)
+    target = url or service.match_report(urls, config.tab_pattern)
+    bridge._log(f"🦊 Ui.Vision macro '{config.macro}' → {target}", "info")
+    outcome = await service.run_demo(config, url, urls)
     level = "info" if outcome.ok else "warn"
     bridge._log(f"🦊 Ui.Vision {outcome.state}: {outcome.message}", level)
     bridge.uivision_result.emit(_outcome_json(outcome, url))

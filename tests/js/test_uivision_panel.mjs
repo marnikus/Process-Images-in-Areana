@@ -139,6 +139,20 @@ describe('uivision window (behaviour)', () => {
     assert.match(h.text('uivMatch'), /arena\.ai\/image\/direct/);
   });
 
+  test('a failed match explains what was compared, not just "no match"', () => {
+    // I-66: the bare "no tab matches the pattern" gave the operator nothing to act on
+    const h = bootPanel({ get_uivision_settings: JSON.stringify({
+      ...SETTINGS, matched_url: '',
+      match_note: "pattern 'arena.ai' matched none of 2 URL(s): https://a.test/, https://b.test/" }) });
+    assert.match(h.text('uivMatch'), /matched none of 2 URL/);
+    assert.match(h.text('uivMatch'), /a\.test/);
+  });
+
+  test('a miss without a note still says something sensible', () => {
+    const h = bootPanel({ get_uivision_settings: JSON.stringify({ ...SETTINGS, matched_url: '' }) });
+    assert.match(h.text('uivMatch'), /no tab matches/);
+  });
+
   test('an incomplete config names what is still missing', () => {
     const h = bootPanel({ get_uivision_settings: JSON.stringify({ missing: ['log file path'], ready: false }) });
     assert.match(h.text('uivMatch'), /log file path/);
