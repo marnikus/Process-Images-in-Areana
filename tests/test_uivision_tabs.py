@@ -82,17 +82,44 @@ def test_addon_seen_tri_state(tmp_path):
     assert tabs.addon_seen(profiles=[]) is None
 
 
-def test_profile_roots_per_os_and_dirs_under_them(tmp_path):
-    win = tabs.profile_roots("nt", "win32", str(tmp_path), tmp_path)
-    assert win == [tmp_path / "Mozilla" / "Firefox" / "Profiles"]
-    assert tabs.profile_roots("nt", "win32", "", tmp_path) == []
-    mac = tabs.profile_roots("posix", "darwin", "", tmp_path)
-    assert mac == [tmp_path / "Library" / "Application Support" / "Firefox" / "Profiles"]
-    linux = tabs.profile_roots("posix", "linux", "", tmp_path)
+def test_addon_seen_scans_past_a_stale_profile(tmp_path):
+    stale = write_profile(tmp_path / "old", addons=[{"id": "{ads}", "name": "uBlock"}])
+    live = write_profile(tmp_path / "new", addons=[
+        {"id": "{u}", "defaultLocale": {"name": "Ui.Vision RPA"}}])
+    assert tabs.addon_seen(profiles=[stale, live]) is True
+
+
+def test_profile_roots_per_os_store_and_dirs(tmp_path):
+    env = {"APPDATA": str(tmp_path / "roaming"), "LOCALAPPDATA": str(tmp_path / "local")}
+    pkg = env and tmp_path / "local" / "Packages" / "MozillaMediaLLC.Firefox_abc"
+    (pkg / "LocalCache" / "Roaming" / "Mozilla" / "Firefox").mkdir(parents=True)
+    win = tabs.profile_roots("nt", "win32", env, tmp_path)
+    assert win == [tmp_path / "roaming" / "Mozilla" / "Firefox",
+                   pkg / "LocalCache" / "Roaming" / "Mozilla" / "Firefox"]
+    assert tabs.profile_roots("nt", "win32", {}, tmp_path) == []
+    mac = tabs.profile_roots("posix", "darwin", {}, tmp_path)
+    assert mac == [tmp_path / "Library" / "Application Support" / "Firefox"]
+    linux = tabs.profile_roots("posix", "linux", {}, tmp_path)
     assert linux[0] == tmp_path / ".mozilla" / "firefox"
-    (win[0] / "p.default").mkdir(parents=True)
-    assert tabs._dirs_under(win) == [win[0] / "p.default"]
     assert tabs._dirs_under([tmp_path / "gone"]) == []
+
+
+def test_profile_dirs_follows_profiles_ini_and_store(tmp_path):
+    root = tmp_path / "roaming" / "Mozilla" / "Firefox"
+    moved = tmp_path / "elsewhere" / "prof.move"
+    (root / "Profiles" / "a.default").mkdir(parents=True)
+    moved.mkdir(parents=True)
+    (root / "profiles.ini").write_text(
+        "\n".join(["[Profile0]", "Name=a", "IsRelative=1", "Path=Profiles/a.default",
+                   "[Profile1]", "Name=moved", "IsRelative=0", "Path=" + str(moved)]) + "\n",
+        encoding="utf-8")
+    found = tabs.profile_dirs({"APPDATA": "", "LOCALAPPDATA": ""},
+                              roots=[root], os_name="nt")
+    assert root / "Profiles" / "a.default" in found
+    assert moved in found
+    assert tabs._ini_profiles(root / "profiles.ini") == [
+        ("Profiles/a.default", True), (str(moved), False)]
+    assert tabs._ini_profiles(root / "no.ini") == []
 
 
 def test_desktop_module_probe_refuses_and_accepts(monkeypatch):

@@ -20,14 +20,54 @@ from pathlib import Path
 ADDON_NEEDLES = ("uivision", "kantu")
 
 
-def profile_roots(os_name: str, platform_name: str, appdata: str, home: Path) -> list:
-    """The Firefox profile roots of one OS — pure, so the rules are testable."""
+def _nt_roots(env: dict) -> list:
+    """Windows data dirs: APPDATA plus every Store package's cache."""
+    roots = [Path(env["APPDATA"]) / "Mozilla" / "Firefox"] if env.get("APPDATA") else []
+    if env.get("LOCALAPPDATA"):
+        packages = Path(env["LOCALAPPDATA"]) / "Packages"
+        roots += [pkg / "LocalCache" / "Roaming" / "Mozilla" / "Firefox"
+                  for pkg in sorted(packages.glob("Mozilla*"))]
+    return roots
+
+
+def profile_roots(os_name: str, platform_name: str, env: dict, home: Path) -> list:
+    """The Firefox data dirs of one OS — pure, so the rules are testable.
+
+    Windows adds the Store install's package cache (a Store Firefox keeps its
+    profiles under Packages\\Mozilla…\\LocalCache, not under APPDATA).
+    """
     if os_name == "nt":
-        return [Path(appdata) / "Mozilla" / "Firefox" / "Profiles"] if appdata else []
+        return _nt_roots(env)
     if platform_name == "darwin":
-        return [home / "Library" / "Application Support" / "Firefox" / "Profiles"]
+        return [home / "Library" / "Application Support" / "Firefox"]
     return [home / ".mozilla" / "firefox",
             home / "snap" / "firefox" / "common" / ".mozilla" / "firefox"]
+
+
+def _ini_profiles(ini: Path) -> list:
+    """(path, is_relative) pairs one profiles.ini declares — pure string parse."""
+    try:
+        lines = ini.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    out, state = [], {"path": "", "relative": True}
+    for line in lines + ["[end]"]:
+        _ini_line(line, state, out)
+    return out
+
+
+def _ini_line(line: str, state: dict, out: list) -> None:
+    """One profiles.ini line: sections flush, Path=/IsRelative= accumulate."""
+    text = line.strip()
+    if text.startswith("["):
+        if state["path"]:
+            out.append((state["path"], state["relative"]))
+        state["path"], state["relative"] = "", True
+        return
+    if text.startswith("Path="):
+        state["path"] = text.split("=", 1)[1].strip()
+    elif text.startswith("IsRelative="):
+        state["relative"] = text.split("=", 1)[1].strip() != "0"
 
 
 def _dirs_under(roots: list) -> list:
@@ -41,10 +81,35 @@ def _dirs_under(roots: list) -> list:
     return out
 
 
-def profile_dirs() -> list:
-    """Every existing profile directory under this OS's roots (may be empty)."""
-    return _dirs_under(profile_roots(os.name, sys.platform,
-                                     os.environ.get("APPDATA", ""), Path.home()))
+def _children(root: Path, os_name: str) -> list:
+    """Where profiles live under one data dir: Profiles/ on Windows, itself else."""
+    return _dirs_under([root / "Profiles"]) if os_name == "nt" else _dirs_under([root])
+
+
+def profile_dirs(env=None, roots=None, os_name: str = "") -> list:
+    """Every profile dir: root children + every profiles.ini-declared path."""
+    environ = os.environ if env is None else env
+    name = os_name or os.name
+    if roots is None:
+        roots = profile_roots(name, sys.platform, environ, Path.home())
+    seen, out = set(), []
+    for root in roots:
+        for cand in _root_profiles(root, name):
+            if cand.is_dir() and cand not in seen:
+                seen.add(cand)
+                out.append(cand)
+    return out
+
+
+def _root_profiles(root: Path, name: str) -> list:
+    """One data dir's profile dirs: its children plus its ini-declared paths."""
+    declared = [ini_parent(root, p, rel) for p, rel in _ini_profiles(root / "profiles.ini")]
+    return _children(root, name) + declared
+
+
+def ini_parent(root: Path, path: str, relative: bool) -> Path:
+    """One declared profile path resolved against its profiles.ini's dir."""
+    return root / path if relative else Path(path)
 
 
 def _read_json(path: Path):
@@ -99,18 +164,23 @@ def tab_rows(profiles=None) -> list:
 
 def addon_seen(profiles=None, needles=ADDON_NEEDLES):
     """True/False when one profile's extensions.json answers; None when none does."""
+    saw_doc = False
     for profile in (profiles if profiles is not None else profile_dirs()):
         doc = _read_json(Path(profile) / "extensions.json")
         if not isinstance(doc, dict):
             continue
+        saw_doc = True                      # a stale profile never votes for all
         for addon in (doc.get("addons") or []):
-            locale = addon.get("defaultLocale") or {}
-            blob = f"{addon.get('id', '')} {addon.get('name', '')} {locale.get('name', '')}"
-            flat = _flat(blob)
-            if any(needle in flat for needle in needles):
+            if _addon_matches(addon, needles):
                 return True
-        return False
-    return None
+    return False if saw_doc else None
+
+
+def _addon_matches(addon, needles) -> bool:
+    """One extensions.json entry names the sought add-on (id or locale name)."""
+    locale = addon.get("defaultLocale") or {}
+    blob = f"{addon.get('id', '')} {addon.get('name', '')} {locale.get('name', '')}"
+    return any(needle in _flat(blob) for needle in needles)
 
 
 def _flat(text: str) -> str:

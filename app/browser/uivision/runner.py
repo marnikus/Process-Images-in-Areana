@@ -120,6 +120,13 @@ def _report_tab_rows(rows, report) -> None:
         report("detect", f"+{len(rows) - TAB_LOG_CAP} more open tab(s)")
 
 
+def _report_profiles(report) -> None:
+    """Name every profile dir checked — the remote-debug line when none answers."""
+    dirs = tabs.profile_dirs()
+    tail = "; ".join(str(d)[:70] for d in dirs[:6]) if dirs else "none on this OS's roots"
+    report("detect", f"profiles checked: {len(dirs)} — {tail}")
+
+
 def _report_matches(spec: RunSpec, seen, report) -> None:
     """The pattern's verdict: every matching tab, or the macro's own open plan."""
     if not seen:
@@ -137,6 +144,8 @@ def _detect_tabs(spec: RunSpec, report, seams: RunSeams) -> tuple:
     seen = tabs.match_urls(rows, spec.pattern)
     quiet = "" if rows else " (no session store readable — is Firefox running?)"
     report("detect", f"firefox open tabs seen: {len(rows)}{quiet}")
+    if not rows:
+        _report_profiles(report)
     _report_tab_rows(rows, report)
     _report_matches(spec, seen, report)
     wins = desktop.find_windows(spec.pattern)
