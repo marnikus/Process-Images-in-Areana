@@ -21,7 +21,7 @@ const WEB = path.resolve(__dirname, '../../app/ui/web');
 const readJs = (rel) => fs.readFileSync(path.join(WEB, 'js', rel), 'utf-8');
 const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf8');
 
-const FA_IDS = ['faPattern', 'faUrl', 'faMacro', 'faTarget', 'faStorage', 'faHome', 'faBinary',
+const FA_IDS = ['faPattern', 'faMacro', 'faTarget', 'faStorage', 'faHome', 'faBinary',
   'faTimeout', 'faPause', 'faSaveBtn', 'faRunBtn', 'faStopBtn', 'faState', 'faPaths',
   'faStatus', 'faSteps'];
 
@@ -68,7 +68,7 @@ describe('firefox_auto window (mount)', () => {
 });
 
 /* ── part 2: the content ─────────────────────────────────────────────────── */
-const CFG = { pattern: 'Arena', url: 'https://arena.ai', target: "xpath=//a[span[text()='New Chat']]",
+const CFG = { pattern: 'Arena', target: "xpath=//a[span[text()='New Chat']]",
   macro: 'Python_XClick_Demo', storage: 'xfile', home: '', binary: '', timeout_sec: 90, pause_ms: 3000 };
 const PATHS = { home: '/home/u/Desktop/uivision',
   macro_file: '/home/u/Desktop/uivision/macros/Python_XClick_Demo.json',

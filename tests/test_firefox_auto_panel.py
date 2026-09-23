@@ -70,10 +70,23 @@ def test_save_validates_clamps_and_persists(tmp_path):
     assert cfg["storage"] == "xfile"                      # unknown → default
     assert cfg["timeout_sec"] == 600                      # clamped to TIMEOUT_RANGE
     assert cfg["pause_ms"] == DEFAULTS["pause_ms"]        # garbage → default
+    assert "url" not in cfg                               # retired key never comes back
     assert fake.config.get_state("firefox_auto") == cfg   # persisted
     saved = payloads(fake)[-1]
     assert saved["kind"] == "saved" and saved["config"] == cfg and "paths" in saved
     assert any(lvl == "success" and "config saved" in msg for lvl, msg in fake._logs)
+
+
+def test_retired_url_key_drops_from_an_old_stored_config(tmp_path):
+    """Old session.json files still carry the pre-2026-09-23 "url" field."""
+    fake = make_bridge(tmp_path)
+    fake.config.set_state(**{"firefox_auto": dict(DEFAULTS, url="https://arena.ai")})
+    cfg = fa.load_config(fake)
+    assert "url" not in cfg                               # load heals (RULE 13)
+    assert "url" not in fa.validate_config({"url": "https://arena.ai"})   # RULE 10
+    res = json.loads(FirefoxAutoMixin.save_firefox_auto_config(fake, "{}"))
+    assert res["ok"] is True and "url" not in res["config"]
+    assert "url" not in fake.config.get_state("firefox_auto")
 
 
 def test_save_refuses_a_bad_macro_name_by_name(tmp_path):
@@ -202,6 +215,7 @@ def test_build_spec_maps_every_config_field(tmp_path):
     cfg = dict(DEFAULTS, home="/h", binary="/b", timeout_sec=120, pause_ms=2000)
     spec = fa.build_spec(fake, cfg)
     assert spec == uiv_runner.RunSpec(
-        pattern=cfg["pattern"], url=cfg["url"], target=cfg["target"], macro=cfg["macro"],
+        pattern=cfg["pattern"], target=cfg["target"], macro=cfg["macro"],
         storage="xfile", home="/h", binary="/b", timeout_sec=120, pause_ms=2000,
         config_dir=str(fake.config.dir))
+    assert not hasattr(spec, "url")                       # the spec no longer carries a URL

@@ -332,18 +332,12 @@
           <label>Firefox window-title pattern — the OS window whose title contains this is “your” Firefox (raised to front before a run)</label>
           <input id="faPattern" type="text" placeholder="Arena">
         </div>
-        <div class="settings-row">
-          <div class="settings-group">
-            <label>URL to open (macro cmd_var1)</label>
-            <input id="faUrl" type="text" placeholder="https://arena.ai">
-          </div>
-          <div class="settings-group">
-            <label>Macro name — hard-drive storage: &lt;home&gt;/macros/&lt;name&gt;.json</label>
-            <input id="faMacro" type="text" placeholder="Python_XClick_Demo">
-          </div>
+        <div class="settings-group">
+          <label>Macro name — hard-drive storage: &lt;home&gt;/macros/&lt;name&gt;.json</label>
+          <input id="faMacro" type="text" placeholder="Python_XClick_Demo">
         </div>
         <div class="settings-group">
-          <label>XClick target (cmd_var2) — xpath=…, image file, or x,y. ALWAYS XClick (native OS input), never DOM click</label>
+          <label>XClick target (cmd_var2) — xpath=…, css=…, id=…, image file, or x,y. ALWAYS XClick (native OS input), never DOM click</label>
           <input id="faTarget" type="text" placeholder="xpath=//a[span[text()='New Chat']]">
         </div>
         <div class="settings-row">
@@ -369,20 +363,20 @@
             <input id="faTimeout" type="number" min="15" max="600" step="1" placeholder="90">
           </div>
           <div class="settings-group">
-            <label>Macro pause (ms)</label>
+            <label title="How long the macro waits for the element on the found tab, and how long the RED confirmation rectangle stays visible before the XClick (500–30000)">Wait for element + confirm rect (ms)</label>
             <input id="faPause" type="number" min="500" max="30000" step="100" placeholder="3000">
           </div>
         </div>
         <div style="display:flex; gap:6px; align-items:center;">
           <button id="faSaveBtn" class="btn-small btn-primary" title="Validate + save this window's config">Save</button>
-          <button id="faRunBtn" class="btn-small" title="Run the framework test: open URL → foreground → XClick → wait for the savelog verdict"><span class="material-icons" style="font-size:14px;">play_arrow</span> Run test</button>
+          <button id="faRunBtn" class="btn-small" title="Run the framework test: reuse the found tab (never open a page) → RED rectangle on the element → XClick → wait for the savelog verdict"><span class="material-icons" style="font-size:14px;">play_arrow</span> Run test</button>
           <button id="faStopBtn" class="btn-small" title="Stop waiting for the result — Firefox itself is never killed (it stays your normal browser)">Stop</button>
         </div>
         <div id="faPaths" style="font-size:10px; color:var(--text-muted); line-height:1.5; word-break:break-all; white-space:pre-line;"></div>
         <div id="faStatus" style="font-size:11px; color:var(--text-secondary); line-height:1.4;"></div>
         <pre id="faSteps" style="font-size:10px; color:var(--text-muted); background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; margin:0; max-height:140px; overflow-y:auto; white-space:pre-wrap; word-break:break-word;"></pre>
         <div style="font-size:10px; color:var(--text-muted); line-height:1.5; border-top:1px dashed var(--border); padding-top:6px;">
-          <b>How it works:</b> Firefox stays a NORMAL visible browser — no debug port, no geckodriver / Selenium / Playwright / Puppeteer. The signed Ui.Vision RPA add-on runs the macro from its official command-line API: this app writes the macro + the autostart page, starts Firefox on the <code>file:///</code> URL, and the macro does open → bringBrowserToForeground → pause → <b>XClick</b> (native OS input, isTrusted:true) → echo done. The verdict arrives in the savelog file (<code>Status=OK</code> / <code>Status=Error</code>).<br>
+          <b>How it works:</b> Firefox stays a NORMAL visible browser — no debug port, no geckodriver / Selenium / Playwright / Puppeteer. The signed Ui.Vision RPA add-on runs the macro from its official command-line API: this app writes the macro + the autostart page, starts Firefox on the <code>file:///</code> URL, and the macro <b>reuses the tab matching the pattern — it never opens a page</b> (no matching tab = the macro fails with E210, so open the page in Firefox first) → bringBrowserToForeground → waits for the element and draws the <b>RED confirmation rectangle</b> over it → <b>XClick</b> (native OS input, isTrusted:true) → echo done. The rectangle covers element-locator targets (xpath= / css= / id= / dom= / text= / link=); image, OCR and x,y targets get the extension's own vision box. The verdict arrives in the savelog file (<code>Status=OK</code> / <code>Status=Error</code>).<br>
           <b>Needs:</b> 1) the Ui.Vision RPA add-on in Firefox with <i>“Allow access to file URLs”</i> switched on; 2) the Ui.Vision Desktop App (XModules) — XClick is native input, and full-path savelog + hard-drive macros need it; 3) an unlocked desktop, Firefox visible and in front while the macro's desktop steps run.
         </div>
       </div>

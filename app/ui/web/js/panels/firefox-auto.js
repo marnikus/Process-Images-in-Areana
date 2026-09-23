@@ -13,7 +13,7 @@ const FirefoxAutoPanel = {
   steps: [],
 
   /* element id → config key (one table: payload(), applyConfig() and the tests read it) */
-  FIELDS: { faPattern: 'pattern', faUrl: 'url', faMacro: 'macro', faTarget: 'target',
+  FIELDS: { faPattern: 'pattern', faMacro: 'macro', faTarget: 'target',
             faStorage: 'storage', faHome: 'home', faBinary: 'binary',
             faTimeout: 'timeout_sec', faPause: 'pause_ms' },
 

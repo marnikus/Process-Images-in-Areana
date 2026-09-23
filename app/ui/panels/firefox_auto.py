@@ -20,7 +20,11 @@ CONFIG_KEY = "firefox_auto"
 STORAGE_MODES = ("xfile", "browser")
 TIMEOUT_RANGE = (15, 600)
 PAUSE_RANGE = (500, 30000)
-TEXT_FIELDS = ("pattern", "url", "target", "home", "binary")
+# Retired 2026-09-23: the macro never opens a URL, so "url" is no longer a
+# field — validate rebuilds from the defaults, so an old "url" key in
+# session.json is dropped instead of riding back in (RULE 10's dead-key
+# corollary; pinned by tests/test_firefox_auto_panel.py).
+TEXT_FIELDS = ("pattern", "target", "home", "binary")
 
 
 def _defaults() -> dict:
@@ -44,7 +48,7 @@ def validate_config(data) -> dict:
     """
     from app.browser.uivision import macro as uiv_macro
     row = dict(data or {})
-    cfg = _defaults()
+    cfg = _defaults()               # rebuild: a retired "url" key dies with the old dict
     for key in TEXT_FIELDS:
         cfg[key] = str(row.get(key, cfg[key]) or "").strip()
     cfg["macro"] = uiv_macro.validate_macro_name(row.get("macro", cfg["macro"]))
@@ -99,7 +103,7 @@ def paths_info(bridge, cfg) -> dict:
 def build_spec(bridge, cfg):
     """The runner's argument object — the validated config plus the app's dirs."""
     from app.browser.uivision.runner import RunSpec
-    return RunSpec(pattern=cfg["pattern"], url=cfg["url"], target=cfg["target"],
+    return RunSpec(pattern=cfg["pattern"], target=cfg["target"],
                    macro=cfg["macro"], storage=cfg["storage"], home=cfg["home"],
                    binary=cfg["binary"], timeout_sec=cfg["timeout_sec"],
                    pause_ms=cfg["pause_ms"], config_dir=_config_dir(bridge))

@@ -13,8 +13,9 @@ extension's `INVOKE_URL_PARAMS` whitelist.
 Launch-URL parameters (ui.vision/rpa/docs — command line API): `macro` (name,
 case-sensitive), `storage=browser|xfile`, `direct=1` (skip the confirm dialog),
 `savelog=<full path>` (XModules write it straight to disk), `cmd_var1`–`cmd_var3`
-(the macro reads them as `${!cmd_var1}`…`${!cmd_var3}`: the URL, the XClick
-target, the `selectWindow` tab target), `closeRPA=1`. Values are
+(the macro reads them as `${!cmd_var1}`…`${!cmd_var3}`: the pause budget in ms,
+the XClick target, the `selectWindow` tab target — the extension seeds exactly
+`!CMD_VAR1..3`, so the macro never opens a URL), `closeRPA=1`. Values are
 percent-encoded; the extension decodes with `decodeURIComponent`.
 """
 
@@ -119,17 +120,19 @@ class LaunchSpec:
     """One launch: the page, the macro, where the result lands, and the run's values.
 
     A single argument object keeps `launch_url` at one parameter (RULE 16).
+    There is deliberately no URL here: the macro reuses the run's tab and never
+    opens a page (2026-09-23, owner rule).
     """
 
     page_path: str
     macro: str
     storage: str          # "xfile" (hard drive) or "browser" (HTML5 storage)
     log_path: str         # savelog= — a FULL path (XModules write it directly)
-    url: str              # cmd_var1 — the URL a fresh tab opens at
+    pause_ms: int         # cmd_var1 — the macro's wait + confirmation-rect budget (ms)
     target: str           # cmd_var2 — the XClick locator
     close_rpa: bool = True
-    tab: str = "tab=open"  # cmd_var3 — the selectWindow target (`title=*…*` reuses
-                           # the pattern's tab; `tab=open` always opens a fresh one)
+    tab: str = ""         # cmd_var3 — the selectWindow target (`title=*…*`); a blank
+                          # one can only fail (E207) — it can never open a page
 
 
 def launch_url(spec: LaunchSpec) -> str:
@@ -140,7 +143,7 @@ def launch_url(spec: LaunchSpec) -> str:
         "storage": spec.storage,
         "direct": "1",
         "savelog": str(Path(spec.log_path).resolve()),
-        "cmd_var1": spec.url,
+        "cmd_var1": str(spec.pause_ms),
         "cmd_var2": spec.target,
         "cmd_var3": spec.tab,
         "closeRPA": "1" if spec.close_rpa else "0",

@@ -22,17 +22,20 @@ from . import autorun, desktop, launch, logread, macro, paths, tabs
 
 @dataclass(frozen=True)
 class RunSpec:
-    """One validated run: the window's config + where the app's files live."""
+    """One validated run: the window's config + where the app's files live.
+
+    There is no URL field: the macro reuses the run's tab and never opens a
+    page (2026-09-23, owner rule) — the pattern IS the navigation.
+    """
 
     pattern: str
-    url: str
     target: str
     macro: str
     storage: str          # "xfile" (hard drive) or "browser" (import once in the extension)
     home: str             # XModule home folder ('' = the extension's default)
     binary: str           # Firefox binary ('' = this OS's default)
     timeout_sec: int
-    pause_ms: int
+    pause_ms: int         # the macro's wait + confirmation-rect budget (ms)
     config_dir: str
 
 
@@ -85,7 +88,7 @@ def _provision(spec: RunSpec, report) -> tuple:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     target = _macro_target(spec)
     target.parent.mkdir(parents=True, exist_ok=True)
-    document = macro.build_macro(spec.macro, spec.pause_ms)
+    document = macro.build_macro(spec.macro)     # per-run values ride cmd_var1..3, not the file
     target.write_text(macro.to_json(document), encoding="utf-8")
     report("provision", f"macro written: {target}")
     if spec.storage == "xfile":
@@ -124,10 +127,15 @@ def _report_tab_rows(rows, report) -> None:
 
 
 def _report_matches(spec: RunSpec, seen, report) -> None:
-    """The pattern's verdict: every matching tab, or the macro's own open plan."""
+    """The pattern's verdict: every matching tab, or why the macro cannot find its tab."""
     if not seen:
-        report("detect", f"no OPEN tab matches “{spec.pattern}” — the macro opens "
-                         f"{(spec.url or 'the URL field')[:70]} itself", "warn")
+        if (spec.pattern or "").strip():
+            report("detect", f"no OPEN tab matches “{spec.pattern}” — the macro will NOT "
+                             f"open anything and will fail (E210): open the page in that "
+                             f"Firefox first", "warn")
+        else:
+            report("detect", "no window-title pattern set — the run will be blocked before "
+                             "launching (the macro reuses a tab, it never opens one)", "warn")
         return
     report("detect", f"pattern “{spec.pattern}” matches {len(seen)} open tab(s):")
     for pos, url in enumerate(seen, 1):
@@ -221,10 +229,14 @@ def _detect_plugin(report, seams: RunSeams) -> None:
                          f"(XModules) or XClick cannot fire", "warn")
 
 
-def tab_target(pattern: str) -> str:
-    """The macro's selectWindow target: reuse the pattern's tab, else open fresh."""
+def tab_target(pattern: str) -> str | None:
+    """The macro's selectWindow target: the pattern's tab, or None when nothing to match.
+
+    It never returns `tab=open` — the macro must not open a page (owner rule), so
+    a blank pattern is a run that cannot be satisfied, not a fresh tab.
+    """
     text = (pattern or "").strip()
-    return f"title=*{text}*" if text else "tab=open"
+    return f"title=*{text}*" if text else None
 
 
 def _foreground(spec: RunSpec, report, session_windows: list) -> None:
@@ -232,7 +244,8 @@ def _foreground(spec: RunSpec, report, session_windows: list) -> None:
 
     The session mapping goes first, so one window rises instead of every title
     match; when nothing maps, the plain title matches take over, and when even
-    those are silent the macro's own tab-open still carries the run.
+    those are silent the run still launches — the macro reuses a matching tab
+    if one is open and never opens one itself (E210 otherwise).
     """
     mapped = desktop.foreground_tab_window(spec.pattern, session_windows or [])
     if mapped:
@@ -244,7 +257,8 @@ def _foreground(spec: RunSpec, report, session_windows: list) -> None:
     matches, raised = desktop.foreground(spec.pattern)
     if not matches:
         report("foreground", f"no Firefox window matches “{spec.pattern}” — launching anyway; "
-                             f"the macro's own tab-open+bringBrowserToForeground takes over", "warn")
+                             f"the macro reuses a matching tab and never opens one (E210 if none)",
+               "warn")
         return
     titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
     report("foreground", f"{raised}/{len(matches)} Firefox window(s) on top — {titles}")
@@ -257,6 +271,11 @@ def _launch(spec: RunSpec, files, report, popen):
     signature at four parameters (RULE 16).
     """
     page, log_path = files
+    tab = tab_target(spec.pattern)
+    if tab is None:
+        report("launch", "no window-title pattern — the macro has no tab to reuse and "
+                         "will not open one", "error")
+        return None
     binary = launch.resolve_binary(spec.binary)
     if not launch.binary_exists(binary):
         report("launch", f"Firefox not found at {binary!r} — put its FULL path in the "
@@ -266,11 +285,9 @@ def _launch(spec: RunSpec, files, report, popen):
         return None
     url = autorun.launch_url(autorun.LaunchSpec(
         page_path=str(page), macro=spec.macro, storage=spec.storage,
-        log_path=str(log_path), url=spec.url, target=spec.target,
-        tab=tab_target(spec.pattern)))
+        log_path=str(log_path), pause_ms=spec.pause_ms, target=spec.target, tab=tab))
     report("launch", f"starting Firefox with the autorun URL (macro={spec.macro}, "
-                     f"storage={spec.storage}, savelog={log_path.name}, "
-                     f"tab={tab_target(spec.pattern)})")
+                     f"storage={spec.storage}, savelog={log_path.name}, tab={tab})")
     process = launch.launch_resilient(launch.build_argv(binary, url), popen=popen)
     report("launch", f"launched (pid {getattr(process, 'pid', '?')}) — waiting for the savelog file")
     return process
@@ -278,6 +295,14 @@ def _launch(spec: RunSpec, files, report, popen):
 
 def _stopped(seams: RunSeams) -> bool:
     return bool(seams.stop and seams.stop())
+
+
+def _blocked_no_pattern(recorder: _Recorder) -> RunResult:
+    """Blank pattern: the macro has no tab to reuse and it never opens one."""
+    recorder("launch", "no window-title pattern set — the macro finds the run's tab "
+                       "by title and never opens a page: set the pattern first", "error")
+    return _result("blocked", "no window-title pattern — nothing to reuse, nothing opened",
+                   recorder)
 
 
 def _result(kind: str, message: str, recorder: _Recorder, lines: tuple = ()) -> RunResult:
@@ -291,6 +316,8 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     session_windows = _detect_phase(spec, recorder, seams)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)
+    if tab_target(spec.pattern) is None:
+        return _blocked_no_pattern(recorder)
     try:
         page, log_path = _provision(spec, recorder)
     except (ValueError, OSError) as exc:

@@ -99,14 +99,14 @@ async def test_detect_phase_silent_store_and_blank_pattern(tmp_path, frozen_time
     calls = iter(range(10))
     seams = RunSeams(stop=lambda: next(calls) >= 1,   # detect runs, then stop wins
                      tabs=lambda: [], addon=lambda: None, probe=lambda: False)
-    result = await run_test(make_spec(tmp_path, pattern=""), report, seams)
+    result = await run_test(make_spec(tmp_path), report, seams)
     assert result.kind == "stopped"                    # detect ran, stop honoured after
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "open tabs seen: 0" in text and "no session store readable" in text
 
 
 def make_spec(tmp_path, **over):
-    kw = dict(pattern="Arena", url="https://arena.ai", target="xpath=//a[span[text()='New Chat']]",
+    kw = dict(pattern="Arena", target="xpath=//a[span[text()='New Chat']]",
               macro="Python_XClick_Demo", storage="xfile", home=str(tmp_path / "uivhome"),
               binary=str(tmp_path / "firefox"), timeout_sec=30, pause_ms=1500,
               config_dir=str(tmp_path / "config"))
@@ -150,13 +150,17 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
         "provision", "provision", "provision", "foreground",
         "launch", "launch", "result"]
 
-    # the macro landed on the hard drive, XClick-only, values via cmd vars
+    # the macro landed on the hard drive, XClick-only, reuses the tab, values via cmd vars
     macro_file = tmp_path / "uivhome" / "macros" / "Python_XClick_Demo.json"
     doc = json.loads(macro_file.read_text(encoding="utf-8"))
     assert doc["Name"] == "Python_XClick_Demo"
     assert [c["Command"] for c in doc["Commands"]] == [
-        "store", "store", "selectWindow", "if", "selectWindow", "end", "store",
-        "bringBrowserToForeground", "pause", "XClick", "echo"]
+        "selectWindow", "bringBrowserToForeground", "executeScript", "XClick", "echo"]
+    select_window = doc["Commands"][0]
+    assert select_window["Target"] == "${!cmd_var3}" and select_window["Value"] == ""
+    for cmd in doc["Commands"]:                       # nothing anywhere opens a page
+        assert "open" not in cmd["Command"].lower()
+        assert "tab=open" not in cmd["Target"]
 
     # the launch line: exactly [binary, autorun-url] with the official params
     assert len(popen.calls) == 1
@@ -169,6 +173,8 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
         assert param in url, param
     query = parse_qs(urlsplit(url).query)
     assert query["cmd_var3"] == ["title=*Arena*"]     # the pattern's tab is reused
+    assert query["cmd_var1"] == ["1500"]              # the pause budget — not a URL
+    assert "arena.ai" not in url                      # the run's URL never opens a page
 
     # the autorun page exists next to the logs
     assert (tmp_path / "config" / "uivision" / "ui.vision.html").exists()
@@ -237,11 +243,25 @@ async def test_stop_during_the_poll_ends_the_wait(tmp_path, frozen_time):
     assert len(popen.calls) == 1                        # the launch still happened
 
 
-def test_tab_target_reuses_the_pattern_or_opens_fresh():
+def test_tab_target_reuses_the_pattern_and_never_opens():
     assert runner.tab_target("Arena") == "title=*Arena*"
     assert runner.tab_target("  Agent Arena  ") == "title=*Agent Arena*"
-    assert runner.tab_target("") == "tab=open"
-    assert runner.tab_target("   ") == "tab=open"
+    assert runner.tab_target("") is None              # blank = unsatisfiable, not a fresh tab
+    assert runner.tab_target("   ") is None
+
+
+async def test_blank_pattern_blocks_before_any_file_or_launch(tmp_path, frozen_time):
+    popen = FakePopen()
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path, pattern="  "), report,
+                            RunSeams(sleep=noop_sleep, popen=popen, tabs=lambda: OPEN_TABS,
+                                     addon=lambda: True, probe=lambda: True))
+    assert result.kind == "blocked"
+    assert "no window-title pattern" in result.message
+    assert "nothing opened" in result.message
+    assert popen.calls == []                          # Firefox never even started
+    assert not (tmp_path / "config" / "uivision").exists()    # nothing provisioned
+    assert any(step == "launch" and lvl == "error" for step, _msg, lvl in rows)
 
 
 async def test_refused_launch_blocks_with_the_cause_not_a_crash(tmp_path, frozen_time):
