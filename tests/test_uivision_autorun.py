@@ -64,6 +64,13 @@ def test_launch_url_carries_the_whitelisted_params(tmp_path):
     # percent-encoding round trip: the extension's parseQuery decodes these
     assert query["cmd_var1"] == [URL]
     assert query["cmd_var2"] == [TARGET]
+    assert query["cmd_var3"] == ["tab=open"]      # default: no tab to reuse
+
+
+def test_launch_url_carries_an_explicit_tab_target(tmp_path):
+    url = autorun.launch_url(spec_for(tmp_path, tab="title=*Arena*"))
+    query = parse_qs(urlsplit(url).query)
+    assert query["cmd_var3"] == ["title=*Arena*"]
 
 
 def test_launch_url_close_rpa_off_and_file_uri_base(tmp_path):

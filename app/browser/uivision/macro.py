@@ -6,9 +6,15 @@ so the builder refuses to emit any JS-level mouse command and a test pins that.
 `bringBrowserToForeground` runs before the XClick because native input lands
 where the OS pointer is (the official demo macros pair the two).
 
+The macro reuses the run's tab instead of blindly navigating: `selectWindow`
+with `${!cmd_var3}` activates the existing tab (`title=*pattern*`, wildcards
+per the selectWindow docs); when no tab matches, `!errorignore` + `!statusOK`
+fall through to `selectWindow | tab=open`, which opens the run's URL in a
+fresh tab. A blank pattern skips the probe (`tab=open` straight away).
+
 Per-run values ride the command line instead of the file: `${!cmd_var1}` is the
-URL to open and `${!cmd_var2}` the XClick target, so the macro on disk stays
-generic and each launch passes its own values in the autorun URL.
+URL, `${!cmd_var2}` the XClick target and `${!cmd_var3}` the tab target, so the
+macro on disk stays generic and each launch passes its own values in the URL.
 
 The JSON shape is Ui.Vision's own (`src/common/convert_utils.js toJSONString`):
 `{"Name", "CreationDate", "Commands": [{"Command", "Target", "Value",
@@ -24,6 +30,9 @@ from datetime import date
 DEFAULT_MACRO_NAME = "Python_XClick_Demo"
 URL_VAR = "${!cmd_var1}"
 TARGET_VAR = "${!cmd_var2}"
+TAB_VAR = "${!cmd_var3}"
+OPEN_TAB = "tab=open"
+STATUS_FALSE = "${!statusOK} == false"
 DONE_TEXT = "done — XClick fired (native OS input)"
 
 # DOM-level mouse commands are banned by the owner's rule (they synthesize
@@ -61,9 +70,22 @@ def refuse_dom_clicks(commands) -> None:
 
 
 def build_commands(pause_ms=3000, done_text: str = DONE_TEXT) -> list:
-    """open URL → foreground → pause → XClick target → echo done (the framework test)."""
+    """Reuse the run's tab (else open it) → foreground → pause → XClick → echo done."""
     commands = [
-        command("open", URL_VAR, "", "navigate this tab to the URL passed on the command line"),
+        command("store", "true", "!statusOK",
+                "reset the status latch — the tab probe below sets it"),
+        command("store", "true", "!errorignore",
+                "a missing tab must fall through to open, not stop the macro"),
+        command("selectWindow", TAB_VAR, URL_VAR,
+                "reuse the tab matching cmd_var3 (title=*pattern*), or open cmd_var1 "
+                "in a fresh tab when cmd_var3 is tab=open"),
+        command("if", STATUS_FALSE, "",
+                "no matching tab — open the run's URL in a fresh tab"),
+        command("selectWindow", OPEN_TAB, URL_VAR,
+                "fresh tab at the run's URL (only when the probe above missed)"),
+        command("end", "", "", "the tab is ready either way"),
+        command("store", "false", "!errorignore",
+                "strict again — a failed XClick must fail the run, not pass silent"),
         command("bringBrowserToForeground", "", "",
                 "native input needs Firefox visible and in front (owner's critical rule)"),
         command("pause", str(int(pause_ms)), "", "let the page settle before the OS click"),

@@ -12,9 +12,10 @@ extension's `INVOKE_URL_PARAMS` whitelist.
 
 Launch-URL parameters (ui.vision/rpa/docs — command line API): `macro` (name,
 case-sensitive), `storage=browser|xfile`, `direct=1` (skip the confirm dialog),
-`savelog=<full path>` (XModules write it straight to disk), `cmd_var1`/`cmd_var2`
-(the macro reads them as `${!cmd_var1}`/`${!cmd_var2}`), `closeRPA=1`. Values
-are percent-encoded; the extension decodes with `decodeURIComponent`.
+`savelog=<full path>` (XModules write it straight to disk), `cmd_var1`–`cmd_var3`
+(the macro reads them as `${!cmd_var1}`…`${!cmd_var3}`: the URL, the XClick
+target, the `selectWindow` tab target), `closeRPA=1`. Values are
+percent-encoded; the extension decodes with `decodeURIComponent`.
 """
 
 from __future__ import annotations
@@ -124,9 +125,11 @@ class LaunchSpec:
     macro: str
     storage: str          # "xfile" (hard drive) or "browser" (HTML5 storage)
     log_path: str         # savelog= — a FULL path (XModules write it directly)
-    url: str              # cmd_var1 — what the macro's `open` navigates to
+    url: str              # cmd_var1 — the URL a fresh tab opens at
     target: str           # cmd_var2 — the XClick locator
     close_rpa: bool = True
+    tab: str = "tab=open"  # cmd_var3 — the selectWindow target (`title=*…*` reuses
+                           # the pattern's tab; `tab=open` always opens a fresh one)
 
 
 def launch_url(spec: LaunchSpec) -> str:
@@ -139,6 +142,7 @@ def launch_url(spec: LaunchSpec) -> str:
         "savelog": str(Path(spec.log_path).resolve()),
         "cmd_var1": spec.url,
         "cmd_var2": spec.target,
+        "cmd_var3": spec.tab,
         "closeRPA": "1" if spec.close_rpa else "0",
     }, quote_via=quote)
     return f"{base}?{query}"

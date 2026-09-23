@@ -10,9 +10,10 @@ XModules — never DOM `click` (owner's critical rule, guarded in `macro.py`).
 
 Modules: `macro` (the JSON builder), `autorun` (the vendored page + launch
 URL), `paths` (XModule home + runtime dir), `launch` (binary + argv),
-`desktop` (window pattern-match + foreground), `logread` (the completion
-contract), `runner` (one run, seams injected). The UI lives in
-`app/ui/panels/firefox_auto.py` + `js/panels/firefox-auto.js`.
+`desktop` (window pattern-match + foreground), `tabs` (read-only tab eyes
+over the session store), `mozlz4` (the session files' decoder), `logread`
+(the completion contract), `runner` (one run, seams injected). The UI lives
+in `app/ui/panels/firefox_auto.py` + `js/panels/firefox-auto.js`.
 """
 
 from .autorun import LaunchSpec, launch_url, write_page

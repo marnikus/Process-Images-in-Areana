@@ -10,6 +10,7 @@ import itertools
 import json
 import time
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -154,7 +155,8 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
     doc = json.loads(macro_file.read_text(encoding="utf-8"))
     assert doc["Name"] == "Python_XClick_Demo"
     assert [c["Command"] for c in doc["Commands"]] == [
-        "open", "bringBrowserToForeground", "pause", "XClick", "echo"]
+        "store", "store", "selectWindow", "if", "selectWindow", "end", "store",
+        "bringBrowserToForeground", "pause", "XClick", "echo"]
 
     # the launch line: exactly [binary, autorun-url] with the official params
     assert len(popen.calls) == 1
@@ -163,8 +165,10 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
     url = argv[1]
     assert url.startswith("file://") and "ui.vision.html?" in url
     for param in ("macro=Python_XClick_Demo", "storage=xfile", "direct=1",
-                  "savelog=", "cmd_var1=", "cmd_var2=", "closeRPA=1"):
+                  "savelog=", "cmd_var1=", "cmd_var2=", "cmd_var3=", "closeRPA=1"):
         assert param in url, param
+    query = parse_qs(urlsplit(url).query)
+    assert query["cmd_var3"] == ["title=*Arena*"]     # the pattern's tab is reused
 
     # the autorun page exists next to the logs
     assert (tmp_path / "config" / "uivision" / "ui.vision.html").exists()
@@ -231,6 +235,59 @@ async def test_stop_during_the_poll_ends_the_wait(tmp_path, frozen_time):
     assert result.kind == "stopped"
     assert "log file" in result.message
     assert len(popen.calls) == 1                        # the launch still happened
+
+
+def test_tab_target_reuses_the_pattern_or_opens_fresh():
+    assert runner.tab_target("Arena") == "title=*Arena*"
+    assert runner.tab_target("  Agent Arena  ") == "title=*Agent Arena*"
+    assert runner.tab_target("") == "tab=open"
+    assert runner.tab_target("   ") == "tab=open"
+
+
+async def test_refused_launch_blocks_with_the_cause_not_a_crash(tmp_path, frozen_time):
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+
+    def refuse(_argv):
+        raise PermissionError("[WinError 5] Access is denied")
+
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path), report,
+                            RunSeams(sleep=noop_sleep, popen=refuse, tabs=lambda: OPEN_TABS,
+                                     addon=lambda: True, probe=lambda: True))
+    assert result.kind == "blocked"
+    assert "would not start" in result.message
+    assert "WinError 5" in result.message
+    assert any(step == "launch" and lvl == "error" and "would not start" in msg
+               for step, msg, lvl in rows)
+
+
+async def test_windows_seam_reports_each_window_and_targets_the_tab(
+        tmp_path, frozen_time, monkeypatch):
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    log = tmp_path / "config" / "uivision" / "logs" / f"run-{STAMP}.txt"
+    log.parent.mkdir(parents=True)
+    log.write_text(OK_LOG, encoding="utf-8")
+    seen = {}
+
+    def fake_mapping(pattern, windows):
+        seen["pattern"], seen["windows"] = pattern, windows
+        return ([(11, "Arena — Mozilla Firefox")], 1)
+
+    monkeypatch.setattr(runner.desktop, "foreground_tab_window", fake_mapping)
+    rows, report = reports()
+    windows = [{"index": 1, "active": {"url": "https://arena.ai/x", "title": "Arena"},
+                "tabs": [{"url": "https://arena.ai/x", "title": "Arena"},
+                         {"url": "https://example.com", "title": "Ex"}]}]
+    seams = RunSeams(sleep=noop_sleep, popen=FakePopen(), tabs=lambda: OPEN_TABS,
+                     addon=lambda: True, probe=lambda: True, windows=lambda: windows)
+    result = await run_test(make_spec(tmp_path), report, seams)
+    assert result.kind == "ok"
+    assert seen["pattern"] == "Arena" and seen["windows"] == windows
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert "firefox window 1: 2 tab(s) — active “Arena”" in text
+    assert "holds the tab matching “Arena”" in text
 
 
 async def test_timeout_when_the_savelog_never_answers(tmp_path, frozen_time):
