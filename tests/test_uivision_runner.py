@@ -28,6 +28,39 @@ def frozen_time(monkeypatch):
                                                         time=time.time))
 
 
+OPEN_TABS = [{"url": "https://arena.ai/image/direct?model_a=max", "title": "Arena"}]
+
+
+async def test_detect_phase_names_tabs_pattern_extension_and_module(tmp_path, frozen_time):
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    log = tmp_path / "config" / "uivision" / "logs" / f"run-{STAMP}.txt"
+    log.parent.mkdir(parents=True)
+    log.write_text(OK_LOG, encoding="utf-8")
+    rows, report = reports()
+    seams = RunSeams(sleep=noop_sleep, popen=FakePopen(), tabs=lambda: OPEN_TABS,
+                     addon=lambda: False, probe=lambda: False)
+    await run_test(make_spec(tmp_path, pattern="arena.ai"), report, seams)
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert "firefox open tabs seen: 1" in text
+    assert "matches 1 open tab(s)" in text
+    assert "extension NOT found" in text
+    assert "NOT listening" in text
+    levels = {m: l for _s, m, l in rows}
+    assert any(l == "warn" for m, l in levels.items() if "NOT listening" in m)
+
+
+async def test_detect_phase_silent_store_and_blank_pattern(tmp_path, frozen_time):
+    rows, report = reports()
+    calls = iter(range(10))
+    seams = RunSeams(stop=lambda: next(calls) >= 1,   # detect runs, then stop wins
+                     tabs=lambda: [], addon=lambda: None, probe=lambda: False)
+    result = await run_test(make_spec(tmp_path, pattern=""), report, seams)
+    assert result.kind == "stopped"                    # detect ran, stop honoured after
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert "open tabs seen: 0" in text and "no session store readable" in text
+
+
 def make_spec(tmp_path, **over):
     kw = dict(pattern="Arena", url="https://arena.ai", target="xpath=//a[span[text()='New Chat']]",
               macro="Python_XClick_Demo", storage="xfile", home=str(tmp_path / "uivhome"),
@@ -63,12 +96,13 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
     log.write_text(OK_LOG, encoding="utf-8")           # the extension already answered
     popen = FakePopen()
     rows, report = reports()
-    result = await run_test(make_spec(tmp_path), report,
-                            RunSeams(sleep=noop_sleep, popen=popen))
+    seams = RunSeams(sleep=noop_sleep, popen=popen, tabs=lambda: OPEN_TABS,
+                     addon=lambda: True, probe=lambda: True)
+    result = await run_test(make_spec(tmp_path), report, seams)
 
     assert result.kind == "ok" and "macro completed" in result.message
     assert result.lines == ("echo: done — XClick fired (native OS input)",)
-    assert [step for step, _msg in result.steps] == [
+    assert [step for step, _msg in result.steps] == ["detect"] * 5 + [
         "provision", "provision", "foreground", "launch", "launch", "result"]
 
     # the macro landed on the hard drive, XClick-only, values via cmd vars
@@ -137,7 +171,7 @@ async def test_bad_macro_name_blocks_provision(tmp_path, frozen_time):
 async def test_stop_before_the_run_leaves_no_files(tmp_path, frozen_time):
     result = await run_test(make_spec(tmp_path), lambda *_a: None, RunSeams(stop=lambda: True))
     assert result.kind == "stopped" and result.message == "stopped before the run began"
-    assert result.steps == ()
+    assert result.steps and all(step == "detect" for step, _m in result.steps)
     assert not (tmp_path / "config" / "uivision").exists()
 
 

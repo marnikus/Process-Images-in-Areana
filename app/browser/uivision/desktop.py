@@ -13,6 +13,26 @@ from __future__ import annotations
 
 FIREFOX_PROCESS = "firefox"
 
+# Ui.Vision source (services/desktop_app): the Desktop Automation module —
+# XModules2, the native-input half of XClick — listens on ws://127.0.0.1:50889/
+# (MCP bridge port + 1). A passive TCP probe is how this app asks "is it
+# there?" without speaking the protocol or controlling anything.
+DESKTOP_APP_PORT = 50889
+
+
+DESKTOP_APP_HOST = "127.0.0.1"
+
+
+def desktop_module_listening(timeout: float = 0.4) -> bool:
+    """Something accepts connections on the Desktop Automation module's port."""
+    import socket
+    try:
+        with socket.create_connection((DESKTOP_APP_HOST, DESKTOP_APP_PORT),
+                                      timeout=timeout):
+            return True
+    except OSError:
+        return False
+
 
 def find_windows(pattern: str) -> list:
     """[(hwnd, title)] of Firefox windows whose title carries the pattern."""

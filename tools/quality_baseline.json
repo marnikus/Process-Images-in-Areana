@@ -1,7 +1,7 @@
 {
   "coverage": {
-    "line": 88.83,
-    "branch": 85.5
+    "line": 88.93,
+    "branch": 85.69
   },
   "app/__init__.py": {
     "max_func_loc": 0,
@@ -961,8 +961,9 @@
   "app/browser/uivision/desktop.py": {
     "max_func_loc": 12,
     "max_class_loc": 0,
-    "func_count": 2,
+    "func_count": 3,
     "funcs": {
+      "desktop_module_listening": 9,
       "find_windows": 8,
       "foreground": 12
     },
@@ -1056,10 +1057,16 @@
   "app/browser/uivision/runner.py": {
     "max_func_loc": 23,
     "max_class_loc": 13,
-    "func_count": 9,
+    "func_count": 15,
     "funcs": {
       "_macro_target": 5,
       "_provision": 17,
+      "_detect_phase": 4,
+      "_detect_tabs": 15,
+      "os_is_windows": 4,
+      "_addon_line": 8,
+      "_result_level": 5,
+      "_detect_plugin": 13,
       "_foreground": 9,
       "_launch": 20,
       "_stopped": 2,
@@ -1074,7 +1081,32 @@
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 159,
-    "coverage": 95.37
+    "coverage": 98.08
+  },
+  "app/browser/uivision/tabs.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 0,
+    "func_count": 11,
+    "funcs": {
+      "profile_roots": 8,
+      "_dirs_under": 9,
+      "profile_dirs": 4,
+      "_read_json": 6,
+      "_list": 3,
+      "_tab_row": 6,
+      "_rows_of": 9,
+      "tab_rows": 16,
+      "addon_seen": 14,
+      "_flat": 3,
+      "match_urls": 6
+    },
+    "max_methods": 0,
+    "max_cc": 8,
+    "max_cog": 0,
+    "max_nest": 3,
+    "max_params": 4,
+    "file_lines": 126,
+    "coverage": 98.1
   },
   "app/browser/visual_click.py": {
     "max_func_loc": 25,

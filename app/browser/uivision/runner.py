@@ -15,9 +15,9 @@ Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from . import autorun, desktop, launch, logread, macro, paths
+from . import autorun, desktop, launch, logread, macro, paths, tabs
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,9 @@ class RunSeams:
     stop: object = None       # callable → True when the user pressed Stop
     sleep: object = None      # async sleep (tests shorten the poll)
     popen: object = None      # subprocess factory (tests fake the launch)
+    tabs: object = None       # callable → open-tab rows (tests fake the store)
+    addon: object = None      # callable → extension-seen tri-state
+    probe: object = None      # callable → desktop-module-listening bool
 
 
 @dataclass
@@ -93,6 +96,67 @@ def _provision(spec: RunSpec, report) -> tuple:
     return page, log_path
 
 
+def _detect_phase(spec: RunSpec, report, seams: RunSeams) -> None:
+    """The pre-run eyes: what Firefox and the plugin show, before anything runs."""
+    _detect_tabs(spec, report, seams)
+    _detect_plugin(report, seams)
+
+
+def _detect_tabs(spec: RunSpec, report, seams: RunSeams) -> None:
+    """What Firefox shows without a debugger: windows, open tabs, the pattern."""
+    rows = seams.tabs() if seams.tabs else tabs.tab_rows()
+    seen = tabs.match_urls(rows, spec.pattern)
+    tail = "; ".join(r["url"][:60] for r in rows[:4]) if rows else \
+        "no session store readable — is Firefox running?"
+    report("detect", f"firefox open tabs seen: {len(rows)}" + (f" — {tail}" if rows else f" ({tail})"))
+    if seen:
+        report("detect", f"pattern “{spec.pattern}” matches {len(seen)} open tab(s) — {seen[0][:80]}")
+    else:
+        report("detect", f"no OPEN tab matches “{spec.pattern}” — the macro opens "
+                         f"{(spec.url or 'the URL field')[:70]} itself", "warn")
+    wins = desktop.find_windows(spec.pattern)
+    note = "" if wins or os_is_windows() else " (window listing is Windows-only)"
+    report("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
+
+
+def os_is_windows() -> bool:
+    """One named predicate keeps the detect line readable (RULE 18)."""
+    import os
+    return os.name == "nt"
+
+
+def _addon_line(addon) -> tuple:
+    """(message, level) naming the extension check's three answers."""
+    if addon is True:
+        return "Ui.Vision extension: installed in the Firefox profile", "info"
+    if addon is False:
+        return ("Ui.Vision extension NOT found in any Firefox profile — install "
+                "the add-on and switch on ‘Allow access to file URLs’", "warn")
+    return "Ui.Vision extension: unknown (no Firefox profile readable)", "warn"
+
+
+def _result_level(kind: str) -> str:
+    """The log level one verdict kind deserves."""
+    if kind == "ok":
+        return "success"
+    return "warn" if kind == "timeout" else "error"
+
+
+def _detect_plugin(report, seams: RunSeams) -> None:
+    """Extension in the profile + the native-input module on its port."""
+    addon = seams.addon() if seams.addon else tabs.addon_seen()
+    message, level = _addon_line(addon)
+    report("detect", message, level)
+    live = seams.probe() if seams.probe else desktop.desktop_module_listening()
+    if live:
+        report("detect", f"Desktop Automation module (XClick’s native input): listening on "
+                         f"127.0.0.1:{desktop.DESKTOP_APP_PORT}", "success")
+    else:
+        report("detect", f"Desktop Automation module NOT listening on 127.0.0.1:"
+                         f"{desktop.DESKTOP_APP_PORT} — install ‘Ui.Vision for Desktop’ "
+                         f"(XModules) or XClick cannot fire", "warn")
+
+
 def _foreground(spec: RunSpec, report) -> None:
     """Find the pattern's Firefox windows and raise them (critical rule: visible+front)."""
     matches, raised = desktop.foreground(spec.pattern)
@@ -138,6 +202,7 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     """One framework test end to end; every phase reports through `report`."""
     seams = seams or RunSeams()
     recorder = _Recorder(report)
+    _detect_phase(spec, recorder, seams)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)
     try:
@@ -153,7 +218,6 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
         return _result("blocked", "Firefox was not found — nothing was launched", recorder)
     verdict = await logread.poll_log(log_path, time.time() + float(spec.timeout_sec),
                                      sleep=seams.sleep, stop=seams.stop)
-    level = "success" if verdict.kind == "ok" else ("warn" if verdict.kind == "timeout" else "error")
     recorder("result", f"{verdict.kind}: {verdict.message}",
-             "info" if verdict.kind == "stopped" else level)
+             "info" if verdict.kind == "stopped" else _result_level(verdict.kind))
     return _result(verdict.kind, verdict.message, recorder, verdict.lines)
