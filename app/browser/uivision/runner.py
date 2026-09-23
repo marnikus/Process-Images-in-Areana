@@ -9,7 +9,8 @@ and inside the poll).
 Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 `ok` / `error` are the extension's own verdicts from the savelog file,
 `timeout` means the file never answered, `stopped` means the user stopped,
-`blocked` means the run never started (bad macro name, missing Firefox, …).
+`blocked` means the run never started (bad macro name, missing Firefox,
+missing extension, …).
 """
 
 from __future__ import annotations
@@ -133,10 +134,10 @@ def _report_tab_rows(rows, report) -> None:
 
 
 def _report_matches(spec: RunSpec, seen, report) -> None:
-    """The pattern's verdict: every matching tab, or the macro's own open plan."""
+    """The pattern's verdict: every matching tab, or the selectWindow's warning."""
     if not seen:
-        report("detect", f"no OPEN tab matches “{spec.pattern}” — the macro opens "
-                         f"{(spec.url or 'the URL field')[:70]} itself", "warn")
+        report("detect", f"no OPEN tab matches “{spec.pattern}” — open the page first: "
+                         f"the macro never opens pages, a missing tab fails the run", "warn")
         return
     report("detect", f"pattern “{spec.pattern}” matches {len(seen)} open tab(s):")
     for pos, url in enumerate(seen, 1):
@@ -203,8 +204,9 @@ def _addon_line(addon) -> tuple:
     if addon is True:
         return "Ui.Vision extension: installed in the Firefox profile", "info"
     if addon is False:
-        return ("Ui.Vision extension NOT found in any Firefox profile — install "
-                "the add-on and switch on ‘Allow access to file URLs’", "warn")
+        return ("Ui.Vision extension NOT found in any Firefox profile — install it from "
+                "addons.mozilla.org/firefox/addon/rpa and enable it (Firefox needs no "
+                "file-URL toggle — that one is Chrome-only)", "warn")
     return "Ui.Vision extension: unknown (no Firefox profile readable)", "warn"
 
 
@@ -265,17 +267,17 @@ def _timeout_note(spec: RunSpec, log_path, addon) -> str:
                 f"or check their setup)")
     if addon is False:
         where = ("the Ui.Vision extension was NOT found in any Firefox profile — install it "
-                 "from addons.mozilla.org/firefox/addon/rpa")
+                 "from addons.mozilla.org/firefox/addon/rpa and enable it")
     elif addon is None:
         where = ("no Firefox profile answered the extension check — install Ui.Vision in the "
-                 "profile this Firefox uses")
+                 "profile this Firefox uses and enable it")
     else:
-        where = ("the Ui.Vision extension IS installed, so the macro never started from the "
-                 "autorun page")
+        where = ("the Ui.Vision extension IS installed, so it never started from the autorun "
+                 "page — check it is enabled (about:addons) and that no alert blocks "
+                 "the trigger tab")
     expecting = spec.home or "<Desktop>/uivision"
-    return (f" — {where}; then switch on ‘Allow access to file URLs’ for it (the autorun page "
-            f"is a file:// URL) and set its own Home directory to “{expecting}” in hard-drive "
-            f"mode (Ui.Vision Settings → Setup XModules2)")
+    return (f" — {where}; in hard-drive mode also set its own Home directory to “{expecting}” "
+            f"(Ui.Vision Settings → Setup XModules2)")
 
 
 def _foreground(spec: RunSpec, report, session_windows: list) -> None:
@@ -283,7 +285,7 @@ def _foreground(spec: RunSpec, report, session_windows: list) -> None:
 
     The session mapping goes first, so one window rises instead of every title
     match; when nothing maps, the plain title matches take over, and when even
-    those are silent the macro's own tab-open still carries the run.
+    those are silent the macro still finds the tab itself (or fails loudly).
     """
     mapped = desktop.foreground_tab_window(spec.pattern, session_windows or [])
     if mapped:
@@ -295,7 +297,7 @@ def _foreground(spec: RunSpec, report, session_windows: list) -> None:
     matches, raised = desktop.foreground(spec.pattern)
     if not matches:
         report("foreground", f"no Firefox window matches “{spec.pattern}” — launching anyway; "
-                             f"the macro's own tab-open+bringBrowserToForeground takes over", "warn")
+                             f"the macro's own selectWindow+bringBrowserToForeground takes over", "warn")
         return
     titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
     report("foreground", f"{raised}/{len(matches)} Firefox window(s) on top — {titles}")
@@ -331,6 +333,30 @@ def _stopped(seams: RunSeams) -> bool:
     return bool(seams.stop and seams.stop())
 
 
+def _addon_check_skipped() -> bool:
+    """True when the operator overrode the no-extension refusal (exotic setups).
+
+    The override exists for Firefox the scanner cannot see (Portable, a custom
+    `-profile` outside the roots and `profiles.ini`) — set
+    `ARENA_UIVISION_ALLOW_NO_ADDON=1` to launch anyway.
+    """
+    import os
+    return os.environ.get("ARENA_UIVISION_ALLOW_NO_ADDON", "").strip() == "1"
+
+
+def _refuse_without_addon(recorder: _Recorder) -> RunResult:
+    """The `blocked` answer when no scanned profile has the extension installed."""
+    names = [path.name for path in tabs.profile_dirs()]
+    scanned = f" (scanned: {', '.join(names)})" if names else ""
+    recorder("run", f"Ui.Vision extension NOT found in any Firefox profile{scanned} — "
+                    f"refusing to open the trigger page into Error #204; install the add-on "
+                    f"from addons.mozilla.org/firefox/addon/rpa in this profile and enable it "
+                    f"(Firefox needs no file-URL toggle; ARENA_UIVISION_ALLOW_NO_ADDON=1 "
+                    f"launches anyway)", "error")
+    return _result("blocked", "Ui.Vision extension is not installed — the run would only "
+                              "open the trigger page to Error #204", recorder)
+
+
 def _result(kind: str, message: str, recorder: _Recorder, lines: tuple = ()) -> RunResult:
     return RunResult(kind=kind, message=message, steps=tuple(recorder.steps), lines=lines)
 
@@ -346,6 +372,11 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
         recorder("run", "pattern is blank — set it to your tab's title (e.g. Arena); "
                         "the run reuses your open tab and never opens pages", "error")
         return _result("blocked", "pattern is blank — the run needs your tab's title", recorder)
+    if addon is False and not _addon_check_skipped():
+        return _refuse_without_addon(recorder)
+    if addon is False:
+        recorder("run", "proceeding without the extension (ARENA_UIVISION_ALLOW_NO_ADDON=1) — "
+                        "expect Error #204 unless it is installed after all", "warn")
     try:
         page, log_path = _provision(spec, recorder)
     except (ValueError, OSError) as exc:

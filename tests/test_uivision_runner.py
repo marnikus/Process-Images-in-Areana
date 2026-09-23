@@ -309,11 +309,48 @@ async def test_timeout_carries_the_extension_checklist(tmp_path, frozen_time):
     rows, report = reports()
     result = await run_test(make_spec(tmp_path, timeout_sec=0, home=""), report,
                             RunSeams(sleep=noop_sleep, popen=FakePopen(),
-                                     tabs=lambda: OPEN_TABS, addon=lambda: False,
+                                     tabs=lambda: OPEN_TABS, addon=lambda: True,
                                      probe=lambda: True))
     assert result.kind == "timeout"
     assert "deadline" in result.message
-    assert "NOT found" in result.message and "Allow access to file URLs" in result.message
+    assert "IS installed" in result.message and "about:addons" in result.message
+    assert "uivision" in result.message
+
+
+async def test_missing_extension_blocks_before_any_launch(tmp_path, frozen_time):
+    popen = FakePopen()
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path), report,
+                            RunSeams(sleep=noop_sleep, popen=popen, tabs=lambda: OPEN_TABS,
+                                     addon=lambda: False, probe=lambda: True))
+    assert result.kind == "blocked"
+    assert "Error #204" in result.message
+    assert popen.calls == []
+    assert not (tmp_path / "config" / "uivision").exists()
+    assert any(step == "run" and lvl == "error" and "NOT found" in msg
+               for step, msg, lvl in rows)
+
+
+async def test_addon_refusal_can_be_overridden_for_exotic_firefoxes(
+        tmp_path, frozen_time, monkeypatch):
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    monkeypatch.setenv("ARENA_UIVISION_ALLOW_NO_ADDON", "1")
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path, timeout_sec=0), report,
+                            RunSeams(sleep=noop_sleep, popen=FakePopen(), tabs=lambda: OPEN_TABS,
+                                     addon=lambda: False, probe=lambda: True))
+    assert result.kind == "timeout"                   # it launched past the refusal
+    assert any("ALLOW_NO_ADDON" in msg for _s, msg, _l in rows)
+
+
+def test_addon_check_override_reads_the_env_flag(monkeypatch):
+    monkeypatch.delenv("ARENA_UIVISION_ALLOW_NO_ADDON", raising=False)
+    assert runner._addon_check_skipped() is False
+    monkeypatch.setenv("ARENA_UIVISION_ALLOW_NO_ADDON", "1")
+    assert runner._addon_check_skipped() is True
+    monkeypatch.setenv("ARENA_UIVISION_ALLOW_NO_ADDON", "yes")
+    assert runner._addon_check_skipped() is False
 
 
 def test_stray_savelog_finds_the_downloads_landing_spot(tmp_path):
@@ -333,12 +370,12 @@ def test_timeout_note_names_the_stray_or_the_checklist(tmp_path, monkeypatch):
     assert "DID run" in note and "FileAccess" in note
     monkeypatch.setattr(runner, "_stray_savelog", lambda name: None)
     missing = runner._timeout_note(spec, log_path, False)
-    assert "NOT found" in missing and "Allow access to file URLs" in missing
+    assert "NOT found" in missing and "addons.mozilla.org" in missing
     assert "uivision" in missing                      # the expected Home dir rides along
     unknown = runner._timeout_note(spec, log_path, None)
     assert "no Firefox profile answered" in unknown
     installed = runner._timeout_note(spec, log_path, True)
-    assert "IS installed" in installed and "never started" in installed
+    assert "IS installed" in installed and "about:addons" in installed
 
 
 def test_touch_savelog_fails_fast_on_unwritable_paths(tmp_path):
