@@ -1,24 +1,19 @@
-"""Browser registry — more than one browser, one data-driven table (2026-09-21).
+"""Browser registry — Chrome, the one browser with a debug endpoint (2026-09-22).
 
-Owner request: Firefox next to Chrome, same host/port setting, per-browser data
-dir + launch command, other browsers later. This module is the ONE place that
-knows a browser's binaries, flags, default profile dir, protocol **and the flag
-that opens its debug channel**; adding a browser later is one row here, not a
-new code path.
+This module is the ONE place that knows the debuggable browser's binaries,
+flags, default profile dir and launch command; the Settings panel renders
+whatever the registry row says (data-driven, no second vocabulary in JS).
 
-Protocol reality (measured 2026-09-21, round 8):
-* Chrome/Edge/Chromium speak CDP (`GET /json/list`, one socket per tab).
-* Firefox is attached over the legacy **DevTools RDP** socket that
-  `--start-debugger-server` opens. Its Remote Agent (`--remote-debugging-port`,
-  WebDriver BiDi and the removed CDP) sets `navigator.webdriver = true` for the
-  whole browser session (Firefox bug 1719505) — that is exactly the automation
-  signal the stealth requirement forbids, so this registry never generates that
-  flag for Firefox (pinned by a test).
-`detect_protocol` in `endpoints.py` decides per endpoint (CDP → RDP → BiDi);
-`capabilities` states what each protocol can do, so a missing operation can
-refuse by name instead of timing out.
+History (I-62): Firefox and Edge rows lived here while the app tried DevTools
+RDP / BiDi / attached sockets. Those approaches are deleted — a normal Firefox
+has no debug channel worth driving, and Edge was a Chrome twin nobody asked
+for. Firefox automation now runs through the Ui.Vision RPA extension
+(`app/browser/uivision/`, window "Firefox auto with Extension"): native OS
+input in a visible browser, no debugger port at all. Chrome keeps exactly what
+it always had — CDP on `--remote-debugging-port`.
 
-RED at `bce5a01`: this module did not exist.
+`ScanNote`/`scan_line` are the Settings scan vocabulary: what one Refresh asks
+and why an endpoint could not answer.
 """
 
 from __future__ import annotations
@@ -27,32 +22,18 @@ import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from . import protocols as PROTOCOLS
-
 REMOTE_DEBUGGING_PORT = "remote-debugging-port"
-START_DEBUGGER_SERVER = "start-debugger-server"
 
-PROTOCOL_CDP = PROTOCOLS.PROTOCOL_CDP
-PROTOCOL_RDP = PROTOCOLS.PROTOCOL_RDP
-PROTOCOL_BIDI = PROTOCOLS.PROTOCOL_BIDI
+PROTOCOL_CDP = "cdp"
 
-# What each protocol can do today (the one gate a CDP-only op asks, D-3).
-CAPABILITIES: Dict[str, frozenset] = {
-    PROTOCOL_CDP: frozenset({"tabs", "evaluate", "navigate", "screenshot",
-                             "set_files", "input", "dom"}),
-    PROTOCOL_RDP: frozenset({"tabs", "evaluate", "click"}),
-    PROTOCOL_BIDI: frozenset({"tabs", "evaluate", "navigate"}),
-}
+# What the debug endpoint can do — one browser, one honest list (D-3).
+CAPABILITIES: frozenset = frozenset({"tabs", "evaluate", "navigate", "screenshot",
+                                     "set_files", "input", "dom"})
 
 
 @dataclass(frozen=True)
 class BrowserProfile:
-    """One browser: identity, endpoint offset, profile dir, binaries, flags.
-
-    `debug_flag` is the flag that opens the debug channel; `prefs` are the
-    profile preferences that channel needs (empty for browsers that need none);
-    `stealth` is the sentence the panel shows about automation signals.
-    """
+    """One browser: identity, endpoint offset, profile dir, binaries, flags."""
 
     id: str
     label: str
@@ -63,9 +44,6 @@ class BrowserProfile:
     extra_args_default: str = ""
     executables: Dict[str, str] = field(default_factory=dict)
     notes: str = ""
-    debug_flag: str = REMOTE_DEBUGGING_PORT
-    prefs: Tuple[Tuple[str, object], ...] = ()
-    stealth: str = ""
 
     def binary(self, os_name: str) -> str:
         """Executable path/name for an OS key (`windows` / `linux` / `macos`)."""
@@ -83,53 +61,6 @@ PROFILES: Tuple[BrowserProfile, ...] = (
             "macos": '"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"',
         },
         notes="Full automation (CDP): tabs, JS, screenshots, file attach, input.",
-    ),
-    BrowserProfile(
-        id="firefox", label="Firefox (Mozilla)", protocol=PROTOCOL_RDP, port_offset=1,
-        dir_flag="-profile", data_dir_default="",
-        extra_args_default="-no-remote",
-        executables={
-            "windows": '"C:\\Program Files\\Mozilla Firefox\\firefox.exe"',
-            "linux": "firefox",
-            "macos": '"/Applications/Firefox.app/Contents/MacOS/firefox"',
-        },
-        notes=("DevTools RDP (--start-debugger-server): tabs, JS, click — attach and detach "
-               "without touching the browser, and no automation flag. Starts with YOUR profile "
-               "by default (leave the dir empty), which is the session you browse in — real "
-               "history, cookies and extensions. -no-remote is what makes the socket open at "
-               "all: without it the flag is handed to the already-running Firefox and no server "
-               "starts. Neither flag is a remote-control switch. There is no input, screenshot "
-               "or file API, and the Remote Agent (--remote-debugging-port) would set "
-               "navigator.webdriver for the session."),
-        debug_flag=START_DEBUGGER_SERVER,
-        prefs=(
-            ("devtools.chrome.enabled", True),
-            ("devtools.debugger.remote-enabled", True),
-            ("devtools.debugger.prompt-connection", False),
-            ("devtools.debugger.force-local", True),
-        ),
-        stealth=("What the URL-bar robot icon really is: Firefox's own 'under remote control' "
-                 "cue (#remote-control-icon, tooltip 'reason: DevTools'). It appears whenever a "
-                 "DevTools server is running — it is NOT caused by -profile/-no-remote, and no "
-                 "preference removes it while the socket is open. It is browser chrome: web pages "
-                 "cannot see it, and the app measures what they CAN see — navigator.webdriver="
-                 "false, no headless marker, a real profile. The 'Allow connection?' dialog is "
-                 "devtools.debugger.prompt-connection: click Allow once, or let Prepare Profile "
-                 "write that pref into the profile Firefox is actually running (it asks once per "
-                 "connection, so the app opens one connection per pass). Never start Firefox with "
-                 "--remote-debugging-port (Firefox bug 1719505 sets navigator.webdriver for the "
-                 "whole session)."),
-    ),
-    BrowserProfile(
-        id="edge", label="Edge (Chromium)", protocol=PROTOCOL_CDP, port_offset=2,
-        dir_flag="--user-data-dir", data_dir_default="C:\\arena-images-edge",
-        extra_args_default="",
-        executables={
-            "windows": '"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"',
-            "linux": "microsoft-edge",
-            "macos": '"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"',
-        },
-        notes="Chromium, so it speaks the same CDP as Chrome.",
     ),
 )
 
@@ -158,16 +89,16 @@ def profile_ids() -> List[str]:
 
 
 def default_profile() -> BrowserProfile:
-    """The browser a fresh install uses (Chrome — the app's original one)."""
+    """The browser a fresh install uses (Chrome — the app's only one)."""
     return PROFILES[0]
 
 
 def resolve_port(base_port, profile: BrowserProfile, override=None) -> int:
     """Endpoint port: the per-browser override, else the shared base + the offset.
 
-    Two TCP servers cannot share one port, so the shared `cdp_port` is the BASE
-    and each browser derives its own endpoint (Chrome +0, Firefox +1, …). The
-    panel always shows the resolved number, so the setting stays predictable.
+    The shared `cdp_port` setting is the BASE and each registry row derives its
+    own endpoint (Chrome +0). The panel always shows the resolved number, so the
+    setting stays predictable.
     """
     try:
         want = int(override or 0)
@@ -189,15 +120,8 @@ def endpoint(port, data_dir: str, extra_args: str = "", url: str = "") -> dict:
 
 
 def debug_arg(profile: BrowserProfile, port) -> str:
-    """The flag that opens this browser's debug channel.
-
-    Chrome/Edge take `--remote-debugging-port=<n>`; Firefox's DevTools server
-    takes a space (`--start-debugger-server <n>`) and is a different channel from
-    the flagged Remote Agent — which is the whole point of this row (D-4).
-    """
-    if profile.debug_flag == START_DEBUGGER_SERVER:
-        return f"--{START_DEBUGGER_SERVER} {int(port)}"
-    return f"--{profile.debug_flag}={int(port)}"
+    """The flag that opens the browser's debug channel (`--remote-debugging-port=N`)."""
+    return f"--{REMOTE_DEBUGGING_PORT}={int(port)}"
 
 
 def build_command(profile: BrowserProfile, os_name: str, target: dict) -> str:
@@ -225,14 +149,7 @@ def launch_commands(profile: BrowserProfile, target: dict) -> Dict[str, str]:
 
 def capabilities(profile: BrowserProfile) -> List[str]:
     """Sorted capability names of the protocol this browser speaks."""
-    return sorted(CAPABILITIES.get(profile.protocol, frozenset()))
-
-
-def supports(browser_id: str, op: str, protocol: str = "") -> bool:
-    """Can this browser do `op`? The one gate before a CDP-only operation runs."""
-    profile = profile_of(browser_id)
-    key = protocol or (profile.protocol if profile else "")
-    return op in CAPABILITIES.get(key, frozenset())
+    return sorted(CAPABILITIES if profile.protocol == PROTOCOL_CDP else frozenset())
 
 
 def default_data_dir(browser_id: str) -> str:
@@ -241,44 +158,27 @@ def default_data_dir(browser_id: str) -> str:
     return profile.data_dir_default if profile else ""
 
 
-def profile_for_protocol(protocol: str) -> Optional[BrowserProfile]:
-    """The first registered browser that speaks this protocol (None when none does).
+@dataclass
+class ScanNote:
+    """One endpoint that could not be listed: where it is and what to do."""
 
-    Handles carry a channel rather than a browser id (a url cannot name a row), so
-    this is how a handle with no id — `rdp://host:port/ctx-3` — still gets a label,
-    a registry row and the flag that opens it.
-    """
-    want = (protocol or "").strip().lower()
-    for profile in PROFILES:
-        if profile.protocol == want:
-            return profile
-    return None
+    browser: str
+    host: str
+    port: int
+    reason: str
+    protocol: str = ""
 
-
-def browser_for_port(port, base_port=9222, overrides: Optional[Dict[str, Dict]] = None) -> str:
-    """Which browser owns this endpoint — the ids are `base + offset` (round 9, D-1).
-
-    One rule instead of an extra field on every handle: a pooled row's browser, an
-    `rdp://` handle's owner and the Settings scan line all come from this lookup.
-    """
-    try:
-        want = int(port)
-    except Exception:
-        return ""
-    for profile in PROFILES:
-        entry = (overrides or {}).get(profile.id) or {}
-        if resolve_port(base_port, profile, entry.get("port")) == want:
-            return profile.id
-    return ""
+    @property
+    def line(self) -> str:
+        """The one line a scan logs for this endpoint (D-6)."""
+        return f"· {self.browser} on {self.host}:{self.port} — {self.reason}"
 
 
-def prefs_of(browser_id: str) -> Tuple[Tuple[str, object], ...]:
-    """The profile preferences this browser's debug channel needs (() when none)."""
-    profile = profile_of(browser_id)
-    return profile.prefs if profile else ()
-
-
-def endpoint_kind(browser_id: str) -> str:
-    """`cdp` / `rdp` / `bidi` / `''` — the protocol this browser is expected to speak."""
-    profile = profile_of(browser_id)
-    return profile.protocol if profile else ""
+def scan_line(rows: List[Dict]) -> str:
+    """The Settings line: every endpoint one Refresh asks, and which are off (D-9)."""
+    parts = []
+    for row in rows:
+        where = f"{row.get('host', '')}:{row['port']}".lstrip(":")
+        state = f"{row['id']} {where} ({str(row['protocol']).upper()})"
+        parts.append(state if row.get("enabled") else f"{row['id']} — off")
+    return "Scanning: " + " · ".join(parts)

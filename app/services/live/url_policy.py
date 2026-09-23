@@ -30,9 +30,6 @@ class RemovalSpec:
     busy_tabs: Set[str] = field(default_factory=set)
     misses: Dict[str, int] = field(default_factory=dict)
     miss_threshold: int = MISS_THRESHOLD
-    # Browsers that did not answer this pass (round 11, D-4): a tab list that never
-    # arrived says nothing about a row whose tab lives in that browser.
-    unconfirmed: Set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -64,8 +61,6 @@ def _is_pattern_mismatch(row: Any, spec: RemovalSpec, seen: Set[str]) -> bool:
 
 
 def _is_tab_gone(row: Any, spec: RemovalSpec, seen: Set[str]) -> bool:
-    if getattr(row, "browser", "") in spec.unconfirmed:
-        return False                      # its browser said nothing: this is a wait, not a removal
     return row.tab_id not in spec.live_keys and spec.misses.get(row.tab_id, 0) >= spec.miss_threshold
 
 
@@ -114,18 +109,12 @@ def busy_tabs(pool: Any, tab_ids: Iterable[str]) -> Set[str]:
     return {tid for tid in tab_ids if tid and tab_has_live_job(pool, tid)}
 
 
-def advance_misses(rows: Iterable[Any], live_keys: Set[str], misses: Dict[str, int],
-                   unconfirmed: Set[str] | None = None) -> Dict[str, int]:
-    """Hysteresis counters per linked tab: +1 while absent, dropped when it reappears.
-
-    A row whose browser did not answer keeps its counter: it is neither absent nor present,
-    and counting it would remove a live tab after `miss_threshold` quiet passes (D-4).
-    """
-    quiet = unconfirmed or set()
+def advance_misses(rows: Iterable[Any], live_keys: Set[str], misses: Dict[str, int]) -> Dict[str, int]:
+    """Hysteresis counters per linked tab: +1 while absent, dropped when it reappears."""
     out: Dict[str, int] = {}
     for row in rows:
         tid = getattr(row, "tab_id", "")
-        if tid and tid not in live_keys and getattr(row, "browser", "") not in quiet:
+        if tid and tid not in live_keys:
             out[tid] = misses.get(tid, 0) + 1
     return out
 
@@ -142,21 +131,14 @@ def dedupe_rows(state_urls: list) -> tuple[list, int]:
     return kept, len(dropped)
 
 
-def add_rows(urls: list, adds: Iterable[Tuple[str, str]], memory: Dict[str, bool] | None = None,
-             browsers: Dict[str, str] | None = None) -> int:
-    """Append rows for tabs none owns yet (I-33), restoring a remembered checkbox; returns count.
-
-    `browsers` maps a tab id to the browser that listed it, so the row can later tell
-    "my browser is quiet" from "my tab is gone" (D-4).
-    """
+def add_rows(urls: list, adds: Iterable[Tuple[str, str]], memory: Dict[str, bool] | None = None) -> int:
+    """Append rows for tabs none owns yet (I-33), restoring a remembered checkbox; returns count."""
     owned = {u.tab_id for u in urls if u.tab_id}
-    known = browsers or {}
     added = 0
     for url, tab_id in adds:
         if tab_id in owned:
             continue
         row = UrlRow.create(url, enabled=restore_enabled(url, memory), tab_id=tab_id)
-        row.browser = known.get(tab_id, "")
         urls.append(row)
         owned.add(tab_id)
         added += 1

@@ -1,10 +1,9 @@
-"""CDP client facade ≤150 LOC (C2) — now also the app's *any-channel* client (round 9).
+"""CDP client facade ≤150 LOC (C2) — one browser, one channel: Chrome's CDP.
 
-Composes transport + connect + tabs + dom + probe, and (through `RemoteMixin`) the RDP/BiDi
-routing that lets one object drive whichever channel an endpoint speaks: a Chrome websocket
-per tab, Firefox's DevTools socket per browser, or a BiDi session. Public API is the same as
-the old `cdp_client.CDPClient`; `set_protocol(protocol, browser)` declares the channel and
-`protocol()` detects it when nobody declared one.
+Composes transport + connect + tabs + dom + probe. Public API is the same as the
+old `cdp_client.CDPClient`. (Rounds 9-11 added RDP/BiDi channel routing here;
+that is deleted with the Firefox/Edge debugger approach — a normal Firefox has
+no debug channel, and Firefox automation lives in `app/browser/uivision/`.)
 """
 from __future__ import annotations
 
@@ -12,11 +11,9 @@ import asyncio
 import logging
 from typing import List, Tuple
 
-from .remote import RemoteMixin
 from .transport import CDPTransport
 from .tabs import TabInfo, fetch_tabs_sync, _build_hosts_to_try, _merge_by_id
 from .probe import diagnose_sync
-from .. import attached
 from .dom import (
     HighlightSpec,
     get_document as dom_get_document,
@@ -69,44 +66,46 @@ async def _fetch_tabs_sync_fallback(transport, host: str, port: int) -> List[Tab
         return []
 
 
-class CDPClient(RemoteMixin, CDPTransport):
-    """Facade — keeps same API, delegates heavy logic to submodules and channel routing."""
+class CDPClient(CDPTransport):
+    """Facade — keeps same API, delegates heavy logic to submodules."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 9222, parent=None, protocol: str = ""):
+    def __init__(self, host: str = "127.0.0.1", port: int = 9222, parent=None):
         super().__init__(host=host, port=port, parent=parent)
         self._connect_lock = None
         self._connecting = False
         self._last_exc = None
-        self._declared_protocol = str(protocol or "").strip().lower()
-        self._detected_protocol = None
-        self._attachment = None
-        self._browser = ""
-        self._channel_timeout = attached.DEFAULT_TIMEOUT
-
-    def set_host_port(self, host: str = None, port: int = None):
-        """The endpoint moved, so a previous detection belongs to a different endpoint."""
-        CDPTransport.set_host_port(self, host, port)
-        self._detected_protocol = None
-        self._attachment = None
 
     async def connect(self, ws_url: str) -> bool:
-        """QObject shadow guard, the same trap as `disconnect` below.
-
-        PySide6 resolves an *inherited* `connect` on a QObject subclass to
-        `QObject.connect` (built-in), so the call raises "not enough arguments"
-        instead of attaching/dialling — the routing itself lives in `RemoteMixin`.
-        """
-        return await RemoteMixin.connect(self, ws_url)
+        """QObject shadow guard — the same PySide6 trap as `disconnect` below."""
+        from .connect import connect_with_lock
+        return await connect_with_lock(self, ws_url)
 
     async def disconnect(self):
-        """QObject shadow guard: PySide6 resolves an INHERITED `disconnect`
-        on a QObject subclass to QObject.disconnect (built-in) instead of
-        CDPTransport.disconnect — connect() then raises "not enough
-        arguments". Defining it in this class keeps the coroutine in the
-        instance's own MRO lookup. Regression: tests/test_cdp_client_stub.py
-        ::test_disconnect_is_not_shadowed_by_qobject."""
-        self._attachment = None      # detach = drop our socket; the browser keeps running
+        """QObject shadow guard: PySide6 resolves an INHERITED connect/disconnect on a
+        QObject subclass to the QObject built-ins ("not enough arguments"); defining both
+        here keeps the coroutines in the instance's own MRO lookup. Regression:
+        tests/test_cdp_client_stub.py::test_disconnect_is_not_shadowed_by_qobject."""
         await CDPTransport.disconnect(self)
+
+    def fetch_tabs_sync(self, host: str = None, port: int = None) -> List[TabInfo]:
+        """This endpoint's tabs over CDP (`GET /json/list`, one websocket per tab)."""
+        h, p = host or self._host, port or self._port
+        tabs, err, tried = fetch_tabs_sync(h, p)
+        if err and not tabs:
+            log.warning(f"fetch_tabs_sync failed: {err} tried={tried}")
+            self.error.emit(err)
+        return tabs
+
+    def diagnose_sync(self, host: str = None, port: int = None) -> dict:
+        """Endpoint diagnostics for the Settings panel's Test button."""
+        return diagnose_sync(host or self._host, port or self._port)
+
+    async def fetch_tabs(self) -> List[TabInfo]:
+        """`fetch_tabs_sync` without blocking the loop: aiohttp first, executor second."""
+        merged = await _fetch_tabs_aiohttp(self._host, self._port)
+        if merged:
+            return list(merged.values())
+        return await _fetch_tabs_sync_fallback(self, self._host, self._port)
 
     # ---- DOM delegations ----
     async def get_document(self):

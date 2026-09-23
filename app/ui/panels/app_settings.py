@@ -191,7 +191,7 @@ def build_arena_preset_doc(name: str, js_state: dict, config) -> dict:
 def restore_import_sections(state, data: dict) -> None:
     """Restore urls/folder/prompt from an import doc (state wire format)."""
     if "urls" in data:
-        state.urls = [UrlRow(**u) for u in data["urls"]]
+        state.urls = [UrlRow.from_dict(u) for u in data["urls"]]
     if "folder" in data:
         state.folder.update(data["folder"])
     if "prompt" in data:

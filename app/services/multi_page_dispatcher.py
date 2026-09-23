@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
-from app.browser.page_pool import PagePool
+from app.browser.page_pool import PagePool, tab_label_of
 from app.core.enums import ImageStatus
 from app.core.models import ImageItem, UrlRow
 from app.core.run_scope import claim_denied

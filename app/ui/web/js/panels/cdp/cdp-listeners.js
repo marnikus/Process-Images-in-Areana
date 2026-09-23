@@ -9,13 +9,12 @@ window.CDPListeners = {
     } catch (e) { console.warn('CDP bind failed', e); }
   },
 
-  /* Which browsers answered this pass — "chrome 2 · firefox 2" (round 9).
-     One pass lists every enabled browser at its own endpoint, so the count alone no
-     longer says where the tabs came from; the breakdown does. */
+  /* Which browser answered this pass — rows carry their registry id ("chrome 4");
+     a row without one came from the one registered browser. */
   _browserBreakdown(tabs) {
     const counts = {};
     (tabs || []).forEach((t) => {
-      const id = t.browser || 'browser';
+      const id = t.browser || 'chrome';
       counts[id] = (counts[id] || 0) + 1;
     });
     return Object.keys(counts).map((id) => `${id} ${counts[id]}`).join(' · ');

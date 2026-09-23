@@ -116,3 +116,38 @@ async def test_acquire_page_returns_free_checked_page():
     got = await mpd._acquire_page(pool, bridge, "job1", {"checked"})
     assert got is not None and got.tab_id == "checked"
     assert pool.get_page("foreign").status == PageStatus.STEADY
+
+
+class _LogBridge:
+    """Minimal log/emit recorder (RULE 8: no Qt)."""
+
+    def __init__(self, pool=None):
+        self.logs = []
+        self.emitted = 0
+        self._page_pool = pool
+
+    def _log(self, msg, level="info"):
+        self.logs.append((level, msg))
+
+    def _emit_pool_status(self):
+        self.emitted += 1
+
+
+def test_mark_steady_emit_logs_the_readable_label():
+    """A silent NameError never eats the ✅ line again (2026-09-22, pyflakes lane:
+    `tab_label_of` was used unimported and the helper's try/except swallowed it)."""
+    pool = pool_with(make_page("tab-abcdef123456"))
+    bridge = _LogBridge(pool)
+    mpd._mark_steady_emit(pool, bridge, "tab-abcdef123456")
+    assert bridge.emitted == 1
+    assert any(lvl == "success" and "STEADY ready" in msg for lvl, msg in bridge.logs)
+
+
+def test_log_no_ctrl_names_the_tab():
+    pool = pool_with(make_page("tab-abcdef123456"))
+    bridge = _LogBridge(pool)
+    mpd._log_no_ctrl(bridge, "tab-abcdef123456")
+    assert any(lvl == "warn" and "No controller" in msg for lvl, msg in bridge.logs)
+    bridge2 = _LogBridge(None)                 # no pool: short id, still a line
+    mpd._log_no_ctrl(bridge2, "tab-abcdef123456")
+    assert any("No controller" in msg for _lvl, msg in bridge2.logs)

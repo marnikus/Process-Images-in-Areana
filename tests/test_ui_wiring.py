@@ -222,13 +222,13 @@ def _imported_names(node: ast.AST) -> set:
     return out
 
 
-def test_closing_the_window_releases_the_firefox_socket():
-    """One DevTools socket is kept per endpoint for the whole run — close must drop it.
+def test_closing_the_window_drops_the_cdp_socket_inside_a_guard():
+    """The client disconnect is what close owes the browser — and it must never fail the close.
 
     `QMainWindow` cannot be imported in this sandbox (no libGL, as everywhere else in
     this file), so the wiring is pinned by AST: `closeEvent` must route through
-    `_drop_browser_sockets`, and that helper must close the RDP session inside a guard —
-    a browser that stopped answering must never make the window fail to close.
+    `_drop_browser_sockets`, and that helper must disconnect the CDP client inside a
+    guard. The deleted Firefox DevTools session (I-62) must not come back here.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
     methods = _class_methods(tree, "MainWindow")
@@ -236,7 +236,8 @@ def test_closing_the_window_releases_the_firefox_socket():
     assert "_drop_browser_sockets" in _called_names(methods["closeEvent"]), \
         "closing the window must drop the browser sockets"
     body = methods["_drop_browser_sockets"]
-    assert "app.browser.rdp" in _imported_names(body), "the shared session is what gets closed"
-    assert "close_all" in _called_names(body), "and it is closed by name"
+    assert "disconnect" in _called_names(body), "the CDP client is disconnected by name"
+    assert not any("rdp" in name for name in _imported_names(body)), \
+        "the Firefox debugger approach is deleted (I-62)"
     assert any(isinstance(item, ast.Try) for item in ast.walk(body)), \
         "a browser that stopped answering must not break the close"

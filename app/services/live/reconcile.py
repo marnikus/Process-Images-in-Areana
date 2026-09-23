@@ -38,6 +38,16 @@ PATTERN_KEY = "url_pattern"
 DEFAULT_PATTERN = "arena.ai"
 
 
+class ScanUnavailable(RuntimeError):
+    """The listing pass did not answer — an empty listing is a wait, not a removal.
+
+    `browser_tabs.reconcile_tabs` distinguishes "the browser has no tabs" from
+    "the browser said nothing": the second raises this, and `_fetch` turns it into
+    a skipped pass (round 8's "a failed fetch is a wait, not a removal" — URL rows
+    for tabs that are still open must never age out on a broken pass).
+    """
+
+
 @dataclass
 class LiveDeps:
     """The UI-land seam: built by `browser_tabs.live_deps`, injected once."""
@@ -47,9 +57,6 @@ class LiveDeps:
     commit: Callable[[], Any]
     log: Callable[..., Any]
     leave_tab: Callable[[str], bool] | None = None  # checkbox→pool exit (D-4); None = no pool writes
-    # Round 11: a MANUAL pass (Reparse) is the user asking for one more try, so it may clear
-    # a parked browser and let its permission dialog be asked once more. Auto passes never.
-    retry_browser: Callable[[], Any] | None = None
 
 
 @dataclass
@@ -145,36 +152,25 @@ class _Pass:
         return self.bridge.state.urls
 
 
-def _claim_rows(urls: list, claims, browsers: dict | None = None) -> int:
+def _claim_rows(urls: list, claims) -> int:
     """Link unlinked rows to their tabs; returns how many changed."""
     by_id = {u.id: u for u in urls}
-    known = browsers or {}
     linked = 0
     for row_id, tab_id in claims:
         row = by_id.get(row_id)
         if row is not None and not row.tab_id:
             row.tab_id = tab_id
-            row.browser = known.get(tab_id, getattr(row, "browser", ""))
             linked += 1
     return linked
 
 
-def unconfirmed(p: _Pass) -> set:
-    """Browsers that did not answer this pass — `live_tab_rows` records them (round 11, D-4).
-
-    Their tabs are neither live nor gone, so nothing may be removed because of them.
-    """
-    return {str(k) for k in (getattr(p.bridge, "_scan_missing", None) or {})}
-
-
 def _removal_spec(p: _Pass) -> up.RemovalSpec:
     live = ac.live_tab_keys(p.tabs)
-    quiet = unconfirmed(p)
-    p.stats["misses"] = up.advance_misses(p.urls, live, p.stats["misses"], quiet)
+    p.stats["misses"] = up.advance_misses(p.urls, live, p.stats["misses"])
     linked = [u.tab_id for u in p.urls if u.tab_id]
     return up.RemovalSpec(rows=list(p.urls), live_keys=live, pattern=p.pattern,
                           busy_tabs=up.busy_tabs(getattr(p.bridge, "_page_pool", None), linked),
-                          misses=p.stats["misses"], unconfirmed=quiet)
+                          misses=p.stats["misses"])
 
 
 def _remove_rows(p: _Pass, spec: up.RemovalSpec) -> None:
@@ -195,16 +191,10 @@ def _remove_rows(p: _Pass, spec: up.RemovalSpec) -> None:
     p.report.deferred = len(deferred)
 
 
-def _browser_of(p: _Pass) -> dict:
-    """tab id → the browser that listed it (a listed row knows its channel; D-4)."""
-    return {ac._tab_key(t): getattr(t, "browser", "") for t in p.tabs or []}
-
-
 def _apply_plan(p: _Pass, plan: ac.AutoConnectPlan) -> None:
     """Claim → add → log one line per change (RULE 2)."""
-    known = _browser_of(p)
-    p.report.linked = _claim_rows(p.urls, plan.claim, known)
-    p.report.added = up.add_rows(p.urls, plan.add, p.stats["memory"], browsers=known)
+    p.report.linked = _claim_rows(p.urls, plan.claim)
+    p.report.added = up.add_rows(p.urls, plan.add, p.stats["memory"])
     for url, tab_id in plan.add:
         p.deps.log(f"🔺 URL added {url} (tab {tab_id}) — new matching tab", "info")
     for row_id, tab_id in plan.claim:
@@ -230,8 +220,7 @@ async def _join_each(p: _Pass, sockets) -> int:
 async def _join_and_sync(p: _Pass, plan: ac.AutoConnectPlan) -> None:
     p.report.joined += await _join_each(p, plan.connect)
     live = {(getattr(t, "id", "") or getattr(t, "ws_url", "")) for t in p.tabs or []} - {""}
-    revived, stale = ac.sync_pool_presence(getattr(p.bridge, "_page_pool", None), live,
-                                           unconfirmed(p))
+    revived, stale = ac.sync_pool_presence(getattr(p.bridge, "_page_pool", None), live)
     p.report.revived, p.report.stale = revived, len(stale)
     pool = getattr(p.bridge, "_page_pool", None)
     await resolve_owners(pool)   # a navigation can land on another account (D-5)
@@ -293,15 +282,9 @@ def _summary(p: _Pass) -> None:
 
 
 async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
-    """One pass (loop, `auto_connect_scan` slot, Reparse); overlapping passes are skipped.
-
-    `source == "manual"` is the Reparse button: after a pass parked a browser on Firefox's
-    permission dialog, this is the one place a new dialog may be asked for (D-6).
-    """
+    """One pass (loop, `auto_connect_scan` slot, Reparse); overlapping passes are skipped."""
     if getattr(bridge, "_auto_scan_running", False):
         return Report(error="busy")
-    if source == "manual" and deps.retry_browser is not None:
-        deps.retry_browser()
     bridge._auto_scan_running = True
     try:
         return await _pass(_Pass(bridge, deps, source, _stats(bridge)))
@@ -343,8 +326,7 @@ def _sweep_rows(p: _Pass, spec: up.RemovalSpec) -> None:
     The checkbox each row had is remembered (`restore_enabled` puts it back
     on the fresh row); rows under a live job keep their identity (RULE 15).
     """
-    quiet = spec.unconfirmed
-    kept = [u for u in p.urls if u.tab_id in spec.busy_tabs or getattr(u, "browser", "") in quiet]
+    kept = [u for u in p.urls if u.tab_id in spec.busy_tabs]
     gone = [u for u in p.urls if u not in kept]
     if not gone and not kept:
         return
@@ -352,7 +334,7 @@ def _sweep_rows(p: _Pass, spec: up.RemovalSpec) -> None:
     p.report.swept = p.report.removed = len(gone)
     p.report.removed_ids = sorted(u.id for u in gone)
     p.bridge.state.urls = kept
-    kept_note = f" ({len(kept)} kept: job running or their browser did not answer)" if kept else ""
+    kept_note = f" ({len(kept)} kept: job running)" if kept else ""
     p.deps.log(f"🧹 Reparse: cleared {len(gone)} URL row(s) — rebuilding from open tabs{kept_note}", "info")
 
 

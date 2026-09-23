@@ -3,8 +3,9 @@
 ideal-size(reason): 9-slot CDP surface plus per-key config splits — set/get/
 launch each exceed 20 LOC as one function, so read/parse/apply phases live
 beside their single callers per RULE 16; splitting the file would scatter
-slot+phase pairs. The browser table (Chrome/Firefox/Edge) lives in
-app/browser/browsers.py — this module only resolves it for the panel. Browser imports stay lazy (fault tolerance, R5–R7
+slot+phase pairs. The browser table (Chrome — the one registered browser) lives
+in app/browser/browsers.py — this module only resolves it for the panel.
+Browser imports stay lazy (fault tolerance, R5–R7
 precedent); only run_state.schedule_coro is hoisted (services never
 import ui).
 """
@@ -146,40 +147,9 @@ def resolved_port(cfg, browser_id: str) -> int:
     return browsers.resolve_port(cfg["port"], profile, (cfg["browsers"].get(profile.id) or {}).get("port"))
 
 
-def test_hint(profile, host: str, port) -> str:
-    """How to reach this browser's debug channel — per protocol, never a guess."""
-    if profile.protocol == browsers.PROTOCOL_RDP:
-        return (f"tcp://{host}:{port} — Firefox DevTools socket: start Firefox with "
-                f"--start-debugger-server {port} (RDP: no Remote Agent, no webdriver flag)")
-    if profile.protocol == browsers.PROTOCOL_BIDI:
-        return f"http://{host}:{port}/session"
+def test_hint(host: str, port) -> str:
+    """How to reach the debug channel — Chrome's CDP endpoint answers `/json/list`."""
     return f"http://{host}:{port}/json/list"
-
-
-NO_PROFILE_FOUND = ("(this browser's own profile was not located — start it once so "
-                    "profiles.ini exists, or set the dir above)")
-
-
-def devtools_prefs(profile, data_dir) -> dict:
-    """The prefs this browser's channel needs + the file they belong in (D-5).
-
-    Empty for a browser that needs none (Chrome/Edge), so the panel block simply
-    has nothing to show instead of showing an empty instruction.
-
-    Round 10: an empty dir means the browser's own profile, so the path shown (and the path
-    Prepare Profile writes) is resolved from `profiles.ini` — the file that only counts in the
-    profile Firefox is actually running.
-    """
-    from app.browser import firefox_profiles
-    from app.browser.rdp import profile as rdp_profile
-    if not profile.prefs:
-        return {"prefs": [], "prefs_file": "", "user_js": "", "stealth": profile.stealth}
-    resolved = firefox_profiles.used_profile_dir(data_dir)
-    prefs_file = (f"{str(resolved).rstrip('/')}/{rdp_profile.USER_JS_NAME}" if resolved
-                  else NO_PROFILE_FOUND)
-    return {"prefs": [{"name": name, "value": value} for name, value in profile.prefs],
-            "prefs_file": prefs_file, "user_js": rdp_profile.user_js_text(profile),
-            "stealth": profile.stealth}
 
 
 def browser_row(cfg, profile) -> dict:
@@ -190,44 +160,17 @@ def browser_row(cfg, profile) -> dict:
     extra = entry.get("extra_args") if entry.get("extra_args") is not None else profile.extra_args_default
     caps = browsers.capabilities(profile)
     host = cfg["host"]
-    row = {
+    return {
         "id": profile.id, "label": profile.label, "protocol": profile.protocol,
         "port_offset": profile.port_offset, "resolved_port": port,
         "user_data_dir": data_dir, "extra_args": extra, "dir_flag": profile.dir_flag,
-        "debug_flag": profile.debug_flag,
         "binary": profile.binary(browsers.current_os()), "notes": profile.notes,
         "enabled": bool(entry.get("enabled", True)),
         "capabilities": caps,
-        "unavailable": sorted(browsers.CAPABILITIES[browsers.PROTOCOL_CDP] - set(caps)),
-        "test_url": test_hint(profile, host, port),
+        "unavailable": sorted(browsers.CAPABILITIES - set(caps)),
+        "test_url": test_hint(host, port),
         "commands": browsers.launch_commands(profile, browsers.endpoint(port, data_dir, extra)),
     }
-    row["profile_dir"] = resolved_profile_dir(profile, data_dir)
-    row["profile_is_default"] = not (data_dir or "").strip() and bool(row["profile_dir"])
-    row.update(devtools_prefs(profile, data_dir))
-    return row
-
-
-def resolved_profile_dir(profile, data_dir: str) -> str:
-    """Where this browser's profile work happens: the configured dir, else the browser's own."""
-    from app.browser import firefox_profiles
-    if (data_dir or "").strip():
-        return data_dir
-    return firefox_profiles.default_profile_dir() if profile.prefs else ""
-
-
-def prepare_active_profile(cfg) -> tuple:
-    """Write the active browser's DevTools prefs when the panel asked (D-5).
-
-    Only the explicit Prepare Profile action gets here — a plain Save never
-    touches a real profile — and a browser whose channel needs no prefs is
-    refused by name.
-    """
-    from app.browser import firefox_profiles
-    from app.browser.rdp import profile as rdp_profile
-    profile = browsers.profile_of(cfg["browser"]) or browsers.default_profile()
-    data_dir = (cfg["user_data_dir"] or "").strip() or firefox_profiles.used_profile_dir("")
-    return rdp_profile.prepare_profile(profile, data_dir)
 
 
 def browser_rows(config) -> list:
@@ -282,9 +225,8 @@ def cdp_config_payload(bridge) -> str:
 
 
 def _scan_line(targets) -> str:
-    """The one-sentence Settings line ("a browser off says off") — lazy browser import."""
-    from app.browser import attached
-    return attached.scan_line(targets)
+    """The one-sentence Settings line ("a browser off says off")."""
+    return browsers.scan_line(targets)
 
 
 def first_present(data, keys, default):
@@ -367,20 +309,15 @@ def apply_cdp_config(bridge, cfg) -> None:
 
 
 def push_endpoint(bridge, profile, host, port) -> None:
-    """Tell the live client (and its pool) which endpoint and channel it now drives.
+    """Tell the live client (and its pool) which endpoint it now drives.
 
-    The channel is pushed first and on its own: `set_host_port` invalidates a previous
-    detection, and the client must know that 9224 is a DevTools socket *before* anything
-    asks that port for Chrome's JSON (round 9, D-2). Each push is best effort, so a
-    duck-typed client that only has one of them still gets that one.
+    Each push is best effort, so a duck-typed client that only has one of the
+    setters still gets that one.
     """
     cdp = getattr(bridge, "cdp", None)
-    for push in (lambda: cdp.set_protocol(profile.protocol, profile.id),
-                 lambda: cdp.set_host_port(host, port)):
-        if cdp is None:
-            break
+    if cdp is not None:
         try:
-            push()
+            cdp.set_host_port(host, port)
         except Exception:
             pass
     pool = getattr(bridge, "_page_pool", None)
@@ -512,27 +449,19 @@ class CdpToolsMixin:
             data = json.loads(config_json or "{}")
             cfg = parse_cdp_config(data, self.config)
             apply_cdp_config(self, cfg)
-            prepared = None
-            if data.get("prepare_profile"):
-                prepared, err = prepare_active_profile(cfg)
-                if err:
-                    return json.dumps({"ok": False, "error": err})
-                self._log(prepared["message"], "success")
             port = resolved_port(cfg, cfg["browser"])
             self._log(f"Browser config saved: {cfg['browser']} on {cfg['host']}:{port} "
                       f"(base {cfg['port']}) dir={cfg['user_data_dir']}", "success")
             reply = {"ok": True, "browser": cfg["browser"], "host": cfg["host"],
                      "port": port, "base_port": cfg["port"],
                      "user_data_dir": cfg["user_data_dir"]}
-            if prepared:
-                reply["prepare_profile"] = prepared
             return json.dumps(reply)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
     @Slot(result=str)
     def get_chrome_launch_command(self):
-        """The ACTIVE browser's launch commands (Chrome, Firefox, …) + its facts."""
+        """The ACTIVE browser's launch commands + its facts."""
         try:
             cfg = read_cdp_config(self.config)
             row = active_browser_row(self.config)
@@ -549,8 +478,6 @@ class CdpToolsMixin:
                 "unavailable": row["unavailable"],
                 "notes": row["notes"],
                 "test_url": row["test_url"],
-                "prefs": row["prefs"], "prefs_file": row["prefs_file"],
-                "user_js": row["user_js"], "stealth": row["stealth"],
                 "browsers": browser_rows(self.config),
             }
             payload.update(row["commands"])

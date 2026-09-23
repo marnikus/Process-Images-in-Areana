@@ -960,3 +960,28 @@ async def test_finish_breakdown_log_with_rate_limit(monkeypatch):
     text = " ".join(m for m, _ in bridge._logs)
     assert "35:00" in text and "base 05:00" in text
     assert "extra 30:00" in text and "rate-limit x1" in text
+
+
+# ── guard paths: restore/materialise/suffix short-circuits ──
+
+def test_restore_entry_needs_tab_and_entry():
+    pool = PagePool()
+    assert svc.restore_cooldown_entry(pool, "", {"url": "x"}) is False
+    assert svc.restore_cooldown_entry(pool, "t1", {}) is False
+
+
+def test_materialise_debt_without_page_returns_zero():
+    assert svc._materialise_debt(PagePool(), "gone") == 0
+
+
+def test_arm_timer_zero_seconds_keeps_live_timer():
+    page = make_info("t1")
+    page.status = PageStatus.COOLDOWN
+    page.cooldown_until = time.time() + 60
+    assert svc._arm_timer(page, 0, "noop") is True     # live timer untouched
+    assert page.remaining_seconds() > 0
+
+
+def test_cooldown_suffix_no_timer_paths():
+    assert svc._cooldown_suffix(None) == "no timer"
+    assert svc._cooldown_suffix(make_info("t1")) == "no timer"   # steady, no debt

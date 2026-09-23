@@ -55,7 +55,7 @@ function sashDefaultTree() {
     sashSplit('row', [
       sashLeaf('queue'),
       sashSplit('col', [sashLeaf('action_blocks'), sashLeaf('block_config')], [55, 45]),
-      sashSplit('col', [sashLeaf('browser'), sashLeaf('arena_presets'), sashLeaf('progress'), sashLeaf('watcher'), sashLeaf('live_debug'), sashLeaf('job_history')], [22, 17, 13, 17, 15, 16]),
+      sashSplit('col', [sashLeaf('browser'), sashLeaf('firefox_auto'), sashLeaf('arena_presets'), sashLeaf('progress'), sashLeaf('watcher'), sashLeaf('live_debug'), sashLeaf('job_history')], [18, 14, 12, 14, 14, 14, 14]),
     ], [45, 35, 20]),
     sashLeaf('log'),
   ], [38, 40, 22]);
@@ -66,15 +66,15 @@ function sashLayoutA() {
     sashLeaf('url_list'), sashLeaf('folder'), sashLeaf('queue'),
     sashLeaf('prompt'), sashLeaf('run'), sashLeaf('progress'), sashLeaf('watcher'),
     sashLeaf('log'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('recordings'), sashLeaf('browser'),
-    sashLeaf('action_blocks'), sashLeaf('block_config'), sashLeaf('arena_presets'), sashLeaf('live_debug'), sashLeaf('job_history'),
-  ], [7, 5, 9, 8, 6, 6, 5, 7, 6, 6, 6, 5, 5, 6, 5, 4, 4]);
+    sashLeaf('action_blocks'), sashLeaf('block_config'), sashLeaf('arena_presets'), sashLeaf('live_debug'), sashLeaf('job_history'), sashLeaf('firefox_auto'),
+  ], [6, 4, 8, 8, 6, 6, 5, 6, 6, 6, 6, 5, 5, 6, 5, 4, 4, 4]);
 }
 
 function sashLayoutB() {
   return sashSplit('row', [
     sashSplit('col', [sashLeaf('url_list'), sashLeaf('folder'), sashLeaf('queue'), sashLeaf('action_blocks')], [25, 15, 35, 25]),
     sashSplit('col', [sashLeaf('prompt'), sashLeaf('block_config'), sashLeaf('progress'), sashLeaf('watcher'), sashLeaf('log')], [25, 20, 15, 20, 20]),
-    sashSplit('col', [sashLeaf('browser'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('recordings'), sashLeaf('arena_presets'), sashLeaf('run'), sashLeaf('live_debug'), sashLeaf('job_history')], [13, 13, 13, 13, 12, 12, 12, 12]),
+    sashSplit('col', [sashLeaf('browser'), sashLeaf('firefox_auto'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('recordings'), sashLeaf('arena_presets'), sashLeaf('run'), sashLeaf('live_debug'), sashLeaf('job_history')], [12, 11, 11, 11, 11, 11, 11, 11, 11]),
   ], [35, 35, 30]);
 }
 
@@ -86,7 +86,7 @@ function sashLayoutC() {
     ], [45, 55]),
     sashSplit('row', [
       sashLeaf('queue'),
-      sashSplit('col', [sashLeaf('folder'), sashLeaf('run'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('recordings'), sashLeaf('progress'), sashLeaf('watcher'), sashLeaf('arena_presets'), sashLeaf('live_debug'), sashLeaf('job_history')], [11, 10, 11, 11, 10, 10, 10, 10, 9, 8]),
+      sashSplit('col', [sashLeaf('folder'), sashLeaf('run'), sashLeaf('settings'), sashLeaf('captcha'), sashLeaf('recordings'), sashLeaf('progress'), sashLeaf('watcher'), sashLeaf('arena_presets'), sashLeaf('live_debug'), sashLeaf('job_history'), sashLeaf('firefox_auto')], [10, 9, 10, 10, 10, 10, 10, 10, 9, 8, 4]),
     ], [60, 40]),
     sashLeaf('log'),
   ], [35, 48, 17]);

@@ -4,7 +4,7 @@ Progress counting lives in `core/progress.py`; imports go core -> core only.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, fields, asdict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from .enums import UrlStatus, ImageStatus, JobStatus, RunState
@@ -23,8 +23,17 @@ class UrlRow:
     last_checked: Optional[str] = None
     error: Optional[str] = None
     tab_id: str = ""
-    browser: str = ""       # which browser listed this tab ("" = before round 11 / unknown)
     receiver: bool = False  # S7: can receive a job now (one owner: live/url_policy.mark_receivers)
+
+    @staticmethod
+    def from_dict(d: dict) -> "UrlRow":
+        """Tolerant dict→row funnel: keys this row does not have are ignored (RULE 13).
+
+        Persisted states from older versions still carry a `browser` key on each
+        url row; loading must not break on a field that no longer exists.
+        """
+        known = {f.name for f in fields(UrlRow)}
+        return UrlRow(**{k: v for k, v in dict(d or {}).items() if k in known})
 
     @staticmethod
     def create(url: str, enabled: bool = True, tab_id: str = "") -> "UrlRow":
@@ -245,7 +254,7 @@ class AppState:
 
     @staticmethod
     def from_dict(d: dict) -> "AppState":
-        urls = [UrlRow(**u) for u in d.get("urls", [])]
+        urls = [UrlRow.from_dict(u) for u in d.get("urls", [])]
         images = [ImageItem(**i) for i in d.get("images", [])]
         jobs = [JobRecord(**j) for j in d.get("jobs", [])]
         settings_dict = d.get("settings", {})

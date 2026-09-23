@@ -531,3 +531,102 @@ def test_browser_tab_slot_guards(cfg, monkeypatch):
     coro = queued.pop()
     assert coro.cr_frame is not None
     coro.close()
+
+
+# ── scan seam + connect-path helpers ──
+
+def test_scan_targets_follows_settings(monkeypatch, cfg):
+    from app.browser.browsers import ScanNote  # noqa: F401 (sibling import check)
+    bridge = make_bridge(cdp=None, config=cfg)
+    cfg.set_state(cdp_browsers={"chrome": {"enabled": False}})
+    assert bt_mod.scan_targets(bridge) == ([], [])
+    cfg.set_state(cdp_browsers={})
+    monkeypatch.setattr("app.browser.cdp.fetch_tabs_sync",
+                        lambda host, port, timeout=3.0: ([tab("t1")], "", ["http"]))
+    rows, notes = bt_mod.scan_targets(bridge)
+    assert [r.id for r in rows] == ["t1"] and notes == []
+    monkeypatch.setattr("app.browser.cdp.fetch_tabs_sync",
+                        lambda host, port, timeout=3.0: ([], "connection refused", ["http"]))
+    rows, notes = bt_mod.scan_targets(bridge)
+    assert rows == [] and len(notes) == 1 and notes[0].reason == "connection refused"
+
+
+def test_scan_settings_fallback_without_config():
+    rows, base, host = bt_mod.scan_settings(SimpleNamespace(cdp=None))
+    assert rows == {} and base == 9222 and host == "127.0.0.1"
+
+
+def test_report_scan_notes_logs_each_reason_once(cfg):
+    from app.browser.browsers import ScanNote
+    bridge = make_bridge(cdp=None, config=cfg)
+    note = ScanNote(browser="chrome", host="127.0.0.1", port=9222,
+                    reason="down", protocol="http")
+    bt_mod.report_scan_notes(bridge, [note])
+    bt_mod.report_scan_notes(bridge, [note])       # same reason → silent
+    downs = sum("chrome: down" in m for _lvl, m in bridge.logs)
+    assert downs == 1
+    bt_mod.report_scan_notes(bridge, [])           # recovered → reason dropped
+    bt_mod.report_scan_notes(bridge, [note])       # fails again → logged again
+    assert sum("chrome: down" in m for _lvl, m in bridge.logs) == 2
+
+
+def test_pool_page_for_and_announce(cfg):
+    bridge = make_bridge(cdp=SimpleNamespace(_current_tab_id="t1", _host="127.0.0.1",
+                                             _port=9222), config=cfg)
+    row = bt_mod.pool_page_for(bridge, ("t1", "ws://127.0.0.1:9222/devtools/page/t1",
+                                        "Arena", "https://arena.ai/c"))
+    assert isinstance(row, PageInfo) and row.tab_id == "t1"
+    bt_mod.announce_tab_connected(bridge, "ws://127.0.0.1:9222/devtools/page/t1")
+    assert bridge.connection_status.calls == [("connected",)]
+    assert any(lvl == "success" for lvl, _m in bridge.logs)
+
+
+async def test_report_no_tabs_survives_diagnose_failure(cfg):
+    def boom():
+        raise RuntimeError("diagnose down")
+
+    bridge = make_bridge(cdp=SimpleNamespace(diagnose_sync=boom, _host="127.0.0.1",
+                                             _port=9222), config=cfg)
+    await bt_mod.report_no_tabs(bridge, "arena")
+    assert bridge.tab_match_result.calls == [("arena", "[]")]
+    assert any(lvl == "warn" and "No Chrome tabs found" in m for lvl, m in bridge.logs)
+
+
+async def test_merge_rows_and_active_client_rows(cfg):
+    bridge = make_bridge(cdp=SimpleNamespace(fetch_tabs=fake_fetch([tab("t2")])), config=cfg)
+    merged = bt_mod.merge_rows([tab("t1")], [tab("t1"), tab("t2"), SimpleNamespace(id="", tab_id="", title="", url="", ws_url="")])
+    assert [r.id for r in merged] == ["t1", "t2", ""]   # dupe skipped, keyless kept
+    rows = await bt_mod.active_client_rows(bridge)
+    assert [r.id for r in rows] == ["t2"]
+    assert await bt_mod.active_client_rows(make_bridge(cdp=None, config=cfg)) == []
+
+    async def boom():
+        raise RuntimeError("x")
+
+    bad = make_bridge(cdp=SimpleNamespace(fetch_tabs=boom), config=cfg)
+    assert await bt_mod.active_client_rows(bad) == []
+
+
+def test_base_port_and_claim_guards(cfg):
+    assert bt_mod._base_port("junk") == 9222       # int() blows up → default
+    assert bt_mod._base_port(0) == 9222            # out of range → default
+    assert bt_mod._base_port(9333) == 9333
+    bridge = make_bridge(cdp=None, config=cfg)
+    bridge._last_find_ts = "junk"                  # dupe-check arithmetic blows up
+    assert bt_mod.claim_find_slot(bridge, " arena ") == "arena"   # except fallback
+
+
+async def test_live_tab_rows_scan_failure_and_fallback(cfg, monkeypatch):
+    bridge = make_bridge(cdp=SimpleNamespace(fetch_tabs=fake_fetch([tab("t9")])), config=cfg)
+
+    def explode(_bridge):
+        raise RuntimeError("scan blew up")
+
+    monkeypatch.setattr(bt_mod, "scan_targets", explode)
+    assert await bt_mod.live_tab_rows(bridge) == []
+    assert "scan blew up" in bridge._scan_failed
+
+    monkeypatch.setattr(bt_mod, "scan_targets", lambda _b: ([], []))
+    rows = await bt_mod.live_tab_rows(bridge)
+    assert [r.id for r in rows] == ["t9"]          # client's own list is the last resort
+    assert bridge._scan_failed == ""

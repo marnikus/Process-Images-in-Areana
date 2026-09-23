@@ -1,19 +1,13 @@
 /**
- * Firefox round (2026-09-21): the Settings panel speaks about *browsers*, not
- * just Chrome.
+ * The Settings browser block after the debugger-approach removal (2026-09-22).
  *
- * The owner's acceptance: one panel covering Chrome AND Firefox, one shared
- * host/port/URL-pattern, a per-browser block (data dir, extra args, resolved
- * endpoint, launch command) and a capability line that NAMES what the selected
- * browser cannot do yet (a BiDi Firefox has no screenshot / file-attach), so the
- * panel never pretends parity it does not have.
- *
- * The browser table itself lives in Python (`app/browser/browsers.py`); the
- * panel renders whatever the bridge sends (`browsers` in the `get_cdp_config`
- * payload) and keeps only a two-entry id/label fallback for the first paint.
- *
- * RED at `bce5a01`: no `browser-connection.js`, index.html still said
- * "Chrome Debug Connection".
+ * Chrome is the one registered browser; Firefox automation moved to its own
+ * window ("Firefox auto with Extension", Ui.Vision + native OS input). The
+ * block stays data-driven — the browser table lives in Python
+ * (`app/browser/browsers.py`) and the panel renders whatever the bridge sends
+ * (`browsers` in the `get_cdp_config` payload) — so a future registry row
+ * needs no JS change. The removed Firefox vocabulary (prefs, stealth,
+ * Prepare Profile) must not survive in the page or the module.
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,12 +19,14 @@ import { bootPage } from './page_harness.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(__dirname, '../../app/ui/web');
 const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf-8');
+const moduleSrc = fs.readFileSync(path.join(WEB, 'js/panels/browser-connection.js'), 'utf-8');
 
 const CONFIG = {
   host: '127.0.0.1',
   port: 9223,
   url_pattern: 'arena.ai',
   active_browser: 'chrome',
+  scan_line: 'Scanning: chrome 127.0.0.1:9223 (CDP)',
   browsers: [
     { id: 'chrome', label: 'Chrome (Chromium)', protocol: 'cdp', port_offset: 0, resolved_port: 9223,
       user_data_dir: 'C:\\arena-images-chrome', extra_args: '--disable-extensions',
@@ -39,21 +35,6 @@ const CONFIG = {
       test_url: 'http://127.0.0.1:9223/json/list',
       commands: { windows: '"C:\\chrome.exe" --remote-debugging-port=9223 --user-data-dir="C:\\arena-images-chrome"',
                   windows_with_url: 'chrome-url', linux: 'google-chrome', macos: 'mac-chrome' } },
-    { id: 'firefox', label: 'Firefox (Mozilla)', protocol: 'rdp', port_offset: 1, resolved_port: 9224,
-      user_data_dir: 'C:\\arena-images-firefox', extra_args: '-no-remote',
-      dir_flag: '-profile', binary: '"C:\\firefox.exe"',
-      debug_flag: 'start-debugger-server',
-      notes: 'DevTools RDP — attach/detach freely; navigator.webdriver stays false.',
-      capabilities: ['click', 'evaluate', 'tabs'],
-      unavailable: ['dom', 'input', 'screenshot', 'set_files'],
-      test_url: 'tcp 127.0.0.1:9224 — start Firefox with --start-debugger-server 9224 (DevTools socket, no Remote Agent)',
-      prefs: [{ name: 'devtools.debugger.remote-enabled', value: true },
-              { name: 'devtools.debugger.prompt-connection', value: false }],
-      prefs_file: 'C:\\arena-images-firefox\\user.js',
-      user_js: 'user_pref("devtools.debugger.remote-enabled", true);\nuser_pref("devtools.debugger.prompt-connection", false);',
-      stealth: 'Keeps the browser unflagged: no geckodriver, no Marionette, no Remote Agent — navigator.webdriver stays false. Start it with --start-debugger-server, never with --remote-debugging-port (Firefox bug 1719505 sets that flag for the whole session).',
-      commands: { windows: '"C:\\firefox.exe" --start-debugger-server 9224 -profile="C:\\arena-images-firefox" -no-remote',
-                  windows_with_url: 'ff-url', linux: 'firefox', macos: 'mac-firefox' } },
   ],
 };
 
@@ -74,66 +55,59 @@ function boot(overrides = {}) {
   return h;
 }
 
-describe('browser debug connection panel (Firefox round)', () => {
-  test('index.html renames the block and mounts the shared + per-browser fields', () => {
+describe('browser debug connection panel (Chrome only)', () => {
+  test('index.html mounts the shared + per-browser fields and dropped the Firefox block', () => {
     const start = html.indexOf('Browser Debug Connection');
     assert.ok(start > 0, 'the block is called "Browser Debug Connection"');
-    assert.ok(!html.includes('Chrome Debug Connection (user configurable)'), 'the Chrome-only title is gone');
+    assert.ok(!html.includes('Chrome / Firefox'), 'the multi-browser title is gone');
     const block = html.slice(start, html.indexOf('Page Load Timeout', start));
     for (const id of ['browserSelect', 'cdpHost', 'cdpPort', 'cdpUrlPattern', 'cdpUserDataDir', 'cdpExtraArgs',
                       'cdpResolvedPort', 'cdpLaunchCmd', 'cdpCopyCmdBtn', 'cdpTestUrl', 'cdpCapabilities',
-                      'cdpBrowserNotes', 'cdpSaveBtn', 'cdpTestBtn', 'cdpPrefs', 'cdpStealth',
-                      'cdpPrepareProfileBtn']) {
+                      'cdpBrowserNotes', 'cdpSaveBtn', 'cdpTestBtn', 'cdpScanLine']) {
       assert.ok(block.includes(`id="${id}"`), `${id} is inside the browser block`);
     }
-    assert.equal((html.match(/id="cdpUrlPattern"/g) || []).length, 1, 'one URL pattern for every browser');
+    for (const gone of ['cdpPrefs', 'cdpPrefsFile', 'cdpStealth', 'cdpPrepareProfileBtn']) {
+      assert.ok(!html.includes(`id="${gone}"`), `${gone} went with the debugger approach`);
+    }
+    assert.ok(!html.includes('--start-debugger-server'), 'no Firefox debugger flag anywhere in the page');
+    assert.equal((html.match(/id="cdpUrlPattern"/g) || []).length, 1, 'one URL pattern control');
     assert.ok(html.indexOf('js/panels/browser-connection.js') < html.indexOf('js/panels/settings.js'),
       'the browser module loads before settings.js (which delegates to it)');
   });
 
-  test('the payload drives the selector: labels, order and the active browser', () => {
+  test('the removed Firefox machinery is gone from the module too', () => {
+    for (const gone of ['prefsText', 'prepareProfile', 'onPrepared', 'start-debugger-server', 'user_pref']) {
+      assert.ok(!moduleSrc.includes(gone), `${gone} must not survive in browser-connection.js`);
+    }
+    assert.equal((moduleSrc.match(/id: 'firefox'/g) || []).length, 0, 'the fallback list is chrome-only');
+  });
+
+  test('the payload drives the selector: one chrome option and the shared fields', () => {
     const h = boot();
     const sel = h.anyEl('browserSelect');
-    assert.deepEqual(sel.children.map((o) => o.value), ['chrome', 'firefox']);
-    assert.deepEqual(sel.children.map((o) => o.textContent), ['Chrome (Chromium)', 'Firefox (Mozilla)']);
-    assert.equal(sel.value, 'chrome', 'active_browser wins');
+    assert.deepEqual(sel.children.map((o) => o.value), ['chrome']);
+    assert.deepEqual(sel.children.map((o) => o.textContent), ['Chrome (Chromium)']);
+    assert.equal(sel.value, 'chrome');
     assert.equal(val(h, 'cdpHost'), '127.0.0.1');
     assert.equal(val(h, 'cdpPort'), '9223', 'the shared field shows the BASE port');
     assert.equal(val(h, 'cdpUrlPattern'), 'arena.ai');
     assert.equal(val(h, 'cdpUserDataDir'), 'C:\\arena-images-chrome');
     assert.equal(txt(h, 'cdpResolvedPort'), '9223', 'Chrome derives base + 0');
+    assert.equal(txt(h, 'cdpScanLine'), CONFIG.scan_line, 'the Python-built scan line is shown as-is');
+    assert.ok(txt(h, 'cdpLaunchCmd').includes('chrome.exe'));
+    assert.ok(txt(h, 'cdpTestUrl').endsWith('/json/list'));
   });
 
-  test('switching the selector swaps the per-browser block and keeps the shared row', () => {
+  test('the capability line names what the endpoint can do', () => {
     const h = boot();
-    const sel = h.anyEl('browserSelect');
-    sel.value = 'firefox';
-    sel.dispatch('change', { target: sel });
-    assert.equal(val(h, 'cdpUserDataDir'), 'C:\\arena-images-firefox');
-    assert.equal(val(h, 'cdpExtraArgs'), '-no-remote');
-    assert.equal(txt(h, 'cdpResolvedPort'), '9224', 'Firefox derives base + 1 — one port cannot host two servers');
-    assert.ok(txt(h, 'cdpLaunchCmd').includes('firefox.exe'), 'its own launch command');
-    assert.ok(txt(h, 'cdpTestUrl').includes('9224'), 'the debugger socket of THIS browser');
-    assert.ok(txt(h, 'cdpTestUrl').includes('debugger'), 'and how to open it');
-    assert.equal(val(h, 'cdpHost'), '127.0.0.1', 'shared host untouched');
-    assert.equal(val(h, 'cdpPort'), '9223', 'shared port untouched');
-    assert.equal(val(h, 'cdpUrlPattern'), 'arena.ai', 'one pattern for all browsers');
-  });
-
-  test('the capability line names what the selected browser cannot do', () => {
-    const h = boot();
-    const sel = h.anyEl('browserSelect');
-    sel.value = 'firefox';
-    sel.dispatch('change', { target: sel });
     const caps = txt(h, 'cdpCapabilities');
-    assert.ok(caps.includes('click') && caps.includes('evaluate'), `capabilities shown: ${caps}`);
-    for (const missing of ['screenshot', 'set_files', 'input']) {
-      assert.ok(caps.includes(missing), `${missing} is named as unavailable, never a silent timeout`);
-    }
-    assert.ok(txt(h, 'cdpBrowserNotes').includes('RDP'), 'the note explains which protocol is in use');
+    assert.ok(caps.includes('✅'), `capabilities shown: ${caps}`);
+    for (const op of ['screenshot', 'set_files', 'input']) assert.ok(caps.includes(op), caps);
+    assert.ok(!caps.includes('⛔'), 'chrome has no named gaps');
+    assert.ok(txt(h, 'cdpBrowserNotes').includes('--user-data-dir'), 'the note carries the dir flag');
   });
 
-  test('one Save posts the active browser plus every per-browser block', () => {
+  test('one Save posts the active browser plus its block', () => {
     const h = boot();
     h.anyEl('cdpSaveBtn').dispatch('click', {});
     const saves = h.calls.filter((c) => c.slot === 'set_cdp_config');
@@ -143,26 +117,19 @@ describe('browser debug connection panel (Firefox round)', () => {
     assert.equal(payload.host, '127.0.0.1');
     assert.equal(payload.port, 9223);
     assert.equal(payload.user_data_dir, 'C:\\arena-images-chrome');
-    assert.ok(payload.browsers.firefox, 'the other browser travels too (both are configurable at once)');
-    assert.equal(payload.browsers.firefox.port, 9224);
-    assert.equal(payload.browsers.firefox.user_data_dir, 'C:\\arena-images-firefox');
+    assert.equal(payload.url_pattern, 'arena.ai');
+    assert.equal(payload.browsers.chrome.port, 9223);
+    assert.equal(payload.browsers.chrome.user_data_dir, 'C:\\arena-images-chrome');
+    assert.equal(payload.prepare_profile, undefined, 'Save never asks for a profile write');
   });
 
-  test('an edit survives switching browsers and travels in its own block', () => {
+  test('an edited dir travels in the save payload', () => {
     const h = boot();
-    h.anyEl('cdpUserDataDir').value = 'D:\\chrome-profile';   // edited while Chrome is active
-    const sel = h.anyEl('browserSelect');
-    sel.value = 'firefox';
-    sel.dispatch('change', { target: sel });
-    assert.equal(val(h, 'cdpUserDataDir'), 'C:\\arena-images-firefox', 'Firefox shows ITS dir, not Chrome\'s');
-    sel.value = 'chrome';
-    sel.dispatch('change', { target: sel });
-    assert.equal(val(h, 'cdpUserDataDir'), 'D:\\chrome-profile', 'the Chrome edit came back');
+    h.anyEl('cdpUserDataDir').value = 'D:\\chrome-profile';
     h.anyEl('cdpSaveBtn').dispatch('click', {});
     const payload = JSON.parse(h.calls.filter((c) => c.slot === 'set_cdp_config').pop().args[0]);
-    assert.equal(payload.browser, 'chrome');
     assert.equal(payload.user_data_dir, 'D:\\chrome-profile');
-    assert.equal(payload.browsers.firefox.user_data_dir, 'C:\\arena-images-firefox', 'both dirs persist');
+    assert.equal(payload.browsers.chrome.user_data_dir, 'D:\\chrome-profile');
   });
 
   test('the bridge payload is the source of truth for the registry', () => {
@@ -179,50 +146,12 @@ describe('browser debug connection panel (Firefox round)', () => {
     assert.equal(txt(h, 'cdpLaunchCmd'), 'edge-cmd');
   });
 
-  test('the Firefox block shows the prefs that make the DevTools socket reachable', () => {
+  test('a local port edit refreshes the launch-command preview', () => {
     const h = boot();
-    const sel = h.anyEl('browserSelect');
-    sel.value = 'firefox';
-    sel.dispatch('change', { target: sel });
-    const prefs = txt(h, 'cdpPrefs');
-    assert.ok(prefs.includes('user_pref("devtools.debugger.remote-enabled", true);'), prefs);
-    assert.ok(prefs.includes('user_pref("devtools.debugger.prompt-connection", false);'), prefs);
-    assert.ok(txt(h, 'cdpPrefsFile').includes('user.js'), 'and where they belong');
-  });
-
-  test('the stealth line names why this channel keeps the browser unflagged', () => {
-    const h = boot();
-    const sel = h.anyEl('browserSelect');
-    sel.value = 'firefox';
-    sel.dispatch('change', { target: sel });
-    const stealth = txt(h, 'cdpStealth');
-    assert.ok(stealth.includes('webdriver'), `says what stays false: ${stealth}`);
-    assert.ok(stealth.includes('--remote-debugging-port'), 'and which flag to avoid');
-    assert.ok(stealth.includes('geckodriver') || stealth.includes('Marionette'), 'and what is not loaded');
-  });
-
-  test('Prepare Profile asks the bridge to write user.js — exactly once', () => {
-    const h = boot();
-    const sel = h.anyEl('browserSelect');
-    sel.value = 'firefox';
-    sel.dispatch('change', { target: sel });
-    h.anyEl('cdpPrepareProfileBtn').dispatch('click', {});
-    const saves = h.calls.filter((c) => c.slot === 'set_cdp_config');
-    assert.equal(saves.length, 1, 'one click, one save');
-    const payload = JSON.parse(saves[0].args[0]);
-    assert.equal(payload.browser, 'firefox');
-    assert.equal(payload.prepare_profile, true, 'the write is explicitly requested, never a side effect of Save');
-    assert.equal(payload.browsers.firefox.user_data_dir, 'C:\\arena-images-firefox');
-  });
-
-  test('a local port edit refreshes the preview for the selected browser', () => {
-    const h = boot();
-    const sel = h.anyEl('browserSelect');
-    sel.value = 'firefox';
-    sel.dispatch('change', { target: sel });
     h.anyEl('cdpPort').value = '9333';
     if (h.sb.BrowserConnection) h.sb.BrowserConnection.updatePreview();
-    assert.ok(txt(h, 'cdpLaunchCmd').includes('9334'), `Firefox preview follows base+1: ${txt(h, 'cdpLaunchCmd')}`);
-    assert.ok(txt(h, 'cdpLaunchCmd').includes('-profile='), 'and keeps its own dir flag');
+    const cmd = txt(h, 'cdpLaunchCmd');
+    assert.ok(cmd.includes('--remote-debugging-port=9333'), `preview follows the base port: ${cmd}`);
+    assert.ok(cmd.includes('--user-data-dir='), 'and keeps the dir flag');
   });
 });

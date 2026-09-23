@@ -35,6 +35,7 @@ from app.ui.panels.url_queue import UrlQueueMixin
 from app.ui.panels.queue_scan import QueueScanMixin
 from app.ui.panels.app_settings import AppSettingsMixin
 from app.ui.panels.job_history import JobHistoryMixin
+from app.ui.panels.firefox_auto import FirefoxAutoMixin
 from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
 from app.ui.panels.watcher_solver import WatcherSolverMixin
 from app.ui.panels.page_pool import PagePoolMixin
@@ -55,7 +56,7 @@ log = logging.getLogger("arena")
 
 
 
-class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, WatcherSolverMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin, JobHistoryMixin):
+class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, UndoHistoryMixin, UrlQueueMixin, QueueScanMixin, AppSettingsMixin, WatcherCaptchaMixin, WatcherSolverMixin, PagePoolMixin, RecordingSessionsMixin, BrowserTabsMixin, CdpToolsMixin, RunControlMixin, JobHistoryMixin, FirefoxAutoMixin):
     log_message = Signal(str, str)
     grid_layout_changed = Signal(str)
     grid_layout_persisted = Signal(bool)
@@ -81,6 +82,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     page_pool_updated = Signal(str)  # JSON snapshot steady/busy
     thumbnail_ready = Signal(str, str)  # img_id, payload_json — non-blocking thumb
     job_history_updated = Signal(str)  # JSON {entries, limit, total, next_job_no}
+    firefox_auto_updated = Signal(str)  # JSON status stream of the Firefox-auto window (I-63)
 
     def __init__(self, config_manager: ConfigManager, state_path: Path, cdp_client=None, parent=None):
         super().__init__(parent)

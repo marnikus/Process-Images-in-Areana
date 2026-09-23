@@ -31,6 +31,17 @@ DEFAULT_SESSION = {
     "cooldown_enabled": True,
     "cooldown_min_seconds": 300,
     "cooldown_captcha_penalty_seconds": 900,
+    "firefox_auto": {  # the "Firefox auto with Extension" window (I-63): Ui.Vision framework test
+        "pattern": "Arena",          # Firefox OS-window title substring (the control element)
+        "url": "https://arena.ai",   # what the macro's open navigates to (cmd_var1)
+        "target": "xpath=//a[span[text()='New Chat']]",  # the XClick locator (cmd_var2)
+        "macro": "Python_XClick_Demo",
+        "storage": "xfile",          # hard drive (XModule) | browser (import the macro once)
+        "home": "",                  # XModule home folder ('' = <User Desktop>/uivision)
+        "binary": "",                # Firefox binary ('' = this OS's default)
+        "timeout_sec": 90,           # how long one run waits for the savelog file (15…600)
+        "pause_ms": 3000,            # the macro's pause before the XClick (500…30000)
+    },
 }
 
 DEFAULT_WINDOW_PRESETS = {"window_presets": {}}

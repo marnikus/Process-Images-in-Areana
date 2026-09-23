@@ -16,7 +16,7 @@ const read = (f) => fs.readFileSync(path.join(WEB, 'js', f), 'utf-8');
 export const ALL_WINDOW_IDS = [
   'url_list', 'folder', 'queue', 'prompt', 'run', 'progress', 'watcher', 'log',
   'settings', 'captcha', 'browser', 'action_blocks', 'block_config', 'arena_presets', 'recordings',
-  'live_debug', 'job_history',
+  'live_debug', 'job_history', 'firefox_auto',
 ];
 
 // Panel element ids that predate the camelCase rule stay explicit — the DOM id

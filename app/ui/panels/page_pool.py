@@ -43,36 +43,27 @@ def reset_pool_dicts(pool) -> None:
         pass
 
 
-def join_handle(bridge, ws_url: str):
-    """The handle a pool join works from — its own endpoint, not the pool's (round 9).
+def ws_endpoint(bridge, ws_url: str) -> tuple:
+    """(host, port, tab_id) of a pool join — parsed from the ws URL, pool as the fallback.
 
-    A pooled row can come from any enabled browser; the handle names which endpoint it is
-    on, so the join attaches there instead of to whichever browser happens to be active.
+    A pooled row joins at its own endpoint: the ws URL names the host and port it came
+    from, and the trailing `/devtools/page/<id>` segment is the tab id.
     """
-    from app.browser import attached
     pool = getattr(bridge, "_page_pool", None)
     host = getattr(pool, "_host", "127.0.0.1") or "127.0.0.1"
     port = getattr(pool, "_port", 9222) or 9222
-    return attached.parse_handle(ws_url, host, port)
-
-
-def _scan_rows(bridge) -> tuple:
-    """(settings rows, base port) for naming a handle's owner — lazily, panels stay thin."""
-    from app.ui.panels.browser_tabs import scan_settings
-    rows, base, _host = scan_settings(bridge)
-    return rows, base
+    m = re.match(r"ws://([^:/]+):(\d+)", ws_url or "")
+    if m:
+        host, port = m.group(1), int(m.group(2))
+    m_id = re.search(r"/devtools/page/([^/]+)$", ws_url or "")
+    return host, port, (m_id.group(1) if m_id else "")
 
 
 async def connect_pool_client(bridge, ws_url: str):
-    """A client attached to this tab's own endpoint (None + a named reason when refused)."""
-    from app.browser import attached
+    """A client dialled to this tab's own endpoint (None + a logged reason when refused)."""
     from app.browser.cdp_client import CDPClient
-    handle = join_handle(bridge, ws_url)
-    refusal = attached.refusal(handle, "connect")
-    if refusal:
-        bridge._log(f"❌ {refusal}", "warn")
-        return None
-    client = CDPClient(host=handle.host, port=handle.port, protocol=handle.channel)
+    host, port, _tab_id = ws_endpoint(bridge, ws_url)
+    client = CDPClient(host=host, port=port)
     if await client.connect(ws_url):
         return client
     bridge._log(f"❌ Pool connect failed {ws_url[:80]}", "error")
@@ -109,11 +100,9 @@ def _sockets_by_tab(tabs) -> dict:
 
 
 async def _live_sockets(bridge) -> dict:
-    """Every enabled browser's tabs right now — the panel's one-pass listing.
+    """Every live tab right now — the panel's one-pass listing.
 
-    Round 9: the pass is the whole settings window (Chrome + Firefox + Edge at their own
-    endpoints, each over its own channel), so a re-checked Firefox row rejoins through the
-    same map a Chrome row does. {} when the pass fails — a rejoin is never a removal.
+    {} when the pass fails — a rejoin is never a removal.
     """
     try:
         from app.ui.panels.browser_tabs import live_tab_rows
@@ -152,46 +141,53 @@ async def rejoin_checked_rows(bridge, tab_ids) -> int:
     return joined
 
 
-async def own_tab_info(bridge, handle, client) -> tuple:
+def find_tab_row(rows, tab_id: str):
+    """The endpoint's own row for this tab id (None when it lists none)."""
+    def matches(row):
+        return (getattr(row, "id", "") or getattr(row, "tab_id", "")) == tab_id
+    return next((row for row in (rows or []) if matches(row)), None)
+
+
+async def own_tab_info(bridge, tab_id: str, ws_url: str, client) -> tuple:
     """(title, url) from the tab's own endpoint — what the pool row's label is built from.
 
-    A pooled tab can belong to any enabled browser, so the list that knows its title is the
-    one from the endpoint the handle names, over the channel it names (`client.fetch_tabs`
-    routes by protocol). When that endpoint cannot answer, the active browser's list is the
+    The list that knows the title is the one from the endpoint the join came from
+    (`client.fetch_tabs`). When that endpoint cannot answer, `resolve_tab_info` is the
     fallback — and the tab id still labels the row.
     """
-    from app.browser import attached
-    rows = []
     try:
         rows = await client.fetch_tabs() or []
     except Exception:
         rows = []
-    for row in rows:
-        if attached.row_key(row) == handle.tab_id:
-            return getattr(row, "title", "") or "", getattr(row, "url", "") or ""
-    return await resolve_tab_info(bridge, handle.tab_id, handle.ws_url)
+    row = find_tab_row(rows, tab_id)
+    if row is not None:
+        return getattr(row, "title", "") or "", getattr(row, "url", "") or ""
+    return await resolve_tab_info(bridge, tab_id, ws_url)
 
 
-def pool_page_info(bridge, handle, title: str, url: str):
-    """The pool's row for a joined tab — its own label, endpoint and browser (round 9)."""
-    from app.browser import attached
+def pool_page_info(bridge, endpoint: tuple, title: str, url: str):
+    """The pool's row for a joined tab — `endpoint` is its (tab_id, ws_url) pair."""
     from app.browser.page_status import PageInfo
-    rows, base = _scan_rows(bridge)
-    return PageInfo(tab_id=handle.tab_id, ws_url=handle.ws_url, title=title or handle.tab_id,
-                    url=url or "", browser=attached.owner_of(handle, rows, base))
+    tab_id, ws_url = endpoint
+    pool = getattr(bridge, "_page_pool", None)
+    browser = getattr(pool, "_browser", "chrome") or "chrome"
+    return PageInfo(tab_id=tab_id, ws_url=ws_url, title=title or tab_id,
+                    url=url or "", browser=browser)
 
 
 async def do_connect_page_pool(bridge, ws_url: str):
-    """Attach one tab to the pool (client + controller + restore) — any browser's channel."""
+    """Attach one tab to the pool (client + controller + restore)."""
     try:
         from app.browser.cdp_arena import CDPArenaController
-        handle = join_handle(bridge, ws_url)
+        _host, _port, tab_id = ws_endpoint(bridge, ws_url)
         client = await connect_pool_client(bridge, ws_url)
         if client is None:
             return
         ctrl = CDPArenaController(client, log_callback=lambda msg: bridge._log(msg, "info"))
-        title, url = await own_tab_info(bridge, handle, client)
-        await finish_pool_join(bridge, pool_page_info(bridge, handle, title, url), client, ctrl)
+        title, url = await own_tab_info(bridge, tab_id or ws_url, ws_url, client)
+        await finish_pool_join(bridge,
+                               pool_page_info(bridge, (tab_id or ws_url, ws_url), title, url),
+                               client, ctrl)
     except Exception as e:
         import traceback
         bridge._log(f"Pool connect exception {e} — {traceback.format_exc()[-800:]}", "error")
@@ -247,10 +243,6 @@ class PagePoolMixin:
                 return json.dumps({"ok": False, "error": "pool not initialized"})
             if not ws_url:
                 return json.dumps({"ok": False, "error": "empty ws_url"})
-            # An explicit Connect is the user asking for one more try at a parked Firefox
-            # (round 11, D-6): the auto passes never re-ask, this one may.
-            from app.ui.panels.browser_tabs import retry_firefox
-            retry_firefox(self)
             self._log(f"🔗 Adding tab to pool {ws_url[:80]}… steady", "info")
             schedule_coro(self, do_connect_page_pool(self, ws_url))
             return json.dumps({"ok": True})

@@ -1,22 +1,18 @@
-/* browser-connection.js — the "one panel, several browsers" block (2026-09-21)
-   Owner request: Chrome AND Firefox in one Settings block, one shared host +
-   base port + URL pattern, and a separate data dir / launch command per browser,
-   "designed for other browsers later".
+/* browser-connection.js — the Settings "Browser Debug Connection" block (2026-09-22)
+   One registry, one browser: Chrome and its CDP endpoint. (Firefox/Edge rows and
+   the prefs/stealth/Prepare-Profile machinery went with the debugger approach —
+   a normal Firefox is automated through the Ui.Vision extension in its own
+   window, "Firefox auto with Extension", never from this block.)
 
    The browser table (binaries, dir flag, port offset, capabilities, notes) lives
    in `app/browser/browsers.py` and reaches the page through `get_cdp_config` —
-   adding a browser is one Python row, no JS change. This module renders
-   whatever the payload says and keeps only a three-entry id/label fallback for
+   adding a browser back is one Python row, no JS change. This module renders
+   whatever the payload says and keeps only a one-entry id/label fallback for
    the first paint.
 
-   Ports: one TCP port cannot serve two browsers, so the shared setting is the
-   BASE port and each browser derives base + its registry offset (Chrome +0,
-   Firefox +1, Edge +2). The panel always shows the resolved number.
-
-   Firefox round 8: the block also renders the profile prefs its DevTools socket
-   needs (and where they live), the stealth line that says what stays unflagged,
-   and a Prepare Profile button that asks the bridge to write `user.js` — only
-   when clicked, never as a side effect of Save.
+   Ports: the shared setting is the BASE port and each registry row derives
+   base + its offset (Chrome +0); a hand-edited row port overrides. The panel
+   always shows the resolved number.
 
    RULE18: file ≤300, func ≤30, CC≤10, ≤4 params.
 */
@@ -25,8 +21,6 @@
 const BrowserConnection = {
   FALLBACK: [
     { id: 'chrome', label: 'Chrome' },
-    { id: 'firefox', label: 'Firefox' },
-    { id: 'edge', label: 'Edge' },
   ],
   browsers: null,      // payload rows in registry order (null = fallback)
   active: '',
@@ -56,12 +50,6 @@ const BrowserConnection = {
   bind() {
     const sel = this._el('browserSelect');
     if (sel) sel.addEventListener('change', () => this.onSelectChange());
-    const prep = this._el('cdpPrepareProfileBtn');
-    if (prep) prep.addEventListener('click', () => this.prepareProfile());
-  },
-
-  _bridge() {
-    return (typeof App !== 'undefined' && App.bridge) ? App.bridge : null;
   },
 
   rows() { return (this.browsers && this.browsers.length) ? this.browsers : this.FALLBACK; },
@@ -95,9 +83,8 @@ const BrowserConnection = {
     this.renderScanLine(payload);
   },
 
-  /* What one Refresh pass asks — built in Python (`attached.scan_line`), shown as-is.
-     Round 9: the app parses every enabled browser at its own endpoint in ONE pass, so
-     the panel says which endpoints those are (and which browser is switched off). */
+  /* What one Refresh pass asks — built in Python (`browsers.scan_line`), shown as-is.
+     The panel says which endpoints those are (and which browser is switched off). */
   renderScanLine(payload) {
     const el = this._el('cdpScanLine');
     if (!el) return;
@@ -122,7 +109,6 @@ const BrowserConnection = {
   _option(b) {
     const opt = document.createElement('option');
     opt.value = b.id;
-    opt.textContent = b.label || b.id;
     const where = b.resolved_port ? ` on ${b.resolved_port}` : '';
     opt.title = b.protocol
       ? `${b.label || b.id} — ${String(b.protocol).toUpperCase()}${where}`
@@ -167,29 +153,17 @@ const BrowserConnection = {
     this._text('cdpCapabilities', this.capabilityText(b));
     this._text('cdpBrowserNotes', (b.dir_flag ? `${b.dir_flag} — ` : '') + (b.notes || ''));
     this._text('cdpDirLabel', this.dirLabel(b));
-    this._text('cdpPrefs', this.prefsText(b));
-    this._text('cdpPrefsFile', b.prefs_file || '—');
-    this._text('cdpStealth', b.stealth || '');
   },
 
-  /* Which profile the app would touch: the configured dir, else the browser's own (round 10). */
+  /* Which profile dir the launch command will carry — empty means the browser's own. */
   dirLabel(b) {
     const flag = b.dir_flag ? ` (${b.dir_flag})` : '';
     const configured = b.user_data_dir || this._val('cdpUserDataDir');
     if (configured) return `Profile dir for ${b.label || b.id}${flag}`;
-    const own = b.profile_dir ? ` — your own profile: ${b.profile_dir}` : ' — your own profile';
-    return `No dir configured for ${b.label || b.id}${flag}: the browser's own profile is used${own}`;
+    return `No dir configured for ${b.label || b.id}${flag}: the browser's own profile is used`;
   },
 
-  /* The channel's prefs as pasteable user.js lines (or why none are needed). */
-  prefsText(b) {
-    if (b.user_js) return b.user_js;
-    const names = (b.prefs || []).map((p) => `user_pref("${p.name}", ${p.value});`);
-    if (names.length) return names.join('\n');
-    return 'No profile prefs needed — this browser opens its own debug port.';
-  },
-
-  /* ✅ what works, ⛔ what this protocol cannot do yet — named, never a silent timeout */
+  /* ✅ what works, ⛔ what the protocol cannot do — named, never a silent timeout */
   capabilityText(b) {
     const ok = b.capabilities || [];
     const no = b.unavailable || [];
@@ -216,16 +190,9 @@ const BrowserConnection = {
     this._text('cdpLaunchCmd', b.binary ? this.compose(b) : this.commandText(b));
   },
 
-  /* The debug flag is the browser's own (Chrome `=`, Firefox DevTools ` `). */
-  debugFlag(b) {
-    const flag = String(b.debug_flag || 'remote-debugging-port');
-    const port = this.resolvedPort(b);
-    return flag === 'start-debugger-server' ? `--${flag} ${port}` : `--${flag}=${port}`;
-  },
-
   compose(b) {
     const dir = this._val('cdpUserDataDir');
-    const parts = [b.binary, this.debugFlag(b)];
+    const parts = [b.binary, `--remote-debugging-port=${this.resolvedPort(b)}`];
     if (dir) parts.push(`${b.dir_flag || '--user-data-dir'}="${dir}"`);
     const extra = (this._val('cdpExtraArgs') || '').trim();
     if (extra) parts.push(extra);
@@ -250,31 +217,10 @@ const BrowserConnection = {
     if (typeof CDPPanel !== 'undefined' && CDPPanel.updateChromeToolbar) CDPPanel.updateChromeToolbar(this.toolbarConfig());
   },
 
-  /* ── Prepare Profile (explicit, opt-in — Save never writes a profile) ── */
-
-  prepareProfile() {
-    const payload = this.payload();
-    payload.prepare_profile = true;
-    const bridge = this._bridge();
-    if (bridge && bridge.set_cdp_config) {
-      bridge.set_cdp_config(JSON.stringify(payload), (res) => this.onPrepared(res));
-    }
-  },
-
-  onPrepared(res) {
-    try {
-      const r = JSON.parse(res);
-      const msg = r.ok ? (r.prepare_profile && r.prepare_profile.message) || 'Profile prepared'
-        : 'Prepare profile failed: ' + (r.error || 'unknown error');
-      if (typeof LogConsole !== 'undefined' && LogConsole.log) LogConsole.log(msg, r.ok ? 'success' : 'error');
-    } catch (e) { /* unreadable reply — nothing invented to show */ }
-  },
-
   /* ── what Save sends to the bridge ──────────────────────────────────── */
 
   payload() {
     this.stash();
-    const b = this.browser() || {};
     return {
       browser: this.active,
       host: this._val('cdpHost') || '127.0.0.1',
