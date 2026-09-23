@@ -8,6 +8,8 @@ reported 0. Every test here fails if its helper is deleted (RULE 8, RULE 16.3).
 
 import json
 import os
+import re
+from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
 import pytest
@@ -92,3 +94,57 @@ def test_window_title_matches_substring_case_and_entities():
 def test_select_window_command_reuses_tab_by_title_wildcard():
     assert ua.select_window_command("Arena") == {
         "Command": "selectWindow", "Target": "title=*Arena*", "Value": ""}
+
+
+def test_with_tab_reuse_prepends_once_and_leaves_blank_pattern_alone():
+    xclick = {"Command": "XClick", "Target": "img.png", "Value": ""}
+    out = ua.with_tab_reuse("Arena", [xclick])
+    assert out[0] == {"Command": "selectWindow", "Target": "title=*Arena*", "Value": ""}
+    assert out[1:] == [xclick]
+    assert ua.with_tab_reuse("Arena", out) == out, "never double-prepend"
+    assert ua.with_tab_reuse("  ", [xclick]) == [xclick], "blank pattern: leave alone"
+
+
+def test_macro_document_names_dates_and_reuses_tab():
+    doc = ua.macro_document("Python_XClick_Demo", "Arena", [
+        {"Command": "XClick", "Target": "img.png", "Value": ""}])
+    assert doc["Name"] == "Python_XClick_Demo"
+    assert re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", doc["CreationDate"])
+    assert doc["Commands"][0] == {"Command": "selectWindow",
+                                  "Target": "title=*Arena*", "Value": ""}
+    assert ua.macro_document("a/sap-2.json", "Arena", [])["Name"] == "sap-2"
+
+
+def test_provision_then_preflight_round_trip_is_ok(tmp_path):
+    home = str(tmp_path / "uivision")  # missing dir: provision creates it
+    doc = ua.macro_document("Python_XClick_Demo", "Arena", [
+        {"Command": "echo", "Target": "hi", "Value": ""}])
+    path = ua.provision_macro(home, "Python_XClick_Demo", doc)
+    assert path == ua.macro_file(home, "Python_XClick_Demo")
+    assert ua.macro_status(home, "Python_XClick_Demo") == "ok"
+    saved = json.loads(Path(path).read_text(encoding="utf-8"))
+    assert saved["Commands"][0]["Command"] == "selectWindow"
+
+
+def test_launch_plan_refuses_missing_and_invalid_and_says_why(tmp_path):
+    home = str(tmp_path)
+    page = str(tmp_path / "ui.vision.html")
+    plan = ua.launch_plan(home, page, ua.autorun_query("Nope"))
+    assert plan["ok"] is False and "missing" in plan["error"]
+    (tmp_path / "macros").mkdir()
+    (tmp_path / "macros" / "Bad.json").write_text("{nope", encoding="utf-8")
+    plan = ua.launch_plan(home, page, ua.autorun_query("Bad"))
+    assert plan["ok"] is False and "invalid" in plan["error"]
+
+
+def test_launch_plan_drops_tab_encodes_and_makes_savelog_dir(tmp_path):
+    home = str(tmp_path / "uv")
+    ua.provision_macro(home, "Demo", ua.macro_document("Demo", "Arena", []))
+    savelog = str(tmp_path / "my logs" / "run 1.txt")
+    query = dict(ua.autorun_query("Demo", savelog))
+    query["tab"] = "title=*Arena*"
+    plan = ua.launch_plan(home, str(tmp_path / "u v" / "ui.vision.html"), query)
+    assert plan["ok"] is True
+    assert plan["dropped"] == ["tab"] and "tab=" not in plan["url"]
+    assert " " not in plan["url"] and "%20" in plan["url"]
+    assert plan["savelog"] == savelog and (tmp_path / "my logs").is_dir()
