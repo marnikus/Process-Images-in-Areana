@@ -53,6 +53,12 @@ def logs_dir(config_dir) -> Path:
     return runtime_dir(config_dir) / LOGS_DIR
 
 
-def log_file(config_dir, stamp: str) -> Path:
-    """One run's savelog file — `savelog=` in the launch URL names exactly this."""
-    return logs_dir(config_dir) / f"run-{stamp}.txt"
+def log_file(config_dir, stamp: str, part: int = 0) -> Path:
+    """One run's savelog file — `savelog=` in the launch URL names exactly this.
+
+    `part` > 0 suffixes `-<part>` (run 1 keeps the plain `run-<stamp>.txt`), so
+    a multi-profile sequence gives every run its own verdict file instead of
+    letting run 2 overwrite run 1's answer.
+    """
+    name = f"run-{stamp}.txt" if part <= 0 else f"run-{stamp}-{part}.txt"
+    return logs_dir(config_dir) / name

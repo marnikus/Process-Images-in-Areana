@@ -1,10 +1,17 @@
-"""One framework-test run: provision → foreground → launch → poll → result.
+"""One framework-test run: detect → provision → plan → execute.
 
-No Qt and no bridge in here — the runner is browser-layer mechanics with three
+No Qt and no bridge in here — the runner is browser-layer mechanics with
 injected seams (report callback, stop predicate, sleep/Popen), which the panel
 wires to `bridge._log` + the `firefox_auto_updated` signal (RULE 2/5) and to
-the window's Stop button (RULE 7: the predicate is checked before every phase
-and inside the poll).
+the window's Stop button (RULE 7: the predicate is checked before every phase,
+before every planned run and inside the poll — `sequence.py` owns the loop).
+
+Multi-profile (2026-09-23, owner fix): the detect phase reads EVERY Firefox
+profile's session store, the plan targets EVERY tab matching the pattern, and
+each target is one macro run aimed at its own profile instance (`-P name`, or
+`-profile dir` when the profile has no ini name — `plan.py` renders them). Runs
+execute in order, each with its own savelog; a single run behaves exactly as
+before (the OS handoff, the pattern glob, `run-<stamp>.txt`).
 
 Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 `ok` / `error` are the extension's own verdicts from the savelog file,
@@ -12,12 +19,16 @@ Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 `blocked` means the run never started (bad macro name, missing Firefox, …).
 """
 
+# ideal-size: ~320 lines reason=detect/report half + provision + orchestration of the
+# uivision package; the executor already lives in sequence.py, the planner in plan.py.
+
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
 
-from . import autorun, desktop, launch, logread, macro, paths, tabs
+from . import autorun, desktop, macro, paths, plan, tabs
+from .sequence import RunResult, Sequence
 
 
 @dataclass(frozen=True)
@@ -50,16 +61,7 @@ class RunSeams:
     addon: object = None      # callable → extension-seen tri-state
     probe: object = None      # callable → desktop-module-listening bool
     windows: object = None    # callable → per-window session rows (tests fake them)
-
-
-@dataclass
-class RunResult:
-    """What one run answered: the kind, the message, the steps, the macro's log."""
-
-    kind: str                 # ok | error | timeout | stopped | blocked
-    message: str
-    steps: tuple = ()
-    lines: tuple = ()
+    profiles: object = None   # callable → per-profile session rows (tests fake them)
 
 
 class _Recorder:
@@ -81,11 +83,13 @@ def _macro_target(spec: RunSpec):
     return paths.runtime_dir(spec.config_dir) / paths.MACROS_DIR / f"{spec.macro}.json"
 
 
-def _provision(spec: RunSpec, report) -> tuple:
-    """Write the macro + the autorun page; returns (page_path, log_path)."""
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    log_path = paths.log_file(spec.config_dir, stamp)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+def _provision(spec: RunSpec, report) -> object:
+    """Write the macro + the autorun page; returns the page path.
+
+    The macro file is written once and shared by every planned run — per-run
+    values (selector, pause budget) ride `cmd_var1..3`, never the file.
+    """
+    paths.logs_dir(spec.config_dir).mkdir(parents=True, exist_ok=True)
     target = _macro_target(spec)
     target.parent.mkdir(parents=True, exist_ok=True)
     document = macro.build_macro(spec.macro)     # per-run values ride cmd_var1..3, not the file
@@ -101,18 +105,7 @@ def _provision(spec: RunSpec, report) -> tuple:
                "warn")
     page = autorun.write_page(paths.autorun_file(spec.config_dir))
     report("provision", f"autorun page ready: {page}")
-    return page, log_path
-
-
-def _detect_phase(spec: RunSpec, report, seams: RunSeams) -> list:
-    """The pre-run eyes: what Firefox and the plugin show, before anything runs.
-
-    Returns the session windows — the foreground phase targets the one holding
-    the pattern's tab instead of raising every title match.
-    """
-    windows = _detect_tabs(spec, report, seams)
-    _detect_plugin(report, seams)
-    return windows
+    return page
 
 
 TAB_LOG_CAP = 50
@@ -126,40 +119,59 @@ def _report_tab_rows(rows, report) -> None:
         report("detect", f"+{len(rows) - TAB_LOG_CAP} more open tab(s)")
 
 
-def _report_matches(spec: RunSpec, seen, report) -> None:
+def _report_matches(targets, pattern: str, structured: bool, report) -> None:
     """The pattern's verdict: every matching tab, or why the macro cannot find its tab."""
-    if not seen:
-        if (spec.pattern or "").strip():
-            report("detect", f"no OPEN tab matches “{spec.pattern}” — the macro will NOT "
-                             f"open anything and will fail (E210): open the page in that "
-                             f"Firefox first", "warn")
-        else:
-            report("detect", "no window-title pattern set — the run will be blocked before "
-                             "launching (the macro reuses a tab, it never opens one)", "warn")
+    if not targets:
+        _report_no_matches(pattern, report)
         return
-    report("detect", f"pattern “{spec.pattern}” matches {len(seen)} open tab(s):")
-    for pos, url in enumerate(seen, 1):
-        report("detect", f"match {pos}: {url[:110]}")
+    if not structured:
+        report("detect", f"pattern “{pattern}” matches {len(targets)} open tab(s):")
+        for pos, target in enumerate(targets, 1):
+            report("detect", f"match {pos}: {target.url[:110]}")
+        return
+    profiles = sorted({plan.profile_label(t.profile_name, t.profile_dir) or "?"
+                       for t in targets})
+    report("detect", f"pattern “{pattern}” matches {len(targets)} open tab(s) "
+                     f"in {len(profiles)} profile(s): {', '.join(profiles)}")
+    for pos, target in enumerate(targets, 1):
+        where = plan.profile_label(target.profile_name, target.profile_dir) or "?"
+        report("detect", f"match {pos}: {target.url[:110]} — {target.title[:40]} "
+                         f'(profile “{where}”)')
 
 
-def _detect_tabs(spec: RunSpec, report, seams: RunSeams) -> list:
-    """What Firefox shows without a debugger: every open tab, the pattern, windows."""
-    rows = seams.tabs() if seams.tabs else tabs.tab_rows()
-    real = seams.tabs is None
-    if real:
-        _report_profiles(report)
-    quiet = "" if rows else " (no session store readable — is Firefox running?)"
-    report("detect", f"firefox open tabs seen: {len(rows)}{quiet}")
-    if real and rows:
-        _report_source(report)
-    _report_tab_rows(rows, report)
-    _report_matches(spec, tabs.match_urls(rows, spec.pattern), report)
-    windows = _session_windows(seams, real)
-    _report_windows(windows, report)
-    wins = desktop.find_windows(spec.pattern)
-    note = "" if wins or os_is_windows() else " (window listing is Windows-only)"
-    report("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
-    return windows
+def _report_no_matches(pattern: str, report) -> None:
+    """Why nothing matches: no open tab (E210 ahead) or no pattern at all."""
+    if (pattern or "").strip():
+        report("detect", f"no OPEN tab matches “{pattern}” in any Firefox profile — the "
+                         f"macro will NOT open anything and will fail (E210): open the "
+                         f"page in the matching Firefox first", "warn")
+    else:
+        report("detect", "no window-title pattern set — the run will be blocked before "
+                         "launching (the macro reuses a tab, it never opens one)", "warn")
+
+
+def _report_clashes(targets, pattern: str, report) -> None:
+    """Duplicate selectors inside one profile cannot each hit their own tab — say so."""
+    for selector, label, count in plan.clashes(targets, pattern):
+        report("detect", f"profile “{label}”: {count} tab(s) match “{selector}” — the "
+                         f"title selector cannot tell them apart; each run lands on "
+                         f"the first one", "warn")
+
+
+def _report_plan(targets, structured: bool, pattern: str, report) -> None:
+    """The run-plan line when it adds news (a single run self-describes)."""
+    if len(targets) >= 2:
+        report("detect", f"run plan: {plan.summarize(targets, structured)}")
+        _report_clashes(targets, pattern, report)
+
+
+def _load_profiles(seams: RunSeams) -> list:
+    """Per-profile sessions: the profiles seam, the flat tabs seam, or the real stores."""
+    if seams.profiles is not None:
+        return seams.profiles()
+    if seams.tabs is not None:
+        return [plan.anonymous_session(seams.tabs())]
+    return tabs.profile_sessions()
 
 
 def _report_profiles(report) -> None:
@@ -169,26 +181,40 @@ def _report_profiles(report) -> None:
     report("detect", f"firefox profiles scanned: {len(names)}{quiet}")
 
 
-def _report_source(report) -> None:
-    """Which session file fed the tab rows — the detect line's own receipt."""
-    source, profile = tabs.session_source()
-    if source:
-        report("detect", f"session source: {source} in {profile}")
+def _report_source(sessions, report) -> None:
+    """Which session file fed the rows — the freshest profile's own receipt."""
+    freshest = max(sessions, key=lambda session: session.get("stamp", -1.0), default=None)
+    if freshest and freshest.get("source"):
+        report("detect", f"session source: {freshest['source']} in "
+                         f"{freshest.get('name') or freshest.get('dir', '')}")
 
 
-def _session_windows(seams: RunSeams, real: bool) -> list:
-    """Per-window session rows: the seam's, the store's, or none when faked."""
-    if seams.windows:
-        return seams.windows()
-    return tabs.session_windows() if real else []
+def _report_windows(sessions, seams: RunSeams, report) -> None:
+    """One line per session window: its tabs and the active (OS-title) one.
+
+    The `windows` seam (a test fake, one unnamed browser) keeps the plain
+    format; the per-profile sessions carry their profile in the line.
+    """
+    if seams.windows is not None:
+        for window in seams.windows() or []:
+            _report_window(window, "", report)
+        return
+    for session in sessions or []:
+        _report_profile_windows(session, report)
 
 
-def _report_windows(windows: list, report) -> None:
-    """One line per session window: its tabs and the active (OS-title) one."""
-    for window in windows or []:
-        active = (window.get("active") or {}).get("title", "")
-        report("detect", f"firefox window {window.get('index', '?')}: "
-                         f"{len(window.get('tabs', []))} tab(s) — active “{active[:60]}”")
+def _report_profile_windows(session, report) -> None:
+    """One profile's windows, its profile named in every line."""
+    where = plan.profile_label(session.get("name", ""), session.get("dir", ""))
+    for window in session.get("windows") or []:
+        _report_window(window, f' (profile “{where}”)' if where else "", report)
+
+
+def _report_window(window, suffix: str, report) -> None:
+    """One window line: index, profile, tab count, the active tab's title."""
+    active = (window.get("active") or {}).get("title", "")
+    report("detect", f"firefox window {window.get('index', '?')}{suffix}: "
+                     f"{len(window.get('tabs', []))} tab(s) — active “{active[:60]}”")
 
 
 def os_is_windows() -> bool:
@@ -207,13 +233,6 @@ def _addon_line(addon) -> tuple:
     return "Ui.Vision extension: unknown (no Firefox profile readable)", "warn"
 
 
-def _result_level(kind: str) -> str:
-    """The log level one verdict kind deserves."""
-    if kind == "ok":
-        return "success"
-    return "warn" if kind == "timeout" else "error"
-
-
 def _detect_plugin(report, seams: RunSeams) -> None:
     """Extension in the profile + the native-input module on its port."""
     addon = seams.addon() if seams.addon else tabs.addon_seen()
@@ -230,7 +249,7 @@ def _detect_plugin(report, seams: RunSeams) -> None:
 
 
 def tab_target(pattern: str) -> str | None:
-    """The macro's selectWindow target: the pattern's tab, or None when nothing to match.
+    """The fallback run's selectWindow target: the pattern's tab, or None.
 
     It never returns `tab=open` — the macro must not open a page (owner rule), so
     a blank pattern is a run that cannot be satisfied, not a fresh tab.
@@ -239,62 +258,41 @@ def tab_target(pattern: str) -> str | None:
     return f"title=*{text}*" if text else None
 
 
-def _foreground(spec: RunSpec, report, session_windows: list) -> None:
-    """Raise the window holding the pattern's tab (critical rule: visible+front).
-
-    The session mapping goes first, so one window rises instead of every title
-    match; when nothing maps, the plain title matches take over, and when even
-    those are silent the run still launches — the macro reuses a matching tab
-    if one is open and never opens one itself (E210 otherwise).
-    """
-    mapped = desktop.foreground_tab_window(spec.pattern, session_windows or [])
-    if mapped:
-        matches, raised = mapped
-        titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
-        report("foreground", f"{raised}/{len(matches)} Firefox window(s) on top — {titles} "
-                             f"(holds the tab matching “{spec.pattern}”)")
-        return
-    matches, raised = desktop.foreground(spec.pattern)
-    if not matches:
-        report("foreground", f"no Firefox window matches “{spec.pattern}” — launching anyway; "
-                             f"the macro reuses a matching tab and never opens one (E210 if none)",
-               "warn")
-        return
-    titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
-    report("foreground", f"{raised}/{len(matches)} Firefox window(s) on top — {titles}")
+def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
+    """The flat tab list across every profile + the freshest store's receipt."""
+    rows = [row for session in sessions for row in session["rows"]]
+    quiet = "" if rows else " (no session store readable — is Firefox running?)"
+    recorder("detect", f"firefox open tabs seen: {len(rows)}{quiet}")
+    if real and rows:
+        _report_source(sessions, recorder)
+    _report_tab_rows(rows, recorder)
 
 
-def _launch(spec: RunSpec, files, report, popen):
-    """Resolve the binary, build the official launch URL and start Firefox.
-
-    `files` is `_provision`'s (page, log_path) pair — one argument keeps the
-    signature at four parameters (RULE 16).
-    """
-    page, log_path = files
-    tab = tab_target(spec.pattern)
-    if tab is None:
-        report("launch", "no window-title pattern — the macro has no tab to reuse and "
-                         "will not open one", "error")
-        return None
-    binary = launch.resolve_binary(spec.binary)
-    if not launch.binary_exists(binary):
-        report("launch", f"Firefox not found at {binary!r} — put its FULL path in the "
-                         f"window’s Firefox binary field (Firefox shortcut → Properties → "
-                         f"Target, or `where firefox` in cmd); looked at: "
-                         f"{'; '.join(launch.candidate_binaries())}", "error")
-        return None
-    url = autorun.launch_url(autorun.LaunchSpec(
-        page_path=str(page), macro=spec.macro, storage=spec.storage,
-        log_path=str(log_path), pause_ms=spec.pause_ms, target=spec.target, tab=tab))
-    report("launch", f"starting Firefox with the autorun URL (macro={spec.macro}, "
-                     f"storage={spec.storage}, savelog={log_path.name}, tab={tab})")
-    process = launch.launch_resilient(launch.build_argv(binary, url), popen=popen)
-    report("launch", f"launched (pid {getattr(process, 'pid', '?')}) — waiting for the savelog file")
-    return process
+def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
+    """The pre-run eyes: EVERY profile's tabs, the pattern's matches, the run plan."""
+    sessions = _load_profiles(seams)
+    real = seams.tabs is None and seams.profiles is None
+    structured = real or seams.profiles is not None
+    targets = plan.plan_targets(sessions, spec.pattern)
+    if real:
+        _report_profiles(recorder)
+    _report_open_tabs(sessions, real, recorder)
+    _report_matches(targets, spec.pattern, structured, recorder)
+    _report_windows(sessions, seams, recorder)
+    _report_plan(targets, structured, spec.pattern, recorder)
+    wins = desktop.find_windows(spec.pattern)
+    note = "" if wins or os_is_windows() else " (window listing is Windows-only)"
+    recorder("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
+    _detect_plugin(recorder, seams)
+    return targets
 
 
 def _stopped(seams: RunSeams) -> bool:
     return bool(seams.stop and seams.stop())
+
+
+def _result(kind: str, message: str, recorder: _Recorder, lines: tuple = ()) -> RunResult:
+    return RunResult(kind=kind, message=message, steps=tuple(recorder.steps), lines=lines)
 
 
 def _blocked_no_pattern(recorder: _Recorder) -> RunResult:
@@ -305,36 +303,23 @@ def _blocked_no_pattern(recorder: _Recorder) -> RunResult:
                    recorder)
 
 
-def _result(kind: str, message: str, recorder: _Recorder, lines: tuple = ()) -> RunResult:
-    return RunResult(kind=kind, message=message, steps=tuple(recorder.steps), lines=lines)
-
-
 async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     """One framework test end to end; every phase reports through `report`."""
     seams = seams or RunSeams()
     recorder = _Recorder(report)
-    session_windows = _detect_phase(spec, recorder, seams)
+    targets = _detect_phase(spec, recorder, seams)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)
     if tab_target(spec.pattern) is None:
         return _blocked_no_pattern(recorder)
     try:
-        page, log_path = _provision(spec, recorder)
+        page = _provision(spec, recorder)
     except (ValueError, OSError) as exc:
         recorder("provision", f"cannot prepare the run: {exc}", "error")
         return _result("blocked", str(exc), recorder)
-    _foreground(spec, recorder, session_windows)
-    if _stopped(seams):
-        return _result("stopped", "stopped before launching Firefox", recorder)
-    try:
-        process = _launch(spec, (page, log_path), recorder, seams.popen)
-    except OSError as exc:
-        recorder("launch", f"Firefox would not start: {exc}", "error")
-        return _result("blocked", f"Firefox would not start: {exc}", recorder)
-    if process is None:
-        return _result("blocked", "Firefox was not found — nothing was launched", recorder)
-    verdict = await logread.poll_log(log_path, time.time() + float(spec.timeout_sec),
-                                     sleep=seams.sleep, stop=seams.stop)
-    recorder("result", f"{verdict.kind}: {verdict.message}",
-             "info" if verdict.kind == "stopped" else _result_level(verdict.kind))
-    return _result(verdict.kind, verdict.message, recorder, verdict.lines)
+    if not targets:
+        targets = [plan.Target()]          # today's single run: the OS handoff decides
+    runs = plan.runs(targets, spec.pattern, spec.config_dir, time.strftime("%Y%m%d-%H%M%S"))
+    executor = Sequence(spec, seams, recorder)
+    executor.page = str(page)
+    return await executor.execute(runs)

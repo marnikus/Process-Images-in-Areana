@@ -76,7 +76,8 @@ def test_tab_rows_tolerates_junk_and_absence(tmp_path):
     assert tabs.tab_rows(profiles=[]) == []
 
 
-def test_freshest_profile_wins(tmp_path):
+def test_tab_rows_reads_every_profile_not_just_the_freshest(tmp_path):
+    """Two profiles open → BOTH are seen; the last-written one hides nothing."""
     older = write_profile(tmp_path / "a", store=STORE)
     newer = write_profile(tmp_path / "b", store={"windows": [{"tabs": [
         {"entries": [{"url": "https://new.example", "title": "N"}]}]}]})
@@ -85,7 +86,52 @@ def test_freshest_profile_wins(tmp_path):
     os.utime(older / "sessionstore-backups" / "recovery.json", (old_now, old_now))
     rows = tabs.tab_rows(profiles=[older, newer])
     assert [r["url"] for r in rows] == ["https://arena.ai/image/direct?model_a=max",
-                                        "https://example.com/x"]
+                                        "https://example.com/x", "https://new.example"]
+
+
+def test_profile_sessions_carries_every_profile_and_the_ini_name(tmp_path, monkeypatch):
+    """profile_sessions: one row per answering profile, name from profiles.ini."""
+    first = write_profile(tmp_path / "p1", store=STORE)
+    second = write_profile(tmp_path / "p2", store={"windows": [{"tabs": [
+        {"entries": [{"url": "https://new.example", "title": "N"}]}]}]})
+    (write_profile(tmp_path / "empty", store=None))
+    monkeypatch.setattr(tabs, "profile_names", lambda roots=None: {first: "Work"})
+    sessions = tabs.profile_sessions(profiles=[first, second, tmp_path / "gone"])
+    assert [s["name"] for s in sessions] == ["Work", ""]          # the -P handle rides the row
+    assert [s["dir"] for s in sessions] == [str(first), str(second)]
+    assert sessions[0]["source"] == "recovery.json"
+    assert sessions[0]["rows"][0]["url"] == "https://arena.ai/image/direct?model_a=max"
+    assert sessions[1]["windows"][0]["tabs"][0]["title"] == "N"
+
+
+def test_profile_names_maps_dirs_to_ini_names(tmp_path, monkeypatch):
+    """`Name=` is the -P handle; a section without one answers '' (dir basename wins)."""
+    root = tmp_path / "ff"
+    (root / "Profiles" / "abc.work").mkdir(parents=True)
+    (root / "Profiles" / "plain.default").mkdir(parents=True)
+    (root / "profiles.ini").write_text(
+        "[Profile0]\nName=Work\nPath=Profiles/abc.work\nIsRelative=1\n"
+        "[Profile1]\nPath=Profiles/plain.default\nIsRelative=1\n", encoding="utf-8")
+    monkeypatch.setattr(tabs, "profile_roots", lambda *a: [root / "Profiles"])
+    names = tabs.profile_names(roots=[root / "Profiles"])
+    assert names[root / "Profiles" / "abc.work"] == "Work"
+    assert names[root / "Profiles" / "plain.default"] == ""
+
+
+def test_session_windows_unions_profiles_and_renumbers(tmp_path):
+    """Two profiles → windows of both, globally renumbered, profile-attributed."""
+    first = write_profile(tmp_path / "p1", store=None)
+    write_lz4(first / "sessionstore-backups" / "recovery.jsonlz4", WIN_STORE)
+    second = tmp_path / "p2" / "xyz.play"
+    (second / "sessionstore-backups").mkdir(parents=True)
+    (second / "sessionstore-backups" / "recovery.json").write_text(json.dumps(
+        {"windows": [{"tabs": [{"entries": [{"url": "https://c.example", "title": "C"}]}]}]}),
+        encoding="utf-8")
+    windows = tabs.session_windows(profiles=[first, second])
+    assert [w["index"] for w in windows] == [1, 2, 3]              # renumbered across profiles
+    assert [w["profile"] for w in windows] == ["abc.default-release",
+                                               "abc.default-release", "xyz.play"]
+    assert windows[2]["active"]["title"] == "C"
 
 
 WIN_STORE = {"windows": [
@@ -234,3 +280,35 @@ def test_desktop_module_probe_refuses_and_accepts(monkeypatch):
 
     monkeypatch.setattr(socket, "create_connection", lambda *_a, **_k: FakeSock())
     assert desktop.desktop_module_listening() is True
+
+
+def test_ini_entries_tolerate_junk_sections_and_broken_ini(tmp_path):
+    """A broken ini answers []; junk/empty sections contribute no rows, Name rides."""
+    (tmp_path / " Profiles").mkdir()               # a dir named with a space, never a match
+    good = tmp_path / "real.default"
+    good.mkdir()
+    ini = tmp_path / "profiles.ini"
+    ini.write_text(
+        "[General]\nStartWithLastProfile=1\n"
+        "[Profile0]\nPath=\n"                       # empty Path → skipped
+        "[Profile1]\nPath=gone.default\n"           # missing dir → skipped
+        f"[Profile2]\nName=Real\nPath={good}\nIsRelative=0\n", encoding="utf-8")
+    assert tabs.ini_entries(ini) == [(good, "Real")]
+    broken = tmp_path / "broken.ini"
+    broken.write_text("[Profile0\nnot an ini section", encoding="utf-8")
+    assert tabs.ini_entries(broken) == []
+    assert tabs.ini_entries(tmp_path / "absent.ini") == []
+
+
+def test_profile_names_prefers_a_later_named_section(tmp_path, monkeypatch):
+    """The root ini names the dir without a Name, the parent ini names it: Work wins."""
+    root = tmp_path / "ff" / "Profiles"
+    named = root / "abc.work"
+    named.mkdir(parents=True)
+    (root / "profiles.ini").write_text("[Profile0]\nPath=abc.work\nIsRelative=1\n",
+                                       encoding="utf-8")
+    (root.parent / "profiles.ini").write_text(
+        "[Profile0]\nName=Work\nPath=Profiles/abc.work\nIsRelative=1\n", encoding="utf-8")
+    monkeypatch.setattr(tabs, "profile_roots", lambda *a: [root])
+    names = tabs.profile_names(roots=[root])
+    assert names[named] == "Work"          # the -P handle comes from the named section

@@ -6,10 +6,13 @@ Firefox compresses them as `sessionstore-backups/recovery.jsonlz4` (the live
 session, rewritten every ~15s; plain `recovery.json` died with Firefox v33),
 `previous.jsonlz4`, and `sessionstore.jsonlz4` in the profile root — plus
 `extensions.json` (the installed add-ons, the Ui.Vision extension among them).
-Custom profile locations come from `profiles.ini` (`Path=` + `IsRelative=`),
-so a profile outside the default roots is still seen. Every read is best
-effort: a missing, locked or unparsable file answers "not seen", never an
-error, so a wrong guess can never look like a browser verdict (RULE 4).
+EVERY profile is read (2026-09-23 multi-profile fix): `profile_sessions()`
+answers one row per readable profile — the old freshest-only pick is gone, so
+two running Firefox profiles are both seen. Custom profile locations come from
+`profiles.ini` (`Path=` + `IsRelative=`, plus `Name=` — the `-P` handle that
+lets a run address that profile's instance). Every read is best effort: a
+missing, locked or unparsable file answers "not seen", never an error, so a
+wrong guess can never look like a browser verdict (RULE 4).
 """
 
 from __future__ import annotations
@@ -64,8 +67,8 @@ def _ini_candidates(roots: list) -> list:
     return out
 
 
-def ini_dirs(ini) -> list:
-    """Profile dirs one `profiles.ini` names (`IsRelative=` honoured, [] when silent)."""
+def ini_entries(ini) -> list:
+    """[(dir, name)] — every existing profile one `profiles.ini` names, ini order."""
     try:
         text = Path(ini).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -78,20 +81,37 @@ def ini_dirs(ini) -> list:
     return _ini_sections(parser, Path(ini).parent)
 
 
+def ini_dirs(ini) -> list:
+    """Profile dirs one `profiles.ini` names (`IsRelative=` honoured, [] when silent)."""
+    return [path for path, _name in ini_entries(ini)]
+
+
 def _ini_sections(parser, base: Path) -> list:
-    """Existing profile dirs from the parsed `[ProfileN]` sections (deduped)."""
-    out = []
+    """[(dir, name)] from the parsed `[ProfileN]` sections (deduped by dir).
+
+    `Name=` is the `-P` handle: Firefox's per-profile remoting hands a URL to
+    the running instance of the NAMED profile, so a profile without a name can
+    only be addressed by directory (`-profile <dir>`).
+    """
+    out, seen = [], []
     for section in parser.sections():
         if not section.lower().startswith("profile"):
             continue
-        path = (parser[section].get("Path") or "").strip()
-        if not path:
-            continue
-        full = base / path if (parser[section].get("IsRelative") or "1").strip() != "0" \
-            else Path(path).expanduser()
-        if full.is_dir() and full not in out:
-            out.append(full)
+        entry = _ini_entry(parser[section], base)
+        if entry is not None and entry[0] not in seen:
+            seen.append(entry[0])
+            out.append(entry)
     return out
+
+
+def _ini_entry(section, base: Path) -> tuple | None:
+    """(dir, name) when the section names an existing dir, else None."""
+    path = (section.get("Path") or "").strip()
+    if not path:
+        return None
+    relative = (section.get("IsRelative") or "1").strip() != "0"
+    full = base / path if relative else Path(path).expanduser()
+    return (full, (section.get("Name") or "").strip()) if full.is_dir() else None
 
 
 def profile_dirs() -> list:
@@ -185,36 +205,66 @@ def _profile_session(profile) -> tuple:
     return [], [], -1.0, ""
 
 
-def _best_session(profiles) -> tuple:
-    """(rows, windows, source, profile) of the freshest profile that answers."""
-    best = ([], [], "", "")
-    best_stamp = -1.0
-    for profile in profiles or []:
+def profile_names(roots=None) -> dict:
+    """{profile dir → profiles.ini `Name=`} — the `-P` handle ('' when unnamed)."""
+    if roots is None:
+        roots = profile_roots(os.name, sys.platform,
+                              os.environ.get("APPDATA", ""), Path.home())
+    names: dict = {}
+    for ini in _ini_candidates(roots):
+        for path, name in ini_entries(ini):
+            if path not in names or (name and not names[path]):
+                names[path] = name
+    return names
+
+
+def profile_sessions(profiles=None) -> list:
+    """EVERY readable profile, stable order — the multi-profile eyes.
+
+    One row per answering profile: `{"name", "dir", "rows", "windows",
+    "source", "stamp"}` (`name` is the `profiles.ini` handle). The old
+    freshest-only pick is gone: two running profiles are BOTH seen.
+    """
+    dirs = profiles if profiles is not None else profile_dirs()
+    names = profile_names()
+    sessions = []
+    for profile in dirs or []:
         rows, windows, stamp, source = _profile_session(profile)
-        if rows and stamp >= best_stamp:
-            best, best_stamp = (rows, windows, source, Path(profile).name), stamp
-    return best
+        if rows:
+            sessions.append({"name": names.get(Path(profile), ""), "dir": str(profile),
+                             "rows": rows, "windows": windows,
+                             "source": source, "stamp": stamp})
+    return sessions
+
+
+def _label(session: dict) -> str:
+    """The session's display name: ini name, else the directory's basename."""
+    return session.get("name") or Path(session.get("dir") or "").name
 
 
 def tab_rows(profiles=None) -> list:
-    """Open tabs of the freshest readable profile ([] when none answers)."""
-    rows, _windows, _source, _profile = _best_session(
-        profiles if profiles is not None else profile_dirs())
-    return rows
+    """Open tabs of EVERY readable profile ([] when none answers)."""
+    return [row for session in profile_sessions(profiles) for row in session["rows"]]
 
 
 def session_windows(profiles=None) -> list:
-    """Per-window [{"index","active","tabs"}] of the freshest readable profile."""
-    _rows, windows, _source, _profile = _best_session(
-        profiles if profiles is not None else profile_dirs())
-    return windows
+    """Per-window rows of EVERY readable profile — profile-attributed, renumbered."""
+    out = []
+    for session in profile_sessions(profiles):
+        for window in session["windows"]:
+            out.append({**window, "profile": _label(session)})
+    for index, window in enumerate(out, 1):
+        window["index"] = index
+    return out
 
 
 def session_source(profiles=None) -> tuple:
-    """(file, profile) that fed the rows (("", "") when none answered)."""
-    _rows, _windows, source, profile = _best_session(
-        profiles if profiles is not None else profile_dirs())
-    return source, profile
+    """(file, profile) of the freshest answering profile (("", "") when none)."""
+    sessions = profile_sessions(profiles)
+    if not sessions:
+        return "", ""
+    best = max(sessions, key=lambda session: session["stamp"])
+    return best["source"], Path(best["dir"]).name
 
 
 def addon_seen(profiles=None, needles=ADDON_NEEDLES):

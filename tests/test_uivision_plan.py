@@ -1,0 +1,122 @@
+"""The multi-profile planner — sessions × pattern → one macro run per matching tab.
+
+RULE 8: pure functions over fake session rows; every rule below would break the
+user's fix if deleted (both profiles seen, every matching tab planned, each run
+addressing its own profile instance and its own savelog).
+"""
+
+from pathlib import Path
+
+import pytest
+
+from app.browser.uivision import launch, paths, plan
+
+pytestmark = pytest.mark.unit
+
+WINDOWS_A = [{"index": 1, "active": {"url": "https://arena.ai/a", "title": "A1"},
+              "tabs": [{"url": "https://arena.ai/a", "title": "A1"},
+                       {"url": "https://other.example", "title": "O"}]}]
+WINDOWS_B = [{"index": 1, "active": {"url": "https://arena.ai/b", "title": "B1"},
+              "tabs": [{"url": "https://arena.ai/b", "title": "B1"}]}]
+
+SESSIONS = [
+    {"name": "Work", "dir": "/ff/p1.work", "rows": WINDOWS_A[0]["tabs"],
+     "windows": WINDOWS_A, "source": "recovery.jsonlz4", "stamp": 2.0},
+    {"name": "", "dir": "/ff/p2.play", "rows": WINDOWS_B[0]["tabs"],
+     "windows": WINDOWS_B, "source": "recovery.jsonlz4", "stamp": 9.0},
+]
+
+
+def test_plan_targets_finds_every_match_in_every_profile():
+    targets = plan.plan_targets(SESSIONS, "arena.ai")
+    assert [(t.profile_name, t.url) for t in targets] == [
+        ("Work", "https://arena.ai/a"), ("", "https://arena.ai/b")]
+    assert targets[0].windows == tuple(WINDOWS_A)          # its own profile's windows ride along
+
+
+def test_plan_targets_order_is_stable_and_blank_pattern_matches_none():
+    two = plan.plan_targets(SESSIONS, "arena")
+    again = plan.plan_targets(SESSIONS, "arena")
+    assert two == again
+    assert plan.plan_targets(SESSIONS, "  ") == []
+    assert plan.plan_targets([], "arena") == []
+    assert plan.plan_targets(None, "arena") == []
+
+
+def test_selector_prefers_the_tabs_own_title():
+    """The per-tab selector: the second matching tab is not skipped for the first."""
+    target = plan.Target(profile_name="Work", url="https://arena.ai/b", title="Arena — chat")
+    fallback = plan.Target()
+    assert plan.selector_for(target, "arena") == "title=*Arena — chat*"
+    assert plan.selector_for(fallback, "arena") == "title=*arena*"
+    assert plan.selector_for(fallback, "  ") == ""
+
+
+def test_profile_label_prefers_the_ini_name_then_the_basename():
+    assert plan.profile_label("Work", "/ff/p1") == "Work"
+    assert plan.profile_label("", "/ff/p2.play") == "p2.play"
+    assert plan.profile_label("", "") == ""
+    assert plan.profile_label("  ", "") == ""
+
+
+def test_anonymous_session_wraps_the_flat_rows_seam():
+    session = plan.anonymous_session([{"url": "https://x", "title": "X"}])
+    assert session["name"] == "" and session["windows"] == []
+    assert plan.plan_targets([session], "x")[0].url == "https://x"
+    assert plan.anonymous_session(None)["rows"] == []
+
+
+def test_runs_render_selector_profile_args_and_per_run_savelogs(tmp_path):
+    """Each planned run: own title selector, own -P prefix, own savelog file."""
+    targets = plan.plan_targets(SESSIONS, "arena.ai")
+    runs = plan.runs(targets, "arena.ai", tmp_path, "20260923-120000")
+    assert [r.index for r in runs] == [1, 2] and runs[0].total == 2
+    assert runs[0].selector == "title=*A1*" and runs[1].selector == "title=*B1*"
+    assert runs[0].profile_args == ("-P", "Work")          # named → -P name
+    assert runs[1].profile_args == ("-profile", "/ff/p2.play")   # unnamed → -profile dir
+    assert Path(runs[0].log_path).name == "run-20260923-120000.txt"   # run 1 keeps the plain name
+    assert Path(runs[1].log_path).name == "run-20260923-120000-2.txt"  # run 2 never overwrites it
+    assert runs[1].label == "profile “p2.play” · tab “B1”"
+
+
+def test_runs_fallback_target_uses_the_plain_handoff(tmp_path):
+    """No store answer / no match: today's single run — no -P, the pattern glob."""
+    runs = plan.runs([plan.Target()], "arena.ai", tmp_path, "S")
+    assert len(runs) == 1
+    assert runs[0].profile_args == () and runs[0].selector == "title=*arena.ai*"
+
+
+def test_clashes_name_duplicate_titles_per_profile():
+    same = [{"url": "https://arena.ai/1", "title": "Same"},
+            {"url": "https://arena.ai/2", "title": "Same"}]
+    dup = [{"name": "Work", "dir": "/ff/p1", "rows": same, "windows": [
+        {"index": 1, "active": {}, "tabs": same}], "source": "", "stamp": 0.0}]
+    targets = plan.plan_targets(dup, "arena.ai")
+    assert plan.clashes(targets, "arena.ai") == [("title=*Same*", "Work", 2)]
+    assert plan.clashes(plan.plan_targets(SESSIONS, "arena.ai"), "arena.ai") == []
+
+
+def test_summarize_counts_runs_per_profile():
+    targets = plan.plan_targets(SESSIONS, "arena.ai")
+    assert plan.summarize(targets, True) == '2 macro run(s) — “Work” ×1, “p2.play” ×1'
+    assert plan.summarize(targets, False) == ("2 macro run(s) — one Firefox instance "
+                                              "(no profile selection)")
+
+
+def test_launch_profile_args_and_argv():
+    assert launch.profile_args("Work") == ("-P", "Work")
+    assert launch.profile_args("", "/ff/p2") == ("-profile", "/ff/p2")
+    assert launch.profile_args("", "") == ()
+    argv = launch.profile_argv("/usr/bin/firefox", "file:///x?macro=M", ("-P", "Work"))
+    assert argv == ["/usr/bin/firefox", "-P", "Work", "file:///x?macro=M"]
+    assert launch.profile_argv("/usr/bin/firefox", "file:///x") == \
+        launch.build_argv("/usr/bin/firefox", "file:///x")     # no profile → the plain argv
+    with pytest.raises(ValueError, match="debugger/driver"):
+        launch.profile_argv("/usr/bin/firefox", "file:///x", ("-P", "no-remote"))
+
+
+def test_paths_log_file_parts_never_share_a_file(tmp_path):
+    first = paths.log_file(tmp_path, "S")
+    second = paths.log_file(tmp_path, "S", part=2)
+    assert first.name == "run-S.txt" and second.name == "run-S-2.txt"
+    assert first != second

@@ -1,12 +1,16 @@
 """Finding + starting Firefox — no debugger, no driver, no remote control.
 
-The owner's critical rule, enforced here: the argv is EXACTLY
-`[binary, autorun-url]` and nothing else may ever ride along. No `-no-remote`,
-no `--start-debugger-server`, no geckodriver / Selenium / Playwright /
-Puppeteer. A running Firefox hands the URL to its existing instance and opens
-it in a new tab (that handoff is why no flag is needed — and why `-no-remote`
-would be wrong: it would start a second, isolated browser). A test pins the
-argv and bans the deleted vocabulary from this package.
+The owner's critical rule, enforced here: the argv is
+`[binary, autorun-url]` (single / fallback run — `build_argv`) or
+`[binary, -P <profile>, autorun-url]` when the run targets one named profile
+(`profile_argv`, 2026-09-23 multi-profile fix). Nothing else may ever ride
+along. No `-no-remote`, no `--start-debugger-server`, no geckodriver / Selenium /
+Playwright / Puppeteer. A running Firefox hands the URL to its existing instance
+and opens it in a new tab; `-P <name>` chooses WHICH instance — Firefox's own
+per-profile remoting hands the URL to that profile's running instance (or starts
+that profile when it is down), which is why `-no-remote` would still be wrong:
+it would start a second, isolated browser. A test pins the argv and bans the
+deleted vocabulary from this package.
 
 `launch_resilient` is the runner's entry: plain `Popen` first, then the
 Windows-native fallbacks for the classic `[WinError 5] Access is denied`
@@ -108,13 +112,38 @@ def diagnose_binary(binary: str) -> str:
             f"the native shell, and if that failed too, start Firefox once by hand and re-run")
 
 
-def build_argv(binary: str, url: str) -> list:
-    """`[binary, url]` — the whole launch line (the critical rule as code)."""
-    argv = [binary, url]
+def _checked(argv: list) -> list:
+    """The argv after the banned-vocabulary scan — the critical rule's one gate."""
     bad = [marker for arg in argv for marker in BANNED_ARG_MARKERS if marker in str(arg).lower()]
     if bad:
         raise ValueError(f"launch refuses debugger/driver vocabulary: {', '.join(sorted(set(bad)))}")
     return argv
+
+
+def build_argv(binary: str, url: str) -> list:
+    """`[binary, url]` — the single-run launch line (the critical rule as code)."""
+    return _checked([binary, url])
+
+
+def profile_args(name: str = "", profile_dir: str = "") -> tuple:
+    """The argv prefix aiming Firefox at ONE profile ('' answers nothing).
+
+    `-P <name>` is Firefox's own per-profile selector: the URL is handed to the
+    running instance of that named profile, or that profile is started. A
+    directory no `profiles.ini` names falls back to `-profile <dir>` (same
+    remoting, keyed on the profile directory). Neither flag is debugger
+    vocabulary; the banned scan still runs over the assembled argv.
+    """
+    if (name or "").strip():
+        return ("-P", name.strip())
+    if (profile_dir or "").strip():
+        return ("-profile", profile_dir)
+    return ()
+
+
+def profile_argv(binary: str, url: str, profile_args: tuple = ()) -> list:
+    """`[binary, *profile-args, url]` — one run aimed at one profile instance."""
+    return _checked([binary, *(profile_args or ()), url])
 
 
 def launch(argv, popen=None):
