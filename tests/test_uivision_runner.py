@@ -672,3 +672,76 @@ async def test_titleless_url_match_is_skipped_with_a_warning(tmp_path, frozen_ti
     assert "warn" in [lvl for s, _m, lvl in rows if "no TITLE" in _m]
     assert len(popen.calls) == 1                                    # only the titled tab
     assert parse_qs(urlsplit(popen.calls[0][3]).query)["cmd_var3"] == ["title=*Titled*"]
+
+
+# ── the running-profile gate (2026-09-24 first-run fix) ─────────────────────
+
+LIVE_AND_STALE = [
+    {"name": "Work", "dir": "/ff/p1.work", "rows": [
+        {"url": "https://arena.ai/live", "title": "Live Tab"}],
+     "windows": [], "source": "", "stamp": 9.0, "running": True},
+    {"name": "Rest", "dir": "/ff/p2.rest", "rows": [
+        {"url": "https://arena.ai/ghost", "title": "Ghost Tab"}],
+     "windows": [], "source": "", "stamp": 2.0, "running": False},
+]
+
+
+async def test_closed_profile_tabs_are_skipped_and_warned(tmp_path, frozen_time):
+    """The first-run bug: stale sessions of closed profiles must never be runs."""
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt"])
+    popen = FakePopen()
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"),
+                            report, RunSeams(sleep=noop_sleep, popen=popen,
+                                             profiles=lambda: LIVE_AND_STALE,
+                                             addon=lambda: True, probe=lambda: True))
+    assert result.kind == "ok"
+    assert len(popen.calls) == 1                              # only the LIVE profile ran
+    assert popen.calls[0][1:3] == ["-P", "Work"]
+    assert parse_qs(urlsplit(popen.calls[0][3]).query)["cmd_var3"] == ["title=*Live Tab*"]
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert 'profile “Rest” is NOT running' in text
+    assert "stale and are skipped" in text
+    assert any(lvl == "warn" for s, _m, lvl in rows if "NOT running" in _m)
+    match_lines = [m for _s, m, _l in rows if m.startswith("match ")]
+    assert all("Ghost Tab" not in m for m in match_lines)     # matched: the live tab only
+    assert all("ghost" not in a[-1] for a in popen.calls)     # no launch aimed at it
+
+
+async def test_only_closed_profiles_match_blocks_by_name(tmp_path, frozen_time):
+    """Every match lives in a closed profile → blocked, the log says how to fix."""
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    popen = FakePopen()
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"),
+                            report, RunSeams(sleep=noop_sleep, popen=popen,
+                                             profiles=lambda: [
+                                                 {"name": "Rest", "dir": "/ff/p2.rest",
+                                                  "rows": [{"url": "https://arena.ai/g",
+                                                            "title": "G"}],
+                                                  "windows": [], "source": "",
+                                                  "stamp": 2.0, "running": False}],
+                                             addon=lambda: True, probe=lambda: True))
+    assert result.kind == "blocked"
+    assert "arena.ai" in result.message and "title" in result.message
+    assert popen.calls == []                                  # nothing launched
+    assert 'profile “Rest” is NOT running' in " | ".join(m for _s, m, _l in rows)
+
+
+async def test_profiles_report_names_the_live_ones(tmp_path, frozen_time, monkeypatch):
+    """The scanned line names which profiles are actually running."""
+    sessions = [{"name": "Work", "dir": "/ff/p1.work", "rows": [
+        {"url": "https://arena.ai/live", "title": "Live Tab"}],
+        "windows": [], "source": "recovery.jsonlz4", "stamp": 5.0, "running": True}]
+    monkeypatch.setattr(runner.tabs, "profile_sessions", lambda: sessions)
+    monkeypatch.setattr(runner.tabs, "profile_dirs", lambda: [])
+    monkeypatch.setattr(runner.desktop, "foreground_tab_window", lambda *a: None)
+    monkeypatch.setattr(runner.desktop, "foreground", lambda pattern: ([], 0))
+    rows, report = reports()
+    seams = RunSeams(stop=lambda: True, addon=lambda: True, probe=lambda: False)
+    await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"), report, seams)
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert "firefox profiles scanned: 0 (is Firefox installed?)" in text

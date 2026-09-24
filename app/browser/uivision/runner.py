@@ -151,9 +151,9 @@ def _report_no_matches(spec: RunSpec, report) -> None:
         report("detect", "no session store readable and both patterns are empty — "
                          "nothing to search", "warn")
         return
-    report("detect", f"no OPEN tab matches {search} in any Firefox profile — the "
-                     f"macro will NOT open anything and will fail (E210): open the "
-                     f"page in the matching Firefox first", "warn")
+    report("detect", f"no OPEN tab matches {search} in any RUNNING Firefox "
+                     f"profile — the macro will NOT open anything and will fail "
+                     f"(E210): open the page in the matching Firefox first", "warn")
 
 
 def _report_clashes(targets, pattern: str, report) -> None:
@@ -192,10 +192,13 @@ def _load_profiles(seams: RunSeams) -> list:
 
 
 def _report_profiles(report) -> None:
-    """How many Firefox profiles were scanned, by name — an empty scan explains itself."""
-    names = [path.name for path in tabs.profile_dirs()]
+    """How many Firefox profiles were scanned, by name — and which are live."""
+    dirs = tabs.profile_dirs()
+    names = [path.name for path in dirs]
     quiet = f" ({', '.join(names[:6])})" if names else " (is Firefox installed?)"
-    report("detect", f"firefox profiles scanned: {len(names)}{quiet}")
+    live = [path.name for path in dirs if tabs.is_profile_running(path)]
+    live_note = f" — running: {len(live)} ({', '.join(live[:6])})" if dirs else ""
+    report("detect", f"firefox profiles scanned: {len(names)}{quiet}{live_note}")
 
 
 def _report_source(sessions, report) -> None:
@@ -276,11 +279,16 @@ def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
 
 
 def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
-    """The pre-run eyes: EVERY profile's tabs, the search's matches, the run plan."""
+    """The pre-run eyes: EVERY profile's tabs, the search's matches, the run plan.
+
+    Only LIVE profiles make the plan — a closed profile's stale session tabs
+    were the first-run bug (2026-09-24); each skipped target is warned.
+    """
     sessions = _load_profiles(seams)
     real = seams.tabs is None and seams.profiles is None
     structured = real or seams.profiles is not None
     targets = plan.plan_targets(sessions, spec.pattern, spec.url_pattern)
+    targets = _drop_stale(targets, sessions, recorder)[0]
     targets = _drop_unaddressable(targets, spec, recorder)
     if real:
         _report_profiles(recorder)
@@ -293,6 +301,17 @@ def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
     recorder("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
     _detect_plugin(recorder, seams)
     return targets
+
+
+def _drop_stale(targets, sessions, recorder: _Recorder) -> tuple:
+    """Targets of closed profiles cannot run — warn per profile, keep the rest."""
+    ready, stale = plan.split_running(targets, sessions)
+    for target in stale:
+        where = plan.profile_label(target.profile_name, target.profile_dir) or "?"
+        recorder("detect", f"profile “{where}” is NOT running — its session-store tabs "
+                           f"are stale and are skipped: start Firefox with that "
+                           f"profile to include them", "warn")
+    return ready, stale
 
 
 def _drop_unaddressable(targets, spec: RunSpec, recorder: _Recorder) -> list:
@@ -324,10 +343,10 @@ def _blocked_no_search(recorder: _Recorder) -> RunResult:
 
 def _blocked_no_url_match(recorder: _Recorder, url_pattern: str) -> RunResult:
     """URL-only search with no match: the fallback selector needs a title pattern."""
-    recorder("launch", f"URL “{url_pattern}” matched no open tab in any profile's "
-                       f"session store — the macro selects tabs by TITLE, so open the "
-                       f"page (Firefox then knows the tab) or add a title pattern",
-             "error")
+    recorder("launch", f"URL “{url_pattern}” matched no open tab in any RUNNING "
+                       f"profile's session store — the macro selects tabs by TITLE, "
+                       f"so open the page (Firefox then knows the tab) or add a "
+                       f"title pattern", "error")
     return _result("blocked", f"URL “{url_pattern}” matched no open tab — and a "
                               f"URL-only search cannot select a tab without its "
                               f"title", recorder)

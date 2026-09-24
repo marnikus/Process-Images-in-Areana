@@ -312,3 +312,59 @@ def test_profile_names_prefers_a_later_named_section(tmp_path, monkeypatch):
     monkeypatch.setattr(tabs, "profile_roots", lambda *a: [root])
     names = tabs.profile_names(roots=[root])
     assert names[named] == "Work"          # the -P handle comes from the named section
+
+
+# ── the running-profile lock check (2026-09-24 first-run fix) ───────────────
+
+def test_is_profile_running_posix_lock_symlink(tmp_path, monkeypatch):
+    """`lock` → `ip:pid`: a live pid means running; a dead pid is a stale lock."""
+    live, dead = tmp_path / "live", tmp_path / "dead"
+    live.mkdir()
+    dead.mkdir()
+    (live / "lock").symlink_to("127.0.0.1:4242+")
+    (dead / "lock").symlink_to("127.0.0.1:1717")
+    monkeypatch.setattr(tabs.os, "kill", lambda pid, sig: (_ for _ in ()).throw(OSError()))
+    assert tabs.is_profile_running(live, "posix") is False   # kill always refuses: dead
+    monkeypatch.setattr(tabs.os, "kill", lambda pid, sig: None)
+    assert tabs.is_profile_running(live, "posix") is True
+    assert tabs.is_profile_running(dead, "posix") is True    # both answer; pid decides
+    assert tabs.is_profile_running(tmp_path / "bare", "posix") is False   # no lock at all
+
+
+def test_is_profile_running_windows_lock(tmp_path, monkeypatch):
+    """Held `parent.lock` = running; an openable file is stale; missing = closed."""
+    profile = tmp_path / "p"
+    profile.mkdir()
+    real_open = tabs.os.open
+
+    def refused(path, flags):                                # Firefox holds it open
+        raise PermissionError(13, "sharing violation", str(path))
+
+    def stale(path, flags):                                  # nobody holds it
+        return real_open(path, flags)
+
+    (profile / "parent.lock").write_bytes(b"")
+    monkeypatch.setattr(tabs.os, "open", refused)
+    assert tabs.is_profile_running(profile, "nt") is True
+    monkeypatch.setattr(tabs.os, "open", stale)
+    assert tabs.is_profile_running(profile, "nt") is False   # stale lock, not running
+    (profile / "parent.lock").unlink()
+    assert tabs.is_profile_running(profile, "nt") is False
+
+
+def test_is_profile_running_follows_this_os_by_default(monkeypatch):
+    monkeypatch.setattr(tabs, "_os_kind", lambda: "posix")
+    monkeypatch.setattr(tabs, "_posix_lock_alive", lambda profile: True)
+    monkeypatch.setattr(tabs, "_windows_lock_held", lambda lock: False)
+    assert tabs.is_profile_running("/any") is True           # dispatch by this OS
+    monkeypatch.setattr(tabs, "_os_kind", lambda: "nt")
+    assert tabs.is_profile_running("/any") is False
+
+
+def test_profile_sessions_marks_the_running_state(tmp_path, monkeypatch):
+    """Each session row carries `running`, so stale tabs are recognisable."""
+    profile = write_profile(tmp_path, store=STORE)
+    monkeypatch.setattr(tabs, "is_profile_running", lambda p, os_name="": True)
+    assert tabs.profile_sessions(profiles=[profile])[0]["running"] is True
+    monkeypatch.setattr(tabs, "is_profile_running", lambda p, os_name="": False)
+    assert tabs.profile_sessions(profiles=[profile])[0]["running"] is False

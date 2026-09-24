@@ -78,3 +78,29 @@ def test_launch_url_close_rpa_off_and_file_uri_base(tmp_path):
     assert query["closeRPA"] == ["0"]
     assert query["cmd_var1"] == ["1500"]
     assert url.startswith(Path(spec_for(tmp_path).page_path).resolve().as_uri() + "?")
+
+
+# ── the 2026-09-24 batch-automation cleanup deltas (design: docs/archive) ────
+
+def test_page_dispatches_once_and_never_re_dispatches_on_a_timer():
+    """The vendored 1s interval re-ran the macro while it was executing."""
+    page = autorun.PAGE_HTML
+    assert "setInterval" not in page                       # the re-dispatcher is gone
+    assert page.count("dispatchEvent(evt)") == 1           # exactly one dispatch
+
+
+def test_page_closes_itself_on_invoke_success_and_failsafe():
+    page = autorun.PAGE_HTML
+    assert "window.addEventListener('kantuInvokeSuccess', onInvokeSuccess)" in page
+    assert "closeTab" in page
+    assert "setTimeout(closeTab, 120000)" in page          # never lingers past 2 min
+
+
+def test_page_warns_by_banner_not_by_blocking_alert():
+    """A modal must never wait for a human mid-batch — banner + title + auto-close."""
+    page = autorun.PAGE_HTML
+    assert "alert(" not in page
+    for marker in ("Error #203", "Error #204"):            # the diagnostics survive
+        assert marker in page, marker
+    assert "document.title = text" in page
+    assert "setTimeout(closeTab, 8000)" in page            # the #204 path self-closes

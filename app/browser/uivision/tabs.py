@@ -219,11 +219,10 @@ def profile_names(roots=None) -> dict:
 
 
 def profile_sessions(profiles=None) -> list:
-    """EVERY readable profile, stable order — the multi-profile eyes.
+    """Every readable profile, stable order — the multi-profile eyes.
 
-    One row per answering profile: `{"name", "dir", "rows", "windows",
-    "source", "stamp"}` (`name` is the `profiles.ini` handle). The old
-    freshest-only pick is gone: two running profiles are BOTH seen.
+    Row carries `running` (the live-instance lock check): a closed profile's
+    stale session tabs are skipped downstream (2026-09-24 first-run fix).
     """
     dirs = profiles if profiles is not None else profile_dirs()
     names = profile_names()
@@ -232,9 +231,56 @@ def profile_sessions(profiles=None) -> list:
         rows, windows, stamp, source = _profile_session(profile)
         if rows:
             sessions.append({"name": names.get(Path(profile), ""), "dir": str(profile),
-                             "rows": rows, "windows": windows,
-                             "source": source, "stamp": stamp})
+                             "rows": rows, "windows": windows, "source": source,
+                             "stamp": stamp, "running": is_profile_running(profile)})
     return sessions
+
+
+def _windows_lock_held(lock: Path) -> bool:
+    """`parent.lock` is held OPEN (share-locked) while the instance lives.
+
+    A stale lock file from a crashed run opens fine — held means refused.
+    """
+    import errno
+    try:
+        handle = os.open(str(lock), os.O_RDWR)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        return exc.errno in (errno.EACCES, errno.EBUSY, errno.EPERM)
+    os.close(handle)
+    return False
+
+
+def _posix_lock_alive(profile: Path) -> bool:
+    """`lock` is a symlink to `ip:pid` — the pid answers while the instance lives."""
+    try:
+        target = os.readlink(str(Path(profile) / "lock"))
+        pid = int(target.rsplit(":", 1)[-1].rstrip("+"))
+        os.kill(pid, 0)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _os_kind() -> str:
+    """This OS in one word — a module helper so tests can patch it safely."""
+    return "nt" if os.name == "nt" else "posix"
+
+
+def is_profile_running(profile, os_name: str = "") -> bool:
+    """Best effort: does a Firefox instance hold THIS profile's lock right now?
+
+    The session store cannot answer this — a closed profile's store still lists
+    its last tabs, which is exactly how the first run planned browsers that
+    were not there (2026-09-24 owner bug). Every refusal answers "not running".
+    """
+    profile = Path(profile)
+    name = os_name or _os_kind()
+    if name == "nt":
+        lock = profile / "parent.lock"
+        return lock.exists() and _windows_lock_held(lock)
+    return _posix_lock_alive(profile)
 
 
 def _label(session: dict) -> str:

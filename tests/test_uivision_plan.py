@@ -169,3 +169,27 @@ def test_paths_log_file_parts_never_share_a_file(tmp_path):
     second = paths.log_file(tmp_path, "S", part=2)
     assert first.name == "run-S.txt" and second.name == "run-S-2.txt"
     assert first != second
+
+
+def test_split_running_separates_closed_profiles():
+    """A closed profile's stale session tabs never make the plan (first-run fix)."""
+    sessions = [
+        {"name": "Work", "dir": "/ff/p1", "rows": [
+            {"url": "https://arena.ai/a", "title": "A1"}], "running": True},
+        {"name": "Rest", "dir": "/ff/p2", "rows": [
+            {"url": "https://arena.ai/b", "title": "B1"}], "running": False},
+    ]
+    targets = plan.plan_targets(sessions, "", "arena.ai")
+    ready, stale = plan.split_running(targets, sessions)
+    assert [t.url for t in ready] == ["https://arena.ai/a"]
+    assert [t.url for t in stale] == ["https://arena.ai/b"]
+    everything = plan.plan_targets(sessions, "", "arena.ai")
+    assert len(plan.split_running(everything, sessions)[0]) == 1
+
+
+def test_split_running_keeps_seams_without_the_running_key():
+    """A faked session without `running` counts as live — tests keep today's shape."""
+    session = plan.anonymous_session([{"url": "https://arena.ai/x", "title": "X"}])
+    targets = plan.plan_targets([session], "", "arena.ai")
+    ready, stale = plan.split_running(targets, [session])
+    assert len(ready) == 1 and stale == []                   # no key = never "closed"

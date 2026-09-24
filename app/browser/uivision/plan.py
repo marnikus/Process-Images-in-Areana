@@ -123,6 +123,20 @@ def plan_targets(sessions, pattern: str, url_pattern: str = "") -> list:
     return targets
 
 
+def split_running(targets, sessions) -> tuple:
+    """([targets of RUNNING profiles], [targets of closed profiles]) — pure.
+
+    A closed profile's session store still lists its last tabs; running those
+    targets meant handing the autorun URL to a browser that was not there —
+    the first-run bug (2026-09-24). A session without a `running` key (a faked
+    seam) counts as running, so tests keep today's shape.
+    """
+    closed = {str(session.get("dir")) for session in sessions or []
+              if session.get("running") is False}
+    ready = [t for t in targets or [] if t.profile_dir not in closed]
+    return ready, [t for t in targets or [] if t.profile_dir in closed]
+
+
 def split_unaddressable(targets, pattern: str) -> tuple:
     """([addressable], [titleless]) — `selectWindow` can only pick a titled tab.
 
