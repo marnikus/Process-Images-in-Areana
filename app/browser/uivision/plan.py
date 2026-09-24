@@ -101,6 +101,29 @@ def run_label(target: Target) -> str:
     return f'profile “{who}” · tab “{tab}”' if who else f'tab “{tab}”'
 
 
+def _session_identifiers(session: dict) -> tuple:
+    name = (session.get("name") or "").strip().lower()
+    p_dir = (session.get("dir") or "").strip().lower()
+    base = Path(p_dir).name.lower() if p_dir else ""
+    return name, p_dir, base
+
+
+def profile_matches(session: dict, selected: list) -> bool:
+    """True when session matches any selector in selected (or selected is empty)."""
+    if not selected:
+        return True
+    identifiers = set(_session_identifiers(session)) - {""}
+    chosen = {str(s or "").strip().lower() for s in selected} - {""}
+    return bool(identifiers & chosen)
+
+
+def filter_sessions(sessions: list, selected_profiles: list) -> list:
+    """Keep only sessions whose name, dir, or dir basename is in selected_profiles."""
+    if not selected_profiles:
+        return list(sessions or [])
+    return [s for s in (sessions or []) if profile_matches(s, selected_profiles)]
+
+
 def plan_targets(sessions, pattern: str, url_pattern: str = "") -> list:
     """One Target per tab matching BOTH patterns — every profile, stable order.
 

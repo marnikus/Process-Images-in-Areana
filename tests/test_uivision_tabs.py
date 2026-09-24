@@ -173,6 +173,21 @@ def test_tab_rows_ignores_torn_compressed_files(tmp_path):
     assert tabs.tab_rows(profiles=[profile]) == []
 
 
+def test_discover_firefox_profiles(tmp_path):
+    p1 = tmp_path / "prof1"
+    p1.mkdir()
+    p2 = tmp_path / "prof2"
+    p2.mkdir()
+    ini = tmp_path / "profiles.ini"
+    ini.write_text("[Profile0]\nName=default\nPath=prof1\nIsRelative=1\n[Profile1]\nName=Work\nPath=prof2\nIsRelative=1\n")
+    discovered = tabs.discover_firefox_profiles(roots=[tmp_path])
+    assert len(discovered) == 2
+    names = {d["name"] for d in discovered}
+    assert names == {"default", "Work"}
+    assert all("dir" in d and "label" in d for d in discovered)
+
+
+
 def test_session_windows_groups_tabs_with_the_active_one(tmp_path):
     profile = write_profile(tmp_path, store=None)
     write_lz4(profile / "sessionstore-backups" / "recovery.jsonlz4", WIN_STORE)

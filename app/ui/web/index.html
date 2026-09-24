@@ -375,14 +375,27 @@
           <button id="faSaveBtn" class="btn-small btn-primary" title="Validate + save this window's config">Save</button>
           <button id="faRunBtn" class="btn-small" title="Run the framework test: reuse the found tab (never open a page) → RED rectangle on the element → XClick → wait for the savelog verdict"><span class="material-icons" style="font-size:14px;">play_arrow</span> Run test</button>
           <button id="faStopBtn" class="btn-small" title="Stop waiting for the result — Firefox itself is never killed (it stays your normal browser)">Stop</button>
+          <button id="faShowProfilesBtn" class="btn-small" type="button" title="Show or hide discovered Firefox profiles list"><span class="material-icons" style="font-size:14px;">manage_accounts</span> Show Profiles</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px;">
+          <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="If checked, skip profile if matching tab is not found. If unchecked, wait up to 1 minute for user to open the tab.">
+            <input id="faSkipMissingTab" type="checkbox"> Skip tab and profile if not exist
+          </label>
+        </div>
+        <div id="faProfilesContainer" style="display:none; border:1px solid var(--border); border-radius:4px; padding:6px; background:var(--bg-input);">
+          <div style="font-size:11px; font-weight:bold; margin-bottom:4px; color:var(--text-secondary);">Discovered Firefox Profiles:</div>
+          <div id="faProfilesList" style="display:flex; flex-direction:column; gap:4px; max-height:120px; overflow-y:auto; font-size:11px;"></div>
         </div>
         <div id="faPaths" style="font-size:10px; color:var(--text-muted); line-height:1.5; word-break:break-all; white-space:pre-line;"></div>
         <div id="faStatus" style="font-size:11px; color:var(--text-secondary); line-height:1.4;"></div>
         <pre id="faSteps" style="font-size:10px; color:var(--text-muted); background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; margin:0; max-height:140px; overflow-y:auto; white-space:pre-wrap; word-break:break-word;"></pre>
-        <div style="font-size:10px; color:var(--text-muted); line-height:1.5; border-top:1px dashed var(--border); padding-top:6px;">
-          <b>How it works:</b> Firefox stays a NORMAL visible browser — no debug port, no geckodriver / Selenium / Playwright / Puppeteer. The signed Ui.Vision RPA add-on runs the macro from its official command-line API: this app writes the macro + the autostart page, starts Firefox on the <code>file:///</code> URL, and the macro <b>reuses the tab matching the pattern — it never opens a page</b> (no matching tab = the macro fails with E210, so open the page in Firefox first) → bringBrowserToForeground → waits for the element and draws the <b>RED confirmation rectangle</b> over it → <b>XClick</b> (native OS input, isTrusted:true) → echo done. The rectangle covers element-locator targets (xpath= / css= / id= / dom= / text= / link=); image, OCR and x,y targets get the extension's own vision box. The verdict arrives in the savelog file (<code>Status=OK</code> / <code>Status=Error</code>).<br>
-          <b>Needs:</b> 1) the Ui.Vision RPA add-on in Firefox with <i>“Allow access to file URLs”</i> switched on; 2) the Ui.Vision Desktop App (XModules) — XClick is native input, and full-path savelog + hard-drive macros need it; 3) an unlocked desktop, Firefox visible and in front while the macro's desktop steps run.
-        </div>
+        <details class="ab-details">
+          <summary><span class="material-icons">info</span> Instructions &amp; Notes</summary>
+          <div style="font-size:10px; color:var(--text-muted); line-height:1.5; padding:4px;">
+            <b>How it works:</b> Firefox stays a NORMAL visible browser — no debug port, no geckodriver / Selenium / Playwright / Puppeteer. The signed Ui.Vision RPA add-on runs the macro from its official command-line API: this app writes the macro + the autostart page, starts Firefox on the <code>file:///</code> URL, and the macro <b>reuses the tab matching the pattern — it never opens a page</b> (no matching tab = the macro fails with E210, so open the page in Firefox first) → bringBrowserToForeground → waits for the element and draws the <b>RED confirmation rectangle</b> over it → <b>XClick</b> (native OS input, isTrusted:true) → echo done. The rectangle covers element-locator targets (xpath= / css= / id= / dom= / text= / link=); image, OCR and x,y targets get the extension's own vision box. The verdict arrives in the savelog file (<code>Status=OK</code> / <code>Status=Error</code>).<br>
+            <b>Needs:</b> 1) the Ui.Vision RPA add-on in Firefox with <i>“Allow access to file URLs”</i> switched on; 2) the Ui.Vision Desktop App (XModules) — XClick is native input, and full-path savelog + hard-drive macros need it; 3) an unlocked desktop, Firefox visible and in front while the macro's desktop steps run.
+          </div>
+        </details>
       </div>
     </div>
 

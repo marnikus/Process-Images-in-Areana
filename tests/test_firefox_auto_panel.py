@@ -51,6 +51,8 @@ def test_get_config_returns_defaults_paths_and_idle_flag(tmp_path):
     res = json.loads(FirefoxAutoMixin.get_firefox_auto_config(fake))
     assert res["ok"] is True and res["running"] is False
     assert res["config"] == DEFAULTS
+    assert "profiles" in res
+    assert isinstance(res["profiles"], list)
     paths = res["paths"]
     assert set(paths) == {"home", "macro_file", "autorun_file", "log_dir"}
     assert paths["macro_file"].endswith("macros/Python_XClick_Demo.json")

@@ -672,3 +672,47 @@ async def test_titleless_url_match_is_skipped_with_a_warning(tmp_path, frozen_ti
     assert "warn" in [lvl for s, _m, lvl in rows if "no TITLE" in _m]
     assert len(popen.calls) == 1                                    # only the titled tab
     assert parse_qs(urlsplit(popen.calls[0][3]).query)["cmd_var3"] == ["title=*Titled*"]
+
+
+async def test_selected_profiles_filtering(tmp_path, frozen_time):
+    """selected_profiles limits target discovery to only the checked profiles."""
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt"])
+    popen = FakePopen()
+    spec = make_spec(tmp_path, pattern="", url_pattern="arena.ai/image/",
+                     selected_profiles=("Work",))
+    result = await run_test(spec, lambda *_a: None, url_seams(popen))
+    assert result.kind == "ok"
+    assert len(popen.calls) == 1
+    assert popen.calls[0][1:3] == ["-P", "Work"]
+
+
+async def test_missing_tab_skip_enabled(tmp_path, frozen_time):
+    """skip_missing_tab=True skips profile without matching tab immediately."""
+    sessions = [{"name": "EmptyProf", "dir": "/ff/empty", "rows": [], "windows": []}]
+    rows, report = reports()
+    spec = make_spec(tmp_path, pattern="NoSuchTab", selected_profiles=("EmptyProf",),
+                     skip_missing_tab=True)
+    seams = RunSeams(sleep=noop_sleep, popen=FakePopen(), profiles=lambda: sessions,
+                     addon=lambda: True, probe=lambda: True)
+    result = await run_test(spec, report, seams)
+    assert any("skipping profile" in m for _s, m, _l in rows)
+
+
+async def test_missing_tab_wait_timeout(tmp_path, frozen_time, monkeypatch):
+    """skip_missing_tab=False waits up to 60s (faked by clock) then skips."""
+    sessions = [{"name": "EmptyProf", "dir": "/ff/empty", "rows": [], "windows": []}]
+    rows, report = reports()
+    spec = make_spec(tmp_path, pattern="NoSuchTab", selected_profiles=("EmptyProf",),
+                     skip_missing_tab=False)
+    clock = [100.0]
+    monkeypatch.setattr(runner.time, "time", lambda: clock[0])
+    async def fast_sleep(sec):
+        clock[0] += 70.0
+    seams = RunSeams(sleep=fast_sleep, popen=FakePopen(), profiles=lambda: sessions,
+                     addon=lambda: True, probe=lambda: True)
+    result = await run_test(spec, report, seams)
+    assert any("waiting up to 60s" in m for _s, m, _l in rows)
+    assert any("60s expired" in m for _s, m, _l in rows)
+

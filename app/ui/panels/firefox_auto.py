@@ -41,6 +41,10 @@ def _clamp_int(value, bounds, fallback: int) -> int:
         return fallback
 
 
+def _validate_profiles(raw) -> list:
+    return [str(item).strip() for item in raw if str(item).strip()] if isinstance(raw, (list, tuple)) else []
+
+
 def validate_config(data) -> dict:
     """Sanitize one config dict: text trimmed, numbers clamped, storage one of two.
 
@@ -57,6 +61,8 @@ def validate_config(data) -> dict:
     cfg["storage"] = storage if storage in STORAGE_MODES else _defaults()["storage"]
     cfg["timeout_sec"] = _clamp_int(row.get("timeout_sec"), TIMEOUT_RANGE, cfg["timeout_sec"])
     cfg["pause_ms"] = _clamp_int(row.get("pause_ms"), PAUSE_RANGE, cfg["pause_ms"])
+    cfg["selected_profiles"] = _validate_profiles(row.get("selected_profiles", cfg["selected_profiles"]))
+    cfg["skip_missing_tab"] = bool(row.get("skip_missing_tab", cfg["skip_missing_tab"]))
     return cfg
 
 
@@ -108,7 +114,9 @@ def build_spec(bridge, cfg):
                    macro=cfg["macro"], storage=cfg["storage"], home=cfg["home"],
                    binary=cfg["binary"], timeout_sec=cfg["timeout_sec"],
                    pause_ms=cfg["pause_ms"], config_dir=_config_dir(bridge),
-                   url_pattern=cfg["url_pattern"])
+                   url_pattern=cfg["url_pattern"],
+                   selected_profiles=tuple(cfg.get("selected_profiles") or ()),
+                   skip_missing_tab=bool(cfg.get("skip_missing_tab", False)))
 
 
 def emit_status(bridge, payload: dict) -> None:
@@ -155,15 +163,17 @@ class FirefoxAutoMixin:
 
     @Slot(result=str)
     def get_firefox_auto_config(self):
-        """Config + file paths + running flag for the window's paint/restore."""
+        """Config + file paths + running flag + discovered profiles for paint/restore."""
+        from app.browser.uivision import tabs as uiv_tabs
         try:
             cfg = load_config(self)
             return json.dumps({"ok": True, "config": cfg, "paths": paths_info(self, cfg),
+                               "profiles": uiv_tabs.discover_firefox_profiles(),
                                "running": bool(getattr(self, "_firefox_auto_running", False))},
                               ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e), "config": _defaults(),
-                               "running": False}, ensure_ascii=False)
+                               "profiles": [], "running": False}, ensure_ascii=False)
 
     @Slot(str, result=str)
     def save_firefox_auto_config(self, config_json: str):

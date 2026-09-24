@@ -304,3 +304,15 @@ def match_urls(rows, pattern: str) -> list:
     if not want:
         return []
     return [row["url"] for row in (rows or []) if want in row["url"].lower()]
+
+
+def discover_firefox_profiles(roots=None) -> list:
+    """Discovered Firefox profiles as [{'name': str, 'dir': str, 'label': str}]."""
+    dirs = profile_dirs() if roots is None else _dirs_under(roots)
+    names = profile_names(roots=roots)
+    out = []
+    for d in dirs:
+        p = Path(d)
+        name = names.get(p, "")
+        out.append({"name": name, "dir": str(p), "label": name or p.name})
+    return out

@@ -128,6 +128,21 @@ def test_runs_render_selector_profile_args_and_per_run_savelogs(tmp_path):
     assert runs[1].label == "profile “p2.play” · tab “B1”"
 
 
+def test_profile_matches_and_filter_sessions():
+    s1 = {"name": "Work", "dir": "/ff/p1.work", "rows": []}
+    s2 = {"name": "", "dir": "/ff/p2.play", "rows": []}
+    assert plan.profile_matches(s1, ["Work"]) is True
+    assert plan.profile_matches(s1, ["p1.work"]) is True
+    assert plan.profile_matches(s1, ["/ff/p1.work"]) is True
+    assert plan.profile_matches(s1, ["play"]) is False
+    assert plan.profile_matches(s2, ["p2.play"]) is True
+    assert plan.profile_matches(s2, []) is True
+    assert plan.filter_sessions([s1, s2], []) == [s1, s2]
+    assert plan.filter_sessions([s1, s2], ["Work"]) == [s1]
+    assert plan.filter_sessions([s1, s2], ["p2.play"]) == [s2]
+    assert plan.filter_sessions([s1, s2], ["nonexistent"]) == []
+
+
 def test_runs_fallback_target_uses_the_plain_handoff(tmp_path):
     """No store answer / no match: today's single run — no -P, the pattern glob."""
     runs = plan.runs([plan.Target()], "arena.ai", tmp_path, "S")

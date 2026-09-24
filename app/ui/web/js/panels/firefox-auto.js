@@ -21,10 +21,13 @@ const FirefoxAutoPanel = {
 
   COLORS: { success: '#4caf50', warn: '#e6a23c', error: '#ff5c5c', info: 'var(--text-secondary)' },
 
+  discoveredProfiles: [],
+
   init() {
     Boot.bindOnceById('faSaveBtn', 'click', () => this.save(), 'firefoxAutoSave');
     Boot.bindOnceById('faRunBtn', 'click', () => this.run(), 'firefoxAutoRun');
     Boot.bindOnceById('faStopBtn', 'click', () => this.stop(), 'firefoxAutoStop');
+    Boot.bindOnceById('faShowProfilesBtn', 'click', () => this.toggleProfiles(), 'firefoxAutoShowProfiles');
     Boot.onBridgeReady(() => this._connect());
   },
 
@@ -59,6 +62,7 @@ const FirefoxAutoPanel = {
 
   applyPayload(p) {
     if (!p) return;
+    if (p.profiles) this.discoveredProfiles = p.profiles;
     this.applyConfig(p.config || {});
     this.renderPaths(p.paths || {});
     this.setRunning(!!p.running);
@@ -66,6 +70,9 @@ const FirefoxAutoPanel = {
 
   applyConfig(cfg) {
     Object.keys(this.FIELDS).forEach((id) => this._set(id, cfg[this.FIELDS[id]]));
+    const skipEl = this._el('faSkipMissingTab');
+    if (skipEl) skipEl.checked = !!cfg.skip_missing_tab;
+    this.renderProfilesList(cfg.selected_profiles || []);
   },
 
   configPayload() {
@@ -74,7 +81,58 @@ const FirefoxAutoPanel = {
       const key = this.FIELDS[id];
       out[key] = this.NUMBERS.includes(key) ? parseInt(this._val(id), 10) : String(this._val(id));
     });
+    const skipEl = this._el('faSkipMissingTab');
+    out.skip_missing_tab = skipEl ? !!skipEl.checked : false;
+    out.selected_profiles = this.getSelectedProfiles();
     return out;
+  },
+
+  toggleProfiles() {
+    const c = this._el('faProfilesContainer');
+    if (!c) return;
+    c.style.display = c.style.display === 'none' ? 'block' : 'none';
+  },
+
+  _isProfileChecked(p, selSet) {
+    if (selSet.size === 0) return true;
+    const name = (p.name || p.label || '').toLowerCase();
+    const dir = (p.dir || '').toLowerCase();
+    return selSet.has(name) || selSet.has(dir);
+  },
+
+  _createProfileRow(p, idx, checked) {
+    const id = `fa_prof_${idx}`;
+    const name = p.name || p.label || p.dir;
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex; align-items:center; gap:6px; cursor:pointer;';
+    row.innerHTML = `<input type="checkbox" id="${id}" data-profile="${name}" ${checked ? 'checked' : ''}><span>${p.label || name}</span> <span style="color:var(--text-muted); font-size:9px;">(${p.dir})</span>`;
+    return row;
+  },
+
+  renderProfilesList(selected) {
+    const list = this._el('faProfilesList');
+    if (!list) return;
+    list.innerHTML = '';
+    const profs = this.discoveredProfiles || [];
+    if (profs.length === 0) {
+      list.innerHTML = '<span style="color:var(--text-muted);">No Firefox profiles discovered</span>';
+      return;
+    }
+    const selSet = new Set((selected || []).map((s) => String(s).toLowerCase()));
+    profs.forEach((p, idx) => {
+      list.appendChild(this._createProfileRow(p, idx, this._isProfileChecked(p, selSet)));
+    });
+  },
+
+  getSelectedProfiles() {
+    const list = this._el('faProfilesList');
+    if (!list) return [];
+    const inputs = list.querySelectorAll('input[type="checkbox"]');
+    const selected = [];
+    inputs.forEach((inp) => {
+      if (inp.checked && inp.dataset.profile) selected.push(inp.dataset.profile);
+    });
+    return selected;
   },
 
   save() {

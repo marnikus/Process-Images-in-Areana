@@ -25,6 +25,7 @@ Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 
@@ -51,6 +52,8 @@ class RunSpec:
     config_dir: str
     url_pattern: str = ""  # tab-URL substring ('' = any URL); appended last so positional
                            # constructors survive (the I-53 corollary pattern)
+    selected_profiles: tuple = ()  # profile names/dirs to filter (empty = all)
+    skip_missing_tab: bool = False  # True = skip profile immediately, False = wait 60s
 
 
 @dataclass(frozen=True)
@@ -275,12 +278,60 @@ def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
     _report_tab_rows(rows, recorder)
 
 
-def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
+async def _sleep(seams: RunSeams, seconds: float) -> None:
+    if seams.sleep:
+        await seams.sleep(seconds)
+    else:
+        await asyncio.sleep(seconds)
+
+
+async def _poll_tab(session, spec: RunSpec, seams: RunSeams):
+    name = plan.profile_label(session.get("name", ""), session.get("dir", ""))
+    deadline = time.time() + 60.0
+    while time.time() < deadline:
+        if bool(seams.stop and seams.stop()):
+            return None
+        await _sleep(seams, 2.0)
+        sessions = [s for s in _load_profiles(seams) if plan.profile_matches(s, [name])]
+        t = plan.plan_targets(sessions, spec.pattern, spec.url_pattern)
+        if t:
+            return t
+    return None
+
+
+async def _resolve_missing(session, spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
+    name = plan.profile_label(session.get("name", ""), session.get("dir", ""))
+    if spec.skip_missing_tab:
+        recorder("detect", f"profile “{name}”: no matching tab — skipping profile", "info")
+        return []
+    recorder("detect", f"profile “{name}”: no matching tab found — waiting up to 60s for tab...", "warn")
+    t = await _poll_tab(session, spec, seams)
+    if t:
+        recorder("detect", f"profile “{name}”: matching tab opened", "success")
+        return t
+    recorder("detect", f"profile “{name}”: 60s expired without matching tab — skipping profile", "warn")
+    return []
+
+
+async def _collect_targets(sessions, spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
+    filtered = plan.filter_sessions(sessions, spec.selected_profiles)
+    if not spec.selected_profiles:
+        return plan.plan_targets(filtered, spec.pattern, spec.url_pattern)
+    targets = []
+    for s in filtered:
+        t = plan.plan_targets([s], spec.pattern, spec.url_pattern)
+        if not t:
+            t = await _resolve_missing(s, spec, recorder, seams)
+        targets.extend(t)
+    return targets
+
+
+async def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
     """The pre-run eyes: EVERY profile's tabs, the search's matches, the run plan."""
     sessions = _load_profiles(seams)
     real = seams.tabs is None and seams.profiles is None
     structured = real or seams.profiles is not None
-    targets = plan.plan_targets(sessions, spec.pattern, spec.url_pattern)
+    targets = await _collect_targets(sessions, spec, recorder, seams)
     targets = _drop_unaddressable(targets, spec, recorder)
     if real:
         _report_profiles(recorder)
@@ -354,7 +405,7 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     """One framework test end to end; every phase reports through `report`."""
     seams = seams or RunSeams()
     recorder = _Recorder(report)
-    targets = _detect_phase(spec, recorder, seams)
+    targets = await _detect_phase(spec, recorder, seams)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)
     blocked = _fallback_or_block(spec, recorder, targets)
