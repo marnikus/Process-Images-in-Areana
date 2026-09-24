@@ -70,12 +70,33 @@ PAGE_HTML = """<?xml version="1.0" encoding="UTF-8"?>
           clearTimeout(reloadTimer)
           clearInterval(intervalTimer)
           window.removeEventListener('kantuInvokeSuccess', onInvokeSuccess)
+          /* Auto-close this autostart tab after the macro finishes (cleanup).
+             window.close() works for tabs opened by the command line or by JS;
+             for user-opened tabs it is a no-op — the tab stays but navigates to
+             about:blank so it is visually gone. */
+          setTimeout(function () {
+            try { window.close(); } catch (e) {}
+            try { window.location.href = 'about:blank'; } catch (e) {}
+          }, 500)
         }
         var timer = setTimeout(function () {
           alert('Error #203: It seems you need to turn on *Allow access to file URLs* for Kantu in your browser extension settings.')
         }, 8000)
 
         window.addEventListener('kantuInvokeSuccess', onInvokeSuccess)
+
+        /* Also close on macro error — the savelog already carries the verdict. */
+        var onInvokeError = function () {
+          clearTimeout(timer)
+          clearTimeout(reloadTimer)
+          clearInterval(intervalTimer)
+          window.removeEventListener('kantuInvokeError', onInvokeError)
+          setTimeout(function () {
+            try { window.close(); } catch (e) {}
+            try { window.location.href = 'about:blank'; } catch (e) {}
+          }, 500)
+        }
+        window.addEventListener('kantuInvokeError', onInvokeError)
       }
     } catch (e) {
       alert('Kantu Bookmarklet error: ' + e.toString());

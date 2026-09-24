@@ -168,7 +168,7 @@ def test_the_shared_port_stays_one_setting(cfg):
 def test_browser_support_added_payloads_not_bridge_slots():
     from tests.test_bridge_slots import FROZEN_SLOTS
 
-    assert len(FROZEN_SLOTS) == 141, "browser support added payloads; I-63 added the 4 firefox_auto slots"
+    assert len(FROZEN_SLOTS) == 142, "browser support added payloads; I-63 added the 4 firefox_auto slots + show_firefox_profiles (2026-09-24)"
     for slot in ("get_cdp_config", "set_cdp_config", "get_chrome_launch_command"):
         assert slot in FROZEN_SLOTS
     assert not (FROZEN_SLOTS & {"get_browser_config", "set_browser_config", "list_browsers",
