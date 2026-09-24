@@ -85,13 +85,25 @@ def describe_search(pattern, url_pattern) -> str:
     return f"{left} + {right}"
 
 
+TITLE_SELECTOR_MAX = 40  # chars — long titles are fragile (session store may be stale)
+
+
 def selector_for(target: Target, pattern: str) -> str:
-    """The selectWindow target: this tab's own title glob, else the pattern glob."""
-    title = (target.title or "").strip()
-    if title:
-        return f"title=*{title}*"
+    """The selectWindow target: prefer user's pattern, fall back to tab's title.
+
+    When the user sets a pattern (e.g., "Arena"), use it as the selector — it's
+    shorter, more robust, and reflects the user's intent. Only fall back to the
+    tab's full title when the pattern is empty. Long titles are truncated to
+    TITLE_SELECTOR_MAX chars to survive minor title changes (2026-09-24, E212 fix).
+    """
     want = (pattern or "").strip()
-    return f"title=*{want}*" if want else ""
+    if want:
+        return f"title=*{want}*"
+    title = (target.title or "").strip()
+    if not title:
+        return ""
+    clipped = title[:TITLE_SELECTOR_MAX] if len(title) > TITLE_SELECTOR_MAX else title
+    return f"title=*{clipped}*"
 
 
 def run_label(target: Target) -> str:

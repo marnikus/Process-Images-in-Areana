@@ -92,13 +92,38 @@ def test_plan_targets_order_is_stable_and_empty_sessions_match_none():
     assert plan.plan_targets(None, "arena") == []
 
 
-def test_selector_prefers_the_tabs_own_title():
-    """The per-tab selector: the second matching tab is not skipped for the first."""
+def test_selector_prefers_the_user_pattern_over_tab_title():
+    """The per-tab selector: user's pattern is preferred, tab title is fallback.
+
+    When the user sets a pattern (e.g., "arena"), it's used as the selector —
+    shorter, more robust, and reflects the user's intent. Only when the pattern
+    is empty does the tab's full title become the selector (2026-09-24 fix for
+    E212 errors when the session store title is stale).
+    """
     target = plan.Target(profile_name="Work", url="https://arena.ai/b", title="Arena — chat")
     fallback = plan.Target()
-    assert plan.selector_for(target, "arena") == "title=*Arena — chat*"
+    # user pattern set → use it (even when the tab has its own title)
+    assert plan.selector_for(target, "arena") == "title=*arena*"
     assert plan.selector_for(fallback, "arena") == "title=*arena*"
+    # user pattern empty → fall back to the tab's title
+    assert plan.selector_for(target, "") == "title=*Arena — chat*"
+    assert plan.selector_for(target, "  ") == "title=*Arena — chat*"
+    # both empty → no selector
+    assert plan.selector_for(fallback, "") == ""
     assert plan.selector_for(fallback, "  ") == ""
+
+
+def test_selector_truncates_long_tab_titles():
+    """Long titles from the session store are fragile — truncate to survive changes."""
+    long_title = "Directly Chat with Frontier Image Generation AI Models — Arena"
+    target = plan.Target(title=long_title)
+    selector = plan.selector_for(target, "")
+    assert len(selector) <= plan.TITLE_SELECTOR_MAX + len("title=**")
+    assert selector.startswith("title=*")
+    assert selector.endswith("*")
+    # the clipped title is the first TITLE_SELECTOR_MAX chars
+    inner = selector[len("title=*"):-1]
+    assert inner == long_title[:plan.TITLE_SELECTOR_MAX]
 
 
 def test_profile_label_prefers_the_ini_name_then_the_basename():
