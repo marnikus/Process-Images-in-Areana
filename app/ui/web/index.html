@@ -376,10 +376,25 @@
           <button id="faRunBtn" class="btn-small" title="Run the framework test: reuse the found tab (never open a page) → RED rectangle on the element → XClick → wait for the savelog verdict"><span class="material-icons" style="font-size:14px;">play_arrow</span> Run test</button>
           <button id="faStopBtn" class="btn-small" title="Stop waiting for the result — Firefox itself is never killed (it stays your normal browser)">Stop</button>
         </div>
+        <div style="border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg-card);">
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:4px;">
+            <button id="faShowProfilesBtn" class="btn-small" title="Read every Firefox profile's session store and list profiles with their open tabs"><span class="material-icons" style="font-size:14px;">visibility</span> Show profiles</button>
+            <label id="faSkipNoMatchWrap" style="display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-secondary); cursor:pointer;" title="Checked: skip a profile when no tab matches the pattern and move to the next. Unchecked: wait up to the timeout for the user to open the correct tab, then skip if still not found.">
+              <input id="faSkipNoMatch" type="checkbox">
+              Skip profile if no matching tab
+            </label>
+            <label style="display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-secondary);" title="When 'Skip profile' is OFF: seconds to wait for the user to open a matching tab before auto-skipping (10–300, default 60)">
+              Wait <input id="faWaitTimeout" type="number" min="10" max="300" step="5" style="width:48px; font-size:11px; padding:1px 4px;" placeholder="60">s
+            </label>
+          </div>
+          <div id="faProfileList" style="font-size:11px; color:var(--text-secondary); line-height:1.5; max-height:120px; overflow-y:auto;"></div>
+        </div>
         <div id="faPaths" style="font-size:10px; color:var(--text-muted); line-height:1.5; word-break:break-all; white-space:pre-line;"></div>
         <div id="faStatus" style="font-size:11px; color:var(--text-secondary); line-height:1.4;"></div>
         <pre id="faSteps" style="font-size:10px; color:var(--text-muted); background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:6px 8px; margin:0; max-height:140px; overflow-y:auto; white-space:pre-wrap; word-break:break-word;"></pre>
-        <div style="font-size:10px; color:var(--text-muted); line-height:1.5; border-top:1px dashed var(--border); padding-top:6px;">
+        <details id="faNotesToggle" style="font-size:10px; color:var(--text-muted); line-height:1.5; border-top:1px dashed var(--border); padding-top:6px;">
+          <summary style="cursor:pointer; user-select:none; font-size:11px; color:var(--text-secondary);">How it works &amp; requirements (click to expand/collapse)</summary>
+          <div id="faNotes" style="margin-top:4px;">
           <b>How it works:</b> Firefox stays a NORMAL visible browser — no debug port, no geckodriver / Selenium / Playwright / Puppeteer. The signed Ui.Vision RPA add-on runs the macro from its official command-line API: this app writes the macro + the autostart page, starts Firefox on the <code>file:///</code> URL, and the macro <b>reuses the tab matching the pattern — it never opens a page</b> (no matching tab = the macro fails with E210, so open the page in Firefox first) → bringBrowserToForeground → waits for the element and draws the <b>RED confirmation rectangle</b> over it → <b>XClick</b> (native OS input, isTrusted:true) → echo done. The rectangle covers element-locator targets (xpath= / css= / id= / dom= / text= / link=); image, OCR and x,y targets get the extension's own vision box. The verdict arrives in the savelog file (<code>Status=OK</code> / <code>Status=Error</code>).<br>
           <b>Needs:</b> 1) the Ui.Vision RPA add-on in Firefox with <i>“Allow access to file URLs”</i> switched on; 2) the Ui.Vision Desktop App (XModules) — XClick is native input, and full-path savelog + hard-drive macros need it; 3) an unlocked desktop, Firefox visible and in front while the macro's desktop steps run.
         </div>

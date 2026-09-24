@@ -220,5 +220,58 @@ def test_build_spec_maps_every_config_field(tmp_path):
     assert spec == uiv_runner.RunSpec(
         pattern=cfg["pattern"], target=cfg["target"], macro=cfg["macro"],
         storage="xfile", home="/h", binary="/b", timeout_sec=120, pause_ms=2000,
-        config_dir=str(fake.config.dir))
+        config_dir=str(fake.config.dir),
+        selected_profiles=(), skip_no_match=False)
     assert not hasattr(spec, "url")                       # the spec no longer carries a URL
+
+
+# ── profile selection + skip_no_match (2026-09-24) ───────────────────────────
+
+def test_validate_config_carries_selected_profiles_and_skip_flag(tmp_path):
+    cfg = fa.validate_config({
+        "selected_profiles": ["/p/a", " /p/b ", "", "/p/a"],
+        "skip_no_match": True})
+    assert cfg["selected_profiles"] == ["/p/a", "/p/b"]   # trimmed, deduplicated
+    assert cfg["skip_no_match"] is True
+
+
+def test_validate_config_rejects_non_list_profiles(tmp_path):
+    assert fa.validate_config({"selected_profiles": "junk"})["selected_profiles"] == []
+    assert fa.validate_config({"selected_profiles": 42})["selected_profiles"] == []
+
+
+def test_validate_config_defaults_skip_to_false(tmp_path):
+    assert fa.validate_config({})["skip_no_match"] is False
+    assert fa.validate_config({"skip_no_match": 0})["skip_no_match"] is False
+    assert fa.validate_config({"skip_no_match": 1})["skip_no_match"] is True
+
+
+def test_build_spec_passes_profile_filter_and_skip_flag(tmp_path):
+    fake = make_bridge(tmp_path)
+    cfg = dict(DEFAULTS, selected_profiles=["/p/x"], skip_no_match=True)
+    spec = fa.build_spec(fake, cfg)
+    assert spec.selected_profiles == ("/p/x",)
+    assert spec.skip_no_match is True
+
+
+def test_show_firefox_profiles_slot_returns_rows_and_selection(tmp_path, monkeypatch):
+    fake = make_bridge(tmp_path)
+    fake.config.set_state(**{"firefox_auto": dict(DEFAULTS,
+                              selected_profiles=["/p/a"], skip_no_match=True)})
+    rows = [{"id": "/p/a", "name": "a", "dir": "/p/a", "tabs": ["https://x"],
+             "tab_count": 1, "source": "recovery.jsonlz4"}]
+    monkeypatch.setattr("app.browser.uivision.profiles.list_profiles", lambda: rows)
+    res = json.loads(FirefoxAutoMixin.show_firefox_profiles(fake))
+    assert res["ok"] is True
+    assert res["profiles"] == rows
+    assert res["selected"] == ["/p/a"]
+    assert res["skip_no_match"] is True
+
+
+def test_show_firefox_profiles_slot_survives_an_exception(tmp_path, monkeypatch):
+    fake = make_bridge(tmp_path)
+    monkeypatch.setattr("app.browser.uivision.profiles.list_profiles",
+                        lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    res = json.loads(FirefoxAutoMixin.show_firefox_profiles(fake))
+    assert res["ok"] is False and "boom" in res["error"]
+    assert res["profiles"] == []

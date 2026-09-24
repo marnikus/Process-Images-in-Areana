@@ -44,6 +44,9 @@ DEFAULT_SESSION = {
         "binary": "",                # Firefox binary ('' = this OS's default)
         "timeout_sec": 90,           # how long one run waits for the savelog file (15…600)
         "pause_ms": 3000,            # wait for the element + show the RED rect (500…30000)
+        "selected_profiles": [],     # profile dirs checked in the UI ([] = every profile)
+        "skip_no_match": False,      # True = skip a profile with no matching tabs; False = wait
+        "wait_timeout_sec": 60,      # when skip_no_match is off, how long to wait for the user to open a tab (10…300)
     },
 }
 

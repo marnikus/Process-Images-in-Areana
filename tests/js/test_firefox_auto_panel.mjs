@@ -23,7 +23,9 @@ const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf8');
 
 const FA_IDS = ['faPattern', 'faUrlPattern', 'faMacro', 'faTarget', 'faStorage',
   'faHome', 'faBinary', 'faTimeout', 'faPause', 'faSaveBtn', 'faRunBtn', 'faStopBtn',
-  'faState', 'faPaths', 'faStatus', 'faSteps'];
+  'faState', 'faPaths', 'faStatus', 'faSteps',
+  'faShowProfilesBtn', 'faSkipNoMatch', 'faSkipNoMatchWrap', 'faProfileList',
+  'faWaitTimeout', 'faNotesToggle', 'faNotes'];
 
 function inside(node, ancestor) {
   for (let n = node; n; n = n.parent) if (n === ancestor) return true;
@@ -70,7 +72,8 @@ describe('firefox_auto window (mount)', () => {
 /* ── part 2: the content ─────────────────────────────────────────────────── */
 const CFG = { pattern: 'Arena', url_pattern: 'https://arena.ai/image/',
   target: "xpath=//a[span[text()='New Chat']]",
-  macro: 'Python_XClick_Demo', storage: 'xfile', home: '', binary: '', timeout_sec: 90, pause_ms: 3000 };
+  macro: 'Python_XClick_Demo', storage: 'xfile', home: '', binary: '', timeout_sec: 90, pause_ms: 3000,
+  selected_profiles: [], skip_no_match: false, wait_timeout_sec: 60 };
 const PATHS = { home: '/home/u/Desktop/uivision',
   macro_file: '/home/u/Desktop/uivision/macros/Python_XClick_Demo.json',
   autorun_file: '/cfg/uivision/ui.vision.html', log_dir: '/cfg/uivision/logs' };
@@ -85,6 +88,7 @@ function bootFaPanel() {
     save_firefox_auto_config: JSON.stringify({ ok: true, config: CFG, paths: PATHS }),
     run_firefox_auto_test: JSON.stringify({ ok: true, state: 'running' }),
     stop_firefox_auto_test: JSON.stringify({ ok: true, state: 'stopping' }),
+    show_firefox_profiles: JSON.stringify({ ok: true, profiles: [], selected: [], skip_no_match: false }),
   };
   const bridge = new Proxy({}, { get(_t, k) {
     if (typeof k !== 'string') return undefined;
@@ -212,5 +216,33 @@ describe('firefox_auto window (content)', () => {
     assert.equal(lines.length, 60);
     assert.match(lines[59], /m65/);
     assert.match(lines[0], /m6/);
+  });
+
+  test('Show profiles calls the bridge and renders checkboxes per profile', () => {
+    const h = bootFaPanel();
+    h.responses.show_firefox_profiles = JSON.stringify({
+      ok: true, selected: ['/ff/a'], skip_no_match: true,
+      profiles: [
+        { id: '/ff/a', name: 'Alpha', dir: '/ff/a', tabs: ['https://arena.ai/1'], tab_count: 1 },
+        { id: '/ff/b', name: 'Beta', dir: '/ff/b', tabs: [], tab_count: 0 },
+      ] });
+    h.click('faShowProfilesBtn');
+    assert.ok(h.call('show_firefox_profiles'), 'show_firefox_profiles slot called');
+    const list = h.byId.faProfileList;
+    assert.match(list.innerHTML, /Alpha/);
+    assert.match(list.innerHTML, /Beta/);
+    assert.match(list.innerHTML, /fa-profile-cb/);
+  });
+
+  test('save payload carries selected_profiles and skip_no_match', () => {
+    const h = bootFaPanel();
+    h.byId.faSkipNoMatch.checked = true;
+    h.click('faSaveBtn');
+    const save = h.call('save_firefox_auto_config');
+    const payload = JSON.parse(save.args[0]);
+    assert.ok('selected_profiles' in payload, 'selected_profiles in save payload');
+    assert.ok('skip_no_match' in payload, 'skip_no_match in save payload');
+    assert.equal(payload.skip_no_match, true);
+    assert.ok(Array.isArray(payload.selected_profiles));
   });
 });

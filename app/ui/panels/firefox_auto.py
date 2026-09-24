@@ -20,12 +20,16 @@ CONFIG_KEY = "firefox_auto"
 STORAGE_MODES = ("xfile", "browser")
 TIMEOUT_RANGE = (15, 600)
 PAUSE_RANGE = (500, 30000)
+WAIT_TIMEOUT_RANGE = (10, 300)  # the wait-for-tab timeout when skip_no_match is off
 # Retired 2026-09-23: the macro never opens a URL, so "url" is no longer a
 # field — validate rebuilds from the defaults, so an old "url" key in
 # session.json is dropped instead of riding back in (RULE 10's dead-key
 # corollary; pinned by tests/test_firefox_auto_panel.py). Its successor is
 # "url_pattern" (2026-09-24): a tab-matching filter, never a page to open.
 TEXT_FIELDS = ("pattern", "url_pattern", "target", "home", "binary")
+# 2026-09-24: profile selection + skip-no-match — the panel's two new controls
+PROFILE_LIST_KEY = "selected_profiles"
+SKIP_NO_MATCH_KEY = "skip_no_match"
 
 
 def _defaults() -> dict:
@@ -57,7 +61,24 @@ def validate_config(data) -> dict:
     cfg["storage"] = storage if storage in STORAGE_MODES else _defaults()["storage"]
     cfg["timeout_sec"] = _clamp_int(row.get("timeout_sec"), TIMEOUT_RANGE, cfg["timeout_sec"])
     cfg["pause_ms"] = _clamp_int(row.get("pause_ms"), PAUSE_RANGE, cfg["pause_ms"])
+    cfg[PROFILE_LIST_KEY] = _validate_profiles(row.get(PROFILE_LIST_KEY, cfg[PROFILE_LIST_KEY]))
+    cfg[SKIP_NO_MATCH_KEY] = bool(row.get(SKIP_NO_MATCH_KEY, cfg[SKIP_NO_MATCH_KEY]))
+    cfg["wait_timeout_sec"] = _clamp_int(row.get("wait_timeout_sec"),
+                                         WAIT_TIMEOUT_RANGE, cfg["wait_timeout_sec"])
     return cfg
+
+
+def _validate_profiles(value) -> list:
+    """The profile list: non-blank trimmed strings, deduped, order preserved."""
+    if not isinstance(value, list):
+        return []
+    seen, out = set(), []
+    for item in value:
+        text = str(item).strip()
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+    return out
 
 
 def load_config(bridge) -> dict:
@@ -108,7 +129,10 @@ def build_spec(bridge, cfg):
                    macro=cfg["macro"], storage=cfg["storage"], home=cfg["home"],
                    binary=cfg["binary"], timeout_sec=cfg["timeout_sec"],
                    pause_ms=cfg["pause_ms"], config_dir=_config_dir(bridge),
-                   url_pattern=cfg["url_pattern"])
+                   url_pattern=cfg["url_pattern"],
+                   selected_profiles=tuple(cfg.get(PROFILE_LIST_KEY, ())),
+                   skip_no_match=bool(cfg.get(SKIP_NO_MATCH_KEY, False)),
+                   wait_timeout_sec=int(cfg.get("wait_timeout_sec", 60)))
 
 
 def emit_status(bridge, payload: dict) -> None:
@@ -203,3 +227,20 @@ class FirefoxAutoMixin:
         self._firefox_auto_stop = True
         self._log("🦊 stop requested — the run ends on its next check", "warn")
         return json.dumps({"ok": True, "state": "stopping"})
+
+    @Slot(result=str)
+    def show_firefox_profiles(self):
+        """List every readable Firefox profile with its open tabs for the UI."""
+        try:
+            from app.browser.uivision import profiles as uiv_profiles
+            rows = uiv_profiles.list_profiles()
+            cfg = load_config(self)
+            selected = cfg.get(PROFILE_LIST_KEY, [])
+            return json.dumps({"ok": True, "profiles": rows,
+                               "selected": selected,
+                               "skip_no_match": cfg.get(SKIP_NO_MATCH_KEY, False)},
+                              ensure_ascii=False)
+        except Exception as e:
+            self._log(f"🦊 profile list failed: {e}", "error")
+            return json.dumps({"ok": False, "error": str(e),
+                               "profiles": [], "selected": []}, ensure_ascii=False)

@@ -31,6 +31,7 @@ REQUIRED_SLOTS = (
     "get_job_history", "clear_job_history",
     "get_firefox_auto_config", "save_firefox_auto_config",
     "run_firefox_auto_test", "stop_firefox_auto_test",
+    "show_firefox_profiles",
 )
 
 # Private helpers that must never capture a @Slot by accident.
@@ -223,6 +224,7 @@ FROZEN_SLOTS = frozenset({
     'save_firefox_auto_config',
     'run_firefox_auto_test',
     'stop_firefox_auto_test',
+    'show_firefox_profiles',  # 2026-09-24: profile listing for the selection filter
 })
 
 
@@ -244,7 +246,7 @@ EXPECTED_PACKING = {
     'watcher_captcha': 10,
     'watcher_solver': 7,
     'job_history': 2,
-    'firefox_auto': 4,
+    'firefox_auto': 5,
 }
 
 
@@ -281,8 +283,8 @@ def test_panel_packing():
     counts = _panel_slot_counts()
     assert counts == EXPECTED_PACKING, f"packing drift: {counts}"
     # 127 + 6 Captcha Watcher + restore_default_blocks (2026-10-02) + set_captcha_provider (B10, 2026-10-06)
-    # +2 job_history slots +4 firefox_auto slots (I-63, 2026-09-22)
-    assert sum(counts.values()) == 141
+    # +2 job_history slots +5 firefox_auto slots (I-63, 2026-09-22; +show_firefox_profiles 2026-09-24)
+    assert sum(counts.values()) == 142
 
 
 @pytest.mark.unit

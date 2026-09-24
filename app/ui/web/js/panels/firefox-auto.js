@@ -11,13 +11,17 @@ const FirefoxAutoPanel = {
   _connected: false,
   running: false,
   steps: [],
+  profiles: [],        /* last fetched profile rows (from the bridge) */
+  selectedProfiles: [], /* profile dirs the user checked ([] = every profile) */
+  skipNoMatch: false,   /* skip a profile with no matching tab when true */
 
   /* element id → config key (one table: payload(), applyConfig() and the tests read it) */
   FIELDS: { faPattern: 'pattern', faUrlPattern: 'url_pattern', faMacro: 'macro',
             faTarget: 'target', faStorage: 'storage', faHome: 'home',
-            faBinary: 'binary', faTimeout: 'timeout_sec', faPause: 'pause_ms' },
+            faBinary: 'binary', faTimeout: 'timeout_sec', faPause: 'pause_ms',
+            faWaitTimeout: 'wait_timeout_sec' },
 
-  NUMBERS: ['timeout_sec', 'pause_ms'],
+  NUMBERS: ['timeout_sec', 'pause_ms', 'wait_timeout_sec'],
 
   COLORS: { success: '#4caf50', warn: '#e6a23c', error: '#ff5c5c', info: 'var(--text-secondary)' },
 
@@ -25,6 +29,7 @@ const FirefoxAutoPanel = {
     Boot.bindOnceById('faSaveBtn', 'click', () => this.save(), 'firefoxAutoSave');
     Boot.bindOnceById('faRunBtn', 'click', () => this.run(), 'firefoxAutoRun');
     Boot.bindOnceById('faStopBtn', 'click', () => this.stop(), 'firefoxAutoStop');
+    Boot.bindOnceById('faShowProfilesBtn', 'click', () => this.showProfiles(), 'firefoxAutoShowProfiles');
     Boot.onBridgeReady(() => this._connect());
   },
 
@@ -66,6 +71,12 @@ const FirefoxAutoPanel = {
 
   applyConfig(cfg) {
     Object.keys(this.FIELDS).forEach((id) => this._set(id, cfg[this.FIELDS[id]]));
+    if (Array.isArray(cfg.selected_profiles)) this.selectedProfiles = cfg.selected_profiles.slice();
+    if (cfg.skip_no_match !== undefined) {
+      this.skipNoMatch = !!cfg.skip_no_match;
+      const cb = this._el('faSkipNoMatch');
+      if (cb) cb.checked = this.skipNoMatch;
+    }
   },
 
   configPayload() {
@@ -74,6 +85,8 @@ const FirefoxAutoPanel = {
       const key = this.FIELDS[id];
       out[key] = this.NUMBERS.includes(key) ? parseInt(this._val(id), 10) : String(this._val(id));
     });
+    out.selected_profiles = this._readSelectedProfiles();
+    out.skip_no_match = !!(this._el('faSkipNoMatch') && this._el('faSkipNoMatch').checked);
     return out;
   },
 
@@ -173,6 +186,68 @@ const FirefoxAutoPanel = {
     ].filter((pair) => pair[1]);
     this._text('faPaths', rows.map((pair) => `${pair[0]}: ${pair[1]}`).join('\n'));
   },
+
+  /* ── profile selection (the "Show profiles" button) ─────────────────── */
+
+  showProfiles() {
+    const call = Boot.needBridge('show_firefox_profiles');
+    if (!call) return false;
+    call((res) => {
+      const r = this._parse(res);
+      if (!r || !r.ok) { this.setStatus(`⚠ profiles: ${(r && r.error) || 'unknown error'}`, 'warn'); return; }
+      this.profiles = r.profiles || [];
+      if (Array.isArray(r.selected)) this.selectedProfiles = r.selected.slice();
+      if (r.skip_no_match !== undefined) {
+        this.skipNoMatch = !!r.skip_no_match;
+        const cb = this._el('faSkipNoMatch');
+        if (cb) cb.checked = this.skipNoMatch;
+      }
+      this.renderProfiles();
+    });
+    return true;
+  },
+
+  renderProfiles() {
+    const el = this._el('faProfileList');
+    if (!el) return;
+    if (!this.profiles.length) { el.innerHTML = '<em>No Firefox profile readable.</em>'; return; }
+    const sel = new Set(this.selectedProfiles);
+    const allChecked = sel.size === 0;  /* blank = every profile */
+    const rows = this.profiles.map((p) => {
+      const checked = allChecked || sel.has(p.id);
+      const name = p.name || p.dir.split(/[\\/]/).pop();
+      const tabs = (p.tabs || []).slice(0, 6).map((u) => u.replace(/^https?:\/\//, '').slice(0, 50)).join(', ');
+      const extra = (p.tab_count || 0) > 6 ? `, +${p.tab_count - 6} more` : '';
+      return `<label style="display:flex; align-items:flex-start; gap:4px; padding:2px 0; cursor:pointer;">` +
+        `<input type="checkbox" class="fa-profile-cb" data-profile-id="${this._escAttr(p.id)}" ${checked ? 'checked' : ''}>` +
+        `<span><b>${this._esc(name)}</b> <span style="color:var(--text-muted);">(${p.tab_count || 0} tab(s))</span>` +
+        (tabs ? `<br><span style="font-size:10px; color:var(--text-muted);">${this._esc(tabs)}${this._esc(extra)}</span>` : '') +
+        `</span></label>`;
+    });
+    el.innerHTML = rows.join('');
+    el.querySelectorAll('.fa-profile-cb').forEach((cb) => {
+      cb.addEventListener('change', () => this._onProfileCheckChanged());
+    });
+  },
+
+  _onProfileCheckChanged() {
+    this.selectedProfiles = this._readSelectedProfiles();
+  },
+
+  _readSelectedProfiles() {
+    const el = this._el('faProfileList');
+    if (!el) return [];
+    const boxes = el.querySelectorAll('.fa-profile-cb');
+    if (!boxes.length) return [];
+    const checked = [];
+    boxes.forEach((cb) => { if (cb.checked) checked.push(cb.getAttribute('data-profile-id') || ''); });
+    /* When every box is checked, treat as "all" — same as blank. */
+    return checked.length === boxes.length ? [] : checked.filter(Boolean);
+  },
+
+  _esc(text) { return String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); },
+
+  _escAttr(text) { return String(text || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); },
 };
 
 // Global-name contract (see boot.js): publish the lexical const for window[name] lookups.

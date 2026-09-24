@@ -672,3 +672,108 @@ async def test_titleless_url_match_is_skipped_with_a_warning(tmp_path, frozen_ti
     assert "warn" in [lvl for s, _m, lvl in rows if "no TITLE" in _m]
     assert len(popen.calls) == 1                                    # only the titled tab
     assert parse_qs(urlsplit(popen.calls[0][3]).query)["cmd_var3"] == ["title=*Titled*"]
+
+
+# ── profile selection + skip_no_match (2026-09-24) ───────────────────────────
+
+async def test_profile_filter_keeps_only_selected_profiles(tmp_path, frozen_time):
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt", f"run-{STAMP}-2.txt"])
+    popen = FakePopen()
+    rows, report = reports()
+    sessions = [
+        {"name": "Alpha", "dir": "/ff/a", "rows": [
+            {"url": "https://arena.ai/1", "title": "Arena A"}],
+         "windows": [], "source": "", "stamp": 1.0},
+        {"name": "Beta", "dir": "/ff/b", "rows": [
+            {"url": "https://arena.ai/2", "title": "Arena B"}],
+         "windows": [], "source": "", "stamp": 1.0},
+    ]
+    spec = make_spec(tmp_path, pattern="Arena",
+                     selected_profiles=("/ff/a",))
+    result = await run_test(spec, report, RunSeams(
+        sleep=noop_sleep, popen=popen, profiles=lambda: sessions,
+        addon=lambda: True, probe=lambda: True))
+    assert result.kind == "ok"
+    assert len(popen.calls) == 1                          # only Alpha's tab runs
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert "profile filter: 1 tab(s) dropped" in text
+
+
+async def test_skip_no_match_blocks_when_all_profiles_have_no_tab(tmp_path, frozen_time):
+    rows, report = reports()
+    sessions = [
+        {"name": "Alpha", "dir": "/ff/a", "rows": [
+            {"url": "https://other.example", "title": "Other"}],
+         "windows": [], "source": "", "stamp": 1.0},
+    ]
+    spec = make_spec(tmp_path, pattern="Arena",
+                     selected_profiles=("/ff/a",), skip_no_match=True)
+    result = await run_test(spec, report, RunSeams(
+        profiles=lambda: sessions, addon=lambda: True, probe=lambda: True))
+    assert result.kind == "blocked"
+    assert "all selected profiles skipped" in result.message
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert "no matching tab — skipped" in text
+
+
+async def test_skip_no_match_warns_per_profile_when_off(tmp_path, frozen_time, monkeypatch):
+    rows, report = reports()
+    sessions = [
+        {"name": "Alpha", "dir": "/ff/a", "rows": [
+            {"url": "https://other.example", "title": "Other"}],
+         "windows": [], "source": "", "stamp": 1.0},
+    ]
+    # Fast-forward the clock so the 10s wait expires after one sleep call
+    clock = [1_000_000.0]
+    monkeypatch.setattr(runner.time, "time", lambda: clock[0])
+
+    async def fast_sleep(sec):
+        clock[0] += sec + 1            # each sleep jumps past the deadline
+
+    spec = make_spec(tmp_path, pattern="Arena",
+                     selected_profiles=("/ff/a",), skip_no_match=False,
+                     wait_timeout_sec=10)
+    result = await run_test(spec, report, RunSeams(
+        sleep=fast_sleep,
+        profiles=lambda: sessions, addon=lambda: True, probe=lambda: True))
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert "waiting up to 10s" in text
+    assert "no matching tab after 10s — skipped" in text
+
+
+async def test_wait_for_tab_finds_it_during_the_poll(tmp_path, frozen_time, monkeypatch):
+    """skip_no_match OFF + user opens the tab during the wait → it runs."""
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt"])
+    popen = FakePopen()
+    rows, report = reports()
+    empty = [{"name": "Alpha", "dir": "/ff/a", "rows": [
+        {"url": "https://other.example", "title": "Other"}],
+        "windows": [], "source": "", "stamp": 1.0}]
+    full = [{"name": "Alpha", "dir": "/ff/a", "rows": [
+        {"url": "https://arena.ai/image/1", "title": "Arena"}],
+        "windows": [], "source": "", "stamp": 1.0}]
+    calls = [0]
+
+    def profile_source():
+        calls[0] += 1
+        return full if calls[0] >= 3 else empty
+
+    clock = [1_000_000.0]
+    monkeypatch.setattr(runner.time, "time", lambda: clock[0])
+
+    async def fast_sleep(sec):
+        clock[0] += 1
+
+    spec = make_spec(tmp_path, pattern="Arena",
+                     selected_profiles=("/ff/a",), skip_no_match=False,
+                     wait_timeout_sec=30)
+    result = await run_test(spec, report, RunSeams(
+        sleep=fast_sleep, popen=popen,
+        profiles=profile_source, addon=lambda: True, probe=lambda: True))
+    assert result.kind == "ok"
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert "matching tab(s) appeared" in text

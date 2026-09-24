@@ -19,16 +19,17 @@ Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 `blocked` means the run never started (bad macro name, missing Firefox, …).
 """
 
-# ideal-size: ~370 lines reason=detect/report half + provision + orchestration of the
-# uivision package; the executor already lives in sequence.py, the planner in plan.py,
-# and every function stays within the RULE 18 function band.
+# ideal-size: ~490 lines reason=detect/report half + provision + wait-for-tab phase +
+# orchestration of the uivision package; the executor lives in sequence.py, the planner
+# in plan.py, the profile filter in profiles.py, and every function stays within the
+# RULE 18 band (max ~20 lines).
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
 
-from . import autorun, desktop, macro, paths, plan, tabs
+from . import autorun, desktop, macro, paths, plan, profiles, tabs
 from .sequence import RunResult, Sequence
 
 
@@ -51,6 +52,9 @@ class RunSpec:
     config_dir: str
     url_pattern: str = ""  # tab-URL substring ('' = any URL); appended last so positional
                            # constructors survive (the I-53 corollary pattern)
+    selected_profiles: tuple = ()  # profile dirs checked in the UI (() = every profile)
+    skip_no_match: bool = False   # True = skip profiles with no matching tabs; False = wait
+    wait_timeout_sec: int = 60    # when skip_no_match is off, seconds to wait for a tab (10…300)
 
 
 @dataclass(frozen=True)
@@ -281,6 +285,7 @@ def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
     real = seams.tabs is None and seams.profiles is None
     structured = real or seams.profiles is not None
     targets = plan.plan_targets(sessions, spec.pattern, spec.url_pattern)
+    targets = _apply_profile_filter(targets, spec, sessions, recorder)
     targets = _drop_unaddressable(targets, spec, recorder)
     if real:
         _report_profiles(recorder)
@@ -303,6 +308,29 @@ def _drop_unaddressable(targets, spec: RunSpec, recorder: _Recorder) -> list:
                            f"selectWindow can only pick a tab by title; open the page "
                            f"so Firefox gives it one, or it cannot run", "warn")
     return addressable
+
+
+def _apply_profile_filter(targets, spec: RunSpec, sessions, recorder: _Recorder) -> list:
+    """Keep only targets in selected profiles; skip or warn per unmatched one."""
+    selected = list(spec.selected_profiles or ())
+    kept = profiles.filter_targets(targets, selected)
+    dropped = len(targets or []) - len(kept)
+    if dropped:
+        recorder("detect", f"profile filter: {dropped} tab(s) dropped — only "
+                           f"{len(profiles.selected_set(selected))} selected profile(s) run")
+    unmatched = profiles.unmatched_profiles(sessions, kept, selected)
+    for name in unmatched:
+        _report_unmatched_profile(name, spec.skip_no_match, spec.wait_timeout_sec, recorder)
+    return kept
+
+
+def _report_unmatched_profile(name: str, skip: bool, wait_sec: int, recorder: _Recorder) -> None:
+    """One profile with no matching tabs — skip (move on) or wait (warn)."""
+    if skip:
+        recorder("detect", f'profile "{name}": no matching tab — skipped (skip_no_match)', "warn")
+    else:
+        recorder("detect", f'profile "{name}": no matching tab — waiting up to {wait_sec}s '
+                           f"for the user to open one", "warn")
 
 
 def _stopped(seams: RunSeams) -> bool:
@@ -338,9 +366,17 @@ def _fallback_or_block(spec: RunSpec, recorder: _Recorder, targets: list):
 
     A title pattern still buys today's fallback single run (its title glob,
     E210 in the extension if no tab); a URL-only search cannot build one.
+    When `skip_no_match` is on and every selected profile had zero matching
+    tabs, the run ends cleanly as `blocked` with a skip message instead of
+    the generic "no tab" error (RULE 4: name the cause).
     """
     if targets:
         return None
+    if spec.skip_no_match and spec.selected_profiles:
+        recorder("launch", "every selected profile had no matching tab — all skipped "
+                           "(skip_no_match is on)", "warn")
+        return _result("blocked", "all selected profiles skipped — no matching tab "
+                                  "in any selected profile", recorder)
     title = (spec.pattern or "").strip()
     url = (spec.url_pattern or "").strip()
     if not title and not url:
@@ -350,6 +386,88 @@ def _fallback_or_block(spec: RunSpec, recorder: _Recorder, targets: list):
     return None
 
 
+# ── wait for unmatched profiles (skip_no_match off) ──────────────────────────
+
+async def _wait_for_unmatched(spec: RunSpec, seams: RunSeams,
+                              recorder: _Recorder, targets: list) -> list:
+    """Poll unmatched profiles for a matching tab; skip after timeout (RULE 7).
+
+    Only waits when the user has explicitly selected profiles — anonymous
+    sessions (the flat `tabs` seam, or a blank selection with no profiles
+    seam) never wait, because there is no profile to poll.
+    """
+    if spec.skip_no_match:
+        return targets
+    selected = list(spec.selected_profiles or ())
+    if not selected:
+        return targets                       # no explicit profile selection → no wait
+    sessions = _load_profiles(seams)
+    unmatched = profiles.unmatched_profiles(sessions, targets, selected)
+    if not unmatched:
+        return targets
+    sleep_fn = seams.sleep or _default_sleep
+    timeout = max(10, min(300, spec.wait_timeout_sec))
+    for name in unmatched:
+        targets = await _poll_one_profile(name, spec, timeout, sleep_fn,
+                                          seams, recorder, targets)
+        if _stopped(seams):
+            break
+    return targets
+
+
+async def _poll_one_profile(name, spec, timeout, sleep_fn, seams, recorder, targets):
+    """Poll one profile every 5s until a tab appears or timeout expires."""
+    deadline = time.time() + timeout
+    recorder("wait", f'waiting for a matching tab in "{name}" '
+                     f"(timeout {timeout}s — open the page in Firefox)", "info")
+    while time.time() < deadline and not _stopped(seams):
+        await _safe_sleep(sleep_fn, min(5, max(1, deadline - time.time())))
+        found = _find_new_targets(_load_profiles(seams), name, spec)
+        if found:
+            recorder("wait", f'"{name}": {len(found)} matching tab(s) appeared', "success")
+            return targets + found
+    recorder("wait", f'"{name}": no matching tab after {timeout}s — skipped', "warn")
+    return targets
+
+
+async def _safe_sleep(sleep_fn, seconds: float) -> None:
+    """Run the injected sleep, swallowing non-cancellation errors."""
+    import asyncio
+    try:
+        await sleep_fn(seconds)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        pass
+
+
+def _find_new_targets(sessions: list, profile_name: str, spec: RunSpec) -> list:
+    """Re-scan one profile by label for matching tabs ([] when still empty)."""
+    for session in sessions or []:
+        label = plan.profile_label(session.get("name", ""), session.get("dir", ""))
+        if label != profile_name:
+            continue
+        windows = tuple(session.get("windows") or ())
+        found = []
+        for row in session.get("rows") or []:
+            if plan.matches(str(row.get("title", "")), str(row.get("url", "")),
+                            spec.pattern, spec.url_pattern):
+                found.append(plan.Target(
+                    profile_name=str(session.get("name", "")),
+                    profile_dir=str(session.get("dir", "")),
+                    url=str(row.get("url", "")),
+                    title=str(row.get("title", "")),
+                    windows=windows))
+        return found
+    return []
+
+
+async def _default_sleep(seconds: float) -> None:
+    """Real async sleep — the seam's default (tests inject a fast one)."""
+    import asyncio
+    await asyncio.sleep(seconds)
+
+
 async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     """One framework test end to end; every phase reports through `report`."""
     seams = seams or RunSeams()
@@ -357,6 +475,7 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     targets = _detect_phase(spec, recorder, seams)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)
+    targets = await _wait_for_unmatched(spec, seams, recorder, targets)
     blocked = _fallback_or_block(spec, recorder, targets)
     if blocked is not None:
         return blocked
