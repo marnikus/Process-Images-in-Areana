@@ -21,9 +21,9 @@ const WEB = path.resolve(__dirname, '../../app/ui/web');
 const readJs = (rel) => fs.readFileSync(path.join(WEB, 'js', rel), 'utf-8');
 const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf8');
 
-const FA_IDS = ['faPattern', 'faMacro', 'faTarget', 'faStorage', 'faHome', 'faBinary',
-  'faTimeout', 'faPause', 'faSaveBtn', 'faRunBtn', 'faStopBtn', 'faState', 'faPaths',
-  'faStatus', 'faSteps'];
+const FA_IDS = ['faPattern', 'faUrlPattern', 'faMacro', 'faTarget', 'faStorage',
+  'faHome', 'faBinary', 'faTimeout', 'faPause', 'faSaveBtn', 'faRunBtn', 'faStopBtn',
+  'faState', 'faPaths', 'faStatus', 'faSteps'];
 
 function inside(node, ancestor) {
   for (let n = node; n; n = n.parent) if (n === ancestor) return true;
@@ -68,7 +68,8 @@ describe('firefox_auto window (mount)', () => {
 });
 
 /* ── part 2: the content ─────────────────────────────────────────────────── */
-const CFG = { pattern: 'Arena', target: "xpath=//a[span[text()='New Chat']]",
+const CFG = { pattern: 'Arena', url_pattern: 'https://arena.ai/image/',
+  target: "xpath=//a[span[text()='New Chat']]",
   macro: 'Python_XClick_Demo', storage: 'xfile', home: '', binary: '', timeout_sec: 90, pause_ms: 3000 };
 const PATHS = { home: '/home/u/Desktop/uivision',
   macro_file: '/home/u/Desktop/uivision/macros/Python_XClick_Demo.json',
@@ -115,6 +116,7 @@ describe('firefox_auto window (content)', () => {
     const h = bootFaPanel();
     assert.ok(h.call('get_firefox_auto_config'), 'initial pull on bridge-ready');
     assert.equal(h.byId.faPattern.value, 'Arena');
+    assert.equal(h.byId.faUrlPattern.value, 'https://arena.ai/image/');
     assert.equal(h.byId.faTarget.value, CFG.target);
     assert.equal(h.byId.faTimeout.value, 90);
     assert.equal(h.byId.faPause.value, 3000);
@@ -133,6 +135,7 @@ describe('firefox_auto window (content)', () => {
     const payload = JSON.parse(save.args[0]);
     assert.deepEqual(Object.keys(payload).sort(), Object.keys(CFG).sort());
     assert.equal(payload.pattern, 'My Pattern');
+    assert.equal(payload.url_pattern, 'https://arena.ai/image/');
     assert.equal(payload.timeout_sec, 90);
     assert.equal(typeof payload.timeout_sec, 'number');
     assert.equal(h.text('faStatus'), '✅ config saved');

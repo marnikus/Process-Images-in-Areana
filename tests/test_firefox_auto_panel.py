@@ -60,17 +60,19 @@ def test_get_config_returns_defaults_paths_and_idle_flag(tmp_path):
 def test_save_validates_clamps_and_persists(tmp_path):
     fake = make_bridge(tmp_path)
     res = json.loads(FirefoxAutoMixin.save_firefox_auto_config(fake, json.dumps({
-        "pattern": "  My Pattern ", "url": "https://example.com", "target": "xpath=//a",
+        "pattern": "  My Pattern ", "url_pattern": " https://arena.ai/image/ ",
+        "url": "https://example.com", "target": "xpath=//a",
         "macro": "Ok-Macro_2", "storage": "WEIRD", "home": "", "binary": "",
         "timeout_sec": 9999, "pause_ms": "junk"})))
     assert res["ok"] is True
     cfg = res["config"]
     assert cfg["pattern"] == "My Pattern"                 # trimmed
+    assert cfg["url_pattern"] == "https://arena.ai/image/"  # trimmed, the tab filter
+    assert "url" not in cfg                               # the retired key never returns
     assert cfg["macro"] == "Ok-Macro_2"
     assert cfg["storage"] == "xfile"                      # unknown → default
     assert cfg["timeout_sec"] == 600                      # clamped to TIMEOUT_RANGE
     assert cfg["pause_ms"] == DEFAULTS["pause_ms"]        # garbage → default
-    assert "url" not in cfg                               # retired key never comes back
     assert fake.config.get_state("firefox_auto") == cfg   # persisted
     saved = payloads(fake)[-1]
     assert saved["kind"] == "saved" and saved["config"] == cfg and "paths" in saved
@@ -172,6 +174,7 @@ async def test_do_run_test_streams_steps_and_the_verdict(tmp_path, monkeypatch):
     assert fake._firefox_auto_running is False            # finally clears the guard
     spec = seen["spec"]
     assert (spec.pattern, spec.macro, spec.storage) == ("Arena", "Python_XClick_Demo", "xfile")
+    assert spec.url_pattern == ""                        # the URL filter rides the spec
     assert spec.config_dir == str(fake.config.dir)
     assert seen["seams"].stop() is False                  # stop flag wired, not pressed
     fake._firefox_auto_stop = True

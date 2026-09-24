@@ -329,8 +329,12 @@
       <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">smart_display</span> Firefox auto with Extension <span class="spacer"></span><span id="faState" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">idle</span></h3>
       <div class="firefox-auto-body" style="display:flex; flex-direction:column; gap:8px; overflow-y:auto; padding:2px;">
         <div class="settings-group">
-          <label>Firefox window-title pattern — the OS window whose title contains this is “your” Firefox (raised to front before a run)</label>
+          <label>Tab title pattern (blank = any tab) — the matching tab's Firefox window is raised to front before a run</label>
           <input id="faPattern" type="text" placeholder="Arena">
+        </div>
+        <div class="settings-group">
+          <label>Tab URL pattern (blank = any tab) — e.g. https://arena.ai/image/; the macro still selects the tab by its title</label>
+          <input id="faUrlPattern" type="text" placeholder="https://arena.ai/image/">
         </div>
         <div class="settings-group">
           <label>Macro name — hard-drive storage: &lt;home&gt;/macros/&lt;name&gt;.json</label>

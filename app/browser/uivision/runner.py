@@ -19,8 +19,9 @@ Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 `blocked` means the run never started (bad macro name, missing Firefox, …).
 """
 
-# ideal-size: ~320 lines reason=detect/report half + provision + orchestration of the
-# uivision package; the executor already lives in sequence.py, the planner in plan.py.
+# ideal-size: ~370 lines reason=detect/report half + provision + orchestration of the
+# uivision package; the executor already lives in sequence.py, the planner in plan.py,
+# and every function stays within the RULE 18 function band.
 
 from __future__ import annotations
 
@@ -48,6 +49,8 @@ class RunSpec:
     timeout_sec: int
     pause_ms: int         # the macro's wait + confirmation-rect budget (ms)
     config_dir: str
+    url_pattern: str = ""  # tab-URL substring ('' = any URL); appended last so positional
+                           # constructors survive (the I-53 corollary pattern)
 
 
 @dataclass(frozen=True)
@@ -119,35 +122,38 @@ def _report_tab_rows(rows, report) -> None:
         report("detect", f"+{len(rows) - TAB_LOG_CAP} more open tab(s)")
 
 
-def _report_matches(targets, pattern: str, structured: bool, report) -> None:
-    """The pattern's verdict: every matching tab, or why the macro cannot find its tab."""
+def _report_matches(targets, spec: RunSpec, structured: bool, report) -> None:
+    """The search's verdict: every matching tab, or why the macro cannot find one."""
     if not targets:
-        _report_no_matches(pattern, report)
+        _report_no_matches(spec, report)
         return
     if not structured:
-        report("detect", f"pattern “{pattern}” matches {len(targets)} open tab(s):")
+        report("detect", f"search {plan.describe_search(spec.pattern, spec.url_pattern)} "
+                         f"matches {len(targets)} open tab(s):")
         for pos, target in enumerate(targets, 1):
             report("detect", f"match {pos}: {target.url[:110]}")
         return
     profiles = sorted({plan.profile_label(t.profile_name, t.profile_dir) or "?"
                        for t in targets})
-    report("detect", f"pattern “{pattern}” matches {len(targets)} open tab(s) "
-                     f"in {len(profiles)} profile(s): {', '.join(profiles)}")
+    report("detect", f"search {plan.describe_search(spec.pattern, spec.url_pattern)} — "
+                     f"{len(targets)} open tab(s) match in {len(profiles)} profile(s): "
+                     f"{', '.join(profiles)}")
     for pos, target in enumerate(targets, 1):
         where = plan.profile_label(target.profile_name, target.profile_dir) or "?"
         report("detect", f"match {pos}: {target.url[:110]} — {target.title[:40]} "
                          f'(profile “{where}”)')
 
 
-def _report_no_matches(pattern: str, report) -> None:
-    """Why nothing matches: no open tab (E210 ahead) or no pattern at all."""
-    if (pattern or "").strip():
-        report("detect", f"no OPEN tab matches “{pattern}” in any Firefox profile — the "
-                         f"macro will NOT open anything and will fail (E210): open the "
-                         f"page in the matching Firefox first", "warn")
-    else:
-        report("detect", "no window-title pattern set — the run will be blocked before "
-                         "launching (the macro reuses a tab, it never opens one)", "warn")
+def _report_no_matches(spec: RunSpec, report) -> None:
+    """Why nothing matches: the search's own phrase, or a silent store + no filters."""
+    search = plan.describe_search(spec.pattern, spec.url_pattern)
+    if search == plan.ANY_TAB:
+        report("detect", "no session store readable and both patterns are empty — "
+                         "nothing to search", "warn")
+        return
+    report("detect", f"no OPEN tab matches {search} in any Firefox profile — the "
+                     f"macro will NOT open anything and will fail (E210): open the "
+                     f"page in the matching Firefox first", "warn")
 
 
 def _report_clashes(targets, pattern: str, report) -> None:
@@ -158,11 +164,22 @@ def _report_clashes(targets, pattern: str, report) -> None:
                          f"the first one", "warn")
 
 
-def _report_plan(targets, structured: bool, pattern: str, report) -> None:
-    """The run-plan line when it adds news (a single run self-describes)."""
+def _report_plan(targets, spec: RunSpec, structured: bool, report) -> None:
+    """The run-plan lines: the plan summary, selector clashes, the blank warning."""
     if len(targets) >= 2:
         report("detect", f"run plan: {plan.summarize(targets, structured)}")
-        _report_clashes(targets, pattern, report)
+        _report_clashes(targets, spec.pattern, report)
+    _report_blank_search(targets, spec, report)
+
+
+def _report_blank_search(targets, spec: RunSpec, report) -> None:
+    """Both patterns blank means EVERY open tab runs — never quietly (RULE 4)."""
+    if (spec.pattern or "").strip() or (spec.url_pattern or "").strip():
+        return
+    report("detect", f"both patterns are empty — the macro will run on EVERY open "
+                     f"tab ({len(targets)} tab(s)); set a title or URL pattern to "
+                     f"narrow the search", "warn")
+
 
 
 def _load_profiles(seams: RunSeams) -> list:
@@ -248,16 +265,6 @@ def _detect_plugin(report, seams: RunSeams) -> None:
                          f"(XModules) or XClick cannot fire", "warn")
 
 
-def tab_target(pattern: str) -> str | None:
-    """The fallback run's selectWindow target: the pattern's tab, or None.
-
-    It never returns `tab=open` — the macro must not open a page (owner rule), so
-    a blank pattern is a run that cannot be satisfied, not a fresh tab.
-    """
-    text = (pattern or "").strip()
-    return f"title=*{text}*" if text else None
-
-
 def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
     """The flat tab list across every profile + the freshest store's receipt."""
     rows = [row for session in sessions for row in session["rows"]]
@@ -269,22 +276,33 @@ def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
 
 
 def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
-    """The pre-run eyes: EVERY profile's tabs, the pattern's matches, the run plan."""
+    """The pre-run eyes: EVERY profile's tabs, the search's matches, the run plan."""
     sessions = _load_profiles(seams)
     real = seams.tabs is None and seams.profiles is None
     structured = real or seams.profiles is not None
-    targets = plan.plan_targets(sessions, spec.pattern)
+    targets = plan.plan_targets(sessions, spec.pattern, spec.url_pattern)
+    targets = _drop_unaddressable(targets, spec, recorder)
     if real:
         _report_profiles(recorder)
     _report_open_tabs(sessions, real, recorder)
-    _report_matches(targets, spec.pattern, structured, recorder)
+    _report_matches(targets, spec, structured, recorder)
     _report_windows(sessions, seams, recorder)
-    _report_plan(targets, structured, spec.pattern, recorder)
+    _report_plan(targets, spec, structured, recorder)
     wins = desktop.find_windows(spec.pattern)
     note = "" if wins or os_is_windows() else " (window listing is Windows-only)"
     recorder("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
     _detect_plugin(recorder, seams)
     return targets
+
+
+def _drop_unaddressable(targets, spec: RunSpec, recorder: _Recorder) -> list:
+    """Warn per titleless match and keep only tabs the macro can actually select."""
+    addressable, titleless = plan.split_unaddressable(targets, spec.pattern)
+    for target in titleless:
+        recorder("detect", f"tab {target.url[:90]} matched but has no TITLE — "
+                           f"selectWindow can only pick a tab by title; open the page "
+                           f"so Firefox gives it one, or it cannot run", "warn")
+    return addressable
 
 
 def _stopped(seams: RunSeams) -> bool:
@@ -295,12 +313,41 @@ def _result(kind: str, message: str, recorder: _Recorder, lines: tuple = ()) -> 
     return RunResult(kind=kind, message=message, steps=tuple(recorder.steps), lines=lines)
 
 
-def _blocked_no_pattern(recorder: _Recorder) -> RunResult:
-    """Blank pattern: the macro has no tab to reuse and it never opens one."""
-    recorder("launch", "no window-title pattern set — the macro finds the run's tab "
-                       "by title and never opens a page: set the pattern first", "error")
-    return _result("blocked", "no window-title pattern — nothing to reuse, nothing opened",
-                   recorder)
+def _blocked_no_search(recorder: _Recorder) -> RunResult:
+    """Both patterns blank and no readable tab: nothing to search, nothing opened."""
+    recorder("launch", "no tab-title and no URL pattern set (and no open tab readable) "
+                       "— the macro finds the run's tab by title or URL and never "
+                       "opens a page: set a pattern first", "error")
+    return _result("blocked", "no tab-title and no URL pattern — nothing to search, "
+                              "nothing opened", recorder)
+
+
+def _blocked_no_url_match(recorder: _Recorder, url_pattern: str) -> RunResult:
+    """URL-only search with no match: the fallback selector needs a title pattern."""
+    recorder("launch", f"URL “{url_pattern}” matched no open tab in any profile's "
+                       f"session store — the macro selects tabs by TITLE, so open the "
+                       f"page (Firefox then knows the tab) or add a title pattern",
+             "error")
+    return _result("blocked", f"URL “{url_pattern}” matched no open tab — and a "
+                              f"URL-only search cannot select a tab without its "
+                              f"title", recorder)
+
+
+def _fallback_or_block(spec: RunSpec, recorder: _Recorder, targets: list):
+    """The no-match decision: None to continue, or the block that names why.
+
+    A title pattern still buys today's fallback single run (its title glob,
+    E210 in the extension if no tab); a URL-only search cannot build one.
+    """
+    if targets:
+        return None
+    title = (spec.pattern or "").strip()
+    url = (spec.url_pattern or "").strip()
+    if not title and not url:
+        return _blocked_no_search(recorder)
+    if not title:
+        return _blocked_no_url_match(recorder, url)
+    return None
 
 
 async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
@@ -310,8 +357,9 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     targets = _detect_phase(spec, recorder, seams)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)
-    if tab_target(spec.pattern) is None:
-        return _blocked_no_pattern(recorder)
+    blocked = _fallback_or_block(spec, recorder, targets)
+    if blocked is not None:
+        return blocked
     try:
         page = _provision(spec, recorder)
     except (ValueError, OSError) as exc:

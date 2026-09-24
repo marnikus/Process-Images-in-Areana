@@ -32,10 +32,11 @@ DEFAULT_SESSION = {
     "cooldown_min_seconds": 300,
     "cooldown_captcha_penalty_seconds": 900,
     "firefox_auto": {  # the "Firefox auto with Extension" window (I-63): Ui.Vision framework test
-        # The macro reuses the tab the pattern finds and NEVER opens a page
+        # The macro reuses the tab the search finds and NEVER opens a page
         # (2026-09-23, owner rule) — so there is no "url" field any more; the
         # retired key is dropped on validate so old session.json files heal.
-        "pattern": "Arena",          # Firefox tab-title substring (the control element)
+        "pattern": "Arena",          # Firefox tab-title substring ('' = any title)
+        "url_pattern": "",           # tab-URL substring ('' = any URL; 2026-09-24 owner option)
         "target": "xpath=//a[span[text()='New Chat']]",  # the XClick locator (cmd_var2)
         "macro": "Python_XClick_Demo",
         "storage": "xfile",          # hard drive (XModule) | browser (import the macro once)

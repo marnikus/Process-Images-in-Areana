@@ -23,8 +23,9 @@ PAUSE_RANGE = (500, 30000)
 # Retired 2026-09-23: the macro never opens a URL, so "url" is no longer a
 # field — validate rebuilds from the defaults, so an old "url" key in
 # session.json is dropped instead of riding back in (RULE 10's dead-key
-# corollary; pinned by tests/test_firefox_auto_panel.py).
-TEXT_FIELDS = ("pattern", "target", "home", "binary")
+# corollary; pinned by tests/test_firefox_auto_panel.py). Its successor is
+# "url_pattern" (2026-09-24): a tab-matching filter, never a page to open.
+TEXT_FIELDS = ("pattern", "url_pattern", "target", "home", "binary")
 
 
 def _defaults() -> dict:
@@ -106,7 +107,8 @@ def build_spec(bridge, cfg):
     return RunSpec(pattern=cfg["pattern"], target=cfg["target"],
                    macro=cfg["macro"], storage=cfg["storage"], home=cfg["home"],
                    binary=cfg["binary"], timeout_sec=cfg["timeout_sec"],
-                   pause_ms=cfg["pause_ms"], config_dir=_config_dir(bridge))
+                   pause_ms=cfg["pause_ms"], config_dir=_config_dir(bridge),
+                   url_pattern=cfg["url_pattern"])
 
 
 def emit_status(bridge, payload: dict) -> None:
@@ -133,7 +135,8 @@ async def do_run_test(bridge) -> None:
         spec = build_spec(bridge, cfg)
         bridge._firefox_auto_stop = False
         report = _reporter(bridge)
-        report("run", f"framework test — macro {cfg['macro']}, pattern “{cfg['pattern']}”, "
+        search = f"title “{cfg['pattern']}” + URL “{cfg['url_pattern']}”"
+        report("run", f"framework test — macro {cfg['macro']}, search {search}, "
                       f"target {cfg['target'][:60]}")
         seams = RunSeams(stop=lambda: bool(getattr(bridge, "_firefox_auto_stop", False)))
         result = await run_test(spec, report, seams)

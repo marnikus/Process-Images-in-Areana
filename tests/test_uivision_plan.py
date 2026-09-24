@@ -28,18 +28,67 @@ SESSIONS = [
 
 
 def test_plan_targets_finds_every_match_in_every_profile():
-    targets = plan.plan_targets(SESSIONS, "arena.ai")
+    targets = plan.plan_targets(SESSIONS, "", "arena.ai")
     assert [(t.profile_name, t.url) for t in targets] == [
         ("Work", "https://arena.ai/a"), ("", "https://arena.ai/b")]
     assert targets[0].windows == tuple(WINDOWS_A)          # its own profile's windows ride along
 
 
-def test_plan_targets_order_is_stable_and_blank_pattern_matches_none():
-    two = plan.plan_targets(SESSIONS, "arena")
-    again = plan.plan_targets(SESSIONS, "arena")
+def test_plan_targets_title_and_url_filters_combine():
+    """Both patterns set: a tab must satisfy BOTH (AND), case-insensitively."""
+    targets = plan.plan_targets(SESSIONS, "A1", "arena.ai/A")
+    assert [t.url for t in targets] == ["https://arena.ai/a"]        # both filters pass
+    assert plan.plan_targets(SESSIONS, "A1", "other.example") == []  # URL filter fails
+    assert plan.plan_targets(SESSIONS, "no-such-title", "arena.ai") == []
+    assert plan.plan_targets(SESSIONS, "b1", "")[0].profile_name == ""  # title, any case
+
+
+def test_plan_targets_blank_pattern_means_any():
+    """The owner's rule: blank title = any title, blank URL = any URL."""
+    assert [t.url for t in plan.plan_targets(SESSIONS, "", "arena.ai")] == [
+        "https://arena.ai/a", "https://arena.ai/b"]                  # URL-only search
+    assert [t.title for t in plan.plan_targets(SESSIONS, "A1", "")] == ["A1"]
+    both_blank = plan.plan_targets(SESSIONS, "", "")
+    assert sorted(t.url for t in both_blank) == ["https://arena.ai/a",
+                                                 "https://arena.ai/b",
+                                                 "https://other.example"]
+    assert plan.plan_targets(SESSIONS, "  ", "  ") == both_blank     # whitespace = blank
+
+
+def test_matches_is_the_one_predicate():
+    assert plan.matches("Arena", "https://arena.ai/image/x", "arena", "image") is True
+    assert plan.matches("Arena", "https://arena.ai/x", "arena", "image") is False   # URL fails
+    assert plan.matches("Other", "https://arena.ai/x", "arena", "") is False        # title fails
+    assert plan.matches("Other", "https://x.example", "", "") is True               # any tab
+    assert plan.matches("", "https://arena.ai/x", "", "arena") is True              # URL-only
+    assert plan.matches(None, None, "a", "b") is False                              # junk rows
+
+
+def test_describe_search_names_the_active_filters():
+    assert plan.describe_search("arena", "image") == 'title “arena” + URL “image”'
+    assert plan.describe_search("", "image") == 'any title + URL “image”'
+    assert plan.describe_search("arena", "") == 'title “arena” + any URL'
+    assert plan.describe_search("", "  ") == plan.ANY_TAB
+
+
+def test_split_unaddressable_separates_titleless_matches():
+    """A URL match without a title has no title glob — it cannot be selected."""
+    sessions = [{"name": "Work", "dir": "/ff/p1", "windows": [], "rows": [
+        {"url": "https://arena.ai/titled", "title": "Titled"},
+        {"url": "https://arena.ai/blank", "title": ""}]}]
+    targets = plan.plan_targets(sessions, "", "arena.ai")
+    ok, skipped = plan.split_unaddressable(targets, "")
+    assert [t.url for t in ok] == ["https://arena.ai/titled"]
+    assert [t.url for t in skipped] == ["https://arena.ai/blank"]
+    with_title_pattern, none = plan.split_unaddressable(targets, "Titled")
+    assert len(with_title_pattern) == 2 and none == []     # the pattern glob is the fallback
+
+
+def test_plan_targets_order_is_stable_and_empty_sessions_match_none():
+    two = plan.plan_targets(SESSIONS, "", "arena.ai")
+    again = plan.plan_targets(SESSIONS, "", "arena.ai")
     assert two == again
-    assert plan.plan_targets(SESSIONS, "  ") == []
-    assert plan.plan_targets([], "arena") == []
+    assert plan.plan_targets([], "arena") == []           # no sessions → no targets
     assert plan.plan_targets(None, "arena") == []
 
 
@@ -68,8 +117,8 @@ def test_anonymous_session_wraps_the_flat_rows_seam():
 
 def test_runs_render_selector_profile_args_and_per_run_savelogs(tmp_path):
     """Each planned run: own title selector, own -P prefix, own savelog file."""
-    targets = plan.plan_targets(SESSIONS, "arena.ai")
-    runs = plan.runs(targets, "arena.ai", tmp_path, "20260923-120000")
+    targets = plan.plan_targets(SESSIONS, "", "arena.ai")
+    runs = plan.runs(targets, "", tmp_path, "20260923-120000")
     assert [r.index for r in runs] == [1, 2] and runs[0].total == 2
     assert runs[0].selector == "title=*A1*" and runs[1].selector == "title=*B1*"
     assert runs[0].profile_args == ("-P", "Work")          # named → -P name
@@ -91,13 +140,13 @@ def test_clashes_name_duplicate_titles_per_profile():
             {"url": "https://arena.ai/2", "title": "Same"}]
     dup = [{"name": "Work", "dir": "/ff/p1", "rows": same, "windows": [
         {"index": 1, "active": {}, "tabs": same}], "source": "", "stamp": 0.0}]
-    targets = plan.plan_targets(dup, "arena.ai")
-    assert plan.clashes(targets, "arena.ai") == [("title=*Same*", "Work", 2)]
-    assert plan.clashes(plan.plan_targets(SESSIONS, "arena.ai"), "arena.ai") == []
+    targets = plan.plan_targets(dup, "", "arena.ai")
+    assert plan.clashes(targets, "") == [("title=*Same*", "Work", 2)]
+    assert plan.clashes(plan.plan_targets(SESSIONS, "", "arena.ai"), "") == []
 
 
 def test_summarize_counts_runs_per_profile():
-    targets = plan.plan_targets(SESSIONS, "arena.ai")
+    targets = plan.plan_targets(SESSIONS, "", "arena.ai")
     assert plan.summarize(targets, True) == '2 macro run(s) — “Work” ×1, “p2.play” ×1'
     assert plan.summarize(targets, False) == ("2 macro run(s) — one Firefox instance "
                                               "(no profile selection)")

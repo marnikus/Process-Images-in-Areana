@@ -58,6 +58,33 @@ def anonymous_session(rows) -> dict:
             "source": "", "stamp": -1.0}
 
 
+ANY_TAB = "any tab"
+
+
+def matches(title, url, pattern, url_pattern) -> bool:
+    """(title, url) against two optional substrings — a blank pattern means any.
+
+    The owner's rule (2026-09-24): empty title pattern = any title, empty URL
+    pattern = any URL; a tab must satisfy BOTH filters to run.
+    """
+    want_title = (pattern or "").strip().lower()
+    want_url = (url_pattern or "").strip().lower()
+    if want_title and want_title not in (title or "").lower():
+        return False
+    return not want_url or want_url in (url or "").lower()
+
+
+def describe_search(pattern, url_pattern) -> str:
+    """The active filters in one readable phrase (`any tab` when both are blank)."""
+    title = (pattern or "").strip()
+    url = (url_pattern or "").strip()
+    if not title and not url:
+        return ANY_TAB
+    left = f'title “{title}”' if title else "any title"
+    right = f'URL “{url}”' if url else "any URL"
+    return f"{left} + {right}"
+
+
 def selector_for(target: Target, pattern: str) -> str:
     """The selectWindow target: this tab's own title glob, else the pattern glob."""
     title = (target.title or "").strip()
@@ -74,21 +101,19 @@ def run_label(target: Target) -> str:
     return f'profile “{who}” · tab “{tab}”' if who else f'tab “{tab}”'
 
 
-def plan_targets(sessions, pattern: str) -> list:
-    """One Target per matching tab — every profile's rows, stable order.
+def plan_targets(sessions, pattern: str, url_pattern: str = "") -> list:
+    """One Target per tab matching BOTH patterns — every profile, stable order.
 
-    Matching runs over each session's flat `rows` (they exist for every shape —
-    real stores and the anonymous seam alike); `windows` only decorates the
-    Target for the foreground mapping.
+    A blank pattern matches any (owner rule, 2026-09-24): blank title + blank
+    URL plan a run for every open tab. Matching runs over each session's flat
+    `rows`; `windows` only decorates the Target for the foreground mapping.
     """
-    want = (pattern or "").strip().lower()
-    if not want:
-        return []                      # a blank pattern matches none (never every tab)
     targets = []
     for session in sessions or []:
         windows = tuple(session.get("windows") or ())
         for row in session.get("rows") or []:
-            if want in str(row.get("url", "")).lower():
+            if matches(str(row.get("title", "")), str(row.get("url", "")),
+                       pattern, url_pattern):
                 targets.append(Target(
                     profile_name=str(session.get("name", "")),
                     profile_dir=str(session.get("dir", "")),
@@ -96,6 +121,16 @@ def plan_targets(sessions, pattern: str) -> list:
                     title=str(row.get("title", "")),
                     windows=windows))
     return targets
+
+
+def split_unaddressable(targets, pattern: str) -> tuple:
+    """([addressable], [titleless]) — `selectWindow` can only pick a titled tab.
+
+    A tab matched by URL whose title is empty has no title glob to select it
+    with; the runner warns per skipped tab instead of pretending (RULE 4).
+    """
+    ok = [t for t in targets or [] if selector_for(t, pattern)]
+    return ok, [t for t in targets or [] if not selector_for(t, pattern)]
 
 
 def clashes(targets, pattern: str) -> list:

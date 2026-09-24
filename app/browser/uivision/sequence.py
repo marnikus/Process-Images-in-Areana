@@ -120,21 +120,27 @@ class Sequence:
                                       sleep=self.seams.sleep, stop=self.seams.stop)
 
     def _foreground(self, run) -> None:
-        """Raise the window holding this run's tab (critical rule: visible+front)."""
+        """Raise the window holding this run's tab (critical rule: visible+front).
+
+        The needle is the first non-blank pattern — a URL-only search maps the
+        window through its URL (the session half of the mapping), a title
+        pattern through both halves as before.
+        """
+        needle = (self.spec.pattern or self.spec.url_pattern or "").strip()
         windows = (self.seams.windows() if self.seams.windows
                    else list(run.target.windows))
-        mapped = desktop.foreground_tab_window(self.spec.pattern, windows)
+        mapped = desktop.foreground_tab_window(needle, windows)
         if mapped is not None:
             matches, raised = mapped
             titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
             self.recorder("foreground", f"{self._scope(run)}{raised}/{len(matches)} Firefox "
                                         f"window(s) on top — {titles} (holds the tab matching "
-                                        f"“{self.spec.pattern}”)")
+                                        f"“{needle}”)")
             return
-        matches, raised = desktop.foreground(self.spec.pattern)
+        matches, raised = desktop.foreground(needle)
         if not matches:
             self.recorder("foreground", f"{self._scope(run)}no Firefox window matches "
-                                        f"“{self.spec.pattern}” — launching anyway; the "
+                                        f"“{needle}” — launching anyway; the "
                                         f"macro reuses a matching tab and never opens one "
                                         f"(E210 if none)", "warn")
             return
