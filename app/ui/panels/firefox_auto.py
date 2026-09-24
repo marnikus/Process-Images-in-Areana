@@ -2,7 +2,7 @@
 
 Owns the 4 slots of the Ui.Vision framework test: read/save the config (one
 `firefox_auto` dict in session.json, validated and clamped on both ends,
-RULE 13) and run/stop one test (delegated to `app/browser/uivision.runner`,
+RULE 13) and run/stop one test (delegated to `app/browser/uivision.dispatch`,
 lazy browser import per panel convention). Every step of a run is logged
 (RULE 2) and streamed to the window over `firefox_auto_updated` (RULE 5); the
 stop flag is checked between phases and inside the poll (RULE 7).
@@ -127,7 +127,7 @@ def _reporter(bridge):
 
 async def do_run_test(bridge) -> None:
     """One framework test end to end; the window sees every step and the verdict."""
-    from app.browser.uivision.runner import RunSeams, run_test
+    from app.browser.uivision.dispatch import RunSeams, run_profiles as run_test
     try:
         cfg = load_config(bridge)
         spec = build_spec(bridge, cfg)

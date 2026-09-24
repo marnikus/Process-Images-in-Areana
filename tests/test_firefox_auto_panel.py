@@ -166,7 +166,8 @@ async def test_do_run_test_streams_steps_and_the_verdict(tmp_path, monkeypatch):
                                     steps=(("launch", "starting Firefox"),),
                                     lines=("echo: done",))
 
-    monkeypatch.setattr(uiv_runner, "run_test", fake_run)
+    from app.browser.uivision import dispatch as uiv_dispatch
+    monkeypatch.setattr(uiv_dispatch, "run_profiles", fake_run)
     await fa.do_run_test(fake)
 
     assert fake._firefox_auto_running is False            # finally clears the guard
@@ -192,7 +193,8 @@ async def test_do_run_test_reports_an_explosion_as_blocked(tmp_path, monkeypatch
     async def boom(spec, report, seams=None):
         raise RuntimeError("qt gone")
 
-    monkeypatch.setattr(uiv_runner, "run_test", boom)
+    from app.browser.uivision import dispatch as uiv_dispatch
+    monkeypatch.setattr(uiv_dispatch, "run_profiles", boom)
     await fa.do_run_test(fake)
     assert fake._firefox_auto_running is False
     result = payloads(fake)[-1]
