@@ -85,19 +85,16 @@ PAGE_HTML = """<?xml version="1.0" encoding="UTF-8"?>
 
         window.addEventListener('kantuInvokeSuccess', onInvokeSuccess)
 
-        /* On error: stay visible. The user must read the verdict (savelog file
-           already has it, but the page is the live surface). Closing or
-           navigating this tab can race the extension's cleanup and overwrite
-           the user-prepared tab the macro was supposed to find — the user's
-           active Arena session, login state, and in-progress generation are
-           destroyed. The Ui.Vision docs already document this UX: "the
-           Ui.Vision RPA window stays open if you manually press STOP during
-           the macro run or if the macro stops with an error". */
+        /* Also close on macro error — the savelog already carries the verdict. */
         var onInvokeError = function () {
           clearTimeout(timer)
           clearTimeout(reloadTimer)
           clearInterval(intervalTimer)
           window.removeEventListener('kantuInvokeError', onInvokeError)
+          setTimeout(function () {
+            try { window.close(); } catch (e) {}
+            try { window.location.href = 'about:blank'; } catch (e) {}
+          }, 500)
         }
         window.addEventListener('kantuInvokeError', onInvokeError)
       }
@@ -173,3 +170,29 @@ def launch_url(spec: LaunchSpec) -> str:
         "closeRPA": "1" if spec.close_rpa else "0",
     }, quote_via=quote)
     return f"{base}?{query}"
+
+
+def launch_url_for(spec, page, run, selector: str) -> str:
+    """One run's official launch URL — the per-run values ride `cmd_var1..3`."""
+    return launch_url(LaunchSpec(
+        page_path=str(page), macro=spec.macro, storage=spec.storage,
+        log_path=run.log_path, pause_ms=spec.pause_ms,
+        target=spec.target, tab=selector))
+
+
+def manual_lines(run, url: str, reason: str, timeout_sec: int) -> list:
+    """[(line, level)] — the manual fallback: the reason, the exact steps, the wait.
+
+    The run cannot reach the profile's window by itself (off-Windows, or the
+    profile is not open) — but the run still COMPLETES when the user opens the
+    URL below as a new tab in the right window: the sequence polls the savelog
+    afterwards, so a complying user gets a real verdict, not a dead end.
+    """
+    from .plan import profile_label
+    who = profile_label(run.target.profile_name, run.target.profile_dir)
+    where = f"profile “{who}”'s" if who else "the right profile's"
+    return [(f"delivery: {reason}", "warn"),
+            (f"MANUAL STEP: open this URL as a new tab in {where} Firefox "
+             f"window: {url}", "warn"),
+            (f"waiting up to {timeout_sec}s for the savelog — the run continues "
+             f"when the macro finishes", "info")]

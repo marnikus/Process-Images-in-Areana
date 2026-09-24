@@ -91,3 +91,25 @@ async def test_poll_waits_until_the_extension_answers(tmp_path):
 def test_log_result_defaults():
     row = LogResult(kind="timeout")
     assert (row.message, row.lines, row.done) == ("", (), False)
+
+
+def test_retryable_matches_only_the_selectwindow_miss():
+    """The retry cures selectWindow misses — nothing else is retried."""
+    miss = LogResult(kind="error",
+                     message="failed to find the tab with locator 'title=*x*'")
+    assert logread.retryable(miss) is True
+    in_lines = LogResult(kind="error", message="Macro failed",
+                         lines=("line 1: Failed to Find the Tab with Locator 'tab=-2'",))
+    assert logread.retryable(in_lines) is True     # case-insensitive, lines count
+    assert logread.retryable(LogResult(kind="error", message="XClick failed")) is False
+    assert logread.retryable(LogResult(kind="timeout", message="deadline")) is False
+    assert logread.retryable(LogResult(kind="ok", message="macro completed")) is False
+
+
+def test_drop_log_removes_the_stale_verdict(tmp_path):
+    log = tmp_path / "run-x.txt"
+    log.write_text("Status=Error: stale", encoding="utf-8")
+    logread.drop_log(log)
+    assert not log.exists()
+    logread.drop_log(log)                          # missing already: no raise
+    logread.drop_log(tmp_path / "no-dir" / "x.txt")  # missing dir: no raise

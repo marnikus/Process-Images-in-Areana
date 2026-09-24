@@ -57,6 +57,8 @@ FORBIDDEN_COMMANDS = frozenset({
     "mouseover", "mousedown", "mouseup",
 })
 
+
+
 # The name is a file path segment and a URL parameter — one safe grammar.
 NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_\-]{0,63}$")
 
@@ -82,6 +84,36 @@ def refuse_dom_clicks(commands) -> None:
     bad = sorted(names & FORBIDDEN_COMMANDS)
     if bad:
         raise ValueError(f"DOM-level mouse commands are forbidden (use XClick): {', '.join(bad)}")
+
+
+def _tab_target_mutates(target: str) -> bool:
+    """True when a literal selectWindow target opens/closes tabs (never allowed).
+
+    The protected-tab rule (2026-09-24): the run must never close a tab that
+    existed before launch — only `title=` selection and bare-integer `tab=N`
+    offsets ride; `tab=open/close/closeallother` (any case) are refused.
+    """
+    text = (target or "").strip().lower()
+    if not text.startswith("tab=") or "${" in text:
+        return False                       # title=, tab=N and runtime ${vars} pass
+    rest = text[len("tab="):].strip()
+    if rest == "open" or rest.startswith("close"):
+        return True                        # tab=open / tab=close / tab=closeallother
+    try:
+        int(rest)
+    except ValueError:
+        return True                        # tab=<garbage> is refused, not guessed
+    return False
+
+
+def refuse_tab_mutation(commands) -> None:
+    """The protected-tab rule as a gate: no command may open or close a tab."""
+    bad = sorted({str(c.get("Target") or "") for c in commands or []
+                  if str(c.get("Command") or "").strip().lower() == "selectwindow"
+                  and _tab_target_mutates(str(c.get("Target") or ""))})
+    if bad:
+        raise ValueError(f"tab-mutating selectWindow targets are forbidden "
+                         f"(the run never closes tabs): {', '.join(bad)}")
 
 
 # The find-and-confirmation script (the 16.1.5 embedded-JS exception: one JS
@@ -183,6 +215,7 @@ def build_commands(done_text: str = DONE_TEXT) -> list:
         command("echo", done_text, "green", "completion marker — it lands in the savelog file"),
     ]
     refuse_dom_clicks(commands)
+    refuse_tab_mutation(commands)
     return commands
 
 

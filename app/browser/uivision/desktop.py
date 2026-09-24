@@ -10,6 +10,14 @@ ONE window holding the pattern's tab instead of raising every title match.
 Matching and raising run on Windows through `app/utils/win_find` + `win_popup`;
 on other platforms the finder answers zero windows and the runner says so out
 loud (RULE 4) — the launch itself works everywhere.
+
+Delivery choice (2026-09-24 lifecycle redesign): `firefox -P <name> <url>` is
+IGNORED when Firefox already runs (the remote command line hands the URL to
+the running instance), so `choose_delivery` aims each run WITHOUT remoting —
+address-bar delivery into the mapped window (`delivery.deliver_url`), a CLI
+cold start (the one case where `-P` works), or the manual fallback. A CLI
+launch into a running instance for a non-default profile — the old guaranteed
+misfire — is never made.
 """
 
 from __future__ import annotations
@@ -133,3 +141,34 @@ def foreground_tab_window(pattern: str, session_windows) -> tuple | None:
     if not hits:
         return None
     return hits, raise_handles([hwnd for hwnd, _title in hits])
+
+
+def choose_delivery(run, os_windows, total: int, windows=None) -> tuple:
+    """("addressbar", hwnd) | ("cold", "") | ("manual", reason) — never a misfire.
+
+    `run` is the PlannedRun, `os_windows` the `firefox_windows()` answer,
+    `total` the sequence length, `windows` the resolver's window map (None =
+    the run's whole profile map). An unprofiled fallback run cold-launches
+    plainly (no `-P` = no misfire); a mapped profile window gets address-bar
+    delivery; a lone profile with nothing running cold-starts with `-P` (the
+    ONE case where `-P` works); anything else names why the user must help.
+    """
+    if not (run.target.profile_dir or "").strip():
+        return "cold", ""
+    found = list(os_windows or [])
+    mapping = list(run.target.windows) if windows is None else list(windows)
+    needle = (run.target.url or "").strip()
+    hits = pick_tab_window(found, mapping, needle) if found else []
+    if hits:
+        return "addressbar", hits[0][0]
+    if not found:
+        if total <= 1:
+            return "cold", ""
+        return "manual", (f"Firefox is not running and {total} profiles match — "
+                          f"a cold start reaches one profile only")
+    from .plan import profile_label
+    who = profile_label(run.target.profile_name, run.target.profile_dir)
+    return "manual", (f"profile “{who}” has no open Firefox window — its tabs "
+                      f"are unreachable from here")
+
+

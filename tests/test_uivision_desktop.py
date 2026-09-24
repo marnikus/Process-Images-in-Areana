@@ -95,3 +95,55 @@ def test_foreground_tab_window_answers_none_when_unmapped(fake_desktop):
     assert desktop.foreground_tab_window("zzz-no-match", WINDOWS_SESSION) is None
     assert desktop.foreground_tab_window("arena.ai", []) is None
     assert fake_desktop == []
+
+
+# ── delivery choice (2026-09-24: no remoting into running instances) ──
+
+from app.browser.uivision import plan as plan_mod
+
+
+def _run_for(profile_name="", profile_dir="", url="", windows=()):
+    target = plan_mod.Target(profile_name=profile_name, profile_dir=profile_dir,
+                             url=url, title="T", windows=tuple(windows))
+    return plan_mod.PlannedRun(target=target, index=1, total=1, label="L",
+                               selector="", profile_args=(), log_path="/tmp/l")
+
+
+DELIVERY_WINDOW = {"index": 1,
+                   "active": {"url": "https://arena.ai/a", "title": "A1"},
+                   "tabs": [{"url": "https://arena.ai/a", "title": "A1"}]}
+
+
+def test_choose_delivery_fallback_runs_cold_without_profile_args():
+    run = _run_for()                                     # Target(): no profile at all
+    assert desktop.choose_delivery(run, [(11, "X")], 1) == ("cold", "")
+    assert desktop.choose_delivery(run, [], 3) == ("cold", "")   # plain CLI misfires never
+
+
+def test_choose_delivery_mapped_window_gets_addressbar():
+    run = _run_for("Work", "/ff/w", "https://arena.ai/a", [DELIVERY_WINDOW])
+    kind, hwnd = desktop.choose_delivery(run, [(11, "A1 — Mozilla Firefox")], 1)
+    assert (kind, hwnd) == ("addressbar", 11)
+
+
+def test_choose_delivery_lone_profile_cold_starts_when_nothing_runs():
+    run = _run_for("Work", "/ff/w", "https://arena.ai/a", [DELIVERY_WINDOW])
+    assert desktop.choose_delivery(run, [], 1) == ("cold", "")   # the ONE case for -P
+
+
+def test_choose_delivery_names_the_manual_fallbacks():
+    run = _run_for("Work", "/ff/w", "https://arena.ai/a", [DELIVERY_WINDOW])
+    kind, reason = desktop.choose_delivery(run, [], 2)
+    assert kind == "manual" and "2 profiles match" in reason
+    kind, reason = desktop.choose_delivery(run, [(99, "Other — Mozilla Firefox")], 1)
+    assert kind == "manual" and "Work" in reason and "no open Firefox window" in reason
+
+
+def test_choose_delivery_honours_the_resolver_window_map():
+    """The same URL in two windows: the resolver's map pins the delivery window."""
+    twin = {"index": 2, "active": {"url": "https://arena.ai/a", "title": "A1 copy"},
+            "tabs": [{"url": "https://arena.ai/a", "title": "A1 copy"}]}
+    run = _run_for("Work", "/ff/w", "https://arena.ai/a", [DELIVERY_WINDOW, twin])
+    both = [(11, "A1 — Mozilla Firefox"), (22, "A1 copy — Mozilla Firefox")]
+    assert desktop.choose_delivery(run, both, 1, [twin]) == ("addressbar", 22)
+    assert desktop.choose_delivery(run, both, 1) == ("addressbar", 11)  # whole map: first hit

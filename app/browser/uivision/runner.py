@@ -6,12 +6,13 @@ wires to `bridge._log` + the `firefox_auto_updated` signal (RULE 2/5) and to
 the window's Stop button (RULE 7: the predicate is checked before every phase,
 before every planned run and inside the poll — `sequence.py` owns the loop).
 
-Multi-profile (2026-09-23, owner fix): the detect phase reads EVERY Firefox
-profile's session store, the plan targets EVERY tab matching the pattern, and
-each target is one macro run aimed at its own profile instance (`-P name`, or
-`-profile dir` when the profile has no ini name — `plan.py` renders them). Runs
-execute in order, each with its own savelog; a single run behaves exactly as
-before (the OS handoff, the pattern glob, `run-<stamp>.txt`).
+Multi-profile (2026-09-23, owner fix; 2026-09-24 lifecycle redesign): the
+detect phase reads EVERY Firefox profile's session store, the plan targets
+EVERY tab matching the pattern, and each PROFILE is one macro run (one launch
+per profile — `-P name` is ignored when Firefox already runs, so per-tab
+launches stormed the first instance). Runs execute in order, each with its own
+savelog; a single run behaves exactly as before (the OS handoff, the pattern
+glob, `run-<stamp>.txt`).
 
 Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 `ok` / `error` are the extension's own verdicts from the savelog file,
@@ -19,17 +20,17 @@ Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 `blocked` means the run never started (bad macro name, missing Firefox, …).
 """
 
-# ideal-size: ~490 lines reason=detect/report half + provision + wait-for-tab phase +
+# ideal-size: ~520 lines reason=detect/report half + provision + wait-for-tab phase +
 # orchestration of the uivision package; the executor lives in sequence.py, the planner
-# in plan.py, the profile filter in profiles.py, and every function stays within the
-# RULE 18 band (max ~20 lines).
+# in plan.py, the profile filter in profiles.py, the tab guard in guard.py, and every
+# function stays within the RULE 18 band (max ~20 lines).
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
 
-from . import autorun, desktop, macro, paths, plan, profiles, tabs
+from . import autorun, desktop, guard, macro, paths, plan, profiles, tabs
 from .sequence import RunResult, Sequence
 
 
@@ -70,7 +71,8 @@ class RunSeams:
     probe: object = None      # callable → desktop-module-listening bool
     windows: object = None    # callable → per-window session rows (tests fake them)
     profiles: object = None   # callable → per-profile session rows (tests fake them)
-    seen: object = None       # callable → iterable of (profile_dir, url) already planned
+    os_windows: object = None  # callable → [(hwnd, title)] Firefox OS windows (tests fake them)
+    deliver: object = None    # callable(hwnd, url) → address-bar delivery (tests fake the keys)
 
 
 class _Recorder:
@@ -162,29 +164,32 @@ def _report_no_matches(spec: RunSpec, report) -> None:
                      f"page in the matching Firefox first", "warn")
 
 
-def _report_clashes(targets, spec: RunSpec, report) -> None:
-    """Duplicate selectors inside one profile cannot each hit their own tab — say so."""
-    for selector, label, count in plan.clashes(targets, spec.pattern, spec.url_pattern):
-        report("detect", f"profile “{label}”: {count} tab(s) match “{selector}” — the "
-                         f"title selector cannot tell them apart; each run lands on "
-                         f"the first one", "warn")
+def _report_multi_matches(targets, report) -> None:
+    """Crowded profiles run their FIRST match only — name them so none hide (RULE 4)."""
+    for label, count, first in plan.multi_matches(targets):
+        report("detect", f"profile “{label}”: {count} tab(s) match — the run addresses "
+                         f"the first (“{first}”); narrow the pattern to reach the "
+                         f"others", "warn")
 
 
 def _report_plan(targets, spec: RunSpec, structured: bool, report) -> None:
-    """The run-plan lines: the plan summary, selector clashes, the blank warning."""
+    """The run-plan lines: the plan summary, crowded profiles, the blank warning."""
     if len(targets) >= 2:
         report("detect", f"run plan: {plan.summarize(targets, structured)}")
-        _report_clashes(targets, spec, report)
+    _report_multi_matches(targets, report)
     _report_blank_search(targets, spec, report)
 
 
 def _report_blank_search(targets, spec: RunSpec, report) -> None:
-    """Both patterns blank means EVERY open tab runs — never quietly (RULE 4)."""
+    """Both patterns blank address the first match per profile — never quietly (RULE 4)."""
     if (spec.pattern or "").strip() or (spec.url_pattern or "").strip():
         return
-    report("detect", f"both patterns are empty — the macro will run on EVERY open "
-                     f"tab ({len(targets)} tab(s)); set a title or URL pattern to "
-                     f"narrow the search", "warn")
+    if not targets:
+        return                             # the no-match warning already said it
+    profiles = {str(t.profile_dir or "") for t in targets}
+    report("detect", f"both patterns are empty — the run addresses the FIRST match "
+                     f"in every profile ({len(profiles)} profile(s)); set a title "
+                     f"or URL pattern to narrow the search", "warn")
 
 
 
@@ -288,7 +293,6 @@ def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
     structured = real or seams.profiles is not None
     targets = plan.plan_targets(sessions, spec.pattern, spec.url_pattern)
     targets = _apply_profile_filter(targets, spec, sessions, recorder)
-    targets = _drop_unaddressable(targets, spec, recorder)
     if real:
         _report_profiles(recorder)
     _report_open_tabs(sessions, real, recorder)
@@ -300,16 +304,6 @@ def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
     recorder("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
     _detect_plugin(recorder, seams)
     return targets
-
-
-def _drop_unaddressable(targets, spec: RunSpec, recorder: _Recorder) -> list:
-    """Warn per titleless match and keep only tabs the macro can actually select."""
-    addressable, titleless = plan.split_unaddressable(targets, spec.pattern, spec.url_pattern)
-    for target in titleless:
-        recorder("detect", f"tab {target.url[:90]} matched but has no TITLE — "
-                           f"selectWindow can only pick a tab by title; open the page "
-                           f"so Firefox gives it one, or it cannot run", "warn")
-    return addressable
 
 
 def _apply_profile_filter(targets, spec: RunSpec, sessions, recorder: _Recorder) -> list:
@@ -353,24 +347,24 @@ def _blocked_no_search(recorder: _Recorder) -> RunResult:
 
 
 def _blocked_no_url_match(recorder: _Recorder, url_pattern: str) -> RunResult:
-    """URL-only search with no match: the fallback selector needs a title pattern."""
+    """URL-only search with no match: with nothing matched there is nothing to aim at."""
     recorder("launch", f"URL “{url_pattern}” matched no open tab in any profile's "
-                       f"session store — the macro selects tabs by TITLE, so open the "
-                       f"page (Firefox then knows the tab) or add a title pattern",
+                       f"session store — the run aims by tab position, so open the "
+                       f"page in the matching Firefox first (then Firefox knows the tab)",
              "error")
-    return _result("blocked", f"URL “{url_pattern}” matched no open tab — and a "
-                              f"URL-only search cannot select a tab without its "
-                              f"title", recorder)
+    return _result("blocked", f"URL “{url_pattern}” matched no open tab — open the "
+                              f"page in Firefox first", recorder)
 
 
 def _fallback_or_block(spec: RunSpec, recorder: _Recorder, targets: list):
     """The no-match decision: None to continue, or the block that names why.
 
     A title pattern still buys today's fallback single run (its title glob,
-    E210 in the extension if no tab); a URL-only search cannot build one.
-    When `skip_no_match` is on and every selected profile had zero matching
-    tabs, the run ends cleanly as `blocked` with a skip message instead of
-    the generic "no tab" error (RULE 4: name the cause).
+    the extension's no-tab error if nothing matches); a URL-only search has
+    no position to aim at without a match. When `skip_no_match` is on and
+    every selected profile had zero matching tabs, the run ends cleanly as
+    `blocked` with a skip message instead of the generic "no tab" error
+    (RULE 4: name the cause).
     """
     if targets:
         return None
@@ -470,11 +464,45 @@ async def _default_sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
+RESCAN_BUDGET_SEC = 20  # the store flushes every ~15 s — first runs race it
+RESCAN_SLICE_SEC = 2    # re-scan cadence inside the budget (stop-aware)
+
+
+async def _rescan_when_empty(spec: RunSpec, seams: RunSeams,
+                             recorder: _Recorder, targets: list) -> list:
+    """No match + patterns + no explicit selection → wait one flush, re-scan (RULE 7).
+
+    Firefox rewrites the session store every ~15 s, so a just-opened tab is
+    invisible to the first detect and the run fails while the re-run works.
+    Explicit selections keep their own wait (`_wait_for_unmatched`); a blank
+    search has nothing to wait FOR (any tab would already match).
+    """
+    if targets or list(spec.selected_profiles or ()):
+        return targets
+    if not (spec.pattern or "").strip() and not (spec.url_pattern or "").strip():
+        return targets
+    recorder("detect", "no match — waiting up to "
+                       f"{RESCAN_BUDGET_SEC}s for Firefox to flush its session store")
+    sleep_fn = seams.sleep or _default_sleep
+    deadline = time.time() + RESCAN_BUDGET_SEC
+    while time.time() < deadline and not _stopped(seams):
+        await _safe_sleep(sleep_fn, RESCAN_SLICE_SEC)
+        if _stopped(seams):
+            break
+        fresh = plan.plan_targets(_load_profiles(seams), spec.pattern, spec.url_pattern)
+        if fresh:                        # blank selection: no profile filter to apply
+            recorder("detect", f"the flush brought {len(fresh)} matching tab(s)", "success")
+            return fresh
+    recorder("detect", "still no match after the flush wait", "warn")
+    return targets
+
+
 async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     """One framework test end to end; every phase reports through `report`."""
     seams = seams or RunSeams()
     recorder = _Recorder(report)
     targets = _detect_phase(spec, recorder, seams)
+    targets = await _rescan_when_empty(spec, seams, recorder, targets)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)
     targets = await _wait_for_unmatched(spec, seams, recorder, targets)
@@ -488,27 +516,11 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
         return _result("blocked", str(exc), recorder)
     if not targets:
         targets = [plan.Target()]          # today's single run: the OS handoff decides
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    # No-cycle gate (2026-09-24 owner fix): a re-pass of this same call cannot
-    # re-plan the same (profile_dir, url) — the "first run fails, subsequent
-    # runs work" symptom stops here.
-    seen = _seen_from_spec(seams)
-    targets = plan.dedupe_targets(targets, seen)
-    runs = plan.runs(targets, spec, stamp)
+    search = plan.Search(pattern=spec.pattern, url_pattern=spec.url_pattern)
+    runs = plan.runs_by_profile(targets, search, spec.config_dir,
+                                time.strftime("%Y%m%d-%H%M%S"))
     executor = Sequence(spec, seams, recorder)
     executor.page = str(page)
+    executor.rescan = lambda: _load_profiles(seams)
+    executor.snapshot = guard.snapshot_tabs(_load_profiles(seams))
     return await executor.execute(runs)
-
-
-def _seen_from_spec(seams: RunSeams) -> set:
-    """The (profile_dir, url) keys the runner has already planned this run.
-
-    Default: empty set. Tests inject a `_seen_seam()` returning a populated
-    set when they want to assert the gate. Production callers do not need
-    one because `run_test` is one-shot per UI run button — the dedupe is a
-    safety net for re-passes within the same call.
-    """
-    seam = getattr(seams, "seen", None)
-    if seam is not None:
-        return set(seam())
-    return set()

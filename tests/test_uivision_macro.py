@@ -64,6 +64,21 @@ def test_refuse_dom_clicks_names_the_offender():
     macro.refuse_dom_clicks([{"Command": "XClick"}, {"Command": "echo"}])  # no raise
 
 
+def test_refuse_tab_mutation_bans_open_and_close():
+    """The protected-tab rule: the run must never open or close a tab."""
+    for bad in ("tab=open", "TAB=OPEN", "tab=close", "Tab=Close",
+                "tab=closeallother", "TAB=CLOSEALLOTHER", "tab=foo"):
+        with pytest.raises(ValueError, match="never closes tabs"):
+            macro.refuse_tab_mutation([{"Command": "selectWindow", "Target": bad}])
+    for ok in ("tab=0", "tab=1", "tab=-2", "title=*Arena*", "${!cmd_var3}"):
+        macro.refuse_tab_mutation([{"Command": "selectWindow", "Target": ok}])  # no raise
+    macro.refuse_tab_mutation(macro.build_commands())  # the framework macro passes
+
+
+def test_refuse_tab_mutation_ignores_other_commands():
+    macro.refuse_tab_mutation([{"Command": "echo", "Target": "tab=close"}])  # no raise
+
+
 def test_render_find_rect_js_mirrors_the_extension_rendering():
     """The extension renders ${!cmd_varN} with JSON.stringify — a ready string literal."""
     js = macro.render_find_rect_js(NEW_CHAT, 3000)

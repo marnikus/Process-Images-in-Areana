@@ -2,12 +2,20 @@
 
 The multi-profile planner: `plan_targets` turns per-profile session rows into one
 `Target` per matching tab (every profile, every matching tab — never just the
-freshest), and `runs` renders each target into a `PlannedRun` the runner executes:
-its own `selectWindow` selector (the tab's own title glob, so the second matching
-tab is not skipped for the first), its own profile argv prefix (`-P name`, or
-`-profile dir` when no `profiles.ini` name exists — Firefox hands the URL to THAT
-profile's running instance) and its own savelog file. Imports only `paths` and
-`launch` from this package; no OS calls, no asyncio.
+freshest), and `runs_by_profile` renders ONE `PlannedRun` per profile (2026-09-24
+lifecycle redesign): each run addresses its profile's FIRST match, because
+`firefox -P <name> <url>` is ignored when Firefox already runs (the remote command
+line hands the URL to the already-running instance) — one launch per TAB stormed
+the first instance with N autostart tabs while the other profiles never ran.
+
+Selector priority (the report's rule, adapted to what `selectWindow` offers — the
+official docs list only `title=` and relative `tab=N`, there is no `url=`): a set
+title pattern becomes the user's literal `title=*{pattern}*` (the extension matches
+LIVE titles, fresh by construction); anything else resolves at LAUNCH time to a
+relative `tab=N` from a fresh session-store read (tab positions outlive dynamic
+page titles — building title globs from the store was the E212 source). Title text
+is never constructed from detection output. Imports only `paths` and `launch` from
+this package; no OS calls, no asyncio.
 """
 
 from __future__ import annotations
@@ -21,6 +29,14 @@ TITLE_CLIP = 40
 
 
 @dataclass(frozen=True)
+class Search:
+    """The two tab filters as one value — blank means ANY on either side."""
+
+    pattern: str = ""       # tab-title substring (the window's TAB TITLE PATTERN)
+    url_pattern: str = ""   # tab-URL substring (the window's TAB URL PATTERN)
+
+
+@dataclass(frozen=True)
 class Target:
     """One macro run's destination: a matching tab inside ONE profile instance."""
 
@@ -29,6 +45,8 @@ class Target:
     url: str = ""
     title: str = ""
     windows: tuple = ()       # this profile's session windows (the foreground map)
+    window_index: int = -1    # 0-based session window holding the tab (-1 = rows had no map)
+    tab_pos: int = -1         # 0-based position of the tab inside its window (-1 = unknown)
 
 
 @dataclass(frozen=True)
@@ -39,9 +57,11 @@ class PlannedRun:
     index: int            # 1-based position in the sequence
     total: int
     label: str            # `profile “X” · tab “Y”` for the report lines
-    selector: str         # cmd_var3 — the selectWindow target
-    profile_args: tuple   # ("-P", name) / ("-profile", dir) / () — rides before the URL
+    selector: str         # the title literal, or "" = resolve a tab=N at launch
+    profile_args: tuple   # ("-P", name) / ("-profile", dir) / () — cold starts only
     log_path: str         # this run's own savelog (run 1 keeps the plain name)
+    search: Search = Search()   # the filters that matched (the resolver reads them)
+    tabs: tuple = ()      # EVERY match in this profile (target is the first)
 
 
 def profile_label(name: str, profile_dir: str = "") -> str:
@@ -85,34 +105,111 @@ def describe_search(pattern, url_pattern) -> str:
     return f"{left} + {right}"
 
 
-# The `selectWindow` selector is always `title=*<glob>*` (Ui.Vision has no `url=`
-# selector; the A9T9 source matches on `document.title` only — verified against
-# ui.vision/rpa/docs/selenium-ide/selectwindow). The glob is a case-sensitive
-# substring match with `*` wildcards on either side.
-# ideal-size: 12 lines reason=the three-tier priority the owner specified
-# (title > url > distinctive fragment); pure function, no I/O.
-def selector_for(target: Target, pattern: str, url_pattern: str = "") -> str:
-    """The selectWindow target — `title=*<glob>*` with the owner's priority.
+def _targets_from_windows(session, pattern: str, url_pattern: str) -> list:
+    """One Target per matching tab, window positions recorded (the mapped shape)."""
+    name = str(session.get("name", ""))
+    profile_dir = str(session.get("dir", ""))
+    windows = tuple(session.get("windows") or ())
+    targets = []
+    for pos, window in enumerate(windows):
+        for tab_no, tab in enumerate((window or {}).get("tabs") or []):
+            title, url = str(tab.get("title", "")), str(tab.get("url", ""))
+            if url and matches(title, url, pattern, url_pattern):
+                targets.append(Target(profile_name=name, profile_dir=profile_dir,
+                                      url=url, title=title, windows=windows,
+                                      window_index=pos, tab_pos=tab_no))
+    return targets
 
-    Priority (2026-09-24 owner fix): TAB TITLE PATTERN > the tab's own title
-    (full, never truncated) > URL pattern as a last-resort title glob.
 
-    Ui.Vision's `selectWindow` matches on `document.title` only — there is
-    no `url=` selector. The previous 40-char truncation was the E212 bug
-    (full titles match by substring definition; the clip cut distinctive
-    tokens). URL pattern is used as the glob only when the tab has no
-    title at all (the URL pattern is the only thing the user gave us).
+def _targets_from_rows(session, pattern: str, url_pattern: str) -> list:
+    """One Target per matching flat row — the windowless (anonymous-seam) shape."""
+    name = str(session.get("name", ""))
+    profile_dir = str(session.get("dir", ""))
+    targets = []
+    for row in session.get("rows") or []:
+        title, url = str(row.get("title", "")), str(row.get("url", ""))
+        if matches(title, url, pattern, url_pattern):
+            targets.append(Target(profile_name=name, profile_dir=profile_dir,
+                                  url=url, title=title, windows=()))
+    return targets
+
+
+def plan_targets(sessions, pattern: str, url_pattern: str = "") -> list:
+    """One Target per tab matching BOTH patterns — every profile, stable order.
+
+    A blank pattern matches any (owner rule, 2026-09-24): blank title + blank
+    URL plan a run for every open tab. Matching runs over each session's WINDOWS
+    (so every target knows its window + position for the tab=N resolver) and
+    falls back to the flat `rows` when a session carries no window map.
     """
-    title_pat = (pattern or "").strip()
-    if title_pat:
-        return f"title=*{title_pat}*"
-    title = (target.title or "").strip()
-    if title:
-        return f"title=*{title}*"
-    url_pat = (url_pattern or "").strip()
-    if url_pat:
-        return f"title=*{url_pat}*"
-    return ""
+    targets = []
+    for session in sessions or []:
+        if session.get("windows"):
+            targets.extend(_targets_from_windows(session, pattern, url_pattern))
+        else:
+            targets.extend(_targets_from_rows(session, pattern, url_pattern))
+    return targets
+
+
+def selector_for(pattern: str) -> str:
+    """The plan-time selector: the user's title literal, or "" for launch resolve.
+
+    A set title pattern is used VERBATIM (`title=*{pattern}*`) — never rebuilt
+    from detection output. A blank one answers "" so the sequence resolves a
+    fresh relative `tab=N` at launch (`resolve_selector`).
+    """
+    want = (pattern or "").strip()
+    return f"title=*{want}*" if want else ""
+
+
+def _relative_index(tab_pos: int, tab_count: int) -> str:
+    """`tab=N` relative to the autostart tab (it appends last, so N ≤ -1)."""
+    return f"tab={tab_pos - tab_count}"
+
+
+def _first_url_match(window, url_pattern: str):
+    """(tab_pos, tab_count) of the window's first URL-matching tab (None if none)."""
+    tabs = list((window or {}).get("tabs") or [])
+    want = (url_pattern or "").strip().lower()
+    for pos, tab in enumerate(tabs):
+        if not want or want in str(tab.get("url", "")).lower():
+            return pos, len(tabs)
+    return None
+
+
+def resolve_selector(run: PlannedRun, sessions) -> tuple | None:
+    """(selector, [window]) against FRESH sessions — None when unresolvable.
+
+    Title-pattern runs answer the plan-time literal plus the plan-time window
+    holding the target URL (`plan_window`); index runs search the run's profile
+    for the first URL match and answer its relative `tab=N` plus that window.
+    Delivery maps into exactly the answered window, so aiming and delivery can
+    never disagree about which window holds the tab.
+    """
+    if (run.search.pattern or "").strip():
+        return run.selector, plan_window(list(run.target.windows), run.target.url)
+    return _resolve_index(run, sessions or [])
+
+
+def _resolve_index(run: PlannedRun, sessions: list):
+    """The fresh relative tab=N inside the run's own profile (None when gone)."""
+    for session in sessions:
+        if str(session.get("dir", "")) != run.target.profile_dir:
+            continue
+        for window in session.get("windows") or []:
+            found = _first_url_match(window, run.search.url_pattern)
+            if found is not None:
+                pos, count = found
+                return _relative_index(pos, count), [window]
+    return None
+
+
+def plan_window(windows, url: str) -> list:
+    """[the first window holding `url`] — the title run's delivery map ([] if none)."""
+    for window in windows or []:
+        if any(str(tab.get("url", "")) == (url or "") for tab in (window or {}).get("tabs") or []):
+            return [window]
+    return list(windows or [])
 
 
 def run_label(target: Target) -> str:
@@ -122,101 +219,53 @@ def run_label(target: Target) -> str:
     return f'profile “{who}” · tab “{tab}”' if who else f'tab “{tab}”'
 
 
-def plan_targets(sessions, pattern: str, url_pattern: str = "") -> list:
-    """One Target per tab matching BOTH patterns — every profile, stable order.
+def multi_matches(targets) -> list:
+    """[(profile label, count, first title)] for profiles with 2+ matches.
 
-    A blank pattern matches any (owner rule, 2026-09-24): blank title + blank
-    URL plan a run for every open tab. Matching runs over each session's flat
-    `rows`; `windows` only decorates the Target for the foreground mapping.
-    """
-    targets = []
-    for session in sessions or []:
-        windows = tuple(session.get("windows") or ())
-        for row in session.get("rows") or []:
-            if matches(str(row.get("title", "")), str(row.get("url", "")),
-                       pattern, url_pattern):
-                targets.append(Target(
-                    profile_name=str(session.get("name", "")),
-                    profile_dir=str(session.get("dir", "")),
-                    url=str(row.get("url", "")),
-                    title=str(row.get("title", "")),
-                    windows=windows))
-    return targets
-
-
-def split_unaddressable(targets, pattern: str, url_pattern: str = "") -> tuple:
-    """([addressable], [titleless]) — `selectWindow` can only pick a titled tab.
-
-    A tab matched by URL whose title is empty has no title glob to select it
-    with; the runner warns per skipped tab instead of pretending (RULE 4).
-    `url_pattern` is passed through so the URL pattern can drive the glob.
-    """
-    ok = [t for t in targets or [] if selector_for(t, pattern, url_pattern)]
-    return ok, [t for t in targets or [] if not selector_for(t, pattern, url_pattern)]
-
-
-def clashes(targets, pattern: str, url_pattern: str = "") -> list:
-    """(selector, profile label, count) for selectors reused inside one profile.
-
-    Two tabs sharing a title cannot be told apart by `title=` — the runner warns
-    instead of pretending every run lands on its own tab (RULE 4).
+    One run addresses one profile's FIRST match — every crowded profile is
+    named so the owner can narrow the pattern for the rest (RULE 4).
     """
     counts: dict = {}
     for target in targets or []:
-        key = (profile_label(target.profile_name, target.profile_dir),
-               selector_for(target, pattern, url_pattern))
-        counts[key] = counts.get(key, 0) + 1
-    return [(selector, label, count) for (label, selector), count in counts.items()
-            if count > 1]
+        label = profile_label(target.profile_name, target.profile_dir) or "?"
+        counts.setdefault(label, []).append(target)
+    return [(label, len(rows), (rows[0].title or rows[0].url or "?")[:TITLE_CLIP])
+            for label, rows in counts.items() if len(rows) > 1]
 
 
 def summarize(targets, real: bool) -> str:
-    """The run plan in one line: how many runs, grouped per profile."""
+    """The run plan in one line: one run per profile, matches grouped per profile."""
+    groups = _group_by_profile(targets)
     if not real:
-        return f"{len(targets)} macro run(s) — one Firefox instance (no profile selection)"
+        return (f"{len(groups)} macro run(s) — one Firefox instance "
+                f"(no profile selection)")
     counts: dict = {}
     for target in targets or []:
         label = profile_label(target.profile_name, target.profile_dir) or "?"
         counts[label] = counts.get(label, 0) + 1
     parts = ", ".join(f"“{label}” ×{count}" for label, count in counts.items())
-    return f"{len(targets)} macro run(s) — {parts}"
+    return f"{len(groups)} macro run(s) — {parts}"
 
 
-def runs(targets, spec, stamp: str = "") -> list:
-    """Every target as a PlannedRun: selector, profile args, its own savelog.
+def _group_by_profile(targets) -> list:
+    """[profile targets...] grouped by profile dir, first-seen order (stable)."""
+    groups: dict = {}
+    for target in targets or []:
+        groups.setdefault(str(target.profile_dir or ""), []).append(target)
+    return list(groups.values())
 
-    `spec` carries the search filters (`pattern`, `url_pattern`) and the
-    config dir; `stamp` rides separately so the runner can pin the
-    savelog timestamp on every run of one `run_test` call (it would
-    otherwise drift inside the loop). Three params keeps the new code
-    under the RULE 16 cap; positional callers can still pass
-    `runs(targets, RunSpec(...))` because `stamp` defaults to `""`.
-    """
-    pattern = getattr(spec, "pattern", "")
-    url_pattern = getattr(spec, "url_pattern", "")
-    config_dir = getattr(spec, "config_dir", "")
-    total = len(targets or [])
+
+def runs_by_profile(targets, search: Search, config_dir, stamp: str) -> list:
+    """One PlannedRun per profile: the first match runs, its own savelog each."""
+    groups = _group_by_profile(targets)
+    total = len(groups)
     planned = []
-    for index, target in enumerate(targets or [], 1):
+    for index, rows in enumerate(groups, 1):
+        first = rows[0]
         planned.append(PlannedRun(
-            target=target, index=index, total=total, label=run_label(target),
-            selector=selector_for(target, pattern, url_pattern),
-            profile_args=launch.profile_args(target.profile_name, target.profile_dir),
-            log_path=str(paths.log_file(config_dir, stamp, part=index if index > 1 else 0))))
+            target=first, index=index, total=total, label=run_label(first),
+            selector=selector_for(search.pattern),
+            profile_args=launch.profile_args(first.profile_name, first.profile_dir),
+            log_path=str(paths.log_file(config_dir, stamp, part=index if index > 1 else 0)),
+            search=search, tabs=tuple(rows)))
     return planned
-
-
-def dedupe_targets(targets, seen) -> list:
-    """Drop targets whose (profile_dir, url) is already in `seen` — the no-cycle gate.
-
-    A `run_test` call records every target it actually plans, then re-runs of
-    the same call (the "first run fails, subsequent runs work" symptom) no
-    longer re-plan the same tab — without this gate the multi-profile
-    sequence can cycle on the first profile because the failed run still
-    shows up in the session store on the next pass.
-    """
-    seen_set = set(seen or ())
-    if not seen_set:
-        return list(targets or [])
-    return [t for t in (targets or [])
-            if (str(t.profile_dir or ""), str(t.url or "")) not in seen_set]

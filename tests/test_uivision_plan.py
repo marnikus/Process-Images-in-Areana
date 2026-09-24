@@ -1,8 +1,9 @@
-"""The multi-profile planner — sessions × pattern → one macro run per matching tab.
+"""The multi-profile planner — sessions × pattern → one macro run per profile.
 
 RULE 8: pure functions over fake session rows; every rule below would break the
-user's fix if deleted (both profiles seen, every matching tab planned, each run
-addressing its own profile instance and its own savelog).
+user's fix if deleted (both profiles seen, every profile running exactly once,
+title literals used verbatim, URL-driven runs resolved to a fresh tab=N at
+launch — never a title glob built from the store).
 """
 
 from pathlib import Path
@@ -34,6 +35,13 @@ def test_plan_targets_finds_every_match_in_every_profile():
     assert targets[0].windows == tuple(WINDOWS_A)          # its own profile's windows ride along
 
 
+def test_plan_targets_records_window_positions():
+    targets = plan.plan_targets(SESSIONS, "", "arena.ai")
+    assert [(t.window_index, t.tab_pos) for t in targets] == [(0, 0), (0, 0)]
+    second = plan.plan_targets(SESSIONS, "O", "")[0]
+    assert (second.window_index, second.tab_pos) == (0, 1)  # second tab of window 0
+
+
 def test_plan_targets_title_and_url_filters_combine():
     """Both patterns set: a tab must satisfy BOTH (AND), case-insensitively."""
     targets = plan.plan_targets(SESSIONS, "A1", "arena.ai/A")
@@ -55,6 +63,17 @@ def test_plan_targets_blank_pattern_means_any():
     assert plan.plan_targets(SESSIONS, "  ", "  ") == both_blank     # whitespace = blank
 
 
+def test_plan_targets_titleless_url_matches_are_planned():
+    """A URL match without a title still runs — the tab=N index needs no title."""
+    sessions = [{"name": "Work", "dir": "/ff/p1",
+                 "windows": [{"index": 1, "active": {"url": "https://arena.ai/blank", "title": ""},
+                              "tabs": [{"url": "https://arena.ai/blank", "title": ""}]}],
+                 "rows": [], "source": "", "stamp": 1.0}]
+    targets = plan.plan_targets(sessions, "", "arena.ai")
+    assert [t.url for t in targets] == ["https://arena.ai/blank"]
+    assert targets[0].tab_pos == 0
+
+
 def test_matches_is_the_one_predicate():
     assert plan.matches("Arena", "https://arena.ai/image/x", "arena", "image") is True
     assert plan.matches("Arena", "https://arena.ai/x", "arena", "image") is False   # URL fails
@@ -71,94 +90,16 @@ def test_describe_search_names_the_active_filters():
     assert plan.describe_search("", "  ") == plan.ANY_TAB
 
 
-def test_split_unaddressable_separates_titleless_matches():
-    """A URL match without a title has no title glob — it cannot be selected."""
-    sessions = [{"name": "Work", "dir": "/ff/p1", "windows": [], "rows": [
-        {"url": "https://arena.ai/titled", "title": "Titled"},
-        {"url": "https://arena.ai/blank", "title": ""}]}]
-    targets = plan.plan_targets(sessions, "", "arena.ai")
-    ok, skipped = plan.split_unaddressable(targets, "")
-    assert [t.url for t in ok] == ["https://arena.ai/titled"]
-    assert [t.url for t in skipped] == ["https://arena.ai/blank"]
-    with_title_pattern, none = plan.split_unaddressable(targets, "Titled")
-    assert len(with_title_pattern) == 2 and none == []     # the pattern glob is the fallback
+def test_selector_uses_the_user_pattern_verbatim_or_defers():
+    """A set title pattern rides verbatim; a blank one defers to launch resolve.
 
-
-def test_plan_targets_order_is_stable_and_empty_sessions_match_none():
-    two = plan.plan_targets(SESSIONS, "", "arena.ai")
-    again = plan.plan_targets(SESSIONS, "", "arena.ai")
-    assert two == again
-    assert plan.plan_targets([], "arena") == []           # no sessions → no targets
-    assert plan.plan_targets(None, "arena") == []
-
-
-def test_selector_prefers_the_user_pattern_over_tab_title():
-    """The per-tab selector: user's pattern is preferred, tab title is fallback.
-
-    When the user sets a pattern (e.g., "arena"), it's used as the selector —
-    shorter, more robust, and reflects the user's intent. Only when the pattern
-    is empty does the tab's full title become the selector (the previous 40-char
-    truncation was the E212 bug — full titles match by substring definition,
-    2026-09-24 fix).
+    Nothing is ever built from detection output — the old title-glob fallback
+    (session-store titles, truncated) was the E212 source on dynamic pages.
     """
-    target = plan.Target(profile_name="Work", url="https://arena.ai/b", title="Arena — chat")
-    fallback = plan.Target()
-    # user pattern set → use it (even when the tab has its own title)
-    assert plan.selector_for(target, "arena") == "title=*arena*"
-    assert plan.selector_for(fallback, "arena") == "title=*arena*"
-    # user pattern empty → fall back to the tab's FULL title (no truncation)
-    assert plan.selector_for(target, "") == "title=*Arena — chat*"
-    assert plan.selector_for(target, "  ") == "title=*Arena — chat*"
-    # both empty → no selector
-    assert plan.selector_for(fallback, "") == ""
-    assert plan.selector_for(fallback, "  ") == ""
-
-
-def test_selector_uses_full_long_title_without_truncation():
-    """Long titles from the session store are used whole — Ui.Vision substring-matches.
-
-    The previous 40-char clip cut distinctive tokens and produced E212 when
-    the actual title was longer (the bug report's example: "Directly Chat
-    with Frontier Image Genera" vs the real "Directly Chat with Frontier
-    Image Generation AI Models — Arena").
-    """
-    long_title = "Directly Chat with Frontier Image Generation AI Models — Arena"
-    target = plan.Target(title=long_title)
-    assert plan.selector_for(target, "") == f"title=*{long_title}*"
-
-
-def test_selector_url_pattern_drives_the_title_glob_only_for_titleless_tabs():
-    """URL pattern is the last-resort title glob — only when the tab has no title.
-
-    Ui.Vision's `selectWindow` matches on `document.title` only; when a
-    matched tab has no title (e.g. `about:blank` just opened) the URL
-    pattern is the only anchor we have. When a title exists it wins — the
-    per-tab selector stays unique across the sequence (a tab title is
-    more specific than a URL substring shared by every matching tab).
-    """
-    titled = plan.Target(title="Arena — chat", url="https://arena.ai/image/")
-    titleless = plan.Target(title="", url="https://arena.ai/image/")
-    # titled tab → title wins even when URL pattern is set
-    assert plan.selector_for(titled, "", "arena.ai/image") == "title=*Arena — chat*"
-    assert plan.selector_for(titled, "", "") == "title=*Arena — chat*"
-    # titleless tab → URL pattern rides the glob (the only signal we have)
-    assert plan.selector_for(titleless, "", "arena.ai/image") == "title=*arena.ai/image*"
-    # both patterns set → title pattern still wins
-    assert plan.selector_for(titled, "Arena", "arena.ai/image") == "title=*Arena*"
-
-
-def test_dedupe_targets_drops_already_seen_keys():
-    """The no-cycle gate: a target whose (profile_dir, url) is in `seen` is dropped."""
-    a = plan.Target(profile_dir="/ff/p1", url="https://arena.ai/1")
-    b = plan.Target(profile_dir="/ff/p1", url="https://arena.ai/2")
-    c = plan.Target(profile_dir="/ff/p2", url="https://arena.ai/2")
-    seen = {(str(a.profile_dir), str(a.url))}
-    kept = plan.dedupe_targets([a, b, c], seen)
-    assert [t.url for t in kept] == ["https://arena.ai/2", "https://arena.ai/2"]   # b + c kept
-    # seen with profile_dir+url matches → c is from a different profile → kept
-    assert plan.dedupe_targets([a], set()) == [a]                                  # empty seen
-    assert plan.dedupe_targets([], {(("/ff/x", "https://x"))}) == []               # empty list
-    assert plan.dedupe_targets(None, set()) == []                                  # None input
+    assert plan.selector_for("arena") == "title=*arena*"
+    assert plan.selector_for("  Agent Arena  ") == "title=*Agent Arena*"
+    assert plan.selector_for("") == ""    # launch resolves a fresh tab=N instead
+    assert plan.selector_for("  ") == ""
 
 
 def test_profile_label_prefers_the_ini_name_then_the_basename():
@@ -175,39 +116,66 @@ def test_anonymous_session_wraps_the_flat_rows_seam():
     assert plan.anonymous_session(None)["rows"] == []
 
 
-def test_runs_render_selector_profile_args_and_per_run_savelogs(tmp_path):
-    """Each planned run: own title selector, own -P prefix, own savelog file."""
-    from types import SimpleNamespace
+def test_runs_by_profile_groups_tabs_into_one_run_per_profile(tmp_path):
+    """Two matching tabs in ONE profile → ONE run (the first match addresses it)."""
+    one = [{"name": "Work", "dir": "/ff/p1.work", "rows": [],
+            "windows": [{"index": 1, "active": {"url": "https://arena.ai/1", "title": "First"},
+                         "tabs": [{"url": "https://arena.ai/1", "title": "First"},
+                                  {"url": "https://arena.ai/2", "title": "Second"}]}],
+            "source": "", "stamp": 1.0}]
+    targets = plan.plan_targets(one, "", "arena.ai")
+    runs = plan.runs_by_profile(targets, plan.Search(url_pattern="arena.ai"),
+                                tmp_path, "20260924-120000")
+    assert len(runs) == 1
+    assert runs[0].total == 1 and runs[0].target.title == "First"
+    assert [t.title for t in runs[0].tabs] == ["First", "Second"]
+    assert runs[0].profile_args == ("-P", "Work")
+    assert Path(runs[0].log_path).name == "run-20260924-120000.txt"
+
+
+def test_runs_by_profile_renders_selector_profile_args_and_savelogs(tmp_path):
+    """Each profile run: its own -P prefix, its own savelog file, title literal."""
+    targets = plan.plan_targets(SESSIONS, "A", "arena.ai")
+    search = plan.Search(pattern="A", url_pattern="arena.ai")
+    runs = plan.runs_by_profile(targets, search, tmp_path, "20260923-120000")
+    assert [r.index for r in runs] == [1] and runs[0].total == 1   # only "A1" passes both
+    assert runs[0].selector == "title=*A*"                          # the user's literal
+    assert runs[0].profile_args == ("-P", "Work")                   # named → -P name
+    assert Path(runs[0].log_path).name == "run-20260923-120000.txt"
+    assert runs[0].label == "profile “Work” · tab “A1”"
+
+
+def test_runs_by_profile_url_search_defers_the_selector_to_launch(tmp_path):
+    """URL-only search: the selector is "" — the launch resolves a fresh tab=N."""
     targets = plan.plan_targets(SESSIONS, "", "arena.ai")
-    runs = plan.runs(targets, SimpleNamespace(pattern="", url_pattern="arena.ai",
-                                              config_dir=tmp_path), "20260923-120000")
+    runs = plan.runs_by_profile(targets, plan.Search(url_pattern="arena.ai"),
+                                tmp_path, "20260923-120000")
     assert [r.index for r in runs] == [1, 2] and runs[0].total == 2
-    assert runs[0].selector == "title=*A1*" and runs[1].selector == "title=*B1*"
+    assert runs[0].selector == "" and runs[1].selector == ""
     assert runs[0].profile_args == ("-P", "Work")          # named → -P name
     assert runs[1].profile_args == ("-profile", "/ff/p2.play")   # unnamed → -profile dir
     assert Path(runs[0].log_path).name == "run-20260923-120000.txt"   # run 1 keeps the plain name
     assert Path(runs[1].log_path).name == "run-20260923-120000-2.txt"  # run 2 never overwrites it
     assert runs[1].label == "profile “p2.play” · tab “B1”"
+    assert runs[0].search == plan.Search(url_pattern="arena.ai")  # the resolver reads it
 
 
-def test_runs_fallback_target_uses_the_plain_handoff(tmp_path):
+def test_runs_by_profile_fallback_target_uses_the_plain_handoff(tmp_path):
     """No store answer / no match: today's single run — no -P, the pattern glob."""
-    from types import SimpleNamespace
-    runs = plan.runs([plan.Target()],
-                     SimpleNamespace(pattern="arena.ai", url_pattern="",
-                                     config_dir=tmp_path), "S")
+    runs = plan.runs_by_profile([plan.Target()], plan.Search(pattern="arena.ai"),
+                                tmp_path, "S")
     assert len(runs) == 1
     assert runs[0].profile_args == () and runs[0].selector == "title=*arena.ai*"
 
 
-def test_clashes_name_duplicate_titles_per_profile():
+def test_multi_matches_names_crowded_profiles():
     same = [{"url": "https://arena.ai/1", "title": "Same"},
             {"url": "https://arena.ai/2", "title": "Same"}]
     dup = [{"name": "Work", "dir": "/ff/p1", "rows": same, "windows": [
         {"index": 1, "active": {}, "tabs": same}], "source": "", "stamp": 0.0}]
     targets = plan.plan_targets(dup, "", "arena.ai")
-    assert plan.clashes(targets, "") == [("title=*Same*", "Work", 2)]
-    assert plan.clashes(plan.plan_targets(SESSIONS, "", "arena.ai"), "") == []
+    assert plan.multi_matches(targets) == [("Work", 2, "Same")]
+    assert plan.multi_matches(plan.plan_targets(SESSIONS, "", "arena.ai")) == []
 
 
 def test_summarize_counts_runs_per_profile():
@@ -215,6 +183,15 @@ def test_summarize_counts_runs_per_profile():
     assert plan.summarize(targets, True) == '2 macro run(s) — “Work” ×1, “p2.play” ×1'
     assert plan.summarize(targets, False) == ("2 macro run(s) — one Firefox instance "
                                               "(no profile selection)")
+
+
+def test_summarize_counts_one_run_for_a_crowded_profile():
+    same = [{"url": "https://arena.ai/1", "title": "Same"},
+            {"url": "https://arena.ai/2", "title": "Same"}]
+    dup = [{"name": "Work", "dir": "/ff/p1", "rows": same, "windows": [
+        {"index": 1, "active": {}, "tabs": same}], "source": "", "stamp": 0.0}]
+    targets = plan.plan_targets(dup, "", "arena.ai")
+    assert plan.summarize(targets, True) == '1 macro run(s) — “Work” ×2'
 
 
 def test_launch_profile_args_and_argv():
@@ -234,3 +211,91 @@ def test_paths_log_file_parts_never_share_a_file(tmp_path):
     second = paths.log_file(tmp_path, "S", part=2)
     assert first.name == "run-S.txt" and second.name == "run-S-2.txt"
     assert first != second
+
+
+# ── launch-time tab=N resolution (2026-09-24: URL-driven, never constructed) ──
+
+THREE_TABS = [{"index": 1, "active": {"url": "https://arena.ai/c", "title": "C"},
+               "tabs": [{"url": "https://arena.ai/a", "title": "A"},
+                        {"url": "https://arena.ai/b", "title": "B"},
+                        {"url": "https://arena.ai/c", "title": "C"}]}]
+
+
+def _url_run(**over):
+    kw = dict(profile_name="Work", profile_dir="/ff/w", url="https://arena.ai/b",
+              title="B", windows=tuple(THREE_TABS))
+    kw.update(over)
+    target = plan.Target(**kw)
+    return plan.PlannedRun(target=target, index=1, total=1, label="L", selector="",
+                           profile_args=("-P", "Work"), log_path="/tmp/l",
+                           search=plan.Search(url_pattern="arena.ai"), tabs=(target,))
+
+
+def _fresh_session(windows):
+    return {"name": "Work", "dir": "/ff/w", "rows": [], "windows": windows,
+            "source": "", "stamp": 1.0}
+
+
+def _url_run_for(url_match: str):
+    """A URL run whose pattern matches exactly one of the three tabs."""
+    target = plan.Target(profile_name="Work", profile_dir="/ff/w",
+                         url=f"https://arena.ai/{url_match}", title=url_match.upper(),
+                         windows=tuple(THREE_TABS))
+    return plan.PlannedRun(target=target, index=1, total=1, label="L", selector="",
+                           profile_args=("-P", "Work"), log_path="/tmp/l",
+                           search=plan.Search(url_pattern=f"arena.ai/{url_match}"),
+                           tabs=(target,))
+
+
+def test_resolve_selector_addresses_url_matches_by_relative_index():
+    """tab=N counts back from the autostart tab (it appends last, so N is negative)."""
+    run = _url_run_for("b")
+    selector, windows = plan.resolve_selector(run, [_fresh_session(THREE_TABS)])
+    assert selector == "tab=-2"                      # "B" is the middle of three
+    assert windows == [THREE_TABS[0]]                # delivery maps into THIS window
+
+
+def test_resolve_selector_first_and_last_positions():
+    selector, _windows = plan.resolve_selector(_url_run_for("a"),
+                                               [_fresh_session(THREE_TABS)])
+    assert selector == "tab=-3"
+    selector, _windows = plan.resolve_selector(_url_run_for("c"),
+                                               [_fresh_session(THREE_TABS)])
+    assert selector == "tab=-1"
+
+
+def test_resolve_selector_blank_search_aims_at_the_first_tab():
+    run = _url_run()
+    run = plan.PlannedRun(target=run.target, index=1, total=1, label="L", selector="",
+                          profile_args=(), log_path="/tmp/l", search=plan.Search(),
+                          tabs=(run.target,))
+    selector, windows = plan.resolve_selector(run, [_fresh_session(THREE_TABS)])
+    assert selector == "tab=-3"                       # first of three, no filter
+    assert windows == [THREE_TABS[0]]
+
+
+def test_resolve_selector_returns_none_when_the_tab_is_gone():
+    run = _url_run()
+    assert plan.resolve_selector(run, [_fresh_session([])]) is None       # no windows
+    assert plan.resolve_selector(run, []) is None                          # profile closed
+    other = [_fresh_session([{"index": 1, "active": {}, "tabs": [
+        {"url": "https://other.example", "title": "O"}]}])]
+    assert plan.resolve_selector(run, other) is None                      # URL no longer there
+
+
+def test_resolve_selector_title_runs_keep_the_literal():
+    target = plan.Target(profile_name="W", profile_dir="/ff/w",
+                         url="https://arena.ai/a", title="A",
+                         windows=tuple(THREE_TABS))
+    run = plan.PlannedRun(target=target, index=1, total=1, label="L",
+                          selector="title=*Arena*", profile_args=(), log_path="/tmp/l",
+                          search=plan.Search(pattern="Arena"), tabs=(target,))
+    selector, windows = plan.resolve_selector(run, [])
+    assert selector == "title=*Arena*"                # verbatim — no store read needed
+    assert windows == [THREE_TABS[0]]                 # the window holding the target URL
+
+
+def test_plan_window_finds_the_holder_or_falls_back():
+    assert plan.plan_window(THREE_TABS, "https://arena.ai/b") == [THREE_TABS[0]]
+    assert plan.plan_window(THREE_TABS, "https://gone.example") == THREE_TABS
+    assert plan.plan_window([], "https://arena.ai/a") == []

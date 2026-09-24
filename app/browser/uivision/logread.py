@@ -24,6 +24,28 @@ SEPARATOR = "###"
 MAX_LINES = 60
 POLL_SECONDS = 0.5
 
+# The extension's selectWindow-miss shape ("failed to find the tab with locator
+# '…'") — the macro died on its FIRST command, before any click, so a retry
+# cannot double-click (2026-09-24 lifecycle redesign: the extension is flaky
+# there, and one fresh retry cures the miss).
+TAB_NOT_FOUND = "failed to find the tab with locator"
+
+
+def retryable(verdict) -> bool:
+    """An error worth ONE fresh retry: the selectWindow miss (died pre-click)."""
+    if verdict.kind != "error":
+        return False
+    blob = (verdict.message + "\n" + "\n".join(verdict.lines or ())).lower()
+    return TAB_NOT_FOUND in blob
+
+
+def drop_log(log_path) -> None:
+    """Best-effort savelog delete so a re-poll cannot read the old verdict."""
+    try:
+        Path(log_path).unlink(missing_ok=True)
+    except Exception:
+        pass
+
 
 @dataclass(frozen=True)
 class LogResult:
