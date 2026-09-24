@@ -21,6 +21,7 @@ STORAGE_MODES = ("xfile", "browser")
 TIMEOUT_RANGE = (15, 600)
 PAUSE_RANGE = (500, 30000)
 WAIT_TIMEOUT_RANGE = (10, 300)  # the wait-for-tab timeout when skip_no_match is off
+INTER_RUN_DELAY_RANGE = (0, 30)  # seconds between runs (0 = no delay)
 # Retired 2026-09-23: the macro never opens a URL, so "url" is no longer a
 # field — validate rebuilds from the defaults, so an old "url" key in
 # session.json is dropped instead of riding back in (RULE 10's dead-key
@@ -65,6 +66,8 @@ def validate_config(data) -> dict:
     cfg[SKIP_NO_MATCH_KEY] = bool(row.get(SKIP_NO_MATCH_KEY, cfg[SKIP_NO_MATCH_KEY]))
     cfg["wait_timeout_sec"] = _clamp_int(row.get("wait_timeout_sec"),
                                          WAIT_TIMEOUT_RANGE, cfg["wait_timeout_sec"])
+    cfg["inter_run_delay_sec"] = _clamp_int(row.get("inter_run_delay_sec"),
+                                            INTER_RUN_DELAY_RANGE, cfg["inter_run_delay_sec"])
     return cfg
 
 
@@ -132,7 +135,8 @@ def build_spec(bridge, cfg):
                    url_pattern=cfg["url_pattern"],
                    selected_profiles=tuple(cfg.get(PROFILE_LIST_KEY, ())),
                    skip_no_match=bool(cfg.get(SKIP_NO_MATCH_KEY, False)),
-                   wait_timeout_sec=int(cfg.get("wait_timeout_sec", 60)))
+                   wait_timeout_sec=int(cfg.get("wait_timeout_sec", 60)),
+                   inter_run_delay_sec=int(cfg.get("inter_run_delay_sec", 3)))
 
 
 def emit_status(bridge, payload: dict) -> None:

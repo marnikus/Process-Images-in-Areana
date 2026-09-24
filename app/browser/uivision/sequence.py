@@ -91,9 +91,11 @@ class Sequence:
     async def execute(self, runs: list):
         """Run every plan entry in order; stop between runs, abort on a refusal."""
         outcomes = []
-        for run in runs:
+        for pos, run in enumerate(runs):
             if self._stopped():
                 return self._stopped_after(outcomes, len(runs))
+            if pos > 0:
+                await self._inter_run_delay()
             verdict = await self._one(run)
             outcomes.append((run, verdict))
             if len(runs) > 1:
@@ -103,6 +105,19 @@ class Sequence:
             if verdict.kind in ("blocked", "stopped"):
                 break
         return self._final(outcomes, len(runs))
+
+    async def _inter_run_delay(self) -> None:
+        """Wait between runs so Firefox can process the previous autostart tab."""
+        delay = max(0, min(30, getattr(self.spec, "inter_run_delay_sec", 3)))
+        if delay <= 0:
+            return
+        self.recorder("delay", f"waiting {delay}s before the next run "
+                               f"(Firefox needs time to process the previous autostart tab)")
+        sleep_fn = self.seams.sleep or _default_sleep
+        try:
+            await sleep_fn(delay)
+        except Exception:
+            pass
 
     async def _one(self, run) -> logread.LogResult:
         """One planned run end to end: raise its window, launch, wait for the verdict."""
@@ -199,3 +214,9 @@ class Sequence:
         self.recorder("result", f"{kind}: {message}", result_level(kind))
         return RunResult(kind=kind, message=message, steps=tuple(self.recorder.steps),
                          lines=lines_of(outcomes))
+
+
+async def _default_sleep(seconds: float) -> None:
+    """Real async sleep — the seam's default (tests inject a fast one)."""
+    import asyncio
+    await asyncio.sleep(seconds)

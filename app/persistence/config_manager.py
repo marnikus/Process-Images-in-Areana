@@ -47,6 +47,7 @@ DEFAULT_SESSION = {
         "selected_profiles": [],     # profile dirs checked in the UI ([] = every profile)
         "skip_no_match": False,      # True = skip a profile with no matching tabs; False = wait
         "wait_timeout_sec": 60,      # when skip_no_match is off, how long to wait for the user to open a tab (10…300)
+        "inter_run_delay_sec": 3,    # seconds to wait between runs (gives Firefox time to process)
     },
 }
 

@@ -163,11 +163,11 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
         assert "open" not in cmd["Command"].lower()
         assert "tab=open" not in cmd["Target"]
 
-    # the launch line: exactly [binary, autorun-url] with the official params
+    # the launch line: [binary, -new-tab, autorun-url] with the official params
     assert len(popen.calls) == 1
     argv = popen.calls[0]
-    assert argv[0] == str(binary) and len(argv) == 2
-    url = argv[1]
+    assert argv[0] == str(binary) and argv[1] == "-new-tab" and len(argv) == 3
+    url = argv[2]
     assert url.startswith("file://") and "ui.vision.html?" in url
     for param in ("macro=Python_XClick_Demo", "storage=xfile", "direct=1",
                   "savelog=", "cmd_var1=", "cmd_var2=", "cmd_var3=", "closeRPA=1"):
@@ -267,7 +267,7 @@ async def test_both_patterns_blank_runs_every_open_tab_behind_a_warning(
     assert result.kind == "ok"
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "both patterns are empty — the macro will run on EVERY open tab (1 tab(s))" in text
-    assert popen.calls == [[str(binary), popen.calls[0][1]]]
+    assert popen.calls == [[str(binary), "-new-tab", popen.calls[0][2]]]
 
 
 async def test_both_patterns_blank_and_no_tabs_blocks_before_any_file(tmp_path, frozen_time):
@@ -384,10 +384,10 @@ async def test_two_profiles_get_one_run_each_in_their_own_instance(tmp_path, fro
     assert first[:3] == [str(binary), "-P", "Work"]          # named profile → -P name
     assert second[:3] == [str(binary), "-profile", "/ff/p2.play"]   # unnamed → -profile dir
     for argv in (first, second):
-        assert len(argv) == 4 and argv[-1].startswith("file://")
+        assert len(argv) == 5 and "-new-tab" in argv and argv[-1].startswith("file://")
 
-    q1 = parse_qs(urlsplit(first[3]).query)
-    q2 = parse_qs(urlsplit(second[3]).query)
+    q1 = parse_qs(urlsplit(first[-1]).query)
+    q2 = parse_qs(urlsplit(second[-1]).query)
     assert q1["cmd_var3"] == ["title=*A1*"]                  # THIS profile's tab
     assert q2["cmd_var3"] == ["title=*B1*"]                  # not the pattern's first match
     assert q1["savelog"][0].endswith(f"run-{STAMP}.txt")
@@ -425,7 +425,7 @@ async def test_second_tab_of_one_profile_gets_its_own_run(tmp_path, frozen_time)
                                      profiles=lambda: one, addon=lambda: True,
                                      probe=lambda: True))
     assert result.kind == "ok"
-    assert [parse_qs(urlsplit(call[3]).query)["cmd_var3"][0] for call in popen.calls] == [
+    assert [parse_qs(urlsplit(call[-1]).query)["cmd_var3"][0] for call in popen.calls] == [
         "title=*First*", "title=*Second*"]
     assert all(call[1:3] == ["-P", "Work"] for call in popen.calls)
 
@@ -504,9 +504,9 @@ async def test_no_profiles_answer_falls_back_to_todays_single_run(tmp_path, froz
                                      profiles=lambda: [], addon=lambda: True,
                                      probe=lambda: True))
     assert result.kind == "ok"
-    assert popen.calls == [[str(binary), popen.calls[0][1]]]
-    assert len(popen.calls[0]) == 2                          # exactly [binary, url]
-    q = parse_qs(urlsplit(popen.calls[0][1]).query)
+    assert popen.calls == [[str(binary), "-new-tab", popen.calls[0][2]]]
+    assert len(popen.calls[0]) == 3                          # exactly [binary, -new-tab, url]
+    q = parse_qs(urlsplit(popen.calls[0][2]).query)
     assert q["cmd_var3"] == ["title=*arena.ai*"]             # the pattern, untargeted
 
 
@@ -599,9 +599,9 @@ async def test_url_pattern_runs_one_macro_per_matching_tab_across_profiles(
     assert result.kind == "ok" and result.message == "all 2 run(s) ok"
     first, second = popen.calls
     assert first[1:3] == ["-P", "Work"] and second[1:3] == ["-profile", "/ff/p2.play"]
-    selectors = [parse_qs(urlsplit(a[3]).query)["cmd_var3"][0] for a in popen.calls]
+    selectors = [parse_qs(urlsplit(a[-1]).query)["cmd_var3"][0] for a in popen.calls]
     assert selectors == ["title=*Image One*", "title=*Image Two*"]   # tab's OWN title
-    assert all("cmd_var1=" in a[3] and "savelog=" in a[3] for a in popen.calls)
+    assert all("cmd_var1=" in a[-1] and "savelog=" in a[-1] for a in popen.calls)
 
 
 async def test_url_search_reports_its_filters_and_warns_when_unmapped(
@@ -631,7 +631,7 @@ async def test_title_and_url_patterns_combine_and_cut_the_matches(tmp_path, froz
                             lambda *_a: None, url_seams(popen))
     assert result.kind == "ok"
     assert len(popen.calls) == 1                                   # only "Image One" ran
-    assert parse_qs(urlsplit(popen.calls[0][3]).query)["cmd_var3"] == ["title=*Image One*"]
+    assert parse_qs(urlsplit(popen.calls[0][-1]).query)["cmd_var3"] == ["title=*Image One*"]
 
 
 async def test_url_only_search_with_no_match_blocks_by_name(tmp_path, frozen_time):
@@ -671,7 +671,7 @@ async def test_titleless_url_match_is_skipped_with_a_warning(tmp_path, frozen_ti
     assert "matched but has no TITLE" in text
     assert "warn" in [lvl for s, _m, lvl in rows if "no TITLE" in _m]
     assert len(popen.calls) == 1                                    # only the titled tab
-    assert parse_qs(urlsplit(popen.calls[0][3]).query)["cmd_var3"] == ["title=*Titled*"]
+    assert parse_qs(urlsplit(popen.calls[0][-1]).query)["cmd_var3"] == ["title=*Titled*"]
 
 
 # ── profile selection + skip_no_match (2026-09-24) ───────────────────────────

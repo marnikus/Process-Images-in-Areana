@@ -121,8 +121,11 @@ def _checked(argv: list) -> list:
 
 
 def build_argv(binary: str, url: str) -> list:
-    """`[binary, url]` — the single-run launch line (the critical rule as code)."""
-    return _checked([binary, url])
+    """`[binary, -new-tab, url]` — the single-run launch line (the critical rule as code).
+
+    `-new-tab` opens the autostart URL as a tab, not a new window.
+    """
+    return _checked([binary, "-new-tab", url])
 
 
 def profile_args(name: str = "", profile_dir: str = "") -> tuple:
@@ -142,8 +145,14 @@ def profile_args(name: str = "", profile_dir: str = "") -> tuple:
 
 
 def profile_argv(binary: str, url: str, profile_args: tuple = ()) -> list:
-    """`[binary, *profile-args, url]` — one run aimed at one profile instance."""
-    return _checked([binary, *(profile_args or ()), url])
+    """`[binary, *profile-args, -new-tab, url]` — one run aimed at one profile instance.
+
+    `-new-tab` forces the autostart URL to open as a tab in the existing
+    Firefox window instead of a separate window (2026-09-24, owner fix:
+    the autostart page was opening as a new window per run, which was
+    disruptive and left orphan windows after the macro finished).
+    """
+    return _checked([binary, *(profile_args or ()), "-new-tab", url])
 
 
 def launch(argv, popen=None):

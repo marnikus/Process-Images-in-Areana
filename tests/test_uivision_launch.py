@@ -12,9 +12,9 @@ from app.browser.uivision import launch
 pytestmark = pytest.mark.unit
 
 
-def test_argv_is_exactly_binary_and_url():
+def test_argv_is_exactly_binary_newtab_and_url():
     argv = launch.build_argv("/usr/bin/firefox", "file:///tmp/ui.vision.html?macro=X")
-    assert argv == ["/usr/bin/firefox", "file:///tmp/ui.vision.html?macro=X"]
+    assert argv == ["/usr/bin/firefox", "-new-tab", "file:///tmp/ui.vision.html?macro=X"]
 
 
 def test_banned_vocabulary_is_refused_wherever_it_rides():

@@ -157,7 +157,7 @@ def test_launch_profile_args_and_argv():
     assert launch.profile_args("", "/ff/p2") == ("-profile", "/ff/p2")
     assert launch.profile_args("", "") == ()
     argv = launch.profile_argv("/usr/bin/firefox", "file:///x?macro=M", ("-P", "Work"))
-    assert argv == ["/usr/bin/firefox", "-P", "Work", "file:///x?macro=M"]
+    assert argv == ["/usr/bin/firefox", "-P", "Work", "-new-tab", "file:///x?macro=M"]
     assert launch.profile_argv("/usr/bin/firefox", "file:///x") == \
         launch.build_argv("/usr/bin/firefox", "file:///x")     # no profile → the plain argv
     with pytest.raises(ValueError, match="debugger/driver"):
