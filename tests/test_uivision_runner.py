@@ -651,13 +651,19 @@ async def test_url_only_search_with_no_match_blocks_by_name(tmp_path, frozen_tim
     assert any(lvl == "warn" and "no OPEN tab matches" in msg for _s, msg, lvl in rows)
 
 
-async def test_titleless_url_match_is_skipped_with_a_warning(tmp_path, frozen_time):
-    """A matched tab without a title cannot be selected — warned, others still run."""
+async def test_titleless_url_match_runs_with_url_pattern_as_glob(tmp_path, frozen_time):
+    """A titleless tab can still be selected — the URL pattern rides the title glob.
+
+    The 2026-09-24 fix: when a tab has no title but the URL pattern is set,
+    the URL pattern is the only anchor `selectWindow` can use (it matches
+    `document.title` only — there is no `url=` selector). The tab is no
+    longer skipped with a warning; it runs with `title=*<URL pattern>*`.
+    """
     binary = tmp_path / "firefox"
     binary.write_text("#!/bin/sh\n")
-    write_logs(tmp_path, [f"run-{STAMP}.txt"])
+    write_logs(tmp_path, [f"run-{STAMP}.txt", f"run-{STAMP}-2.txt"])
     popen = FakePopen()
-    rows, report = reports()
+    _rows, report = reports()
     sessions = [{"name": "Work", "dir": "/ff/p1", "rows": [
         {"url": "https://arena.ai/image/blank", "title": ""},
         {"url": "https://arena.ai/image/titled", "title": "Titled"}],
@@ -667,11 +673,9 @@ async def test_titleless_url_match_is_skipped_with_a_warning(tmp_path, frozen_ti
                                              profiles=lambda: sessions,
                                              addon=lambda: True, probe=lambda: True))
     assert result.kind == "ok"
-    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
-    assert "matched but has no TITLE" in text
-    assert "warn" in [lvl for s, _m, lvl in rows if "no TITLE" in _m]
-    assert len(popen.calls) == 1                                    # only the titled tab
-    assert parse_qs(urlsplit(popen.calls[0][-1]).query)["cmd_var3"] == ["title=*Titled*"]
+    assert len(popen.calls) == 2                                    # BOTH tabs run now
+    selectors = sorted(parse_qs(urlsplit(call[-1]).query)["cmd_var3"][0] for call in popen.calls)
+    assert selectors == ["title=*Titled*", "title=*arena.ai/image/*"]   # titled + URL glob
 
 
 # ── profile selection + skip_no_match (2026-09-24) ───────────────────────────
@@ -741,6 +745,74 @@ async def test_skip_no_match_warns_per_profile_when_off(tmp_path, frozen_time, m
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "waiting up to 10s" in text
     assert "no matching tab after 10s — skipped" in text
+
+
+async def test_multi_profile_advances_one_run_per_profile_not_a_cycle_on_the_first(
+        tmp_path, frozen_time):
+    """Three profiles, one matching tab each → three runs, one per profile (no cycle).
+
+    The 2026-09-24 owner fix: the previous (truncated) selector let the same
+    first-profile tab be addressed on a re-pass, looping on the first profile
+    and never reaching the others. The full-title selector is unique per tab,
+    so the planned runs advance across profiles as intended.
+    """
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt", f"run-{STAMP}-2.txt", f"run-{STAMP}-3.txt"])
+    popen = FakePopen()
+    sessions = [
+        {"name": "Alpha", "dir": "/ff/alpha", "rows": [
+            {"url": "https://arena.ai/a", "title": "Alpha Tab"}],
+         "windows": [], "source": "", "stamp": 1.0},
+        {"name": "Beta", "dir": "/ff/beta", "rows": [
+            {"url": "https://arena.ai/b", "title": "Beta Tab"}],
+         "windows": [], "source": "", "stamp": 2.0},
+        {"name": "Gamma", "dir": "/ff/gamma", "rows": [
+            {"url": "https://arena.ai/c", "title": "Gamma Tab"}],
+         "windows": [], "source": "", "stamp": 3.0},
+    ]
+    result = await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"),
+                            lambda *_a: None, RunSeams(
+        sleep=noop_sleep, popen=popen,
+        profiles=lambda: sessions, addon=lambda: True, probe=lambda: True))
+    assert result.kind == "ok"
+    assert len(popen.calls) == 3                                  # one run per profile
+    # each run uses ITS OWN profile's argv prefix
+    prefixes = [(call[1], call[2]) for call in popen.calls]
+    assert prefixes == [("-P", "Alpha"), ("-P", "Beta"), ("-P", "Gamma")]
+    # each run uses ITS OWN tab's full title as the selector (unique per tab)
+    selectors = [parse_qs(urlsplit(call[-1]).query)["cmd_var3"][0] for call in popen.calls]
+    assert selectors == ["title=*Alpha Tab*", "title=*Beta Tab*", "title=*Gamma Tab*"]
+
+
+async def test_first_run_no_cycle_when_seen_set_is_injected(tmp_path, frozen_time):
+    """A re-pass with an injected `seen` set cannot re-plan the same tab.
+
+    The 2026-09-24 fix: the previous failure path re-planned the same tab
+    on every retry because the truncated title selector still matched.
+    The dedupe gate (`plan.dedupe_targets`) drops any target whose
+    `(profile_dir, url)` is already in `seen`, so the loop cannot cycle.
+    A re-pass where every target is already in `seen` produces zero
+    planned runs and a clean "no work to do" answer.
+    """
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt"])
+    popen = FakePopen()
+    sessions = [{"name": "Alpha", "dir": "/ff/alpha", "rows": [
+        {"url": "https://arena.ai/a", "title": "Alpha Tab"}],
+        "windows": [], "source": "", "stamp": 1.0}]
+    # seen already contains the only target → dedupe drops it → 0 planned runs
+    seen = [("/ff/alpha", "https://arena.ai/a")]
+    spec = make_spec(tmp_path, pattern="", url_pattern="arena.ai")
+    result = await run_test(spec, lambda *_a: None, RunSeams(
+        sleep=noop_sleep, popen=popen,
+        profiles=lambda: sessions, addon=lambda: True, probe=lambda: True,
+        seen=lambda: seen))
+    # 0 planned runs → the sequence has no work; rollup says "all 0 run(s) ok"
+    assert result.kind == "ok"
+    assert result.message == "all 0 run(s) ok"
+    assert popen.calls == []                               # no launch happened
 
 
 async def test_wait_for_tab_finds_it_during_the_poll(tmp_path, frozen_time, monkeypatch):

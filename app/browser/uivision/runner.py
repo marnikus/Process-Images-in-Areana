@@ -70,6 +70,7 @@ class RunSeams:
     probe: object = None      # callable → desktop-module-listening bool
     windows: object = None    # callable → per-window session rows (tests fake them)
     profiles: object = None   # callable → per-profile session rows (tests fake them)
+    seen: object = None       # callable → iterable of (profile_dir, url) already planned
 
 
 class _Recorder:
@@ -161,9 +162,9 @@ def _report_no_matches(spec: RunSpec, report) -> None:
                      f"page in the matching Firefox first", "warn")
 
 
-def _report_clashes(targets, pattern: str, report) -> None:
+def _report_clashes(targets, spec: RunSpec, report) -> None:
     """Duplicate selectors inside one profile cannot each hit their own tab — say so."""
-    for selector, label, count in plan.clashes(targets, pattern):
+    for selector, label, count in plan.clashes(targets, spec.pattern, spec.url_pattern):
         report("detect", f"profile “{label}”: {count} tab(s) match “{selector}” — the "
                          f"title selector cannot tell them apart; each run lands on "
                          f"the first one", "warn")
@@ -173,7 +174,7 @@ def _report_plan(targets, spec: RunSpec, structured: bool, report) -> None:
     """The run-plan lines: the plan summary, selector clashes, the blank warning."""
     if len(targets) >= 2:
         report("detect", f"run plan: {plan.summarize(targets, structured)}")
-        _report_clashes(targets, spec.pattern, report)
+        _report_clashes(targets, spec, report)
     _report_blank_search(targets, spec, report)
 
 
@@ -303,7 +304,7 @@ def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
 
 def _drop_unaddressable(targets, spec: RunSpec, recorder: _Recorder) -> list:
     """Warn per titleless match and keep only tabs the macro can actually select."""
-    addressable, titleless = plan.split_unaddressable(targets, spec.pattern)
+    addressable, titleless = plan.split_unaddressable(targets, spec.pattern, spec.url_pattern)
     for target in titleless:
         recorder("detect", f"tab {target.url[:90]} matched but has no TITLE — "
                            f"selectWindow can only pick a tab by title; open the page "
@@ -487,7 +488,27 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
         return _result("blocked", str(exc), recorder)
     if not targets:
         targets = [plan.Target()]          # today's single run: the OS handoff decides
-    runs = plan.runs(targets, spec.pattern, spec.config_dir, time.strftime("%Y%m%d-%H%M%S"))
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    # No-cycle gate (2026-09-24 owner fix): a re-pass of this same call cannot
+    # re-plan the same (profile_dir, url) — the "first run fails, subsequent
+    # runs work" symptom stops here.
+    seen = _seen_from_spec(seams)
+    targets = plan.dedupe_targets(targets, seen)
+    runs = plan.runs(targets, spec, stamp)
     executor = Sequence(spec, seams, recorder)
     executor.page = str(page)
     return await executor.execute(runs)
+
+
+def _seen_from_spec(seams: RunSeams) -> set:
+    """The (profile_dir, url) keys the runner has already planned this run.
+
+    Default: empty set. Tests inject a `_seen_seam()` returning a populated
+    set when they want to assert the gate. Production callers do not need
+    one because `run_test` is one-shot per UI run button — the dedupe is a
+    safety net for re-passes within the same call.
+    """
+    seam = getattr(seams, "seen", None)
+    if seam is not None:
+        return set(seam())
+    return set()

@@ -85,25 +85,34 @@ def describe_search(pattern, url_pattern) -> str:
     return f"{left} + {right}"
 
 
-TITLE_SELECTOR_MAX = 40  # chars — long titles are fragile (session store may be stale)
+# The `selectWindow` selector is always `title=*<glob>*` (Ui.Vision has no `url=`
+# selector; the A9T9 source matches on `document.title` only — verified against
+# ui.vision/rpa/docs/selenium-ide/selectwindow). The glob is a case-sensitive
+# substring match with `*` wildcards on either side.
+# ideal-size: 12 lines reason=the three-tier priority the owner specified
+# (title > url > distinctive fragment); pure function, no I/O.
+def selector_for(target: Target, pattern: str, url_pattern: str = "") -> str:
+    """The selectWindow target — `title=*<glob>*` with the owner's priority.
 
+    Priority (2026-09-24 owner fix): TAB TITLE PATTERN > the tab's own title
+    (full, never truncated) > URL pattern as a last-resort title glob.
 
-def selector_for(target: Target, pattern: str) -> str:
-    """The selectWindow target: prefer user's pattern, fall back to tab's title.
-
-    When the user sets a pattern (e.g., "Arena"), use it as the selector — it's
-    shorter, more robust, and reflects the user's intent. Only fall back to the
-    tab's full title when the pattern is empty. Long titles are truncated to
-    TITLE_SELECTOR_MAX chars to survive minor title changes (2026-09-24, E212 fix).
+    Ui.Vision's `selectWindow` matches on `document.title` only — there is
+    no `url=` selector. The previous 40-char truncation was the E212 bug
+    (full titles match by substring definition; the clip cut distinctive
+    tokens). URL pattern is used as the glob only when the tab has no
+    title at all (the URL pattern is the only thing the user gave us).
     """
-    want = (pattern or "").strip()
-    if want:
-        return f"title=*{want}*"
+    title_pat = (pattern or "").strip()
+    if title_pat:
+        return f"title=*{title_pat}*"
     title = (target.title or "").strip()
-    if not title:
-        return ""
-    clipped = title[:TITLE_SELECTOR_MAX] if len(title) > TITLE_SELECTOR_MAX else title
-    return f"title=*{clipped}*"
+    if title:
+        return f"title=*{title}*"
+    url_pat = (url_pattern or "").strip()
+    if url_pat:
+        return f"title=*{url_pat}*"
+    return ""
 
 
 def run_label(target: Target) -> str:
@@ -135,17 +144,18 @@ def plan_targets(sessions, pattern: str, url_pattern: str = "") -> list:
     return targets
 
 
-def split_unaddressable(targets, pattern: str) -> tuple:
+def split_unaddressable(targets, pattern: str, url_pattern: str = "") -> tuple:
     """([addressable], [titleless]) — `selectWindow` can only pick a titled tab.
 
     A tab matched by URL whose title is empty has no title glob to select it
     with; the runner warns per skipped tab instead of pretending (RULE 4).
+    `url_pattern` is passed through so the URL pattern can drive the glob.
     """
-    ok = [t for t in targets or [] if selector_for(t, pattern)]
-    return ok, [t for t in targets or [] if not selector_for(t, pattern)]
+    ok = [t for t in targets or [] if selector_for(t, pattern, url_pattern)]
+    return ok, [t for t in targets or [] if not selector_for(t, pattern, url_pattern)]
 
 
-def clashes(targets, pattern: str) -> list:
+def clashes(targets, pattern: str, url_pattern: str = "") -> list:
     """(selector, profile label, count) for selectors reused inside one profile.
 
     Two tabs sharing a title cannot be told apart by `title=` — the runner warns
@@ -154,7 +164,7 @@ def clashes(targets, pattern: str) -> list:
     counts: dict = {}
     for target in targets or []:
         key = (profile_label(target.profile_name, target.profile_dir),
-               selector_for(target, pattern))
+               selector_for(target, pattern, url_pattern))
         counts[key] = counts.get(key, 0) + 1
     return [(selector, label, count) for (label, selector), count in counts.items()
             if count > 1]
@@ -172,14 +182,41 @@ def summarize(targets, real: bool) -> str:
     return f"{len(targets)} macro run(s) — {parts}"
 
 
-def runs(targets, pattern: str, config_dir, stamp: str) -> list:
-    """Every target as a PlannedRun: selector, profile args, its own savelog."""
+def runs(targets, spec, stamp: str = "") -> list:
+    """Every target as a PlannedRun: selector, profile args, its own savelog.
+
+    `spec` carries the search filters (`pattern`, `url_pattern`) and the
+    config dir; `stamp` rides separately so the runner can pin the
+    savelog timestamp on every run of one `run_test` call (it would
+    otherwise drift inside the loop). Three params keeps the new code
+    under the RULE 16 cap; positional callers can still pass
+    `runs(targets, RunSpec(...))` because `stamp` defaults to `""`.
+    """
+    pattern = getattr(spec, "pattern", "")
+    url_pattern = getattr(spec, "url_pattern", "")
+    config_dir = getattr(spec, "config_dir", "")
     total = len(targets or [])
     planned = []
     for index, target in enumerate(targets or [], 1):
         planned.append(PlannedRun(
             target=target, index=index, total=total, label=run_label(target),
-            selector=selector_for(target, pattern),
+            selector=selector_for(target, pattern, url_pattern),
             profile_args=launch.profile_args(target.profile_name, target.profile_dir),
             log_path=str(paths.log_file(config_dir, stamp, part=index if index > 1 else 0))))
     return planned
+
+
+def dedupe_targets(targets, seen) -> list:
+    """Drop targets whose (profile_dir, url) is already in `seen` — the no-cycle gate.
+
+    A `run_test` call records every target it actually plans, then re-runs of
+    the same call (the "first run fails, subsequent runs work" symptom) no
+    longer re-plan the same tab — without this gate the multi-profile
+    sequence can cycle on the first profile because the failed run still
+    shows up in the session store on the next pass.
+    """
+    seen_set = set(seen or ())
+    if not seen_set:
+        return list(targets or [])
+    return [t for t in (targets or [])
+            if (str(t.profile_dir or ""), str(t.url or "")) not in seen_set]

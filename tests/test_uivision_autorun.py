@@ -33,9 +33,41 @@ def spec_for(tmp_path, **over):
 def test_page_html_is_the_vendored_autorun_page():
     page = autorun.PAGE_HTML
     for marker in ("kantuSaveAndRunMacro", "noImport: true", "storageMode: 'browser'",
-                   "data-kantu", "Error #203", "Error #204", "kantuInvokeSuccess"):
+                   "data-kantu", "Error #203", "Error #204", "kantuInvokeSuccess",
+                   "kantuInvokeError"):
         assert marker in page, marker
     assert "<title>Ui.Vision Autostart Page</title>" in page
+
+
+def test_page_html_error_path_does_not_close_or_navigate():
+    """On macro error the autorun page stays put — no window.close, no about:blank.
+
+    The 2026-09-24 owner fix: closing or navigating the autorun tab on error
+    can race the extension's cleanup and overwrite the user-prepared tab
+    the macro was supposed to find. The Ui.Vision docs already document
+    this UX ("the Ui.Vision RPA window stays open if … the macro stops
+    with an error"). The Error #203 timer is kept so a missing file-URL
+    permission still surfaces.
+    """
+    page = autorun.PAGE_HTML
+    # Locate the error handler block (between kantuInvokeError listener add and
+    # the next '});' — we read it as one string and check the absence of the
+    # two calls).
+    start = page.index("onInvokeError = function () {")
+    end = page.index("window.addEventListener('kantuInvokeError', onInvokeError)",
+                     start)
+    block = page[start:end]
+    assert "window.close" not in block, "error handler must NOT call window.close"
+    assert "about:blank" not in block, "error handler must NOT navigate to about:blank"
+    # the success path keeps its cleanup — close is still legal there
+    start_ok = page.index("onInvokeSuccess = function () {")
+    end_ok = page.index("window.addEventListener('kantuInvokeSuccess', onInvokeSuccess)",
+                        start_ok)
+    ok_block = page[start_ok:end_ok]
+    assert "window.close" in ok_block
+    assert "about:blank" in ok_block
+    # the 8s permission-error alert is on both paths
+    assert page.count("Error #203") == 1      # one declaration, both paths share
 
 
 def test_write_page_creates_once_and_heals(tmp_path):
@@ -49,6 +81,48 @@ def test_write_page_creates_once_and_heals(tmp_path):
     page.write_text("broken", encoding="utf-8")
     autorun.write_page(page)                      # differs: rewritten
     assert page.read_text(encoding="utf-8") == autorun.PAGE_HTML
+
+
+def test_write_page_overwrites_older_autorun_with_old_close_on_error(tmp_path):
+    """An older autorun page (pre-fix `window.close()` on error) is rewritten.
+
+    The 2026-09-24 owner fix removed `window.close() + about:blank` from
+    the error path. If the user already had an older `ui.vision.html`
+    on disk (from an earlier chat session / older code), the next
+    `write_page` call MUST replace it — the on-disk page is the file
+    the extension loads, and a stale copy defeats the protected-tab rule.
+    `write_page` is idempotent on identical content but always rewrites
+    when content differs (the file's mtime would also be stale), so this
+    is guaranteed by construction.
+    """
+    page = tmp_path / "uivision" / "ui.vision.html"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    # Simulate an OLDER autorun page that closes on error
+    old_page = """
+    <html><body><script>
+    var onInvokeError = function () {
+      clearTimeout(timer);
+      window.close();
+      window.location.href = 'about:blank';
+    }
+    </script></body></html>
+    """
+    page.write_text(old_page, encoding="utf-8")
+    # First sanity: the stale file DOES close on error
+    assert "window.close" in page.read_text(encoding="utf-8")
+    # Now simulate a run: write_page is called
+    autorun.write_page(page)
+    # The new page MUST be the current one
+    assert page.read_text(encoding="utf-8") == autorun.PAGE_HTML
+    # Extract only the error handler block and assert no close/navigate
+    content = page.read_text(encoding="utf-8")
+    start = content.index("onInvokeError = function () {")
+    end = content.index("window.addEventListener('kantuInvokeError', onInvokeError)",
+                        start)
+    error_block = content[start:end]
+    assert "window.close" not in error_block, \
+        "stale autorun page must NOT survive — the protected-tab rule depends on it"
+    assert "about:blank" not in error_block
 
 
 def test_launch_url_carries_the_whitelisted_params_and_no_url(tmp_path):

@@ -97,15 +97,16 @@ def test_selector_prefers_the_user_pattern_over_tab_title():
 
     When the user sets a pattern (e.g., "arena"), it's used as the selector —
     shorter, more robust, and reflects the user's intent. Only when the pattern
-    is empty does the tab's full title become the selector (2026-09-24 fix for
-    E212 errors when the session store title is stale).
+    is empty does the tab's full title become the selector (the previous 40-char
+    truncation was the E212 bug — full titles match by substring definition,
+    2026-09-24 fix).
     """
     target = plan.Target(profile_name="Work", url="https://arena.ai/b", title="Arena — chat")
     fallback = plan.Target()
     # user pattern set → use it (even when the tab has its own title)
     assert plan.selector_for(target, "arena") == "title=*arena*"
     assert plan.selector_for(fallback, "arena") == "title=*arena*"
-    # user pattern empty → fall back to the tab's title
+    # user pattern empty → fall back to the tab's FULL title (no truncation)
     assert plan.selector_for(target, "") == "title=*Arena — chat*"
     assert plan.selector_for(target, "  ") == "title=*Arena — chat*"
     # both empty → no selector
@@ -113,17 +114,51 @@ def test_selector_prefers_the_user_pattern_over_tab_title():
     assert plan.selector_for(fallback, "  ") == ""
 
 
-def test_selector_truncates_long_tab_titles():
-    """Long titles from the session store are fragile — truncate to survive changes."""
+def test_selector_uses_full_long_title_without_truncation():
+    """Long titles from the session store are used whole — Ui.Vision substring-matches.
+
+    The previous 40-char clip cut distinctive tokens and produced E212 when
+    the actual title was longer (the bug report's example: "Directly Chat
+    with Frontier Image Genera" vs the real "Directly Chat with Frontier
+    Image Generation AI Models — Arena").
+    """
     long_title = "Directly Chat with Frontier Image Generation AI Models — Arena"
     target = plan.Target(title=long_title)
-    selector = plan.selector_for(target, "")
-    assert len(selector) <= plan.TITLE_SELECTOR_MAX + len("title=**")
-    assert selector.startswith("title=*")
-    assert selector.endswith("*")
-    # the clipped title is the first TITLE_SELECTOR_MAX chars
-    inner = selector[len("title=*"):-1]
-    assert inner == long_title[:plan.TITLE_SELECTOR_MAX]
+    assert plan.selector_for(target, "") == f"title=*{long_title}*"
+
+
+def test_selector_url_pattern_drives_the_title_glob_only_for_titleless_tabs():
+    """URL pattern is the last-resort title glob — only when the tab has no title.
+
+    Ui.Vision's `selectWindow` matches on `document.title` only; when a
+    matched tab has no title (e.g. `about:blank` just opened) the URL
+    pattern is the only anchor we have. When a title exists it wins — the
+    per-tab selector stays unique across the sequence (a tab title is
+    more specific than a URL substring shared by every matching tab).
+    """
+    titled = plan.Target(title="Arena — chat", url="https://arena.ai/image/")
+    titleless = plan.Target(title="", url="https://arena.ai/image/")
+    # titled tab → title wins even when URL pattern is set
+    assert plan.selector_for(titled, "", "arena.ai/image") == "title=*Arena — chat*"
+    assert plan.selector_for(titled, "", "") == "title=*Arena — chat*"
+    # titleless tab → URL pattern rides the glob (the only signal we have)
+    assert plan.selector_for(titleless, "", "arena.ai/image") == "title=*arena.ai/image*"
+    # both patterns set → title pattern still wins
+    assert plan.selector_for(titled, "Arena", "arena.ai/image") == "title=*Arena*"
+
+
+def test_dedupe_targets_drops_already_seen_keys():
+    """The no-cycle gate: a target whose (profile_dir, url) is in `seen` is dropped."""
+    a = plan.Target(profile_dir="/ff/p1", url="https://arena.ai/1")
+    b = plan.Target(profile_dir="/ff/p1", url="https://arena.ai/2")
+    c = plan.Target(profile_dir="/ff/p2", url="https://arena.ai/2")
+    seen = {(str(a.profile_dir), str(a.url))}
+    kept = plan.dedupe_targets([a, b, c], seen)
+    assert [t.url for t in kept] == ["https://arena.ai/2", "https://arena.ai/2"]   # b + c kept
+    # seen with profile_dir+url matches → c is from a different profile → kept
+    assert plan.dedupe_targets([a], set()) == [a]                                  # empty seen
+    assert plan.dedupe_targets([], {(("/ff/x", "https://x"))}) == []               # empty list
+    assert plan.dedupe_targets(None, set()) == []                                  # None input
 
 
 def test_profile_label_prefers_the_ini_name_then_the_basename():
@@ -142,8 +177,10 @@ def test_anonymous_session_wraps_the_flat_rows_seam():
 
 def test_runs_render_selector_profile_args_and_per_run_savelogs(tmp_path):
     """Each planned run: own title selector, own -P prefix, own savelog file."""
+    from types import SimpleNamespace
     targets = plan.plan_targets(SESSIONS, "", "arena.ai")
-    runs = plan.runs(targets, "", tmp_path, "20260923-120000")
+    runs = plan.runs(targets, SimpleNamespace(pattern="", url_pattern="arena.ai",
+                                              config_dir=tmp_path), "20260923-120000")
     assert [r.index for r in runs] == [1, 2] and runs[0].total == 2
     assert runs[0].selector == "title=*A1*" and runs[1].selector == "title=*B1*"
     assert runs[0].profile_args == ("-P", "Work")          # named → -P name
@@ -155,7 +192,10 @@ def test_runs_render_selector_profile_args_and_per_run_savelogs(tmp_path):
 
 def test_runs_fallback_target_uses_the_plain_handoff(tmp_path):
     """No store answer / no match: today's single run — no -P, the pattern glob."""
-    runs = plan.runs([plan.Target()], "arena.ai", tmp_path, "S")
+    from types import SimpleNamespace
+    runs = plan.runs([plan.Target()],
+                     SimpleNamespace(pattern="arena.ai", url_pattern="",
+                                     config_dir=tmp_path), "S")
     assert len(runs) == 1
     assert runs[0].profile_args == () and runs[0].selector == "title=*arena.ai*"
 

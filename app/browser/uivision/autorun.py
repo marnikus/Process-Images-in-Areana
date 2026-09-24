@@ -85,16 +85,19 @@ PAGE_HTML = """<?xml version="1.0" encoding="UTF-8"?>
 
         window.addEventListener('kantuInvokeSuccess', onInvokeSuccess)
 
-        /* Also close on macro error — the savelog already carries the verdict. */
+        /* On error: stay visible. The user must read the verdict (savelog file
+           already has it, but the page is the live surface). Closing or
+           navigating this tab can race the extension's cleanup and overwrite
+           the user-prepared tab the macro was supposed to find — the user's
+           active Arena session, login state, and in-progress generation are
+           destroyed. The Ui.Vision docs already document this UX: "the
+           Ui.Vision RPA window stays open if you manually press STOP during
+           the macro run or if the macro stops with an error". */
         var onInvokeError = function () {
           clearTimeout(timer)
           clearTimeout(reloadTimer)
           clearInterval(intervalTimer)
           window.removeEventListener('kantuInvokeError', onInvokeError)
-          setTimeout(function () {
-            try { window.close(); } catch (e) {}
-            try { window.location.href = 'about:blank'; } catch (e) {}
-          }, 500)
         }
         window.addEventListener('kantuInvokeError', onInvokeError)
       }
