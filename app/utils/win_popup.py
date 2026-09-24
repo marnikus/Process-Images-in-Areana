@@ -63,7 +63,13 @@ def _raise_handles(handles) -> int:
     """Restore + foreground each handle; best effort, returns count."""
     import ctypes
 
+    from ctypes import wintypes
+
     user32 = ctypes.windll.user32
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.SetForegroundWindow.restype = wintypes.BOOL
     raised = 0
     for hwnd in handles or []:
         try:

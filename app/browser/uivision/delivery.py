@@ -11,6 +11,9 @@ fallback (print the URL + steps, still poll the savelog) instead of crashing.
 
 from __future__ import annotations
 
+import ctypes
+
+
 class DeliveryError(OSError):
     """The autorun URL could not be delivered to its profile's window."""
 
@@ -84,34 +87,98 @@ CF_UNICODETEXT = 13
 GMEM_MOVEABLE = 0x0002
 
 
+class _MouseInput(ctypes.Structure):
+    """Windows MOUSEINPUT — the INPUT union's largest member (sizes the union)."""
+
+    _fields_ = [("dx", ctypes.c_int32), ("dy", ctypes.c_int32),
+                ("mouseData", ctypes.c_uint32), ("dwFlags", ctypes.c_uint32),
+                ("time", ctypes.c_uint32), ("dwExtraInfo", ctypes.c_void_p)]
+
+
+class _KeyboardInput(ctypes.Structure):
+    """Windows KEYBDINPUT — the only member SendInput touches here."""
+
+    _fields_ = [("wVk", ctypes.c_uint16), ("wScan", ctypes.c_uint16),
+                ("dwFlags", ctypes.c_uint32), ("time", ctypes.c_uint32),
+                ("dwExtraInfo", ctypes.c_void_p)]
+
+
+class _HardwareInput(ctypes.Structure):
+    """Windows HARDWAREINPUT — completes the union (never sent)."""
+
+    _fields_ = [("uMsg", ctypes.c_uint32),
+                ("wParamL", ctypes.c_uint16), ("wParamH", ctypes.c_uint16)]
+
+
+class _InputUnion(ctypes.Union):
+    """The INPUT union — 32 bytes, the mouse member sizes it."""
+
+    _fields_ = [("mi", _MouseInput), ("ki", _KeyboardInput), ("hi", _HardwareInput)]
+
+
+class _Input(ctypes.Structure):
+    """Windows INPUT — 40 bytes on 64-bit (type + padding + the union)."""
+
+    _anonymous_ = ("u",)
+    _fields_ = [("type", ctypes.c_uint32), ("u", _InputUnion)]
+
+
 def _keyboard_structs():
-    """(INPUT, size) — the SendInput structures (pure ctypes, safe to build anywhere)."""
-    import ctypes
+    """(INPUT, size) — the real Windows INPUT layout (40 bytes on 64-bit).
 
-    class KeyboardInput(ctypes.Structure):
-        _fields_ = [("wVk", ctypes.c_ushort), ("wScan", ctypes.c_ushort),
-                    ("dwFlags", ctypes.c_uint), ("time", ctypes.c_uint),
-                    ("dwExtraInfo", ctypes.c_void_p)]
+    Widths are pinned explicitly (a Windows LONG stays 32-bit on 64-bit),
+    so the layout measures identical wherever the tests run.
+    """
+    return _Input, ctypes.sizeof(_Input)
 
-    class Input(ctypes.Structure):
-        class _Union(ctypes.Union):
-            _fields_ = [("ki", KeyboardInput)]
-        _anonymous_ = ("u",)
-        _fields_ = [("type", ctypes.c_uint), ("u", _Union)]
 
-    return Input, ctypes.sizeof(Input)
+def _bind_clipboard(user32, kernel32) -> None:
+    """Clipboard HANDLE/pointer signatures — undeclared windll returns default
+    to 32-bit int, truncating 64-bit HANDLEs into access violations (2026-09-24)."""
+    from ctypes import wintypes
+    user32.OpenClipboard.argtypes = [wintypes.HWND]
+    user32.OpenClipboard.restype = wintypes.BOOL
+    user32.CloseClipboard.argtypes = []
+    user32.CloseClipboard.restype = wintypes.BOOL
+    user32.EmptyClipboard.argtypes = []
+    user32.EmptyClipboard.restype = wintypes.BOOL
+    user32.IsClipboardFormatAvailable.argtypes = [wintypes.UINT]
+    user32.IsClipboardFormatAvailable.restype = wintypes.BOOL
+    user32.GetClipboardData.argtypes = [wintypes.UINT]
+    user32.GetClipboardData.restype = wintypes.HANDLE
+    user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+    user32.SetClipboardData.restype = wintypes.HANDLE
+    kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+    kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalLock.restype = wintypes.LPVOID
+    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalUnlock.restype = wintypes.BOOL
+    kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalFree.restype = wintypes.HGLOBAL
+
+
+def _bind_keys(user32) -> None:
+    """SendInput + GetForegroundWindow signatures (the same truncation trap)."""
+    from ctypes import wintypes
+    user32.SendInput.argtypes = [wintypes.UINT, wintypes.LPVOID, ctypes.c_int]
+    user32.SendInput.restype = wintypes.UINT
+    user32.GetForegroundWindow.argtypes = []
+    user32.GetForegroundWindow.restype = wintypes.HWND
 
 
 def _send_keys(events) -> None:
     """[(vk, down)] through SendInput — one call, keys in order."""
     import ctypes
+    user32 = ctypes.windll.user32
+    _bind_keys(user32)
     pair, size = _keyboard_structs()
     array = (pair * len(events))()
     for pos, (vk, down) in enumerate(events):
         array[pos].type = INPUT_KEYBOARD
         array[pos].ki.wVk = vk
         array[pos].ki.dwFlags = 0 if down else KEYEVENTF_KEYUP
-    if not ctypes.windll.user32.SendInput(len(events), array, size):
+    if not user32.SendInput(len(events), array, size):
         raise DeliveryError("Windows refused the keystrokes (SendInput failed)")
 
 
@@ -147,6 +214,9 @@ def _set_clipboard_text(user32, kernel32, text: str) -> None:
         if not handle:
             raise DeliveryError("Windows refused the clipboard (GlobalAlloc failed)")
         locked = kernel32.GlobalLock(handle)
+        if not locked:
+            kernel32.GlobalFree(handle)
+            raise DeliveryError("Windows refused the clipboard (GlobalLock failed)")
         ctypes.memmove(locked, data, len(data))
         kernel32.GlobalUnlock(handle)
         if not user32.SetClipboardData(CF_UNICODETEXT, handle):
@@ -167,7 +237,9 @@ class Win32Ops:
     def foreground_window(self):
         """The handle owning the foreground right now."""
         import ctypes
-        return ctypes.windll.user32.GetForegroundWindow()
+        user32 = ctypes.windll.user32
+        _bind_keys(user32)
+        return user32.GetForegroundWindow()
 
     def send_ctrl(self, letter: str) -> None:
         """Ctrl+<letter> (Ctrl+T new tab, Ctrl+V paste)."""
@@ -181,12 +253,16 @@ class Win32Ops:
     def get_clipboard(self):
         """Current clipboard text or None."""
         import ctypes
-        return _clipboard_text(ctypes.windll.user32, ctypes.windll.kernel32)
+        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        _bind_clipboard(user32, kernel32)
+        return _clipboard_text(user32, kernel32)
 
     def set_clipboard(self, text: str) -> None:
         """Replace the clipboard text."""
         import ctypes
-        _set_clipboard_text(ctypes.windll.user32, ctypes.windll.kernel32, text)
+        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        _bind_clipboard(user32, kernel32)
+        _set_clipboard_text(user32, kernel32, text)
 
     def sleep(self, seconds: float) -> None:
         """A real settle pause (tests inject instant fakes)."""
