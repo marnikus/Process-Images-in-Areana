@@ -64,10 +64,15 @@ class _Flock(ctypes.Structure):
 
 def _held_windows(path: Path) -> bool:
     """Open the lock file without sharing — a live holder is the receipt."""
-    kernel32 = getattr(ctypes, "windll", None)
-    if kernel32 is None:
+    windll = getattr(ctypes, "windll", None)
+    if windll is None:
         return False
+    kernel32 = windll.kernel32
     kernel32.CreateFileW.restype = ctypes.c_void_p
+    kernel32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                                     ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                     ctypes.c_void_p]
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
     handle = kernel32.CreateFileW(str(path), _GEN_READ, 0, None, _OPEN_EXISTING, 0, None)
     if handle in (None, 0) or handle == _INVALID_HANDLE:
         return kernel32.GetLastError() in (_ERR_ACCESS_DENIED, _ERR_SHARING_VIOLATION)

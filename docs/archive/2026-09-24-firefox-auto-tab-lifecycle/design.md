@@ -220,4 +220,10 @@ Windows fact the first push missed: `import fcntl` at module level crashed the w
 chain on the owner's machine (`No module named 'fcntl'` at Save) — `fcntl` is unix-only, so
 the import is function-level inside `_held_fcntl` (a probe Windows never routes to), pinned
 by `test_module_imports_without_the_fcntl_module` (subprocess with `sys.modules['fcntl'] =
-None` importing the full chain).
+None` importing the full chain). Second miss, caught on the owner's machine (`Could not find
+module 'CreateFileW'` at Show profiles): `ctypes.windll.CreateFileW` treats the name as a DLL
+to load — the function lives on `windll.kernel32`. The probe now resolves
+`windll.kernel32.CreateFileW` with explicit `argtypes` (`c_wchar_p` path, `c_uint32` flags —
+`GENERIC_READ` overflows the default signed-32 int — and `c_void_p` for the 64-bit handle)
+and `restype = c_void_p`; the `ctypes.windll` stub in the tests mirrors the loader→DLL shape
+so a direct-on-loader call cannot pass again.

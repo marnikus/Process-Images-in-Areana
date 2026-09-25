@@ -27,10 +27,14 @@ pytestmark = pytest.mark.unit
 # ── the Windows probe: open without sharing, a live holder is the receipt ──
 
 class FakeKernel32:
+    """The kernel32 surface: CreateFileW / GetLastError / CloseHandle."""
+
     def __init__(self, handle=1, last_error=32):
         self.handle, self.last_error = handle, last_error
         self.closed = []
-        self.CreateFileW = self._make_create()       # a function: takes `restype`
+        # function objects: take the restype/argtypes the production sets
+        self.CreateFileW = self._make_create()
+        self.CloseHandle = self._make_close()
 
     def _make_create(self):
         def create(path, access, share, sa, disp, flags, template):
@@ -38,37 +42,49 @@ class FakeKernel32:
             return self.handle
         return create
 
+    def _make_close(self):
+        def close(handle):
+            self.closed.append(handle)
+            return 1
+        return close
+
     def GetLastError(self):
         return self.last_error
 
-    def CloseHandle(self, handle):
-        self.closed.append(handle)
-        return 1
+
+class FakeWindll:
+    """`ctypes.windll` shape — the function lives on the DLL, not on the loader."""
+
+    def __init__(self, kernel32):
+        self.kernel32 = kernel32
 
 
 def test_windows_probe_sharing_violation_means_running(monkeypatch):
     kernel = FakeKernel32(handle=ctypes.c_void_p(-1).value, last_error=32)
-    monkeypatch.setattr(ctypes, "windll", kernel, raising=False)
+    monkeypatch.setattr(ctypes, "windll", FakeWindll(kernel), raising=False)
     assert profile_lock._held_windows("C:\\ff\\a\\parent.lock") is True
     assert kernel.closed == []                      # nothing was opened
+    # the call contract is 64-bit-safe: c_void_p handle, uint32 flags
+    assert kernel.CreateFileW.restype is ctypes.c_void_p
+    assert kernel.CreateFileW.argtypes is not None
 
 
 def test_windows_probe_access_denied_means_running(monkeypatch):
     kernel = FakeKernel32(handle=ctypes.c_void_p(-1).value, last_error=5)
-    monkeypatch.setattr(ctypes, "windll", kernel, raising=False)
+    monkeypatch.setattr(ctypes, "windll", FakeWindll(kernel), raising=False)
     assert profile_lock._held_windows("C:\\ff\\a\\parent.lock") is True
 
 
 def test_windows_probe_clean_open_means_not_running(monkeypatch):
     kernel = FakeKernel32(handle=1, last_error=2)
-    monkeypatch.setattr(ctypes, "windll", kernel, raising=False)
+    monkeypatch.setattr(ctypes, "windll", FakeWindll(kernel), raising=False)
     assert profile_lock._held_windows("C:\\ff\\a\\parent.lock") is False
     assert kernel.closed == [1]                     # our probe handle released
 
 
 def test_windows_probe_missing_file_means_not_running(monkeypatch):
     kernel = FakeKernel32(handle=ctypes.c_void_p(-1).value, last_error=2)
-    monkeypatch.setattr(ctypes, "windll", kernel, raising=False)
+    monkeypatch.setattr(ctypes, "windll", FakeWindll(kernel), raising=False)
     assert profile_lock._held_windows("C:\\ff\\a\\parent.lock") is False
 
 
