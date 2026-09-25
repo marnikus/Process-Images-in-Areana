@@ -31,7 +31,7 @@ All claims below were verified by reading the named files on this branch (`arena
 1. **`config/arena.json` and `config/urls.json` do not exist in the current code.** The single live app-state file is **`config/app_state.json`** (`app/ui/main_window.py:58` default `state_path`), holding urls + folder + prompt + settings + images + jobs + progress + run_state. `arena.json`/`urls.json` survive only in stale docstrings (`app/core/action_blocks.py:19`, `app/ui/panels/url_queue.py:77`) and in `SYSTEM_OF_RECORD.md` §1/§6/row 20. The design below targets the **actual** files; the doc drift is item W10 (docs fix).
 2. **Window presets are NOT in `session.json`.** `SYSTEM_OF_RECORD.md` rows 18/20 say `window_preset_store` lives in session.json; the code uses a separate **`config/window_presets.json`** (`ConfigManager.__init__`). Code wins.
 3. **Undo is single-homed.** `SYSTEM_OF_RECORD.md` says undo persists in "session.json `undo_history` and config/undo.json". Today only **`config/undo.json`** is written (`UndoStore`); `session.json` has no `undo_history` writer — `app/ui/panels/layout_state.py::app_state_payload` only *reads* the undo service for the JS boot payload. `DEFAULT_SESSION` (config_manager.py) has no `undo_history` key.
-4. **`undo.json` write failure is silently swallowed** — `UndoStore.save()` catches everything and returns `False`; callers ignore it. Silent-loss risk (violates the spirit of "no silent data loss"); the workspace layer must surface undo save failures.
+4. **`undo.json` write failure is silently swallowed** — `UndoStore.save()` catches everything and returns `False`; callers ignore it. Silent-loss risk (violates the spirit of "no silent data loss"); the workspace layer must surface undo save failures. **(✓ 2026-09-25 W9: any store's capture failure — undo included — is reported per-domain with stage `capture` and blocks the save refusal; see §F.)**
 5. **The retry-on-sharing-violation fix (B10) covers only `app_state.json`.** `json_store.save_json_atomic` — used by session/undo/presets/cooldowns/job_history — has **no retry**. The reported real-world Windows/cloud-sync access-denied on `cooldowns.json` is consistent with this: cooldowns.json is rewritten on *every pool status push* (`app/services/run_state.py::persist_cooldowns` ← `Bridge._emit_pool_status`), so it is the file most likely to be held open by a sync client. W3 extends `_replace_with_retry` into `json_store` (behavior-preserving hardening).
 6. **Export paths are not atomic.** `app/ui/panels/layout_state.py::_write_preset_doc` writes window-preset exports with a plain `open(...,"w")` — a crash mid-write leaves a partial export file. Feature-level import/export should reuse provider validators (task rule: "existing feature-specific import/load commands must use the same provider validators/migrators where practical").
 7. **`UndoService.VALID_KINDS` (8 kinds) omits `action_blocks`**, yet `app/ui/panels/blocks_stack.py:78` pushes kind `"action_blocks"` and `undo_entries.py` remembers/applies it. Works today (VALID_KINDS is only used for filtering), but the kind vocabulary is defined in two places (RULE 10 smell; noted, not fixed in W1–W10 unless trivial).
@@ -88,7 +88,7 @@ All claims below were verified by reading the named files on this branch (`arena
 | Import (feature-level) | `import_window_preset` (grid-validated), `import_preset` (sections restored through state) | → live stores |
 | Crash recovery | none on disk today beyond atomic files; `_handle_interrupted` runs inside `reconcile_with_filesystem` | read-only repair of in-memory state |
 
-**Race note for the coordinator:** writers run on the UI thread, the bg asyncio loop (job settle), and the pool-push path. The workspace save must capture under `bridge._state_lock` (`live/feed.state_lock`) for `arena_state` and call each store's `save()`/`data()` under it; `SessionStore.data()` already deep-copies. Capture is **pull-based from live in-memory objects** (not file reads) to avoid torn mid-replace reads; file bytes for checksums are produced from the captured doc, serialized deterministically (see §D.1).
+**Race note for the save side (save.capture_all):** writers run on the UI thread, the bg asyncio loop (job settle), and the pool-push path. The workspace save must capture under `bridge._state_lock` (`live/feed.state_lock`) for `arena_state` and call each store's `save()`/`data()` under it; `SessionStore.data()` already deep-copies. Capture is **pull-based from live in-memory objects** (not file reads) to avoid torn mid-replace reads; file bytes for checksums are produced from the captured doc, serialized deterministically (see §D.1).
 
 ### B.2 Restore dependency graph and topological order
 
@@ -131,17 +131,25 @@ app/persistence/workspace/     # pure + FS primitives, no Qt, no bridge
     manifest.py                # build/parse/validate manifest.json (workspace_format 1)
     fsio.py                    # temp folder, manifest-last, atomic publish, copy fallback
 app/services/workspace/
-    provider.py                # StateProvider protocol + CaptureResult/RestorePlan dataclasses
-    registry.py                # the ONE provider table (domain ids, order)
+    provider.py                # StateProvider protocol + CaptureResult/ApplyOutcome dataclasses
+    registry.py                # the ONE provider table (domain ids, RESTORE_ORDER, restore_order)
     reports.py                 # save-report/restore-report builders (pure, deterministic)
-    coordinator.py             # save_workspace / preview_restore / restore_workspace
-    reconcile.py               # post-restore derived-state recompute (thin delegations)
+    meta.py                    # snapshot identity/env: paths, UTC, ids, app_meta, compat, log
+    save.py                    # the whole SAVE side: SaveRequest, selection, capture under the
+                               #   feed lock, validation, temp build, manifest-last, publish, meta
+    restore.py                 # PREVIEW only (read-only): per-domain status rows + remap notes
+    apply.py                   # the whole MUTATING side: selection + strict expansion, recovery
+                               #   backup, file gates, per-domain transactions, reconcile, report
     providers/                 # one small file per domain (§B table), each ≤300 LOC
+
+(2026-09-25 refactor: the planned coordinator.py/reconcile.py pair became
+meta/save/restore/apply — the audit in WORKSPACE_REFACTOR_AUDIT.md §4; boundaries
+otherwise exactly as designed. Provider modules import nothing from services.)
 app/ui/panels/workspace.py     # 19th window mixin: slots only (thin)
 app/ui/web/js/panels/workspace.js + workspace/{store,render,actions}.js
 ```
 
-**Architecture tests** (new `tests/test_workspace_architecture.py`): `app/persistence/workspace/**` imports nothing from `app/ui*`/`app/services`; `app/services/workspace/providers/**` never imports `app/ui*`; provider modules never import the coordinator; the coordinator never imports Qt.
+**Architecture tests** (new `tests/test_workspace_architecture.py`): `app/persistence/workspace/**` imports nothing from `app/ui*`/`app/services`; `app/services/workspace/providers/**` never imports `app/ui*`; provider modules never import meta/save/restore/apply; the services never import Qt.
 
 ### C.2 Provider contract (conceptual; Python `typing.Protocol`)
 
@@ -366,6 +374,7 @@ UI            Coordinator                         Providers                     
 | Apply raises mid-write | `apply` | **rolled back** to backup (transactional) | skipped | restored (never rolled back) | error + "recovered previous values" |
 | Reconcile raises | `reconcile` | restored + flagged | — | — | warning with note |
 | Rollback itself fails | `rollback` | marked `damaged`, recovery backup path surfaced | — | — | "open recovery folder" (never silent) |
+| Capture raises (saving) | `capture` | domain excluded from the snapshot (still reported) | — (save continues) | save refusal lists failed domains; partial save allowed by explicit flag |
 | Grid invalid (any of the above inside session.json) | any | grid keys skipped; session_settings keys still applied; **current layout retained** | — | restored | "layout not restored — invalid grid (reason). Apply default layout?" (explicit opt-in, never silent) |
 | Unknown file in `state/` | — | not applied | — | — | "unknown file — no domain owns it" (never inferred by filename) |
 

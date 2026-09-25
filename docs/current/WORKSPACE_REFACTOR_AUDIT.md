@@ -135,13 +135,14 @@ pytest suites + `test_bridge_slots` + `test_window_catalog` + JS
 
 ## 9. Measurable before/after (collected at the end)
 
-| Metric | Before | Target after |
+| Metric | Before | After (measured 2026-09-25) |
 |---|---|---|
-| Cross-module **private** imports inside services/workspace | 3 import lines / 7 names | **0** |
-| Modules named contrary to content | coordinator.py | 0 (meta.py) |
-| restore.py LOC (preview-only) | 221 | ~120 |
-| Policy-string homes | 3 | 1 (policies.py) |
-| Duplicated hash/ordering/literal sites | 5 (D1, D2, N2×2, env literal) | 0 |
-| Stage vocabulary correctness | capture failures mislabeled "apply" | precise `capture` stage |
-| Worst function (py) | 27 LOC / CC 8 | ≤ 27 / ≤ 8 (no regressions) |
-| Test count (workspace pytest / JS) | 96+8 suites, 14 JS | + characterization tests, all green |
+| Cross-module **private** imports inside services/workspace | 3 import lines / 7 names | **0** (radon/AST sweep) |
+| Modules named contrary to content | coordinator.py | 0 — meta/save/restore/apply |
+| restore.py LOC (preview-only) | 221 | 71 |
+| Policy-string homes | 3 | 1 (policies.py, guarded by test) |
+| Duplicated hash/ordering/literal sites | 5 (D1, D2, N2×2, env literal) | 0 (integrity.bytes_entry, registry.restore_order, policies, meta) |
+| Stage vocabulary correctness | capture failures mislabeled "apply" | precise `capture` stage (12-stage vocabulary) |
+| Worst function (py) | 27 LOC / CC 8 (apply.restore_workspace) | 27 LOC / CC 8 — no regressions |
+| Test count (workspace pytest / JS panel) | 96 pytest + 14 JS | 123 pytest (8 suites; +27 incl. characterization) + 17 JS |
+| Modules / LOC in scope (persistence/workspace + services/workspace + panel) | 20 / 2211 | 20 / 2222 (same file count; net +11 lines of tests-informed guards/comments) |
