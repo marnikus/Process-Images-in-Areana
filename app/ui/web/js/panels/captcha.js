@@ -32,7 +32,9 @@ const CaptchaPanel = {
 
   _call(name, args, cb) {
     const fn = App.bridge?.[name];
-    if (!fn) return false;
+    // QWebChannel signals are {connect,disconnect}, NOT callable — a name clash
+    // (or any non-function truthy) must skip, never throw `fn is not a function`.
+    if (typeof fn !== 'function') return false;
     const onRes = (res) => { try { cb(JSON.parse(res)); } catch (e) { /* malformed reply */ } };
     if (args.length) fn(...args, onRes); else fn(onRes);
     return true;

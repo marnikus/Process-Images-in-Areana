@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtCore import QUrl
+from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel
 
@@ -11,11 +12,34 @@ from app.persistence.config_manager import ConfigManager
 from app.ui.bridge import Bridge
 from app.ui.panels.browser_tabs import start_url_reconciler
 from app.ui.services.captcha_recordings_bridge import CaptchaRecordingsBridge
+from app.utils.js_console import js_console_line
+from app.utils.logging import get_logger
 
 try:
     from app.browser.cdp_client import CDPClient
 except Exception:
     CDPClient = None
+
+
+class _ConsolePage(QWebEnginePage):
+    """Every page console message (incl. uncaught TypeErrors) → app log WITH
+    file:line — 2026-09-25: the terminal showed only `js: fn is not a function`,
+    untraceable. Replaces the default handler (no super(): one line, ours).
+    `*args` = the Qt virtual's fixed (level, message, line, source) signature."""
+
+    def javaScriptConsoleMessage(self, *args):
+        level, message, line_number, source_id = args
+        where = f"{source_id}:{line_number}" if source_id else f"line {line_number}"
+        lvl, line = js_console_line(level, message, where)
+        getattr(get_logger(), lvl)(line)
+
+
+def _build_view(parent) -> QWebEngineView:
+    """The app view wired to the console-logging page (module-level so
+    `MainWindow`'s class size stays on its recorded baseline)."""
+    view = QWebEngineView(parent)
+    view.setPage(_ConsolePage(view))
+    return view
 
 
 def _is_valid_geometry(saved: dict) -> bool:
@@ -47,7 +71,7 @@ class MainWindow(QMainWindow):
         self._init_cdp_client()
 
     def _build_ui(self):
-        self.view = QWebEngineView(self)
+        self.view = _build_view(self)   # console page: js errors land in the log with file:line
         self.setCentralWidget(self.view)
         self._configure_web_settings()
         self.bridge = Bridge(config_manager=self.config_manager, state_path=self.state_path, cdp_client=self.cdp_client, parent=self)

@@ -76,7 +76,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     job_action_status = Signal(str, str, str)  # jobId, blockId, statusJson
     job_started = Signal(str, str)  # jobId, imagePath
     job_finished = Signal(str, str)  # jobId, resultJson
-    watcher_status = Signal(str)  # JSON status
+    watcher_status_updated = Signal(str)  # JSON status PUSH (renamed 2026-09-25: must NOT share the `watcher_status` @Slot name — QWebChannel applies signals last, overwriting the callable with {connect,disconnect})
     watcher_log = Signal(str, str)  # msg, level
     captcha_watcher_status = Signal(str)  # JSON: Captcha Watcher (SDK solver) counters
     page_pool_updated = Signal(str)  # JSON snapshot steady/busy

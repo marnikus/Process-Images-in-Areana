@@ -112,4 +112,19 @@ describe('B10 — Captcha window provider dropdown', () => {
     assert.deepEqual(page.errors.filter((e) => /Captcha/.test(e)), []);
     assert.equal(page.anyEl('captchaProviderHint').textContent, 'key: —', 'left untouched without a providers list');
   });
+
+  test('a non-callable (signal-shaped) watcher_status is skipped, never thrown (2026-09-25)', () => {
+    // QWebChannel exposes signals as {connect,disconnect}; when a signal shares
+    // a slot name, `data.signals` runs LAST and overwrites the callable method —
+    // `_call` must skip the non-callable instead of dying with
+    // `TypeError: fn is not a function` (the startup crash).
+    const page = bootPage({
+      rawBridgeProps: { watcher_status: { connect() {} } },
+    });
+    page.flushTimers();   // CaptchaPanel.init → setTimeout(refresh, 1200)
+    assert.ok(!page.calls.some((c) => c.slot === 'watcher_status'),
+      'the non-callable must never be invoked');
+    assert.ok(page.calls.some((c) => c.slot === 'get_captcha_api_key'),
+      'refresh() continued to the remaining pulls');
+  });
 });

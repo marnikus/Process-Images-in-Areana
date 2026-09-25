@@ -241,3 +241,89 @@ def test_closing_the_window_drops_the_cdp_socket_inside_a_guard():
         "the Firefox debugger approach is deleted (I-62)"
     assert any(isinstance(item, ast.Try) for item in ast.walk(body)), \
         "a browser that stopped answering must not break the close"
+
+
+@pytest.mark.unit
+def test_page_console_messages_land_in_the_log_with_location():
+    """2026-09-25: a bare `js: fn is not a function` gave no way to trace.
+
+    The page's console (including uncaught TypeErrors) must flow through
+    `js_console_line` into the app logger WITH (source:line), so the NEXT
+    uncaught error names the file that threw — no Qt needed to pin the wiring.
+    """
+    source = MAIN_WINDOW.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    overrides = [n for n in ast.walk(tree)
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and n.name == "javaScriptConsoleMessage"]
+    assert overrides, "QWebEnginePage console override missing — js errors stay untraceable"
+    body = ast.unparse(overrides[0])
+    assert "js_console_line" in body, "must format through js_console_line"
+    assert "get_logger" in body, "must reach the app logger (file + terminal)"
+    assert "line_number" in body and "source_id" in body, "must keep Qt's location args"
+    assert "setPage(" in source, "the view must actually use the logging page"
+
+
+@pytest.mark.unit
+def test_js_console_line_pins_the_traceable_format():
+    """(level, line): `js: <message> (<source>:<line>)` — location always on."""
+    from app.utils.js_console import js_console_line
+
+    lvl, line = js_console_line(2, "Uncaught TypeError: fn is not a function",
+                                "file:///D:/app/js/panels/captcha.js:17")
+    assert lvl == "error"
+    assert line == ("js: Uncaught TypeError: fn is not a function "
+                    "(file:///D:/app/js/panels/captcha.js:17)")
+    # enum-shaped level (PySide enums carry .value) → logger level name
+    assert js_console_line(0, "hello", "line 0") == ("info", "js: hello (line 0)")
+
+    class _Level:
+        value = 1
+
+    assert js_console_line(_Level(), "warn", "boot.js:3")[0] == "warning"
+
+
+@pytest.mark.unit
+def test_console_page_and_view_execute_under_stubbed_qt(monkeypatch, caplog):
+    """Run the tracer for real (stubbed Qt — no libGL here): the override must
+    write `js: <msg> (<src>:<line>)` into the arena logger, and `_build_view`
+    must hand the view its `_ConsolePage` (2026-09-25)."""
+    import importlib
+    import logging
+    import sys
+    import types
+
+    def stub(modname: str):
+        mod = types.ModuleType(modname)
+        def _attr(name):
+            return type(name, (), {
+                "__init__": lambda self, *a, **k: None,
+                "setPage": lambda self, page: setattr(self, "_page", page),
+            })
+        mod.__getattr__ = _attr
+        return mod
+
+    for name in ("PySide6.QtWidgets", "PySide6.QtWebEngineCore",
+                 "PySide6.QtWebEngineWidgets", "PySide6.QtWebChannel"):
+        monkeypatch.setitem(sys.modules, name, stub(name))
+    try:
+        mw = importlib.import_module("app.ui.main_window")
+        with caplog.at_level(logging.ERROR, logger="arena_processor"):
+            mw._ConsolePage.javaScriptConsoleMessage(
+                None, 2, "Uncaught TypeError: fn is not a function", 17,
+                "file:///D:/app/js/panels/captcha.js")
+        assert any(
+            r.message == ("js: Uncaught TypeError: fn is not a function "
+                          "(file:///D:/app/js/panels/captcha.js:17)")
+            for r in caplog.records), caplog.records
+        view = mw._build_view(None)
+        assert isinstance(view._page, mw._ConsolePage)
+        # enum-shaped level still lands on the right logger level
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger="arena_processor"):
+            class _L:
+                value = 0
+            mw._ConsolePage.javaScriptConsoleMessage(None, _L, "hello", 1, "boot.js")
+        assert any(r.message == "js: hello (boot.js:1)" for r in caplog.records)
+    finally:
+        sys.modules.pop("app.ui.main_window", None)

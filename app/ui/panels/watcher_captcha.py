@@ -34,7 +34,7 @@ def get_watcher_cdp_controller(bridge):
 def on_watcher_state(bridge, payload: dict):
     """Watcher-service callback — emit to UI, log key transitions."""
     try:
-        bridge.watcher_status.emit(json.dumps(payload, ensure_ascii=False))
+        bridge.watcher_status_updated.emit(json.dumps(payload, ensure_ascii=False))
         status = payload.get("status", "")
         if status in ("waiting_captcha", "waiting_generation"):
             kind = payload.get("waiting_kind", "")

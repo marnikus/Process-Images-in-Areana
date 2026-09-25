@@ -30,11 +30,14 @@ export function pageScripts() {
   return [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]).filter((s) => !s.startsWith('qrc:'));
 }
 
-function fakeBridge(handlers, replies, calls) {
+function fakeBridge(handlers, replies, calls, rawProps) {
   const cache = {};
   return new Proxy({}, {
     get(_t, k) {
       if (typeof k !== 'string') return undefined;
+      // Real QWebChannel shapes: signals/properties can be NON-callables
+      // ({connect,disconnect}); tests pin that the page survives those.
+      if (rawProps && Object.prototype.hasOwnProperty.call(rawProps, k)) return rawProps[k];
       if (!cache[k]) {
         const fn = (...args) => {
           const cb = args.find((a) => typeof a === 'function');
@@ -52,7 +55,7 @@ function fakeBridge(handlers, replies, calls) {
   });
 }
 
-export function bootPage({ replies = {}, prepare = null } = {}) {
+export function bootPage({ replies = {}, prepare = null, rawBridgeProps = {} } = {}) {
   const byId = new Map();
   const anyEl = (id) => {
     if (!byId.has(id)) { const e = new El('div'); e.id = id; e.value = ''; byId.set(id, e); }
@@ -90,7 +93,7 @@ export function bootPage({ replies = {}, prepare = null } = {}) {
     qt: { webChannelTransport: {} },
   };
   sb.window = sb; sb.self = sb; sb.globalThis = sb;
-  const bridge = fakeBridge(handlers, allReplies, calls);
+  const bridge = fakeBridge(handlers, allReplies, calls, rawBridgeProps);
   sb.QWebChannel = function (_transport, cb) { cb({ objects: { bridge, captchaRecordings: bridge } }); };
   vm.createContext(sb);
   for (const s of pageScripts()) vm.runInContext(fs.readFileSync(path.join(WEB, s), 'utf8'), sb, { filename: s });

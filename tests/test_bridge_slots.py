@@ -75,6 +75,39 @@ def test_helpers_never_slots():
         assert not stolen, f"helper captured @Slot in {path.name}: {stolen}"
 
 
+def _signal_names(path: Path) -> set:
+    import ast
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "Signal"):
+            continue
+        names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    return names
+
+
+@pytest.mark.unit
+def test_no_signal_named_like_a_slot():
+    """2026-09-25: a Signal sharing a @Slot name kills the page at startup.
+
+    QWebChannel applies `data.methods` first and `data.signals` LAST
+    (qwebchannel.js), so a name clash overwrites the callable method with the
+    non-callable `{connect, disconnect}` signal object — and every JS pull on
+    that slot throws `TypeError: fn is not a function` (CaptchaPanel.refresh
+    via the `watcher_status` clash). Signals and slots must never share a name.
+    """
+    signals = _signal_names(BRIDGE)
+    slots = set()
+    for path in [BRIDGE] + (list(PANELS.glob("*.py")) if PANELS.exists() else []):
+        slots |= _slot_names(path)
+    clash = sorted(signals & slots)
+    assert not clash, f"signal shadows a slot (QWebChannel: signal wins, method dies): {clash}"
+
+
 # ── F5 frozen surface + F6 packing (R12/A7) ──
 
 # Contract design §1 item 1: the 119 JS slot names, frozen. Any add/remove
