@@ -39,13 +39,14 @@ def test_workspace_packages_stay_qt_and_ui_free(banned):
             assert not module.startswith(banned), f"{path.name} imports {module}"
 
 
-def test_providers_do_not_import_the_coordinator():
-    """A provider pulling the coordinator in would invert the layering (god service)."""
+def test_providers_do_not_import_the_services():
+    """A provider pulling save/apply/meta would invert the layering (god service)."""
     for path in (ROOT / "app" / "services" / "workspace" / "providers").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for module in _imports(tree):
             assert "coordinator" not in module and not module.endswith(".save") \
-                and not module.endswith(".restore"), f"{path.name} imports {module}"
+                and not module.endswith(".restore") and not module.endswith(".meta") \
+                and not module.endswith(".apply"), f"{path.name} imports {module}"
 
 
 def test_registry_table_matches_restore_order():

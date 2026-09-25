@@ -1,32 +1,131 @@
-"""Workspace save — the SAVE algorithm (design §C.5) and snapshot meta.
+"""Workspace save — the whole SAVE side (design §C.5): selection, coherent
+capture under the queue lock, validation, temp build, manifest-last publish,
+save-report, and the snapshot meta (recent list / last save).
 
-Split from `coordinator.py` (shared helpers) to keep both files inside the
-RULE 18 budget. The folder is built in a sibling temp dir, `manifest.json`
-is written last (commit marker), publish is an atomic rename, and the
-save-report is written into the published folder so it always reflects
-reality. A failed save never touches previous snapshots.
+The folder is built in a sibling temp dir, `manifest.json` is written last
+(commit marker), publish is an atomic rename, and the save-report is written
+into the published folder so it always reflects reality. A failed save never
+touches previous snapshots. Snapshot identity/env live in `meta.py`.
 """
 
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.persistence.json_store import load_json, save_json_atomic
 from app.persistence.workspace import fsio
+from app.persistence.workspace.errors import WorkspaceError
 from app.persistence.workspace.integrity import canonical_bytes
 from app.persistence.workspace.manifest import build_manifest
 from . import reports
-from .coordinator import (META_FILE, RECENT_CAP, SaveRequest, _domain_entries,
-                          _file_docs, _log, _selected_providers, app_meta,
-                          capture_all, compat_block, config_dir, default_base,
-                          snapshot_id_for, utc_now_iso)
+from .meta import (META_FILE, RECENT_CAP, app_meta, compat_block, config_dir,
+                   default_base, log_message, snapshot_id_for, utc_now_iso)
+
+
+@dataclass
+class SaveRequest:
+    """Parameters of one workspace save (param object — keeps signatures ≤4)."""
+    name: str
+    description: str = ""
+    selected: list = None
+    allow_partial: bool = False
+    base_dir: str = ""
+
+
+@dataclass
+class Capture:
+    """Per-domain capture bookkeeping for one save run."""
+    provider: object
+    result: object = None
+    error: dict = None
+    entry: dict = field(default_factory=dict)
+
+
+def selected_providers(selected) -> list:
+    """All providers, or the explicitly selected subset (save-side selection)."""
+    from .registry import all_providers
+    providers = all_providers()
+    if selected is None:
+        return providers
+    wanted = set(selected)
+    return [p for p in providers if p.domain_id in wanted]
+
+
+def capture_one(bridge, provider) -> Capture:
+    """Capture + immediate validation (SAVE algorithm step 1/3); failure → excluded entry."""
+    try:
+        result = provider.capture(bridge)
+        if not result.ok:
+            raise WorkspaceError(provider.domain_id, "capture",
+                                 "capture failed: " + ("; ".join(result.notes) or "unknown"))
+        if not result.excluded:
+            err = provider.validate(result.doc)
+            if err:
+                raise WorkspaceError(provider.domain_id, "semantic", err)
+        return Capture(provider=provider, result=result)
+    except WorkspaceError as exc:
+        return Capture(provider=provider, error=exc.to_dict())
+    except Exception as exc:
+        return Capture(provider=provider,
+                       error=WorkspaceError(provider.domain_id, "capture", str(exc)).to_dict())
+
+
+def capture_all(bridge, providers) -> list:
+    """One coherent capture pass under the queue funnel's lock (snapshot boundary).
+
+    The lock import is deferred: `live.feed` pulls the whole live stack, and
+    import-time coupling state→save would be the wrong direction.
+    """
+    from app.services.live.feed import state_lock
+    with state_lock(bridge):
+        return [capture_one(bridge, provider) for provider in providers]
+
+
+def file_docs(captures: list) -> dict:
+    """rel_path → merged native doc (session_settings + grid_window share one file)."""
+    docs: dict = {}
+    for capture in captures:
+        if capture.error or capture.result.excluded or not capture.result.ok:
+            continue
+        rel = capture.provider.native_rel_path
+        doc = capture.result.doc
+        docs[rel] = {**docs.get(rel, {}), **doc} if isinstance(doc, dict) else doc
+    return docs
+
+
+def domain_entries(captures: list, file_entries: dict) -> dict:
+    """One manifest entry per registered domain — included fully, excluded with reason."""
+    entries = {}
+    for capture in captures:
+        p = capture.provider
+        entry = {
+            "display_name": p.display_name, "path": p.native_rel_path,
+            "schema_version": p.schema_version,
+            "supported_migrations": list(p.supported_migrations),
+            "required": p.required, "dependencies": dict(p.dependencies),
+            "sensitivity": p.sensitivity,
+        }
+        entry.update(file_entries.get(p.native_rel_path, {}))
+        if capture.error:
+            entry["capture"] = {"ok": False, "excluded": True,
+                                "excluded_reason": capture.error["cause"]}
+        elif capture.result.excluded:
+            entry["capture"] = {"ok": True, "excluded": True,
+                                "excluded_reason": capture.result.excluded_reason,
+                                "redacted_reference": capture.result.doc}
+        else:
+            entry["capture"] = {"ok": True, "excluded": False,
+                                "notes": list(capture.result.notes)}
+        entries[p.domain_id] = entry
+    return entries
 
 
 def _write_state_files(temp: Path, captures: list) -> dict:
     """Native files into `<temp>/state/`, integrity per file (bytes may be shared)."""
     return {rel: fsio.write_bytes(temp, rel, canonical_bytes(doc))
-            for rel, doc in _file_docs(captures).items()}
+            for rel, doc in file_docs(captures).items()}
 
 
 def inclusion_policy() -> dict:
@@ -54,7 +153,7 @@ def _report_rows(captures: list) -> list:
 def save_workspace(bridge, request: SaveRequest) -> dict:
     """Capture → temp folder → manifest last → atomic publish (design §C.5)."""
     started = utc_now_iso()
-    providers = _selected_providers(request.selected)
+    providers = selected_providers(request.selected)
     if not providers:
         return {"ok": False, "error": "no domains selected"}
     target = (Path(request.base_dir) if request.base_dir
@@ -101,7 +200,7 @@ def _publish_save(plan: dict, captures: list) -> dict:
         return _publish_failed(target, temp, exc)
     fsio.write_bytes(target, "reports/save-report.json", canonical_bytes(report))
     _record_snapshot(bridge, str(target))
-    _log(bridge, f"💾 Workspace saved: {target.name} — {report['result']}", "success")
+    log_message(bridge, f"💾 Workspace saved: {target.name} — {report['result']}", "success")
     return {"ok": True, **report, "path": str(target)}
 
 
@@ -114,7 +213,7 @@ def _snapshot_manifest(plan: dict, captures: list, report: dict) -> dict:
                                else "full"}
     return build_manifest(header=header, app_meta=app_meta(plan["bridge"]),
                           compat=compat_block(),
-                          domains=_domain_entries(captures, plan["file_entries"]))
+                          domains=domain_entries(captures, plan["file_entries"]))
 
 
 def _publish_failed(target: Path, temp: Path, exc: Exception) -> dict:

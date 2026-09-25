@@ -1,6 +1,6 @@
 """Deterministic save/restore report builders (design §D.4).
 
-Reports are plain dicts serialised canonically by the coordinator; same
+Reports are plain dicts serialised canonically by the callers; same
 inputs → byte-identical reports (tested). No Qt, no app.ui imports.
 """
 

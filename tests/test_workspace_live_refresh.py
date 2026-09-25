@@ -15,7 +15,7 @@ import pytest
 from app.persistence.config_manager import ConfigManager
 from app.services.workspace import apply as ws_apply
 from app.services.workspace import save as ws_save
-from app.services.workspace.coordinator import SaveRequest
+from app.services.workspace.save import SaveRequest
 from app.ui.bridge import Bridge
 
 pytestmark = pytest.mark.unit

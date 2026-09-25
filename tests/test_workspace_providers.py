@@ -12,7 +12,8 @@ import pytest
 from app.persistence.config_manager import ConfigManager
 from app.services.captcha.key_store import CaptchaKeyStore
 from app.services.workspace import registry
-from app.services.workspace.coordinator import app_meta, capture_all, snapshot_id_for, utc_now_iso
+from app.services.workspace.meta import app_meta, snapshot_id_for, utc_now_iso
+from app.services.workspace.save import capture_all
 from app.services.workspace.providers import arena_state as asp
 from app.services.workspace.providers import session as sp
 from app.ui.bridge import Bridge

@@ -4,7 +4,7 @@
 """Workspace panel — the "Global Saving System" window (19th window, I-51).
 
 Slots only (thin); folder/manifest/report logic lives in
-`app/services/workspace/` (coordinator/save/restore — no Qt). The window
+`app/services/workspace/` (meta/save/restore/apply — no Qt). The window
 keeps every existing feature Save/Preset control untouched (task rule 2):
 it is an orchestrator over the native stores, nothing else.
 """
@@ -15,7 +15,8 @@ from app.services import job_history
 from app.services.workspace import apply as ws_apply
 from app.services.workspace import restore as ws_restore
 from app.services.workspace import save as ws_save
-from app.services.workspace.coordinator import SaveRequest, default_base
+from app.services.workspace.meta import default_base
+from app.services.workspace.save import SaveRequest
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import file_service, undo_entries
 

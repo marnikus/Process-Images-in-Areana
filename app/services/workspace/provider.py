@@ -1,7 +1,7 @@
 """StateProvider contract — one small owner per native state domain.
 
 A provider owns capture / validate / migrate / apply for ITS native file
-and format; the coordinator never re-serialises feature state into a
+and format; the services never re-serialise feature state into a
 unified model. Rollback is `apply()` of the pre-apply capture — every
 provider's apply must therefore be idempotent per doc (task rule 4:
 transactional inside each domain). No Qt, no app.ui imports.

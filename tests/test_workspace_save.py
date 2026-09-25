@@ -13,7 +13,8 @@ from app.persistence.config_manager import ConfigManager
 from app.persistence.workspace import fsio
 from app.persistence.workspace.manifest import read_manifest
 from app.services.workspace import save as ws_save
-from app.services.workspace.coordinator import SaveRequest, default_base
+from app.services.workspace.meta import default_base
+from app.services.workspace.save import SaveRequest
 from app.services.workspace.provider import CaptureResult
 from app.services.workspace.registry import all_providers, get
 from app.ui.bridge import Bridge
