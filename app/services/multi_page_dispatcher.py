@@ -18,6 +18,7 @@ from app.utils.correlation import build_final_prompt, generate_correlation_id
 from . import auto_connect as ac
 from .job_events import job_finished_payload
 from .job_history import note_job_started, record_dispatch_result
+from . import firefox_settle
 from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status, maybe_note_rate_limit
 from .live.bus import live_bus
 from .live.feed import queued_images
@@ -211,6 +212,18 @@ async def _run_image_job(ctx: PageJobCtx):
     return url_row, corr_id, job_id, failed, err
 
 
+def _handle_review(ctx: ResultCtx):
+    """Uncertain output: keep the evidence, mark the image for a human (never completed)."""
+    ctx.img.status = ImageStatus.NEEDS_REVIEW.value
+    ctx.img.error = ctx.err
+    _emit_finished(ctx.bridge, FinishInfo(job_id=ctx.job_id, img=ctx.img,
+                                          status="needs_review", message=ctx.err))
+    _log_result(ctx.bridge, LogInfo(corr_id=ctx.corr_id, tab_id=ctx.tab_id, img=ctx.img,
+                                    ok=False, err=ctx.err))
+    record_dispatch_result(ctx)          # failed=True + the reason: the honest history row
+    _recalc_save(ctx.bridge)
+
+
 def _handle_result(ctx: ResultCtx):
     if ctx.bridge._cancel_requested:
         ctx.img.status = ImageStatus.FAILED.value
@@ -226,7 +239,7 @@ def _handle_result(ctx: ResultCtx):
         if ctx.img.status != ImageStatus.COMPLETED.value:
             ctx.img.status = ImageStatus.COMPLETED.value
         done = (f"Saved {ctx.img.output_path}" if ctx.img.output_path else
-                f"🦊 Ui.Vision macro ok — {tab_label_of(ctx.pool, ctx.tab_id)}")
+                f"completed — no output path recorded ({tab_label_of(ctx.pool, ctx.tab_id)})")
         _emit_finished(ctx.bridge, FinishInfo(job_id=ctx.job_id, img=ctx.img, status="completed", message=done))
         _log_result(ctx.bridge, LogInfo(corr_id=ctx.corr_id, tab_id=ctx.tab_id, img=ctx.img, ok=True, err=""))
     record_dispatch_result(ctx)  # the history row for this job_finished (cancelled return above)
@@ -334,48 +347,65 @@ async def _run_firefox_claimed(ctx: DispatchCtx, img, page) -> None:
     _emit_status_safe(bridge)
     _log_assign(bridge, img, tab_id, page)
     _start_tab_image(pool, tab_id, img)
+    outcome = None
     try:
-        await _firefox_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img,
-                                             urls=ctx.urls, tab_id=tab_id,
-                                             ctrl=None, client=None))
+        outcome = await _firefox_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img,
+                                                       urls=ctx.urls, tab_id=tab_id,
+                                                       ctrl=None, client=None))
     finally:
         _clear_tab_image(pool, tab_id)
-        await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id,
-                                            ctrl=None, client=None))
+        finish = _firefox_finish(bridge, pool, tab_id, outcome)
+        if finish is not None:
+            await _finish_page_safely(finish)
 
 
-async def _firefox_and_record(job: PageJobCtx) -> None:
-    """Prepare → verdict → the shared result handling (identical bookkeeping)."""
-    _url_row, corr_id, job_id, _final = await prepare_image_for_job(
+def _firefox_finish(bridge, pool, tab_id: str, outcome):
+    """The lane's own settle: a failed/uncertain page stays put, a finished one cools (step 14)."""
+    if outcome is not None and outcome.status == "failed":
+        firefox_settle.settle_failed(pool, bridge, tab_id, outcome.error)
+        return None
+    if outcome is not None and outcome.preserve:
+        firefox_settle.settle_for_review(pool, bridge, tab_id, outcome.error)
+        return None
+    return FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=None, client=None)
+
+
+async def _firefox_and_record(job: PageJobCtx):
+    """Prepare → the Firefox image job → the shared result handling (step 14)."""
+    _url_row, corr_id, job_id, final_prompt = await prepare_image_for_job(
         job.bridge, job.img, job.urls, job.tab_id)
     try:
         job.bridge.job_started.emit(job_id, job.img.absolute_path)
     except Exception:
         pass
-    job.bridge._log(f"🦊 [{corr_id}] Ui.Vision lane — the macro runs this job; "
-                    "prompt template recorded, not injected", "info")
-    failed, err = await _firefox_verdict(job)
-    _handle_result(ResultCtx(bridge=job.bridge, pool=job.pool, img=job.img,
-                             tab_id=job.tab_id, corr_id=corr_id, job_id=job_id,
-                             failed=failed, err=err))
-    maybe_note_rate_limit(job.pool, job.tab_id, job.bridge, err)
+    outcome = await _firefox_job(job, corr_id, job_id, final_prompt)
+    if outcome.output_path:
+        job.img.output_path = outcome.output_path
+    result = ResultCtx(bridge=job.bridge, pool=job.pool, img=job.img, tab_id=job.tab_id,
+                       corr_id=corr_id, job_id=job_id, failed=not outcome.ok, err=outcome.error)
+    if outcome.preserve:
+        _handle_review(result)   # uncertain: a human decides, never "completed"
+    else:
+        _handle_result(result)
+    maybe_note_rate_limit(job.pool, job.tab_id, job.bridge, "" if outcome.ok else outcome.error)
+    return outcome
 
 
-async def _firefox_verdict(job: PageJobCtx) -> tuple:
-    """(failed, error) from the savelog kinds — crash becomes a named failure, cancel propagates."""
-    from .firefox_lane import run_firefox_macro
+async def _firefox_job(job: PageJobCtx, corr_id: str, job_id: str, final_prompt: str):
+    """One Firefox image job on the claimed page; a crash is a named failure (RULE 4)."""
+    from . import firefox_job
     page = job.pool.get_page(job.tab_id)
     if page is None:
-        return True, "tab left the pool before the macro launched"
+        return firefox_job.JobOutcome(firefox_job.FAILED,
+                                      error="tab left the pool before the job started")
+    request = firefox_job.JobRequest(bridge=job.bridge, page=page, img=job.img,
+                                     corr_id=corr_id, job_id=job_id, prompt=final_prompt)
     try:
-        kind, message = await run_firefox_macro(job.bridge, page)
+        return await firefox_job.run_image_job(request)
     except asyncio.CancelledError:
         raise
-    except Exception as e:
-        return True, f"Ui.Vision blocked: {e}"
-    if kind == "ok":
-        return False, ""
-    return True, f"Ui.Vision {kind}: {message}"
+    except Exception as exc:
+        return firefox_job.JobOutcome(firefox_job.FAILED, error=f"Firefox job error: {exc}")
 
 
 async def _run_and_record(job: PageJobCtx) -> None:

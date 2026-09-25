@@ -1,3 +1,20 @@
+# Quality re-check — 2026-09-25g (Firefox image job end-to-end, I-65)
+
+Snapshot of the RULE 16 gates after the round (`docs/archive/2026-09-25-firefox-image-job-pipeline/design.md`,
+steps 14–19). Older snapshots follow below — the newest of them is the 2026-10-02 Captcha Watcher section.
+
+| Gate | Command | Result |
+|---|---|---|
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **2,434 passed · 13 skipped · 0 fail** (+94 net over the pre-round 2,340: `test_firefox_job_macro` 13, `_job_replies` 12, `_result` 11, `_recovery` 10, `_job_flow` 28, `_job_lane` 8, new `test_firefox_settle` 10, and `test_firefox_dispatch` rewritten from the old Ui.Vision-verdict seam to the job seam +2) |
+| JS tests | `npm run test:js` | **418 pass · 4 skipped · 0 fail** (422 subtests; +19 Tier A DOM-probe subtests — `tests/js/test_firefox_job_probes.mjs`, now listed in `test:js`; the file runs the real Python builder and executes each body on jsdom) |
+| Size/complexity | `radon cc -s` + `tools/verify_quality.py --changed --allow-legacy` | **0 fails, 3 warns** (the warns are pre-existing legacy: `desktop._windows_holding` CC 15, `mozlz4._copy_literals` 5 params, `runner._poll_one_profile` 7 params). Hard fails found by the gate and **fixed, not baselined**: `job_replies.prompt_verdict` CC 13 / `bytes_from` CC 11 / `correlate` CC 15 → split into named predicates (`_prompt_agrees`, `_prompt_mismatch`, `_decode_payload`, `_pick_candidate`, `_correlate_candidates`, `_correlate_nothing`); `firefox_job._inputs` 5 params → `StageFacts` value object; `multi_page_dispatcher` max_func_loc 20→23 and max_class_loc 9→10 plus a `cooldown_service` class-LOC growth 11→15 were **removed by design** — the lane's own settle (failed = error, uncertain = preserved, reset through the New-chat macro) lives in the new `app/services/firefox_settle.py`, `ResultCtx` / `_handle_result` / `FinishCtx` / `finish_page_after_job` keep their baseline shapes, and `cooldown_service` only routes a ctrl-less reset into the lane (2 lines changed) |
+| Coverage | `coverage run --branch --source=app -m pytest` then `coverage json` | **89.88 % line / 86.67 % branch** (≥80 / ≥75); round files: `firefox_settle.py` 100 %, `firefox_job.py` 90.5 %, `cooldown_service.py` 94.2 % (floor 94.12), `multi_page_dispatcher.py` 91.6 % (floor 90.0) |
+| Changed-file + coverage ratchet | `python tools/verify_quality.py --changed --base origin/main --allow-legacy --coverage-ratchet` | **✅ PASSED — 0 fails, 3 warns** (the three legacy warns above; the missing-`coverage.json` warn disappears once the run above is executed) |
+| RULE 18 | `wc -l` on the round's files | three files sit over the 150–300 ideal and carry an `# ideal-size:` reason header (RULE 18.2): `services/firefox_job.py` ~460 (one job's stage machine), `uivision/job_macro.py` ~330 (the five documents are one ABI), `uivision/job_replies.py` ~330 (the one reader of those documents) |
+| Environment facts (for the next reader) | — | the gate's `try_radon_cc` shells a literal `python -m radon`, so **radon must be reachable from `python` on PATH** or the AST approximation over-scores the radon-recorded baseline and fabricates cc growth on untouched files (`main.py`, `json_store.py`, `hashing.py`, `win_find.py`, `live/bus.py` — all reproduced unchanged at base); installing `cognitive-complexity` into the venv fabricates `max_cog 0→N` ratchets repo-wide; `tests/js/test_live_debug_panel.mjs` spawns `<repo>/.venv/bin/python`, so that shim must exist for the JS lane to be green |
+
+---
+
 # Quality re-check — 2026-09-21 (Reparse fresh sweep + checkbox pool gate)
 
 Snapshot of the RULE 16 gates after the round (`docs/archive/2026-09-21-reparse-sweep-and-checkbox-pool/design.md`).
