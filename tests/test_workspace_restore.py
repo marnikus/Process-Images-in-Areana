@@ -327,3 +327,55 @@ def test_recovery_backup_on_a_fresh_machine_restores_without_crashing(bridge, sn
     assert {"grid_window", "session_settings", "undo"} <= set(recovery["files"])
     assert recovery["absent"] == {}
     assert bridge.state.prompt["user_prompt"] == "saved prompt"  # restore applied
+
+
+# ---- R0 characterization: the seams the refactor moves (audit §5 R0) ----
+
+class _FakeProvider:
+    """Minimal provider stand-in for dependency-expansion tests."""
+
+    def __init__(self, domain_id, dependencies=None):
+        self.domain_id = domain_id
+        self.dependencies = dependencies or {}
+
+
+def test_expand_strict_follows_a_transitive_chain(monkeypatch):
+    from app.services.workspace import restore as ws_restore
+    chain = {"a": _FakeProvider("a", {"b": "strict"}),
+             "b": _FakeProvider("b", {"c": "strict"}),
+             "c": _FakeProvider("c")}
+    monkeypatch.setattr(ws_restore, "get", chain.get)
+    monkeypatch.setattr(ws_restore, "RESTORE_ORDER", ("c", "b", "a"))
+    providers = ws_restore._expand_strict([chain["a"]])
+    assert [p.domain_id for p in providers] == ["c", "b", "a"]  # registry order
+
+
+def test_expand_strict_keeps_registered_providers_outside_the_order_tuple(monkeypatch):
+    # D3: a provider that IS registered but missing from RESTORE_ORDER must still
+    # ride along — save tolerates order drift, restore must not silently drop it.
+    from app.services.workspace import restore as ws_restore
+    late = _FakeProvider("late")
+    chain = {"a": _FakeProvider("a", {"late": "strict"}), "late": late}
+    monkeypatch.setattr(ws_restore, "get", chain.get)
+    monkeypatch.setattr(ws_restore, "RESTORE_ORDER", ("a",))
+    providers = ws_restore._expand_strict([chain["a"]])
+    assert [p.domain_id for p in providers] == ["a", "late"]  # unknown-order ids after known
+
+
+def test_load_one_gate_evidence_fields(tmp_path):
+    from app.persistence.workspace.integrity import sha256_bytes
+    root = tmp_path
+    good = b'"abcd"'  # valid JSON, parses to the string "abcd"
+    entry = {"display_name": "Undo History", "path": "state/undo.json",
+             "bytes": len(good), "sha256": sha256_bytes(good)}
+    (root / "state").mkdir()
+    (root / "state/undo.json").write_bytes(good)
+    assert ws_restore._load_one(root, entry, "state/undo.json") == "abcd"
+    (root / "state/undo.json").write_bytes(b'"xxxx"')  # same size, different sha
+    bad_sha = ws_restore._load_one(root, entry, "state/undo.json")
+    assert bad_sha.stage == "checksum" and bad_sha.expected == entry["sha256"][:12]
+    assert len(bad_sha.actual) == 12
+    unsafe = ws_restore._load_one(root, {"path": "../escape.json"}, "../escape.json")
+    assert unsafe.stage == "unsafe_path"
+    missing = ws_restore._load_one(root, {"path": "state/gone.json"}, "state/gone.json")
+    assert missing.stage == "missing"
