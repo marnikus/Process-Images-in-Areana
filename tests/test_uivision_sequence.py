@@ -12,13 +12,25 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from app.browser.uivision import plan, sequence, tabs
+from app.browser.uivision import logread, plan, sequence, tabs
 from app.browser.uivision import runner as runner_mod
 from app.browser.uivision.runner import RunSeams, RunSpec
 
 pytestmark = pytest.mark.unit
 
 OK_LOG = "Status=OK\n###\necho: done — XClick fired (native OS input)"
+
+# The E212 the owner's runs ended with: the pinned cleanup pair's selectWindow
+# matched no tab. The work commands (tab select, XClick, echo) all preceded it
+# and succeeded — the macro stops at its first failure.
+MISS_LOG = ("Status=Error: E212: failed to find the tab with locator "
+            "'title=*Ui.Vision Autostart Page*'\n###\n"
+            "echo: done — XClick fired (native OS input)")
+
+# A REAL work failure: the not-found names the run's own tab locator, not the
+# cleanup pair's — the click never happened and the error must stay an error.
+USER_TAB_MISS_LOG = ("Status=Error: E212: failed to find the tab with locator "
+                     "'title=*Tab A*'\n###\n[selectWindow] no match")
 
 
 def make_spec(tmp_path, **over):
@@ -53,10 +65,10 @@ def fake_popen():
     return calls, (lambda argv: calls.append(argv) or SimpleNamespace(pid=42))
 
 
-def write_log(tmp_path, name):
+def write_log(tmp_path, name, text=OK_LOG):
     log = tmp_path / "config" / "uivision" / "logs" / name
     log.parent.mkdir(parents=True, exist_ok=True)
-    log.write_text(OK_LOG, encoding="utf-8")
+    log.write_text(text, encoding="utf-8")
 
 
 async def noop_sleep(_sec):
@@ -250,3 +262,75 @@ async def test_inter_run_delay_glitch_is_swallowed(tmp_path):
         sleep=bad_sleep, popen=popen, profiles=lambda: two_profile_sessions(["A", "B"])))
     outcome = await seq.execute(runs)
     assert outcome.kind == "ok" and len(calls) == 2
+
+# ── the cleanup-pair miss is rescored (the work succeeded, the tab lingers) ──
+
+async def test_cleanup_miss_is_rescored_ok_with_the_miss_named(tmp_path, monkeypatch):
+    """E212 on the pinned autostart-tab locator: the click fired, the macro's
+    own tab-close missed its tab — ok, with the backstop named, lines kept."""
+    (tmp_path / "firefox").write_text("#!/bin/sh\n")
+    write_log(tmp_path, "run-S.txt", MISS_LOG)
+    runs = make_runs(tmp_path, ["A"])
+    monkeypatch.setattr(tabs, "profile_open", lambda d, checker=None: (True, ""))
+    monkeypatch.setattr(tabs, "tab_rows",
+                        lambda profiles: rows_for(runs[0].target.url, "Tab A"))
+    calls, popen = fake_popen()
+    seq, _rows = make_sequence(tmp_path, make_spec(tmp_path),
+                               RunSeams(sleep=noop_sleep, popen=popen,
+                                        handoff_window_sec=0.0))
+    outcome = await seq.execute(runs)
+    assert outcome.kind == "ok"
+    assert "XClick fired" in outcome.message and "backstop" in outcome.message
+    assert any("XClick fired" in line for line in outcome.lines)  # the savelog shows
+
+
+async def test_cleanup_miss_rolls_up_ok_across_runs(tmp_path):
+    """Both runs end with the cleanup miss: the sequence answers all ok."""
+    (tmp_path / "firefox").write_text("#!/bin/sh\n")
+    write_log(tmp_path, "run-S.txt", MISS_LOG)
+    write_log(tmp_path, "run-S-2.txt", MISS_LOG)
+    runs = make_runs(tmp_path, ["A", "B"])
+    calls, popen = fake_popen()
+    seq, _rows = make_sequence(tmp_path, make_spec(tmp_path), RunSeams(
+        sleep=noop_sleep, popen=popen, profiles=lambda: two_profile_sessions(["A", "B"])))
+    outcome = await seq.execute(runs)
+    assert outcome.kind == "ok" and "all 2 run(s) ok" in outcome.message
+    assert len(calls) == 2
+
+
+async def test_a_miss_on_the_run_tab_stays_an_error(tmp_path, monkeypatch):
+    """The not-found names the RUN's tab locator — the click never happened."""
+    (tmp_path / "firefox").write_text("#!/bin/sh\n")
+    write_log(tmp_path, "run-S.txt", USER_TAB_MISS_LOG)
+    runs = make_runs(tmp_path, ["A"])
+    monkeypatch.setattr(tabs, "profile_open", lambda d, checker=None: (True, ""))
+    monkeypatch.setattr(tabs, "tab_rows",
+                        lambda profiles: rows_for(runs[0].target.url, "Tab A"))
+    calls, popen = fake_popen()
+    seq, _rows = make_sequence(tmp_path, make_spec(tmp_path),
+                               RunSeams(sleep=noop_sleep, popen=popen,
+                                        handoff_window_sec=0.0))
+    outcome = await seq.execute(runs)
+    assert outcome.kind == "error"
+    assert "Tab A" in outcome.message
+
+
+# ── rescore_cleanup_miss unit (the seams above cover the wiring) ─────────────
+
+def test_rescore_passes_everything_but_the_cleanup_miss_through():
+    ok = logread.LogResult(kind="ok", message="macro completed")
+    timed = logread.LogResult(kind="timeout", message="no status line")
+    dom = logread.LogResult(kind="error", message="E225: DOM failed to be ready in 30sec.")
+    assert sequence.rescore_cleanup_miss(ok) is ok
+    assert sequence.rescore_cleanup_miss(timed) is timed
+    assert sequence.rescore_cleanup_miss(dom) is dom
+
+
+def test_rescore_handles_the_E210_wording_too():
+    """V9's original code (E210) carries the same wording — rescored as well."""
+    err = logread.LogResult(
+        kind="error",
+        message="E210: failed to find the tab with locator "
+                "'title=*Ui.Vision Autostart Page*'")
+    got = sequence.rescore_cleanup_miss(err)
+    assert got.kind == "ok" and got.abort_rest is False

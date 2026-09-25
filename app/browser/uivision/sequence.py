@@ -19,6 +19,13 @@ Two refusals mean different things (RULE 4 — never one invented "failed"):
 No Qt, no bridge: report/stop/sleep/popen arrive through the seams; the
 OS-side re-checks live in `TabChecks` and run only when no seam stands in
 for the stores, so tests stay deterministic off a desktop.
+
+One savelog error is rescored before it becomes a verdict (`rescore_cleanup_miss`):
+a tab-not-found on the pinned autostart-tab locator can only happen AFTER every
+work command succeeded (the macro stops at its first failure, and the cleanup
+pair is pinned last) — the click fired, only the macro's own tab-close missed
+its tab, and the page's backstop still closes it. The run answers ok, with the
+miss named; every other error stays an error.
 """
 
 from __future__ import annotations
@@ -91,6 +98,36 @@ def rollup_reason(kind, outcomes, total) -> tuple:
         return "blocked", f"{first[1].message}{tail}"
     ok = sum(1 for _run, verdict in outcomes if verdict.kind == "ok")
     return kind, f"{ok}/{total} run(s) ok — {first[0].label}: {first[1].message}"
+
+
+# The extension's tab-not-found wording (E210/E212 — identical text in V9.6.1
+# and V10, `src/ext/bg.js` PANEL_SELECT_WINDOW): the locator rides the message
+# verbatim, so a miss on the pinned cleanup locator is recognisable in it.
+TAB_NOT_FOUND = "failed to find the tab with locator '"
+
+
+def rescore_cleanup_miss(verdict: logread.LogResult) -> logread.LogResult:
+    """A not-found on the pinned autostart-tab locator means the work succeeded.
+
+    The macro's last two commands are the cleanup pair (pinned in macro.py) and
+    the macro stops at its FIRST failure — so this error can only follow a
+    run where the tab select, the XClick and the echo all succeeded. Only the
+    macro's own tab-close missed its tab (the extension did not match the
+    title), and the page's backstop still closes it: the run's answer is ok,
+    with the miss named instead of hidden. Every other error passes through —
+    the work itself failed, and that stays an error.
+    """
+    if verdict.kind != "error" or TAB_NOT_FOUND not in verdict.message:
+        return verdict
+    if autorun.PAGE_TITLE_SELECTOR not in verdict.message:
+        return verdict
+    return logread.LogResult(
+        kind="ok",
+        message="macro completed — XClick fired; the macro's own tab-close "
+                "missed the autostart tab (the extension did not match its "
+                "title) — the page's backstop closes it shortly",
+        lines=verdict.lines,
+    )
 
 
 async def _default_sleep(seconds: float) -> None:
@@ -221,7 +258,7 @@ class Sequence:
                 return self._stopped_after(outcomes, len(runs))
             if pos > 0:
                 await self._inter_run_delay()
-            verdict = await self._one(run)
+            verdict = rescore_cleanup_miss(await self._one(run))
             outcomes.append((run, verdict))
             if len(runs) > 1:
                 self.recorder("result", f"run {run.index}/{run.total} ({run.label}) — "

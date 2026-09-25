@@ -227,3 +227,60 @@ to load — the function lives on `windll.kernel32`. The probe now resolves
 `GENERIC_READ` overflows the default signed-32 int — and `c_void_p` for the 64-bit handle)
 and `restype = c_void_p`; the `ctypes.windll` stub in the tests mirrors the loader→DLL shape
 so a direct-on-loader call cannot pass again.
+
+## Revision 2026-09-25 (2) — E212 on the cleanup pair: rescored, root cause under pin-down
+
+The owner's first real runs (2026-09-25, both of them) did the whole job — tab
+selected, RED rect, XClick fired, `echo done` — then failed with
+`E212: failed to find the tab with locator 'title=*Ui.Vision Autostart Page*'`
+on the PINNED cleanup pair. The macro's own tab-close could not find the tab
+this run had opened, so the run reported an error although nothing was harmed
+and nothing user-owned was touched.
+
+**What the source check this round closed (dead ends, do not retry):**
+
+* Firefox `tabs.query({title})` is a **glob** match (`MatchGlob`, since FF59 —
+  the "exact value, will do so in the future" docstring in
+  `ext-tabs-base.js` is stale), and title/url queries are gated by
+  `hasTabPermission` = `hasPermission("tabs") || activeTab || host` — the
+  extension has `tabs`, so EVERY tab (incl. `file:`) is visible. Permissions
+  and exact-match are dead.
+* `selectWindow` accepts exactly `title=` and `tab=` in V9.6.1 **and** V10
+  main — a `url=*ui.vision.html*` cleanup locator is refused with E209 in both
+  (F1, re-verified).
+* V10's E212 is the same wording as V9's, reached through E210 (zero matches)
+  OR through the outer catch re-anchoring any non-DOM-ready failure
+  (`parseInt(locator)` is NaN for a `title=` locator → the fallback throws
+  E212 with the original locator). Either way: the work commands all preceded
+  it and succeeded.
+* `!statusOK` is **not set by a failed command in V9.6.1** (the variable is
+  declared and only written by an explicit `store`; nothing in the player or
+  bg sets it on failure) — a guarded cleanup built on
+  `store !errorignore` + `if_v2 | ${!statusOK}` is version-dependent and dead.
+* `selectWindow tab=N` cleanup stays rejected: V10's `CS_INVOKE` seeds
+  `firstPlay` from the PREVIOUS run's persisted `toPlay` when that tab is
+  still open — the offset anchor can point at a USER tab (protected-tab
+  violation).
+* `automation_tab_mark.js` (tab-title marking) is Chrome-only and off since
+  10.0.33 — no Firefox tab-title rewrite exists.
+* Local Firefox repro is impossible in the sandbox (apt + Mozilla download
+  hosts network-blocked; no `firefox-esr` candidate).
+
+**The fix — rescore, don't guess:** `sequence.rescore_cleanup_miss` turns the
+one error that can only follow a fully successful work phase into `ok` with
+the miss named: the macro stops at its FIRST failure, the cleanup pair is
+pinned last (`macro.MACRO_SHAPE`), so a `failed to find the tab with locator`
+naming `autorun.PAGE_TITLE_SELECTOR` proves the select, the XClick and the
+echo all succeeded. The tab the run opened lingers — the page's backstop
+(§2, item 2) still closes it within its window. Every other error (a miss
+naming the RUN's own tab locator, an XClick timeout, E225…) passes through
+untouched. The protected-tab rule is unchanged: nothing is closed that the run
+did not open. Tests: `tests/test_uivision_sequence.py` (rescored single run,
+multi-run roll-up, run-tab miss stays error, E210/E225 pass-through).
+
+**Still open — the root cause of the miss itself** (why the extension matched
+no tab by that title when its own tab is the only system-opened one): the
+owner's savelog (`config\uivision\logs\run-20260925-115330.txt` + `-2.txt`)
+and the title the leftover autostart tab SHOWED after a run (it stays open
+until the backstop fires) are requested — that pair pins whether the title was
+ever visible to the tab strip at all.
