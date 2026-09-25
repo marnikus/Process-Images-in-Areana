@@ -26,8 +26,8 @@ const UrlListCells = {
       cell.innerHTML = '<span style="color:var(--text-muted);" title="Tab not in pool">—</span>';
       return;
     }
-    const esc = this._store().esc.bind(this._store());
-    cell.innerHTML = `<span title="${esc(page.tab_id)}">${page.browser === 'firefox' ? '🦊 ' : '🌐 '}${esc(this._tabLabel(page))}</span>`;
+    const esc = this._store().esc.bind(this._store()), no = Number(page.worker_no) > 0 ? `<b class="worker-no">#${Number(page.worker_no)}</b> ` : '';  // Page Pool's #N
+    cell.innerHTML = `<span title="${esc(page.tab_id)}">${no}${page.browser === 'firefox' ? '🦊 ' : '🌐 '}${esc(this._tabLabel(page))}</span>`;
   },
 
   _setTabBtn(btn, tabId) {

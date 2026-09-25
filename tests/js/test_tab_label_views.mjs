@@ -88,6 +88,18 @@ describe('URL list', () => {
     assert.ok(html.includes(`title="${FULL}"`), 'the hex id stays reachable');
   });
 
+  test('the row shows the same visual worker number as the Page Pool (#N before the badge)', () => {
+    const html = tabCell(worker({ browser: 'firefox', tab_label: 'mailreceiverpro@gmail.com' }));
+    assert.ok(html.includes('<b class="worker-no">#3</b> 🦊 mailreceiverpro@gmail.com</span>'), html);
+  });
+
+  test('a page without a worker number shows no stray #', () => {
+    for (const worker_no of [0, '', undefined, 'x']) {
+      const html = tabCell(worker({ worker_no }));
+      assert.ok(!html.includes('worker-no') && !html.includes('#'), html);
+    }
+  });
+
   test('falls back to the short id when the snapshot carries no label', () => {
     const html = tabCell(worker({ tab_label: '' }));
     // D8: the short id sits behind the browser badge (🌐/🦊) — never bare.
