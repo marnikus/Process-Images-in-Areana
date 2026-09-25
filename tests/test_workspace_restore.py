@@ -67,7 +67,7 @@ def _skip_of(reply, domain_id):
 def test_preview_reads_manifest_and_mutates_nothing(bridge, snapshot):
     before = {p: p.stat().st_mtime_ns for p in sorted(bridge.config.dir.rglob("*.json"))}
     state_before = bridge.state.prompt["user_prompt"]
-    preview = ws_restore.preview_restore(bridge, str(snapshot))
+    preview = ws_restore.preview_restore(str(snapshot))
     after = {p: p.stat().st_mtime_ns for p in sorted(bridge.config.dir.rglob("*.json"))}
     assert before == after and state_before == bridge.state.prompt["user_prompt"]
     assert preview["ok"] and preview["snapshot_kind"] == "full"
@@ -80,14 +80,14 @@ def test_preview_reads_manifest_and_mutates_nothing(bridge, snapshot):
 def test_preview_flags_size_mismatch_and_missing(bridge, snapshot):
     (snapshot / "state/undo.json").write_text("{}")
     (snapshot / "state/job_history.json").unlink()
-    preview = ws_restore.preview_restore(bridge, str(snapshot))
+    preview = ws_restore.preview_restore(str(snapshot))
     statuses = {d["domain_id"]: d["status"] for d in preview["domains"]}
     assert statuses["undo"] == "size_mismatch"
     assert statuses["job_history"] == "missing"
 
 
 def test_preview_refuses_a_foreign_folder(bridge, tmp_path):
-    reply = ws_restore.preview_restore(bridge, str(tmp_path))
+    reply = ws_restore.preview_restore(str(tmp_path))
     assert reply["ok"] is False and "not a committed workspace" in reply["error"]
 
 
@@ -95,7 +95,7 @@ def test_preview_notes_missing_folder_root(bridge, snapshot):
     doc = json.loads((snapshot / "state/app_state.json").read_text())
     doc["folder"]["root_path"] = "/definitely/not/anywhere"
     (snapshot / "state/app_state.json").write_text(json.dumps(doc))
-    preview = ws_restore.preview_restore(bridge, str(snapshot))
+    preview = ws_restore.preview_restore(str(snapshot))
     assert any("re-pick the folder" in note for note in preview["path_remap_needed"])
 
 

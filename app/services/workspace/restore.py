@@ -54,7 +54,7 @@ def _preview_row(root: Path, manifest: dict, domain_id: str) -> dict:
     return row
 
 
-def preview_restore(bridge, root) -> dict:
+def preview_restore(root) -> dict:
     """Manifest-only preview before any mutation (task RESTORE 1)."""
     root = Path(root)
     manifest, err = read_manifest(root)

@@ -79,7 +79,3 @@ class ArenaPresetsProvider(_StoreProvider):
             if not isinstance(value, want):
                 return f"'{key}' must be a {want.__name__}"
         return None
-
-
-def _unused(exc: WorkspaceError) -> None:  # noqa: ARG001 — keeps the import meaningful for re-exports
-    raise exc

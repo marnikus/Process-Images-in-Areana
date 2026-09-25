@@ -139,7 +139,7 @@ class WorkspaceMixin:
 
     @Slot(str, result=str)
     def preview_workspace(self, root: str):
-        return json.dumps(ws_restore.preview_restore(self, root), ensure_ascii=False)
+        return json.dumps(ws_restore.preview_restore(root), ensure_ascii=False)
 
     @Slot(str, str, result=str)
     def restore_workspace(self, root: str, options_json: str):

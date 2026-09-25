@@ -114,7 +114,7 @@ def _restore_one(plan: dict, provider, entry: dict, doc) -> dict:
     return row
 
 
-def _restore_row(bridge, plan: dict, provider) -> dict:
+def _restore_row(plan: dict, provider) -> dict:
     """One provider's row: policy row, file-gate skip, or the gated restore."""
     entry = entry_for(plan["manifest"], provider.domain_id) or {}
     if not entry or not entry.get("path"):
@@ -144,7 +144,7 @@ def restore_workspace(bridge, root, selected=None) -> dict:
             "files": _load_files(root, manifest, providers), "failed": set()}
     rows = []
     for provider in providers:
-        row = _restore_row(bridge, plan, provider)
+        row = _restore_row(plan, provider)
         rows.append(row)
         if row["status"] != "restored":
             plan["failed"].add(provider.domain_id)
