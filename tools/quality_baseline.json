@@ -1,7 +1,7 @@
 {
   "coverage": {
-    "line": 88.93,
-    "branch": 85.69
+    "line": 89.39,
+    "branch": 86.37
   },
   "app/__init__.py": {
     "max_func_loc": 0,
@@ -249,7 +249,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 201,
-    "coverage": 92.7
+    "coverage": 99.44
   },
   "app/browser/cdp_arena/__init__.py": {
     "max_func_loc": 0,
@@ -939,59 +939,78 @@
     "max_cog": 0,
     "max_nest": 0,
     "max_params": 0,
-    "file_lines": 27,
+    "file_lines": 30,
     "coverage": 100.0
   },
   "app/browser/uivision/autorun.py": {
-    "max_func_loc": 13,
-    "max_class_loc": 13,
+    "max_func_loc": 19,
+    "max_class_loc": 16,
     "func_count": 2,
     "funcs": {
       "write_page": 7,
-      "launch_url": 13
+      "launch_url": 19
     },
     "max_methods": 0,
     "max_cc": 3,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 1,
-    "file_lines": 144,
+    "file_lines": 186,
     "coverage": 100.0
   },
   "app/browser/uivision/desktop.py": {
-    "max_func_loc": 12,
+    "max_func_loc": 19,
     "max_class_loc": 0,
-    "func_count": 3,
+    "func_count": 9,
     "funcs": {
       "desktop_module_listening": 9,
       "find_windows": 8,
-      "foreground": 12
+      "foreground": 12,
+      "normalize_window_title": 7,
+      "firefox_windows": 7,
+      "_titles_match": 4,
+      "_windows_holding": 13,
+      "pick_tab_window": 19,
+      "foreground_tab_window": 7
     },
     "max_methods": 0,
-    "max_cc": 3,
+    "max_cc": 15,
     "max_cog": 0,
-    "max_nest": 1,
-    "max_params": 1,
-    "file_lines": 38,
-    "coverage": 100.0
+    "max_nest": 3,
+    "max_params": 3,
+    "file_lines": 135,
+    "coverage": 98.81
   },
   "app/browser/uivision/launch.py": {
-    "max_func_loc": 7,
-    "max_class_loc": 0,
-    "func_count": 4,
+    "max_func_loc": 19,
+    "max_class_loc": 2,
+    "func_count": 17,
     "funcs": {
-      "resolve_binary": 7,
-      "binary_exists": 5,
-      "build_argv": 7,
-      "launch": 4
+      "_win_candidates": 6,
+      "candidate_binaries": 5,
+      "_configured": 3,
+      "_first_existing": 3,
+      "resolve_binary": 6,
+      "binary_exists": 10,
+      "diagnose_binary": 19,
+      "_checked": 6,
+      "build_argv": 6,
+      "profile_args": 14,
+      "profile_argv": 9,
+      "launch": 4,
+      "launch_resilient": 15,
+      "_windows_fallbacks": 19,
+      "_launch_with_cwd": 5,
+      "_shell_execute": 8,
+      "_launch_failed": 4
     },
     "max_methods": 0,
-    "max_cc": 5,
+    "max_cc": 6,
     "max_cog": 0,
     "max_nest": 1,
-    "max_params": 2,
-    "file_lines": 57,
-    "coverage": 100.0
+    "max_params": 3,
+    "file_lines": 222,
+    "coverage": 91.45
   },
   "app/browser/uivision/logread.py": {
     "max_func_loc": 19,
@@ -1013,28 +1032,52 @@
     "coverage": 100.0
   },
   "app/browser/uivision/macro.py": {
-    "max_func_loc": 13,
+    "max_func_loc": 16,
     "max_class_loc": 0,
-    "func_count": 7,
+    "func_count": 10,
     "funcs": {
       "validate_macro_name": 8,
       "command": 3,
       "refuse_dom_clicks": 6,
-      "build_commands": 13,
+      "render_find_rect_js": 11,
+      "_url_attempt": 16,
+      "_tab_commands": 16,
+      "build_commands": 10,
       "creation_date": 4,
-      "build_macro": 6,
+      "build_macro": 12,
       "to_json": 3
     },
     "max_methods": 0,
-    "max_cc": 3,
+    "max_cc": 4,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 4,
-    "file_lines": 94,
+    "file_lines": 242,
     "coverage": 100.0
   },
+  "app/browser/uivision/mozlz4.py": {
+    "max_func_loc": 16,
+    "max_class_loc": 0,
+    "func_count": 7,
+    "funcs": {
+      "decompress_block": 15,
+      "_extra_length": 13,
+      "_copy_literals": 7,
+      "_read_offset": 8,
+      "_decompress_lib": 10,
+      "decompress": 14,
+      "read_session_file": 16
+    },
+    "max_methods": 0,
+    "max_cc": 6,
+    "max_cog": 0,
+    "max_nest": 3,
+    "max_params": 5,
+    "file_lines": 123,
+    "coverage": 92.73
+  },
   "app/browser/uivision/paths.py": {
-    "max_func_loc": 7,
+    "max_func_loc": 9,
     "max_class_loc": 0,
     "func_count": 7,
     "funcs": {
@@ -1044,33 +1087,100 @@
       "runtime_dir": 3,
       "autorun_file": 2,
       "logs_dir": 2,
-      "log_file": 3
+      "log_file": 9
     },
     "max_methods": 0,
     "max_cc": 3,
     "max_cog": 0,
     "max_nest": 1,
-    "max_params": 2,
-    "file_lines": 58,
+    "max_params": 3,
+    "file_lines": 64,
+    "coverage": 100.0
+  },
+  "app/browser/uivision/plan.py": {
+    "max_func_loc": 19,
+    "max_class_loc": 10,
+    "func_count": 11,
+    "funcs": {
+      "profile_label": 6,
+      "anonymous_session": 4,
+      "matches": 11,
+      "describe_search": 9,
+      "selector_for": 18,
+      "run_label": 5,
+      "plan_targets": 19,
+      "one_per_profile": 16,
+      "split_unaddressable": 8,
+      "summarize": 10,
+      "runs": 11
+    },
+    "max_methods": 0,
+    "max_cc": 8,
+    "max_cog": 0,
+    "max_nest": 3,
+    "max_params": 4,
+    "file_lines": 200,
+    "coverage": 100.0
+  },
+  "app/browser/uivision/profiles.py": {
+    "max_func_loc": 18,
+    "max_class_loc": 0,
+    "func_count": 8,
+    "funcs": {
+      "_profile_id": 3,
+      "_tab_summary": 4,
+      "open_sessions": 8,
+      "list_profiles": 18,
+      "selected_set": 4,
+      "_target_id": 3,
+      "filter_targets": 6,
+      "unmatched_profiles": 16
+    },
+    "max_methods": 0,
+    "max_cc": 8,
+    "max_cog": 0,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 97,
     "coverage": 100.0
   },
   "app/browser/uivision/runner.py": {
-    "max_func_loc": 23,
-    "max_class_loc": 13,
-    "func_count": 15,
+    "max_func_loc": 25,
+    "max_class_loc": 22,
+    "func_count": 35,
     "funcs": {
+      "_patterns": 3,
       "_macro_target": 5,
-      "_provision": 17,
-      "_detect_phase": 4,
-      "_detect_tabs": 15,
+      "_provision": 23,
+      "_report_tab_rows": 6,
+      "_report_matches": 20,
+      "_report_no_matches": 10,
+      "_report_plan": 5,
+      "_report_blank_search": 7,
+      "_load_profiles": 7,
+      "_report_profiles": 7,
+      "_report_source": 6,
+      "_report_windows": 12,
+      "_report_profile_windows": 5,
+      "_report_window": 5,
       "os_is_windows": 4,
       "_addon_line": 8,
-      "_result_level": 5,
       "_detect_plugin": 13,
-      "_foreground": 9,
-      "_launch": 20,
+      "_report_open_tabs": 8,
+      "_detect_phase": 20,
+      "_drop_unaddressable": 8,
+      "_apply_profile_filter": 12,
+      "_report_unmatched_profile": 7,
       "_stopped": 2,
       "_result": 2,
+      "_blocked_no_search": 7,
+      "_blocked_no_url_match": 9,
+      "_fallback_or_block": 23,
+      "_wait_for_unmatched": 25,
+      "_poll_one_profile": 13,
+      "_safe_sleep": 9,
+      "_find_new_targets": 19,
+      "_default_sleep": 4,
       "run_test": 23,
       "__init__": 3,
       "__call__": 3
@@ -1078,35 +1188,84 @@
     "max_methods": 2,
     "max_cc": 9,
     "max_cog": 0,
-    "max_nest": 1,
+    "max_nest": 3,
+    "max_params": 7,
+    "file_lines": 497,
+    "coverage": 98.92
+  },
+  "app/browser/uivision/sequence.py": {
+    "max_func_loc": 28,
+    "max_class_loc": 143,
+    "func_count": 16,
+    "funcs": {
+      "result_level": 5,
+      "lines_of": 9,
+      "rollup": 7,
+      "rollup_reason": 11,
+      "_default_sleep": 4,
+      "launch_locator": 12,
+      "__init__": 5,
+      "_stopped": 2,
+      "execute": 17,
+      "_inter_run_delay": 12,
+      "_one": 14,
+      "_foreground": 28,
+      "_launch": 24,
+      "_scope": 3,
+      "_stopped_after": 9,
+      "_final": 12
+    },
+    "max_methods": 10,
+    "max_cc": 8,
+    "max_cog": 0,
+    "max_nest": 2,
     "max_params": 4,
-    "file_lines": 159,
-    "coverage": 98.08
+    "file_lines": 237,
+    "coverage": 96.53
   },
   "app/browser/uivision/tabs.py": {
-    "max_func_loc": 16,
+    "max_func_loc": 18,
     "max_class_loc": 0,
-    "func_count": 11,
+    "func_count": 30,
     "funcs": {
       "profile_roots": 8,
       "_dirs_under": 9,
-      "profile_dirs": 4,
+      "_ini_candidates": 8,
+      "ini_entries": 12,
+      "ini_dirs": 3,
+      "_ini_sections": 16,
+      "_ini_entry": 8,
+      "profile_dirs": 10,
+      "profile_in_use": 12,
+      "_unix_lock_held": 18,
+      "_win_lock_held": 11,
+      "open_profile_dirs": 4,
       "_read_json": 6,
       "_list": 3,
       "_tab_row": 6,
       "_rows_of": 9,
-      "tab_rows": 16,
-      "addon_seen": 14,
+      "_selected": 7,
+      "_window_rows": 13,
+      "_session_files": 4,
+      "_profile_session": 15,
+      "profile_names": 11,
+      "profile_sessions": 17,
+      "_label": 3,
+      "tab_rows": 3,
+      "session_windows": 9,
+      "session_source": 7,
+      "addon_seen": 12,
+      "_addon_matches": 10,
       "_flat": 3,
       "match_urls": 6
     },
     "max_methods": 0,
-    "max_cc": 8,
+    "max_cc": 9,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 4,
-    "file_lines": 126,
-    "coverage": 98.1
+    "file_lines": 362,
+    "coverage": 96.99
   },
   "app/browser/visual_click.py": {
     "max_func_loc": 25,
@@ -1195,7 +1354,7 @@
       "config_schema": 20
     },
     "max_methods": 6,
-    "max_cc": 7,
+    "max_cc": 8,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 3,
@@ -1267,7 +1426,7 @@
       "delete_non_ai_images": 13
     },
     "max_methods": 0,
-    "max_cc": 5,
+    "max_cc": 6,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 2,
@@ -1326,7 +1485,7 @@
       "recalculate_progress": 2
     },
     "max_methods": 3,
-    "max_cc": 3,
+    "max_cc": 4,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
@@ -1416,7 +1575,7 @@
       "build_progress_counts": 10
     },
     "max_methods": 0,
-    "max_cc": 3,
+    "max_cc": 4,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 2,
@@ -1461,7 +1620,7 @@
       "detect_changes": 28
     },
     "max_methods": 0,
-    "max_cc": 7,
+    "max_cc": 10,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 4,
@@ -1569,7 +1728,7 @@
       "main": 16
     },
     "max_methods": 0,
-    "max_cc": 2,
+    "max_cc": 1,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 0,
@@ -1600,7 +1759,7 @@
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 138,
+    "file_lines": 145,
     "coverage": 95.24
   },
   "app/persistence/cooldown_store.py": {
@@ -1646,7 +1805,7 @@
       "save_json_atomic": 15
     },
     "max_methods": 0,
-    "max_cc": 5,
+    "max_cc": 4,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 2,
@@ -1757,7 +1916,7 @@
       "_first_claimable_tid": 7
     },
     "max_methods": 0,
-    "max_cc": 8,
+    "max_cc": 9,
     "max_cog": 0,
     "max_nest": 4,
     "max_params": 4,
@@ -2045,7 +2204,7 @@
       "cohort": 17
     },
     "max_methods": 0,
-    "max_cc": 4,
+    "max_cc": 5,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 2,
@@ -2067,7 +2226,7 @@
       "compare": 15
     },
     "max_methods": 1,
-    "max_cc": 7,
+    "max_cc": 8,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
@@ -2155,7 +2314,7 @@
       "_body": 19
     },
     "max_methods": 9,
-    "max_cc": 7,
+    "max_cc": 9,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 5,
@@ -2254,7 +2413,7 @@
       "_folder_size": 9
     },
     "max_methods": 0,
-    "max_cc": 6,
+    "max_cc": 7,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 2,
@@ -2309,7 +2468,7 @@
       "recover_interrupted": 6
     },
     "max_methods": 13,
-    "max_cc": 4,
+    "max_cc": 5,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 4,
@@ -2516,7 +2675,7 @@
       "_finish_normal": 17
     },
     "max_methods": 0,
-    "max_cc": 10,
+    "max_cc": 9,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 4,
@@ -2576,7 +2735,7 @@
       "next_no": 4
     },
     "max_methods": 7,
-    "max_cc": 6,
+    "max_cc": 7,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 3,
@@ -2610,7 +2769,7 @@
       "throttle": 9
     },
     "max_methods": 6,
-    "max_cc": 5,
+    "max_cc": 4,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
@@ -2694,7 +2853,7 @@
       "urls": 2
     },
     "max_methods": 1,
-    "max_cc": 7,
+    "max_cc": 10,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
@@ -2721,7 +2880,7 @@
       "run_live": 21
     },
     "max_methods": 0,
-    "max_cc": 7,
+    "max_cc": 8,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 3,
@@ -2778,7 +2937,7 @@
       "pool_exits": 18
     },
     "max_methods": 0,
-    "max_cc": 6,
+    "max_cc": 7,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
@@ -3576,7 +3735,7 @@
       "delete_prompt_preset": 7
     },
     "max_methods": 9,
-    "max_cc": 6,
+    "max_cc": 7,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
@@ -3730,33 +3889,35 @@
     "coverage": 65.36
   },
   "app/ui/panels/firefox_auto.py": {
-    "max_func_loc": 20,
-    "max_class_loc": 53,
-    "func_count": 15,
+    "max_func_loc": 23,
+    "max_class_loc": 70,
+    "func_count": 17,
     "funcs": {
       "_defaults": 4,
       "_clamp_int": 5,
-      "validate_config": 17,
+      "validate_config": 23,
+      "_validate_profiles": 11,
       "load_config": 19,
-      "_config_dir": 2,
+      "_config_dir": 4,
       "paths_info": 12,
-      "build_spec": 7,
+      "build_spec": 12,
       "emit_status": 6,
       "_reporter": 6,
-      "do_run_test": 20,
+      "do_run_test": 21,
       "report": 3,
       "get_firefox_auto_config": 10,
       "save_firefox_auto_config": 17,
       "run_firefox_auto_test": 9,
-      "stop_firefox_auto_test": 7
+      "stop_firefox_auto_test": 7,
+      "show_firefox_profiles": 15
     },
-    "max_methods": 4,
-    "max_cc": 6,
+    "max_methods": 5,
+    "max_cc": 7,
     "max_cog": 0,
-    "max_nest": 1,
+    "max_nest": 2,
     "max_params": 3,
-    "file_lines": 196,
-    "coverage": 96.21
+    "file_lines": 250,
+    "coverage": 97.04
   },
   "app/ui/panels/job_history.py": {
     "max_func_loc": 9,
@@ -4100,7 +4261,7 @@
       "captcha_balance": 9
     },
     "max_methods": 7,
-    "max_cc": 7,
+    "max_cc": 8,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 3,
@@ -4127,7 +4288,7 @@
     "max_nest": 1,
     "max_params": 1,
     "file_lines": 72,
-    "coverage": 62.5
+    "coverage": 60.71
   },
   "app/ui/services/__init__.py": {
     "max_func_loc": 0,
@@ -4187,7 +4348,7 @@
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 98,
-    "coverage": 97.1
+    "coverage": 95.65
   },
   "app/ui/services/file_service.py": {
     "max_func_loc": 18,
@@ -4224,7 +4385,7 @@
       "submit_folder_ai": 8
     },
     "max_methods": 0,
-    "max_cc": 4,
+    "max_cc": 5,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 4,
@@ -4384,7 +4545,7 @@
       "fingerprint_from_path_stat": 4
     },
     "max_methods": 0,
-    "max_cc": 4,
+    "max_cc": 3,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 3,
@@ -4419,7 +4580,7 @@
       "build_error_scan_js": 22
     },
     "max_methods": 0,
-    "max_cc": 7,
+    "max_cc": 9,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 2,
@@ -4441,7 +4602,7 @@
       "_cb": 11
     },
     "max_methods": 0,
-    "max_cc": 7,
+    "max_cc": 5,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
@@ -4464,7 +4625,7 @@
       "raise_handles": 8
     },
     "max_methods": 0,
-    "max_cc": 6,
+    "max_cc": 7,
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 4,
@@ -4778,12 +4939,12 @@
     "js": true
   },
   "app/ui/web/js/panels/firefox-auto.js": {
-    "max_func_loc": 12,
-    "max_cc": 8,
-    "max_nest": 1,
+    "max_func_loc": 22,
+    "max_cc": 11,
+    "max_nest": 2,
     "max_params": 2,
-    "file_lines": 180,
-    "func_count": 35,
+    "file_lines": 255,
+    "func_count": 48,
     "js": true
   },
   "app/ui/web/js/panels/folder-picker.js": {
