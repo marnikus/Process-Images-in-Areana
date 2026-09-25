@@ -89,6 +89,17 @@ class WindowPresetStore:
     def save(self):
         _atomic_write(self.path, self._data)
 
+    def all_data(self):
+        return copy.deepcopy(self._data)
+
+    def replace_all(self, data: dict):
+        """Workspace restore entry point: validated wholesale replacement of the store."""
+        if not isinstance(data, dict) or not isinstance(data.get("window_presets"), dict):
+            raise ValueError("window preset store needs a 'window_presets' object")
+        self._data = copy.deepcopy(data)
+        self.save()
+        return True
+
     def list_presets(self):
         result = []
         for name, doc in self._data.get("window_presets", {}).items():

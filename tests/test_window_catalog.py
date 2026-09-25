@@ -63,14 +63,15 @@ def test_every_registered_window_has_a_mountable_element():
 
 
 def test_ids_and_titles_have_no_duplicates_and_no_legacy_names():
-    assert len(wc.WINDOW_IDS) == 18 == len(set(wc.WINDOW_IDS))
-    assert len(set(wc.WINDOW_TITLES.values())) == 18
+    assert len(wc.WINDOW_IDS) == 19 == len(set(wc.WINDOW_IDS))
+    assert len(set(wc.WINDOW_TITLES.values())) == 19
     assert "captcha_records" not in wc.WINDOW_IDS and "recordings" in wc.WINDOW_IDS
     assert "page_pool" not in wc.WINDOW_IDS and "live_debug" in wc.WINDOW_IDS  # rescued, not registered (D-21)
     assert wc.LEGACY_WINDOW_IDS == {"captcha_records": "recordings"}
     assert wc.WINDOW_TITLES["live_debug"] == "Live Worker & Queue Debug"
     assert wc.WINDOW_TITLES["job_history"] == "Job History"
     assert wc.WINDOW_TITLES["firefox_auto"] == "Firefox auto with Extension"
+    assert wc.WINDOW_TITLES["workspace"] == "Global Saving System"
 
 
 def _splits(node):
@@ -88,26 +89,26 @@ def test_default_tree_leaf_set_equals_the_registry():
         assert len(split["sizes"]) == len(split["children"])
 
 
-def test_grid_version_is_eight_and_v7_layouts_migrate():
-    assert wc.GRID_VERSION == 8
-    v7_tree = json.loads(json.dumps(wc.default_grid_tree()))
-    # drop the firefox_auto leaf → the shape a v7 file on disk has (17 leaves)
+def test_grid_version_is_nine_and_v8_layouts_migrate():
+    assert wc.GRID_VERSION == 9
+    v8_tree = json.loads(json.dumps(wc.default_grid_tree()))
+    # drop the workspace leaf → the shape a v8 file on disk has (18 leaves)
     def strip(node):
         if node.get("t") != "split":
             return node
-        keep = [i for i, k in enumerate(node["children"]) if not (k.get("t") == "leaf" and k["id"] == "firefox_auto")]
+        keep = [i for i, k in enumerate(node["children"]) if not (k.get("t") == "leaf" and k["id"] == "workspace")]
         kids = [strip(node["children"][i]) for i in keep]
         total = sum(node["sizes"][i] for i in keep)
         return {**node, "children": kids, "sizes": [round(node["sizes"][i] * 100 / total, 4) for i in keep]}
-    v7_tree = strip(v7_tree)
-    assert "firefox_auto" not in layout_service.leaf_ids(v7_tree)
-    payload, err = layout_service.canonical_grid_payload(json.dumps({"v": 7, "tree": v7_tree}))
+    v8_tree = strip(v8_tree)
+    assert "workspace" not in layout_service.leaf_ids(v8_tree)
+    payload, err = layout_service.canonical_grid_payload(json.dumps({"v": 8, "tree": v8_tree}))
     assert err is None
     doc = json.loads(payload)
-    assert doc["v"] == 8 and sorted(layout_service.leaf_ids(doc["tree"])) == sorted(wc.WINDOW_IDS)
-    v8, err = layout_service.canonical_grid_payload(layout_service.default_payload())
-    assert err is None and layout_service.canonical_grid_payload(v8) == (v8, None)  # canonical v8 is a fixed point
-    assert layout_service.canonical_grid_payload(json.dumps({"v": 9, "tree": wc.default_grid_tree()}))[1] == "unsupported version 9"
+    assert doc["v"] == 9 and sorted(layout_service.leaf_ids(doc["tree"])) == sorted(wc.WINDOW_IDS)
+    v9, err = layout_service.canonical_grid_payload(layout_service.default_payload())
+    assert err is None and layout_service.canonical_grid_payload(v9) == (v9, None)  # canonical v9 is a fixed point
+    assert layout_service.canonical_grid_payload(json.dumps({"v": 10, "tree": wc.default_grid_tree()}))[1] == "unsupported version 10"
 
 
 def test_legacy_rename_still_works():
