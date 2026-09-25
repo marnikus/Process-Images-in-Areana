@@ -63,6 +63,18 @@ def _emit_refresh(bridge, emit, note: str, notes: list) -> None:
         notes.append(f"{note} failed: {type(exc).__name__}: {exc}")
 
 
+# RULE 24 table: restored domain → (live emitter, report note). New live
+# consumers of restored values MUST join this table (design doc §M).
+_REFRESH_TABLE = (
+    ("arena_state", lambda b: b._emit_arena_state(),
+     "live state re-pushed (queue, urls, settings inputs)"),
+    ("undo", lambda b: undo_entries.emit_undo_state(b), "undo timeline re-pushed"),
+    ("job_history", lambda b: job_history.emit_history(b), "job history re-pushed"),
+    ("window_presets", lambda b: b.list_window_presets(), "window preset list re-pushed"),
+    ("arena_presets", lambda b: b.list_arena_presets(), "arena preset list re-pushed"),
+)
+
+
 def _post_restore_refresh(bridge, restored: list) -> list:
     """Push restored state to every LIVE consumer (panels + signals).
 
@@ -71,21 +83,9 @@ def _post_restore_refresh(bridge, restored: list) -> list:
     report: "restore do nothing"). Each push reuses the app's own emitter.
     """
     notes: list = []
-    if "arena_state" in restored:
-        _emit_refresh(bridge, lambda: bridge._emit_arena_state(),
-                      "live state re-pushed (queue, urls, settings inputs)", notes)
-    if "undo" in restored:
-        _emit_refresh(bridge, lambda: undo_entries.emit_undo_state(bridge),
-                      "undo timeline re-pushed", notes)
-    if "job_history" in restored:
-        _emit_refresh(bridge, lambda: job_history.emit_history(bridge),
-                      "job history re-pushed", notes)
-    if "window_presets" in restored:
-        _emit_refresh(bridge, lambda: bridge.list_window_presets(),
-                      "window preset list re-pushed", notes)
-    if "arena_presets" in restored:
-        _emit_refresh(bridge, lambda: bridge.list_arena_presets(),
-                      "arena preset list re-pushed", notes)
+    for domain_id, emit, note in _REFRESH_TABLE:
+        if domain_id in restored:
+            _emit_refresh(bridge, lambda e=emit: e(bridge), note, notes)
     return notes
 
 
