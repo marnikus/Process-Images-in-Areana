@@ -18,6 +18,11 @@ effort: a missing, locked or unparsable file answers "not seen", never an
 error, so a wrong guess can never look like a browser verdict (RULE 4).
 """
 
+# ideal-size: ~360 lines reason=session-store readers for every profile + the
+# ini/roots enumeration + the addon probe + the nsProfileLock open/closed probe
+# (all OS-read concerns of one module — see runner.py's companion comment);
+# every function stays within the RULE 18 band (max 20 lines).
+
 from __future__ import annotations
 
 import configparser
