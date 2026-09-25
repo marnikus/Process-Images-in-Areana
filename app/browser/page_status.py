@@ -14,8 +14,18 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
+from app.core.browser_ids import FIREFOX, is_firefox  # noqa: F401  (re-exported names)
 from app.core.cooldown import remaining_seconds as _remaining
 from app.core.tab_alias import format_alias
+
+
+def conn_of(browser) -> str:
+    """The connection method a browser id shows in the URL list (D-4, owner's §2.3).
+
+    Derived, never stored: one `browser` field on the page, one rule here —
+    chrome (and anything unknown) answers `cdp`, firefox answers `uivision`.
+    """
+    return "uivision" if browser == FIREFOX else "cdp"
 
 
 def now_iso() -> str:
@@ -56,7 +66,7 @@ class PageInfo:
     browser: str = ""  # browser id of the endpoint ("chrome"/"firefox"/…); "" = the pool knows
     worker_no: int = 0  # pool join order, 1-based, assigned once by PagePool (D-3)
     alias_no: int = 0  # readable-id number, assigned once by PagePool, persisted (D-5)
-    owner: str = ""    # logged-in account of this tab, from the owner probe (D-5)
+    owner: str = ""; profile: str = ""  # owner = logged-in account (D-5); profile = Firefox dir, the re-resolve key ('' = Chrome) (D-5)
 
     @property
     def alias(self) -> str:
@@ -130,7 +140,7 @@ class PageInfo:
             "owner": self.owner,
             "busy_since": self.busy_since,
             "error": self.error,
-            "jobs_completed": self.jobs_completed,
+            "jobs_completed": self.jobs_completed, "profile": self.profile,
             **_cooldown_dict(self),
         }
 

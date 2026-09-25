@@ -24,6 +24,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List
 
+from app.core.browser_ids import is_firefox, is_tab_id
 from app.services import auto_connect as ac
 from app.services.live import url_policy as up
 from app.services.live.bus import live_bus
@@ -57,6 +58,7 @@ class LiveDeps:
     commit: Callable[[], Any]
     log: Callable[..., Any]
     leave_tab: Callable[[str], bool] | None = None  # checkbox→pool exit (D-4); None = no pool writes
+    join_entry: Callable[[Any], Awaitable[Any]] | None = None  # Firefox pool join (D-5); None = Chrome-only
 
 
 @dataclass
@@ -69,8 +71,8 @@ class Report:
     stale: int = 0
     deferred: int = 0
     swept: int = 0
-    error: str = ""
-    removed_ids: List[str] = field(default_factory=list)
+    ff_added: int = 0; ff_removed: int = 0; ff_joined: int = 0  # Firefox lane: this pass's adds/removes/pool joins (owner's line)
+    error: str = ""; removed_ids: List[str] = field(default_factory=list)
 
     def changed(self) -> bool:
         return any((self.added, self.linked, self.removed, self.joined, self.revived, self.stale))
@@ -165,7 +167,7 @@ def _claim_rows(urls: list, claims) -> int:
 
 
 def _removal_spec(p: _Pass) -> up.RemovalSpec:
-    live = ac.live_tab_keys(p.tabs)
+    live = ac.live_tab_keys(p.tabs) | _protected_keys(p)
     p.stats["misses"] = up.advance_misses(p.urls, live, p.stats["misses"])
     linked = [u.tab_id for u in p.urls if u.tab_id]
     return up.RemovalSpec(rows=list(p.urls), live_keys=live, pattern=p.pattern,
@@ -173,10 +175,30 @@ def _removal_spec(p: _Pass) -> up.RemovalSpec:
                           misses=p.stats["misses"])
 
 
+def _ff_tabs(p: _Pass) -> list:
+    """The fetched Firefox rows (the merged fetch's ui.Vision half, D-1)."""
+    return [t for t in p.tabs or [] if is_firefox(t)]
+
+
+def _protected_keys(p: _Pass) -> set:
+    """Chrome-linked row ids kept alive although Chrome did not answer (D-3).
+
+    A dead browser is a wait, not a verdict: with Firefox answering, the pass
+    proceeds, but Chrome's rows neither advance their miss counters nor age
+    out — they can only be re-verified when the endpoint returns.
+    """
+    if not getattr(p.bridge, "_chrome_scan_down", False):
+        return set()
+    return {u.tab_id for u in p.urls
+            if u.tab_id and not is_tab_id(u.tab_id)}
+
+
 def _remove_rows(p: _Pass, spec: up.RemovalSpec) -> None:
     """Apply `removable_rows` (remember the checkbox, log a reason each) and log deferrals once."""
     removals = up.removable_rows(spec)
     gone = {r.row_id for r in removals}
+    p.report.ff_removed += sum(1 for u in p.urls
+                               if u.id in gone and is_tab_id(u.tab_id))
     up.remember([u for u in p.urls if u.id in gone], p.stats["memory"])
     p.bridge.state.urls = [u for u in p.urls if u.id not in gone]
     for line in up.removal_lines(removals, spec.pattern, spec.miss_threshold):
@@ -195,6 +217,7 @@ def _apply_plan(p: _Pass, plan: ac.AutoConnectPlan) -> None:
     """Claim → add → log one line per change (RULE 2)."""
     p.report.linked = _claim_rows(p.urls, plan.claim)
     p.report.added = up.add_rows(p.urls, plan.add, p.stats["memory"])
+    p.report.ff_added = sum(1 for _url, tid in plan.add if is_tab_id(tid))
     for url, tab_id in plan.add:
         p.deps.log(f"🔺 URL added {url} (tab {tab_id}) — new matching tab", "info")
     for row_id, tab_id in plan.claim:
@@ -225,6 +248,64 @@ async def _join_and_sync(p: _Pass, plan: ac.AutoConnectPlan) -> None:
     pool = getattr(p.bridge, "_page_pool", None)
     await resolve_owners(pool)   # a navigation can land on another account (D-5)
     await assert_badges(pool)    # a navigation wipes the badge (D-5)
+
+
+async def _join_firefox(p: _Pass) -> int:
+    """Pool-join checked, matching Firefox tabs through the UI seam (D-5).
+
+    The checkbox gate is read here so an unchecked row's tab is never pooled
+    in the first place (`_enforce_membership` still owns the exit half).
+    """
+    pool = getattr(p.bridge, "_page_pool", None)
+    if pool is None or p.deps.join_entry is None:
+        return 0
+    gate = ({u.tab_id for u in p.urls if u.enabled and u.tab_id}, pooled_ids(pool))
+    joined = 0
+    for tab in _ff_tabs(p):
+        joined += 1 if await _join_one_ff(p, tab, gate) else 0
+    p.report.ff_joined += joined
+    return joined
+
+
+async def _join_one_ff(p: _Pass, tab, gate) -> bool:
+    """One entry's try: a bad join never stops the rest (D-1 / RULE 4)."""
+    checked, pooled = gate
+    if getattr(tab, "id", "") in pooled or getattr(tab, "id", "") not in checked:
+        return False
+    if not ac.matches_pattern(getattr(tab, "url", ""), p.pattern):
+        return False
+    try:
+        await p.deps.join_entry(tab)
+    except Exception as e:
+        p.report.error = str(e)
+        p.deps.log(f"⚠ Firefox pool join failed ({e}) — next pass retries", "warn")
+        return False
+    pooled.add(tab.id)
+    return True
+
+
+def _refresh_one(page, tab) -> int:
+    """Copy one live row onto its pooled page; 1 when a navigation showed up."""
+    if page is None or tab is None or not is_firefox(page):
+        return 0
+    if page.url == tab.url and page.title == tab.title:
+        return 0
+    page.url, page.title = tab.url, tab.title
+    return 1
+
+
+def _refresh_firefox(p: _Pass) -> int:
+    """Pooled Firefox pages follow their live session row — navigations show up (§3.4)."""
+    pool = getattr(p.bridge, "_page_pool", None)
+    if pool is None:
+        return 0
+    live = {t.id: t for t in _ff_tabs(p)}
+    try:
+        with pool._lock:
+            pages = dict(pool._pages)
+    except AttributeError:
+        return 0
+    return sum(_refresh_one(pages.get(tid), live.get(tid)) for tid in live)
 
 
 def _publish(p: _Pass, changed: bool) -> None:
@@ -266,6 +347,35 @@ def _empty_manual_note(p: _Pass) -> str:
             "check the URL pattern in Settings")
 
 
+def _ff_steady(pool) -> int:
+    """Free (steady) Firefox pages — the count the owner's reconcile line shows."""
+    try:
+        with pool._lock:
+            return sum(1 for page in pool._pages.values()
+                       if is_firefox(page) and page.is_free())
+    except (AttributeError, TypeError):
+        return 0
+
+
+def _ff_line(p: _Pass) -> str:
+    """The owner's Firefox reconcile line — events only, never a 5 s drumbeat.
+
+    A pass that added/removed Firefox rows answers with its counts; a quiet
+    pass answers only the first time Firefox is seen (a baseline), so steady
+    churn never floods the console.
+    """
+    steady = _ff_steady(getattr(p.bridge, "_page_pool", None))
+    added, removed = p.report.ff_added, p.report.ff_removed
+    baseline = not p.stats.pop("ff_seen", False)
+    p.stats["ff_seen"] = True
+    if added or removed:
+        return (f"🦊 Firefox: +{added} added, −{removed} "
+                f"removed, {steady} steady")
+    if baseline and steady:
+        return f"🦊 Firefox: +0 added, −0 removed, {steady} steady"
+    return ""
+
+
 def _summary(p: _Pass) -> None:
     """Manual passes always answer; auto passes only when something changed."""
     r = p.report
@@ -273,6 +383,9 @@ def _summary(p: _Pass) -> None:
         note = _empty_manual_note(p)
         if note:
             p.deps.log(note, "warn")
+    ff_line = _ff_line(p)
+    if ff_line:
+        p.deps.log(ff_line, "info")
     if not r.changed():
         if p.source == "manual":
             p.deps.log("🤖 Reparse: no changes — rows and pool already match open tabs", "info")
@@ -321,17 +434,19 @@ def _sync_rows(p: _Pass) -> ac.AutoConnectPlan:
 
 
 def _sweep_rows(p: _Pass, spec: up.RemovalSpec) -> None:
-    """Manual Reparse (D-2): every row without a live job goes — this pass rebuilds the list from open tabs.
+    """Manual Reparse (D-2): rebuild the list from open tabs.
 
-    The checkbox each row had is remembered (`restore_enabled` puts it back
-    on the fresh row); rows under a live job keep their identity (RULE 15).
+    Remembered checkbox, live jobs keep identity (RULE 15), and a dead
+    Chrome's rows survive (D-3) — the sweep may only rebuild what was listed.
     """
-    kept = [u for u in p.urls if u.tab_id in spec.busy_tabs]
+    keep = spec.busy_tabs | _protected_keys(p)
+    kept = [u for u in p.urls if u.tab_id in keep]
     gone = [u for u in p.urls if u not in kept]
     if not gone and not kept:
         return
     up.remember(gone, p.stats["memory"])
     p.report.swept = p.report.removed = len(gone)
+    p.report.ff_removed += sum(1 for u in gone if is_tab_id(u.tab_id))
     p.report.removed_ids = sorted(u.id for u in gone)
     p.bridge.state.urls = kept
     kept_note = f" ({len(kept)} kept: job running)" if kept else ""
@@ -355,9 +470,11 @@ def _enforce_membership(p: _Pass) -> None:
 
 
 async def _pool_phase(p: _Pass, plan: ac.AutoConnectPlan) -> None:
-    """Join + presence + checkbox gate; a pool failure costs the pool, never the rebuilt rows."""
+    """Join (both browsers) + presence + checkbox gate; a pool failure costs the pool, never the rows."""
     try:
         await _join_and_sync(p, plan)
+        await _join_firefox(p)
+        _refresh_firefox(p)
         _enforce_membership(p)
     except Exception as e:
         p.report.error = str(e)

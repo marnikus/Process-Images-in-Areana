@@ -739,7 +739,14 @@ def _emit_status(ctx: FinishCtx):
 
 
 async def _best_effort_reset(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, str]:
-    """Reset that never raises — failure is logged, never fatal."""
+    """Reset that never raises — failure is logged, never fatal.
+
+    No transport = nothing to reset (a Firefox page's hygiene is its own
+    macro provision) — counted as success so the finish log stays honest
+    (D-8: no phantom "reset failed" warnings on the uivision lane).
+    """
+    if ctx.ctrl is None and ctx.client is None:
+        return True, ""
     try:
         reset_ctx = ResetCtx(ctrl=ctx.ctrl, client=ctx.client, engine=ctx.bridge,
                              timeout_sec=timeout_sec,

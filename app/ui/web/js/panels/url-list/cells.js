@@ -27,7 +27,8 @@ const UrlListCells = {
       return;
     }
     const esc = this._store().esc.bind(this._store());
-    cell.innerHTML = `<span title="${esc(page.tab_id)}">${esc(this._tabLabel(page))}</span>`;
+    const conn = window.UrlListConn;
+    cell.innerHTML = `${conn ? conn.icon(page) : ''}<span title="${esc(page.tab_id)}${conn ? conn.titleSuffix(page) : ''}">${esc(this._tabLabel(page))}</span>`;
   },
 
   _setTabBtn(btn, tabId) {

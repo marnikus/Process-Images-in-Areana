@@ -174,21 +174,62 @@ async def live_tab_rows(bridge):
     return merge_rows(rows, await active_client_rows(bridge))
 
 
-async def reconcile_tabs(bridge):
-    """`live_tab_rows` for the reconciler — a pass the endpoint did not answer is a wait (D-1).
+DISCOVERY_ENABLED = True   # conftest flips this off; production discovers every pass (D-1)
 
-    Returning `[]` there would look exactly like "every tab was closed": the rows would
-    advance their miss counts and, after the threshold, be removed for tabs that are
-    still open. The reconciler already knows how to wait (`_fetch` → "Reconcile
-    skipped"), so an unusable pass says so instead of pretending to be empty.
+
+def _selected_profiles(bridge) -> tuple:
+    """The firefox_auto profile checkboxes — [] = every open profile (owner's §1.2)."""
+    try:
+        stored = bridge.config.get_state("firefox_auto", {}) or {}
+        return tuple(str(p).strip() for p in (stored.get("selected_profiles") or [])
+                     if str(p).strip())
+    except Exception:
+        return ()
+
+
+def firefox_rows(bridge) -> list:
+    """One discovery pass: open Firefox tabs as TabInfo-shaped rows (D-1 seam).
+
+    Precedence: `bridge._firefox_rows` (tests) → `DISCOVERY_ENABLED` (the
+    suite's kill switch) → the real session-store scan. Always a plain
+    function — the executor wrapper keeps file reads off the event loop.
+    """
+    source = getattr(bridge, "_firefox_rows", None)
+    if source is not None:
+        return list(source() or [])
+    if not DISCOVERY_ENABLED:
+        return []
+    from app.browser.uivision import discovery
+    return discovery.discover(selected=_selected_profiles(bridge))
+
+
+async def _firefox_rows(bridge) -> list:
+    """`firefox_rows` in an executor — mozlz4 decompression never blocks the loop."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: firefox_rows(bridge))
+
+
+def _scan_reason(bridge) -> str:
+    """Why Chrome's half of the fetch is empty — '' when it answered (D-1/D-3)."""
+    missing = getattr(bridge, "_scan_missing", None) or {}
+    return getattr(bridge, "_scan_failed", "") or ("; ".join(missing.values()) if missing else "")
+
+
+async def reconcile_tabs(bridge):
+    """`live_tab_rows` + Firefox discovery = the reconciler's one merged listing (D-1).
+
+    A dead endpoint is a wait, never a silent `[]`: with Firefox also empty the
+    pass raises `ScanUnavailable`; with Firefox answering it proceeds and
+    `bridge._chrome_scan_down` marks Chrome's rows for protection (D-3).
     """
     from app.services.live.reconcile import ScanUnavailable
     rows = await live_tab_rows(bridge)
-    missing = getattr(bridge, "_scan_missing", None) or {}
-    reason = getattr(bridge, "_scan_failed", "") or ("; ".join(missing.values()) if missing else "")
-    if not rows and reason:
+    ff_rows = await _firefox_rows(bridge)
+    reason = _scan_reason(bridge)
+    if not rows and not ff_rows and reason:
         raise ScanUnavailable(reason[:300])
-    return rows
+    bridge._chrome_scan_down = bool(reason) and not rows
+    return list(rows) + ff_rows
 
 
 def claim_connect_slot(bridge, ws_url: str) -> bool:
@@ -470,23 +511,23 @@ async def do_diagnose_chrome(bridge) -> None:
 
 
 def live_deps(bridge) -> LiveDeps:
-    """The reconciler's callables, wired in ui land (the service never imports ui/browser).
-
-    `fetch_tabs` is the panel's own one-pass listing — the settings' endpoint, every row
-    a live `cdp.tabs.TabInfo` (D-1).
-    """
+    """The reconciler's callables, wired in ui land (the service never imports ui/browser)."""
     async def fetch_tabs():
         return await reconcile_tabs(bridge)
 
     async def join_tab(ws: str):
         await do_connect_page_pool(bridge, ws)
 
+    async def join_entry(tab):
+        from app.ui.panels.page_pool import join_discovered_page
+        join_discovered_page(bridge, tab)
+
     def leave_tab(tab_id: str) -> bool:
         left = leave_pool(bridge, tab_id)  # badge cleared, page removed (the one leave mechanic)
         bridge._emit_pool_status()
         return left
 
-    return LiveDeps(fetch_tabs=fetch_tabs, join_tab=join_tab, leave_tab=leave_tab,
+    return LiveDeps(fetch_tabs=fetch_tabs, join_tab=join_tab, leave_tab=leave_tab, join_entry=join_entry,
                     commit=partial(commit_urls_system, bridge), log=bridge._log)
 
 

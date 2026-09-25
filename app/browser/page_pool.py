@@ -17,7 +17,7 @@ from typing import Dict, Optional, Tuple
 from ..core.tab_alias import AliasBook
 from .cdp_arena import CDPArenaController
 from .cdp_client import CDPClient
-from .page_status import PageInfo, PageStatus, now_iso
+from .page_status import PageInfo, PageStatus, conn_of, now_iso
 
 log = logging.getLogger("arena")
 
@@ -77,7 +77,7 @@ def _snapshot_entry(tab_id: str, page, default_browser: str = "chrome") -> dict:
     """
     entry = page.to_dict()
     entry["tab_id"] = tab_id
-    entry["browser"] = entry.get("browser") or default_browser
+    entry["browser"], entry["conn"] = (entry.get("browser") or default_browser), conn_of(entry.get("browser") or default_browser)  # conn = cdp | uivision (D-4)
     try:
         entry["cooldown_remaining"] = page.remaining_seconds()
     except Exception:
@@ -127,6 +127,22 @@ def _revive(exist: PageInfo, info: PageInfo) -> None:
     if exist.status == PageStatus.DISCONNECTED:
         exist.status = PageStatus.STEADY
         exist.last_steady_at = now_iso()
+
+
+def discovered_page_info(tab) -> PageInfo:
+    """Pool row for a discovered Firefox tab — identity from the session, no socket (D-5).
+
+    The stable tab id IS the key, the profile dir rides along as the
+    execution's re-resolve key, and the browser id carries the conn method
+    (`conn_of`) through every snapshot.
+    """
+    return PageInfo(
+        tab_id=getattr(tab, "id", "") or "",
+        url=getattr(tab, "url", "") or "",
+        title=getattr(tab, "title", "") or "",
+        browser=getattr(tab, "browser", "") or "firefox",
+        profile=getattr(tab, "profile_dir", "") or "",
+    )
 
 
 class PagePool:

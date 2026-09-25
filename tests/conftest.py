@@ -43,6 +43,21 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.unit)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_firefox_discovery():
+    """Real profile discovery never runs in tests — machines have real Firefox (D-1).
+
+    The merged reconcile fetch would otherwise read the developer's own open
+    profiles (and make results machine-dependent). Firefox-lane tests inject
+    rows through `bridge._firefox_rows` or call `discovery.*` seams directly.
+    """
+    from app.ui.panels import browser_tabs
+    previous = browser_tabs.DISCOVERY_ENABLED
+    browser_tabs.DISCOVERY_ENABLED = False
+    yield
+    browser_tabs.DISCOVERY_ENABLED = previous
+
+
 @pytest.fixture(scope="session")
 def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Session-scoped event loop to avoid recreation per test."""

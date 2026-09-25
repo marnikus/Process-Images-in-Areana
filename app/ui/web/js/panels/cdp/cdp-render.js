@@ -83,7 +83,7 @@ window.CDPRender = {
     const rows = tbody.querySelectorAll('tr');
     window.App.state.urls.forEach((u, idx) => {
       const tr = rows[idx];
-      if (!tr) return;
+      if (!tr || tr.dataset.connlocked) return;   // D-10: a pooled row's conn cell belongs to the pool lane
       const connCell = tr.querySelector('.url-conn-status');
       if (!connCell) return;
       const match = store.findBestTabForUrl(u.url);

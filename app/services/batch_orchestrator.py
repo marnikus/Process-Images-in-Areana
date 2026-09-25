@@ -19,6 +19,7 @@ from app.browser.page_pool import tab_label_of
 from app.core.enums import ImageStatus
 from app.core.run_scope import claim_denied
 from app.services import auto_connect as ac
+from app.services import firefox_job
 from app.services.job_events import job_finished_payload
 from app.services.job_history import note_job_started, record_batch_result
 from app.services.cooldown_service import (
@@ -60,6 +61,7 @@ class ImageResult:
     error: str
     job_id: str
     corr_id: str
+    done_msg: str = ""  # success text override — the Firefox lane downloads nothing (D-8)
 
 
 def _pool_of(bridge):
@@ -106,14 +108,30 @@ async def _move_to_tab(bridge, tab_id: str, want: str) -> str:
     """Reconnect to a readier tab; stay on failure."""
     try:
         pool = _pool_of(bridge)
-        ws = _pool_ws(pool, want)
-        if ws and bridge.cdp and await bridge.cdp.connect(ws):
-            bridge._log(f"🔀 Run moved to ready tab {want[:12]}", "info")
+        if await _retarget(pool, want, bridge):
+            bridge._log(f"🔀 Run moved to ready tab {want[:12]}{_move_note(pool, want)}", "info")
             return want
         bridge._log(f"⚠ Reconnect to ready tab {want[:12]} failed — staying on {(tab_id or '?')[:12]} — pool: {pool_summary(pool)}", "warn")
     except Exception as e:
         bridge._log(f"⚠ Primary move failed ({e}) — pool: {pool_summary(_pool_of(bridge))}", "warn")
     return tab_id
+
+
+async def _retarget(pool, want: str, bridge) -> bool:
+    """True = the run now lives on `want`: firefox's window is already up (D-9), else a fresh CDP connect."""
+    page = pool.get_page(want) if pool else None
+    if page is not None and getattr(page, "browser", "") == "firefox":
+        return True
+    ws = _pool_ws(pool, want)
+    return bool(ws and bridge.cdp and await bridge.cdp.connect(ws))
+
+
+def _move_note(pool, want: str) -> str:
+    """The moved-line's suffix for a transportless tab (D-9)."""
+    page = pool.get_page(want) if pool else None
+    if page is not None and getattr(page, "browser", "") == "firefox":
+        return " (firefox — no socket to reconnect)"
+    return ""
 
 
 async def resolve_and_claim_tab(bridge, tab_id: str, allowed) -> str:
@@ -218,14 +236,35 @@ def build_job_ids(ctx: BatchCtx, img: Any, url_row) -> tuple:
     return corr_id, corr_id, final_prompt
 
 
+def _ff_page(ctx: BatchCtx):
+    """The run tab's pool page when it is Firefox (D-9), else None."""
+    try:
+        pool = _pool_of(ctx.bridge)
+        page = pool.get_page(ctx.tab_id) if pool and ctx.tab_id else None
+    except Exception:
+        return None
+    return page if page is not None and getattr(page, "browser", "") == "firefox" else None
+
+
 async def _execute_image(ctx: BatchCtx, img: Any, url_row) -> ImageResult:
-    """Build ids, run the converged block stack, wrap the outcome."""
+    """Build ids, run the browser's executor (blocks or macro), wrap the outcome."""
+    if _ff_page(ctx) is not None:
+        return await _execute_firefox(ctx, img, url_row)
     corr_id, job_id, final_prompt = build_job_ids(ctx, img, url_row)
     job_ctx = JobCtx(bridge=ctx.bridge, ctrl=ctx.ctrl, client=ctx.bridge.cdp,
                      tab_id=ctx.tab_id, img=img, urls=ctx.urls, job_id=job_id,
                      corr_id=corr_id, final_prompt=final_prompt)
     failed, error, _src, _data = await run_blocks_for_image(job_ctx)
     return ImageResult(img=img, failed=failed, error=error, job_id=job_id, corr_id=corr_id)
+
+
+async def _execute_firefox(ctx: BatchCtx, img: Any, url_row) -> ImageResult:
+    """The sequential lane's Firefox branch: one macro run, same ids/history (D-9)."""
+    corr_id, job_id, _final = build_job_ids(ctx, img, url_row)
+    failed, error = await firefox_job.run_macro_job(
+        ctx.bridge, _pool_of(ctx.bridge), ctx.tab_id)
+    return ImageResult(img=img, failed=failed, error=error, job_id=job_id,
+                       corr_id=corr_id, done_msg="" if failed else "Ui.Vision macro ok")
 
 
 def _emit_job_finished(bridge, res: ImageResult) -> None:
@@ -235,7 +274,7 @@ def _emit_job_finished(bridge, res: ImageResult) -> None:
         if res.failed:
             status, message = "failed", res.error
         else:
-            status, message = "completed", f"Saved to {res.img.output_path}"
+            status, message = "completed", (res.done_msg or f"Saved to {res.img.output_path}")
         payload = json.dumps(job_finished_payload(res.img, status, message), ensure_ascii=False)
         bridge.job_finished.emit(res.job_id, payload)
     except Exception:
@@ -275,15 +314,20 @@ def _settle_image(ctx: BatchCtx, res: ImageResult) -> None:
         maybe_note_rate_limit(_pool_of(ctx.bridge), ctx.tab_id, ctx.bridge, res.error)
 
 
+def _finish_ctx_for(pool, ctx: BatchCtx) -> FinishCtx:
+    """Finish with this tab's transport — a Firefox page has no CDP reset (D-8)."""
+    if _ff_page(ctx) is not None:
+        return FinishCtx(pool=pool, bridge=ctx.bridge, tab_id=ctx.tab_id, ctrl=None, client=None)
+    return FinishCtx(pool=pool, bridge=ctx.bridge, tab_id=ctx.tab_id, ctrl=ctx.ctrl, client=ctx.bridge.cdp)
+
+
 async def _finish_primary_tab(ctx: BatchCtx) -> None:
     """Post-job reset + cooldown; settles a stuck page when finish fails."""
     try:
         pool = _pool_of(ctx.bridge)
         if not (pool and ctx.tab_id):
             return
-        finish_ctx = FinishCtx(pool=pool, bridge=ctx.bridge, tab_id=ctx.tab_id,
-                               ctrl=ctx.ctrl, client=ctx.bridge.cdp)
-        await finish_page_after_job(finish_ctx)
+        await finish_page_after_job(_finish_ctx_for(pool, ctx))
         set_tab_image(pool, ctx.tab_id, None)
         ctx.bridge._emit_pool_status()
     except asyncio.CancelledError:

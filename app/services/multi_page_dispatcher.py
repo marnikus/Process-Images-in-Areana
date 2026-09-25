@@ -10,12 +10,14 @@ from dataclasses import dataclass, field
 from typing import List, Tuple
 
 from app.browser.page_pool import PagePool, tab_label_of
+from app.browser.page_status import is_firefox
 from app.core.enums import ImageStatus
 from app.core.models import ImageItem, UrlRow
 from app.core.run_scope import claim_denied
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
 from . import auto_connect as ac
+from . import firefox_job
 from .job_events import job_finished_payload
 from .job_history import note_job_started, record_dispatch_result
 from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status, maybe_note_rate_limit
@@ -48,6 +50,7 @@ class PageJobCtx:
     tab_id: str
     ctrl: object
     client: object
+    browser: str = ""  # the claimed page's browser id; "" / "chrome" = the CDP lane (D-9)
 
 
 @dataclass
@@ -58,8 +61,8 @@ class ResultCtx:
     tab_id: str
     corr_id: str
     job_id: str
-    failed: bool
-    err: str
+    failed: bool; err: str
+    done_msg: str = ""  # success text override — the Firefox lane downloads nothing (D-8)
 
 
 @dataclass
@@ -184,6 +187,11 @@ def _get_clients(pool, tab_id) -> Tuple[object, object]:
         return None, None
 
 
+def _no_controller(browser, ctrl, client) -> bool:
+    """Chrome needs both; a Firefox page has no transport and is still a worker (D-9)."""
+    return not (ctrl and client) and not is_firefox(browser)
+
+
 async def prepare_image_for_job(bridge, img, urls, tab_id: str):
     """Record the tab's own checked row on the image (never re-links rows)."""
     url_row = ac.pick_url_for_tab(urls, tab_id)
@@ -205,10 +213,18 @@ async def _run_image_job(ctx: PageJobCtx):
         ctx.bridge.job_started.emit(job_id, ctx.img.absolute_path)
     except Exception:
         pass
+    if is_firefox(ctx.browser):
+        failed, err = await firefox_job.run_macro_job(ctx.bridge, ctx.pool, ctx.tab_id)
+        return url_row, corr_id, job_id, failed, err
     baseline = await capture_baseline(ctx.ctrl)
     job_ctx = JobCtx(bridge=ctx.bridge, ctrl=ctx.ctrl, client=ctx.client, tab_id=ctx.tab_id, img=ctx.img, urls=ctx.urls, job_id=job_id, corr_id=corr_id, final_prompt=final_prompt, baseline=baseline)
     failed, err, _, _ = await run_blocks_for_image(job_ctx)
     return url_row, corr_id, job_id, failed, err
+
+
+def _success_msg(ctx: ResultCtx) -> str:
+    """The lane's own success text — the Firefox macro downloads nothing (D-8)."""
+    return ctx.done_msg or f"Saved {ctx.img.output_path}"
 
 
 def _handle_result(ctx: ResultCtx):
@@ -225,7 +241,7 @@ def _handle_result(ctx: ResultCtx):
     else:
         if ctx.img.status != ImageStatus.COMPLETED.value:
             ctx.img.status = ImageStatus.COMPLETED.value
-        _emit_finished(ctx.bridge, FinishInfo(job_id=ctx.job_id, img=ctx.img, status="completed", message=f"Saved {ctx.img.output_path}"))
+        _emit_finished(ctx.bridge, FinishInfo(job_id=ctx.job_id, img=ctx.img, status="completed", message=_success_msg(ctx)))
         _log_result(ctx.bridge, LogInfo(corr_id=ctx.corr_id, tab_id=ctx.tab_id, img=ctx.img, ok=True, err=""))
     record_dispatch_result(ctx)  # the history row for this job_finished (cancelled return above)
     _recalc_save(ctx.bridge)
@@ -302,21 +318,36 @@ async def run_one_image_on_page(bridge, pool, img, urls):
 
 
 async def run_claimed_image(ctx: DispatchCtx, img, free_page):
-    """Run `img` on a page the caller already claimed (the feeder path, B-1)."""
+    """Run `img` on a page the caller already claimed — browser-agnostic claim (D-9, B-1)."""
     bridge, pool, tab_id = ctx.bridge, ctx.pool, free_page.tab_id
     _emit_status_safe(bridge)
     ctrl, client = _get_clients(pool, tab_id)
-    if not ctrl or not client:
+    browser = getattr(free_page, "browser", "") or ""
+    if _no_controller(browser, ctrl, client):
         _log_no_ctrl(bridge, tab_id)
         _mark_steady_emit(pool, bridge, tab_id)
         return
     _log_assign(bridge, img, tab_id, free_page)
     _start_tab_image(pool, tab_id, img)
+    job = PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ctx.urls, tab_id=tab_id,
+                     ctrl=ctrl, client=client, browser=browser)
     try:
-        await _run_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ctx.urls, tab_id=tab_id, ctrl=ctrl, client=client))
+        await _run_and_record(job)
     finally:
         _clear_tab_image(pool, tab_id)
-        await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client))
+        await _finish_page_safely(_finish_ctx(job))
+
+
+def _finish_ctx(job: PageJobCtx) -> FinishCtx:
+    """Finish with the tab's own transport — a Firefox page has no CDP reset (D-8)."""
+    ff = is_firefox(job.browser)
+    return FinishCtx(pool=job.pool, bridge=job.bridge, tab_id=job.tab_id,
+                     ctrl=None if ff else job.ctrl, client=None if ff else job.client)
+
+
+def _done_msg(job: PageJobCtx) -> str:
+    """The honest success text — the macro lane downloads nothing (RULE 4/15, D-8)."""
+    return "Ui.Vision macro ok" if is_firefox(job.browser) else ""
 
 
 async def _run_and_record(job: PageJobCtx) -> None:
@@ -324,7 +355,8 @@ async def _run_and_record(job: PageJobCtx) -> None:
     try:
         _url_row, corr_id, job_id, failed, err = await _run_image_job(job)
         _handle_result(ResultCtx(bridge=job.bridge, pool=job.pool, img=job.img, tab_id=job.tab_id,
-                                 corr_id=corr_id, job_id=job_id, failed=failed, err=err))
+                                 corr_id=corr_id, job_id=job_id, failed=failed, err=err,
+                                 done_msg="" if failed else _done_msg(job)))
         maybe_note_rate_limit(job.pool, job.tab_id, job.bridge, err)
     except asyncio.CancelledError:
         raise

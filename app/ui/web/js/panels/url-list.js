@@ -97,7 +97,7 @@ const UrlList = {
   },
 
   _refreshFromSnap(rows, pages) {
-    const claimed = this.assignPoolPages(rows, pages);
+    const claimed = this.assignPoolPages(rows, pages); window.UrlListConn?.repaintChrome();  // D-10: chrome paints first, then pooled rows state their method
     rows.forEach((tr, ri) => {
       let page = null;
       if (claimed.has(ri)) page = pages[claimed.get(ri)];
@@ -105,7 +105,7 @@ const UrlList = {
       this._fillTabCell(tr, page);
       if (this._reset) this._reset.fillStatusCell(tr, page);  // D-7 working state
       this._fillCoolCell(tr, page);
-      this._fillJobsCell(tr, page);
+      this._fillJobsCell(tr, page); window.UrlListConn?.fillConnCell(tr, page);
     });
   },
 
@@ -130,6 +130,7 @@ const UrlList = {
   _fillTabCell(tr, page) { return this._cells?.fillTabCell(tr, page); },
   _fillCoolCell(tr, page) { return this._cells?.fillCoolCell(tr, page); },
   _fillJobsCell(tr, page) { return this._render?.fillJobsCell(tr, page); },
+  _fillConnCell(tr, page) { return this._cells?.fillConnCell(tr, page); },
 };
 
 // Global-name contract (see boot.js): publish the lexical const for window[name] lookups.

@@ -22,7 +22,7 @@ import asyncio
 import traceback
 from dataclasses import dataclass, field
 
-from app.browser.page_status import PageStatus
+from app.browser.page_status import PageStatus, is_firefox
 from app.services import auto_connect as ac
 from app.services.batch_orchestrator import pool_summary, resolve_and_claim_tab, run_pass
 from app.services.cooldown_service import is_stuck_status
@@ -74,6 +74,24 @@ def _cdp_down(bridge) -> bool:
     return not getattr(getattr(bridge, "cdp", None), "is_connected", False)
 
 
+def _waiting_on_cdp(bridge, plan) -> bool:
+    """CDP down AND no free allowed Firefox worker to fall back on (D-9)."""
+    return _cdp_down(bridge) and not _firefox_ready(bridge, plan.allowed)
+
+
+def _firefox_ready(bridge, allowed: set) -> bool:
+    """A free, allowed Firefox page is a worker even with Chrome's CDP down (D-9)."""
+    pool = getattr(bridge, "_page_pool", None)
+    if pool is None:
+        return False
+    try:
+        with pool._lock:
+            return any(is_firefox(page) and page.tab_id in allowed and page.is_free()
+                       for page in pool._pages.values())
+    except AttributeError:
+        return False
+
+
 def _cooling(page: dict) -> bool:
     """A snapshot page that cannot take a job right now: timer still running, or busy-like."""
     if page.get("status") == PageStatus.COOLDOWN.value:
@@ -100,7 +118,7 @@ async def plan_pass(bridge) -> PassPlan:
     plan.allowed = ac.enabled_tab_ids(plan.urls)
     if not plan.images:
         plan.reason = "no images"
-    elif _cdp_down(bridge):
+    elif _waiting_on_cdp(bridge, plan):
         plan.reason = "cdp down"
     elif _all_cooling(bridge, plan.allowed):
         plan.reason = "all cooling"
