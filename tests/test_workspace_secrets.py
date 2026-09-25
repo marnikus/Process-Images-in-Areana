@@ -76,3 +76,13 @@ def test_save_report_is_deterministic_for_unchanged_state(bridge_with_key):
                            if k not in ("path", "snapshot_id", "started_utc",
                                         "finished_utc")}
     assert strip(one) == strip(two)
+
+
+def test_policy_strings_have_one_home():
+    """F3: advice + inclusion codes live in providers/policies.py only."""
+    from app.services.workspace import save as ws_save
+    from app.services.workspace.providers import policies
+    from app.services.workspace.registry import get
+    assert get("captcha_keys").restore_advice == policies.KEYS_REAPPLY
+    assert ws_save.inclusion_policy() == policies.INCLUSION_POLICY
+    assert "captcha_keys" in policies.INCLUSION_POLICY

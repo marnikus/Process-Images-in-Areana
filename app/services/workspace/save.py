@@ -29,12 +29,10 @@ def _write_state_files(temp: Path, captures: list) -> dict:
             for rel, doc in _file_docs(captures).items()}
 
 
-def _inclusion_policy() -> dict:
-    """Documented per-resource inclusion policy (design §D.3) — every exclusion named."""
-    return {"logs": "excluded:runtime", "source_images": "excluded:filesystem-truth",
-            "outputs_AI": "excluded:filesystem-truth",
-            "captcha_recordings": "excluded:default-opt-in",
-            "captcha_keys": "excluded:secret-redacted-presence-only"}
+def inclusion_policy() -> dict:
+    """Documented per-resource inclusion policy (design §D.3) — one home: policies."""
+    from .providers.policies import INCLUSION_POLICY
+    return dict(INCLUSION_POLICY)
 
 
 def _write_env(temp: Path, bridge) -> None:
@@ -42,7 +40,7 @@ def _write_env(temp: Path, bridge) -> None:
     from app.persistence.workspace.manifest import FORMAT_NAME, WORKSPACE_FORMAT
     env = {**app_meta(bridge), "grid_version": compat_block()["grid_version"],
            "workspace_format": WORKSPACE_FORMAT, "format": FORMAT_NAME,
-           "inclusion_policy": _inclusion_policy()}
+           "inclusion_policy": inclusion_policy()}
     fsio.write_bytes(temp, "metadata/app-environment.json", canonical_bytes(env))
 
 

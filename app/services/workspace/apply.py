@@ -44,9 +44,9 @@ def _policy_row(provider, entry: dict) -> dict:
     cause = (entry.get("capture", {}) or {}).get("excluded_reason", "policy-excluded domain")
     row = {"domain_id": provider.domain_id, "status": "skipped",
            "stage": "apply", "policy": True, "cause": cause}
-    if provider.domain_id == "captcha_keys":
-        row["recommended_action"] = ("Re-enter the API key in the Captcha window "
-                                     "(keys are never restored from a workspace).")
+    advice = getattr(provider, "restore_advice", "")
+    if advice:
+        row["recommended_action"] = advice
     return row
 
 
