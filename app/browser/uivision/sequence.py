@@ -179,7 +179,8 @@ class Sequence:
             target=self.spec.target, tab=run.selector))
         self.recorder("launch", f"{self._scope(run)}starting Firefox with the autorun URL "
                                 f"(macro={self.spec.macro}, storage={self.spec.storage}, "
-                                f"savelog={Path(run.log_path).name}, tab={run.selector})")
+                                f"savelog={Path(run.log_path).name}, "
+                                f"tab={launch_locator(self.spec.url_pattern, run.selector)})")
         process = launch.launch_resilient(launch.profile_argv(binary, url, run.profile_args),
                                           popen=self.seams.popen)
         self.recorder("launch", f"{self._scope(run)}launched "
@@ -220,3 +221,17 @@ async def _default_sleep(seconds: float) -> None:
     """Real async sleep — the seam's default (tests inject a fast one)."""
     import asyncio
     await asyncio.sleep(seconds)
+
+
+def launch_locator(url_pattern, selector: str) -> str:
+    """The tab-locator story in the launch line: primary → hard fallback.
+
+    With a TAB URL PATTERN the macro file opens with the guarded `url=*…*`
+    attempt (today E209 → ignored, logged) and cmd_var3 carries the HARD
+    `title=*…*` fallback that decides; without it the fallback alone is the
+    whole story (2026-09-24 owner rule: show both).
+    """
+    url_pattern = (url_pattern or "").strip()
+    if not url_pattern:
+        return selector
+    return f"url=*{url_pattern}* → {selector}"

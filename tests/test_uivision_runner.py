@@ -246,14 +246,18 @@ async def test_stop_during_the_poll_ends_the_wait(tmp_path, frozen_time):
 
 def test_the_fallback_selector_reuses_the_title_pattern_and_never_opens():
     from app.browser.uivision import plan
-    assert plan.selector_for(plan.Target(), "Arena") == "title=*Arena*"
-    assert plan.selector_for(plan.Target(), "  Agent Arena  ") == "title=*Agent Arena*"
-    assert plan.selector_for(plan.Target(), "") == ""   # blank = no selector, not tab=open
+    P = plan.Patterns
+    assert plan.selector_for(plan.Target(), P("Arena")) == "title=*Arena*"
+    assert plan.selector_for(plan.Target(), P("  Agent Arena  ")) == "title=*Agent Arena*"
+    assert plan.selector_for(plan.Target(), P("")) == ""   # blank = no selector, not tab=open
+    # the URL pattern is the macro file's primary; the HARD fallback stays a title glob
+    assert plan.selector_for(plan.Target(title="A1"), P("", "arena.ai")) == "title=*A1*"
+    assert plan.selector_for(plan.Target(), P("T", "arena.ai")) == "title=*T*"
 
 
-async def test_both_patterns_blank_runs_every_open_tab_behind_a_warning(
+async def test_both_patterns_blank_runs_once_per_open_profile_behind_a_warning(
         tmp_path, frozen_time):
-    """The owner's rule: blank = any — the macro runs on every open tab, loudly."""
+    """The owner's rule: blank = any — one run per open profile, loudly."""
     binary = tmp_path / "firefox"
     binary.write_text("#!/bin/sh\n")
     log = tmp_path / "config" / "uivision" / "logs" / f"run-{STAMP}.txt"
@@ -266,7 +270,8 @@ async def test_both_patterns_blank_runs_every_open_tab_behind_a_warning(
                                      addon=lambda: True, probe=lambda: True))
     assert result.kind == "ok"
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
-    assert "both patterns are empty — the macro will run on EVERY open tab (1 tab(s))" in text
+    assert ("both patterns are empty — the macro will run once per open profile "
+            "(1 run(s))") in text
     assert popen.calls == [[str(binary), "-new-tab", popen.calls[0][2]]]
 
 
@@ -410,8 +415,9 @@ async def test_detect_names_every_profile_and_the_run_plan(tmp_path, frozen_time
     assert 'firefox window 1 (profile “p2.play”): 1 tab(s) — active “B1”' in text
 
 
-async def test_second_tab_of_one_profile_gets_its_own_run(tmp_path, frozen_time):
-    """Two matching tabs in ONE profile → two runs, each its own title selector."""
+async def test_second_matching_tab_of_one_profile_never_gets_its_own_run(
+        tmp_path, frozen_time):
+    """The 2026-09-24 first-run fix: one profile = ONE run (its first match)."""
     binary = tmp_path / "firefox"
     binary.write_text("#!/bin/sh\n")
     write_logs(tmp_path, [f"run-{STAMP}.txt", f"run-{STAMP}-2.txt"])
@@ -425,12 +431,14 @@ async def test_second_tab_of_one_profile_gets_its_own_run(tmp_path, frozen_time)
                                      profiles=lambda: one, addon=lambda: True,
                                      probe=lambda: True))
     assert result.kind == "ok"
-    assert [parse_qs(urlsplit(call[-1]).query)["cmd_var3"][0] for call in popen.calls] == [
-        "title=*First*", "title=*Second*"]
-    assert all(call[1:3] == ["-P", "Work"] for call in popen.calls)
+    assert len(popen.calls) == 1                        # the second tab never re-runs
+    q = parse_qs(urlsplit(popen.calls[0][-1]).query)
+    assert q["cmd_var3"] == ["title=*First*"]           # the FIRST match decides
+    assert popen.calls[0][1:3] == ["-P", "Work"]
 
 
-async def test_duplicate_titles_warn_that_runs_share_the_first_tab(tmp_path, frozen_time):
+async def test_duplicate_titles_collapse_to_one_run_and_stay_reported(
+        tmp_path, frozen_time):
     same = [{"name": "Work", "dir": "/ff/p1", "rows": [
         {"url": "https://arena.ai/1", "title": "Same"},
         {"url": "https://arena.ai/2", "title": "Same"}], "windows": [],
@@ -440,8 +448,9 @@ async def test_duplicate_titles_warn_that_runs_share_the_first_tab(tmp_path, fro
                      addon=lambda: None, probe=lambda: False)
     await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"), report, seams)
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
-    assert "cannot tell them apart" in text
-    assert any(lvl == "warn" for s, _m, lvl in rows if "cannot tell them apart" in _m)
+    assert "match 2: https://arena.ai/2" in text        # both matches reported …
+    assert not any("run plan:" in m for _s, m, _l in rows)   # … one run: no plan line (len < 2)
+    assert not any("cannot tell them apart" in m for _s, m, _l in rows)  # clash warning is gone
 
 
 async def test_mixed_verdicts_roll_up_with_the_counts(tmp_path, frozen_time):
@@ -557,6 +566,7 @@ async def test_real_store_path_reports_profiles_source_and_profile_windows(
         "source": "recovery.jsonlz4", "stamp": 5.0}]
     monkeypatch.setattr(runner.tabs, "profile_sessions", lambda: sessions)
     monkeypatch.setattr(runner.tabs, "profile_dirs", lambda: [])
+    monkeypatch.setattr(runner.tabs, "profile_in_use", lambda p: True)   # this one is open
     monkeypatch.setattr(runner.desktop, "foreground_tab_window", lambda *a: None)
     monkeypatch.setattr(runner.desktop, "foreground", lambda pattern: ([], 0))
     rows, report = reports()
@@ -777,3 +787,121 @@ async def test_wait_for_tab_finds_it_during_the_poll(tmp_path, frozen_time, monk
     assert result.kind == "ok"
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "matching tab(s) appeared" in text
+
+
+# ── open profiles only + the guarded URL macro (bugs #2/#4, 2026-09-24) ─────
+
+async def test_run_sees_only_open_profiles_and_says_who_was_skipped(
+        tmp_path, frozen_time, monkeypatch):
+    """The store answers for a closed profile too — the lock probe drops it."""
+    from pathlib import Path
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt"])
+    sessions = [
+        {"name": "Work", "dir": "/ff/open", "rows": [
+            {"url": "https://arena.ai/a", "title": "Arena open"}],
+         "windows": [], "source": "recovery.jsonlz4", "stamp": 1.0},
+        {"name": "Old", "dir": "/ff/closed", "rows": [
+            {"url": "https://arena.ai/b", "title": "Arena closed"}],
+         "windows": [], "source": "recovery.jsonlz4", "stamp": 0.5},
+    ]
+    monkeypatch.setattr(runner.tabs, "profile_sessions", lambda: sessions)
+    monkeypatch.setattr(runner.tabs, "profile_dirs",
+                        lambda: [Path("/ff/open"), Path("/ff/closed")])
+    monkeypatch.setattr(runner.tabs, "profile_in_use",
+                        lambda p: str(p) == "/ff/open")
+    popen = FakePopen()
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path, pattern="arena"), report,
+                            RunSeams(sleep=noop_sleep, popen=popen,
+                                     addon=lambda: True, probe=lambda: True))
+    assert result.kind == "ok"
+    assert len(popen.calls) == 1                       # the closed profile never runs
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert "firefox profiles scanned: 1 (open)" in text
+    assert "— 1 closed profile(s) skipped" in text
+    assert "firefox open tabs seen: 1" in text         # only the open profile's rows
+    assert "arena.ai/b" not in text
+    assert popen.calls[0][1:3] == ["-P", "Work"]       # aimed at the OPEN instance
+
+
+async def test_launch_line_names_primary_url_and_hard_fallback(tmp_path, frozen_time):
+    """The evidence line (owner rule): show BOTH attempts, url primary → title hard."""
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt", f"run-{STAMP}-2.txt"])
+    popen = FakePopen()
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai/image"),
+                            report, url_seams(popen))
+    assert result.kind == "ok"
+    launch_lines = [m for s, m, _l in rows if s == "launch" and "starting Firefox" in m]
+    assert launch_lines
+    assert "tab=url=*arena.ai/image* → title=*Image One*" in launch_lines[0]
+
+
+async def test_provisioned_macro_carries_the_guarded_url_attempt(tmp_path, frozen_time):
+    """The written macro file IS the primary attempt — 8 commands, url first."""
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt", f"run-{STAMP}-2.txt"])
+    popen = FakePopen()
+    _rows, report = reports()
+    result = await run_test(
+        make_spec(tmp_path, pattern="", url_pattern="arena.ai/image"), report,
+        url_seams(popen))
+    assert result.kind == "ok"
+    doc = json.loads((tmp_path / "uivhome" / "macros" /
+                      "Python_XClick_Demo.json").read_text(encoding="utf-8"))
+    commands = doc["Commands"]
+    assert [c["Command"] for c in commands] == [
+        "store", "selectWindow", "store", "selectWindow",
+        "bringBrowserToForeground", "executeScript", "XClick", "echo"]
+    assert commands[1]["Target"] == "url=*arena.ai/image*"
+    # cmd_var3 = the HARD fallback for THIS run's first match (its own title)
+    assert parse_qs(urlsplit(popen.calls[0][-1]).query)["cmd_var3"] == ["title=*Image One*"]
+
+
+def test_find_new_targets_ignores_other_profiles_and_empty_rows():
+    """The wait-poll's re-scan: label mismatch or no rows → no targets (RULE 4)."""
+    from app.browser.uivision.runner import RunSpec, _find_new_targets
+    spec = RunSpec(pattern="Arena", target="", macro="M", storage="xfile", home="",
+                   binary="", timeout_sec=1, pause_ms=1, config_dir="/tmp")
+    sessions = [
+        {"name": "Other", "dir": "/ff/x", "rows": [
+            {"url": "https://arena.ai/1", "title": "Arena"}], "windows": [],
+         "source": "", "stamp": 0.0},
+        {"name": "Target", "dir": "/ff/y", "rows": [], "windows": [],
+         "source": "", "stamp": 0.0},
+    ]
+    assert _find_new_targets(sessions, "Target", spec) == []     # profile matched, no rows
+    assert _find_new_targets(sessions, "Missing", spec) == []     # no session by that label
+    assert _find_new_targets(None, "Target", spec) == []
+
+
+async def test_safe_sleep_swallows_errors_but_never_cancel():
+    """Injected sleep errors vanish (the poll keeps going); CancelledError propagates."""
+    import asyncio
+    from app.browser.uivision.runner import _safe_sleep
+
+    async def boom(_sec):
+        raise RuntimeError("sleep exploded")
+
+    await _safe_sleep(boom, 1)                       # swallowed — no raise
+
+    async def cancel(_sec):
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await _safe_sleep(cancel, 1)
+
+
+def test_report_source_is_silent_without_a_store_receipt():
+    """No freshest store / empty source → no line (the receipt is evidence, RULE 4)."""
+    rows, report = reports()
+    from app.browser.uivision import runner
+    runner._report_source([{"name": "P", "dir": "/ff/p", "source": "", "stamp": 1.0}],
+                          report)
+    runner._report_source([], report)
+    assert rows == []

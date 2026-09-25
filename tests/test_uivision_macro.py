@@ -100,3 +100,54 @@ def test_build_macro_document_shape_and_json_round_trip():
     text = macro.to_json(doc)
     assert text.endswith("\n")
     assert json.loads(text) == doc
+
+
+# ── the TAB URL PATTERN as a guarded primary attempt (bug #2, 2026-09-24) ───
+
+def _url_shape():
+    from app.browser.uivision import plan
+    return plan.Patterns
+
+
+def test_url_pattern_bakes_a_guarded_primary_attempt():
+    P = _url_shape()
+    commands = macro.build_commands(P("", "arena.ai/image"))
+    assert [c["Command"] for c in commands] == [
+        "store", "selectWindow", "store",                 # the guarded url= attempt
+        "selectWindow", "bringBrowserToForeground",       # today's five, unchanged
+        "executeScript", "XClick", "echo"]
+    assert commands[0]["Target"] == "true" and commands[0]["Value"] == "!errorIgnore"
+    assert commands[1]["Target"] == "url=*arena.ai/image*" and commands[1]["Value"] == ""
+    assert commands[2]["Target"] == "false" and commands[2]["Value"] == "!errorIgnore"
+    assert commands[3]["Target"] == macro.TAB_VAR          # the HARD fallback decides
+    for c in commands:
+        assert "tab=open" not in c["Target"]              # never opens a page
+        assert "open" not in c["Command"].lower()
+
+
+def test_url_and_title_patterns_keep_both_attempts_and_the_fallback():
+    P = _url_shape()
+    commands = macro.build_commands(P("Arena", "arena.ai"))
+    assert commands[1]["Target"] == "url=*arena.ai*"      # primary = the URL pattern
+    assert commands[3]["Target"] == macro.TAB_VAR         # cmd_var3 = title=*Arena*
+    assert [c["Command"] for c in commands][4:] == [
+        "bringBrowserToForeground", "executeScript", "XClick", "echo"]
+
+
+def test_title_only_and_blank_configs_run_no_dance():
+    P = _url_shape()
+    five = ["selectWindow", "bringBrowserToForeground", "executeScript", "XClick", "echo"]
+    assert [c["Command"] for c in macro.build_commands(P("Arena"))] == five
+    assert [c["Command"] for c in macro.build_commands(P())] == five
+    assert [c["Command"] for c in macro.build_commands()] == five   # None = blank
+
+
+def test_build_macro_bakes_the_patterns_into_this_runs_document():
+    from app.browser.uivision import plan
+    doc = macro.build_macro("Python_XClick_Demo", plan.Patterns("", "arena.ai"),
+                            today=date(2026, 9, 24))
+    assert doc["CreationDate"] == "2026-9-24"
+    assert len(doc["Commands"]) == 8
+    assert doc["Commands"][1]["Target"] == "url=*arena.ai*"
+    text = macro.to_json(doc)
+    assert json.loads(text) == doc

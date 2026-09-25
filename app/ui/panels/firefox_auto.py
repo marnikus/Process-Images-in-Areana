@@ -234,7 +234,7 @@ class FirefoxAutoMixin:
 
     @Slot(result=str)
     def show_firefox_profiles(self):
-        """List every readable Firefox profile with its open tabs for the UI."""
+        """List every OPEN Firefox profile (the lock probe decides — bug #4)."""
         try:
             from app.browser.uivision import profiles as uiv_profiles
             rows = uiv_profiles.list_profiles()

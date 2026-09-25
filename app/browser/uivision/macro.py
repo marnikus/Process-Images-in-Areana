@@ -4,7 +4,10 @@ The macro **never opens a page** (owner rule, 2026-09-23): `selectWindow` with
 the run's tab target (`title=*pattern*`, wildcards per the selectWindow docs)
 activates the already open tab — and because the Value column stays EMPTY, a
 missing tab fails the run with the extension's own `E210` (`Status=Error` in
-the savelog) instead of opening anything in a fresh tab.
+the savelog) instead of opening anything in a fresh tab. When a TAB URL
+PATTERN is set it rides FIRST as a guarded `url=*…*` attempt (the spec's
+primary locator — `store … !errorIgnore` brackets it, see `_url_attempt`),
+followed unconditionally by the HARD `title=` fallback that decides today.
 
 The find step is one `executeScript` (the engine wraps the code in
 `Promise.resolve(...)`, so the returned promise is awaited): it waits up to
@@ -166,13 +169,31 @@ def render_find_rect_js(target: str, pause_ms) -> str:
             .replace(PAUSE_VAR, json.dumps(str(int(pause_ms)))))
 
 
-def build_commands(done_text: str = DONE_TEXT) -> list:
+def _url_attempt(url_pattern: str) -> list:
+    """The TAB URL PATTERN as a guarded first attempt — the spec's primary locator.
+
+    `selectWindow` officially takes only `title=`/`tab=` (a literal `url=`
+    answers E209 today); the shipped `store … !errorIgnore` idiom brackets the
+    attempt so it logs `[error][ignored]` and the HARD fallback below decides.
+    """
+    return [
+        command("store", "true", "!errorIgnore",
+                "arm errorignore — the url= attempt below may be unsupported (E209)"),
+        command("selectWindow", f"url=*{url_pattern}*", "",
+                "prefer the TAB URL PATTERN: first open tab whose URL matches "
+                "(glob) — Value stays EMPTY, nothing is ever opened"),
+        command("store", "false", "!errorIgnore",
+                "disarm — the hard title fallback must surface real failures"),
+    ]
+
+
+def _tab_commands(done_text: str) -> list:
     """Reuse the run's tab (never open) → foreground → RED-rect confirm → XClick → done."""
-    commands = [
+    return [
         command("selectWindow", TAB_VAR, "",
-                "reuse the already open tab matching cmd_var3 (title=*pattern*) — the Value "
-                "column is EMPTY on purpose: nothing is ever opened, a missing tab fails "
-                "the run (the extension's E210)"),
+                "HARD fallback: reuse the already open tab matching cmd_var3 "
+                "(title=*pattern*) — the Value column is EMPTY on purpose: nothing "
+                "is ever opened, a missing tab fails the run (the extension's E210)"),
         command("bringBrowserToForeground", "", "",
                 "native input needs Firefox visible and in front (owner's critical rule)"),
         command("executeScript", FIND_RECT_JS, "",
@@ -182,6 +203,16 @@ def build_commands(done_text: str = DONE_TEXT) -> list:
                 "native OS click on the confirmed element (never DOM click)"),
         command("echo", done_text, "green", "completion marker — it lands in the savelog file"),
     ]
+
+
+def build_commands(patterns=None, done_text: str = DONE_TEXT) -> list:
+    """Guarded `url=` primary (when set) → hard tab → foreground → RED-rect → XClick → done.
+
+    `patterns` is `plan.Patterns`; a blank/None URL pattern keeps the exact
+    five-command shape (title-only and blank configs run no dance at all).
+    """
+    url = (patterns.url if patterns else "").strip()
+    commands = (_url_attempt(url) if url else []) + _tab_commands(done_text)
     refuse_dom_clicks(commands)
     return commands
 
@@ -192,12 +223,18 @@ def creation_date(today=None) -> str:
     return f"{day.year}-{day.month}-{day.day}"
 
 
-def build_macro(name: str = DEFAULT_MACRO_NAME, done_text: str = DONE_TEXT,
-                today=None) -> dict:
-    """The macro document Ui.Vision reads from `<home>/macros/<Name>.json`."""
+def build_macro(name: str = DEFAULT_MACRO_NAME, patterns=None,
+                done_text: str = DONE_TEXT, today=None) -> dict:
+    """The macro document Ui.Vision reads from `<home>/macros/<Name>.json`.
+
+    `patterns` (a `plan.Patterns`) bakes the URL-primary attempt into THIS run's
+    file — patterns are per-invocation constants and there is no fourth
+    `cmd_var` slot, so the file carries them while per-run values still ride
+    `cmd_var1..3`.
+    """
     return {"Name": validate_macro_name(name),
             "CreationDate": creation_date(today),
-            "Commands": build_commands(done_text)}
+            "Commands": build_commands(patterns, done_text)}
 
 
 def to_json(macro: dict) -> str:

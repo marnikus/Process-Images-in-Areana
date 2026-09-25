@@ -6,6 +6,7 @@ locked, unparsable) must answer "not seen", never an exception.
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -312,3 +313,118 @@ def test_profile_names_prefers_a_later_named_section(tmp_path, monkeypatch):
     monkeypatch.setattr(tabs, "profile_roots", lambda *a: [root])
     names = tabs.profile_names(roots=[root])
     assert names[named] == "Work"          # the -P handle comes from the named section
+
+
+# ── profile_in_use — the lock probe that means "is this profile OPEN" (bug #4) ──
+
+def _lock_name() -> str:
+    return "parent.lock" if os.name == "nt" else ".parentlock"
+
+
+def test_profile_in_use_missing_lock_means_not_running(tmp_path):
+    """Never locked (fresh/cleaned profile) ⇒ Firefox is not running it."""
+    assert tabs.profile_in_use(tmp_path / "ghost") is False
+
+
+def test_profile_in_use_ownable_lock_means_closed(tmp_path):
+    """The lock file exists (it always does after the first run) but is free."""
+    (tmp_path / _lock_name()).write_text("")
+    assert tabs.profile_in_use(tmp_path) is False
+
+
+def test_profile_in_use_honours_the_probe_seam(tmp_path):
+    assert tabs.profile_in_use(tmp_path, probe=lambda p: True) is True
+    assert tabs.profile_in_use(tmp_path, probe=lambda p: False) is False
+    seen = []
+    tabs.profile_in_use("/ff/x", probe=lambda p: seen.append(p) or True)
+    assert seen == ["/ff/x"]                       # the seam receives the path as given
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX fcntl lock in a forked child")
+def test_profile_in_use_sees_a_lock_held_by_another_process(tmp_path):
+    """A live Firefox holds `.parentlock` with fcntl for its whole lifetime."""
+    import fcntl
+    import select
+    lock = tmp_path / ".parentlock"
+    lock.write_text("")
+    ready_r, ready_w = os.pipe()                  # child → parent: "locked"
+    go_r, go_w = os.pipe()                        # parent → child: "release"
+    pid = os.fork()
+    if pid == 0:                                  # child: hold the lock, wait
+        try:
+            fd = os.open(lock, os.O_RDWR)
+            fcntl.lockf(fd, fcntl.LOCK_EX)        # nobody else holds it yet
+            os.write(ready_w, b"1")
+            os.read(go_r, 1)                      # parent probed → release
+            os._exit(0)
+        except BaseException:
+            os._exit(1)
+    os.close(ready_w)
+    os.close(go_r)
+    try:
+        ready, *_ = select.select([ready_r], [], [], 10)
+        assert ready and os.read(ready_r, 1) == b"1"
+        assert tabs.profile_in_use(tmp_path) is True   # EAGAIN: another process owns it
+    finally:
+        try:
+            os.write(go_w, b"1")
+        except OSError:
+            pass
+        os.waitpid(pid, 0)
+        os.close(ready_r)
+        os.close(go_w)
+
+
+def test_win_lock_branches_missing_free_and_held(tmp_path, monkeypatch):
+    """Windows `parent.lock`: absent ⇒ False, ownable ⇒ False, held ⇒ True."""
+    lock = tmp_path / "parent.lock"
+    assert tabs._win_lock_held(tmp_path) is False       # absent
+    lock.write_text("")
+    assert tabs._win_lock_held(tmp_path) is False       # free handle → not running
+
+    def deny(*_args, **_kwargs):
+        raise PermissionError(13, "the process cannot access the file")
+
+    monkeypatch.setattr(tabs.os, "open", deny)          # sharing violation (WinError 32)
+    assert tabs._win_lock_held(tmp_path) is True
+
+
+def test_profile_in_use_windows_dispatch(monkeypatch, tmp_path):
+    monkeypatch.setattr(tabs.os, "name", "nt")
+    called = []
+    monkeypatch.setattr(tabs, "_win_lock_held",
+                        lambda p: called.append(p) or True)
+    assert tabs.profile_in_use(tmp_path) is True and called
+    monkeypatch.setattr(tabs.os, "name", "posix")
+    unix = []
+    monkeypatch.setattr(tabs, "_unix_lock_held", lambda p: unix.append(p) or False)
+    assert tabs.profile_in_use(tmp_path) is False and unix
+
+
+def test_open_profile_dirs_keeps_only_running_profiles(tmp_path, monkeypatch):
+    first, second = tmp_path / "a", tmp_path / "b"
+    first.mkdir(), second.mkdir()
+    monkeypatch.setattr(tabs, "profile_dirs", lambda: [first, second])
+    assert tabs.open_profile_dirs(in_use=lambda p: p == first) == [first]
+    assert tabs.open_profile_dirs(in_use=lambda p: True) == [first, second]
+    assert tabs.open_profile_dirs() == []               # no locks in these dirs → closed
+
+
+def test_profile_in_use_unreadable_lock_assumes_busy(tmp_path, monkeypatch):
+    """Any refusal other than ENOENT (EACCES/EBUSY…) → assume the profile is busy."""
+    lock = tmp_path / ".parentlock"
+    lock.write_text("")
+
+    def deny(*_args, **_kwargs):
+        raise OSError(13, "permission denied")
+
+    monkeypatch.setattr(tabs.os, "open", deny)
+    assert tabs.profile_in_use(tmp_path) is True
+
+
+def test_unix_lock_probe_without_fcntl_assumes_busy(tmp_path, monkeypatch):
+    """Import-hinted environments without fcntl cannot test → busy (import error path)."""
+    import sys
+    (tmp_path / ".parentlock").write_text("")
+    monkeypatch.setitem(sys.modules, "fcntl", None)   # `import fcntl` → ImportError
+    assert tabs._unix_lock_held(tmp_path) is True

@@ -15,7 +15,13 @@ case-sensitive), `storage=browser|xfile`, `direct=1` (skip the confirm dialog),
 `savelog=<full path>` (XModules write it straight to disk), `cmd_var1`–`cmd_var3`
 (the macro reads them as `${!cmd_var1}`…`${!cmd_var3}`: the pause budget in ms,
 the XClick target, the `selectWindow` tab target — the extension seeds exactly
-`!CMD_VAR1..3`, so the macro never opens a URL), `closeRPA=1`. Values are
+`!CMD_VAR1..3`, so the macro never opens a URL), `closeRPA=1`, and
+`continueInLastUsedTab=0` — the owner's protected-tab rule (2026-09-24): the
+extension defaults it to `'1'` (`decorateOptions`) and then closes the tab
+about to play when it differs from the last-used one
+(`PANEL_CLOSE_CURRENT_TAB_AND_SWITCH_TO_LAST_PLAYED`) — i.e. the USER'S
+prepared tab dies on a first run. `'0'` (parsed by `parseBoolLike`) disables
+that close; the param is on the `INVOKE_URL_PARAMS` whitelist. Values are
 percent-encoded; the extension decodes with `decodeURIComponent`.
 """
 
@@ -70,10 +76,13 @@ PAGE_HTML = """<?xml version="1.0" encoding="UTF-8"?>
           clearTimeout(reloadTimer)
           clearInterval(intervalTimer)
           window.removeEventListener('kantuInvokeSuccess', onInvokeSuccess)
-          /* Auto-close this autostart tab after the macro finishes (cleanup).
-             window.close() works for tabs opened by the command line or by JS;
-             for user-opened tabs it is a no-op — the tab stays but navigates to
-             about:blank so it is visually gone. */
+          /* Close THIS autostart tab once the extension has accepted the run
+             (kantuInvokeSuccess fires at invoke — the macro is handed to its
+             tab then, not when it finishes). window.close() works for tabs the
+             command line opened; for user-opened tabs it is a no-op — the tab
+             stays but navigates to about:blank so it is visually gone. Only
+             this spawned tab is ever touched: the run's working tabs are
+             protected (continueInLastUsedTab=0 keeps them, too). */
           setTimeout(function () {
             try { window.close(); } catch (e) {}
             try { window.location.href = 'about:blank'; } catch (e) {}
@@ -157,7 +166,11 @@ class LaunchSpec:
 
 
 def launch_url(spec: LaunchSpec) -> str:
-    """The `file:///…/ui.vision.html?…` URL that runs one macro with these values."""
+    """The `file:///…/ui.vision.html?…` URL that runs one macro with these values.
+
+    `continueInLastUsedTab=0` = protected tabs (bug #1): the extension's
+    default '1' closes the not-last-used tab about to play — the user's own.
+    """
     base = Path(spec.page_path).resolve().as_uri()
     query = urlencode({
         "macro": spec.macro,
@@ -168,5 +181,6 @@ def launch_url(spec: LaunchSpec) -> str:
         "cmd_var2": spec.target,
         "cmd_var3": spec.tab,
         "closeRPA": "1" if spec.close_rpa else "0",
+        "continueInLastUsedTab": "0",
     }, quote_via=quote)
     return f"{base}?{query}"

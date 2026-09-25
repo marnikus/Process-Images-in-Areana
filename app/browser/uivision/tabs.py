@@ -8,11 +8,14 @@ session, rewritten every ~15s; plain `recovery.json` died with Firefox v33),
 `extensions.json` (the installed add-ons, the Ui.Vision extension among them).
 EVERY profile is read (2026-09-23 multi-profile fix): `profile_sessions()`
 answers one row per readable profile — the old freshest-only pick is gone, so
-two running Firefox profiles are both seen. Custom profile locations come from
-`profiles.ini` (`Path=` + `IsRelative=`, plus `Name=` — the `-P` handle that
-lets a run address that profile's instance). Every read is best effort: a
-missing, locked or unparsable file answers "not seen", never an error, so a
-wrong guess can never look like a browser verdict (RULE 4).
+two running Firefox profiles are both seen. Whether a profile is actually
+OPEN is a separate, lock-based test (2026-09-24 bug #4): `profile_in_use()`
+asks Firefox's own profile lock (`nsProfileLock`) — session stores survive a
+shutdown, so file freshness can never mean "running". Custom profile locations
+come from `profiles.ini` (`Path=` + `IsRelative=`, plus `Name=` — the `-P`
+handle that lets a run address that profile's instance). Every read is best
+effort: a missing, locked or unparsable file answers "not seen", never an
+error, so a wrong guess can never look like a browser verdict (RULE 4).
 """
 
 from __future__ import annotations
@@ -124,6 +127,59 @@ def profile_dirs() -> list:
             if path not in found:
                 found.append(path)
     return found
+
+
+def profile_in_use(profile, probe=None) -> bool:
+    """True when a RUNNING Firefox holds this profile's lock — the "is it open" test.
+
+    Presence proves nothing (the lock file is never deleted — nsProfileLock):
+    the TEST decides. Missing ⇒ not in use; held ⇒ in use; any other refusal
+    assumes in-use (skipping beats racing). `probe` replaces the whole check.
+    """
+    if probe is not None:
+        return bool(probe(profile))
+    if os.name == "nt":
+        return _win_lock_held(profile)
+    return _unix_lock_held(profile)
+
+
+def _unix_lock_held(profile) -> bool:
+    """The fcntl test-lock on `.parentlock`: held ⇒ in use (same class as Firefox)."""
+    lock = Path(profile) / ".parentlock"
+    try:
+        fd = os.open(lock, os.O_RDWR)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True                      # cannot test → assume the profile is busy
+    try:
+        import fcntl                     # POSIX-only import: Windows never lands here
+        fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.lockf(fd, fcntl.LOCK_UN)   # we held it → free ⇒ Firefox is not running
+        return False
+    except (ImportError, OSError):       # no fcntl, or EAGAIN/EACCES: held ⇒ in use
+        return True
+    finally:
+        os.close(fd)
+
+
+def _win_lock_held(profile) -> bool:
+    """Windows: Firefox's unshared `parent.lock` handle — ownable ⇒ it let go."""
+    lock = Path(profile) / "parent.lock"
+    try:
+        fd = os.open(lock, os.O_RDWR)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True                      # sharing violation (WinError 32) or worse → busy
+    os.close(fd)
+    return False
+
+
+def open_profile_dirs(in_use=None) -> list:
+    """The profile dirs whose Firefox is RUNNING — what "find all profiles" shows."""
+    probe = in_use or profile_in_use
+    return [path for path in profile_dirs() if probe(path)]
 
 
 def _read_json(path: Path):

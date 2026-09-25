@@ -6,12 +6,16 @@ wires to `bridge._log` + the `firefox_auto_updated` signal (RULE 2/5) and to
 the window's Stop button (RULE 7: the predicate is checked before every phase,
 before every planned run and inside the poll — `sequence.py` owns the loop).
 
-Multi-profile (2026-09-23, owner fix): the detect phase reads EVERY Firefox
-profile's session store, the plan targets EVERY tab matching the pattern, and
-each target is one macro run aimed at its own profile instance (`-P name`, or
-`-profile dir` when the profile has no ini name — `plan.py` renders them). Runs
-execute in order, each with its own savelog; a single run behaves exactly as
-before (the OS handoff, the pattern glob, `run-<stamp>.txt`).
+Multi-profile (2026-09-23, owner fix): the detect phase reads EVERY open
+Firefox profile's session store, the plan targets EVERY tab matching the
+pattern, and each target is one macro run aimed at its own profile instance
+(`-P name`, or `-profile dir` when the profile has no ini name — `plan.py`
+renders them). One run per open profile (2026-09-24 first-run fix): the first
+matching tab of each profile is the run's target, extra matches are reported
+but never re-run a profile. Runs execute in order, each with its own savelog;
+a single run behaves exactly as before (the OS handoff, the pattern glob,
+`run-<stamp>.txt`). Profiles that are closed on disk are skipped — the lock
+probe (`profiles.open_sessions`) decides "open", never file freshness.
 
 Outcome kinds are distinct answers, never one invented "failed" (RULE 4):
 `ok` / `error` are the extension's own verdicts from the savelog file,
@@ -84,6 +88,11 @@ class _Recorder:
         self._report(step, message, level)
 
 
+def _patterns(spec: RunSpec) -> plan.Patterns:
+    """The spec's two tab filters as one value — threaded through plan and macro."""
+    return plan.Patterns(spec.pattern, spec.url_pattern)
+
+
 def _macro_target(spec: RunSpec):
     """Where the macro JSON is written: the XModule home, or the import artefact."""
     if spec.storage == "xfile":
@@ -100,7 +109,7 @@ def _provision(spec: RunSpec, report) -> object:
     paths.logs_dir(spec.config_dir).mkdir(parents=True, exist_ok=True)
     target = _macro_target(spec)
     target.parent.mkdir(parents=True, exist_ok=True)
-    document = macro.build_macro(spec.macro)     # per-run values ride cmd_var1..3, not the file
+    document = macro.build_macro(spec.macro, _patterns(spec))
     target.write_text(macro.to_json(document), encoding="utf-8")
     report("provision", f"macro written: {target}")
     if spec.storage == "xfile":
@@ -133,14 +142,14 @@ def _report_matches(targets, spec: RunSpec, structured: bool, report) -> None:
         _report_no_matches(spec, report)
         return
     if not structured:
-        report("detect", f"search {plan.describe_search(spec.pattern, spec.url_pattern)} "
+        report("detect", f"search {plan.describe_search(_patterns(spec))} "
                          f"matches {len(targets)} open tab(s):")
         for pos, target in enumerate(targets, 1):
             report("detect", f"match {pos}: {target.url[:110]}")
         return
     profiles = sorted({plan.profile_label(t.profile_name, t.profile_dir) or "?"
                        for t in targets})
-    report("detect", f"search {plan.describe_search(spec.pattern, spec.url_pattern)} — "
+    report("detect", f"search {plan.describe_search(_patterns(spec))} — "
                      f"{len(targets)} open tab(s) match in {len(profiles)} profile(s): "
                      f"{', '.join(profiles)}")
     for pos, target in enumerate(targets, 1):
@@ -151,7 +160,7 @@ def _report_matches(targets, spec: RunSpec, structured: bool, report) -> None:
 
 def _report_no_matches(spec: RunSpec, report) -> None:
     """Why nothing matches: the search's own phrase, or a silent store + no filters."""
-    search = plan.describe_search(spec.pattern, spec.url_pattern)
+    search = plan.describe_search(_patterns(spec))
     if search == plan.ANY_TAB:
         report("detect", "no session store readable and both patterns are empty — "
                          "nothing to search", "warn")
@@ -161,46 +170,39 @@ def _report_no_matches(spec: RunSpec, report) -> None:
                      f"page in the matching Firefox first", "warn")
 
 
-def _report_clashes(targets, pattern: str, report) -> None:
-    """Duplicate selectors inside one profile cannot each hit their own tab — say so."""
-    for selector, label, count in plan.clashes(targets, pattern):
-        report("detect", f"profile “{label}”: {count} tab(s) match “{selector}” — the "
-                         f"title selector cannot tell them apart; each run lands on "
-                         f"the first one", "warn")
-
-
 def _report_plan(targets, spec: RunSpec, structured: bool, report) -> None:
-    """The run-plan lines: the plan summary, selector clashes, the blank warning."""
+    """The run-plan lines: what will actually run (one per profile) + the blank warning."""
     if len(targets) >= 2:
         report("detect", f"run plan: {plan.summarize(targets, structured)}")
-        _report_clashes(targets, spec.pattern, report)
     _report_blank_search(targets, spec, report)
 
 
 def _report_blank_search(targets, spec: RunSpec, report) -> None:
-    """Both patterns blank means EVERY open tab runs — never quietly (RULE 4)."""
+    """Both patterns blank means EVERY open profile runs once — never quietly (RULE 4)."""
     if (spec.pattern or "").strip() or (spec.url_pattern or "").strip():
         return
-    report("detect", f"both patterns are empty — the macro will run on EVERY open "
-                     f"tab ({len(targets)} tab(s)); set a title or URL pattern to "
-                     f"narrow the search", "warn")
+    report("detect", f"both patterns are empty — the macro will run once per open "
+                     f"profile ({len(targets)} run(s)); set a title or URL pattern "
+                     f"to narrow the search", "warn")
 
 
 
 def _load_profiles(seams: RunSeams) -> list:
-    """Per-profile sessions: the profiles seam, the flat tabs seam, or the real stores."""
+    """Per-profile sessions: the profiles seam, the flat tabs seam, or the OPEN stores."""
     if seams.profiles is not None:
         return seams.profiles()
     if seams.tabs is not None:
         return [plan.anonymous_session(seams.tabs())]
-    return tabs.profile_sessions()
+    return profiles.open_sessions(tabs.profile_sessions())
 
 
 def _report_profiles(report) -> None:
-    """How many Firefox profiles were scanned, by name — an empty scan explains itself."""
-    names = [path.name for path in tabs.profile_dirs()]
+    """Open profiles by name, plus how many closed ones were skipped (bug #4)."""
+    names = [path.name for path in tabs.open_profile_dirs()]
+    closed = len(tabs.profile_dirs()) - len(names)
     quiet = f" ({', '.join(names[:6])})" if names else " (is Firefox installed?)"
-    report("detect", f"firefox profiles scanned: {len(names)}{quiet}")
+    note = f" — {closed} closed profile(s) skipped" if closed > 0 else ""
+    report("detect", f"firefox profiles scanned: {len(names)}{quiet}{note}")
 
 
 def _report_source(sessions, report) -> None:
@@ -281,29 +283,30 @@ def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
 
 
 def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
-    """The pre-run eyes: EVERY profile's tabs, the search's matches, the run plan."""
+    """The pre-run eyes: EVERY open profile's tabs, the matches, ONE run per profile."""
     sessions = _load_profiles(seams)
     real = seams.tabs is None and seams.profiles is None
     structured = real or seams.profiles is not None
-    targets = plan.plan_targets(sessions, spec.pattern, spec.url_pattern)
+    targets = plan.plan_targets(sessions, _patterns(spec))
     targets = _apply_profile_filter(targets, spec, sessions, recorder)
     targets = _drop_unaddressable(targets, spec, recorder)
+    planned = plan.one_per_profile(targets)       # one run per open profile (bug #3)
     if real:
         _report_profiles(recorder)
     _report_open_tabs(sessions, real, recorder)
     _report_matches(targets, spec, structured, recorder)
     _report_windows(sessions, seams, recorder)
-    _report_plan(targets, spec, structured, recorder)
+    _report_plan(planned, spec, structured, recorder)
     wins = desktop.find_windows(spec.pattern)
     note = "" if wins or os_is_windows() else " (window listing is Windows-only)"
     recorder("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
     _detect_plugin(recorder, seams)
-    return targets
+    return planned
 
 
 def _drop_unaddressable(targets, spec: RunSpec, recorder: _Recorder) -> list:
     """Warn per titleless match and keep only tabs the macro can actually select."""
-    addressable, titleless = plan.split_unaddressable(targets, spec.pattern)
+    addressable, titleless = plan.split_unaddressable(targets, _patterns(spec))
     for target in titleless:
         recorder("detect", f"tab {target.url[:90]} matched but has no TITLE — "
                            f"selectWindow can only pick a tab by title; open the page "
@@ -426,7 +429,7 @@ async def _poll_one_profile(name, spec, timeout, sleep_fn, seams, recorder, targ
         found = _find_new_targets(_load_profiles(seams), name, spec)
         if found:
             recorder("wait", f'"{name}": {len(found)} matching tab(s) appeared', "success")
-            return targets + found
+            return targets + plan.one_per_profile(found)   # still one run per profile
     recorder("wait", f'"{name}": no matching tab after {timeout}s — skipped', "warn")
     return targets
 
@@ -452,7 +455,7 @@ def _find_new_targets(sessions: list, profile_name: str, spec: RunSpec) -> list:
         found = []
         for row in session.get("rows") or []:
             if plan.matches(str(row.get("title", "")), str(row.get("url", "")),
-                            spec.pattern, spec.url_pattern):
+                            _patterns(spec)):
                 found.append(plan.Target(
                     profile_name=str(session.get("name", "")),
                     profile_dir=str(session.get("dir", "")),
@@ -487,7 +490,8 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
         return _result("blocked", str(exc), recorder)
     if not targets:
         targets = [plan.Target()]          # today's single run: the OS handoff decides
-    runs = plan.runs(targets, spec.pattern, spec.config_dir, time.strftime("%Y%m%d-%H%M%S"))
+    runs = plan.runs(targets, _patterns(spec), spec.config_dir,
+                     time.strftime("%Y%m%d-%H%M%S"))
     executor = Sequence(spec, seams, recorder)
     executor.page = str(page)
     return await executor.execute(runs)

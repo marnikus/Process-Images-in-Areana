@@ -25,7 +25,7 @@ def _session(dir_path: str, name: str, rows: list) -> dict:
             "windows": [], "source": "recovery.jsonlz4", "stamp": 1.0}
 
 
-# ── list_profiles ────────────────────────────────────────────────────────────
+# ── list_profiles (open profiles only — bug #4, 2026-09-24) ─────────────────
 
 def test_list_profiles_returns_every_answering_session(monkeypatch):
     sessions = [
@@ -34,7 +34,7 @@ def test_list_profiles_returns_every_answering_session(monkeypatch):
         _session("/p/b", "", [{"url": "https://y", "title": "Y"}]),
     ]
     monkeypatch.setattr(profiles.tabs, "profile_sessions", lambda: sessions)
-    rows = profiles.list_profiles()
+    rows = profiles.list_profiles(in_use=lambda p: True)
     assert len(rows) == 2
     assert rows[0]["id"] == "/p/a" and rows[0]["name"] == "alpha"
     assert rows[0]["tab_count"] == 2 and len(rows[0]["tabs"]) == 2
@@ -45,13 +45,33 @@ def test_list_profiles_caps_the_tabs_shown(monkeypatch):
     rows = [{"url": f"https://x/{i}", "title": f"T{i}"} for i in range(20)]
     monkeypatch.setattr(profiles.tabs, "profile_sessions",
                         lambda: [_session("/p", "p", rows)])
-    out = profiles.list_profiles()
+    out = profiles.list_profiles(in_use=lambda p: True)
     assert out[0]["tab_count"] == 20 and len(out[0]["tabs"]) == profiles.TAB_CAP
 
 
 def test_list_profiles_empty_when_no_session_answers(monkeypatch):
     monkeypatch.setattr(profiles.tabs, "profile_sessions", lambda: [])
     assert profiles.list_profiles() == []
+
+
+def test_list_profiles_lists_only_running_profiles(monkeypatch):
+    """Closed-on-disk profiles never appear — the lock probe decides."""
+    sessions = [_session("/p/open", "running", [{"url": "https://x", "title": "X"}]),
+                _session("/p/closed", "old", [{"url": "https://y", "title": "Y"}])]
+    monkeypatch.setattr(profiles.tabs, "profile_sessions", lambda: sessions)
+    rows = profiles.list_profiles(in_use=lambda p: p == "/p/open")
+    assert [r["id"] for r in rows] == ["/p/open"]
+    # default probe (no in_use): the fake dirs answer NOT in use → nothing listed
+    assert profiles.list_profiles() == []
+
+
+def test_open_sessions_filters_by_the_lock_probe():
+    sessions = [_session("/p/a", "a", []), _session("/p/b", "b", [])]
+    assert profiles.open_sessions(sessions, in_use=lambda p: p == "/p/b") == [
+        sessions[1]]
+    assert profiles.open_sessions(sessions, in_use=lambda p: True) == sessions
+    assert profiles.open_sessions(None, in_use=lambda p: True) == []
+    assert profiles.open_sessions([], in_use=lambda p: True) == []
 
 
 # ── selected_set ─────────────────────────────────────────────────────────────

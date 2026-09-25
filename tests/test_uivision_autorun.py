@@ -68,8 +68,12 @@ def test_launch_url_carries_the_whitelisted_params_and_no_url(tmp_path):
     assert query["cmd_var3"] == ["title=*Arena*"]     # the pattern's tab is reused
     # the macro never opens a page: no URL rides the launch URL
     assert "arena.ai" not in url and "https" not in parts.query
+    # protected tabs (bug #1): '0' keeps the extension from closing the tab
+    # about to play when it is not the last-used one (decorateOptions default '1')
+    assert query["continueInLastUsedTab"] == ["0"]
     assert set(query) == {"macro", "storage", "direct", "savelog",
-                          "cmd_var1", "cmd_var2", "cmd_var3", "closeRPA"}
+                          "cmd_var1", "cmd_var2", "cmd_var3", "closeRPA",
+                          "continueInLastUsedTab"}
 
 
 def test_launch_url_close_rpa_off_and_file_uri_base(tmp_path):

@@ -2,9 +2,11 @@
 
 Pure functions (no Qt, no bridge, no OS calls beyond the session-store reads
 already owned by `tabs.py`): `list_profiles` turns the session store into the
-window's display rows, `selected_set` normalises the config's list into a
+window's display rows — open profiles only (`open_sessions` applies the lock
+probe, 2026-09-24 bug #4), `selected_set` normalises the config's list into a
 lookup, and `filter_targets` keeps only targets whose profile is selected.
-A blank selection means *every* profile (no filter) — the empty-list default.
+A blank selection means *every* (open) profile (no filter) — the empty-list
+default.
 """
 
 from __future__ import annotations
@@ -28,15 +30,24 @@ def _tab_summary(rows: list) -> tuple:
     return urls, len(rows or [])
 
 
-def list_profiles() -> list:
-    """Every readable Firefox profile as a display row.
+def open_sessions(sessions: list, in_use=None) -> list:
+    """Only sessions whose profile is RUNNING — closed profiles never answer (bug #4).
 
-    Each row: `{"id", "name", "dir", "tabs", "tab_count", "source"}`. The
-    `id` is the profile dir (the stable key); `name` is the `profiles.ini`
-    handle (`""` when unnamed). An empty list means no profile answered.
+    The lock probe (`tabs.profile_in_use`) is the single "is it open" rule;
+    `in_use` replaces it in tests (`in_use=lambda p: True`).
+    """
+    probe = in_use or tabs.profile_in_use
+    return [session for session in sessions or [] if probe(session.get("dir", ""))]
+
+
+def list_profiles(in_use=None) -> list:
+    """Every OPEN Firefox profile as a display row — closed ones never appear.
+
+    Row shape `{"id", "name", "dir", "tabs", "tab_count", "source"}`; `id`
+    is the profile dir, `name` the `profiles.ini` handle (`""` unnamed).
     """
     out = []
-    for session in tabs.profile_sessions():
+    for session in open_sessions(tabs.profile_sessions(), in_use):
         shown, total = _tab_summary(session.get("rows"))
         out.append({
             "id": _profile_id(session),
