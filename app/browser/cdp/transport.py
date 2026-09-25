@@ -77,6 +77,8 @@ class CDPTransport(QObject):
 
     async def disconnect(self):
         self._connected = False
+        _fail_pending(self, "CDP disconnected")   # waiters must not burn timeouts
+        ws, self._ws = self._ws, None            # detach first; teardown owns close
         if self._receive_task:
             self._receive_task.cancel()
             try:
@@ -84,24 +86,22 @@ class CDPTransport(QObject):
             except Exception:
                 pass
             self._receive_task = None
-        if self._ws:
+        if ws:
             try:
-                await self._ws.close()
+                await ws.close()
             except Exception:
                 pass
-            self._ws = None
-        self._pending.clear()
         self.disconnected.emit()
 
     async def send(self, method: str, params: dict | None = None, timeout: float = 30) -> dict:
-        if not self._ws:
+        if (ws := self._ws) is None or not self._connected:
             raise ConnectionError("CDP not connected")
         self._cmd_id += 1
         loop = asyncio.get_event_loop()
         fut = loop.create_future()
         self._pending[self._cmd_id] = fut
         payload = json.dumps({"id": self._cmd_id, "method": method, "params": params or {}})
-        await self._ws.send(payload)
+        await _send_payload(self, self._cmd_id, ws, payload)
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
@@ -121,13 +121,9 @@ class CDPTransport(QObject):
         except asyncio.CancelledError:
             log.info(f"CDP receive loop cancelled for {self._current_ws_url[:80]}")
         except Exception as e:
-            import traceback
-            tb = traceback.format_exc()[-800:]
-            log.error(f"CDP receive error {self._current_ws_url[:80]}: {e} — {tb}")
-            self.error.emit(f"CDP receive error: {e}")
+            _receive_error(self, e)
         finally:
-            was = self._connected
-            self._connected = False
+            was = _receive_teardown(self)
             if was:
                 log.warning(f"CDP disconnected (was connected) {self._current_ws_url[:80]}")
             else:
@@ -153,6 +149,50 @@ class CDPTransport(QObject):
         self.last_error = ""
         self.last_error_kind = ""
         return value
+
+
+async def _send_payload(transport, cmd_id: int, ws, payload: str) -> None:
+    """Write one frame; a failed write must not leave a pending waiter."""
+    try:
+        await ws.send(payload)
+    except Exception:
+        transport._pending.pop(cmd_id, None)
+        raise
+
+
+def _receive_teardown(transport) -> bool:
+    """Receive loop is dead: drop the socket, fail in-flight commands NOW.
+
+    Returns whether the transport was connected when the loop ended.
+    """
+    was = transport._connected
+    transport._connected = False
+    transport._ws = None                            # later sends must fail fast
+    _fail_pending(transport, "CDP connection lost")  # no full-timeout waiters
+    return was
+
+
+def _fail_pending(transport, reason: str) -> None:
+    """Fail every in-flight command NOW — a dead connection answers nothing.
+
+    Waiters used to serve their full timeout and report a misleading
+    TimeoutError (owner log: evaluate burned 30 s while the socket was already
+    gone, "no close frame received or sent"). Module-level to keep
+    CDPTransport at its recorded class/method ratchets (2026-09-25).
+    """
+    pending, transport._pending = transport._pending, {}
+    for fut in pending.values():
+        if not fut.done():
+            fut.set_exception(ConnectionError(reason))
+
+
+def _receive_error(transport, e: Exception) -> None:
+    """Receive-side failure: capped traceback + error signal (module-level to
+    keep `_receive_loop` under the file's 28-LOC floor)."""
+    import traceback
+    tb = traceback.format_exc()[-800:]
+    log.error(f"CDP receive error {transport._current_ws_url[:80]}: {e} — {tb}")
+    transport.error.emit(f"CDP receive error: {e}")
 
 
 def _note_eval_error(transport, kind: str, text: str) -> None:
