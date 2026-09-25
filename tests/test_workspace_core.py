@@ -181,3 +181,12 @@ def test_write_bytes_returns_integrity_entry(tmp_path):
     entry = fsio.write_bytes(tmp_path, "state/deep/x.json", b"1234")
     assert (tmp_path / "state/deep/x.json").read_bytes() == b"1234"
     assert entry["sha256"] == sha256_bytes(b"1234") and entry["bytes"] == 4
+
+
+def test_fsio_write_bytes_entry_matches_integrity_shape(tmp_path):
+    """D1: the written-file entry is THE integrity entry, computed in one home."""
+    from app.persistence.workspace.integrity import bytes_entry, canonical_bytes
+    doc = {"b": 2, "a": 1}
+    entry = fsio.write_bytes(tmp_path, "state/x.json", canonical_bytes(doc))
+    assert entry == bytes_entry("state/x.json", canonical_bytes(doc))
+    assert entry == doc_entry("state/x.json", doc)  # same bytes, same entry

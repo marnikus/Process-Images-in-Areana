@@ -200,10 +200,11 @@ def _load_one(root: Path, entry: dict, rel: str):
         return WorkspaceError(entry_owner(entry), "checksum",
                               f"size mismatch ({path.stat().st_size} ≠ {entry['bytes']})",
                               evidence=(entry.get("bytes"), path.stat().st_size))
-    if entry.get("sha256") and file_sha(path) != entry["sha256"]:
+    actual_sha = file_sha(path)
+    if entry.get("sha256") and actual_sha != entry["sha256"]:
         return WorkspaceError(entry_owner(entry), "checksum",
                               "sha-256 mismatch — file changed after save",
-                              evidence=(entry.get("sha256", "")[:12], file_sha(path)[:12]))
+                              evidence=(entry.get("sha256", "")[:12], actual_sha[:12]))
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:

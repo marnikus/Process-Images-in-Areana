@@ -60,13 +60,12 @@ def _with_backoff(action) -> None:
 
 def write_bytes(root: Path, rel: str, data: bytes) -> dict:
     """Write one file inside the (temp) workspace root; returns its integrity entry."""
-    import hashlib
+    from .integrity import bytes_entry
 
     path = Path(root) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
-    return {"path": rel, "bytes": len(data),
-            "sha256": hashlib.sha256(data).hexdigest()}
+    return bytes_entry(rel, data)
 
 
 def copy_tree(src: Path, dst: Path) -> None:

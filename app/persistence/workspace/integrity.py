@@ -22,10 +22,14 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def bytes_entry(rel_path: str, data: bytes) -> dict:
+    """`{path, bytes, sha256}` for one serialised payload (the one entry builder)."""
+    return {"path": rel_path, "bytes": len(data), "sha256": sha256_bytes(data)}
+
+
 def doc_entry(rel_path: str, doc) -> dict:
     """`{path, bytes, sha256}` for one canonical serialisation."""
-    data = canonical_bytes(doc)
-    return {"path": rel_path, "bytes": len(data), "sha256": sha256_bytes(data)}
+    return bytes_entry(rel_path, canonical_bytes(doc))
 
 
 def drive_like(text: str) -> bool:
