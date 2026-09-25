@@ -234,7 +234,7 @@ class FirefoxAutoMixin:
 
     @Slot(result=str)
     def show_firefox_profiles(self):
-        """List the Firefox profiles RUNNING now (live `lock.ini` pid) for the UI.
+        """List the Firefox profiles RUNNING now (held lock file) for the UI.
 
         Open-only on purpose (owner rule 2026-09-24): the same truth the run
         plan uses, so "checked here" and "run there" can never diverge.

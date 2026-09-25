@@ -7,7 +7,7 @@ the window's Stop button (RULE 7: the predicate is checked before every phase,
 before every planned run and inside the poll — `sequence.py` owns the loop).
 
 Per-profile (2026-09-24 rebuild): the detect phase reads only the profiles
-that are RUNNING now (their `lock.ini` pid is alive — the on-screen finder and
+that are RUNNING now (Firefox is holding their lock — the on-screen finder and
 the run plan agree; a saved-but-closed profile's stale store plans nothing),
 and the run unit is the PROFILE: one macro run per open profile with ≥1
 matching tab (`plan.py` renders the `-P name` / `-profile dir` argv). Runs
@@ -215,8 +215,8 @@ def _load_profiles(seams: RunSeams) -> list:
 def _report_open_states(report) -> None:
     """What Firefox is running RIGHT NOW — the open profiles named, closed ones skipped.
 
-    The on-screen finder and the run plan read the same truth (the `lock.ini`
-    pid); a profile without a live lock is not listed and is never launched.
+    The on-screen finder and the run plan read the same truth (the held lock
+    file); a profile without a live lock is not listed and is never launched.
     """
     running, closed = _open_state_split(tabs.profile_open_states())
     if running:
@@ -225,16 +225,16 @@ def _report_open_states(report) -> None:
     else:
         report("detect", "firefox running now: 0 profile(s) (is Firefox running?)", "warn")
     if closed:
-        report("detect", f"{len(closed)} profile(s) not running — skipped (stale store): "
+        report("detect", f"{len(closed)} profile(s) not running — skipped: "
                          f"{', '.join(closed[:6])}")
 
 
 def _open_state_split(states) -> tuple:
-    """[(dir, name, open, reason)] → (running labels, closed labels), display order."""
+    """[(dir, name, open, reason)] → (running labels, closed label + reason)."""
     running = [plan.profile_label(name, path) or path for path, name, open_, _r in states
                if open_]
-    closed = [plan.profile_label(name, path) or path for path, name, open_, _r in states
-              if not open_]
+    closed = [f"{plan.profile_label(name, path) or path} ({reason})"
+              for path, name, open_, reason in states if not open_]
     return running, closed
 
 

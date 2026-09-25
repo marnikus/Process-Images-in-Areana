@@ -243,7 +243,7 @@ def open_profile_sessions(profiles=None, checker=None) -> list:
 
     A profile whose lock is missing or stale (see `profile_lock`) carries a
     stale session store; its tabs are not open, so it contributes no rows.
-    `checker` is the pid-liveness seam (tests).
+    `checker` is the lock-held seam (tests).
     """
     sessions = profile_sessions(profiles)
     return [s for s in sessions if profile_open(s.get("dir", ""), checker=checker)[0]]

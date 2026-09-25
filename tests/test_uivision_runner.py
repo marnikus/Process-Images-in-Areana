@@ -570,8 +570,8 @@ async def test_real_store_path_reports_open_profiles_source_and_windows(
         "source": "recovery.jsonlz4", "stamp": 5.0}]
     monkeypatch.setattr(runner.tabs, "open_profile_sessions", lambda: sessions)
     monkeypatch.setattr(runner.tabs, "profile_open_states", lambda: [
-        ("/ff/p1.work", "Work", True, "lock pid 1234 alive"),
-        ("/ff/p2.play", "", False, "stale lock — pid 99 not running")])
+        ("/ff/p1.work", "Work", True, "parent.lock held — running"),
+        ("/ff/p2.play", "", False, "parent.lock not held — not running")])
     monkeypatch.setattr(runner.desktop, "foreground_tab_window", lambda *a: None)
     monkeypatch.setattr(runner.desktop, "foreground", lambda pattern: ([], 0))
     rows, report = reports()
@@ -579,7 +579,7 @@ async def test_real_store_path_reports_open_profiles_source_and_windows(
     await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"), report, seams)
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "firefox running now: 1 profile(s) — Work" in text
-    assert "1 profile(s) not running — skipped (stale store): p2.play" in text
+    assert "1 profile(s) not running — skipped: p2.play (parent.lock not held — not running)" in text
     assert "session source: recovery.jsonlz4 in Work" in text
     assert 'firefox window 1 (profile “Work”): 1 tab(s) — active “A1”' in text
     assert "firefox open tabs seen: 1" in text

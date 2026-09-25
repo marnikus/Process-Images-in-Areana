@@ -100,15 +100,24 @@ foreground rule and the now-correct per-profile targeting are the mitigations).
 ### 3. One run per running profile (bug #3)
 
 * **Open-profile filter** — new `app/browser/uivision/profile_lock.py` (OS-level, no
-  debugger): Firefox writes `<profile>/lock.ini` (`<hostname>:<pid>`) for the whole lifetime
-  of a running instance and deletes it on clean shutdown — the browser's own "this profile is
-  running" receipt, in the spirit of the app's read-only-on-OS-files philosophy.
-  `profile_open()` → `(open, reason)`: no lock → not running; unparseable lock → not running;
-  lock pid dead → stale lock → not running; pid alive → running (Windows: `OpenProcess` +
-  best-effort `QueryFullProcessImageNameW`, so a **reused PID owned by a non-Firefox process**
-  is treated as a stale lock; POSIX: `os.kill(pid, 0)`).
-  `tabs.open_profile_sessions()` = `profile_sessions()` filtered to open profiles; a closed
-  profile's stale store is **invisible** — the phantom targets of bug #3 cannot exist.
+  debugger): the receipt is the lock file **Firefox itself holds** for the life of the
+  profile (source: `toolkit/profile/nsProfileLock.cpp` in `mozilla-firefox/firefox`, read
+  2026-09-25 — see the revision note at the end of this file; the 2026-09-24 draft
+  assumed a `lock.ini` (`hostname:pid`) file, which Firefox does not write):
+  * **Windows** — `<profile>/parent.lock`: an EMPTY file opened with
+    `CreateFileW` (share = none) and **never deleted** (its mtime is Firefox's own
+    startup-crash stamp). `profile_open()` opens it without sharing;
+    `ERROR_SHARING_VIOLATION` / `ERROR_ACCESS_DENIED` ⇒ a live process holds it ⇒ running;
+    a clean open or `ERROR_FILE_NOT_FOUND` ⇒ not running.
+  * **Linux/macOS** — `<profile>/.parentlock`: a regular file that **persists** after clean
+    shutdown; only a live process holds the `fcntl(F_WRLCK)` on it. `profile_open()` asks
+    `F_GETLK` (the kernel answers with the holder or `F_UNLCK`). Legacy fallback for old
+    builds: the `lock` SYMLINK `<ip>:<pid>` (`<ip>:+<pid>` marks it obsolete — then and only
+    then the pid is probed with `kill(pid, 0)`).
+  `profile_open()` → `(open, reason)`; the reason is named in the detect line, so a
+  misdiagnosis shows itself. `tabs.open_profile_sessions()` = `profile_sessions()` filtered
+  to open profiles; a closed profile's stale store is **invisible** — the phantom targets
+  of bug #3 cannot exist.
   Detection reports both sides: `firefox profiles: N running (…)` + `M not running —
   skipped (…)`. The profile list slot shows **open profiles only** (owner's on-screen rule);
   a selected-but-not-running profile is named in the skip/wait reports, and is **never
@@ -160,7 +169,7 @@ query param only when > 0; the runner sets `timeout_sec + 120`.
   as globs (F3).
 * **Waiting out stale stores instead of the lock** — a running-but-idle Firefox may not
   rewrite `recovery.jsonlz4`; an mtime threshold would false-negative real profiles (the
-  "other profiles never reached" failure again). `lock.ini` is deterministic.
+  "other profiles never reached" failure again). The held lock is deterministic.
 * **One run per matching tab (old model)** — contradicts the owner's "every profile … exact
   one time" and is the direct source of the over-clicked first profile.
 
@@ -175,3 +184,35 @@ priority matrix, per-profile dedup, no clip), `test_uivision_macro.py` (shape ga
 pair), `test_uivision_autorun.py` (backstop param, no dispatch-close), `test_uivision_runner.py`
 (one run per profile, closed-profile invisibility, gone-target skip-continue, handoff
 misroute/confirm/proceed, title refresh), `test_uivision_profiles.py` (open-only list).
+
+## Revision 2026-09-25 — the open-profile gate is rebuilt (the `lock.ini` assumption was wrong)
+
+The owner's machine reported **0 running profiles with 3+ actually open** — every profile
+answered "no lock file — not running". The gate had read a file Firefox never writes.
+
+**What Firefox actually does** (source-verified 2026-09-25: `toolkit/profile/nsProfileLock.cpp`
+in `github.com/mozilla-firefox/firefox` — the canonical repo since the 2025-07 `gecko-dev`
+archival; 2015, 2019 and the frozen 2025-07 vintages agree, and the string `lock.ini` no
+longer appears anywhere in the tree):
+
+| OS | Lock file | Form | Liveness receipt |
+|---|---|---|---|
+| Windows | `<profile>/parent.lock` | EMPTY file, `CreateFileW` share-none, **never deleted** (mtime = last start; Firefox's own startup-crash stamp) | opening it without sharing fails with `ERROR_SHARING_VIOLATION`/`ERROR_ACCESS_DENIED` while the process lives |
+| Linux | `<profile>/.parentlock` | regular file that **persists** after clean shutdown | `fcntl(F_GETLK)` reports a held `F_WRLCK`/`F_RDLCK` with the holder's pid |
+| macOS | `<profile>/.parentlock` (old name `parent.lock`) | as Linux | as Linux |
+| any (old builds) | `<profile>/lock` | SYMLINK `<ip>:<pid>`; newer builds write `<ip>:+<pid>` to mark it obsolete | pid probe, only when nothing holds the fcntl lock |
+
+The `hostname:pid` lock text the 2026-09-24 draft assumed belongs to **Thunderbird's**
+`lock` file, not Firefox's — that assumption made the gate blind on Windows (no `lock.ini`
+exists there), so the finder, the run plan and the wait phase all saw zero open profiles.
+
+**The rebuild** (same invariants, correct receipt): `profile_lock._held_windows` (CreateFileW
+probe) / `profile_lock._held_fcntl` (F_GETLK, the answer comes back as bytes) /
+`_legacy_link_pid` (+ `kill(pid, 0)` for old-build symlinks only); `profile_open()` keeps the
+`(open, reason)` contract and the `checker` seam, the `tabs.open_profile_sessions` /
+`profile_open_states` / `autorun_tab_seen` gates are unchanged in shape, and the detect line
+now names the reason per profile (`… not running — skipped: <name> (parent.lock not held —
+not running)`), so the next misdiagnosis shows itself in the log. Tests: the `ctypes.windll`
+stub covers the Windows probe on any host; the unix probe is exercised against a real file
+(`F_GETLK` `F_UNLCK`) plus the held/size-mismatch answer bytes (the sandbox's filesystem
+refuses `F_SETLK` with ESRCH — environment fact, pinned by `test_fcntl_probe_*`).

@@ -1,14 +1,18 @@
-"""The open-profile gate — Firefox's own `lock.ini`, read-only (2026-09-24).
+"""The open-profile gate — the profile lock Firefox itself holds (2026-09-24,
+rebuilt 2026-09-25 after the `lock.ini` assumption proved wrong).
 
-Bug #4's receipt: only a profile whose lock pid is alive is "running". The
-pid liveness is checked per OS (posix `kill(pid, 0)`, Windows OpenProcess +
-image name) with the OS and the syscall faked here; the reason strings are
-pinned because the report lines quote them verbatim.
+Source of truth: `toolkit/profile/nsProfileLock.cpp` in
+`mozilla-firefox/firefox` (read 2026-09-25; the frozen 2025-07 gecko-dev
+mirror and 2015/2019 vintages agree). Windows holds an EMPTY `parent.lock`
+open with no sharing (the exclusive handle IS the receipt — the file is
+never deleted); unix holds `fcntl(F_WRLCK)` on the persistent `.parentlock`,
+plus the legacy `lock` SYMLINK `<ip>:<pid>` from old builds. The OS syscalls
+are faked here; the reason strings are pinned because the report lines quote
+them verbatim.
 """
 
 import ctypes
 import os
-from pathlib import Path
 
 import pytest
 
@@ -17,143 +21,169 @@ from app.browser.uivision import profile_lock, tabs
 pytestmark = pytest.mark.unit
 
 
-# ── lock.ini parsing ─────────────────────────────────────────────────────────
-
-def write_lock(profile: Path, text: str) -> Path:
-    path = profile / profile_lock.LOCK_FILE
-    path.write_text(text, encoding="utf-8")
-    return path
-
-
-def test_lock_pid_parses_the_hostname_pid_format(tmp_path):
-    write_lock(tmp_path, "myhost.example:1234\n")
-    assert profile_lock.lock_pid(tmp_path) == 1234
-    write_lock(tmp_path, "host:42")
-    assert profile_lock.lock_pid(tmp_path) == 42
-    write_lock(tmp_path, "  host : 77  ")
-    assert profile_lock.lock_pid(tmp_path) == 77
-
-
-def test_lock_pid_is_none_when_absent_or_unparseable(tmp_path):
-    assert profile_lock.lock_pid(tmp_path) is None
-    write_lock(tmp_path, "garbage without colon")
-    assert profile_lock.lock_pid(tmp_path) is None
-    write_lock(tmp_path, "host:not-a-number")
-    assert profile_lock.lock_pid(tmp_path) is None
-    write_lock(tmp_path, "host:")
-    assert profile_lock.lock_pid(tmp_path) is None
-    write_lock(tmp_path, "")
-    assert profile_lock.lock_pid(tmp_path) is None
-
-
-# ── pid liveness: posix ──────────────────────────────────────────────────────
-
-def test_pid_alive_posix_probes_with_kill_zero(monkeypatch):
-    calls = []
-    monkeypatch.setattr(os, "kill", lambda pid, sig: calls.append((pid, sig)))
-    assert profile_lock._pid_alive_posix(1234) is True
-    assert calls == [(1234, 0)]
-
-
-def test_pid_alive_dispatches_to_posix_on_a_posix_host(monkeypatch):
-    """The os.name dispatch: on this (posix) host pid_alive takes the kill-zero path."""
-    if os.name == "nt":
-        pytest.skip("posix dispatch only")
-    monkeypatch.setattr(os, "kill", lambda pid, sig: None)
-    assert profile_lock.pid_alive(1234) is True
-
-
-def test_pid_alive_posix_lookup_error_is_dead(monkeypatch):
-    def kill(pid, sig):
-        raise ProcessLookupError()
-    monkeypatch.setattr(os, "kill", kill)
-    assert profile_lock._pid_alive_posix(1234) is False
-
-
-def test_pid_alive_posix_permission_error_is_alive(monkeypatch):
-    """EACCES means the process EXISTS (we just cannot signal it)."""
-    def kill(pid, sig):
-        raise PermissionError()
-    monkeypatch.setattr(os, "kill", kill)
-    assert profile_lock._pid_alive_posix(1234) is True
-
-
-# ── pid liveness: windows ────────────────────────────────────────────────────
+# ── the Windows probe: open without sharing, a live holder is the receipt ──
 
 class FakeKernel32:
-    def __init__(self, handle=1, image_name="firefox.exe", query_ok=True):
-        self.handle, self.image_name, self.query_ok = handle, image_name, query_ok
+    def __init__(self, handle=1, last_error=32):
+        self.handle, self.last_error = handle, last_error
         self.closed = []
+        self.CreateFileW = self._make_create()       # a function: takes `restype`
 
-    def OpenProcess(self, flags, inherit, pid):
-        return self.handle
+    def _make_create(self):
+        def create(path, access, share, sa, disp, flags, template):
+            assert share == 0 and disp == profile_lock._OPEN_EXISTING
+            return self.handle
+        return create
 
-    def QueryFullProcessImageNameW(self, handle, flags, buf, size_ref):
-        if not self.query_ok:
-            return 0
-        buf.value = self.image_name
-        return 1
+    def GetLastError(self):
+        return self.last_error
 
     def CloseHandle(self, handle):
         self.closed.append(handle)
         return 1
 
 
-def test_pid_alive_windows_accepts_a_firefox_owner(monkeypatch):
-    kernel = FakeKernel32(image_name="C:\\Program Files\\Mozilla Firefox\\firefox.exe")
-    monkeypatch.setattr(os, "name", "nt")
+def test_windows_probe_sharing_violation_means_running(monkeypatch):
+    kernel = FakeKernel32(handle=ctypes.c_void_p(-1).value, last_error=32)
     monkeypatch.setattr(ctypes, "windll", kernel, raising=False)
-    assert profile_lock.pid_alive(4242) is True
-    assert kernel.closed == [1]                          # the handle is released
+    assert profile_lock._held_windows("C:\\ff\\a\\parent.lock") is True
+    assert kernel.closed == []                      # nothing was opened
 
 
-def test_pid_alive_windows_rejects_a_reused_pid_of_another_app(monkeypatch):
-    kernel = FakeKernel32(image_name="C:\\Windows\\explorer.exe")
-    monkeypatch.setattr(os, "name", "nt")
+def test_windows_probe_access_denied_means_running(monkeypatch):
+    kernel = FakeKernel32(handle=ctypes.c_void_p(-1).value, last_error=5)
     monkeypatch.setattr(ctypes, "windll", kernel, raising=False)
-    assert profile_lock.pid_alive(4242) is False
-    assert kernel.closed == [1]
+    assert profile_lock._held_windows("C:\\ff\\a\\parent.lock") is True
 
 
-def test_pid_alive_windows_no_handle_is_dead(monkeypatch):
-    monkeypatch.setattr(os, "name", "nt")
-    monkeypatch.setattr(ctypes, "windll", FakeKernel32(handle=0), raising=False)
-    assert profile_lock.pid_alive(4242) is False
+def test_windows_probe_clean_open_means_not_running(monkeypatch):
+    kernel = FakeKernel32(handle=1, last_error=2)
+    monkeypatch.setattr(ctypes, "windll", kernel, raising=False)
+    assert profile_lock._held_windows("C:\\ff\\a\\parent.lock") is False
+    assert kernel.closed == [1]                     # our probe handle released
 
 
-def test_pid_alive_windows_unreadable_name_is_alive(monkeypatch):
-    """The process exists but the name is unreadable — err on the side of running."""
-    monkeypatch.setattr(os, "name", "nt")
-    monkeypatch.setattr(ctypes, "windll", FakeKernel32(query_ok=False), raising=False)
-    assert profile_lock.pid_alive(4242) is True
+def test_windows_probe_missing_file_means_not_running(monkeypatch):
+    kernel = FakeKernel32(handle=ctypes.c_void_p(-1).value, last_error=2)
+    monkeypatch.setattr(ctypes, "windll", kernel, raising=False)
+    assert profile_lock._held_windows("C:\\ff\\a\\parent.lock") is False
 
 
-def test_pid_alive_windows_without_windll_is_dead(monkeypatch):
-    monkeypatch.setattr(os, "name", "nt")
+def test_windows_probe_without_windll_is_not_running(monkeypatch):
     monkeypatch.delattr(ctypes, "windll", raising=False)
-    assert profile_lock.pid_alive(4242) is False
+    assert profile_lock._held_windows("C:\\ff\\a\\parent.lock") is False
 
 
-# ── profile_open: the gate + its frozen reasons ──────────────────────────────
+# ── the unix probe: F_GETLK on the persistent .parentlock ──────────────────
 
-def test_profile_open_alive_lock_is_running(tmp_path):
-    write_lock(tmp_path, "host:1234")
-    assert profile_lock.profile_open(tmp_path, checker=lambda pid: True) == \
-        (True, "lock pid 1234 alive")
-
-
-def test_profile_open_stale_lock_is_not_running(tmp_path):
-    write_lock(tmp_path, "host:1234")
-    assert profile_lock.profile_open(tmp_path, checker=lambda pid: False) == \
-        (False, "stale lock — pid 1234 not running")
+def _flock_raw(l_type: int, l_pid: int = 0) -> bytes:
+    fr = profile_lock._Flock()
+    fr.l_type, fr.l_pid = l_type, l_pid
+    return bytes(fr)
 
 
-def test_profile_open_missing_lock_is_not_running(tmp_path):
-    assert profile_lock.profile_open(tmp_path, checker=lambda pid: True) == \
+@pytest.mark.skipif(os.name == "nt", reason="fcntl lock probe is unix-only")
+def test_fcntl_probe_missing_file_is_not_running(tmp_path):
+    assert profile_lock._held_fcntl(tmp_path / "absent") is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fcntl lock probe is unix-only")
+def test_fcntl_probe_unlocked_file_is_not_running(tmp_path):
+    """The real F_GETLK: nothing held → F_UNLCK → not running."""
+    path = tmp_path / ".parentlock"
+    path.write_text("", encoding="utf-8")
+    assert profile_lock._held_fcntl(path) is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fcntl lock probe is unix-only")
+def test_fcntl_probe_held_lock_is_running(tmp_path, monkeypatch):
+    """F_GETLK's answer bytes carrying F_WRLCK → running (holder named)."""
+    path = tmp_path / ".parentlock"
+    path.write_text("", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(profile_lock.fcntl, "fcntl",
+                        lambda fd, cmd, arg: calls.append(cmd) or _flock_raw(1, 4242))
+    assert profile_lock._held_fcntl(path) is True
+    assert calls == [profile_lock._F_GETLK]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fcntl lock probe is unix-only")
+def test_fcntl_probe_size_mismatch_is_not_running(tmp_path, monkeypatch):
+    path = tmp_path / ".parentlock"
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(profile_lock.fcntl, "fcntl", lambda fd, cmd, arg: b"\x01\x00")
+    assert profile_lock._held_fcntl(path) is False
+
+
+# ── the legacy unix symlink: <ip>:<pid>, a "+" pid is obsolete ─────────────
+
+def _symlink(profile, target):
+    link = profile / profile_lock.LEGACY_LINK
+    link.unlink(missing_ok=True)
+    link.symlink_to(target)
+
+
+def test_legacy_link_pid_parses_the_ip_pid_form(tmp_path):
+    _symlink(tmp_path, "192.168.1.4:1234")
+    assert profile_lock._legacy_link_pid(tmp_path) == 1234
+
+
+def test_legacy_link_pid_rejects_the_obsolete_plus_form(tmp_path):
+    _symlink(tmp_path, "192.168.1.4:+1234")
+    assert profile_lock._legacy_link_pid(tmp_path) is None
+
+
+def test_legacy_link_pid_none_when_absent_or_garbage(tmp_path):
+    assert profile_lock._legacy_link_pid(tmp_path) is None
+    _symlink(tmp_path, "not-an-ip-and-pid")
+    assert profile_lock._legacy_link_pid(tmp_path) is None
+
+
+# ── profile_open: the gate + its frozen reasons ────────────────────────────
+
+def test_profile_open_held_current_lock_is_running(tmp_path):
+    (tmp_path / profile_lock.LOCK_FILES[0]).write_text("", encoding="utf-8")
+    got = profile_lock.profile_open(tmp_path, checker=lambda path: True)
+    assert got == (True, f"{profile_lock.LOCK_FILES[0]} held — running")
+
+
+def test_profile_open_unlocked_current_lock_is_not_running(tmp_path):
+    (tmp_path / profile_lock.LOCK_FILES[0]).write_text("", encoding="utf-8")
+    got = profile_lock.profile_open(tmp_path, checker=lambda path: False)
+    assert got == (False, f"{profile_lock.LOCK_FILES[0]} not held — not running")
+
+
+def test_profile_open_falls_through_to_the_second_lock_name(tmp_path):
+    (tmp_path / profile_lock.LOCK_FILES[1]).write_text("", encoding="utf-8")
+    got = profile_lock.profile_open(tmp_path, checker=lambda path: True)
+    assert got == (True, f"{profile_lock.LOCK_FILES[1]} held — running")
+
+
+def test_profile_open_no_lock_file_at_all(tmp_path):
+    assert profile_lock.profile_open(tmp_path, checker=lambda path: True) == \
         (False, "no lock file — not running")
 
 
-# ── the tabs-level open filter ───────────────────────────────────────────────
+@pytest.mark.skipif(os.name == "nt", reason="the real probe is unix here")
+def test_profile_open_real_probe_without_a_holder_is_not_running(tmp_path):
+    """End to end on this host: the lock file exists, no process holds it."""
+    path = tmp_path / ".parentlock"
+    path.write_text("", encoding="utf-8")
+    assert profile_lock.profile_open(tmp_path) == (
+        False, ".parentlock not held — not running")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the legacy symlink is unix-only")
+def test_profile_open_legacy_symlink_decides_when_no_lock_file(tmp_path):
+    _symlink(tmp_path, f"127.0.0.1:{os.getpid()}")
+    got = profile_lock.profile_open(tmp_path)
+    assert got == (True, f"legacy lock pid {os.getpid()} alive — running")
+    _symlink(tmp_path, "127.0.0.1:99999999")
+    got = profile_lock.profile_open(tmp_path)
+    assert got == (False, "legacy lock pid 99999999 not running — stale")
+
+
+# ── the tabs-level open filter ──────────────────────────────────────────────
 
 SESSIONS = [
     {"name": "Work", "dir": "/ff/a", "rows": [{"url": "https://x/1", "title": "T"}],
@@ -169,24 +199,25 @@ def test_open_profile_sessions_filters_out_the_closed(monkeypatch):
     def fake_open(d, checker=None):
         if d != "/ff/a":
             return (False, "no lock file — not running")
-        return ((checker or (lambda pid: True))(777), "")  # /ff/a: alive iff it says
+        return ((checker or (lambda path: True))(d), "")  # /ff/a: open iff it says
 
     monkeypatch.setattr(tabs, "profile_open", fake_open)
     open_sessions = tabs.open_profile_sessions()
     assert [s["dir"] for s in open_sessions] == ["/ff/a"]
     # the checker seam rides through to profile_open, once per closed-out candidate
     seen = []
-    tabs.open_profile_sessions(checker=lambda pid: (seen.append(pid), True)[1])
-    assert seen == [777]
+    tabs.open_profile_sessions(checker=lambda path: (seen.append(path), True)[1])
+    assert seen == ["/ff/a"]
 
 
 def test_profile_open_states_reports_every_dir_with_its_reason(tmp_path, monkeypatch):
     monkeypatch.setattr(tabs, "profile_dirs", lambda: ["/ff/a", "/ff/b", "/ff/c"])
-    monkeypatch.setattr(tabs, "profile_names", lambda: {Path("/ff/a"): "Work"})
+    monkeypatch.setattr(tabs, "profile_names", lambda: {tabs.Path("/ff/a"): "Work"})
     monkeypatch.setattr(tabs, "profile_open", lambda d, checker=None: (
-        d == "/ff/a", "lock pid 11 alive" if d == "/ff/a" else "no lock file — not running"))
+        d == "/ff/a",
+        "parent.lock held — running" if d == "/ff/a" else "no lock file — not running"))
     states = tabs.profile_open_states()
-    assert states == [("/ff/a", "Work", True, "lock pid 11 alive"),
+    assert states == [("/ff/a", "Work", True, "parent.lock held — running"),
                       ("/ff/b", "", False, "no lock file — not running"),
                       ("/ff/c", "", False, "no lock file — not running")]
 
