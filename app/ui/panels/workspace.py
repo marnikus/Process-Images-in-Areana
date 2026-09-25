@@ -11,12 +11,13 @@ it is an orchestrator over the native stores, nothing else.
 
 import json
 
+from app.services import job_history
 from app.services.workspace import apply as ws_apply
 from app.services.workspace import restore as ws_restore
 from app.services.workspace import save as ws_save
 from app.services.workspace.coordinator import SaveRequest, default_base
 from app.ui.qt_compat import QFileDialog, Slot
-from app.ui.services import file_service
+from app.ui.services import file_service, undo_entries
 
 
 def _options(raw: str) -> dict:
@@ -50,6 +51,41 @@ def _do_save(bridge, opts: dict) -> dict:
 
 def _do_restore(bridge, root: str, opts: dict) -> dict:
     return ws_apply.restore_workspace(bridge, root, selected=opts.get("selected"))
+
+
+def _emit_refresh(bridge, emit, note: str, notes: list) -> None:
+    """One best-effort live push; a missing signal/logs on test fakes is a note."""
+    try:
+        emit()
+        notes.append(note)
+    except Exception as exc:
+        notes.append(f"{note} failed: {type(exc).__name__}: {exc}")
+
+
+def _post_restore_refresh(bridge, restored: list) -> list:
+    """Push restored state to every LIVE consumer (panels + signals).
+
+    Files and stores alone leave the UI showing pre-restore values — and the
+    next Settings save would clobber the restore back (2026-09-25 owner bug
+    report: "restore do nothing"). Each push reuses the app's own emitter.
+    """
+    notes: list = []
+    if "arena_state" in restored:
+        _emit_refresh(bridge, lambda: bridge._emit_arena_state(),
+                      "live state re-pushed (queue, urls, settings inputs)", notes)
+    if "undo" in restored:
+        _emit_refresh(bridge, lambda: undo_entries.emit_undo_state(bridge),
+                      "undo timeline re-pushed", notes)
+    if "job_history" in restored:
+        _emit_refresh(bridge, lambda: job_history.emit_history(bridge),
+                      "job history re-pushed", notes)
+    if "window_presets" in restored:
+        _emit_refresh(bridge, lambda: bridge.list_window_presets(),
+                      "window preset list re-pushed", notes)
+    if "arena_presets" in restored:
+        _emit_refresh(bridge, lambda: bridge.list_arena_presets(),
+                      "arena preset list re-pushed", notes)
+    return notes
 
 
 def _dialog_folder(mode: str) -> dict:
@@ -108,10 +144,13 @@ class WorkspaceMixin:
     @Slot(str, str, result=str)
     def restore_workspace(self, root: str, options_json: str):
         result = _do_restore(self, root, _options(options_json))
-        if result.get("ok") and "grid_window" in (result.get("restored") or []):
-            note = clamp_restored_geometry(self)
-            if note:
-                result.setdefault("reconciled", []).append(note)
+        if result.get("ok"):
+            if "grid_window" in (result.get("restored") or []):
+                note = clamp_restored_geometry(self)
+                if note:
+                    result.setdefault("reconciled", []).append(note)
+            result.setdefault("reconciled", []).extend(
+                _post_restore_refresh(self, result.get("restored") or []))
         return json.dumps(result, ensure_ascii=False)
 
     @Slot(str, result=str)

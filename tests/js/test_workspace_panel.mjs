@@ -49,6 +49,11 @@ function boot() {
       // static replies are objects — the harness JSON-encodes them once, exactly
       // like a real @Slot(str, result=str) reply arrives on the JS side
       get_workspace_state: STATE,
+      get_arena_state: { version: 1, urls: [], images: [], folder: {},
+        prompt: { template: 'restored!' },
+        settings: { timeouts: { generation: 111 } }, progress: {}, jobs: [] },
+      get_grid_layout: { v: 9, tree: { t: 'leaf', id: 'queue' } },
+      get_window_states: { closed: ['log'], minimized: [] },
       preview_workspace: (root) => JSON.stringify(root === PREVIEW.root ? PREVIEW : { ok: false, error: 'not a snapshot' }),
       restore_workspace: () => JSON.stringify(RESTORED),
       save_workspace: { ok: true, result: 'success', path: '/cfg/workspaces/w_1', domains: [], errors: [] },
@@ -178,5 +183,79 @@ describe('workspace window (flow)', () => {
     const opens = page.calls.filter((c) => c.slot === 'open_workspace_path').map((c) => c.args[0]);
     assert.ok(opens.includes(RESTORED.workspace), 'result Open folder opens the workspace');
     assert.ok(opens.includes(STATE.recent[0]), 'recent-list link opens the snapshot');
+  });
+});
+
+describe('workspace window (live refresh after restore)', () => {
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+  test('Restore All without a preview auto-loads the LAST snapshot (never silent)', async () => {
+    const page = boot();
+    page.anyEl('wsRestoreAllBtn').dispatch('click', {});
+    await tick(); await tick();
+    const previewCall = page.calls.find((c) => c.slot === 'preview_workspace');
+    assert.ok(previewCall && previewCall.args[0] === PREVIEW.root, 'auto-preview from last');
+    await tick(); await tick();
+    assert.ok(page.calls.find((c) => c.slot === 'restore_workspace'), 'restore ran');
+  });
+
+  test('Restore All with no snapshot shows a visible refusal (never silent)', async () => {
+    const page = bootPage({ replies: {
+      get_workspace_state: { default_dir: '/cfg', recent: [], last_snapshot: '' },
+    } });
+    page.anyEl('wsRestoreAllBtn').dispatch('click', {});
+    await tick(); await tick();
+    assert.match(page.anyEl('wsResult').innerHTML, /Nothing to restore/);
+  });
+
+  test('a successful restore re-renders the live panels from fresh arena state', async () => {
+    const page = boot();
+    const seen = { url: [], settings: [] };
+    for (const [name, sink] of [['UrlList', seen.url], ['SettingsPanel', seen.settings]]) {
+      const panel = page.sb[name];
+      assert.ok(panel?.restore, `${name} publishes restore()`);
+      const original = panel.restore.bind(panel);
+      page.sb[name].restore = (state) => { sink.push(state); return original(state); };
+    }
+    page.anyEl('wsLoadLastBtn').dispatch('click', {});
+    await tick(); await tick();
+    page.anyEl('wsRestoreAllBtn').dispatch('click', {});
+    await tick(); await tick(); await tick();
+    assert.ok(seen.url.length >= 1, 'UrlList re-rendered');
+    assert.equal(seen.settings.at(-1).prompt.template, 'restored!');
+    assert.equal(seen.settings.at(-1).settings.timeouts.generation, 111);
+  });
+
+  test('grid_window restore re-renders the live sash grid', async () => {
+    const applied = {};
+    const page2 = bootPage({
+      replies: {
+        restore_workspace: () => JSON.stringify({ ok: true, result: 'success',
+          restored: ['grid_window'], skipped: [], migrated: [] }),
+        get_workspace_state: STATE,
+        preview_workspace: (root) => JSON.stringify({ ok: true, root, name: 'a',
+          created_utc: 't', app: {}, snapshot_kind: 'full',
+          domains: [{ domain_id: 'grid_window', display_name: 'Grid', status: 'ok' }] }),
+        get_arena_state: {},
+        get_grid_layout: { v: 9, tree: { t: 'leaf', id: 'queue' } },
+        get_window_states: { closed: ['log'], minimized: [] },
+      },
+    });
+    const grid = page2.sb.SashGrid;
+    assert.ok(grid, 'the page runs the real sash grid');
+    grid._restoreWinElsVisibility = () => { applied.visibility = true; };
+    grid.render = () => { applied.render = true; };
+    grid._save = () => { applied.saved = true; };
+    grid._saveWindowStates = () => { applied.states = true; };
+    page2.anyEl('wsLoadLastBtn').dispatch('click', {});
+    for (let i = 0; i < 4; i++) await tick();
+    page2.anyEl('wsRestoreAllBtn').dispatch('click', {});
+    for (let i = 0; i < 8; i++) await tick();
+    assert.ok(applied.render && applied.saved, 'grid re-rendered and persisted');
+    assert.equal(page2.sb.SashGrid.closedWindows.has('log'), true, 'closed set restored');
+    const leaves = [];
+    const walk = (n) => n.t === 'leaf' ? leaves.push(n.id) : n.children.forEach(walk);
+    walk(page2.sb.SashGrid.root);
+    assert.equal(leaves.length, 19, 'tree validated/migrated through SashCore');
   });
 });

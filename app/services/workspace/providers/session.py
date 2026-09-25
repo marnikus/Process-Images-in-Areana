@@ -131,12 +131,30 @@ class SessionSettingsProvider(_SessionDomainProvider):
     sensitivity = "personal"
     required = True
 
+    _WATCHER_KEYS = (("watcher_interval_ms", "check_interval_ms"),
+                     ("watcher_captcha_timeout_sec", "captcha_timeout_sec"),
+                     ("watcher_generation_timeout_sec", "generation_timeout_sec"),
+                     ("watcher_enabled", "enabled"))
+
     def _keys(self) -> tuple:
         return settings_keys()
 
     def plan(self, bridge, doc) -> str:
         incoming = sorted(key for key in self._keys() if key in doc)
         return f"{len(incoming)} session key(s): {', '.join(incoming[:6])}…"
+
+    def reconcile(self, bridge) -> list:
+        """Push restored watcher keys into the LIVE watcher (it holds its own copy)."""
+        watcher = getattr(bridge, "_watcher", None)
+        if watcher is None or not hasattr(watcher, "update_config"):
+            return []
+        updates = {live: bridge.config.get_state(key)
+                   for key, live in self._WATCHER_KEYS
+                   if bridge.config.get_state(key) is not None}
+        if not updates:
+            return []
+        watcher.update_config(**updates)
+        return [f"session_settings: watcher config re-applied ({', '.join(sorted(updates))})"]
 
 
 class GridWindowProvider(_SessionDomainProvider):

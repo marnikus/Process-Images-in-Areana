@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.persistence.cooldown_store import load_entries, load_stats, normalize_url
 from app.persistence.json_store import load_json, save_json_atomic
+from app.services.cooldown_service import restore_cooldown_entry, restore_page_stats
 from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
 
 _SECTIONS = ("version", "entries", "stats", "aliases")
@@ -68,3 +70,45 @@ class CooldownsProvider(StateProvider):
         clean = {key: doc[key] for key in _SECTIONS if key in doc}
         save_json_atomic(cooldown_file(bridge), clean)
         return ApplyOutcome(ok=True)
+
+    def reconcile(self, bridge) -> list:
+        """Re-apply restored timers into the LIVE pool (it re-persists the file).
+
+        Without this the pool's next autosave would clobber the restored
+        cooldowns.json with its stale in-memory timers. Only currently pooled
+        tabs can be updated here; the rest pick the file up when they connect
+        (restore_page_state reads it per tab).
+        """
+        pool = getattr(bridge, "_page_pool", None)
+        if pool is None:
+            return []
+        entries, stats = load_entries(cooldown_file(bridge)), load_stats(cooldown_file(bridge))
+        timers = self._reapply_timers(pool, entries)
+        counters = self._reapply_stats(pool, stats)
+        notes = []
+        if timers or counters:
+            notes.append(f"cooldowns: re-applied {timers} timer(s), {counters} counter(s) "
+                         "into the live pool")
+        return notes
+
+    def _reapply_timers(self, pool, entries: dict) -> int:
+        applied = 0
+        for tab_id, entry in entries.items():
+            try:
+                applied += 1 if restore_cooldown_entry(pool, tab_id, entry) else 0
+            except Exception:
+                continue
+        return applied
+
+    def _reapply_stats(self, pool, stats: dict) -> int:
+        applied = 0
+        for tab_id, page in list(getattr(pool, "_pages", {}).items()):
+            url = normalize_url(getattr(page, "url", "") or "")
+            row = stats.get(url)
+            if not row:
+                continue
+            try:
+                applied += 1 if restore_page_stats(pool, tab_id, url, row) >= 0 else 0
+            except Exception:
+                continue
+        return applied

@@ -136,7 +136,7 @@ function wsLoadLast() {
   });
 }
 
-function wsLoadPreview(root) {
+function wsLoadPreview(root, onReady) {
   wsStatusText('reading…');
   _call('preview_workspace', root).then((raw) => {
     const reply = wsParse(raw);
@@ -148,6 +148,7 @@ function wsLoadPreview(root) {
     wsPreview = reply;
     wsRenderPreview(reply);
     wsStatusText('preview');
+    if (onReady) onReady();
   });
 }
 
@@ -174,31 +175,130 @@ function wsChosenDomains() {
   return [...document.querySelectorAll('.ws-domain:checked')].map((c) => c.dataset.domain);
 }
 
+function wsSkipRow(skip) {
+  const action = skip.recommended_action ? ` → ${skip.recommended_action}` : '';
+  return `skipped ${skip.domain_id} [${skip.stage || 'policy'}]: ${skip.cause}${action}`;
+}
+
+function wsRestoredRows(reply) {
+  const rows = [`Result: ${reply.result}`,
+    `Restored: ${(reply.restored || []).join(', ') || '—'}`];
+  for (const item of reply.migrated || []) rows.push(`migrated: ${item.domain_id} — ${item.note}`);
+  for (const skip of reply.skipped || []) rows.push(wsSkipRow(skip));
+  if (reply.backup) rows.push(`recovery backup: ${reply.backup}`);
+  return rows;
+}
+
 function wsRestoreSummary(reply) {
   if (reply.ok === false && !reply.restored) {
     return { title: 'Restore failed', rows: [reply.error || 'unknown error'] };
   }
-  const rows = [`Result: ${reply.result}`,
-    `Restored: ${(reply.restored || []).join(', ') || '—'}`];
-  for (const item of reply.migrated || []) rows.push(`migrated: ${item.domain_id} — ${item.note}`);
-  for (const skip of reply.skipped || []) {
-    rows.push(`skipped ${skip.domain_id} [${skip.stage || 'policy'}]: ${skip.cause}` +
-      (skip.recommended_action ? ` → ${skip.recommended_action}` : ''));
-  }
-  if (reply.backup) rows.push(`recovery backup: ${reply.backup}`);
-  return { title: 'Workspace restore', rows, openPath: reply.workspace, raw: reply };
+  return { title: 'Workspace restore', rows: wsRestoredRows(reply),
+    openPath: reply.workspace, raw: reply };
 }
 
 function wsRestore(selected) {
-  if (!wsPreview) return;
+  if (wsPreview) { wsRunRestore(wsPreview.root, selected); return; }
+  wsStatusText('loading last snapshot…');
+  _call('get_workspace_state').then((raw) => {
+    const state = wsParse(raw);
+    if (!state.last_snapshot) {
+      // never a silent no-op: Restore All/Selected without a preview loads last
+      wsStatusText('nothing to restore');
+      wsRenderResult({ title: 'Nothing to restore',
+        rows: ['No snapshot yet — save a workspace or Browse… to one first.'] });
+      return;
+    }
+    wsLoadPreview(state.last_snapshot, () => wsRunRestore(state.last_snapshot, selected));
+  });
+}
+
+function wsRunRestore(root, selected) {
   wsStatusText('restoring…');
-  _call('restore_workspace', wsPreview.root, JSON.stringify({ selected })).then((raw) => {
+  _call('restore_workspace', root, JSON.stringify({ selected })).then((raw) => {
     const reply = wsParse(raw);
     wsStatusText(reply.ok === false ? 'restore failed' : 'restored');
     wsRenderResult(wsRestoreSummary(reply));
     wsHidePreview();
+    wsAfterRestore(reply);
     wsRefresh();
   });
+}
+
+// Restored values must reach the LIVE UI, not just the files (2026-09-25 bug:
+// restore changed the stores but every panel kept showing pre-restore values,
+// and the next Settings save clobbered the restore right back).
+const WS_LIVE_PANELS = ['UrlList', 'ImageQueue', 'ProgressPanel', 'SettingsPanel'];
+
+function wsAfterRestore(reply) {
+  const restored = reply.restored || [];
+  if (restored.indexOf('arena_state') >= 0) wsPushRestoredState();
+  if (restored.indexOf('grid_window') >= 0) wsApplyRestoredGrid();
+  if (restored.indexOf('session_settings') >= 0 || restored.indexOf('cooldowns') >= 0) {
+    wsReloadConfigPanels();
+  }
+  wsRefreshLists(restored);
+}
+
+function wsPushRestoredState() {
+  _call('get_arena_state').then((raw) => {
+    const state = wsParse(raw);
+    if (!state || typeof state !== 'object' || state.ok === false) return;
+    if (typeof App !== 'undefined') App.state = state;
+    for (const name of WS_LIVE_PANELS) {
+      const panel = window[name];
+      if (!panel || typeof panel.restore !== 'function') continue;
+      try { panel.restore(state); } catch (e) { console.error(`[WorkspacePanel] ${name}`, e); }
+    }
+  });
+}
+
+function wsApplyRestoredGrid() {
+  _call('get_grid_layout').then((raw) => {
+    const payload = wsParse(raw);
+    if (!payload || !payload.tree) return;
+    _call('get_window_states').then((statesRaw) => {
+      const states = wsParse(statesRaw) || {};
+      wsApplyGridTree(payload, states);
+    });
+  });
+}
+
+function wsGridDeserialize(payload) {
+  const res = SashCore.deserialize(JSON.stringify({ v: payload.v, tree: payload.tree }));
+  if (res && res.ok) return res;
+  if (typeof LogConsole !== 'undefined') {
+    LogConsole.log('♻️ Restored grid not applied: ' + (res ? res.error : 'no deserializer'), 'warn');
+  }
+  return null;
+}
+
+function wsApplyGridTree(payload, states) {
+  if (typeof SashCore === 'undefined' || typeof SashGrid === 'undefined') return;
+  const res = wsGridDeserialize(payload);
+  if (!res) return;
+  SashGrid.root = res.tree;                       // same core path as a window preset
+  SashGrid.closedWindows = new Set(states.closed || []);
+  SashGrid.minimizedWindows = new Set(states.minimized || []);
+  if (SashGrid._restoreWinElsVisibility) SashGrid._restoreWinElsVisibility();
+  SashGrid.render();
+  if (SashGrid._save) SashGrid._save();
+  if (SashGrid._saveWindowStates) SashGrid._saveWindowStates();
+  if (typeof LogConsole !== 'undefined') LogConsole.log('♻️ Restored grid layout applied', 'success');
+}
+
+function wsReloadConfigPanels() {
+  if (window.SettingsPanel?.loadCooldownConfig) window.SettingsPanel.loadCooldownConfig();
+  if (window.WatcherPanel?.loadConfig) window.WatcherPanel.loadConfig();
+}
+
+function wsRefreshLists(restored) {
+  if (restored.indexOf('window_presets') >= 0 && window.WindowPresets?.refresh) {
+    window.WindowPresets.refresh();
+  }
+  if (restored.indexOf('captcha_stats') >= 0 && window.CaptchaPanel?.refresh) {
+    window.CaptchaPanel.refresh();
+  }
 }
 
 function wsHidePreview() {

@@ -448,3 +448,35 @@ No behavior change lands in W1–W7 (additive only); W4's json_store retry and W
 5. **Export secrets encrypted by default** — key management (where does the passphrase live?) outweighs v1 value; redacted-presence + separate opt-in ADR chosen.
 6. **Filesystem watchers/continuous autosave of workspaces** — collides with the existing per-mutation autosave (write-path map §B.1); explicit snapshots + existing autosave cover recovery; avoid duplicate-write races (task integration phase 6).
 7. **Restore-by-filename inference** — explicitly forbidden; manifest lookup only.
+
+## L. Implementation addendum — post-restore LIVE refresh (2026-09-25, owner bug fix)
+
+Owner report: "save checkpoint → change settings → Restore — nothing is
+rewritten; all params stay the same". Root cause: restore correctly rewrote
+the stores/files, but nothing pushed the restored state to the LIVE app —
+every panel kept rendering pre-restore values, and the next Settings save
+clobbered the restore right back. Three live consumers also kept stale data:
+the watcher (its own config copy), the page pool (its own cooldown timers,
+which it periodically re-persists over `cooldowns.json`), and the sash grid
+(JS held its own tree). Fix, layered per the import-direction rules:
+
+1. `panels/workspace.py` `_post_restore_refresh` — after a successful restore
+   the bridge's OWN emitters re-push restored state: `arena_state_updated`
+   (queue/urls/settings payload), `undo_state_changed`, `job_history_updated`,
+   window/arena preset list signals. Failures become report notes, never silent.
+2. Provider `reconcile` (services, Qt-free): `session_settings` re-applies the
+   watcher keys into the live watcher via `update_config`; `cooldowns` re-applies
+   restored timers/counters into the live pool via `restore_cooldown_entry` /
+   `restore_page_stats` (never shortens a live timer; unpooled tabs pick the
+   file up when they connect).
+3. `panels/workspace.js` after the restore reply: fetches `get_arena_state` and
+   re-renders UrlList/ImageQueue/Progress/**Settings**; re-applies the restored
+   grid through `SashCore.deserialize` + the same render/persist path a window
+   preset uses; reloads the cooldown/watcher config inputs; refreshes preset
+   lists. Restore All/Selected with no pending preview now auto-loads the last
+   snapshot, and with no snapshot at all shows a visible refusal — never a
+   silent no-op.
+
+Pinned by `tests/test_workspace_live_refresh.py` (the owner's exact scenario
+through the real `save_settings` slot) and four node tests in
+`tests/js/test_workspace_panel.mjs`.
