@@ -50,6 +50,22 @@ function` again. Pinned by node tests (a new `test_bridge_ready.mjs` harness +
 a `test_boot.mjs` case; neither file is on the frozen list). If the owner's
 stack points elsewhere, that becomes a follow-up with evidence.
 
+## Follow-up (same day) — ErrorTrail forensics
+
+The owner placed the startup `fn is not a function` in the app's own Live
+Debug feed, with no stack. The widened audit (every bare-identifier call in
+every panel `init`, every Qt-signal `connect`, every QWebChannel slot call on
+the startup path) confirmed guarded call sites only — so the page now carries
+**ErrorTrail**: `error`/`unhandledrejection` hooks installed at the top of
+`bridge-ready.js` (the first app script) that print the full stack plus
+file:line:col into the console AND the LogConsole feed. Next occurrence
+self-explains; if none appears, the error came from a driven page's own
+(minified) script, which the trap also rules out by absence. Published as
+`BridgeReady.errorTrail` (no new window.X — the UI wiring contracts require
+bare `typeof LogConsole` reads for lexical globals and IIFE-scoped consts to
+stay private). `JobHistoryLimit.load` got a `typeof` guard one-liner on the
+same sweep.
+
 * RULE 18 note: `uivision/` is 18 modules (one cohesive feature — same reason);
   all new/edited code within absolute limits; the suite + gate numbers are in
   the commit message.

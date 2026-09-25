@@ -30,7 +30,7 @@ const JobHistoryPanel = {
     const p = this._parse(json);
     if (!p) return;
     window.JobHistoryStore.setPayload(p);
-    if (window.JobHistoryLimit) window.JobHistoryLimit.load(p);
+    if (typeof window.JobHistoryLimit?.load === 'function') window.JobHistoryLimit.load(p);
     this.render();
   },
 

@@ -12,10 +12,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const READY = path.resolve(__dirname, '../../app/ui/web/js/core/bridge-ready.js');
 
-function load({ channel = null } = {}) {
+function load({ channel = null, logConsole = null } = {}) {
   const domListeners = {};
   const warnings = [];
   const errors = [];
+  const logEntries = [];
   const sandbox = {
     console: { warn: (...a) => warnings.push(a.join(' ')), error: (...a) => errors.push(a.join(' ')), log() {} },
     document: {
@@ -23,6 +24,7 @@ function load({ channel = null } = {}) {
     },
   };
   sandbox.window = sandbox;
+  if (logConsole) sandbox.LogConsole = { log: (m, l) => logEntries.push([m, l]) };
   if (channel) {
     sandbox.qt = { webChannelTransport: {} };
     sandbox.QWebChannel = class { constructor(_t, cb) { cb(channel); } };
@@ -30,7 +32,7 @@ function load({ channel = null } = {}) {
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(READY, 'utf-8'), sandbox, { filename: 'bridge-ready.js' });
   const boot = () => domListeners.DOMContentLoaded.forEach((fn) => fn());
-  return { BridgeReady: sandbox.window.BridgeReady, boot, warnings, errors };
+  return { BridgeReady: sandbox.window.BridgeReady, ErrorTrail: sandbox.window.BridgeReady.errorTrail, boot, warnings, errors, logEntries };
 }
 
 describe('BridgeReady.ready', () => {
@@ -60,5 +62,32 @@ describe('BridgeReady.ready', () => {
     assert.equal(warnings.filter((w) => w.includes('ready() needs a function')).length, 5);
     assert.equal(errors.length, 0);
     assert.equal(BridgeReady.connected, true);
+  });
+});
+
+
+describe('ErrorTrail', () => {
+  test('uncaught errors surface file:line and the full stack', () => {
+    const { ErrorTrail, errors, logEntries } = load({ logConsole: true });
+    ErrorTrail.log('error', { filename: 'panels/x.js', lineno: 7, colno: 3,
+                              error: { stack: 'TypeError: fn is not a function\n    at inner' } });
+    assert.ok(errors.some((e) => e.includes('panels/x.js:7:3')));
+    assert.ok(errors.some((e) => e.includes('TypeError: fn is not a function')));
+    assert.equal(logEntries.length, 1);
+    assert.equal(logEntries[0][1], 'error');
+    assert.ok(logEntries[0][0].includes('panels/x.js:7:3'));
+  });
+
+  test('rejected promises surface as unhandledrejection with the reason', () => {
+    const { ErrorTrail, errors } = load();
+    ErrorTrail.log('unhandledrejection', { reason: { stack: 'R: late bridge callback' } });
+    assert.ok(errors.some((e) => e.includes('unhandledrejection')));
+    assert.ok(errors.some((e) => e.includes('R: late bridge callback')));
+  });
+
+  test('installs listeners without any DOM support (headless sandbox)', () => {
+    const { ErrorTrail, errors } = load();
+    assert.equal(typeof ErrorTrail.install, 'function');
+    assert.ok(errors.every((e) => !e.includes('Exception')));
   });
 });
