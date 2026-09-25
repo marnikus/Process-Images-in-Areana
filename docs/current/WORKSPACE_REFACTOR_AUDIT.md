@@ -144,5 +144,5 @@ pytest suites + `test_bridge_slots` + `test_window_catalog` + JS
 | Duplicated hash/ordering/literal sites | 5 (D1, D2, N2×2, env literal) | 0 (integrity.bytes_entry, registry.restore_order, policies, meta) |
 | Stage vocabulary correctness | capture failures mislabeled "apply" | precise `capture` stage (12-stage vocabulary) |
 | Worst function (py) | 27 LOC / CC 8 (apply.restore_workspace) | 27 LOC / CC 8 — no regressions |
-| Test count (workspace pytest / JS panel) | 96 pytest + 14 JS | 123 pytest (8 suites; +27 incl. characterization) + 17 JS |
+| Test count (workspace pytest / JS panel) | 96 pytest + 14 JS | 123 pytest (8 suites; +27 incl. characterization) + 17 JS; JS RULE 18: 32 funcs, worst 17 LOC / CC 7 / 2 params |
 | Modules / LOC in scope (persistence/workspace + services/workspace + panel) | 20 / 2211 | 21 / 2233 (recover.py carved out of apply.py for the ≤300 RULE 18 budget; apply 284 / recover 70) |
