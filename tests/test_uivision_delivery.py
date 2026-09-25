@@ -15,11 +15,15 @@ pytestmark = pytest.mark.unit
 class FakeOps:
     """The OS half as a script: foreground answer + recorded calls."""
 
-    def __init__(self, foreground=11, clip="saved-clip", fail_keys=False):
+    def __init__(self, foreground=11, clip="saved-clip", fail_keys=False,
+                 own=0x2000, target=0x2000, pid=1234):
         self.calls = []
         self._foreground = foreground
         self.clip = clip
         self._fail_keys = fail_keys
+        self._own = own
+        self._target = target
+        self._pid = pid
 
     def raise_window(self, hwnd):
         self.calls.append(("raise", hwnd))
@@ -30,6 +34,17 @@ class FakeOps:
         if isinstance(self._foreground, Exception):
             raise self._foreground
         return self._foreground
+
+    def window_pid(self, hwnd):
+        self.calls.append(("pid", hwnd))
+        return self._pid
+
+    def process_integrity(self, pid):
+        self.calls.append(("target-il", pid))
+        return self._target
+
+    def own_integrity(self):
+        return self._own
 
     def send_ctrl(self, letter):
         self.calls.append(("ctrl", letter))
@@ -158,3 +173,73 @@ def test_set_clipboard_writes_the_url_into_the_locked_block():
     assert published == [(delivery.CF_UNICODETEXT, 0xBEEF)]
     staged = "file:///autorun".encode("utf-16-le")
     assert bytes(buf)[:len(staged)] == staged
+
+
+def test_deliver_url_refuses_a_upi_mismatch_before_typing():
+    ops = FakeOps(own=0x2000, target=0x3000)              # app medium, Firefox high
+    with pytest.raises(delivery.DeliveryError, match="UIPI blocks the keys"):
+        delivery.deliver_url(11, "file:///autorun", ops=ops)
+    assert not [c for c in ops.calls if c[0] in ("ctrl", "enter")]  # nothing typed
+    assert ops.clip == "saved-clip"
+
+
+def test_deliver_url_refuses_an_unopenable_process():
+    ops = FakeOps(target=None)                            # protected or elevated
+    with pytest.raises(delivery.DeliveryError, match="cannot be opened"):
+        delivery.deliver_url(11, "file:///autorun", ops=ops)
+    assert not [c for c in ops.calls if c[0] in ("ctrl", "enter")]
+
+
+def test_deliver_url_refuses_a_dead_window():
+    ops = FakeOps(pid=None)                               # closed mid-delivery
+    with pytest.raises(delivery.DeliveryError, match="closed before the keys"):
+        delivery.deliver_url(11, "file:///autorun", ops=ops)
+
+
+def test_ctrl_sequence_wraps_the_letter_down_up():
+    assert delivery._ctrl_sequence("t") == [(0x11, True), (0x54, True),
+                                            (0x54, False), (0x11, False)]
+    assert delivery._ctrl_sequence("v")[1][0] == 0x56      # Ctrl+V pastes
+    assert delivery._ctrl_sequence("T") == delivery._ctrl_sequence("t")
+
+
+def test_enter_sequence_is_down_then_up():
+    assert delivery._enter_sequence() == [(0x0D, True), (0x0D, False)]
+
+
+def test_key_inputs_builds_the_real_40_byte_layout():
+    import ctypes
+    array, size = delivery._key_inputs(delivery._ctrl_sequence("t"))
+    assert size == 40 == ctypes.sizeof(array[0])
+    assert [(key.type, key.ki.wVk, key.ki.dwFlags) for key in array] == [
+        (0, 0x11, 0), (0, 0x54, 0), (0, 0x54, 2), (0, 0x11, 2)]
+
+
+def _windll(send_result, seen):
+    from types import SimpleNamespace
+
+    def _send(n, array, size):
+        seen["sent"] = (n, size)
+        return n if send_result is None else send_result
+
+    return SimpleNamespace(user32=SimpleNamespace(
+        SendInput=_send, GetForegroundWindow=lambda: 0,
+        GetWindowTextLengthW=lambda _h: 0, GetWindowTextW=lambda *_a: 0))
+
+
+def test_send_keys_raises_on_partial_injection(monkeypatch):
+    """3 of 4 accepted once reported success — the 0-for-4 silent miss."""
+    import ctypes
+    seen = {}
+    monkeypatch.setattr(ctypes, "windll", _windll(3, seen), raising=False)
+    with pytest.raises(delivery.DeliveryError, match="accepted 3 of 4"):
+        delivery._send_keys(delivery._ctrl_sequence("t"))
+    assert seen["sent"] == (4, 40)
+
+
+def test_send_keys_accepts_a_full_injection(monkeypatch):
+    import ctypes
+    seen = {}
+    monkeypatch.setattr(ctypes, "windll", _windll(None, seen), raising=False)
+    delivery._send_keys(delivery._enter_sequence())       # must not raise
+    assert seen["sent"] == (2, 40)

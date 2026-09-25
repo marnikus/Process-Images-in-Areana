@@ -66,3 +66,33 @@ only — the poll's verdict stands.
   cohesive feature (one window, one flow); splitting the package would scatter
   it. All new/edited code is within the absolute limits; the suite + gate
   numbers are in the commit message.
+
+## Follow-up (same day): the count assert + UIPI precheck
+
+The first field log (0-for-4: prime + re-send × two windows, readable store,
+verified foreground) proved a DETERMINISTIC silent miss, not a flake — which
+sent the audit back into `delivery.py`, where it found a real bug:
+`if not user32.SendInput(...)` treats a PARTIAL injection (3 of 4 events
+accepted — a hook, hotkey app, or antivirus swallowing some) as success,
+because only 0 is falsy. MSDN's own example asserts the exact count
+(`uSent != ARRAYSIZE`), and Whisperlet #67 (2026-09) documents the identical
+"silently dropped and reported as done" shape with the identical fix — plus
+the integrity-level comparison, since "neither GetLastError nor the return
+value will indicate the failure was caused by UIPI blocking". So:
+
+* `_send_keys` asserts `injected != len(events)` → `DeliveryError` naming the
+  interception (a 0-return keeps failing as before, now with its count).
+* New `integrity.py` (~145 lines): `check_delivery(hwnd, ops)` compares OUR
+  mandatory-label RID with the target window's process (GetWindowThreadProcessId
+  + OpenProcess + GetTokenInformation) and `deliver_url` refuses LOUDLY before
+  the first keystroke on proof of mismatch (target higher), on an unopenable
+  process (≈ elevated — same-level Firefox always opens for a limited query),
+  or on a dead window; unknowns proceed (the receipt ladder backstops them).
+* The key bytes are now pinned on Linux too: `_ctrl_sequence` / `_enter_sequence`
+  / `_key_inputs` are pure (event lists → real INPUT arrays), and the SendInput
+  count assert is tested through a fake `windll` (3-of-4 must raise, full echo
+  must not) — the previously untestable seam, closed.
+* RULE 18 note: `delivery.py` is now ~326 lines (past the 300 ideal) — one
+  responsibility (address-bar actuation: keys + clipboard paste are inseparable),
+  the trust half already split to `integrity.py`; `uivision/` is 17 modules
+  under the same one-feature reason as before.

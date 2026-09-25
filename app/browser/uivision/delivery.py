@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import ctypes
 
+from . import integrity
+
 
 class DeliveryError(OSError):
     """The autorun URL could not be delivered to its profile's window."""
@@ -68,6 +70,9 @@ def deliver_url(hwnd, url: str, ops=None) -> None:
     try:
         real.set_clipboard(url)
         _ensure_foreground(hwnd, real)
+        refused = integrity.check_delivery(hwnd, real)
+        if refused:
+            raise DeliveryError(refused)
         real.send_ctrl("t")
         real.sleep(ADDRESS_SETTLE_SEC)
         real.send_ctrl("v")
@@ -171,19 +176,44 @@ def _bind_keys(user32) -> None:
     user32.GetForegroundWindow.restype = wintypes.HWND
 
 
-def _send_keys(events) -> None:
-    """[(vk, down)] through SendInput — one call, keys in order."""
-    import ctypes
-    user32 = ctypes.windll.user32
-    _bind_keys(user32)
+def _ctrl_sequence(letter: str) -> list:
+    """[(vk, down)] for Ctrl+<letter> — Ctrl wraps the letter, down-up order."""
+    vk = ord((letter or "")[:1].upper())
+    return [(VK_CONTROL, True), (vk, True), (vk, False), (VK_CONTROL, False)]
+
+
+def _enter_sequence() -> list:
+    """[(vk, down)] for a bare Enter (down, then up)."""
+    return [(VK_RETURN, True), (VK_RETURN, False)]
+
+
+def _key_inputs(events):
+    """[(vk, down)] → a real INPUT array + its byte size (pure bytes, no windll)."""
     pair, size = _keyboard_structs()
     array = (pair * len(events))()
     for pos, (vk, down) in enumerate(events):
         array[pos].type = INPUT_KEYBOARD
         array[pos].ki.wVk = vk
         array[pos].ki.dwFlags = 0 if down else KEYEVENTF_KEYUP
-    if not user32.SendInput(len(events), array, size):
-        raise DeliveryError("Windows refused the keystrokes (SendInput failed)")
+    return array, size
+
+
+def _send_keys(events) -> None:
+    """[(vk, down)] through SendInput — one call, the count asserted exactly.
+
+    MSDN's own example compares `uSent != ARRAYSIZE`: a partial injection (a
+    hook, hotkey app, or antivirus swallowing some events) is a failure, not
+    a success — truthiness here once reported swallowed keys as delivered.
+    """
+    import ctypes
+    user32 = ctypes.windll.user32
+    _bind_keys(user32)
+    array, size = _key_inputs(events)
+    injected = user32.SendInput(len(events), array, size)
+    if injected != len(events):
+        raise DeliveryError(f"Windows accepted {injected} of {len(events)} keystrokes — "
+                            f"something intercepted the input (a keyboard hook, hotkey "
+                            f"app, or antivirus swallowing keys?)")
 
 
 def _clipboard_text(user32, kernel32):
@@ -247,12 +277,11 @@ class Win32Ops:
 
     def send_ctrl(self, letter: str) -> None:
         """Ctrl+<letter> (Ctrl+T new tab, Ctrl+V paste)."""
-        vk = ord((letter or "")[:1].upper())
-        _send_keys([(VK_CONTROL, True), (vk, True), (vk, False), (VK_CONTROL, False)])
+        _send_keys(_ctrl_sequence(letter))
 
     def press_enter(self) -> None:
         """A bare Enter (navigates the pasted address-bar URL)."""
-        _send_keys([(VK_RETURN, True), (VK_RETURN, False)])
+        _send_keys(_enter_sequence())
 
     def get_clipboard(self):
         """Current clipboard text or None."""
@@ -283,3 +312,15 @@ class Win32Ops:
         buf = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(hwnd, buf, length + 1)
         return buf.value
+
+    def window_pid(self, hwnd):
+        """The process behind `hwnd` (None when the window is gone)."""
+        return integrity.read_window_pid(hwnd)
+
+    def process_integrity(self, pid):
+        """The integrity RID of `pid` (None when it won't open)."""
+        return integrity.read_process_integrity(pid)
+
+    def own_integrity(self):
+        """Our own integrity RID (None when Windows won't say)."""
+        return integrity.read_own_integrity()
