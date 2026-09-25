@@ -236,9 +236,9 @@ def _migrated_doc(provider, entry: dict, doc) -> tuple[object, str]:
     return provider.migrate(doc, entry.get("schema_version"))
 
 
-def _restore_one(plan: dict, provider, entry: dict, doc) -> dict:
+def _restore_one(run: dict, provider, entry: dict, doc) -> dict:
     """Gates in order: dependency → schema → migration → semantic → transactional apply."""
-    dependency_problem = _dependency_row(provider, plan["failed"])
+    dependency_problem = _dependency_row(provider, run["failed"])
     if dependency_problem:
         return dependency_problem
     version_problem = _version_row(provider, entry)
@@ -248,23 +248,23 @@ def _restore_one(plan: dict, provider, entry: dict, doc) -> dict:
     semantic = provider.validate(doc)
     if semantic:
         return _skip_row(provider, WorkspaceError(provider.domain_id, "semantic", semantic))
-    row = _apply_domain(plan["bridge"], provider, doc)
+    row = _apply_domain(run["bridge"], provider, doc)
     if migrated_note and row["status"] == "restored":
         row["migrated"] = migrated_note
     return row
 
 
-def _restore_row(plan: dict, provider) -> dict:
+def _restore_row(run: dict, provider) -> dict:
     """One provider's row: policy row, file-gate skip, or the gated restore."""
-    entry = entry_for(plan["manifest"], provider.domain_id) or {}
+    entry = entry_for(run["manifest"], provider.domain_id) or {}
     if not entry or not entry.get("path"):
         return _policy_row(provider, entry)
-    loaded = plan["files"].get(entry["path"])
+    loaded = run["files"].get(entry["path"])
     if isinstance(loaded, WorkspaceError):
         error = WorkspaceError(provider.domain_id, loaded.stage, loaded.cause,
                                evidence=(loaded.expected, loaded.actual))
         return _skip_row(provider, error)
-    return _restore_one(plan, provider, entry, loaded)
+    return _restore_one(run, provider, entry, loaded)
 
 
 def restore_workspace(bridge, root, selected=None) -> dict:
@@ -280,14 +280,14 @@ def restore_workspace(bridge, root, selected=None) -> dict:
     if not providers:
         return {"ok": False, "error": "no restorable domains selected"}
     backup = backup_live(bridge, providers)
-    plan = {"bridge": bridge, "manifest": manifest,
-            "files": load_files(root, manifest, providers), "failed": set()}
+    run = {"bridge": bridge, "manifest": manifest,
+       "files": load_files(root, manifest, providers), "failed": set()}
     rows = []
     for provider in providers:
-        row = _restore_row(plan, provider)
+        row = _restore_row(run, provider)
         rows.append(row)
         if row["status"] != "restored":
-            plan["failed"].add(provider.domain_id)
+            run["failed"].add(provider.domain_id)
     report = _finish(bridge, root, rows, backup)
     log_message(bridge, f"♻️ Workspace restore from {root.name}: {report['result']} — "
                  f"{len(report['restored'])} restored, {len(report['skipped'])} skipped",

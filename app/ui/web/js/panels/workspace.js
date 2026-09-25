@@ -129,11 +129,16 @@ function wsBrowseAndPreview(mode) {
   });
 }
 
-function wsLoadLast() {
+function wsLoadLast(onReady) {
   _call('get_workspace_state').then((raw) => {
     const state = wsParse(raw);
-    if (!state.last_snapshot) { wsStatusText('no snapshot yet'); return; }
-    wsLoadPreview(state.last_snapshot);
+    const last = state.last_snapshot;
+    if (!last) {
+      wsStatusText('no snapshot yet');
+      if (onReady) onReady('');        // the caller decides what "nothing" means
+      return;
+    }
+    wsLoadPreview(last, () => { if (onReady) onReady(last); });
   });
 }
 
@@ -200,17 +205,16 @@ function wsRestoreSummary(reply) {
 
 function wsRestore(selected) {
   if (wsPreview) { wsRunRestore(wsPreview.root, selected); return; }
+  // no pending preview: load the LAST snapshot and restore it — never silent
   wsStatusText('loading last snapshot…');
-  _call('get_workspace_state').then((raw) => {
-    const state = wsParse(raw);
-    if (!state.last_snapshot) {
-      // never a silent no-op: Restore All/Selected without a preview loads last
+  wsLoadLast((last) => {
+    if (!last) {
       wsStatusText('nothing to restore');
       wsRenderResult({ title: 'Nothing to restore',
         rows: ['No snapshot yet — save a workspace or Browse… to one first.'] });
       return;
     }
-    wsLoadPreview(state.last_snapshot, () => wsRunRestore(state.last_snapshot, selected));
+    wsRunRestore(last, selected);
   });
 }
 
@@ -330,7 +334,7 @@ function wsWire() {
     });
   }, 'wsSaveAs');
   Boot.bindOnceById('wsBrowseBtn', 'click', () => wsBrowseAndPreview('restore-source'), 'wsBrowse');
-  Boot.bindOnceById('wsLoadLastBtn', 'click', wsLoadLast, 'wsLoadLast');
+  Boot.bindOnceById('wsLoadLastBtn', 'click', () => wsLoadLast(), 'wsLoadLast');
   Boot.bindOnceById('wsRestoreAllBtn', 'click', () => wsRestore(null), 'wsRestoreAll');
   Boot.bindOnceById('wsRestoreSelectedBtn', 'click', () => wsRestore(wsChosenDomains()), 'wsRestoreSel');
   Boot.bindOnceById('wsCancelPreviewBtn', 'click', wsHidePreview, 'wsCancel');

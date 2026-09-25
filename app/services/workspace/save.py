@@ -164,7 +164,7 @@ def save_workspace(bridge, request: SaveRequest) -> dict:
     if failed and not request.allow_partial:
         return _abort_result(request, captures, started)
     return _publish_save({"bridge": bridge, "request": request, "target": target,
-                          "started": started}, captures)
+                          "started": started}, captures)  # `run` context, see _publish_save
 
 
 def _abort_result(request: SaveRequest, captures: list, started: str) -> dict:
@@ -177,23 +177,23 @@ def _abort_result(request: SaveRequest, captures: list, started: str) -> dict:
             "snapshot_id": snapshot_id_for(started, request.name)}
 
 
-def _publish_save(plan: dict, captures: list) -> dict:
+def _publish_save(run: dict, captures: list) -> dict:
     """Build the temp folder, write the manifest last, publish, then report.
 
-    `plan` bundles bridge/request/target/started for the publish step.
+    `run` bundles bridge/request/target/started for one save execution.
     """
-    bridge, request = plan["bridge"], plan["request"]
-    target, started = plan["target"], plan["started"]
+    bridge, request = run["bridge"], run["request"]
+    target, started = run["target"], run["started"]
     temp = fsio.new_temp_dir(target)
     try:
-        plan["file_entries"] = _write_state_files(temp, captures)
+        run["file_entries"] = _write_state_files(temp, captures)
         _write_env(temp, bridge)
         timing = {"snapshot_id": snapshot_id_for(started, request.name),
                   "started_utc": started, "finished_utc": utc_now_iso()}
         report = reports.save_report(
             timing=timing, domains=_report_rows(captures),
             errors=[c.error for c in captures if c.error], published=True)
-        manifest = _snapshot_manifest(plan, captures, report)
+        manifest = _snapshot_manifest(run, captures, report)
         fsio.write_bytes(temp, "manifest.json", canonical_bytes(manifest))
         fsio.publish(temp, target)
     except (OSError, FileExistsError) as exc:
@@ -204,16 +204,16 @@ def _publish_save(plan: dict, captures: list) -> dict:
     return {"ok": True, **report, "path": str(target)}
 
 
-def _snapshot_manifest(plan: dict, captures: list, report: dict) -> dict:
+def _snapshot_manifest(run: dict, captures: list, report: dict) -> dict:
     """The manifest for this publish (built AFTER the report owns the snapshot id)."""
-    request = plan["request"]
+    request = run["request"]
     header = {"snapshot_id": report["snapshot_id"], "name": request.name,
-              "description": request.description, "created_utc": plan["started"],
+              "description": request.description, "created_utc": run["started"],
               "snapshot_kind": "partial" if any(c.error for c in captures)
                                else "full"}
-    return build_manifest(header=header, app_meta=app_meta(plan["bridge"]),
+    return build_manifest(header=header, app_meta=app_meta(run["bridge"]),
                           compat=compat_block(),
-                          domains=domain_entries(captures, plan["file_entries"]))
+                          domains=domain_entries(captures, run["file_entries"]))
 
 
 def _publish_failed(target: Path, temp: Path, exc: Exception) -> dict:
