@@ -7,7 +7,7 @@ window.SashGridWindowStore = {
       run: 'winRun', progress: 'winProgress', watcher: 'winWatcher', log: 'winLog',
       settings: 'winSettings', captcha: 'winCaptcha', recordings: 'winCaptchaRecords',
       browser: 'winBrowser', action_blocks: 'winActionBlocks', block_config: 'winBlockConfig',
-      arena_presets: 'winArenaPresets', live_debug: 'winLiveDebug', job_history: 'winJobHistory', firefox_auto: 'winFirefoxAuto',
+      arena_presets: 'winArenaPresets', live_debug: 'winLiveDebug', job_history: 'winJobHistory', firefox_auto: 'winFirefoxAuto', workspace: 'winWorkspace',
     };
     for (const w of SashCore.WINDOWS) {
       const el = document.getElementById(winElIds[w.id]);

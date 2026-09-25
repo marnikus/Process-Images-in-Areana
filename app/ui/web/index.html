@@ -401,6 +401,46 @@
           <div id="faNotes" style="margin-top:4px;">
           <b>How it works:</b> Firefox stays a NORMAL visible browser — no debug port, no geckodriver / Selenium / Playwright / Puppeteer. The signed Ui.Vision RPA add-on runs the macro from its official command-line API: this app writes the macro + the autostart page, starts Firefox on the <code>file:///</code> URL, and the macro <b>reuses the tab matching the pattern — it never opens a page</b> (no matching tab = the macro fails with E210, so open the page in Firefox first) → bringBrowserToForeground → waits for the element and draws the <b>RED confirmation rectangle</b> over it → <b>XClick</b> (native OS input, isTrusted:true) → echo done. The rectangle covers element-locator targets (xpath= / css= / id= / dom= / text= / link=); image, OCR and x,y targets get the extension's own vision box. The verdict arrives in the savelog file (<code>Status=OK</code> / <code>Status=Error</code>).<br>
           <b>Needs:</b> 1) the Ui.Vision RPA add-on in Firefox with <i>“Allow access to file URLs”</i> switched on; 2) the Ui.Vision Desktop App (XModules) — XClick is native input, and full-path savelog + hard-drive macros need it; 3) an unlocked desktop, Firefox visible and in front while the macro's desktop steps run.
+         </div>
+       </div>
+     </div>
+
+    <!-- GLOBAL SAVING SYSTEM (workspace snapshots) -->
+    <div class="panel workspace-panel" id="winWorkspace" data-window="workspace">
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">save</span> Global Saving System <span class="spacer"></span><span id="wsStatus" style="font-size:10px; padding:2px 6px; border-radius:10px; background:var(--bg-input); color:var(--text-muted);">idle</span></h3>
+      <div class="workspace-body" style="display:flex; flex-direction:column; gap:8px; overflow-y:auto; padding:2px;">
+        <div class="settings-group">
+          <label>Snapshot name</label>
+          <input id="wsName" type="text" placeholder="my-setup">
+        </div>
+        <div class="settings-group">
+          <label>Description (optional)</label>
+          <input id="wsDescription" type="text" placeholder="before the experiment">
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button id="wsSaveBtn" class="btn" title="Capture every feature's state + the grid layout into one folder">💾 Save Workspace…</button>
+          <button id="wsSaveAsBtn" class="btn" title="Choose the folder, then save">📄 Save As…</button>
+        </div>
+        <div class="settings-group">
+          <label>Restore from snapshot folder</label>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button id="wsBrowseBtn" class="btn" title="Pick a &lt;name&gt;_&lt;timestamp&gt; folder">📂 Browse…</button>
+            <button id="wsLoadLastBtn" class="btn" title="Restore the last successful snapshot">⏱ Load last</button>
+          </div>
+        </div>
+        <div id="wsPreview" class="settings-group" style="display:none; max-height:180px; overflow-y:auto;"></div>
+        <div style="display:none; gap:6px; flex-wrap:wrap;" id="wsRestoreActions">
+          <button id="wsRestoreAllBtn" class="btn">♻️ Restore All</button>
+          <button id="wsRestoreSelectedBtn" class="btn">☑️ Restore Selected…</button>
+          <button id="wsCancelPreviewBtn" class="btn">✕</button>
+        </div>
+        <div class="settings-group">
+          <label>Recent snapshots</label>
+          <div id="wsRecentList" style="font-size:11px; color:var(--text-muted);"></div>
+        </div>
+        <div id="wsResult" class="settings-group" style="display:none; max-height:220px; overflow-y:auto;"></div>
+        <div id="wsNotes" style="font-size:11px; color:var(--text-muted);">
+          <b>What a snapshot is:</b> one folder (<code>&lt;name&gt;_&lt;timestamp&gt;</code>) holding every feature's own native state file plus the sash-grid layout, with a checksummed manifest. <b>Restore</b> is per-domain best-effort: one corrupt or incompatible file is skipped with a precise warning while everything valid restores. API keys are <b>never</b> saved — re-enter them in the Captcha window after a restore.
         </div>
       </div>
     </div>
@@ -893,6 +933,7 @@
 <script src="js/panels/job-history/limit.js"></script>
 <script src="js/panels/job-history.js"></script>
 <script src="js/panels/firefox-auto.js"></script>
+<script src="js/panels/workspace.js"></script>
 <script src="js/arena-history.js"></script>
 <script src="js/arena-app/listeners.js"></script>
 <script src="js/arena-app.js"></script>
