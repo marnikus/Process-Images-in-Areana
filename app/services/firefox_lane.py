@@ -146,6 +146,22 @@ def _identify_spec(bridge, page, cmd_payload: str):
 
 
 # ideal-size: 21 lines reason=lock + gap + provision + run + read-back must stay in one critical section; splitting would leak the macro lock across helpers
+def image_run(spec, page, log_path: str):
+    """One planned run for an image phase, with that phase's own savelog."""
+    return replace(_job_run(spec, page), log_path=log_path)
+
+
+async def exclusive(bridge, work):
+    """One macro at a time, after the window's inter-run gap (I-63 §4.3)."""
+    global _LAST_AT
+    cfg = uv_config.load_config(bridge)
+    async with _MACRO_LOCK:
+        await _wait_gap(cfg)
+        result = await work()
+        _LAST_AT = time.monotonic()
+    return result
+
+
 async def run_identify(bridge, page, cmd_payload: str) -> tuple:
     """(kind, message, savelog lines) of one identify macro on this pool entry.
 

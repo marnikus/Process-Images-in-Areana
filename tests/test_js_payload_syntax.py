@@ -31,6 +31,7 @@ from app.browser import processing_probe
 from app.browser import recording_probes
 from app.browser import worker_badge
 from app.browser.cdp_arena import js_snippets
+from app.browser.uivision import job_probe
 from app.browser.uivision import macro as uivision_macro
 from app.utils import page_errors
 from app.browser.probe_requests import (MATCH_CONTAINS, MATCH_EXACT, ClickProbeSpec,
@@ -90,6 +91,9 @@ def payloads() -> dict:
     out["page_errors.scan"] = page_errors.build_error_scan_js()
     # the Firefox macro's find-rect script: registered RENDERED (the extension
     # substitutes ${!cmd_varN} with JSON.stringify before executeScript runs it)
+    out["firefox.snapshot"] = "function _snap(){\n" + job_probe.build_snapshot_js() + "\n}\n"
+    out["firefox.insert"] = "function _ins(){\n" + job_probe.build_insert_js("line1\nline2 café") + "\n}\n"
+    out["firefox.download"] = "function _dl(){\n" + job_probe.build_download_js("https://cdn.example/a.png") + "\n}\n"
     out["uivision.find_rect.element"] = uivision_macro.render_find_rect_js(
         "xpath=//a[span[text()='New Chat']]", 3000)
     out["uivision.find_rect.image"] = uivision_macro.render_find_rect_js("button.png@@0.8", 3000)
@@ -118,6 +122,7 @@ _BUILDERS_COVERED = {
     recording_probes: {"build_observer_js", "build_netwrap_js", "build_flush_js", "build_snapshot_js"},
     page_errors: {"build_error_scan_js"},
     uivision_macro: {"build_commands", "build_macro", "render_find_rect_js"},
+    job_probe: {"build_snapshot_js", "build_insert_js", "build_download_js"},
 }
 
 

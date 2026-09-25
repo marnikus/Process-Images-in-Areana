@@ -286,6 +286,16 @@ def _steady_page(pool: Any, tab_id: str):
     return page
 
 
+def _entry_float(entry: dict, key: str) -> float:
+    """A stored number, or 0 when the field is missing or blank."""
+    return float(entry.get(key, 0) or 0)
+
+
+def _entry_int(entry: dict, key: str) -> int:
+    """A stored count, or 0 when the field is missing or blank."""
+    return int(entry.get(key, 0) or 0)
+
+
 def restore_cooldown_entry(pool: Any, tab_id: str, entry: dict, now: float | None = None) -> bool:
     """Re-apply persisted wall-clock pause; never shortens a live timer."""
     if not entry or not tab_id:
@@ -295,8 +305,8 @@ def restore_cooldown_entry(pool: Any, tab_id: str, entry: dict, now: float | Non
         return False
     try:
         moment = _now_or(now)
-        until = float(entry.get("cooldown_until", 0) or 0)
-        pending = int(entry.get("pending_penalty", 0) or 0)
+        until = _entry_float(entry, "cooldown_until")
+        pending = _entry_int(entry, "pending_penalty")
         if not _restore_worthwhile(until, pending, moment):
             return False
         with pool._lock:
@@ -738,10 +748,16 @@ def _emit_status(ctx: FinishCtx):
         pass
 
 
+async def _firefox_new_chat(ctx: FinishCtx) -> tuple[bool, str]:
+    """New Chat via Ui.Vision. A missing binary does not launch or write macros."""
+    from .firefox_image.reset import reset_firefox_chat
+    return await reset_firefox_chat(ctx.pool, ctx.tab_id, ctx.bridge)
+
+
 async def _best_effort_reset(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, str]:
     """Reset that never raises — failure is logged, never fatal."""
     if ctx.ctrl is None:
-        return False, "no CDP controller — Firefox lane (New-chat reset not applicable)"
+        return await _firefox_new_chat(ctx)
     try:
         reset_ctx = ResetCtx(ctrl=ctx.ctrl, client=ctx.client, engine=ctx.bridge,
                              timeout_sec=timeout_sec,

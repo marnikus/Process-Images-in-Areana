@@ -340,42 +340,98 @@ async def _run_firefox_claimed(ctx: DispatchCtx, img, page) -> None:
                                              ctrl=None, client=None))
     finally:
         _clear_tab_image(pool, tab_id)
-        await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id,
-                                            ctrl=None, client=None))
+        await _finish_firefox_page(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id,
+                                             ctrl=None, client=None), img)
 
 
-async def _firefox_and_record(job: PageJobCtx) -> None:
-    """Prepare → verdict → the shared result handling (identical bookkeeping)."""
-    _url_row, corr_id, job_id, _final = await prepare_image_for_job(
-        job.bridge, job.img, job.urls, job.tab_id)
+def _lane_text(job, name: str) -> str:
+    """A text attribute, or '' — never None in a log or a prompt."""
+    return str(getattr(job, name, "") or "")
+
+
+def _lane_options(job):
+    """Correlation id and the prompt the runner must insert and read back."""
+    from .firefox_image.runner import RunOptions
+    return RunOptions(corr_id=_lane_text(job, "corr_id"), prompt=_lane_text(job, "final_prompt"))
+
+
+def _emit_lane_started(job, job_id: str) -> None:
+    """job_started is best-effort: a dead signal must not abort the lane."""
     try:
         job.bridge.job_started.emit(job_id, job.img.absolute_path)
     except Exception:
         pass
-    job.bridge._log(f"🦊 [{corr_id}] Ui.Vision lane — the macro runs this job; "
-                    "prompt template recorded, not injected", "info")
+
+
+async def _firefox_and_record(job: PageJobCtx) -> None:
+    """Prepare → image job → shared result handling (review stays needs_review)."""
+    _url, corr_id, job_id, final = await prepare_image_for_job(
+        job.bridge, job.img, job.urls, job.tab_id)
+    job.corr_id, job.lane_job_id, job.final_prompt = corr_id, job_id, final
+    _emit_lane_started(job, job_id)
     failed, err = await _firefox_verdict(job)
-    _handle_result(ResultCtx(bridge=job.bridge, pool=job.pool, img=job.img,
-                             tab_id=job.tab_id, corr_id=corr_id, job_id=job_id,
-                             failed=failed, err=err))
-    maybe_note_rate_limit(job.pool, job.tab_id, job.bridge, err)
+    from .firefox_image.settle import settle
+    settle(job, failed, err)
+    maybe_note_rate_limit(job.pool, job.tab_id, job.bridge, job.img.error or "")
 
 
 async def _firefox_verdict(job: PageJobCtx) -> tuple:
-    """(failed, error) from the savelog kinds — crash becomes a named failure, cancel propagates."""
-    from .firefox_lane import run_firefox_macro
+    """Run the image job. A missing tab or a crash is a named failure."""
+    from .firefox_image.runner import RunOptions, run_firefox_image
     page = job.pool.get_page(job.tab_id)
     if page is None:
         return True, "tab left the pool before the macro launched"
     try:
-        kind, message = await run_firefox_macro(job.bridge, page)
+        await run_firefox_image(job, page, _lane_options(job))
     except asyncio.CancelledError:
         raise
     except Exception as e:
         return True, f"Ui.Vision blocked: {e}"
-    if kind == "ok":
-        return False, ""
-    return True, f"Ui.Vision {kind}: {message}"
+    return _lane_outcome(job)
+
+
+def _lane_outcome(job) -> tuple:
+    """(failed, error) from the image status the runner already set."""
+    status = job.img.status
+    if status == ImageStatus.NEEDS_REVIEW.value:
+        return True, job.img.error or "needs_review"
+    if status != ImageStatus.COMPLETED.value:
+        return True, job.img.error or "firefox image job failed"
+    return False, ""
+
+
+_POOL_WORD = {"steady": "pool STEADY", "cooldown": "pool cooling", "error": "pool error",
+              "busy": "pool BUSY", "waiting_captcha": "pool waiting_captcha",
+              "waiting_generation": "pool waiting_generation"}
+
+
+async def _finish_firefox_page(ctx: FinishCtx, img) -> None:
+    """Count and cool only when a file was saved. A miss is an error, not a job."""
+    if img.status == ImageStatus.COMPLETED.value and img.output_path:
+        await _cool_saved_firefox(ctx)
+        return
+    ctx.pool.mark_error(ctx.tab_id, img.error or "firefox image job failed")
+    _log_pool_state(ctx)
+
+
+async def _cool_saved_firefox(ctx: FinishCtx) -> None:
+    """Shared finish (count + cooldown), then persist the timer the finish started."""
+    await _finish_page_safely(ctx)
+    persist = getattr(ctx.bridge, "_persist_cooldowns", None)
+    if persist:
+        persist()
+    _log_pool_state(ctx)
+
+
+def _log_pool_state(ctx: FinishCtx) -> None:
+    """One pool line in Chrome's status words (busy / cooling / steady / error)."""
+    page = ctx.pool.get_page(ctx.tab_id)
+    status = str(getattr(page, "status", "") or "")
+    try:
+        ctx.bridge._log(f"[{ctx.tab_id}] {_POOL_WORD.get(status, 'pool ' + status)}",
+                        "warn" if status == "error" else "info")
+    except Exception:
+        pass
 
 
 async def _run_and_record(job: PageJobCtx) -> None:
