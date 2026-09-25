@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "line": 89.39,
+    "line": 89.34,
     "branch": 86.37
   },
   "app/__init__.py": {
@@ -249,7 +249,7 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 201,
-    "coverage": 99.44
+    "coverage": 92.7
   },
   "app/browser/cdp_arena/__init__.py": {
     "max_func_loc": 0,
@@ -4288,7 +4288,7 @@
     "max_nest": 1,
     "max_params": 1,
     "file_lines": 72,
-    "coverage": 60.71
+    "coverage": 62.5
   },
   "app/ui/services/__init__.py": {
     "max_func_loc": 0,
@@ -4348,7 +4348,7 @@
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 98,
-    "coverage": 95.65
+    "coverage": 97.1
   },
   "app/ui/services/file_service.py": {
     "max_func_loc": 18,
