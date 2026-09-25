@@ -215,4 +215,9 @@ now names the reason per profile (`… not running — skipped: <name> (parent.l
 not running)`), so the next misdiagnosis shows itself in the log. Tests: the `ctypes.windll`
 stub covers the Windows probe on any host; the unix probe is exercised against a real file
 (`F_GETLK` `F_UNLCK`) plus the held/size-mismatch answer bytes (the sandbox's filesystem
-refuses `F_SETLK` with ESRCH — environment fact, pinned by `test_fcntl_probe_*`).
+refuses `F_SETLK` with ESRCH — environment fact, pinned by `test_fcntl_probe_*`). One more
+Windows fact the first push missed: `import fcntl` at module level crashed the whole uivision
+chain on the owner's machine (`No module named 'fcntl'` at Save) — `fcntl` is unix-only, so
+the import is function-level inside `_held_fcntl` (a probe Windows never routes to), pinned
+by `test_module_imports_without_the_fcntl_module` (subprocess with `sys.modules['fcntl'] =
+None` importing the full chain).

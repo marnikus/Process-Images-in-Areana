@@ -13,6 +13,9 @@ them verbatim.
 
 import ctypes
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -82,6 +85,22 @@ def _flock_raw(l_type: int, l_pid: int = 0) -> bytes:
     return bytes(fr)
 
 
+def test_module_imports_without_the_fcntl_module():
+    """The Windows regression (2026-09-25): `import fcntl` fails on Windows, and
+    the app died at `save_firefox_auto_config` — the whole uivision chain must
+    import cleanly when the module is absent."""
+    code = (
+        "import sys; sys.modules['fcntl'] = None\n"
+        "from app.browser.uivision import profile_lock, runner, tabs\n"
+        "assert profile_lock._held_windows('C:\\\\ff\\\\a\\\\parent.lock') is False\n"
+        "print('ok')\n"
+    )
+    repo_root = Path(__file__).resolve().parents[1]
+    proc = subprocess.run([sys.executable, "-c", code], cwd=repo_root,
+                          capture_output=True, text=True)
+    assert proc.returncode == 0 and "ok" in proc.stdout, proc.stderr
+
+
 @pytest.mark.skipif(os.name == "nt", reason="fcntl lock probe is unix-only")
 def test_fcntl_probe_missing_file_is_not_running(tmp_path):
     assert profile_lock._held_fcntl(tmp_path / "absent") is False
@@ -98,10 +117,11 @@ def test_fcntl_probe_unlocked_file_is_not_running(tmp_path):
 @pytest.mark.skipif(os.name == "nt", reason="fcntl lock probe is unix-only")
 def test_fcntl_probe_held_lock_is_running(tmp_path, monkeypatch):
     """F_GETLK's answer bytes carrying F_WRLCK → running (holder named)."""
+    import fcntl as fcntl_module
     path = tmp_path / ".parentlock"
     path.write_text("", encoding="utf-8")
     calls = []
-    monkeypatch.setattr(profile_lock.fcntl, "fcntl",
+    monkeypatch.setattr(fcntl_module, "fcntl",
                         lambda fd, cmd, arg: calls.append(cmd) or _flock_raw(1, 4242))
     assert profile_lock._held_fcntl(path) is True
     assert calls == [profile_lock._F_GETLK]
@@ -109,9 +129,10 @@ def test_fcntl_probe_held_lock_is_running(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(os.name == "nt", reason="fcntl lock probe is unix-only")
 def test_fcntl_probe_size_mismatch_is_not_running(tmp_path, monkeypatch):
+    import fcntl as fcntl_module
     path = tmp_path / ".parentlock"
     path.write_text("", encoding="utf-8")
-    monkeypatch.setattr(profile_lock.fcntl, "fcntl", lambda fd, cmd, arg: b"\x01\x00")
+    monkeypatch.setattr(fcntl_module, "fcntl", lambda fd, cmd, arg: b"\x01\x00")
     assert profile_lock._held_fcntl(path) is False
 
 

@@ -30,7 +30,6 @@ running. Everything here READS; nothing is written, held or deleted.
 from __future__ import annotations
 
 import ctypes
-import fcntl
 import os
 import sys
 from pathlib import Path
@@ -77,7 +76,10 @@ def _held_windows(path: Path) -> bool:
 
 
 def _held_fcntl(path: Path) -> bool:
-    """`F_GETLK`: any held lock (ours or another process') means running."""
+    """`F_GETLK`: any held lock (ours or another's) means running. The `import fcntl` is
+    function-level on purpose: the module does not exist on Windows, and this probe is
+    never routed there (`_lock_held` dispatches on `os.name`)."""
+    import fcntl
     try:
         fd = os.open(str(path), os.O_RDONLY)
     except OSError:
