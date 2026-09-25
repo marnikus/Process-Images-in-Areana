@@ -92,10 +92,10 @@ Two facts that matter for "the same as Chrome":
 
 * **Chrome counts every non-cancelled finished job**, failures included (`register_job_done` is unconditional
   in `_finish_normal`; design `2026-09-21-job-count-is-display-only` D-2). The owner's step-18 test says "job
-  count increments only after successful save". That is a deliberate *Firefox* rule that differs from Chrome
-  (see D-12 and open question Q1).
+  count increments only after successful save". **Owner decision (Q1): do the same as Chrome** — Firefox counts
+  every non-cancelled finished job exactly like Chrome (D-12).
 * **Chrome always resets to New Chat** after a normal job: there is no setting. The owner writes "when this
-  behavior is enabled" (Q2).
+  behavior is enabled". **Owner decision (Q2): same as Chrome** — Firefox always resets, no switch (D-13).
 
 ### 1.5 Persistence and crash handling today
 
@@ -140,7 +140,7 @@ Two facts that matter for "the same as Chrome":
 | D-9 | **A Firefox job journal** `config/firefox_jobs.json` (atomic + shape-validated, `json_store`, RULE 13) holding one `JobRecord`-shaped entry per in-flight job, plus Firefox fields. | *`AppState.jobs`:* cleared by Run/Scan, which would wipe in-flight evidence. *No journal:* crash after submit becomes a blind re-run (a second paid submit). |
 | D-10 | **Reuse `JobStatus` + `JOB_TRANSITIONS`**; add exactly one edge `submitted → needs_review` (Chrome never reads the table, so Chrome is unchanged). User pause is *not* a job state: the record stays at its checkpoint. | *New Firefox states:* violates "same states as Chrome". |
 | D-11 | **Pool transitions through the existing calls only** (`mark_busy`, `mark_waiting("generation"/"captcha")`, `mark_error`, `finish_page_after_job`). | *A Firefox pool path:* two truths for one decision. |
-| D-12 | **Firefox counts a job only after a successful save** (owner step 18), through one seam `FinishCtx.count_job` (default `True` = Chrome unchanged). | *Change Chrome to success-only too:* violates "Chrome unchanged" (Q1 asks the owner). |
+| D-12 | **Job count = Chrome's rule** (owner Q1): `register_job_done` in `_finish_normal`, +1 per finished non-cancelled job (completed, failed, needs_review); cancelled → no count. No count seam. | *Success-only for Firefox:* owner rejected ("do same as Chrome"). *Success-only for both:* a Chrome change nobody asked for. |
 | D-13 | **New Chat on Firefox = XClick on `new_chat_selectors()` + the `new_chat` clean-page checks via `executeScript`**, injected into `_best_effort_reset` through `FinishCtx.lane_reset`. A failure is a warning; cooling starts anyway (Chrome parity). | *Navigate to the site URL (`open`):* the macro contract forbids opening pages (never-open rule). |
 | D-14 | **Recovery inspects before it acts**: page (JOB-ID bubble, correlated result), journal checkpoint, staging download, output folder, in that order; no resubmit unless the page *proves* nothing was sent (§16). | *Re-run leftovers (today's `run_scope` behaviour):* duplicate paid submits. |
 
@@ -170,11 +170,11 @@ multi_page_dispatcher._run_firefox_claimed   (thin: same claim/record/finish as 
 | `app/services/firefox_job_recovery.py` | recovery matrix §16 | ≤ 250 |
 | `app/services/firefox_lane.py` (edit) | `run_phase` generalises `run_identify`'s critical section; `run_identify` becomes a caller (net shrink) | stays < 200 |
 | `app/services/multi_page_dispatcher.py` (edit) | `_firefox_verdict` → `firefox_job.run_job`; no other change | ratchet 455 lines: net ≤ 0 |
-| `app/services/cooldown_service.py` (edit) | `FinishCtx.count_job`, `FinishCtx.lane_reset`, 2 guarded lines | legacy 869-line hotspot: must not grow, so the job-count trio (`register_job_done`, `_stats_count`, `restore_page_stats`) moves to `services/job_count.py`, re-exported |
+| `app/services/cooldown_service.py` (edit) | `FinishCtx.lane_reset` (one defaulted field) + the `ctrl is None` branch of `_best_effort_reset` calls it | legacy 869-line hotspot: must not grow, so the job-count trio (`register_job_done`, `_stats_count`, `restore_page_stats`) moves to `services/job_count.py`, re-exported |
 | `app/core/state_machine.py` (edit) | + `submitted → needs_review` | +0 lines (the set literal grows) |
 
 Every new module sits in the existing layers (`browser/uivision` = pure builders, `services` = orchestration)
-with no Qt imports. The slot surface stays at 141: no new UI in this change (Q3 covers a toggle).
+with no Qt imports. The slot surface stays at 141: no new UI in this change (owner Q2: no New Chat switch; Q3: no needs_review list).
 
 ---
 
@@ -207,7 +207,7 @@ still applies first. Per-phase timeouts come from `settings.timeouts` (the same 
 Native-input phases hold `_MACRO_LOCK` for their whole run and bring the profile window to the foreground
 (existing `Sequence._foreground`). Observe-only phases still take the lock, because the Ui.Vision launch
 itself goes through the same command-line API, but they release it between polls. The owner's
-`inter_run_delay_sec` gap applies between *jobs*, not between phases of one job (Q4).
+`inter_run_delay_sec` gap applies between *jobs* only, never between phases of one job (owner decision Q4).
 
 ---
 
@@ -304,12 +304,12 @@ the existing queue actions).
 | busy → waiting_generation | `waiting_generation` checkpoint | `pool.mark_waiting(tab, "generation")` (Chrome's call) |
 | busy → waiting_user | `security.visible` while Watcher ON | `pool.mark_waiting(tab, "captcha")` + `note_captcha_event` (penalty stacking, Chrome parity); bounded by `watcher_captcha_timeout_sec` (I-52). Firefox has no CDP solver, so it always waits for the user (RULE 20: never solve). Cleared → back to busy |
 | busy → error | tab gone (`E210`), macro corrupt, illegal transition | `pool.mark_error(tab, reason)` |
-| busy → needs_review | uncertain submit / timeout after submit / cancel after submit | image `needs_review`; page settles through the finish path (no count) |
+| busy → needs_review | uncertain submit / timeout after submit / cancel after submit | image `needs_review`; page settles through the finish path — counted like Chrome, except cancel-after-submit (cancel path, no count) |
 | busy → cooling | successful save | `finish_page_after_job` → `register_job_done` (count) → New Chat → `start_cooldown` (deadline persisted by `_persist_cooldowns`) |
 | cooling → ready | timer expiry | existing `try_expire` / `refresh_expired` |
 
 Updated on the pool entry: `current_job_id`, `current_image`, `started_at` (claim), end timestamp and
-`last_job_at` (settle), `jobs_completed` (successful save only, D-12), `last_error` (`mark_error` /
+`last_job_at` (settle), `jobs_completed` (Chrome's rule: every finished non-cancelled job, D-12), `last_error` (`mark_error` /
 `_handle_result`), cooldown deadline (`start_cooldown`).
 
 Eligibility is unchanged: `is_free` excludes busy, cooling, waiting, error, disconnected and unchecked
@@ -318,12 +318,12 @@ touched. The native-input restriction stays: `_MACRO_LOCK` serialises every Ui.V
 
 ## 15. Post-job reset and cooldown
 
-After a successful save: `finish_page_after_job(FinishCtx(..., ctrl=None, count_job=True,
-lane_reset=firefox_reset))`. `_best_effort_reset` calls `lane_reset(timeout)` when `ctrl is None`; the `reset`
+After a successful save: `finish_page_after_job(FinishCtx(..., ctrl=None, lane_reset=firefox_reset))` (New Chat always — owner Q2,
+same as Chrome). `_best_effort_reset` calls `lane_reset(timeout)` when `ctrl is None`; the `reset`
 phase macro clicks New Chat and verifies the clean page (the `new_chat` checks). A failure logs Chrome's
 warning ("⚠ New-chat reset failed (reason) — cooling anyway") and the job stays completed. Then `start_cooldown(min_seconds)`
-with the reason line, persisted. The page returns to ready only on expiry. A failed job finishes with
-`count_job=False` and the same reset + cooldown policy as Chrome. A cancelled job goes through
+with the reason line, persisted. The page returns to ready only on expiry. A failed or needs_review job finishes
+through the same `_finish_normal` (counted, reset, cooldown) exactly as Chrome. A cancelled job goes through
 `_finish_cancelled` (no cooldown) — except after submit (§16).
 
 ## 16. Pause, stop, cancel, recovery
@@ -398,7 +398,7 @@ tests — see the 2026-09-25 StepRecorder lesson):
 * **Pause/stop/cancel:** at each pre-submit checkpoint (no submit call ever); resume re-verifies; cancel after
   submit keeps the record, no reset call; stop-after claims nothing new.
 * **Pool:** busy/cooling/waiting/error/unchecked pages are never claimed; `mark_waiting("generation"/"captcha")`
-  called; count +1 only on save (`count_job`); New Chat failure → warning + cooldown still started; cooldown
+  called; count follows Chrome (+1 for completed/failed/needs_review, none for cancelled — same assertions as Chrome's tests); New Chat failure → warning + cooldown still started; cooldown
   deadline persisted.
 * **Never close the tab:** a static scan of every built phase macro (no `open`, no `close`, no JS click; every
   `selectWindow` Value empty).
@@ -425,26 +425,22 @@ tests — see the 2026-09-25 StepRecorder lesson):
 | Result proven new and belonging to the job | §6.4 baseline + `[JOB-ID]` correlation |
 | Saved atomically beside the source | §6.5 `get_output_path` + `atomic_write_bytes` in the source folder |
 | Invalid / uncertain output never completed | §6.5 checks, `needs_review` paths §6.3/§6.4/§16 |
-| Queue / progress / pool / count / errors / cooldown correct | §14 existing calls, D-12 count seam, §15 |
+| Queue / progress / pool / count / errors / cooldown correct | §14 existing calls, D-12 Chrome count rule, §15 |
 | Firefox tab stays open | §16 last paragraph + static macro scan test |
-| Chrome unchanged | D-10/D-11/D-12 defaults, goldens byte-identical |
+| Chrome unchanged | D-10/D-11, `lane_reset` default `None`, goldens byte-identical |
 
 ---
 
-## Open questions for the owner
+## Owner decisions (2026-09-25, answers to the open questions)
 
-* **Q1 — job count.** Chrome counts every finished (non-cancelled) job, failures included. Firefox is
-  planned to count only after a successful save (your step 18). Keep the two browsers different, or should
-  Chrome also count successes only (a Chrome behaviour change)?
-* **Q2 — "New Chat when enabled".** Chrome always resets. Plan: Firefox always resets too (parity). Or do you
-  want a switch (`new_chat_after_job` in the Firefox auto config, no new slot)?
-* **Q3 — needs_review visibility.** It uses the existing image status and Job History row only. Is a
-  separate UI list wanted later?
-* **Q4 — gap between phases.** `inter_run_delay_sec` (default 3 s) is applied between jobs. Applying it
-  between every phase would add ~30 s per job. Plan: jobs only. Confirm?
+* **Q1 — job count: same as Chrome.** Every finished non-cancelled job counts (D-12); the step-18 test
+  asserts Chrome's rule, not success-only.
+* **Q2 — New Chat: same as Chrome.** Always after a normal job, no switch, failure = warning (D-13, §15).
+* **Q3 — needs_review list: no.** Existing image status + Job History row only.
+* **Q4 — delay: only between jobs.** `inter_run_delay_sec` never applies between phases of one job (§4).
 
 ## Out of scope
 
 Automatic captcha solving on Firefox (no CDP; RULE 20 wait-only), parallel Ui.Vision runs, any Chrome change
-beyond the two defaulted `FinishCtx` fields and the one extra `JOB_TRANSITIONS` edge, UI for the journal, changing the Firefox
+beyond the one defaulted `FinishCtx.lane_reset` field and the one extra `JOB_TRANSITIONS` edge, UI for the journal, changing the Firefox
 identity rules (`{profileDir}_tab{N}` stays the stable id).
