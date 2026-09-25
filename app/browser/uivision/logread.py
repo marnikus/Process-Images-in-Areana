@@ -32,6 +32,10 @@ class LogResult:
     kind: str
     message: str = ""
     lines: tuple = ()
+    # Abort the rest of the sequence: a launch refusal would be refused again,
+    # a mis-routed handoff routes every later run the same way. A SKIPPED run
+    # (target gone before launch) does NOT set it — the sequence moves on.
+    abort_rest: bool = False
 
     @property
     def done(self) -> bool:

@@ -234,7 +234,11 @@ class FirefoxAutoMixin:
 
     @Slot(result=str)
     def show_firefox_profiles(self):
-        """List every readable Firefox profile with its open tabs for the UI."""
+        """List the Firefox profiles RUNNING now (live `lock.ini` pid) for the UI.
+
+        Open-only on purpose (owner rule 2026-09-24): the same truth the run
+        plan uses, so "checked here" and "run there" can never diverge.
+        """
         try:
             from app.browser.uivision import profiles as uiv_profiles
             rows = uiv_profiles.list_profiles()

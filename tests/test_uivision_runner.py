@@ -45,8 +45,9 @@ async def test_detect_lists_every_tab_and_every_match(tmp_path, frozen_time):
     assert "firefox open tabs seen: 4" in lines
     assert "firefox tab 1: https://arena.ai/page0 — T0" in lines
     assert "firefox tab 4: https://other.example — O" in lines
-    assert "search any title + URL “arena.ai” matches 3 open tab(s):" in lines
-    assert "match 3: https://arena.ai/page2" in lines
+    assert "search any title + URL “arena.ai” matches a tab in 1 profile(s) — one run each:" in lines
+    assert "match 1: https://arena.ai/page0" in lines
+    assert "run plan: 1 macro run(s) — one Firefox instance (no profile selection)" in lines
     assert not any("other.example" in m for m in lines if m.startswith("match"))
 
 
@@ -74,7 +75,7 @@ async def test_detect_phase_names_tabs_pattern_extension_and_module(tmp_path, fr
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "firefox open tabs seen: 1" in text
     assert "firefox tab 1: https://arena.ai/image/direct?model_a=max" in text
-    assert "search title “Arena” + any URL matches 1 open tab(s):" in text
+    assert "search title “Arena” + any URL matches a tab in 1 profile(s) — one run each:" in text
     assert "match 1: https://arena.ai/image/direct?model_a=max" in text
     assert "extension NOT found" in text
     assert "NOT listening" in text
@@ -147,7 +148,7 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
 
     assert result.kind == "ok" and "macro completed" in result.message
     assert result.lines == ("echo: done — XClick fired (native OS input)",)
-    assert [step for step, _msg in result.steps] == ["detect"] * 7 + [
+    assert [step for step, _msg in result.steps] == ["detect"] * 8 + [
         "provision", "provision", "provision", "foreground",
         "launch", "launch", "result"]
 
@@ -156,9 +157,13 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
     doc = json.loads(macro_file.read_text(encoding="utf-8"))
     assert doc["Name"] == "Python_XClick_Demo"
     assert [c["Command"] for c in doc["Commands"]] == [
-        "selectWindow", "bringBrowserToForeground", "executeScript", "XClick", "echo"]
+        "selectWindow", "bringBrowserToForeground", "executeScript", "XClick",
+        "echo", "selectWindow", "selectWindow"]
     select_window = doc["Commands"][0]
     assert select_window["Target"] == "${!cmd_var3}" and select_window["Value"] == ""
+    # the pinned cleanup pair: back to the autostart tab, then close it — nothing else closes
+    assert doc["Commands"][-2]["Target"] == "title=*Ui.Vision Autostart Page*"
+    assert doc["Commands"][-1]["Target"] == "TAB=CLOSE"
     for cmd in doc["Commands"]:                       # nothing anywhere opens a page
         assert "open" not in cmd["Command"].lower()
         assert "tab=open" not in cmd["Target"]
@@ -170,11 +175,14 @@ async def test_happy_path_xfile(tmp_path, frozen_time):
     url = argv[2]
     assert url.startswith("file://") and "ui.vision.html?" in url
     for param in ("macro=Python_XClick_Demo", "storage=xfile", "direct=1",
-                  "savelog=", "cmd_var1=", "cmd_var2=", "cmd_var3=", "closeRPA=1"):
+                  "savelog=", "cmd_var1=", "cmd_var2=", "cmd_var3=", "closeRPA=1",
+                  "autoclose="):
         assert param in url, param
     query = parse_qs(urlsplit(url).query)
     assert query["cmd_var3"] == ["title=*Arena*"]     # the pattern's tab is reused
     assert query["cmd_var1"] == ["1500"]              # the pause budget — not a URL
+    # the backstop: the run's deadline + margin — the page's self-cleanup timer
+    assert query["autoclose"] == [str(30 + 120)]
     assert "arena.ai" not in url                      # the run's URL never opens a page
 
     # the autorun page exists next to the logs
@@ -246,9 +254,9 @@ async def test_stop_during_the_poll_ends_the_wait(tmp_path, frozen_time):
 
 def test_the_fallback_selector_reuses_the_title_pattern_and_never_opens():
     from app.browser.uivision import plan
-    assert plan.selector_for(plan.Target(), "Arena") == "title=*Arena*"
-    assert plan.selector_for(plan.Target(), "  Agent Arena  ") == "title=*Agent Arena*"
-    assert plan.selector_for(plan.Target(), "") == ""   # blank = no selector, not tab=open
+    assert plan.selector_for(plan.Target(), plan.Search("Arena", "")) == "title=*Arena*"
+    assert plan.selector_for(plan.Target(), plan.Search("  Agent Arena  ", "")) == "title=*Agent Arena*"
+    assert plan.selector_for(plan.Target(), plan.Search("", "")) == ""  # blank = no selector
 
 
 async def test_both_patterns_blank_runs_every_open_tab_behind_a_warning(
@@ -266,7 +274,7 @@ async def test_both_patterns_blank_runs_every_open_tab_behind_a_warning(
                                      addon=lambda: True, probe=lambda: True))
     assert result.kind == "ok"
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
-    assert "both patterns are empty — the macro will run on EVERY open tab (1 tab(s))" in text
+    assert "both patterns are empty — the macro will run on EVERY open profile (1 run(s))" in text
     assert popen.calls == [[str(binary), "-new-tab", popen.calls[0][2]]]
 
 
@@ -401,7 +409,7 @@ async def test_detect_names_every_profile_and_the_run_plan(tmp_path, frozen_time
     await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"), report, seams)
     text = [m for _s, m, _l in rows]
     assert "firefox open tabs seen: 3" in text
-    assert ('search any title + URL “arena.ai” — 2 open tab(s) match in '
+    assert ('search any title + URL “arena.ai” — a matching tab in '
             '2 profile(s): Work, p2.play') in text
     assert 'match 1: https://arena.ai/a — A1 (profile “Work”)' in text
     assert 'match 2: https://arena.ai/b — B1 (profile “p2.play”)' in text
@@ -410,27 +418,31 @@ async def test_detect_names_every_profile_and_the_run_plan(tmp_path, frozen_time
     assert 'firefox window 1 (profile “p2.play”): 1 tab(s) — active “B1”' in text
 
 
-async def test_second_tab_of_one_profile_gets_its_own_run(tmp_path, frozen_time):
-    """Two matching tabs in ONE profile → two runs, each its own title selector."""
+async def test_second_tab_of_one_profile_gets_no_second_run(tmp_path, frozen_time):
+    """Bug #3: two matching tabs in ONE profile → ONE run (the profile is the unit)."""
     binary = tmp_path / "firefox"
     binary.write_text("#!/bin/sh\n")
-    write_logs(tmp_path, [f"run-{STAMP}.txt", f"run-{STAMP}-2.txt"])
+    write_logs(tmp_path, [f"run-{STAMP}.txt"])
     one = [{"name": "Work", "dir": "/ff/p1.work", "rows": [
         {"url": "https://arena.ai/1", "title": "First"},
         {"url": "https://arena.ai/2", "title": "Second"}], "windows": [],
         "source": "", "stamp": 1.0}]
     popen = FakePopen()
-    result = await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"), lambda *_a: None,
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"), report,
                             RunSeams(sleep=noop_sleep, popen=popen,
                                      profiles=lambda: one, addon=lambda: True,
                                      probe=lambda: True))
     assert result.kind == "ok"
-    assert [parse_qs(urlsplit(call[-1]).query)["cmd_var3"][0] for call in popen.calls] == [
-        "title=*First*", "title=*Second*"]
-    assert all(call[1:3] == ["-P", "Work"] for call in popen.calls)
+    assert len(popen.calls) == 1                                       # the profile ran once
+    assert parse_qs(urlsplit(popen.calls[0][-1]).query)["cmd_var3"] == ["title=*First*"]
+    assert popen.calls[0][1:3] == ["-P", "Work"]
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert 'profile “Work”: 2 tab(s) match the search — one run per profile' in text
+    assert "the other tab(s) are left exactly as they are" in text
 
 
-async def test_duplicate_titles_warn_that_runs_share_the_first_tab(tmp_path, frozen_time):
+async def test_extra_matching_tabs_warn_about_the_single_run(tmp_path, frozen_time):
     same = [{"name": "Work", "dir": "/ff/p1", "rows": [
         {"url": "https://arena.ai/1", "title": "Same"},
         {"url": "https://arena.ai/2", "title": "Same"}], "windows": [],
@@ -440,8 +452,9 @@ async def test_duplicate_titles_warn_that_runs_share_the_first_tab(tmp_path, fro
                      addon=lambda: None, probe=lambda: False)
     await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"), report, seams)
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
-    assert "cannot tell them apart" in text
-    assert any(lvl == "warn" for s, _m, lvl in rows if "cannot tell them apart" in _m)
+    assert 'profile “Work”: 2 tab(s) match the search — one run per profile' in text
+    assert any(lvl == "warn" for s, _m, lvl in rows
+               if "2 tab(s) match the search" in _m)
 
 
 async def test_mixed_verdicts_roll_up_with_the_counts(tmp_path, frozen_time):
@@ -547,23 +560,26 @@ async def test_foreground_with_window_matches_reports_the_raise(tmp_path, frozen
                for msg in foregrounds)
 
 
-async def test_real_store_path_reports_profiles_source_and_profile_windows(
+async def test_real_store_path_reports_open_profiles_source_and_windows(
         tmp_path, frozen_time, monkeypatch):
-    """The real eyes (no seams): the profile scan, the store receipt, the windows."""
+    """The real eyes (no seams): what is RUNNING now, the store receipt, the windows."""
     sessions = [{"name": "Work", "dir": "/ff/p1.work", "rows": [
         {"url": "https://arena.ai/a", "title": "A1"}],
         "windows": [{"index": 1, "active": {"url": "https://arena.ai/a", "title": "A1"},
                      "tabs": [{"url": "https://arena.ai/a", "title": "A1"}]}],
         "source": "recovery.jsonlz4", "stamp": 5.0}]
-    monkeypatch.setattr(runner.tabs, "profile_sessions", lambda: sessions)
-    monkeypatch.setattr(runner.tabs, "profile_dirs", lambda: [])
+    monkeypatch.setattr(runner.tabs, "open_profile_sessions", lambda: sessions)
+    monkeypatch.setattr(runner.tabs, "profile_open_states", lambda: [
+        ("/ff/p1.work", "Work", True, "lock pid 1234 alive"),
+        ("/ff/p2.play", "", False, "stale lock — pid 99 not running")])
     monkeypatch.setattr(runner.desktop, "foreground_tab_window", lambda *a: None)
     monkeypatch.setattr(runner.desktop, "foreground", lambda pattern: ([], 0))
     rows, report = reports()
     seams = RunSeams(stop=lambda: True, addon=lambda: True, probe=lambda: False)
     await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai"), report, seams)
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
-    assert "firefox profiles scanned: 0 (is Firefox installed?)" in text
+    assert "firefox running now: 1 profile(s) — Work" in text
+    assert "1 profile(s) not running — skipped (stale store): p2.play" in text
     assert "session source: recovery.jsonlz4 in Work" in text
     assert 'firefox window 1 (profile “Work”): 1 tab(s) — active “A1”' in text
     assert "firefox open tabs seen: 1" in text
@@ -587,9 +603,9 @@ def url_seams(popen):
                     addon=lambda: True, probe=lambda: True)
 
 
-async def test_url_pattern_runs_one_macro_per_matching_tab_across_profiles(
+async def test_url_pattern_runs_one_macro_per_matching_profile_across_profiles(
         tmp_path, frozen_time):
-    """URL-only search: both profiles' matching tabs run, selected by their titles."""
+    """URL-only search: each profile with a matching tab runs once, selected by its title."""
     binary = tmp_path / "firefox"
     binary.write_text("#!/bin/sh\n")
     write_logs(tmp_path, [f"run-{STAMP}.txt", f"run-{STAMP}-2.txt"])
@@ -614,7 +630,7 @@ async def test_url_search_reports_its_filters_and_warns_when_unmapped(
     await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai/image/"),
                    report, url_seams(FakePopen()))
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
-    assert ('search any title + URL “arena.ai/image/” — 2 open tab(s) match in '
+    assert ('search any title + URL “arena.ai/image/” — a matching tab in '
             '2 profile(s): Work, p2.play') in text
     assert 'run plan: 2 macro run(s) — “Work” ×1, “p2.play” ×1' in text
     assert 'no Firefox window matches “arena.ai/image/”' in text    # the URL needle
@@ -651,8 +667,8 @@ async def test_url_only_search_with_no_match_blocks_by_name(tmp_path, frozen_tim
     assert any(lvl == "warn" and "no OPEN tab matches" in msg for _s, msg, lvl in rows)
 
 
-async def test_titleless_url_match_is_skipped_with_a_warning(tmp_path, frozen_time):
-    """A matched tab without a title cannot be selected — warned, others still run."""
+async def test_titleless_url_match_represented_by_the_titled_one(tmp_path, frozen_time):
+    """A titleless match is not the representative — the first TITLED match is."""
     binary = tmp_path / "firefox"
     binary.write_text("#!/bin/sh\n")
     write_logs(tmp_path, [f"run-{STAMP}.txt"])
@@ -667,11 +683,27 @@ async def test_titleless_url_match_is_skipped_with_a_warning(tmp_path, frozen_ti
                                              profiles=lambda: sessions,
                                              addon=lambda: True, probe=lambda: True))
     assert result.kind == "ok"
-    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
-    assert "matched but has no TITLE" in text
-    assert "warn" in [lvl for s, _m, lvl in rows if "no TITLE" in _m]
-    assert len(popen.calls) == 1                                    # only the titled tab
+    assert len(popen.calls) == 1                                    # the titled tab ran
     assert parse_qs(urlsplit(popen.calls[0][-1]).query)["cmd_var3"] == ["title=*Titled*"]
+
+
+async def test_all_titleless_url_matches_block_with_a_named_warning(tmp_path, frozen_time):
+    """Every match titleless → the profile cannot run: warned by name, blocked, no launch."""
+    popen = FakePopen()
+    rows, report = reports()
+    sessions = [{"name": "Work", "dir": "/ff/p1", "rows": [
+        {"url": "https://arena.ai/image/blank", "title": ""}],
+        "windows": [], "source": "", "stamp": 1.0}]
+    result = await run_test(make_spec(tmp_path, pattern="", url_pattern="arena.ai/image/"),
+                            report, RunSeams(sleep=noop_sleep, popen=popen,
+                                             profiles=lambda: sessions,
+                                             addon=lambda: True, probe=lambda: True))
+    assert result.kind == "blocked"
+    assert "no usable open tab" in result.message
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert 'profile “Work”: 1 matching tab(s) have no title' in text
+    assert popen.calls == []                                        # nothing was launched
+    assert not (tmp_path / "config" / "uivision").exists()
 
 
 # ── profile selection + skip_no_match (2026-09-24) ───────────────────────────
@@ -698,7 +730,7 @@ async def test_profile_filter_keeps_only_selected_profiles(tmp_path, frozen_time
     assert result.kind == "ok"
     assert len(popen.calls) == 1                          # only Alpha's tab runs
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
-    assert "profile filter: 1 tab(s) dropped" in text
+    assert "profile filter: 1 target(s) dropped" in text
 
 
 async def test_skip_no_match_blocks_when_all_profiles_have_no_tab(tmp_path, frozen_time):
@@ -741,6 +773,144 @@ async def test_skip_no_match_warns_per_profile_when_off(tmp_path, frozen_time, m
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "waiting up to 10s" in text
     assert "no matching tab after 10s — skipped" in text
+
+
+async def test_selected_profile_not_running_is_named_and_never_launched(
+        tmp_path, frozen_time):
+    """A checked profile without a live session is named — and it is never launched."""
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt"])
+    popen = FakePopen()
+    rows, report = reports()
+    sessions = [
+        {"name": "Alpha", "dir": "/ff/a", "rows": [
+            {"url": "https://arena.ai/1", "title": "Arena"}],
+         "windows": [], "source": "", "stamp": 1.0},
+    ]
+    spec = make_spec(tmp_path, pattern="Arena", selected_profiles=("/ff/a", "/ff/ghost"))
+    result = await run_test(spec, report, RunSeams(
+        sleep=noop_sleep, popen=popen, profiles=lambda: sessions,
+        addon=lambda: True, probe=lambda: True))
+    assert result.kind == "ok"
+    assert len(popen.calls) == 1                          # only the RUNNING profile ran
+    text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
+    assert 'selected profile "ghost" is not running right now — it will not be ' \
+        "launched (open it in Firefox first)" in text
+
+
+async def test_wait_stops_between_profiles_and_names_the_block(tmp_path, frozen_time,
+                                                               monkeypatch):
+    """Stop during the wait phase: the loop breaks, and the URL-only search blocks."""
+    clock = [1_000_000.0]
+    monkeypatch.setattr(runner.time, "time", lambda: clock[0])
+
+    async def fast_sleep(sec):
+        clock[0] += sec + 1
+
+    sessions = [
+        {"name": "Alpha", "dir": "/ff/a", "rows": [
+            {"url": "https://other.example", "title": "Other"}],
+         "windows": [], "source": "", "stamp": 1.0},
+        {"name": "Beta", "dir": "/ff/b", "rows": [
+            {"url": "https://other.example", "title": "Other B"}],
+         "windows": [], "source": "", "stamp": 1.0},
+    ]
+    calls = [0]
+
+    def profile_source():
+        # 1: detect, 2: the wait's unmatched calc — both see both profiles;
+        # from 3 on (the polls) Beta's store is gone — 492/494 in _find_new_targets
+        calls[0] += 1
+        return sessions if calls[0] <= 2 else [sessions[0]]
+
+    stop_calls = [0]
+
+    def stop():
+        stop_calls[0] += 1
+        # 1 after detect, 2+3 inside Alpha's wait loop, 4 after Alpha — all pass;
+        # 5 inside Beta's loop passes (its _find_new_targets runs: Beta's store
+        # is gone — 492/494), 6 stops the loop, 7 breaks the profile loop.
+        return stop_calls[0] >= 6
+
+    spec = make_spec(tmp_path, pattern="", url_pattern="arena.ai",
+                     selected_profiles=("/ff/a", "/ff/b"), skip_no_match=False,
+                     wait_timeout_sec=10)
+    popen = FakePopen()
+    rows, report = reports()
+    result = await run_test(spec, report, RunSeams(
+        stop=stop, sleep=fast_sleep, popen=popen,
+        profiles=profile_source, addon=lambda: True, probe=lambda: True))
+    assert result.kind == "blocked"                         # URL-only, no usable tab
+    assert "no usable open tab" in result.message
+    assert popen.calls == []
+    assert "no matching tab after 10s — skipped" in " | ".join(
+        m for _s, m, _l in rows)
+
+
+async def test_wait_sleep_glitch_is_swallowed(tmp_path, monkeypatch):
+    """A glitching injected sleep must not crash the wait — the deadline still wins."""
+    (tmp_path / "firefox").write_text("#!/bin/sh\n")
+    clock = [1_000_000.0]
+    import time as _time
+    monkeypatch.setattr(_time, "time", lambda: clock[0])   # runner, sequence AND logread
+
+    glitches = [2]                                      # the two wait-phase sleeps
+
+    async def bad_sleep(sec):
+        clock[0] += sec + 1
+        if glitches[0] > 0:                             # glitch only in the wait phase;
+            glitches[0] -= 1                            # the poll's real sleep must not see it
+            raise ValueError("boom")
+
+    sessions = [
+        {"name": "Alpha", "dir": "/ff/a", "rows": [
+            {"url": "https://other.example", "title": "Other"}],
+         "windows": [], "source": "", "stamp": 1.0},
+    ]
+    spec = make_spec(tmp_path, pattern="Arena", selected_profiles=("/ff/a",),
+                     skip_no_match=False, wait_timeout_sec=10)
+    popen = FakePopen()
+    rows, report = reports()
+    result = await run_test(spec, report, RunSeams(
+        sleep=bad_sleep, popen=popen, profiles=lambda: sessions,
+        addon=lambda: True, probe=lambda: True))
+    # the wait survived the glitches (its skip line is there); the fall-back
+    # single run then times out on the same glitching sleep
+    assert result.kind == "timeout"
+    assert "no matching tab after 10s — skipped" in " | ".join(m for _s, m, _l in rows)
+
+
+async def test_wait_sleep_cancellation_propagates(tmp_path, frozen_time, monkeypatch):
+    """Only a CANCELLATION may escape the injected sleep — the run is cancelled, loudly."""
+    import asyncio
+    sessions = [
+        {"name": "Alpha", "dir": "/ff/a", "rows": [
+            {"url": "https://other.example", "title": "Other"}],
+         "windows": [], "source": "", "stamp": 1.0},
+    ]
+
+    async def cancelling_sleep(sec):
+        raise asyncio.CancelledError()
+
+    spec = make_spec(tmp_path, pattern="Arena", selected_profiles=("/ff/a",),
+                     skip_no_match=False, wait_timeout_sec=10)
+    with pytest.raises(asyncio.CancelledError):
+        await run_test(spec, lambda *_a: None, RunSeams(
+            sleep=cancelling_sleep, popen=FakePopen(), profiles=lambda: sessions,
+            addon=lambda: True, probe=lambda: True))
+
+
+async def test_default_sleep_is_real_asyncio_sleep(monkeypatch):
+    import asyncio
+    seen = []
+
+    async def spy_sleep(sec):
+        seen.append(sec)
+
+    monkeypatch.setattr(asyncio, "sleep", spy_sleep)
+    await runner._default_sleep(1.25)
+    assert seen == [1.25]
 
 
 async def test_wait_for_tab_finds_it_during_the_poll(tmp_path, frozen_time, monkeypatch):

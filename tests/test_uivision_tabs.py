@@ -312,3 +312,36 @@ def test_profile_names_prefers_a_later_named_section(tmp_path, monkeypatch):
     monkeypatch.setattr(tabs, "profile_roots", lambda *a: [root])
     names = tabs.profile_names(roots=[root])
     assert names[named] == "Work"          # the -P handle comes from the named section
+
+
+def test_selected_tab_index_is_unselected_on_junk():
+    assert tabs._selected(2, {"selected": "junk"}) == -1
+    assert tabs._selected(2, {"selected": None}) == -1
+    assert tabs._selected(2, {"selected": 2}) == 1      # 1-based → 0-based
+    assert tabs._selected(2, {"selected": 3}) == -1     # out of range
+    assert tabs._selected(2, {"selected": 0}) == -1
+    assert tabs._selected(2, {}) == -1                  # missing → 0 → -1
+
+
+def test_profile_session_skips_junk_documents_until_one_answers(tmp_path, monkeypatch):
+    """A store that parses to a non-dict (or holds no rows) is skipped, not fatal."""
+    profile = tmp_path / "prof"
+    (profile / tabs.BACKUPS_DIR).mkdir(parents=True)
+    docs = iter([
+        [1, 2, 3],                                              # junk document → skipped
+        {"windows": []},                                        # no rows → skipped
+        {"windows": [{"tabs": [{"entries": [{"url": "https://x", "title": "T"}]}]}]},
+    ])
+    monkeypatch.setattr(tabs.mozlz4, "read_session_file", lambda path: next(docs))
+    rows, _windows, _stamp, _source = tabs._profile_session(profile)
+    assert rows == [{"url": "https://x", "title": "T"}]
+
+
+def test_profile_session_stamp_is_zero_when_stat_refuses(tmp_path, monkeypatch):
+    """The read answers but stat refuses (file gone mid-read) → stamp 0.0, still a row."""
+    profile = tmp_path / "prof"                                # no files on disk at all
+    doc = {"windows": [{"tabs": [{"entries": [{"url": "https://x"}]}]}]}
+    monkeypatch.setattr(tabs.mozlz4, "read_session_file", lambda path: doc)
+    rows, _windows, stamp, source = tabs._profile_session(profile)
+    assert rows == [{"url": "https://x", "title": ""}]
+    assert stamp == 0.0 and source == tabs.BACKUP_CANDIDATES[0]

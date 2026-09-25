@@ -40,6 +40,8 @@ import json
 import re
 from datetime import date
 
+from . import autorun
+
 DEFAULT_MACRO_NAME = "Python_XClick_Demo"
 PAUSE_VAR = "${!cmd_var1}"
 TARGET_VAR = "${!cmd_var2}"
@@ -56,6 +58,19 @@ FORBIDDEN_COMMANDS = frozenset({
     "click", "clickandwait", "clickat", "doubleclick", "contextmenu",
     "mouseover", "mousedown", "mouseup",
 })
+
+# The protected-tab rule (2026-09-24): the macro never opens a page, and the
+# ONLY close it may contain is the pinned final cleanup pair — selectWindow to
+# the autostart tab (the tab this run opened), then TAB=CLOSE. Everything else
+# that closes a tab (TAB=CLOSEALLOTHER, an early TAB=CLOSE, a tab=open) is
+# refused by name here, so a user-prepared tab can never be closed by this
+# system's own macro.
+FORBIDDEN_OPEN_COMMANDS = frozenset({"open", "openwindow", "openbrowser"})
+
+# The pinned command sequence — the ONE shape this macro may have (drift is a
+# deliberate, reviewable change of this file, not an accident of an edit).
+MACRO_SHAPE = ("selectwindow", "bringbrowsertoforeground", "executescript",
+               "xclick", "echo", "selectwindow", "selectwindow")
 
 # The name is a file path segment and a URL parameter — one safe grammar.
 NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_\-]{0,63}$")
@@ -82,6 +97,50 @@ def refuse_dom_clicks(commands) -> None:
     bad = sorted(names & FORBIDDEN_COMMANDS)
     if bad:
         raise ValueError(f"DOM-level mouse commands are forbidden (use XClick): {', '.join(bad)}")
+
+
+def refuse_unsafe_tab_commands(commands) -> None:
+    """The protected-tab rule as a gate: no page opening, no tab closing except
+    the pinned final cleanup pair (selectWindow to the autostart tab, then
+    TAB=CLOSE) — the only tab this run ever opened."""
+    _refuse_opening_commands(commands)
+    _refuse_stray_closing(commands)
+
+
+def _refuse_opening_commands(commands) -> None:
+    """The macro never opens a page (owner rule): no open/openwindow/openbrowser."""
+    for c in commands or []:
+        name = str(c.get("Command") or "").strip().lower()
+        if name in FORBIDDEN_OPEN_COMMANDS:
+            raise ValueError(f"the macro never opens a page — {name!r} is forbidden")
+
+
+def _refuse_stray_closing(commands) -> None:
+    """A tab-closing command outside the pinned final cleanup pair is refused by name."""
+    for pos, c in enumerate(commands or []):
+        target = str(c.get("Target") or "").strip().lower()
+        if "tab=close" not in target:
+            continue
+        previous = str(c_prev_target(commands, pos)).lower()
+        is_cleanup_pair = (pos == len(commands) - 1 and target == "tab=close"
+                           and previous == autorun.PAGE_TITLE_SELECTOR.lower())
+        if not is_cleanup_pair:
+            raise ValueError(f"closing a tab outside the pinned final cleanup pair "
+                             f"is forbidden: {target!r}")
+
+
+def c_prev_target(commands, pos) -> str:
+    """The Target of the command before `pos` (the cleanup pair's selectWindow)."""
+    if pos:
+        return str((commands[pos - 1] or {}).get("Target") or "").strip()
+    return ""
+
+
+def refuse_unpinned_shape(commands) -> None:
+    """The command sequence is pinned — drift is a reviewable change, not an accident."""
+    names = tuple(str(c.get("Command") or "").strip().lower() for c in commands or [])
+    if names != MACRO_SHAPE:
+        raise ValueError(f"macro shape drifted from the pinned sequence: {names}")
 
 
 # The find-and-confirmation script (the 16.1.5 embedded-JS exception: one JS
@@ -166,13 +225,13 @@ def render_find_rect_js(target: str, pause_ms) -> str:
             .replace(PAUSE_VAR, json.dumps(str(int(pause_ms)))))
 
 
-def build_commands(done_text: str = DONE_TEXT) -> list:
-    """Reuse the run's tab (never open) → foreground → RED-rect confirm → XClick → done."""
-    commands = [
+def core_commands(done_text: str) -> list:
+    """The five work commands: reuse the tab → foreground → RED-rect → XClick → done."""
+    return [
         command("selectWindow", TAB_VAR, "",
-                "reuse the already open tab matching cmd_var3 (title=*pattern*) — the Value "
-                "column is EMPTY on purpose: nothing is ever opened, a missing tab fails "
-                "the run (the extension's E210)"),
+                "reuse the already open tab named by cmd_var3 (the owner's pattern, "
+                "resolved by the app) — the Value column is EMPTY on purpose: nothing "
+                "is ever opened, a missing tab fails the run (the extension's E210/E212)"),
         command("bringBrowserToForeground", "", "",
                 "native input needs Firefox visible and in front (owner's critical rule)"),
         command("executeScript", FIND_RECT_JS, "",
@@ -182,7 +241,26 @@ def build_commands(done_text: str = DONE_TEXT) -> list:
                 "native OS click on the confirmed element (never DOM click)"),
         command("echo", done_text, "green", "completion marker — it lands in the savelog file"),
     ]
+
+
+def cleanup_commands() -> list:
+    """The pinned final pair: back to the autostart tab (the run's own), then close it."""
+    return [
+        command("selectWindow", autorun.PAGE_TITLE_SELECTOR, "",
+                "back to the autostart tab — the only tab this run opened (selectWindow "
+                "takes the first match, so earlier failed runs' orphans eat themselves)"),
+        command("selectWindow", "TAB=CLOSE", "",
+                "close the autostart tab only — the protected-tab rule: every tab that "
+                "predated the run stays exactly as the user left it"),
+    ]
+
+
+def build_commands(done_text: str = DONE_TEXT) -> list:
+    """The full macro: the work commands + the cleanup pair, every gate applied."""
+    commands = core_commands(done_text) + cleanup_commands()
     refuse_dom_clicks(commands)
+    refuse_unsafe_tab_commands(commands)
+    refuse_unpinned_shape(commands)
     return commands
 
 

@@ -2,9 +2,12 @@
 
 Pure functions (no Qt, no bridge, no OS calls beyond the session-store reads
 already owned by `tabs.py`): `list_profiles` turns the session store into the
-window's display rows, `selected_set` normalises the config's list into a
-lookup, and `filter_targets` keeps only targets whose profile is selected.
-A blank selection means *every* profile (no filter) — the empty-list default.
+window's display rows — OPEN profiles only (a profile is "open" while its
+`lock.ini` pid is alive; the on-screen finder must show what Firefox is
+running right now, not every saved profile — owner rule 2026-09-24),
+`selected_set` normalises the config's list into a lookup, and
+`filter_targets` keeps only targets whose profile is selected. A blank
+selection means *every* profile (no filter) — the empty-list default.
 """
 
 from __future__ import annotations
@@ -29,14 +32,17 @@ def _tab_summary(rows: list) -> tuple:
 
 
 def list_profiles() -> list:
-    """Every readable Firefox profile as a display row.
+    """Every Firefox profile that is RUNNING now, as a display row.
 
-    Each row: `{"id", "name", "dir", "tabs", "tab_count", "source"}`. The
-    `id` is the profile dir (the stable key); `name` is the `profiles.ini`
-    handle (`""` when unnamed). An empty list means no profile answered.
+    Open-only (owner rule 2026-09-24: the finder shows what Firefox is running
+    right now, not every saved profile) — a profile whose `lock.ini` pid is
+    dead carries a stale store and is not listed. Each row: `{"id", "name",
+    "dir", "tabs", "tab_count", "source"}`; the `id` is the profile dir (the
+    stable key); `name` is the `profiles.ini` handle (`""` when unnamed). An
+    empty list means no profile is running.
     """
     out = []
-    for session in tabs.profile_sessions():
+    for session in tabs.open_profile_sessions():
         shown, total = _tab_summary(session.get("rows"))
         out.append({
             "id": _profile_id(session),

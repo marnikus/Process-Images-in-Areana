@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from . import mozlz4
+from .profile_lock import profile_open
 
 # The add-on's store id/name both carry one of these (old name: Kantu).
 ADDON_NEEDLES = ("uivision", "kantu")
@@ -219,11 +220,11 @@ def profile_names(roots=None) -> dict:
 
 
 def profile_sessions(profiles=None) -> list:
-    """EVERY readable profile, stable order — the multi-profile eyes.
+    """EVERY readable profile, stable order — the low-level store reader.
 
     One row per answering profile: `{"name", "dir", "rows", "windows",
-    "source", "stamp"}` (`name` is the `profiles.ini` handle). The old
-    freshest-only pick is gone: two running profiles are BOTH seen.
+    "source", "stamp"}`. Runs go through `open_profile_sessions` — a
+    saved-but-closed profile's stale store must not plan a run (2026-09-24).
     """
     dirs = profiles if profiles is not None else profile_dirs()
     names = profile_names()
@@ -235,6 +236,48 @@ def profile_sessions(profiles=None) -> list:
                              "rows": rows, "windows": windows,
                              "source": source, "stamp": stamp})
     return sessions
+
+
+def open_profile_sessions(profiles=None, checker=None) -> list:
+    """The profiles that are RUNNING now, with their session rows (owner rule).
+
+    A profile whose lock is missing or stale (see `profile_lock`) carries a
+    stale session store; its tabs are not open, so it contributes no rows.
+    `checker` is the pid-liveness seam (tests).
+    """
+    sessions = profile_sessions(profiles)
+    return [s for s in sessions if profile_open(s.get("dir", ""), checker=checker)[0]]
+
+
+def profile_open_states(checker=None) -> list:
+    """[(dir, name, open, reason)] for every profile dir — the detect line's data.
+
+    Profiles with no readable store appear too, so "not running" is visible
+    even when a profile holds no tabs at all.
+    """
+    names = profile_names()
+    out = []
+    for path in profile_dirs():
+        open_, reason = profile_open(str(path), checker=checker)
+        out.append((str(path), names.get(Path(path), ""), open_, reason))
+    return out
+
+
+AUTORUN_MARKER = "ui.vision.html"
+
+
+def autorun_tab_seen(profiles=None, checker=None) -> dict:
+    """{profile dir: True} — a running profile whose store shows the autorun page.
+
+    The handoff evidence (`sequence._handoff_misrouted`): the marker in a
+    profile other than the run's target means Firefox routed the `-P` launch
+    into the wrong instance.
+    """
+    out = {}
+    for session in open_profile_sessions(profiles, checker=checker):
+        if any(AUTORUN_MARKER in str(row.get("url", "")) for row in session["rows"]):
+            out[str(session.get("dir", ""))] = True
+    return out
 
 
 def _label(session: dict) -> str:

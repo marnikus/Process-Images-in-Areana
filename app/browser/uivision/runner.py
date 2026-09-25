@@ -6,10 +6,11 @@ wires to `bridge._log` + the `firefox_auto_updated` signal (RULE 2/5) and to
 the window's Stop button (RULE 7: the predicate is checked before every phase,
 before every planned run and inside the poll — `sequence.py` owns the loop).
 
-Multi-profile (2026-09-23, owner fix): the detect phase reads EVERY Firefox
-profile's session store, the plan targets EVERY tab matching the pattern, and
-each target is one macro run aimed at its own profile instance (`-P name`, or
-`-profile dir` when the profile has no ini name — `plan.py` renders them). Runs
+Per-profile (2026-09-24 rebuild): the detect phase reads only the profiles
+that are RUNNING now (their `lock.ini` pid is alive — the on-screen finder and
+the run plan agree; a saved-but-closed profile's stale store plans nothing),
+and the run unit is the PROFILE: one macro run per open profile with ≥1
+matching tab (`plan.py` renders the `-P name` / `-profile dir` argv). Runs
 execute in order, each with its own savelog; a single run behaves exactly as
 before (the OS handoff, the pattern glob, `run-<stamp>.txt`).
 
@@ -28,9 +29,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import autorun, desktop, macro, paths, plan, profiles, tabs
-from .sequence import RunResult, Sequence
+from .sequence import HANDOFF_WINDOW_SEC, RunResult, Sequence
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,7 @@ class RunSeams:
     probe: object = None      # callable → desktop-module-listening bool
     windows: object = None    # callable → per-window session rows (tests fake them)
     profiles: object = None   # callable → per-profile session rows (tests fake them)
+    handoff_window_sec: float = HANDOFF_WINDOW_SEC  # the handoff-verify window (tests shorten)
 
 
 class _Recorder:
@@ -128,21 +131,21 @@ def _report_tab_rows(rows, report) -> None:
 
 
 def _report_matches(targets, spec: RunSpec, structured: bool, report) -> None:
-    """The search's verdict: every matching tab, or why the macro cannot find one."""
+    """The search's verdict: the profiles that match, or why the macro cannot find one."""
     if not targets:
         _report_no_matches(spec, report)
         return
+    phrase = plan.describe_search(spec.pattern, spec.url_pattern)
     if not structured:
-        report("detect", f"search {plan.describe_search(spec.pattern, spec.url_pattern)} "
-                         f"matches {len(targets)} open tab(s):")
+        report("detect", f"search {phrase} matches a tab in {len(targets)} profile(s) — "
+                         f"one run each:")
         for pos, target in enumerate(targets, 1):
             report("detect", f"match {pos}: {target.url[:110]}")
         return
-    profiles = sorted({plan.profile_label(t.profile_name, t.profile_dir) or "?"
-                       for t in targets})
-    report("detect", f"search {plan.describe_search(spec.pattern, spec.url_pattern)} — "
-                     f"{len(targets)} open tab(s) match in {len(profiles)} profile(s): "
-                     f"{', '.join(profiles)}")
+    names = sorted({plan.profile_label(t.profile_name, t.profile_dir) or "?"
+                    for t in targets})
+    report("detect", f"search {phrase} — a matching tab in {len(names)} profile(s): "
+                     f"{', '.join(names)}")
     for pos, target in enumerate(targets, 1):
         where = plan.profile_label(target.profile_name, target.profile_dir) or "?"
         report("detect", f"match {pos}: {target.url[:110]} — {target.title[:40]} "
@@ -156,51 +159,83 @@ def _report_no_matches(spec: RunSpec, report) -> None:
         report("detect", "no session store readable and both patterns are empty — "
                          "nothing to search", "warn")
         return
-    report("detect", f"no OPEN tab matches {search} in any Firefox profile — the "
-                     f"macro will NOT open anything and will fail (E210): open the "
+    report("detect", f"no OPEN tab matches {search} in any RUNNING Firefox profile — "
+                     f"the macro will NOT open anything and will fail (E210): open the "
                      f"page in the matching Firefox first", "warn")
 
 
-def _report_clashes(targets, pattern: str, report) -> None:
-    """Duplicate selectors inside one profile cannot each hit their own tab — say so."""
-    for selector, label, count in plan.clashes(targets, pattern):
-        report("detect", f"profile “{label}”: {count} tab(s) match “{selector}” — the "
-                         f"title selector cannot tell them apart; each run lands on "
-                         f"the first one", "warn")
-
-
-def _report_plan(targets, spec: RunSpec, structured: bool, report) -> None:
-    """The run-plan lines: the plan summary, selector clashes, the blank warning."""
-    if len(targets) >= 2:
+def _report_plan(sessions, targets, spec: RunSpec, structured: bool, report) -> None:
+    """The run-plan line (always) + the two warnings: extra tabs, titleless matches."""
+    if targets:
         report("detect", f"run plan: {plan.summarize(targets, structured)}")
-        _report_clashes(targets, spec.pattern, report)
+    else:
+        report("detect", "run plan: no run will start — nothing matched the search")
+    search = plan.Search(spec.pattern, spec.url_pattern)
+    _report_extra_tabs(sessions, search, report)
+    _report_titleless(sessions, search, report)
     _report_blank_search(targets, spec, report)
 
 
+def _report_extra_tabs(sessions, search: plan.Search, report) -> None:
+    """Profiles with ≥2 matching tabs: one run each, the first titled tab represents."""
+    for label, count in plan.match_counts(sessions, search):
+        report("detect", f"profile “{label}”: {count} tab(s) match the search — one run "
+                         f"per profile (the first titled match represents it); the other "
+                         f"tab(s) are left exactly as they are", "warn")
+
+
+def _report_titleless(sessions, search: plan.Search, report) -> None:
+    """Profiles whose matching tabs are ALL titleless — selectWindow needs a title."""
+    for label, count in plan.unmatchable_profiles(sessions, search):
+        report("detect", f"profile “{label}”: {count} matching tab(s) have no title — "
+                         f"selectWindow picks tabs by title, so open the page (Firefox "
+                         f"gives the tab one) or it cannot run", "warn")
+
+
 def _report_blank_search(targets, spec: RunSpec, report) -> None:
-    """Both patterns blank means EVERY open tab runs — never quietly (RULE 4)."""
+    """Both patterns blank means EVERY open profile runs — never quietly (RULE 4)."""
     if (spec.pattern or "").strip() or (spec.url_pattern or "").strip():
         return
     report("detect", f"both patterns are empty — the macro will run on EVERY open "
-                     f"tab ({len(targets)} tab(s)); set a title or URL pattern to "
+                     f"profile ({len(targets)} run(s)); set a title or URL pattern to "
                      f"narrow the search", "warn")
 
 
 
 def _load_profiles(seams: RunSeams) -> list:
-    """Per-profile sessions: the profiles seam, the flat tabs seam, or the real stores."""
+    """Per-profile sessions of the profiles RUNNING now: the profiles seam, the flat
+    tabs seam (treated as open — a test fixture), or the real open-profile stores."""
     if seams.profiles is not None:
         return seams.profiles()
     if seams.tabs is not None:
         return [plan.anonymous_session(seams.tabs())]
-    return tabs.profile_sessions()
+    return tabs.open_profile_sessions()
 
 
-def _report_profiles(report) -> None:
-    """How many Firefox profiles were scanned, by name — an empty scan explains itself."""
-    names = [path.name for path in tabs.profile_dirs()]
-    quiet = f" ({', '.join(names[:6])})" if names else " (is Firefox installed?)"
-    report("detect", f"firefox profiles scanned: {len(names)}{quiet}")
+def _report_open_states(report) -> None:
+    """What Firefox is running RIGHT NOW — the open profiles named, closed ones skipped.
+
+    The on-screen finder and the run plan read the same truth (the `lock.ini`
+    pid); a profile without a live lock is not listed and is never launched.
+    """
+    running, closed = _open_state_split(tabs.profile_open_states())
+    if running:
+        report("detect", f"firefox running now: {len(running)} profile(s) — "
+                         f"{', '.join(running[:6])}")
+    else:
+        report("detect", "firefox running now: 0 profile(s) (is Firefox running?)", "warn")
+    if closed:
+        report("detect", f"{len(closed)} profile(s) not running — skipped (stale store): "
+                         f"{', '.join(closed[:6])}")
+
+
+def _open_state_split(states) -> tuple:
+    """[(dir, name, open, reason)] → (running labels, closed labels), display order."""
+    running = [plan.profile_label(name, path) or path for path, name, open_, _r in states
+               if open_]
+    closed = [plan.profile_label(name, path) or path for path, name, open_, _r in states
+              if not open_]
+    return running, closed
 
 
 def _report_source(sessions, report) -> None:
@@ -281,19 +316,19 @@ def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
 
 
 def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
-    """The pre-run eyes: EVERY profile's tabs, the search's matches, the run plan."""
+    """The pre-run eyes: the running profiles' tabs, the search's matches, the run plan."""
     sessions = _load_profiles(seams)
     real = seams.tabs is None and seams.profiles is None
     structured = real or seams.profiles is not None
-    targets = plan.plan_targets(sessions, spec.pattern, spec.url_pattern)
+    search = plan.Search(spec.pattern, spec.url_pattern)
+    targets = plan.plan_targets(sessions, search)
     targets = _apply_profile_filter(targets, spec, sessions, recorder)
-    targets = _drop_unaddressable(targets, spec, recorder)
     if real:
-        _report_profiles(recorder)
+        _report_open_states(recorder)
     _report_open_tabs(sessions, real, recorder)
     _report_matches(targets, spec, structured, recorder)
     _report_windows(sessions, seams, recorder)
-    _report_plan(targets, spec, structured, recorder)
+    _report_plan(sessions, targets, spec, structured, recorder)
     wins = desktop.find_windows(spec.pattern)
     note = "" if wins or os_is_windows() else " (window listing is Windows-only)"
     recorder("detect", f"firefox windows matching the pattern: {len(wins)}{note}")
@@ -301,28 +336,31 @@ def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
     return targets
 
 
-def _drop_unaddressable(targets, spec: RunSpec, recorder: _Recorder) -> list:
-    """Warn per titleless match and keep only tabs the macro can actually select."""
-    addressable, titleless = plan.split_unaddressable(targets, spec.pattern)
-    for target in titleless:
-        recorder("detect", f"tab {target.url[:90]} matched but has no TITLE — "
-                           f"selectWindow can only pick a tab by title; open the page "
-                           f"so Firefox gives it one, or it cannot run", "warn")
-    return addressable
-
-
 def _apply_profile_filter(targets, spec: RunSpec, sessions, recorder: _Recorder) -> list:
-    """Keep only targets in selected profiles; skip or warn per unmatched one."""
+    """Keep only targets in selected profiles; name the selected ones that cannot run."""
     selected = list(spec.selected_profiles or ())
     kept = profiles.filter_targets(targets, selected)
     dropped = len(targets or []) - len(kept)
     if dropped:
-        recorder("detect", f"profile filter: {dropped} tab(s) dropped — only "
+        recorder("detect", f"profile filter: {dropped} target(s) dropped — only "
                            f"{len(profiles.selected_set(selected))} selected profile(s) run")
+    open_ids = {str(session.get("dir") or "") for session in sessions or []}
+    for name in _selected_not_running(selected, open_ids):
+        recorder("detect", f'selected profile "{name}" is not running right now — it '
+                           f"will not be launched (open it in Firefox first)", "warn")
     unmatched = profiles.unmatched_profiles(sessions, kept, selected)
     for name in unmatched:
         _report_unmatched_profile(name, spec.skip_no_match, spec.wait_timeout_sec, recorder)
     return kept
+
+
+def _selected_not_running(selected, open_ids) -> list:
+    """The selected profile dirs with no live session — the dir's basename as label."""
+    out = []
+    for pid in selected:
+        if str(pid) not in open_ids:
+            out.append(Path(pid).name if str(pid).strip() else str(pid))
+    return out
 
 
 def _report_unmatched_profile(name: str, skip: bool, wait_sec: int, recorder: _Recorder) -> None:
@@ -352,14 +390,14 @@ def _blocked_no_search(recorder: _Recorder) -> RunResult:
 
 
 def _blocked_no_url_match(recorder: _Recorder, url_pattern: str) -> RunResult:
-    """URL-only search with no match: the fallback selector needs a title pattern."""
-    recorder("launch", f"URL “{url_pattern}” matched no open tab in any profile's "
-                       f"session store — the macro selects tabs by TITLE, so open the "
-                       f"page (Firefox then knows the tab) or add a title pattern",
+    """URL-only search with no usable match: selectWindow needs a tab title."""
+    recorder("launch", f"URL “{url_pattern}” matched no usable open tab in any running "
+                       f"profile's session store — selectWindow picks tabs by TITLE, so "
+                       f"a matched tab without one cannot be selected: open the page "
+                       f"(Firefox gives the tab a title) or add a title pattern",
              "error")
-    return _result("blocked", f"URL “{url_pattern}” matched no open tab — and a "
-                              f"URL-only search cannot select a tab without its "
-                              f"title", recorder)
+    return _result("blocked", f"URL “{url_pattern}” — no usable open tab (a matched "
+                              f"tab needs a title to be selected)", recorder)
 
 
 def _fallback_or_block(spec: RunSpec, recorder: _Recorder, targets: list):
@@ -443,23 +481,16 @@ async def _safe_sleep(sleep_fn, seconds: float) -> None:
 
 
 def _find_new_targets(sessions: list, profile_name: str, spec: RunSpec) -> list:
-    """Re-scan one profile by label for matching tabs ([] when still empty)."""
+    """Re-scan one profile by label — its new run target ([] when still empty).
+
+    The per-profile model again: one target per profile, its first titled
+    matching tab the representative.
+    """
+    search = plan.Search(spec.pattern, spec.url_pattern)
     for session in sessions or []:
-        label = plan.profile_label(session.get("name", ""), session.get("dir", ""))
-        if label != profile_name:
+        if plan.profile_label(session.get("name", ""), session.get("dir", "")) != profile_name:
             continue
-        windows = tuple(session.get("windows") or ())
-        found = []
-        for row in session.get("rows") or []:
-            if plan.matches(str(row.get("title", "")), str(row.get("url", "")),
-                            spec.pattern, spec.url_pattern):
-                found.append(plan.Target(
-                    profile_name=str(session.get("name", "")),
-                    profile_dir=str(session.get("dir", "")),
-                    url=str(row.get("url", "")),
-                    title=str(row.get("title", "")),
-                    windows=windows))
-        return found
+        return plan.plan_targets([session], search)
     return []
 
 
@@ -487,7 +518,8 @@ async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
         return _result("blocked", str(exc), recorder)
     if not targets:
         targets = [plan.Target()]          # today's single run: the OS handoff decides
-    runs = plan.runs(targets, spec.pattern, spec.config_dir, time.strftime("%Y%m%d-%H%M%S"))
+    search = plan.Search(spec.pattern, spec.url_pattern)
+    runs = plan.runs(targets, search, spec.config_dir, time.strftime("%Y%m%d-%H%M%S"))
     executor = Sequence(spec, seams, recorder)
     executor.page = str(page)
     return await executor.execute(runs)

@@ -1,12 +1,17 @@
-"""The Ui.Vision macro builder — reuse the tab, draw the rect, XClick (I-63).
+"""The Ui.Vision macro builder — reuse the tab, draw the rect, XClick, close its own tab.
 
-The owner's rules live here as code (2026-09-23): the macro **never opens a
-page** (selectWindow with an EMPTY Value column — the extension's E210 is the
-honest no-tab answer), the find step is one best-effort `executeScript` that
-draws the RED confirmation rectangle (`#ff2d2d`, RULE 1's COLOR_FIND), and the
-click is **XClick** — `refuse_dom_clicks` bans every JS-level mouse command and
-the sequence test pins the whole flow. Per-run values ride `${!cmd_var1..3}`
-(the extension seeds exactly `!CMD_VAR1..3`): pause budget, target, tab.
+The owner's rules live here as code (2026-09-23 + 2026-09-24 rebuild): the macro
+**never opens a page** (selectWindow with an EMPTY Value column — the
+extension's E210/E212 is the honest no-tab answer), the find step is one
+best-effort `executeScript` that draws the RED confirmation rectangle
+(`#ff2d2d`, RULE 1's COLOR_FIND), and the click is **XClick** —
+`refuse_dom_clicks` bans every JS-level mouse command. The protected-tab rule
+(2026-09-24) is gated twice: `refuse_unsafe_tab_commands` refuses any opening
+command and any tab-closing command OUTSIDE the pinned final cleanup pair
+(selectWindow to the autostart tab → TAB=CLOSE), and `refuse_unpinned_shape`
+refuses any drift from the pinned command sequence. Per-run values ride
+`${!cmd_var1..3}` (the extension seeds exactly `!CMD_VAR1..3`): pause budget,
+target, tab.
 """
 
 import json
@@ -14,23 +19,26 @@ from datetime import date
 
 import pytest
 
-from app.browser.uivision import macro
+from app.browser.uivision import autorun, macro
 
 pytestmark = pytest.mark.unit
 
 NEW_CHAT = "xpath=//a[span[text()='New Chat']]"
 
 
-def test_framework_macro_is_the_reuse_confirm_click_sequence():
+def test_framework_macro_is_the_reuse_confirm_click_cleanup_sequence():
     commands = macro.build_commands()
     assert [c["Command"] for c in commands] == [
-        "selectWindow", "bringBrowserToForeground", "executeScript", "XClick", "echo"]
+        "selectWindow", "bringBrowserToForeground", "executeScript", "XClick",
+        "echo", "selectWindow", "selectWindow"]
     assert commands[0]["Target"] == macro.TAB_VAR          # ${!cmd_var3} — the pattern's tab
     assert commands[0]["Value"] == ""                      # EMPTY: nothing is ever opened
     assert commands[2]["Command"] == "executeScript"       # the find + RED-rect step
     assert commands[3]["Target"] == macro.TARGET_VAR       # ${!cmd_var2} — the locator
     assert commands[3]["Command"] == "XClick"              # native OS input, never Click
     assert commands[4]["Value"] == "green"                 # the done marker lands in savelog
+    assert commands[5]["Target"] == autorun.PAGE_TITLE_SELECTOR  # back to the autostart tab
+    assert commands[6]["Target"] == "TAB=CLOSE"            # close it — the run's own tab
 
 
 def test_the_macro_never_opens_a_page():
@@ -41,6 +49,15 @@ def test_the_macro_never_opens_a_page():
         assert c["Value"] == "" or c["Command"] == "echo", \
             f"{c['Command']} carries a Value that could navigate: {c['Value']!r}"
         assert "tab=open" not in c["Target"]
+
+
+def test_only_the_cleanup_pair_closes_a_tab():
+    """The protected-tab rule: the final TAB=CLOSE may exist, and only there."""
+    commands = macro.build_commands()
+    closers = [c for c in commands if "tab=close" in c["Target"].lower()]
+    assert [c["Target"] for c in closers] == ["TAB=CLOSE"]
+    assert closers[0] is commands[-1]
+    assert commands[-2]["Target"] == autorun.PAGE_TITLE_SELECTOR
 
 
 def test_find_rect_script_carries_the_references_and_the_rule1_red():
@@ -62,6 +79,33 @@ def test_refuse_dom_clicks_names_the_offender():
     with pytest.raises(ValueError, match="clickandwait"):
         macro.refuse_dom_clicks([{"Command": "XClick"}, {"Command": "clickAndWait"}])
     macro.refuse_dom_clicks([{"Command": "XClick"}, {"Command": "echo"}])  # no raise
+
+
+def test_refuse_unsafe_tab_commands_bans_opening_and_stray_closing():
+    good_tail = [{"Command": "selectWindow", "Target": autorun.PAGE_TITLE_SELECTOR},
+                 {"Command": "selectWindow", "Target": "TAB=CLOSE"}]
+    macro.refuse_unsafe_tab_commands([{"Command": "echo", "Target": ""}] + good_tail)
+    with pytest.raises(ValueError, match="never opens"):
+        macro.refuse_unsafe_tab_commands([{"Command": "open", "Target": "https://x"}])
+    with pytest.raises(ValueError, match="cleanup pair"):
+        macro.refuse_unsafe_tab_commands([{"Command": "selectWindow", "Target": "TAB=CLOSE"}])
+    with pytest.raises(ValueError, match="cleanup pair"):
+        macro.refuse_unsafe_tab_commands(
+            [{"Command": "selectWindow", "Target": "title=*other tab*"}] + good_tail[1:])
+    with pytest.raises(ValueError, match="cleanup pair"):
+        macro.refuse_unsafe_tab_commands([{"Command": "selectWindow", "Target": "TAB=CLOSEALLOTHER"}])
+
+
+def test_refuse_unpinned_shape_catches_drift():
+    names = lambda cs: cs  # the gate reads the Command fields
+    good = [{"Command": n, "Target": ""} for n in macro.MACRO_SHAPE]
+    macro.refuse_unpinned_shape(good)
+    drifted = [dict(c, Command="echo") for c in good]      # XClick swapped for an echo
+    with pytest.raises(ValueError, match="drifted"):
+        macro.refuse_unpinned_shape(drifted)
+    with pytest.raises(ValueError, match="drifted"):
+        macro.refuse_unpinned_shape(good[:-1])              # a dropped command
+    assert macro.MACRO_SHAPE[-2:] == ("selectwindow", "selectwindow")
 
 
 def test_render_find_rect_js_mirrors_the_extension_rendering():
@@ -95,8 +139,14 @@ def test_build_macro_document_shape_and_json_round_trip():
     doc = macro.build_macro(today=date(2026, 9, 23))
     assert doc["Name"] == macro.DEFAULT_MACRO_NAME == "Python_XClick_Demo"
     assert doc["CreationDate"] == "2026-9-23"
-    assert isinstance(doc["Commands"], list) and len(doc["Commands"]) == 5
+    assert isinstance(doc["Commands"], list) and len(doc["Commands"]) == 7
     assert all(set(c) == {"Command", "Target", "Value", "Description"} for c in doc["Commands"])
     text = macro.to_json(doc)
     assert text.endswith("\n")
     assert json.loads(text) == doc
+
+
+def test_page_title_constant_backs_the_page_and_the_cleanup():
+    """The cleanup's title is the page's own <title> — one owner, pinned on both sides."""
+    assert f"<title>{autorun.PAGE_TITLE}</title>" in autorun.PAGE_HTML
+    assert autorun.PAGE_TITLE_SELECTOR == f"title=*{autorun.PAGE_TITLE}*"

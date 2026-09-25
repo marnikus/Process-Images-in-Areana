@@ -25,15 +25,17 @@ def _session(dir_path: str, name: str, rows: list) -> dict:
             "windows": [], "source": "recovery.jsonlz4", "stamp": 1.0}
 
 
-# ── list_profiles ────────────────────────────────────────────────────────────
+# ── list_profiles (open-only, 2026-09-24) ────────────────────────────────────
 
-def test_list_profiles_returns_every_answering_session(monkeypatch):
+def test_list_profiles_returns_only_the_open_profiles(monkeypatch):
+    """Open profiles only: the reader is the open-only one (a closed profile's stale
+    store never reaches the finder)."""
     sessions = [
         _session("/p/a", "alpha", [{"url": "https://x/1", "title": "T1"},
                                     {"url": "https://x/2", "title": "T2"}]),
         _session("/p/b", "", [{"url": "https://y", "title": "Y"}]),
     ]
-    monkeypatch.setattr(profiles.tabs, "profile_sessions", lambda: sessions)
+    monkeypatch.setattr(profiles.tabs, "open_profile_sessions", lambda: sessions)
     rows = profiles.list_profiles()
     assert len(rows) == 2
     assert rows[0]["id"] == "/p/a" and rows[0]["name"] == "alpha"
@@ -41,16 +43,25 @@ def test_list_profiles_returns_every_answering_session(monkeypatch):
     assert rows[1]["name"] == "" and rows[1]["tab_count"] == 1
 
 
+def test_list_profiles_excludes_a_closed_profile(monkeypatch):
+    """Bug #4: a saved profile that is not running is NOT listed."""
+    open_sessions = [_session("/p/a", "alpha", [{"url": "https://x/1", "title": "T1"}])]
+    monkeypatch.setattr(profiles.tabs, "open_profile_sessions", lambda: open_sessions)
+    rows = profiles.list_profiles()
+    assert [r["id"] for r in rows] == ["/p/a"]
+    assert all(r["id"] != "/p/closed" for r in rows)
+
+
 def test_list_profiles_caps_the_tabs_shown(monkeypatch):
     rows = [{"url": f"https://x/{i}", "title": f"T{i}"} for i in range(20)]
-    monkeypatch.setattr(profiles.tabs, "profile_sessions",
+    monkeypatch.setattr(profiles.tabs, "open_profile_sessions",
                         lambda: [_session("/p", "p", rows)])
     out = profiles.list_profiles()
     assert out[0]["tab_count"] == 20 and len(out[0]["tabs"]) == profiles.TAB_CAP
 
 
-def test_list_profiles_empty_when_no_session_answers(monkeypatch):
-    monkeypatch.setattr(profiles.tabs, "profile_sessions", lambda: [])
+def test_list_profiles_empty_when_no_profile_is_open(monkeypatch):
+    monkeypatch.setattr(profiles.tabs, "open_profile_sessions", lambda: [])
     assert profiles.list_profiles() == []
 
 
