@@ -179,6 +179,7 @@ async def _attempt(bridge, page, cmd_payload: str) -> tuple:
     try:
         kind, message, lines = await run_identify(bridge, page, cmd_payload)
     except Exception as exc:  # cancel still propagates (BaseException)
+        log.warning("identify crashed on %s", getattr(page, "tab_id", "?"), exc_info=True)
         kind, message, lines = "error", f"identify crashed: {type(exc).__name__}", ()
     return kind, _safe(message), uv_identify.parse_reply(lines)
 

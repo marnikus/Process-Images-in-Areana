@@ -29,6 +29,22 @@ class RunResult:
     lines: tuple = ()
 
 
+class StepRecorder:
+    """Collects the reported steps so the result can carry them (one mutable box).
+
+    `Sequence` reads `.steps` when it rolls up — every caller wraps its plain
+    report callback in one (2026-09-25: a bare lambda crashed after the macro ran).
+    """
+
+    def __init__(self, report):
+        self._report = report
+        self.steps: list = []
+
+    def __call__(self, step: str, message: str, level: str = "info") -> None:
+        self.steps.append((step, message))
+        self._report(step, message, level)
+
+
 def result_level(kind: str) -> str:
     """The log level one verdict kind deserves."""
     if kind == "ok":

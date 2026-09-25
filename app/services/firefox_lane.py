@@ -32,7 +32,7 @@ from app.browser.uivision import plan as uv_plan
 from app.browser.uivision import runner as uv_runner
 from app.browser.uivision import tabs as uv_tabs
 from app.browser.uivision.runner import RunSeams
-from app.browser.uivision.sequence import Sequence
+from app.browser.uivision.sequence import Sequence, StepRecorder
 
 log = logging.getLogger("arena")
 
@@ -109,7 +109,7 @@ def _reporter(bridge):
 async def _execute(spec, run, bridge, report) -> tuple:
     """Provision + run the single planned run; seams carry cancel (RULE 7)."""
     seq = Sequence(spec, RunSeams(stop=lambda: bool(getattr(bridge, "_cancel_requested", False))),
-                   report)
+                   StepRecorder(report))
     seq.page = str(uv_runner.provision(spec, report))
     result = await seq.execute([run])
     return result.kind, result.message
@@ -131,6 +131,11 @@ async def run_firefox_macro(bridge, page) -> tuple:
         kind, message = await _execute(spec, run, bridge, report)
         _LAST_AT = time.monotonic()
     return kind, message
+
+
+def _quiet_report(step: str, message: str, level: str = "info") -> None:
+    """Identify steps go to the debug log only — the watcher words the user-facing line."""
+    log.debug("identify %s: %s", step, message)
 
 
 def _identify_spec(bridge, page, cmd_payload: str):
@@ -156,8 +161,7 @@ async def run_identify(bridge, page, cmd_payload: str) -> tuple:
     async with _MACRO_LOCK:
         _fresh(run)
         await _wait_gap(uv_config.load_config(bridge))
-        seq = Sequence(spec, RunSeams(), lambda step, msg, level="info": log.debug(
-            "identify %s: %s", step, msg))
+        seq = Sequence(spec, RunSeams(), StepRecorder(_quiet_report))
         seq.page = uv_identify.provision(spec)
         result = await seq.execute([run])
         _LAST_AT = time.monotonic()

@@ -130,3 +130,23 @@ cognitive maxima are identical to base in every legacy file.
   files gives exactly the same output, so this is stale-baseline noise (QUALITY_RECHECK.md), not growth.
 * `pre_push_check.sh --changed` can't diff in this clone because origin/main has no merge-base with HEAD,
   so the gate was run with an explicit `--changed-files` list instead.
+
+## 7. Field bug + fix (2026-09-25, owner screenshots)
+
+**Symptom:** the page overlay showed `2# mailreceiverpro@gmail.com` (the macro worked), but the app logged
+`identify crashed: AttributeError` for every retry, and the URL List / Page Pool kept the profile names
+(`user-2`, `osSged5f.Profile 2`).
+
+**Root cause:** `Sequence._final` reads `recorder.steps`, but `firefox_lane.run_identify` passed a bare
+lambda, and the job lane's `_execute` passed the bare `_reporter` callable. Both crashed only *after* the
+macro had finished, so the reply in the savelog was never read. The lane tests faked `Sequence`, so this
+seam was never exercised.
+
+**Fix:** `_Recorder` moved from `runner.py` to `sequence.py` as the public `StepRecorder` (next to the
+contract that reads `.steps`; `runner` imports it under the old name). Both lanes now wrap their report
+callback in it. A crash now also logs its traceback to the app log file (`exc_info`), not just the type name.
+
+**Regression test:** `tests/test_firefox_lane_real_sequence.py` runs both lanes through the real `Sequence`,
+faking only the Firefox process (the fake writes a realistic savelog). Against the old lane code it fails
+with the same `AttributeError`; with the fix, `tab_label` goes from `user-2` to the email in the pool
+snapshot and in `tab_label_of` (URL List).

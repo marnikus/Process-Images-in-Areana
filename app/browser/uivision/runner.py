@@ -35,6 +35,7 @@ from dataclasses import dataclass
 
 from . import autorun, desktop, macro, paths, plan, profiles, tabs
 from .sequence import RunResult, Sequence
+from .sequence import StepRecorder as _Recorder
 
 
 @dataclass(frozen=True)
@@ -74,18 +75,6 @@ class RunSeams:
     probe: object = None      # callable → desktop-module-listening bool
     windows: object = None    # callable → per-window session rows (tests fake them)
     profiles: object = None   # callable → per-profile session rows (tests fake them)
-
-
-class _Recorder:
-    """Collects the reported steps so the result can carry them (one mutable box)."""
-
-    def __init__(self, report):
-        self._report = report
-        self.steps: list = []
-
-    def __call__(self, step: str, message: str, level: str = "info") -> None:
-        self.steps.append((step, message))
-        self._report(step, message, level)
 
 
 def _patterns(spec: RunSpec) -> plan.Patterns:
