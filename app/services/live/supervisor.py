@@ -81,6 +81,19 @@ def _cooling(page: dict) -> bool:
     return is_stuck_status(page.get("status"))
 
 
+def _allowed_free(bridge, allowed: set) -> bool:
+    """Any checked pooled page free right now — the browser-agnostic "work exists" probe (D4)."""
+    pool = getattr(bridge, "_page_pool", None)
+    if pool is None:
+        return False
+    return ac.counts_in(pool, allowed)[1] > 0
+
+
+def _cdp_stalls(bridge, allowed: set) -> bool:
+    """Chrome down AND no checked page free — a free Firefox worker must not wait (D4)."""
+    return _cdp_down(bridge) and not _allowed_free(bridge, allowed)
+
+
 def _all_cooling(bridge, allowed: set) -> bool:
     """Every allowed pooled tab is cooling / busy — nothing can take a job now."""
     pool = getattr(bridge, "_page_pool", None)
@@ -100,7 +113,7 @@ async def plan_pass(bridge) -> PassPlan:
     plan.allowed = ac.enabled_tab_ids(plan.urls)
     if not plan.images:
         plan.reason = "no images"
-    elif _cdp_down(bridge):
+    elif _cdp_stalls(bridge, plan.allowed):
         plan.reason = "cdp down"
     elif _all_cooling(bridge, plan.allowed):
         plan.reason = "all cooling"

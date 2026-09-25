@@ -188,7 +188,46 @@ async def reconcile_tabs(bridge):
     reason = getattr(bridge, "_scan_failed", "") or ("; ".join(missing.values()) if missing else "")
     if not rows and reason:
         raise ScanUnavailable(reason[:300])
-    return rows
+    return rows + _firefox_rows(bridge)
+
+
+def _firefox_rows(bridge) -> list:
+    """The checked OPEN profiles' tabs (blank selection = every profile — D1).
+
+    One listing seam: the planner, the removal table and the presence sync
+    read these rows exactly like Chrome's, keyed by the stable `{dir}_tab{N}`
+    id. A discovery exception propagates — the reconciler turns it into a
+    skipped pass (a failed fetch is a wait, not a removal).
+    """
+    from app.browser.uivision import config as uv_cfg
+    from app.browser.uivision import pool_tabs
+    try:
+        selected = uv_cfg.load_config(bridge).get(uv_cfg.PROFILE_LIST_KEY) or None
+    except Exception:
+        selected = None
+    return pool_tabs.firefox_rows(selected)
+
+
+async def route_join_tab(bridge, ws: str) -> None:
+    """The reconciler's ONE join entry: a Firefox sentinel or the Chrome socket (D3)."""
+    if isinstance(ws, str) and ws.startswith("firefox://"):
+        _join_firefox(bridge, ws)
+        return
+    await do_connect_page_pool(bridge, ws)
+
+
+def _join_firefox(bridge, ws: str) -> None:
+    """Add the discovered tab to the SAME pool — no client, profile on the entry."""
+    from app.browser.uivision import pool_tabs
+    tab_id = pool_tabs.tab_id_from_ws(ws)
+    tab = pool_tabs.find_tab(tab_id)
+    pool = getattr(bridge, "_page_pool", None)
+    if tab is None or pool is None:
+        bridge._log(f"⚠ Firefox join skipped ({tab_id[:12]}) — tab no longer open", "warn")
+        return
+    pool.add_page(pool_tabs.page_for(tab))
+    bridge._emit_pool_status()
+    bridge._log(f"🦊 Pool add {tab_label_of(pool, tab_id)} steady — uivision", "success")
 
 
 def claim_connect_slot(bridge, ws_url: str) -> bool:
@@ -479,7 +518,7 @@ def live_deps(bridge) -> LiveDeps:
         return await reconcile_tabs(bridge)
 
     async def join_tab(ws: str):
-        await do_connect_page_pool(bridge, ws)
+        await route_join_tab(bridge, ws)
 
     def leave_tab(tab_id: str) -> bool:
         left = leave_pool(bridge, tab_id)  # badge cleared, page removed (the one leave mechanic)

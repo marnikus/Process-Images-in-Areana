@@ -4889,7 +4889,7 @@
     "max_cc": 12,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 193,
+    "file_lines": 195,
     "func_count": 48,
     "js": true
   },

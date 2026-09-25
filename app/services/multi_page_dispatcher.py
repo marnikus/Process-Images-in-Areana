@@ -225,7 +225,9 @@ def _handle_result(ctx: ResultCtx):
     else:
         if ctx.img.status != ImageStatus.COMPLETED.value:
             ctx.img.status = ImageStatus.COMPLETED.value
-        _emit_finished(ctx.bridge, FinishInfo(job_id=ctx.job_id, img=ctx.img, status="completed", message=f"Saved {ctx.img.output_path}"))
+        done = (f"Saved {ctx.img.output_path}" if ctx.img.output_path else
+                f"🦊 Ui.Vision macro ok — {tab_label_of(ctx.pool, ctx.tab_id)}")
+        _emit_finished(ctx.bridge, FinishInfo(job_id=ctx.job_id, img=ctx.img, status="completed", message=done))
         _log_result(ctx.bridge, LogInfo(corr_id=ctx.corr_id, tab_id=ctx.tab_id, img=ctx.img, ok=True, err=""))
     record_dispatch_result(ctx)  # the history row for this job_finished (cancelled return above)
     _recalc_save(ctx.bridge)
@@ -304,6 +306,9 @@ async def run_one_image_on_page(bridge, pool, img, urls):
 async def run_claimed_image(ctx: DispatchCtx, img, free_page):
     """Run `img` on a page the caller already claimed (the feeder path, B-1)."""
     bridge, pool, tab_id = ctx.bridge, ctx.pool, free_page.tab_id
+    if getattr(free_page, "browser", "") == "firefox":
+        await _run_firefox_claimed(ctx, img, free_page)
+        return
     _emit_status_safe(bridge)
     ctrl, client = _get_clients(pool, tab_id)
     if not ctrl or not client:
@@ -317,6 +322,60 @@ async def run_claimed_image(ctx: DispatchCtx, img, free_page):
     finally:
         _clear_tab_image(pool, tab_id)
         await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client))
+
+
+async def _run_firefox_claimed(ctx: DispatchCtx, img, page) -> None:
+    """The lane's twin of `run_claimed_image`: same bookkeeping, macro verdict (D5).
+
+    One machine-wide macro lock + the window's inter-run delay live in
+    `firefox_lane` — this side stays bookkeeping only.
+    """
+    bridge, pool, tab_id = ctx.bridge, ctx.pool, page.tab_id
+    _emit_status_safe(bridge)
+    _log_assign(bridge, img, tab_id, page)
+    _start_tab_image(pool, tab_id, img)
+    try:
+        await _firefox_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img,
+                                             urls=ctx.urls, tab_id=tab_id,
+                                             ctrl=None, client=None))
+    finally:
+        _clear_tab_image(pool, tab_id)
+        await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id,
+                                            ctrl=None, client=None))
+
+
+async def _firefox_and_record(job: PageJobCtx) -> None:
+    """Prepare → verdict → the shared result handling (identical bookkeeping)."""
+    _url_row, corr_id, job_id, _final = await prepare_image_for_job(
+        job.bridge, job.img, job.urls, job.tab_id)
+    try:
+        job.bridge.job_started.emit(job_id, job.img.absolute_path)
+    except Exception:
+        pass
+    job.bridge._log(f"🦊 [{corr_id}] Ui.Vision lane — the macro runs this job; "
+                    "prompt template recorded, not injected", "info")
+    failed, err = await _firefox_verdict(job)
+    _handle_result(ResultCtx(bridge=job.bridge, pool=job.pool, img=job.img,
+                             tab_id=job.tab_id, corr_id=corr_id, job_id=job_id,
+                             failed=failed, err=err))
+    maybe_note_rate_limit(job.pool, job.tab_id, job.bridge, err)
+
+
+async def _firefox_verdict(job: PageJobCtx) -> tuple:
+    """(failed, error) from the savelog kinds — crash becomes a named failure, cancel propagates."""
+    from .firefox_lane import run_firefox_macro
+    page = job.pool.get_page(job.tab_id)
+    if page is None:
+        return True, "tab left the pool before the macro launched"
+    try:
+        kind, message = await run_firefox_macro(job.bridge, page)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        return True, f"Ui.Vision blocked: {e}"
+    if kind == "ok":
+        return False, ""
+    return True, f"Ui.Vision {kind}: {message}"
 
 
 async def _run_and_record(job: PageJobCtx) -> None:

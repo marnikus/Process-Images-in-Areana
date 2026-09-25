@@ -102,10 +102,21 @@ def _pool_ws(pool, want: str) -> str:
     return getattr(page, "ws_url", "") or ""
 
 
+def _claim_no_cdp(bridge, pool, want: str) -> bool:
+    """A Firefox primary is claimed in place — there is no socket to move to (D4)."""
+    page = pool.get_page(want) if pool else None
+    if page is None or getattr(page, "browser", "") != "firefox":
+        return False
+    bridge._log(f"🦊 Primary {want[:12]} is Firefox — pool dispatch (no CDP move)", "info")
+    return True
+
+
 async def _move_to_tab(bridge, tab_id: str, want: str) -> str:
     """Reconnect to a readier tab; stay on failure."""
     try:
         pool = _pool_of(bridge)
+        if _claim_no_cdp(bridge, pool, want):
+            return want
         ws = _pool_ws(pool, want)
         if ws and bridge.cdp and await bridge.cdp.connect(ws):
             bridge._log(f"🔀 Run moved to ready tab {want[:12]}", "info")
@@ -387,6 +398,18 @@ async def prepare_batch(bridge, plan) -> BatchCtx:
     return ctx
 
 
+def _has_firefox(ctx: BatchCtx) -> bool:
+    """A checked Firefox page means feeder work — the sequential lane is CDP-only (D4)."""
+    pool = _pool_of(ctx.bridge)
+    if pool is None:
+        return False
+    try:
+        return any(getattr(p, "browser", "") == "firefox" and p.tab_id in ctx.allowed
+                   for p in pool._pages.values())
+    except AttributeError:
+        return False
+
+
 def _log_parallel_fallback(ctx: BatchCtx, total: int) -> None:
     """Why this batch stays sequential (1 page or pool empty)."""
     if total == 1:
@@ -402,7 +425,7 @@ async def _try_parallel(ctx: BatchCtx) -> bool:
         if not pool:
             return False
         total, free = ac.counts_in(pool, ctx.allowed)
-        if total >= 2 and free >= 1:
+        if _has_firefox(ctx) or (total >= 2 and free >= 1):
             ctx.bridge._log(f"🚀 Parallel mode: {total} pages {free} free, {len(ctx.images)} images — dispatching to different pages steady/busy tracked, no double-send", "success")
             ctx.bridge._emit_pool_status()
             await dispatch_parallel(ctx.bridge, pool, ctx.images, ctx.urls)

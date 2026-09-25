@@ -105,21 +105,22 @@ async def _live_sockets(bridge) -> dict:
     {} when the pass fails — a rejoin is never a removal.
     """
     try:
-        from app.ui.panels.browser_tabs import live_tab_rows
-        return _sockets_by_tab(await live_tab_rows(bridge))
+        from app.ui.panels.browser_tabs import reconcile_tabs
+        return _sockets_by_tab(await reconcile_tabs(bridge))  # Chrome + Firefox rows (D1)
     except Exception:
         return {}
 
 
 async def _rejoin_one(bridge, pool, sockets: dict, tab_id: str) -> bool:
     """Join one re-checked row's tab (False when it is pooled already or no longer open)."""
+    from app.ui.panels.browser_tabs import route_join_tab
     if pool.get_page(tab_id):
         return False
     ws = sockets.get(tab_id, "")
     if not ws:
         bridge._log(f"♻️ Rejoin skipped for {(tab_id or '')[:12]} — tab is not open; the next pass drops the row", "warn")
         return False
-    await do_connect_page_pool(bridge, ws)  # same mechanic as the reconciler: badge + cooldown restored
+    await route_join_tab(bridge, ws)  # same mechanic as the reconciler: badge + cooldown restored
     return True
 
 

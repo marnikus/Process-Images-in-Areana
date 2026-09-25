@@ -740,6 +740,8 @@ def _emit_status(ctx: FinishCtx):
 
 async def _best_effort_reset(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, str]:
     """Reset that never raises — failure is logged, never fatal."""
+    if ctx.ctrl is None:
+        return False, "no CDP controller — Firefox lane (New-chat reset not applicable)"
     try:
         reset_ctx = ResetCtx(ctrl=ctx.ctrl, client=ctx.client, engine=ctx.bridge,
                              timeout_sec=timeout_sec,

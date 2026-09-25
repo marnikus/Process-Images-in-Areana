@@ -90,7 +90,8 @@ describe('URL list', () => {
 
   test('falls back to the short id when the snapshot carries no label', () => {
     const html = tabCell(worker({ tab_label: '' }));
-    assert.ok(html.includes(`>${FULL.slice(0, 8)}</span>`), html);
+    // D8: the short id sits behind the browser badge (🌐/🦊) — never bare.
+    assert.ok(html.includes(`🌐 ${FULL.slice(0, 8)}</span>`), html);
     assert.ok(!html.includes(`>${FULL}<`), 'never the raw 32-char id as the text');
   });
 

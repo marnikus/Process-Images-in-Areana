@@ -27,7 +27,7 @@ const UrlListCells = {
       return;
     }
     const esc = this._store().esc.bind(this._store());
-    cell.innerHTML = `<span title="${esc(page.tab_id)}">${esc(this._tabLabel(page))}</span>`;
+    cell.innerHTML = `<span title="${esc(page.tab_id)}">${page.browser === 'firefox' ? '🦊 ' : '🌐 '}${esc(this._tabLabel(page))}</span>`;
   },
 
   _setTabBtn(btn, tabId) {

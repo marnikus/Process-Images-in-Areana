@@ -25,7 +25,7 @@ const FA_IDS = ['faPattern', 'faUrlPattern', 'faMacro', 'faTarget', 'faStorage',
   'faHome', 'faBinary', 'faTimeout', 'faPause', 'faSaveBtn', 'faRunBtn', 'faStopBtn',
   'faState', 'faPaths', 'faStatus', 'faSteps',
   'faShowProfilesBtn', 'faSkipNoMatch', 'faSkipNoMatchWrap', 'faProfileList',
-  'faWaitTimeout', 'faNotesToggle', 'faNotes'];
+  'faWaitTimeout', 'faDelay', 'faNotesToggle', 'faNotes'];
 
 function inside(node, ancestor) {
   for (let n = node; n; n = n.parent) if (n === ancestor) return true;
@@ -73,7 +73,8 @@ describe('firefox_auto window (mount)', () => {
 const CFG = { pattern: 'Arena', url_pattern: 'https://arena.ai/image/',
   target: "xpath=//a[span[text()='New Chat']]",
   macro: 'Python_XClick_Demo', storage: 'xfile', home: '', binary: '', timeout_sec: 90, pause_ms: 3000,
-  selected_profiles: [], skip_no_match: false, wait_timeout_sec: 60 };
+  selected_profiles: [], skip_no_match: false, wait_timeout_sec: 60,
+  inter_run_delay_sec: 3 };
 const PATHS = { home: '/home/u/Desktop/uivision',
   macro_file: '/home/u/Desktop/uivision/macros/Python_XClick_Demo.json',
   autorun_file: '/cfg/uivision/ui.vision.html', log_dir: '/cfg/uivision/logs' };
@@ -124,6 +125,7 @@ describe('firefox_auto window (content)', () => {
     assert.equal(h.byId.faTarget.value, CFG.target);
     assert.equal(h.byId.faTimeout.value, 90);
     assert.equal(h.byId.faPause.value, 3000);
+    assert.equal(h.byId.faDelay.value, 3, 'the inter-job delay is a real field');
     assert.match(h.text('faPaths'), /Ui\.Vision home: \/home\/u\/Desktop\/uivision/);
     assert.match(h.text('faPaths'), /macro file: .*Python_XClick_Demo\.json/);
     assert.equal(h.text('faState'), 'idle');

@@ -370,6 +370,10 @@
             <label title="How long the macro waits for the element on the found tab, and how long the RED confirmation rectangle stays visible before the XClick (500–30000)">Wait for element + confirm rect (ms)</label>
             <input id="faPause" type="number" min="500" max="30000" step="100" placeholder="3000">
           </div>
+          <div class="settings-group">
+            <label title="Machine-wide pause between two Ui.Vision macros (0–30 s, default 3). Firefox jobs run one at a time — this gap lets Firefox settle before the next foreground run.">Delay between jobs (s)</label>
+            <input id="faDelay" type="number" min="0" max="30" step="1" placeholder="3">
+          </div>
         </div>
         <div style="display:flex; gap:6px; align-items:center;">
           <button id="faSaveBtn" class="btn-small btn-primary" title="Validate + save this window's config">Save</button>

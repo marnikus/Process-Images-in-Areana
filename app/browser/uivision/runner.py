@@ -472,6 +472,11 @@ async def _default_sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
+def provision(spec: RunSpec, report) -> object:
+    """Public face of `_provision` — the pool lane writes the same macro + page."""
+    return _provision(spec, report)
+
+
 async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     """One framework test end to end; every phase reports through `report`."""
     seams = seams or RunSeams()

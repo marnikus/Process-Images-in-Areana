@@ -70,10 +70,11 @@ window.CDPRender = {
     } catch {}
   },
 
-  _connCellHtml(match, store) {
-    if (match) return `<span style=\"color:var(--success, #4ade80); font-size:11px;\" title=\"${this.esc(match.title)} — ${match.url}\">● ${this.esc(match.kind)} (${match.score})</span>`;
-    if (store.tabs.length === 0) return `<span style=\"color:var(--text-muted); font-size:11px;\">○ no chrome</span>`;
-    return `<span style=\"color:var(--text-muted); font-size:11px;\">○ no tab</span>`;
+  _connCellHtml(u, store) {
+    if ((window.UrlListMatching && window.UrlListMatching.matchPoolPage(u.url, u.tab_id) || {}).browser === 'firefox') return `<span style=\"color:var(--success, #4ade80); font-size:11px;\" title=\"${this.esc(u.url)} — Firefox tab via the Ui.Vision extension\">🦊 uivision ●</span>`;
+    const match = store.findBestTabForUrl(u.url);
+    if (match) return `<span style=\"color:var(--success, #4ade80); font-size:11px;\" title=\"${this.esc(match.title)} — ${match.url}\">🌐 cdp ● ${this.esc(match.kind)} (${match.score})</span>`;
+    return store.tabs.length === 0 ? `<span style=\"color:var(--text-muted); font-size:11px;\">○ no chrome</span>` : `<span style=\"color:var(--text-muted); font-size:11px;\">○ no tab</span>`;
   },
 
   updateUrlRowsConnection(store) {
@@ -86,8 +87,7 @@ window.CDPRender = {
       if (!tr) return;
       const connCell = tr.querySelector('.url-conn-status');
       if (!connCell) return;
-      const match = store.findBestTabForUrl(u.url);
-      connCell.innerHTML = this._connCellHtml(match, store);
+      connCell.innerHTML = this._connCellHtml(u, store);
     });
   },
 
