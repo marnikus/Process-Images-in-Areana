@@ -11,7 +11,7 @@ window.BridgeReady = (function () {
     st.connected = true;
     const a = resolveApp();
     if (a) { a.bridge = st.bridge; a.ready = true; }
-    console.log('QWebChannel connected');
+    // success stays silent (owner 2026-09-25: startup noise); only the failure path below warns
     flush();
   }
   function boot() {
