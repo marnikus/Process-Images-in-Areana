@@ -135,8 +135,23 @@ def _recovery_dir(bridge) -> Path:
     return config_dir(bridge) / RECOVERY_DIR / time.strftime("%Y%m%d-%H%M%S")
 
 
+def _copy_live_file(path: Path, backup: Path, name: str) -> str | None:
+    """Best-effort copy of one live file; None when absent (fresh machine) or unreadable."""
+    if not path.exists():
+        return None
+    try:
+        shutil.copy2(str(path), str(backup / name))
+    except OSError:
+        return None
+    return name
+
+
 def _backup_live(bridge, providers: list) -> str:
-    """Copy every affected live file into a recovery snapshot (task RESTORE 4)."""
+    """Copy every affected live file into a recovery snapshot (task RESTORE 4).
+
+    A live file that does not exist yet (fresh machine) is recorded under
+    `absent` in recovery.json instead of failing the whole restore.
+    """
     files = {}
     for provider in providers:
         for path in provider.live_paths(bridge):
@@ -145,16 +160,15 @@ def _backup_live(bridge, providers: list) -> str:
         return ""
     backup = _recovery_dir(bridge)
     backup.mkdir(parents=True, exist_ok=True)
-    copied = {}
+    copied, absent = {}, {}
     for domain_id, paths in files.items():
-        copied[domain_id] = []
         for path in paths:
-            name = f"{domain_id}__{path.name}"
-            shutil.copy2(str(path), str(backup / name))
-            copied[domain_id].append(name)
+            name = _copy_live_file(path, backup, f"{domain_id}__{path.name}")
+            (copied if name else absent).setdefault(domain_id, []).append(
+                name or path.name)
     from app.persistence.workspace.integrity import canonical_bytes
     (backup / "recovery.json").write_bytes(canonical_bytes(
-        {"created_utc": utc_now_iso(), "files": copied}))
+        {"created_utc": utc_now_iso(), "files": copied, "absent": absent}))
     _prune_recovery(bridge)
     return str(backup)
 

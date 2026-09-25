@@ -310,4 +310,16 @@ def test_recovery_backup_holds_previous_live_files(bridge, snapshot):
     assert recovery_dirs, "recovery snapshot missing"
     files = {p.name for p in recovery_dirs[-1].iterdir()}
     assert any(name.startswith("arena_state__") for name in files)
-    assert (recovery_dirs[-1] / "recovery.json").exists()
+    recovery = json.loads((recovery_dirs[-1] / "recovery.json").read_text())
+    assert any(name.startswith("arena_state__") for name in recovery["files"]["arena_state"])
+
+
+def test_recovery_backup_on_a_fresh_machine_restores_without_crashing(bridge, snapshot):
+    # fresh machine: providers list no live files (they pre-filter existence),
+    # so the recovery snapshot is created empty and the restore still succeeds.
+    reply = restore_workspace(bridge, str(snapshot))
+    assert reply["ok"]
+    recovery_dirs = sorted((bridge.config.dir / "workspace_recovery").iterdir())
+    assert recovery_dirs, "recovery snapshot still created"
+    recovery = json.loads((recovery_dirs[-1] / "recovery.json").read_text())
+    assert recovery["files"] == {} and recovery["absent"] == {}
