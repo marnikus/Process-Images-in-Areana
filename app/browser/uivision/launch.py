@@ -131,16 +131,21 @@ def build_argv(binary: str, url: str) -> list:
 def profile_args(name: str = "", profile_dir: str = "") -> tuple:
     """The argv prefix aiming Firefox at ONE profile ('' answers nothing).
 
-    `-P <name>` is Firefox's own per-profile selector: the URL is handed to the
-    running instance of that named profile, or that profile is started. A
-    directory no `profiles.ini` names falls back to `-profile <dir>` (same
-    remoting, keyed on the profile directory). Neither flag is debugger
-    vocabulary; the banned scan still runs over the assembled argv.
+    Directory-first (2026-09-25, first-run double-execution fix): a known
+    profile **directory** is the delivery key — `-profile <dir>` remotes the
+    URL to the instance owning that exact directory, the same one the session
+    store was read from. `-P <name>` (profiles.ini `Name=`) is only a
+    name-only fallback: names can be missing, duplicated or unstable across
+    runs, and a name-keyed call can be answered by ANOTHER running instance
+    (man firefox / SUMO: a running Firefox answers `-P` with the *current*
+    profile). Neither flag is debugger vocabulary; the banned scan still runs
+    over the assembled argv.
     """
+    directory = (profile_dir or "").strip()
+    if directory:
+        return ("-profile", directory)
     if (name or "").strip():
         return ("-P", name.strip())
-    if (profile_dir or "").strip():
-        return ("-profile", profile_dir)
     return ()
 
 

@@ -143,13 +143,15 @@ def test_anonymous_session_wraps_the_flat_rows_seam():
 
 
 def test_runs_render_selector_profile_args_and_per_run_savelogs(tmp_path):
-    """Each planned run: own title selector, own -P prefix, own savelog file."""
+    """Each planned run: own title selector, own profile prefix, own savelog file."""
     targets = plan.plan_targets(SESSIONS, P_URL)
     runs = plan.runs(targets, plan.Patterns(), tmp_path, "20260923-120000")
     assert [r.index for r in runs] == [1, 2] and runs[0].total == 2
     assert runs[0].selector == "title=*A1*" and runs[1].selector == "title=*B1*"
-    assert runs[0].profile_args == ("-P", "Work")          # named → -P name
-    assert runs[1].profile_args == ("-profile", "/ff/p2.play")   # unnamed → -profile dir
+    # 2026-09-25 dir-first delivery: -profile <dir> keys remoting on the exact
+    # directory the session was read from; profiles.ini Name= is display-only.
+    assert runs[0].profile_args == ("-profile", "/ff/p1.work")
+    assert runs[1].profile_args == ("-profile", "/ff/p2.play")
     assert Path(runs[0].log_path).name == "run-20260923-120000.txt"   # run 1 keeps the plain name
     assert Path(runs[1].log_path).name == "run-20260923-120000-2.txt"  # run 2 never overwrites it
     assert runs[1].label == "profile “p2.play” · tab “B1”"
@@ -188,7 +190,10 @@ def test_summarize_counts_runs_per_profile():
 
 
 def test_launch_profile_args_and_argv():
-    assert launch.profile_args("Work") == ("-P", "Work")
+    # dir-first (2026-09-25): a known directory always wins — name-keyed
+    # delivery (-P) can reach ANOTHER running instance (see design 09-25).
+    assert launch.profile_args("Work", "/ff/p1") == ("-profile", "/ff/p1")
+    assert launch.profile_args("Work") == ("-P", "Work")   # name-only fallback
     assert launch.profile_args("", "/ff/p2") == ("-profile", "/ff/p2")
     assert launch.profile_args("", "") == ()
     argv = launch.profile_argv("/usr/bin/firefox", "file:///x?macro=M", ("-P", "Work"))

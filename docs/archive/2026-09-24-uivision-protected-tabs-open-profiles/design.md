@@ -1,7 +1,9 @@
 # Design — protected tabs, URL-first tab selection, one run per open profile (2026-09-24)
 
 **Status:** implemented 2026-09-24 · supersedes `2026-09-24-uivision-url-pattern` (its
-selectWindow-title-only shapes are retired)
+selectWindow-title-only shapes are retired) · **partly superseded 2026-09-25: profile
+delivery is directory-first (`-profile <dir>`, never name-keyed) and a title mapping
+with 2+ window hits raises nothing** — see `2026-09-25-uivision-delivery-by-directory`
 **Entry:** SYSTEM_OF_RECORD.md → `Firefox auto with Extension` (I-62, I-63)
 
 Four bugs stayed fixed after two attempts. All four root causes are now verified

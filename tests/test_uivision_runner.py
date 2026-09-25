@@ -374,7 +374,7 @@ def write_logs(tmp_path, names):
 
 
 async def test_two_profiles_get_one_run_each_in_their_own_instance(tmp_path, frozen_time):
-    """Two profiles, one matching tab each → two launches, each -P/-profile-addressed."""
+    """Two profiles, one matching tab each → two launches, each by its own directory."""
     binary = tmp_path / "firefox"
     binary.write_text("#!/bin/sh\n")
     write_logs(tmp_path, [f"run-{STAMP}.txt", f"run-{STAMP}-2.txt"])
@@ -386,8 +386,8 @@ async def test_two_profiles_get_one_run_each_in_their_own_instance(tmp_path, fro
     assert len(popen.calls) == 2
 
     first, second = popen.calls
-    assert first[:3] == [str(binary), "-P", "Work"]          # named profile → -P name
-    assert second[:3] == [str(binary), "-profile", "/ff/p2.play"]   # unnamed → -profile dir
+    assert first[:3] == [str(binary), "-profile", "/ff/p1.work"]   # dir-first delivery
+    assert second[:3] == [str(binary), "-profile", "/ff/p2.play"]  # same rule, both runs
     for argv in (first, second):
         assert len(argv) == 5 and "-new-tab" in argv and argv[-1].startswith("file://")
 
@@ -434,7 +434,7 @@ async def test_second_matching_tab_of_one_profile_never_gets_its_own_run(
     assert len(popen.calls) == 1                        # the second tab never re-runs
     q = parse_qs(urlsplit(popen.calls[0][-1]).query)
     assert q["cmd_var3"] == ["title=*First*"]           # the FIRST match decides
-    assert popen.calls[0][1:3] == ["-P", "Work"]
+    assert popen.calls[0][1:3] == ["-profile", "/ff/p1.work"]   # delivered by directory
 
 
 async def test_duplicate_titles_collapse_to_one_run_and_stay_reported(
@@ -556,6 +556,53 @@ async def test_foreground_with_window_matches_reports_the_raise(tmp_path, frozen
                for msg in foregrounds)
 
 
+async def test_foreground_warns_when_one_title_maps_two_windows(
+        tmp_path, frozen_time, monkeypatch):
+    """2026-09-25: an ambiguous title mapping raises NOTHING and says why (RULE 4).
+
+    Two profiles open on the same page present the same window title — the
+    pre-raise must never guess which instance is the run's (the macro's own
+    bringBrowserToForeground decides at click time).
+    """
+    (tmp_path / "firefox").write_text("#!/bin/sh\n")
+    log = tmp_path / "config" / "uivision" / "logs" / f"run-{STAMP}.txt"
+    log.parent.mkdir(parents=True)
+    log.write_text(OK_LOG, encoding="utf-8")
+    monkeypatch.setattr(runner.desktop, "foreground_tab_window",
+                        lambda pattern, windows: ([(7, "Same — Mozilla Firefox"),
+                                                   (8, "Same — Mozilla Firefox")], 0))
+    rows, report = reports()
+    result = await run_test(make_spec(tmp_path), report,
+                            RunSeams(sleep=noop_sleep, popen=FakePopen(),
+                                     tabs=lambda: OPEN_TABS, addon=lambda: True,
+                                     probe=lambda: True))
+    assert result.kind == "ok"
+    notes = [(msg, lvl) for step, msg, lvl in rows if step == "foreground"]
+    assert any("0/2" in msg and "ambiguous" in msg and lvl == "warn"
+               for msg, lvl in notes)
+
+
+async def test_launch_line_names_the_profile_directory_it_delivers_to(
+        tmp_path, frozen_time):
+    """2026-09-25 (D6): the launch evidence shows WHICH profile got the URL."""
+    binary = tmp_path / "firefox"
+    binary.write_text("#!/bin/sh\n")
+    write_logs(tmp_path, [f"run-{STAMP}.txt"])
+    popen = FakePopen()
+    rows, report = reports()
+    sessions = [{"name": "Work", "dir": "/ff/p1.work",
+                 "rows": [{"url": "https://arena.ai/a", "title": "Arena one"}],
+                 "windows": [], "source": "", "stamp": 1.0}]
+    result = await run_test(make_spec(tmp_path, pattern="arena"), report,
+                            RunSeams(sleep=noop_sleep, popen=popen,
+                                     profiles=lambda: sessions,
+                                     addon=lambda: True, probe=lambda: True))
+    assert result.kind == "ok"
+    launch_lines = [msg for step, msg, _lvl in rows if step == "launch"]
+    assert any("profile=p1.work" in msg for msg in launch_lines)   # dir basename evidence
+    assert popen.calls[0][1:3] == ["-profile", "/ff/p1.work"]
+
+
 async def test_real_store_path_reports_profiles_source_and_profile_windows(
         tmp_path, frozen_time, monkeypatch):
     """The real eyes (no seams): the profile scan, the store receipt, the windows."""
@@ -608,7 +655,7 @@ async def test_url_pattern_runs_one_macro_per_matching_tab_across_profiles(
                             lambda *_a: None, url_seams(popen))
     assert result.kind == "ok" and result.message == "all 2 run(s) ok"
     first, second = popen.calls
-    assert first[1:3] == ["-P", "Work"] and second[1:3] == ["-profile", "/ff/p2.play"]
+    assert first[1:3] == ["-profile", "/ff/p1.work"] and second[1:3] == ["-profile", "/ff/p2.play"]
     selectors = [parse_qs(urlsplit(a[-1]).query)["cmd_var3"][0] for a in popen.calls]
     assert selectors == ["title=*Image One*", "title=*Image Two*"]   # tab's OWN title
     assert all("cmd_var1=" in a[-1] and "savelog=" in a[-1] for a in popen.calls)
@@ -823,7 +870,7 @@ async def test_run_sees_only_open_profiles_and_says_who_was_skipped(
     assert "— 1 closed profile(s) skipped" in text
     assert "firefox open tabs seen: 1" in text         # only the open profile's rows
     assert "arena.ai/b" not in text
-    assert popen.calls[0][1:3] == ["-P", "Work"]       # aimed at the OPEN instance
+    assert popen.calls[0][1:3] == ["-profile", "/ff/open"]   # aimed at the OPEN instance
 
 
 async def test_launch_line_names_primary_url_and_hard_fallback(tmp_path, frozen_time):

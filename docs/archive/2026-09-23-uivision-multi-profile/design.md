@@ -24,8 +24,14 @@ macro for **every** matching tab in **every** profile, not just the last-opened 
   **that** instance (its Ui.Vision runs the macro); when it is not running, Firefox
   starts with that profile. No `-no-remote`, no second isolated browser, no debugger
   vocabulary — the banned-marker scan still runs over the whole argv.
+  **Superseded 2026-09-25 — name-keyed delivery proved unreliable against a running
+  multi-instance setup (`profiles.ini` `Name=` may be absent/duplicated/unstable, and
+  `-P` can hand the URL to the *current* instance instead of the named one): delivery
+  is directory-first (`-profile <abs dir>`), `-P` only as the name-only fallback —
+  `2026-09-25-uivision-delivery-by-directory/design.md`.**
 * A profile directory that no `profiles.ini` section names gets `-profile <abs dir>`
-  (same remoting, keyed on the profile directory).
+  (same remoting, keyed on the profile directory). *Since 2026-09-25 this is the
+  primary form for EVERY profile with a known directory.*
 * Per-tab addressing rides `selectWindow title=…` (Ui.Vision's own tab switcher): each
   run passes **that tab's own title glob** (`title=*<exact title>*`) as `cmd_var3`, so
   the second matching tab of a profile is selected even though the bare pattern would

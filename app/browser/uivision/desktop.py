@@ -127,9 +127,18 @@ def pick_tab_window(os_windows, session_windows, pattern: str) -> list:
 
 
 def foreground_tab_window(pattern: str, session_windows) -> tuple | None:
-    """(matches, raised) for the tab-holding window, or None when unmapped."""
+    """(matches, raised) for the tab-holding window, or None when unmapped.
+
+    2026-09-25 (first-run fix): 2+ hits means the title is shared — one
+    window per profile on the same page — so nobody can know WHICH instance
+    the run belongs to. Raise NOTHING and report (hits, 0); the macro's own
+    `bringBrowserToForeground` decides at click time (a guessed top window
+    could belong to the wrong profile's instance).
+    """
     from app.utils.win_popup import raise_handles
     hits = pick_tab_window(firefox_windows(), session_windows, pattern)
     if not hits:
         return None
+    if len(hits) > 1:
+        return hits, 0                     # ambiguous — touch nothing (RULE 4)
     return hits, raise_handles([hwnd for hwnd, _title in hits])

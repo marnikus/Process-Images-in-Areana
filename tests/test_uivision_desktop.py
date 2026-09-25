@@ -91,6 +91,27 @@ def test_foreground_tab_window_raises_only_the_holder(fake_desktop):
     assert fake_desktop == [[11]]                       # the other Arena window stays down
 
 
+def test_foreground_tab_window_refuses_an_ambiguous_title(monkeypatch):
+    """2026-09-25: two OS windows share the tab title → raise NOTHING, report (hits, 0).
+
+    The log of the first-run report showed `2/2` raises for a single-target run —
+    two profiles on the same page have the same title and no profile attribution,
+    so a guess could put the WRONG instance on top of the native click.
+    """
+    twin = [(11, "Arena Chat — Mozilla Firefox", 101),
+            (22, "Arena Chat — Mozilla Firefox", 102)]   # visible_windows rows: hwnd, title, pid
+    raised = []
+    monkeypatch.setattr(win_find, "visible_windows", lambda: twin)
+    monkeypatch.setattr(win_find, "process_name", lambda pid: "firefox.exe")
+    monkeypatch.setattr(win_popup, "raise_handles",
+                        lambda handles: raised.append(list(handles)) or len(handles))
+    session = [{"index": 1, "active": {"url": "https://arena.ai/x", "title": "Arena Chat"},
+                "tabs": [{"url": "https://arena.ai/x", "title": "Arena Chat"}]}]
+    hits = [(hwnd, title) for hwnd, title, _pid in twin]
+    assert desktop.foreground_tab_window("Arena", session) == (hits, 0)
+    assert raised == []                       # the macro's bring decides at click time
+
+
 def test_foreground_tab_window_answers_none_when_unmapped(fake_desktop):
     assert desktop.foreground_tab_window("zzz-no-match", WINDOWS_SESSION) is None
     assert desktop.foreground_tab_window("arena.ai", []) is None

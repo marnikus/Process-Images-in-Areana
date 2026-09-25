@@ -110,3 +110,30 @@ def test_helpers_and_key_hygiene():
     else:
         with pytest.raises(RuntimeError):
             _default_factory("K" * 16, 45)
+
+
+@pytest.mark.unit
+def test_import_sdk_falls_back_when_the_optional_package_is_broken(monkeypatch):
+    """The SDK-missing lane — covered WITH or WITHOUT 2captcha installed.
+
+    `test_helpers_and_key_hygiene` branches on `sdk_available()`, so the
+    `except → None` path and the `None` guard were environment-dependent
+    (coverage floor 98.8% only held when the optional package was absent).
+    Forcing the import to fail pins that lane in every environment.
+    """
+    import builtins
+
+    from app.services.captcha_watcher import sdk_solver
+
+    real_import = builtins.__import__
+
+    def refusing_import(name, *args, **kwargs):
+        if name == "twocaptcha" or name.startswith("twocaptcha."):
+            raise ImportError("twocaptcha refuses to import")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", refusing_import)
+    assert sdk_solver._import_sdk() is None      # except branch → None
+    assert sdk_available() is False              # the gate other tests branch on
+    with pytest.raises(RuntimeError, match="not installed"):
+        _default_factory("K" * 16, 45)           # the None guard names the cause

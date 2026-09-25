@@ -146,11 +146,8 @@ class Sequence:
                    else list(run.target.windows))
         mapped = desktop.foreground_tab_window(needle, windows)
         if mapped is not None:
-            matches, raised = mapped
-            titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
-            self.recorder("foreground", f"{self._scope(run)}{raised}/{len(matches)} Firefox "
-                                        f"window(s) on top — {titles} (holds the tab matching "
-                                        f"“{needle}”)")
+            note, level = _mapped_note(*mapped, needle)
+            self.recorder("foreground", f"{self._scope(run)}{note}", level)
             return
         matches, raised = desktop.foreground(needle)
         if not matches:
@@ -179,7 +176,7 @@ class Sequence:
             target=self.spec.target, tab=run.selector))
         self.recorder("launch", f"{self._scope(run)}starting Firefox with the autorun URL "
                                 f"(macro={self.spec.macro}, storage={self.spec.storage}, "
-                                f"savelog={Path(run.log_path).name}, "
+                                f"savelog={Path(run.log_path).name}{_profile_note(run)}, "
                                 f"tab={launch_locator(self.spec.url_pattern, run.selector)})")
         process = launch.launch_resilient(launch.profile_argv(binary, url, run.profile_args),
                                           popen=self.seams.popen)
@@ -235,3 +232,32 @@ def launch_locator(url_pattern, selector: str) -> str:
     if not url_pattern:
         return selector
     return f"url=*{url_pattern}* → {selector}"
+
+
+def _mapped_note(matches, raised, needle) -> tuple:
+    """The mapped-path foreground line — ambiguity is NAMED, never silent (RULE 4).
+
+    2026-09-25: `foreground_tab_window` refuses to raise an ambiguous set, so
+    `0/N` here means deliberately untouched (shared title across profiles) —
+    the macro's own bringBrowserToForeground decides at click time.
+    """
+    titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
+    if raised == 0 and len(matches) > 1:
+        return (f"0/{len(matches)} Firefox window(s) hold “{titles}” — ambiguous "
+                "title (one per profile?); none raised, the macro's own "
+                "bringBrowserToForeground decides", "warn")
+    return (f"{raised}/{len(matches)} Firefox window(s) on top — {titles} "
+            f"(holds the tab matching “{needle}”)", "info")
+
+
+def _profile_note(run) -> str:
+    """`, profile=…` evidence in the launch line — directory basename, else name.
+
+    2026-09-25 (D6): every launch log shows exactly which profile instance the
+    autostart URL was delivered to, so a delivery bug is visible in the report.
+    """
+    args = run.profile_args or ()
+    if not args:
+        return ""
+    value = Path(args[1]).name if args[0] == "-profile" else args[1]
+    return f", profile={value}"
