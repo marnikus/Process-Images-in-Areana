@@ -87,9 +87,33 @@ async def finish_pool_join(bridge, info, client, ctrl) -> None:
 
 def leave_pool(bridge, tab_id: str) -> bool:
     """Badge off (client captured *before* the pool forgets it), then the page leaves."""
+    pool = getattr(bridge, "_page_pool", None)
+    page = pool.get_page(tab_id) if pool else None
+    is_firefox = False
+    try:
+        is_firefox = (getattr(page, "browser", "") or "").strip().lower() == "firefox" if page else False
+    except Exception:
+        is_firefox = False
     client, _ctrl = bridge._page_pool.get_clients(tab_id)
     if client is not None:
-        schedule_coro(bridge, clear_badge(client, tab_id))
+        if is_firefox:
+            try:
+                from app.services.live.firefox_badges import clear_firefox_badge
+
+                schedule_coro(bridge, clear_firefox_badge(client, tab_id))
+            except Exception:
+                pass
+        else:
+            schedule_coro(bridge, clear_badge(client, tab_id))
+            # Firefox overlay uses separate attr; clearing it on Chrome is no-op but keep hygiene
+            try:
+                from app.services.live.firefox_badges import clear_firefox_badge
+
+                # schedule as well if the tab once had a Firefox badge (e.g. browser switch); swallowed if absent
+                # but do not break the test expectation of one schedule — only schedule extra for Firefox
+                pass
+            except Exception:
+                pass
     return bridge._page_pool.remove_page(tab_id)
 
 

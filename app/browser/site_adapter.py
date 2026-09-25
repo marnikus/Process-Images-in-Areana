@@ -239,14 +239,23 @@ SELECTORS: Dict[str, SelectorObject] = {
     # readable tab id. Scopes are the sidebar's own regions; every candidate is
     # a *leaf* text node ('div.font-heading.truncate' / 'button div.truncate'),
     # so the probe can never pick a container's concatenated text.
+    # Firefox evidence (2026-09-25): <div class="font-heading min-w-0 flex-1 truncate
+    # text-left text-sm font-normal">mailreceiverpro@gmail.com</div> — leaf text node,
+    # validated via ownText(), scoped to sidebar containers.
     "account_email": SelectorObject(
         name="account_email",
         primary='[data-sidebar="menu"] div.font-heading.truncate',
         fallbacks=[
             '[data-sidebar="menu"] button div.truncate',
+            '[data-sidebar="menu"] div.font-heading.min-w-0.truncate',
             '[data-sidebar="footer"] div.font-heading.truncate',
             '[data-sidebar="footer"] button div.truncate',
             '[data-sidebar="rail"] div.font-heading.truncate',
+            'div.font-heading.truncate',
+            'div.font-heading.min-w-0.flex-1.truncate',
+            '[data-sidebar] div.font-heading.truncate',
+            'aside div.font-heading.truncate',
+            'nav div.font-heading.truncate',
         ],
         scope='[data-sidebar="sidebar"]',
         mustBeVisible=True,
@@ -254,12 +263,12 @@ SELECTORS: Dict[str, SelectorObject] = {
         expectedCount=1,
         textCondition="@",
         textConditionType="contains",
-        verification="visible sidebar row whose short text holds the signed-in account email",
+        verification="visible sidebar row whose short text holds the signed-in account email — leaf ownText() only, never composer",
         evidence=("docs/research/Directly Chat with Frontier Image Generation AI Models.html: "
                   "ul[data-sidebar=menu] > button > div.font-heading.truncate = zeusthunder1991@gmail.com "
-                  "(avatar span sibling); the same string also sits in the RSC script payload, which is "
-                  "not probed"),
-        lastVerified="2026-09-21",
+                  "(avatar span sibling); Firefox evidence 2026-09-25: div.font-heading.min-w-0.flex-1.truncate "
+                  "= mailreceiverpro@gmail.com (leaf, sidebar-scoped); same string in RSC payload not probed"),
+        lastVerified="2026-09-25",
     ),
     "new_chat_button": SelectorObject(
         name="new_chat_button",

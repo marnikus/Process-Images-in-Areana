@@ -29,6 +29,8 @@ from app.services.live import url_policy as up
 from app.services.live.bus import live_bus
 from app.services.live.debug_view import interval_ms
 from app.services.live.feed import clear_row_assignments
+from app.services.live.firefox_badges import assert_firefox_badges
+from app.services.live.firefox_owner import resolve_firefox_owners
 from app.services.live.tab_owner import resolve_owners
 from app.services.live.worker_badges import assert_badges
 from app.services.run_state import pooled_ids, schedule_coro
@@ -225,6 +227,14 @@ async def _join_and_sync(p: _Pass, plan: ac.AutoConnectPlan) -> None:
     pool = getattr(p.bridge, "_page_pool", None)
     await resolve_owners(pool)   # a navigation can land on another account (D-5)
     await assert_badges(pool)    # a navigation wipes the badge (D-5)
+    try:
+        await resolve_firefox_owners(pool, bridge=p.bridge)  # Firefox: bounded retry, never blocks
+    except Exception:
+        pass
+    try:
+        await assert_firefox_badges(pool, bridge=p.bridge)    # Firefox: centered N# account, idempotent
+    except Exception:
+        pass
 
 
 def _publish(p: _Pass, changed: bool) -> None:

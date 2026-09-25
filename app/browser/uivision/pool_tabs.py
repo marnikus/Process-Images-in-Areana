@@ -42,18 +42,68 @@ class FirefoxPageInfo(PageInfo):
     """A pool entry that is a Firefox tab — profile attribution rides the entry.
 
     Subclass (not extra fields on `PageInfo`): the base class sits on its
-    zero-tolerance class-LOC ratchet (design D3).
+    zero-tolerance class-LOC ratchet (design D3). Display label overrides the
+    generic ``aka_####``: fallback is account → profile → short id, never aka.
     """
 
     browser: str = BROWSER
     profile: str = ""
     profile_dir: str = ""
 
+    @property
+    def label(self) -> str:  # type: ignore[override]
+        """Firefox display: detected email → profile → short id (no ``aka``)."""
+        owner = _owner_label(self)
+        if owner:
+            return owner
+        prof = _profile_label(self)
+        if prof:
+            return prof
+        alias = _alias_label(self)
+        if alias:
+            return alias
+        return (self.tab_id or "")[:12]
+
     def to_dict(self) -> dict:
         wire = super().to_dict()
         wire["profile"] = self.profile
         wire["profile_dir"] = self.profile_dir
         return wire
+
+
+def _owner_label(self) -> str:
+    try:
+        from app.core.tab_alias import normalize_owner
+
+        owner = normalize_owner(getattr(self, "owner", "") or "")
+        if owner:
+            return owner
+    except Exception:
+        pass
+    return ""
+
+
+def _profile_label(self) -> str:
+    try:
+        prof = (getattr(self, "profile", "") or "").strip()
+        if prof:
+            return prof
+        pdir = (getattr(self, "profile_dir", "") or "").strip()
+        if pdir:
+            return Path(pdir).name.strip() or (self.tab_id or "")[:12]
+    except Exception:
+        pass
+    return ""
+
+
+def _alias_label(self) -> str:
+    try:
+        alias = super(FirefoxPageInfo, self).alias  # type: ignore[attr-defined]
+        if alias and not alias.startswith("aka_"):
+            return alias
+    except Exception:
+        pass
+    return ""
 
 
 def tab_id_for(profile_dir, index: int) -> str:

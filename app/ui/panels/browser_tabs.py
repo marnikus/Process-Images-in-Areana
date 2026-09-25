@@ -212,8 +212,42 @@ async def route_join_tab(bridge, ws: str) -> None:
     """The reconciler's ONE join entry: a Firefox sentinel or the Chrome socket (D3)."""
     if isinstance(ws, str) and ws.startswith("firefox://"):
         _join_firefox(bridge, ws)
+        # let the post-join display lifecycle run (profile fallback → probe → badge)
+        try:
+            await _firefox_post_join(bridge, ws)
+        except Exception:
+            pass
         return
     await do_connect_page_pool(bridge, ws)
+
+
+async def _firefox_post_join(bridge, ws: str) -> None:
+    """Profile temp name → probe account → overlay (never blocks discovery)."""
+    try:
+        from app.browser.uivision import pool_tabs
+        from app.services.live.firefox_badges import assert_firefox_badges
+        from app.services.live.firefox_owner import resolve_firefox_owners
+
+        tab_id = pool_tabs.tab_id_from_ws(ws)
+        pool = getattr(bridge, "_page_pool", None)
+        if pool is None:
+            return
+        # 1. profile is already the fallback via tab_label_of — emit once so URL List
+        #    shows profile immediately (before probe)
+        try:
+            bridge._emit_pool_status()
+        except Exception:
+            pass
+        # 2. probe the page (bounded retry inside) — may update owner → label
+        await resolve_firefox_owners(pool, bridge=bridge)
+        # 3. draw/replace the centered N# account overlay (idempotent)
+        await assert_firefox_badges(pool, bridge=bridge)
+        try:
+            bridge._emit_pool_status()
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 def _join_firefox(bridge, ws: str) -> None:

@@ -18,6 +18,8 @@ from dataclasses import dataclass
 
 WORKER_ATTR = "data-arena-worker"
 BADGE_Z = 2147483645  # one below the watcher overlay: the wait popup must win
+FIREFOX_ATTR = "data-arena-firefox-worker"
+FIREFOX_BADGE_Z = BADGE_Z  # same layer as Chrome badge; watcher still wins
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,14 @@ class WorkerBadgeSpec:
     worker_no: int
     tab_id: str
     label: str = ""  # optional extra (e.g. window title); appended after the id
+
+
+@dataclass(frozen=True)
+class FirefoxBadgeSpec:
+    worker_no: int
+    account: str
+    tab_id: str = ""  # stable id for debugging, not shown in overlay text
+    profile: str = ""  # fallback when account unknown, not shown separately
 
 
 _BADGE_CSS = (
@@ -67,3 +77,37 @@ def build_worker_badge_clear_js() -> str:
 
 def _id_text(spec: WorkerBadgeSpec) -> str:
     return f"{spec.tab_id}  ·  {spec.label}" if spec.label else spec.tab_id
+
+
+def _firefox_text(spec: FirefoxBadgeSpec) -> str:
+    name = (spec.account or spec.profile or spec.tab_id or "").strip()
+    return f"{int(spec.worker_no)}# {name}" if name else f"{int(spec.worker_no)}#"
+
+
+def build_firefox_badge_js(spec: FirefoxBadgeSpec) -> str:
+    """Insert (or replace) the Firefox overlay: ``<visual number># <account>``.
+
+    Reuses Chrome badge visual style (centered top, same CSS constants) but
+    uses ``FIREFOX_ATTR`` so Chrome and Firefox badges never clash, and the
+    text is ``N# account`` per Firefox spec (not ``#N alias``). Idempotent:
+    re-running removes the previous overlay, never duplicates.
+    """
+    text = _firefox_text(spec)
+    return f"""(() => {{
+  document.querySelectorAll('[{FIREFOX_ATTR}]').forEach(e => e.remove());
+  const box = document.createElement('div');
+  box.setAttribute({json.dumps(FIREFOX_ATTR)}, {json.dumps(str(spec.worker_no))});
+  box.style.cssText = {json.dumps(_BADGE_CSS)};
+  const label = document.createElement('span');
+  label.style.cssText = {json.dumps(_NO_CSS + ";font-size:13px;color:#e2e8f0")};
+  label.textContent = {json.dumps(text)};
+  box.appendChild(label);
+  (document.body || document.documentElement).appendChild(box);
+  return 'ok';
+}})()"""
+
+
+def build_firefox_badge_clear_js() -> str:
+    """Remove the Firefox overlay (and only the Firefox overlay)."""
+    return (f"(() => {{ document.querySelectorAll('[{FIREFOX_ATTR}]')"
+            ".forEach(e => e.remove()); return 'ok'; })()")

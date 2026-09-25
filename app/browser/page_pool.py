@@ -14,7 +14,9 @@ import threading
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-from ..core.tab_alias import AliasBook
+from pathlib import Path
+
+from ..core.tab_alias import AliasBook, normalize_owner
 from .cdp_arena import CDPArenaController
 from .cdp_client import CDPClient
 from .page_status import PageInfo, PageStatus, now_iso
@@ -64,6 +66,63 @@ def _pick_free(pages) -> Optional[PageInfo]:
     return None
 
 
+def _is_firefox_page(page, default_browser: str) -> bool:
+    browser = (getattr(page, "browser", "") or "").strip().lower() if hasattr(page, "browser") else ""
+    if browser:
+        return browser == "firefox"
+    return str(default_browser or "").strip().lower() == "firefox"
+
+
+def _firefox_profile_name(page) -> str:
+    prof = (getattr(page, "profile", "") or "").strip() if hasattr(page, "profile") else ""
+    if prof:
+        return prof
+    pdir = (getattr(page, "profile_dir", "") or "").strip() if hasattr(page, "profile_dir") else ""
+    if pdir:
+        return Path(pdir).name.strip()
+    return ""
+
+
+def _firefox_display_name(page, pool) -> str:
+    """Firefox fallback chain: detected → last-known → profile → short id."""
+    owner = normalize_owner(getattr(page, "owner", "") or "")
+    if owner:
+        return owner
+    book = getattr(pool, "_alias", None) if pool is not None else None
+    if book is not None:
+        known = book.owner_for(getattr(page, "tab_id", "") or "")
+        if known:
+            return known
+    prof = _firefox_profile_name(page)
+    if prof:
+        return prof
+    return str(getattr(page, "tab_id", "") or "")[:12]
+
+
+def _display_label(page, pool, default_browser: str) -> str:
+    """One label source for every view (D-7) — Firefox uses account/profile fallback."""
+    if _is_firefox_page(page, default_browser):
+        label = _firefox_display_name(page, pool)
+        if label:
+            return label
+    alias = getattr(page, "alias", "") or ""
+    if alias:
+        return alias
+    return getattr(page, "label", "") or str(getattr(page, "tab_id", "") or "")[:12]
+
+
+def _firefox_snapshot_label(page, current_label: str) -> str:
+    owner = normalize_owner(getattr(page, "owner", "") or "")
+    if owner:
+        return owner
+    prof = _firefox_profile_name(page)
+    if prof:
+        return prof
+    if current_label.startswith("aka_"):
+        return str(getattr(page, "tab_id", "") or "")[:12]
+    return current_label
+
+
 def _snapshot_entry(tab_id: str, page, default_browser: str = "chrome") -> dict:
     """One page snapshot entry incl. live cooldown countdown.
 
@@ -83,23 +142,30 @@ def _snapshot_entry(tab_id: str, page, default_browser: str = "chrome") -> dict:
     except Exception:
         entry["cooldown_remaining"] = 0
     try:
-        entry["tab_label"] = page.alias      # readable id for every view (D-5)
+        alias = page.alias  # type: ignore[attr-defined]
     except Exception:
-        entry["tab_label"] = ""
+        alias = ""
+    entry["tab_label"] = alias
+    if _is_firefox_page(page, default_browser):
+        entry["tab_label"] = _firefox_snapshot_label(page, alias or "")
     return entry
 
 
 def tab_label_of(pool, tab_id: str) -> str:
-    """Readable label of a tab from a pool that may be absent (D-7).
-
-    One source for every log line and view that names a worker: the pool key
-    stays the identity (RULE 15), the label is what a human reads. A page
-    without a readable id, an unknown tab or a missing pool degrades to the
-    short id — never to an empty string.
-    """
+    """Readable label of a tab from a pool that may be absent (D-7)."""
     try:
-        page = pool.get_page(tab_id)
-        return page.label if page is not None else str(tab_id or "")[:12]
+        page = pool.get_page(tab_id)  # type: ignore[union-attr]
+    except Exception:
+        return str(tab_id or "")[:12]
+    if page is None:
+        return str(tab_id or "")[:12]
+    default_browser = getattr(pool, "_browser", "chrome") if pool else "chrome"
+    if _is_firefox_page(page, default_browser):
+        label = _firefox_display_name(page, pool)
+        if label:
+            return label
+    try:
+        return page.label  # type: ignore[attr-defined]
     except Exception:
         return str(tab_id or "")[:12]
 
