@@ -30,7 +30,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from . import autorun, desktop, guard, macro, paths, plan, profiles, tabs, verify
+from . import autorun, desktop, guard, locks, macro, paths, plan, profiles, tabs, verify
 from .sequence import RunResult, Sequence
 
 
@@ -205,10 +205,15 @@ def _load_profiles(seams: RunSeams) -> list:
 
 
 def _report_profiles(report) -> None:
-    """How many Firefox profiles were scanned, by name — an empty scan explains itself."""
-    names = [path.name for path in tabs.profile_dirs()]
+    """Enumerated vs open profiles — closed ones are skipped, said aloud."""
+    dirs = tabs.profile_dirs()
+    names = [path.name for path in dirs]
     quiet = f" ({', '.join(names[:6])})" if names else " (is Firefox installed?)"
     report("detect", f"firefox profiles scanned: {len(names)}{quiet}")
+    skipped = [path.name for path in locks.closed(dirs)]
+    if skipped:
+        report("detect", f"closed profile(s) skipped (only open profiles run): "
+                         f"{', '.join(skipped[:6])}")
 
 
 def _report_source(sessions, report) -> None:
@@ -279,7 +284,7 @@ def _detect_plugin(report, seams: RunSeams) -> None:
 
 
 def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
-    """The flat tab list across every profile + the freshest store's receipt."""
+    """The flat tab list across every open profile + the freshest receipt."""
     rows = [row for session in sessions for row in session["rows"]]
     quiet = "" if rows else " (no session store readable — is Firefox running?)"
     recorder("detect", f"firefox open tabs seen: {len(rows)}{quiet}")
@@ -289,7 +294,7 @@ def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
 
 
 def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
-    """The pre-run eyes: EVERY profile's tabs, the search's matches, the run plan."""
+    """The pre-run eyes: every OPEN profile's tabs, the matches, the run plan."""
     sessions = _load_profiles(seams)
     real = seams.tabs is None and seams.profiles is None
     structured = real or seams.profiles is not None

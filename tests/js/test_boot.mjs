@@ -129,3 +129,13 @@ describe('Boot.onBridgeReady', () => {
     assert.deepEqual(seen, { x: 1 });
   });
 });
+
+describe('Boot.onBridgeReady guards', () => {
+  test('a non-function warns and never throws or delegates', () => {
+    let delegated = 0;
+    const { Boot, warnings } = load({ bridgeReady: { ready: () => delegated++ } });
+    for (const bad of [undefined, null, 'fn', 42, {}]) Boot.onBridgeReady(bad);
+    assert.equal(delegated, 0);
+    assert.equal(warnings.filter((w) => w.includes('onBridgeReady needs a function')).length, 5);
+  });
+});

@@ -25,7 +25,10 @@ window.BridgeReady = (function () {
   }
   document.addEventListener('DOMContentLoaded', boot);
   return {
-    ready(fn) { if (st.connected) fn(st.bridge); else queue.push(fn); },
+    ready(fn) {
+      if (typeof fn !== 'function') { console.warn('[BridgeReady] ready() needs a function'); return; }
+      if (st.connected) fn(st.bridge); else queue.push(fn);
+    },
     get bridge() { return st.bridge; },
     get connected() { return st.connected; },
   };

@@ -23,7 +23,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import mozlz4
+from . import locks, mozlz4
 
 # The add-on's store id/name both carry one of these (old name: Kantu).
 ADDON_NEEDLES = ("uivision", "kantu")
@@ -218,14 +218,18 @@ def profile_names(roots=None) -> dict:
     return names
 
 
+def _session_dirs(profiles):
+    """Explicit dirs as given (test seam); the default reads open profiles only."""
+    return profiles if profiles is not None else locks.running(profile_dirs())
+
+
 def profile_sessions(profiles=None) -> list:
-    """EVERY readable profile, stable order — the multi-profile eyes.
+    """EVERY OPEN profile, stable order — closed profiles' stale tabs stay out.
 
     One row per answering profile: `{"name", "dir", "rows", "windows",
-    "source", "stamp"}` (`name` is the `profiles.ini` handle). The old
-    freshest-only pick is gone: two running profiles are BOTH seen.
+    "source", "stamp"}` (`name` is the `profiles.ini` handle).
     """
-    dirs = profiles if profiles is not None else profile_dirs()
+    dirs = _session_dirs(profiles)
     names = profile_names()
     sessions = []
     for profile in dirs or []:
@@ -268,9 +272,11 @@ def session_source(profiles=None) -> tuple:
 
 
 def addon_seen(profiles=None, needles=ADDON_NEEDLES):
-    """True when any profile names the add-on; False when ≥1 answers; else None."""
+    """True when any OPEN profile names the add-on; False when ≥1 answers; else None.
+
+    """
     readable = False
-    for profile in (profiles if profiles is not None else profile_dirs()):
+    for profile in _session_dirs(profiles):
         doc = _read_json(Path(profile) / "extensions.json")
         if not isinstance(doc, dict):
             continue

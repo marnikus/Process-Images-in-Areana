@@ -38,6 +38,7 @@ window.Boot = {
   _bridge() { const a = this._app(); return a ? (a.bridge || null) : null; },
 
   onBridgeReady(fn) {
+    if (typeof fn !== 'function') { console.warn('[Boot] onBridgeReady needs a function'); return; }
     const br = window.BridgeReady;
     if (br && typeof br.ready === 'function') { br.ready(fn); return; }
     if (document.readyState === 'loading') {

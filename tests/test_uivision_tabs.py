@@ -5,6 +5,7 @@ the module only reads files Firefox itself writes, and every refusal (gone,
 locked, unparsable) must answer "not seen", never an exception.
 """
 
+import os
 import json
 from pathlib import Path
 
@@ -312,3 +313,34 @@ def test_profile_names_prefers_a_later_named_section(tmp_path, monkeypatch):
     monkeypatch.setattr(tabs, "profile_roots", lambda *a: [root])
     names = tabs.profile_names(roots=[root])
     assert names[named] == "Work"          # the -P handle comes from the named section
+
+
+def _lock(profile: Path) -> Path:
+    """A live POSIX profile lock pointing at this test process."""
+    link = profile / "lock"
+    link.symlink_to(f"127.0.0.1:+{os.getpid()}")
+    return link
+
+
+def test_profile_sessions_default_reads_only_open_profiles(tmp_path, monkeypatch):
+    """Closed profiles' stale rows stay out; explicit lists read as given."""
+    live = write_profile(tmp_path / "live", store=STORE)
+    shut = write_profile(tmp_path / "shut", store=STORE)
+    _lock(live)
+    monkeypatch.setattr(tabs, "profile_dirs", lambda: [live, shut])
+    sessions = tabs.profile_sessions()
+    assert [s["dir"] for s in sessions] == [str(live)]
+    assert sessions[0]["rows"] and all("arena.ai" in r["url"] or "example.com" in r["url"]
+                                       for r in sessions[0]["rows"])
+    assert len(tabs.profile_sessions(profiles=[live, shut])) == 2  # explicit: caller's call
+
+
+def test_addon_seen_default_ignores_closed_profiles(tmp_path, monkeypatch):
+    without = write_profile(tmp_path / "n", addons=[{"id": "{ads}", "name": "uBlock"}])
+    shut_with = write_profile(tmp_path / "y", addons=[
+        {"id": "{x}", "defaultLocale": {"name": "Ui.Vision RPA"}}])
+    _lock(without)
+    monkeypatch.setattr(tabs, "profile_dirs", lambda: [without, shut_with])
+    assert tabs.addon_seen() is False          # the closed one names it — means nothing
+    _lock(shut_with)
+    assert tabs.addon_seen() is True

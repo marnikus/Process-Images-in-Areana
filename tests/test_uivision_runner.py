@@ -7,6 +7,7 @@ popen, os_windows, deliver) keep the test off the real desktop; the frozen
 flush-wait in tests that never match.
 """
 
+import os
 import itertools
 import json
 import time
@@ -1072,3 +1073,28 @@ async def test_delivery_to_the_resolved_window_sends_each_profile_its_tab(
     # second profile: nothing mapped, nothing running its tabs → manual path (no delivery)
     assert len(deliver.calls) == 1
     assert result.kind in ("ok", "error")
+
+
+def test_report_profiles_names_skipped_closed_profiles(tmp_path, monkeypatch):
+    live = tmp_path / "live.default"
+    live.mkdir()
+    (live / "lock").symlink_to(f"127.0.0.1:+{os.getpid()}")
+    shut = tmp_path / "old.default"
+    shut.mkdir()
+    monkeypatch.setattr(runner.tabs, "profile_dirs", lambda: [live, shut])
+    rows = []
+    runner._report_profiles(lambda step, msg, level="info": rows.append((step, msg, level)))
+    assert "scanned: 2" in rows[0][1]
+    assert len(rows) == 2
+    assert "old.default" in rows[1][1] and "live.default" not in rows[1][1]
+    assert "only open profiles run" in rows[1][1]
+
+
+def test_report_profiles_stays_quiet_when_all_open(tmp_path, monkeypatch):
+    live = tmp_path / "live.default"
+    live.mkdir()
+    (live / "lock").symlink_to(f"127.0.0.1:+{os.getpid()}")
+    monkeypatch.setattr(runner.tabs, "profile_dirs", lambda: [live])
+    rows = []
+    runner._report_profiles(lambda step, msg, level="info": rows.append((step, msg, level)))
+    assert len(rows) == 1 and "scanned: 1" in rows[0][1]
