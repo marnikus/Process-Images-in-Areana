@@ -38,6 +38,12 @@ window.Boot = {
   _bridge() { const a = this._app(); return a ? (a.bridge || null) : null; },
 
   onBridgeReady(fn) {
+    if (typeof fn !== 'function') {
+      // a non-callback used to surface as `Uncaught TypeError: fn is not a
+      // function` at startup — name it once, boot the rest of the UI
+      this._warnMissing('onBridgeReady(callback) got a non-function callback — ignored', false);
+      return;
+    }
     const br = window.BridgeReady;
     if (br && typeof br.ready === 'function') { br.ready(fn); return; }
     if (document.readyState === 'loading') {

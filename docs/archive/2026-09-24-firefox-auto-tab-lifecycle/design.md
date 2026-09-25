@@ -284,3 +284,33 @@ owner's savelog (`config\uivision\logs\run-20260925-115330.txt` + `-2.txt`)
 and the title the leftover autostart tab SHOWED after a run (it stays open
 until the backstop fires) are requested — that pair pins whether the title was
 ever visible to the tab strip at all.
+
+## Revision 2026-09-25 (3) — the startup `js: Uncaught TypeError: fn is not a function`
+
+The owner's PowerShell showed one JS line at every startup, right after
+`Starting Arena Image Processor` — nothing else. Pinned facts:
+
+* The `js: ` prefix is **QtWebEngine's own default** `javaScriptConsoleMessage`
+  handler printing the page's JS console to stdout — the line is a REAL
+  uncaught error in the UI page, and the default handler prints the message
+  WITHOUT file or line, so it was undiagnosable from the console.
+* A Node vm harness (`/tmp`-only diagnostic, real `index.html` script order +
+  a QWebChannel-handshake simulation) boots the current tree CLEAN: no
+  `fn is not a function`. The only UNGUARDED `fn(` call sites in the tree are
+  `Boot.onBridgeReady(fn)` and `BridgeReady.ready(fn)` (both call `fn(...)`
+  directly on the connected path) — a non-function callback there is exactly
+  the reported signature, with no other candidate in `qwebchannel.js` (Qt's
+  own file) or any panel.
+
+**The change:** `MainWindow` now connects
+`page().javaScriptConsoleMessage` to `app/ui/js_console.on_js_console`, which
+prints `js: <message> (<source>:<line>)` — the NEXT occurrence of ANY JS
+startup error names its file and line in the owner's PowerShell. Both entry
+points reject a non-function callback with ONE named warning (never an
+uncaught throw that aborts the remaining boot). The handler lives in its own
+leaf module (`app/ui/js_console.py`) so the `MainWindow` class span does not
+grow (the ratchet is absolute); one stale comment (describing a screen clamp
+that was never implemented) was removed to offset the connect line.
+Tests: `tests/js/test_bridge_ready.mjs` (new — queue/flush contract + guard),
+`test_boot.mjs` +1 (guard), `tests/test_ui_wiring.py` +2 (the connection and
+the guard, statically).

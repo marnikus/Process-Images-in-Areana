@@ -62,6 +62,26 @@ def test_js_reads_the_recordings_bridge_under_the_registered_name():
     assert "window.CaptchaRecordingsBridge" in ready
 
 
+def test_js_console_errors_carry_the_source_location():
+    """Qt's default javaScriptConsoleMessage handler prints the message only —
+    the owner's recurring `js: … is not a function` was undiagnosable from PS
+    because of it. MainWindow must connect the handler that adds file:line."""
+    source = MAIN_WINDOW.read_text(encoding="utf-8")
+    assert "javaScriptConsoleMessage.connect(js_console.on_js_console)" in source
+    handler = (ROOT / "app" / "ui" / "js_console.py").read_text(encoding="utf-8")
+    assert "({source}:{line})" in handler
+
+
+def test_boot_entry_points_reject_non_function_callbacks():
+    """`fn is not a function` used to surface as an UNCAUGHT TypeError at
+    startup (QtWebEngine prints JS errors to PS). Both public entry points
+    must reject a bad callback with a named warning instead of throwing."""
+    boot = (WEB / "js" / "core" / "boot.js").read_text(encoding="utf-8")
+    ready = BRIDGE_READY.read_text(encoding="utf-8")
+    assert "typeof fn !== 'function'" in boot
+    assert "typeof fn !== 'function'" in ready
+
+
 def test_recordings_panels_only_call_qt_slots():
     slotted = _slotted_methods(RECORDINGS_BRIDGE)
     called = set()

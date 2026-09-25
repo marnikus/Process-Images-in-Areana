@@ -8,6 +8,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel
 
 from app.persistence.config_manager import ConfigManager
+from app.ui import js_console
 from app.ui.bridge import Bridge
 from app.ui.panels.browser_tabs import start_url_reconciler
 from app.ui.services.captcha_recordings_bridge import CaptchaRecordingsBridge
@@ -84,6 +85,8 @@ class MainWindow(QMainWindow):
         self.channel.registerObject("bridge", self.bridge)
         self.channel.registerObject("captchaRecordings", self.recordings_bridge)
         self.view.page().setWebChannel(self.channel)
+        # JS console → stdout WITH file:line (Qt's default prints the message only)
+        self.view.page().javaScriptConsoleMessage.connect(js_console.on_js_console)
 
     def _load_index(self) -> None:
         # Load UI
@@ -104,8 +107,6 @@ class MainWindow(QMainWindow):
             y = int(saved["y"])
             w = int(saved["width"])
             h = int(saved["height"])
-            # Clamp to reasonable screen area — avoid off-screen
-            # Keep at least 100px visible
             self.setGeometry(x, y, w, h)
         except Exception:
             # Ignore any restore errors — keep default 1600x1000

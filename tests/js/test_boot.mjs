@@ -128,4 +128,11 @@ describe('Boot.onBridgeReady', () => {
     done.Boot.onBridgeReady((b) => { seen = b; });
     assert.deepEqual(seen, { x: 1 });
   });
+
+  test('a non-function callback is named and ignored, never an uncaught throw', () => {
+    const { Boot, warnings } = load();
+    assert.doesNotThrow(() => Boot.onBridgeReady(undefined));
+    assert.doesNotThrow(() => Boot.onBridgeReady('nope'));
+    assert.ok(warnings.some((w) => w.includes('onBridgeReady(callback)')));
+  });
 });

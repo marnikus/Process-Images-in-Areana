@@ -25,7 +25,16 @@ window.BridgeReady = (function () {
   }
   document.addEventListener('DOMContentLoaded', boot);
   return {
-    ready(fn) { if (st.connected) fn(st.bridge); else queue.push(fn); },
+    ready(fn) {
+      // non-callbacks used to throw `Uncaught TypeError: fn is not a function`
+      // (uncaught, because the connected path calls fn directly) — never
+      // take the boot down over a bad argument
+      if (typeof fn !== 'function') {
+        console.warn('[BridgeReady] ready(callback) got a non-function callback — ignored');
+        return;
+      }
+      if (st.connected) fn(st.bridge); else queue.push(fn);
+    },
     get bridge() { return st.bridge; },
     get connected() { return st.connected; },
   };
