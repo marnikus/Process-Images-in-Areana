@@ -17,7 +17,8 @@ from pathlib import Path
 
 from app.core.window_catalog import GRID_VERSION
 from app.persistence.workspace.errors import WorkspaceError
-from app.persistence.workspace.manifest import FORMAT_NAME, WORKSPACE_FORMAT
+from app.persistence.workspace.manifest import (FORMAT_NAME, MIN_WORKSPACE_FORMAT,
+                                                WORKSPACE_FORMAT)
 from .registry import all_providers
 
 META_FILE = "workspace_meta.json"
@@ -84,7 +85,7 @@ def _build_sha() -> str:
 
 
 def compat_block() -> dict:
-    return {"min_workspace_format": 1, "grid_version": GRID_VERSION,
+    return {"min_workspace_format": MIN_WORKSPACE_FORMAT, "grid_version": GRID_VERSION,
             "format": FORMAT_NAME, "workspace_format": WORKSPACE_FORMAT}
 
 

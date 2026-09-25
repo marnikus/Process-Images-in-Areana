@@ -65,3 +65,12 @@ def test_every_provider_keeps_the_contract():
         capture = provider.capture
         assert callable(capture) and callable(provider.validate)
         assert callable(provider.apply) and callable(provider.reconcile)
+
+
+def test_restore_order_helper_puts_registry_first_then_unknowns():
+    """D2/D3: ONE id-ordering helper for preview AND strict expansion."""
+    from app.services.workspace.registry import RESTORE_ORDER, restore_order
+    assert RESTORE_ORDER, "sanity"
+    sample = [RESTORE_ORDER[-1], "not_a_domain", RESTORE_ORDER[0]]
+    assert restore_order(set(sample)) == [RESTORE_ORDER[0], RESTORE_ORDER[-1], "not_a_domain"]
+    assert restore_order(set()) == []

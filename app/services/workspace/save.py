@@ -39,9 +39,9 @@ def _inclusion_policy() -> dict:
 
 def _write_env(temp: Path, bridge) -> None:
     """metadata/app-environment.json — redacted (no user paths, no secrets)."""
-    from app.persistence.workspace.manifest import FORMAT_NAME
+    from app.persistence.workspace.manifest import FORMAT_NAME, WORKSPACE_FORMAT
     env = {**app_meta(bridge), "grid_version": compat_block()["grid_version"],
-           "workspace_format": 1, "format": FORMAT_NAME,
+           "workspace_format": WORKSPACE_FORMAT, "format": FORMAT_NAME,
            "inclusion_policy": _inclusion_policy()}
     fsio.write_bytes(temp, "metadata/app-environment.json", canonical_bytes(env))
 

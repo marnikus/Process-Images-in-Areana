@@ -345,7 +345,7 @@ def test_expand_strict_follows_a_transitive_chain(monkeypatch):
              "b": _FakeProvider("b", {"c": "strict"}),
              "c": _FakeProvider("c")}
     monkeypatch.setattr(ws_restore, "get", chain.get)
-    monkeypatch.setattr(ws_restore, "RESTORE_ORDER", ("c", "b", "a"))
+    monkeypatch.setattr("app.services.workspace.registry.RESTORE_ORDER", ("c", "b", "a"))
     providers = ws_restore._expand_strict([chain["a"]])
     assert [p.domain_id for p in providers] == ["c", "b", "a"]  # registry order
 
@@ -357,7 +357,7 @@ def test_expand_strict_keeps_registered_providers_outside_the_order_tuple(monkey
     late = _FakeProvider("late")
     chain = {"a": _FakeProvider("a", {"late": "strict"}), "late": late}
     monkeypatch.setattr(ws_restore, "get", chain.get)
-    monkeypatch.setattr(ws_restore, "RESTORE_ORDER", ("a",))
+    monkeypatch.setattr("app.services.workspace.registry.RESTORE_ORDER", ("a",))
     providers = ws_restore._expand_strict([chain["a"]])
     assert [p.domain_id for p in providers] == ["a", "late"]  # unknown-order ids after known
 

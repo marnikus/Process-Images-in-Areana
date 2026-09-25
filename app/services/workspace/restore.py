@@ -22,7 +22,7 @@ from app.persistence.workspace.integrity import file_sha, safe_rel_path
 from app.persistence.workspace.manifest import entry_for, read_manifest
 from . import reports
 from .coordinator import config_dir, utc_now_iso
-from .registry import RESTORE_ORDER, get
+from .registry import get, restore_order
 
 RECOVERY_DIR = "workspace_recovery"
 RECOVERY_KEEP = 10
@@ -60,9 +60,8 @@ def preview_restore(root) -> dict:
     manifest, err = read_manifest(root)
     if err:
         return {"ok": False, "error": err}
-    domains = [_preview_row(root, manifest, d) for d in
-               [x for x in RESTORE_ORDER if x in manifest.get("domains", {})]
-               + [x for x in manifest.get("domains", {}) if x not in RESTORE_ORDER]]
+    domains = [_preview_row(root, manifest, d)
+               for d in restore_order(set(manifest.get("domains", {})))]
     return {"ok": True, **reports.preview_report(
         root=str(root), manifest=manifest, domains=domains,
         remap=_remap_notes(root, manifest))}
@@ -99,16 +98,10 @@ def _selected_ids(manifest: dict, selected) -> list:
     return [i for i in ids if i in wanted]
 
 
-def _restore_order(ids: set) -> list:
-    """Registry order first, unknown-manifest ids after (never lose a domain)."""
-    known = [i for i in RESTORE_ORDER if i in ids]
-    return known + sorted(ids - set(RESTORE_ORDER))
-
-
 def _selection_providers(manifest: dict, selected) -> tuple:
     """Providers for this restore + unknown-id rows (manifest is the only registry)."""
     unknown = [s for s in (selected or []) if s not in manifest.get("domains", {})]
-    ordered = _restore_order(set(_selected_ids(manifest, selected)))
+    ordered = restore_order(set(_selected_ids(manifest, selected)))
     providers = [get(i) for i in ordered]
     return [p for p in providers if p], unknown
 
@@ -128,7 +121,8 @@ def _expand_strict(providers: list) -> list:
             if dep not in chosen:
                 chosen.add(dep)
                 pending.append(get(dep))
-    return [p for p in (get(i) for i in RESTORE_ORDER) if p and p.domain_id in chosen]
+    ordered_ids = restore_order(set(chosen))
+    return [p for p in (get(i) for i in ordered_ids) if p]
 
 
 def _recovery_dir(bridge) -> Path:

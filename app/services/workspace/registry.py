@@ -33,6 +33,12 @@ for _cls in (CaptchaKeysProvider, RecordingsProvider, CaptchaStatsProvider,
     _TABLE[_provider.domain_id] = _provider
 
 
+def restore_order(ids: set) -> list:
+    """Registry order first, unknown ids after, sorted (never lose a domain)."""
+    known = [i for i in RESTORE_ORDER if i in ids]
+    return known + sorted(ids - set(RESTORE_ORDER))
+
+
 def get(domain_id: str) -> StateProvider | None:
     """Provider by stable domain id (manifest vocabulary), or None."""
     return _TABLE.get(domain_id)
