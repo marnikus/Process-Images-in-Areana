@@ -109,7 +109,7 @@ def _capture_one(bridge, provider) -> _Capture:
     try:
         result = provider.capture(bridge)
         if not result.ok:
-            raise WorkspaceError(provider.domain_id, "apply",
+            raise WorkspaceError(provider.domain_id, "capture",
                                  "capture failed: " + ("; ".join(result.notes) or "unknown"))
         if not result.excluded:
             err = provider.validate(result.doc)

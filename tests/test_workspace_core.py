@@ -39,8 +39,16 @@ def test_workspace_error_row_is_complete_and_truncated():
 
 def test_stage_vocabulary_covers_every_reported_stage():
     assert set(STAGES) == {"missing", "unsafe_path", "checksum", "parse", "schema",
-                           "semantic", "migration", "dependency", "apply",
+                           "semantic", "migration", "dependency", "capture", "apply",
                            "reconcile", "rollback"}
+
+
+def test_capture_failures_report_the_capture_stage_not_apply():
+    """S1: a SAVE-side capture failure must not claim "previous values were kept"."""
+    from app.persistence.workspace.errors import WorkspaceError
+    row = WorkspaceError("job_history", "capture", "capture failed: boom").to_dict()
+    assert row["stage"] == "capture"
+    assert "previous values" not in row["recommended_action"]
 
 
 # ---- integrity ----

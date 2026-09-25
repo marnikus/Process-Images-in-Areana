@@ -10,7 +10,7 @@ from __future__ import annotations
 
 STAGES = (
     "missing", "unsafe_path", "checksum", "parse", "schema", "semantic",
-    "migration", "dependency", "apply", "reconcile", "rollback",
+    "migration", "dependency", "capture", "apply", "reconcile", "rollback",
 )
 
 _RECOMMENDED = {
@@ -22,6 +22,7 @@ _RECOMMENDED = {
     "semantic": "Skip this domain; fix the saved file or re-save the workspace.",
     "migration": "Skip this domain — this build cannot migrate the saved version.",
     "dependency": "Restore the failed dependency first, then retry this domain.",
+    "capture": "This domain could not be read for the snapshot — fix the cause or allow a partial snapshot.",
     "apply": "The previous values were kept. Retry the restore or report the error.",
     "reconcile": "State was restored but live recomputation failed — restart the app.",
     "rollback": "Open the recovery folder named in the report and restore by hand.",
