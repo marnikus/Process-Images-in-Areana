@@ -247,6 +247,7 @@ SELECTORS: Dict[str, SelectorObject] = {
             '[data-sidebar="footer"] div.font-heading.truncate',
             '[data-sidebar="footer"] button div.truncate',
             '[data-sidebar="rail"] div.font-heading.truncate',
+            '[data-sidebar="menu"] button span:has(> img) + div',
         ],
         scope='[data-sidebar="sidebar"]',
         mustBeVisible=True,
@@ -258,8 +259,10 @@ SELECTORS: Dict[str, SelectorObject] = {
         evidence=("docs/research/Directly Chat with Frontier Image Generation AI Models.html: "
                   "ul[data-sidebar=menu] > button > div.font-heading.truncate = zeusthunder1991@gmail.com "
                   "(avatar span sibling); the same string also sits in the RSC script payload, which is "
-                  "not probed"),
-        lastVerified="2026-09-21",
+                  "not probed. 2026-09-25 (Firefox identify): owner evidence div.font-heading.min-w-0."
+                  "flex-1.truncate = mailreceiverpro@gmail.com; last fallback is structural — the "
+                  "text div right after the avatar span, class-free"),
+        lastVerified="2026-09-25",
     ),
     "new_chat_button": SelectorObject(
         name="new_chat_button",

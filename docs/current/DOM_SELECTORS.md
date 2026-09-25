@@ -578,6 +578,7 @@ Read-only — the app never clicks it.
 | **Fallback 2** | `[data-sidebar="footer"] div.font-heading.truncate` |
 | **Fallback 3** | `[data-sidebar="footer"] button div.truncate` |
 | **Fallback 4** | `[data-sidebar="rail"] div.font-heading.truncate` |
+| **Fallback 5** | `[data-sidebar="menu"] button span:has(> img) + div` — structural, class-free: the text div right after the avatar span (2026-09-25) |
 | **Scope** | `[data-sidebar="sidebar"]` |
 | **mustBeVisible / mustBeEnabled** | true / false (a label is not a control) |
 | **expectedCount** | 1 |
@@ -585,6 +586,6 @@ Read-only — the app never clicks it.
 | **Probe** | `app/browser/owner_probe.py` builds the JS; selectors arrive from `probe_selectors.account_email_probe()` (RULE 21 — the file holds placeholders only) |
 | **Reading rule** | leaf text nodes only (a container's concatenated text is never used), ≤ 80 chars, an email-shaped match (`[A-Za-z0-9._%+-]+@…`) inside a visible element that is not inside a `script`/`style`/`textarea`/`contenteditable` (the user's own prompt can never label a tab); three widening nets — scoped candidates → document-wide candidates → a bounded walk of `[data-sidebar] aside nav header` descendants |
 | **Reply** | JSON `{email, via, candidates}` → `core.tab_alias.email_from_probe` (lowercased, ≤ 64 chars, anything else → `''`) |
-| **Written by** | `services/live/tab_owner.resolve_owners(pool)` — on every pool join and every reconciler pass; a silent/broken reply keeps the email already known (`aka_…` is never written over a known account) |
-| **Evidence** | sidebar account node in `docs/research/Directly Chat with Frontier Image Generation AI Models.html` |
-| **Site adapter** | `account_email` entry, lastVerified 2026-09-21 |
+| **Written by** | Chrome: `services/live/tab_owner.resolve_owners(pool)` — on every pool join and every reconciler pass; a silent/broken reply keeps the email already known (`aka_…` is never written over a known account). Firefox (no CDP client): the same probe inside the Ui.Vision `Arena_Identify` macro (`browser/uivision/identify.py`, bounded 8 s in-page wait, reply stripped to `{email, via, overlay, text}`), driven by `services/live/firefox_identity` (I-64) |
+| **Evidence** | sidebar account node in `docs/research/Directly Chat with Frontier Image Generation AI Models.html`; owner evidence 2026-09-25 `<div class="font-heading min-w-0 flex-1 truncate text-left text-sm font-normal">mailreceiverpro@gmail.com</div>` |
+| **Site adapter** | `account_email` entry, lastVerified 2026-09-25 |

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..page_status import PageInfo
-from . import profiles, tabs
+from . import plan, profiles, tabs
 
 FIREFOX_SCHEME = "firefox://"
 BROWSER = "firefox"
@@ -42,17 +42,33 @@ class FirefoxPageInfo(PageInfo):
     """A pool entry that is a Firefox tab — profile attribution rides the entry.
 
     Subclass (not extra fields on `PageInfo`): the base class sits on its
-    zero-tolerance class-LOC ratchet (design D3).
+    zero-tolerance class-LOC ratchet (design D3). The pool key (`tab_id`) is
+    the identity; `alias` is display metadata only (2026-09-25 name design):
+    detected account → saved account of this same key → profile name → ''
+    (then `label` falls back to the short technical id). Never `aka_…`.
     """
 
     browser: str = BROWSER
     profile: str = ""
     profile_dir: str = ""
+    name_source: str = ""        # "detected" once the identify macro read the account
+    name_checked_at: float = 0.0  # epoch of the last identify answer (0 = never)
+
+    @property
+    def alias(self) -> str:
+        return self.owner or plan.profile_label(self.profile, self.profile_dir)
+
+    @property
+    def display_source(self) -> str:
+        """Which fallback rung the label stands on: detected | saved | profile | id."""
+        if self.owner:
+            return self.name_source or "saved"
+        return "profile" if self.alias else "id"
 
     def to_dict(self) -> dict:
         wire = super().to_dict()
-        wire["profile"] = self.profile
-        wire["profile_dir"] = self.profile_dir
+        wire.update(profile=self.profile, profile_dir=self.profile_dir,
+                    name_source=self.display_source, name_checked_at=self.name_checked_at)
         return wire
 
 

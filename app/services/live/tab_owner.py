@@ -34,7 +34,7 @@ async def resolve_owners(pool: Any) -> int:
             continue
         found += 1
         if email != getattr(page, "owner", ""):
-            _store(pool, tab_id, page, email)
+            store_owner(pool, tab_id, page, email)
     return found
 
 
@@ -48,8 +48,11 @@ async def _read_owner(client: Any, tab_id: str) -> str:
     return normalize_owner(interpret_owner(reply).get("email"))
 
 
-def _store(pool: Any, tab_id: str, page: Any, email: str) -> None:
-    """Write the account on the page and into the alias book (pool-locked)."""
+def store_owner(pool: Any, tab_id: str, page: Any, email: str) -> None:
+    """Write the account on the page and into the alias book (pool-locked).
+
+    Shared with the Firefox identify drain (`firefox_identity`): one writer.
+    """
     try:
         with pool._lock:
             page.owner = email
@@ -60,4 +63,4 @@ def _store(pool: Any, tab_id: str, page: Any, email: str) -> None:
         pass
 
 
-__all__ = ["resolve_owners", "client_of"]
+__all__ = ["resolve_owners", "store_owner", "client_of"]

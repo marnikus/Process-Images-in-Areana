@@ -20,6 +20,7 @@ import time
 from functools import partial
 
 from app.services.auto_connect import pick_primary_ws
+from app.services.live import firefox_identity
 from app.services.live.reconcile import LiveDeps, reconcile_once, start_reconciler
 from app.services.run_state import (
     pooled_ids,
@@ -526,7 +527,8 @@ def live_deps(bridge) -> LiveDeps:
         return left
 
     return LiveDeps(fetch_tabs=fetch_tabs, join_tab=join_tab, leave_tab=leave_tab,
-                    commit=partial(commit_urls_system, bridge), log=bridge._log)
+                    commit=partial(commit_urls_system, bridge), log=bridge._log,
+                    identify=partial(firefox_identity.observe, bridge))
 
 
 def start_url_reconciler(bridge) -> bool:

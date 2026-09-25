@@ -11,6 +11,9 @@ target profile's window → launch (remoting forwards into the RUNNING instance)
 3 s delay" contract (§4.3). Cancel is honoured before launch and inside the
 poll (RULE 7); every step logs with the 🦊 marker (RULE 2).
 
+The identify macro (2026-09-25, `run_identify`) shares the SAME lock and gap:
+account detection + the visual tab id overlay never race a job macro.
+
 Layer: services → browser only (`uivision.config` was extracted so the panel
 and this lane share one validation/spec builder — RULE 10).
 """
@@ -20,9 +23,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from app.browser.uivision import config as uv_config
+from app.browser.uivision import identify as uv_identify
 from app.browser.uivision import plan as uv_plan
 from app.browser.uivision import runner as uv_runner
 from app.browser.uivision import tabs as uv_tabs
@@ -71,19 +76,27 @@ def _target_windows(page) -> tuple:
     return ()
 
 
-def _job_run(spec, page):
-    """One PlannedRun for this entry: selector from the entry, fresh savelog file."""
+def _planned_run(spec, page):
+    """One PlannedRun for this entry: selector from the entry's own title/URL."""
     target = uv_plan.Target(profile_name=getattr(page, "profile", ""),
                             profile_dir=getattr(page, "profile_dir", ""),
                             url=page.url, title=page.title, windows=_target_windows(page))
-    runs = uv_plan.runs([target], uv_plan.Patterns(spec.pattern, spec.url_pattern),
-                        spec.config_dir, time.strftime("%Y%m%d-%H%M%S"))
-    run = runs[0]
+    return uv_plan.runs([target], uv_plan.Patterns(spec.pattern, spec.url_pattern),
+                        spec.config_dir, time.strftime("%Y%m%d-%H%M%S"))[0]
+
+
+def _fresh(run):
+    """Drop a stale savelog so a run never inherits an earlier verdict."""
     try:
-        Path(run.log_path).unlink(missing_ok=True)   # a fresh job never inherits a verdict
+        Path(run.log_path).unlink(missing_ok=True)
     except OSError:
         pass
     return run
+
+
+def _job_run(spec, page):
+    """The job's planned run with a fresh savelog file."""
+    return _fresh(_planned_run(spec, page))
 
 
 def _reporter(bridge):
@@ -118,3 +131,33 @@ async def run_firefox_macro(bridge, page) -> tuple:
         kind, message = await _execute(spec, run, bridge, report)
         _LAST_AT = time.monotonic()
     return kind, message
+
+
+def _identify_spec(bridge, page, cmd_payload: str):
+    """The job's spec retargeted at the identify macro: payload on cmd_var2, wait on cmd_var1."""
+    spec = uv_config.build_spec(bridge, _job_config(bridge, page))
+    return replace(spec, macro=uv_identify.MACRO_NAME, target=cmd_payload,
+                   pause_ms=uv_identify.WAIT_MS)
+
+
+async def run_identify(bridge, page, cmd_payload: str) -> tuple:
+    """(kind, message, savelog lines) of one identify macro on this pool entry.
+
+    Hard-drive storage only: the browser store cannot receive a written macro,
+    so that configuration answers `blocked` before anything launches (RULE 4).
+    """
+    global _LAST_AT
+    spec = _identify_spec(bridge, page, cmd_payload)
+    if spec.storage != "xfile":
+        return "blocked", "identify needs hard-drive macro storage (xfile)", ()
+    run = replace(_planned_run(spec, page),
+                  log_path=uv_identify.log_path(spec.config_dir, time.strftime("%Y%m%d-%H%M%S")))
+    async with _MACRO_LOCK:
+        _fresh(run)
+        await _wait_gap(uv_config.load_config(bridge))
+        seq = Sequence(spec, RunSeams(), lambda step, msg, level="info": log.debug(
+            "identify %s: %s", step, msg))
+        seq.page = uv_identify.provision(spec)
+        result = await seq.execute([run])
+        _LAST_AT = time.monotonic()
+    return result.kind, result.message, tuple(result.lines)

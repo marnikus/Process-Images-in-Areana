@@ -57,6 +57,7 @@ class LiveDeps:
     commit: Callable[[], Any]
     log: Callable[..., Any]
     leave_tab: Callable[[str], bool] | None = None  # checkbox→pool exit (D-4); None = no pool writes
+    identify: Callable[[Any, bool], Any] | None = None  # Firefox names + overlay (never awaited)
 
 
 @dataclass
@@ -359,6 +360,8 @@ async def _pool_phase(p: _Pass, plan: ac.AutoConnectPlan) -> None:
     try:
         await _join_and_sync(p, plan)
         _enforce_membership(p)
+        if p.deps.identify is not None:  # after exits: a departed tab's overlay is cleared
+            p.deps.identify(p.tabs, p.source == "manual")
     except Exception as e:
         p.report.error = str(e)
         p.deps.log(f"⚠ Pool update failed ({e}) — URL rows kept, next pass retries", "warn")
