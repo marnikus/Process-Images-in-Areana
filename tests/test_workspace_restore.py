@@ -315,11 +315,15 @@ def test_recovery_backup_holds_previous_live_files(bridge, snapshot):
 
 
 def test_recovery_backup_on_a_fresh_machine_restores_without_crashing(bridge, snapshot):
-    # fresh machine: providers list no live files (they pre-filter existence),
-    # so the recovery snapshot is created empty and the restore still succeeds.
+    # fresh machine: no app_state.json yet — the restore must not crash; the
+    # snapshot holds only the files that DO exist (providers pre-filter), and
+    # the absent app_state file is simply not listed.
     reply = restore_workspace(bridge, str(snapshot))
     assert reply["ok"]
     recovery_dirs = sorted((bridge.config.dir / "workspace_recovery").iterdir())
     assert recovery_dirs, "recovery snapshot still created"
     recovery = json.loads((recovery_dirs[-1] / "recovery.json").read_text())
-    assert recovery["files"] == {} and recovery["absent"] == {}
+    assert "arena_state" not in recovery["files"]
+    assert {"grid_window", "session_settings", "undo"} <= set(recovery["files"])
+    assert recovery["absent"] == {}
+    assert bridge.state.prompt["user_prompt"] == "saved prompt"  # restore applied
