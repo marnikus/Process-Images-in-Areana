@@ -140,6 +140,7 @@ def _identify_spec(bridge, page, cmd_payload: str):
                    pause_ms=uv_identify.WAIT_MS)
 
 
+# ideal-size: 21 lines reason=lock + gap + provision + run + read-back must stay in one critical section; splitting would leak the macro lock across helpers
 async def run_identify(bridge, page, cmd_payload: str) -> tuple:
     """(kind, message, savelog lines) of one identify macro on this pool entry.
 
