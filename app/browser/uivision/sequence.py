@@ -20,7 +20,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import autorun, delivery, desktop, guard, launch, logread, plan, tabs
+from . import autorun, delivery, desktop, guard, launch, logread, plan, tabs, verify
 
 RETRY_PAUSE_SEC = 2  # breathe between the miss and the fresh resolve
 
@@ -127,7 +127,7 @@ class Sequence:
                 return self._stopped_after(outcomes, len(runs))
             if pos > 0:
                 await self._inter_run_delay()
-            verdict = await self._one(run, len(runs))
+            verdict = await self._one(run)
             outcomes.append((run, verdict))
             if len(runs) > 1:
                 self.recorder("result", f"run {run.index}/{run.total} ({run.label}) — "
@@ -146,125 +146,19 @@ class Sequence:
                                f"(Firefox needs time to process the previous autostart tab)")
         await _nap(self.seams.sleep or _default_sleep, delay)
 
-    async def _one(self, run, total):
+    async def _one(self, run):
         """One planned run: resolve → foreground → deliver → poll, one tab retry."""
-        verdict = await self._attempt(run, total, prime=True)
+        verdict = await _attempt_run(self, run, prime=True)
         if verdict is not None and logread.retryable(verdict) and not self._stopped():
-            self.recorder("launch", f"{self._scope(run)}tab not found — retrying once "
+            self.recorder("launch", f"{plan.run_scope(run)}tab not found — retrying once "
                                     f"with a fresh resolve", "warn")
             await _nap(self.seams.sleep or _default_sleep, RETRY_PAUSE_SEC)
             if self._stopped():
                 return logread.LogResult(kind="stopped", message="stopped before the retry")
             logread.drop_log(run.log_path)
-            verdict = await self._attempt(run, total, prime=False)
+            verdict = await _attempt_run(self, run, prime=False)
         return verdict
 
-    async def _attempt(self, run, total, prime: bool):
-        """One delivery attempt: resolve the selector, foreground, deliver, poll."""
-        selector, windows = resolve_run_selector(run, self.rescan)
-        if selector is None:
-            self.recorder("launch", f"{self._scope(run)}skipped — the tab is no longer open "
-                                    f"(or its profile closed) since detect", "warn")
-            return logread.LogResult(kind="skipped", message="the tab is no longer open")
-        note = "" if run.selector else " (resolved fresh at launch)"
-        self.recorder("launch", f"{self._scope(run)}addressing {selector}{note}")
-        if prime:
-            self._foreground(run)
-        url = autorun.launch_url_for(self.spec, self.page, run, selector)
-        return await self._deliver_and_poll(run, url, windows, total)
-
-    def _foreground(self, run) -> None:
-        """Raise the window holding this run's tab (critical rule: visible+front).
-
-        The needle is the first non-blank pattern — a URL-only search maps the
-        window through its URL (the session half of the mapping), a title
-        pattern through both halves as before.
-        """
-        needle = (self.spec.pattern or self.spec.url_pattern or "").strip()
-        windows = (self.seams.windows() if self.seams.windows
-                   else list(run.target.windows))
-        mapped = desktop.foreground_tab_window(needle, windows)
-        if mapped is not None:
-            matches, raised = mapped
-            titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
-            self.recorder("foreground", f"{self._scope(run)}{raised}/{len(matches)} Firefox "
-                                        f"window(s) on top — {titles} (holds the tab matching "
-                                        f"“{needle}”)")
-            return
-        matches, raised = desktop.foreground(needle)
-        if not matches:
-            self.recorder("foreground", f"{self._scope(run)}no Firefox window matches "
-                                        f"“{needle}” — launching anyway; the "
-                                        f"macro reuses a matching tab and never opens one "
-                                        f"(E210 if none)", "warn")
-            return
-        titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
-        self.recorder("foreground", f"{self._scope(run)}{raised}/{len(matches)} Firefox "
-                                    f"window(s) on top — {titles}")
-
-    async def _deliver_and_poll(self, run, url, windows, total):
-        """The chosen delivery, then the savelog wait (manual runs still poll)."""
-        seen = self.seams.os_windows() if self.seams.os_windows else desktop.firefox_windows()
-        kind, payload = desktop.choose_delivery(run, seen, total, windows)
-        if kind == "cold":
-            try:
-                process = self._cold_launch(run, url)
-            except OSError as exc:
-                self.recorder("launch", f"{self._scope(run)}Firefox would not start: {exc}", "error")
-                return logread.LogResult(kind="blocked",
-                                         message=f"Firefox would not start: {exc}")
-            if process is None:
-                return logread.LogResult(kind="blocked",
-                                         message="Firefox was not found — nothing was launched")
-        elif kind == "addressbar":
-            self._send_keys(run, url, payload)
-        else:
-            for line, level in autorun.manual_lines(run, url, payload, self.spec.timeout_sec):
-                self.recorder("launch", f"{self._scope(run)}{line}", level)
-        return await logread.poll_log(run.log_path,
-                                      time.time() + float(self.spec.timeout_sec),
-                                      sleep=self.seams.sleep, stop=self.seams.stop)
-
-    def _send_keys(self, run, url, hwnd) -> None:
-        """Address-bar delivery; a refusal degrades to manual (the poll still runs)."""
-        self.recorder("launch", f"{self._scope(run)}delivering the autorun URL into the "
-                                f"profile's window (savelog={Path(run.log_path).name}, "
-                                f"no new process)")
-        send = self.seams.deliver or delivery.deliver_url
-        try:
-            send(hwnd, url)
-        except Exception as exc:
-            self.recorder("launch", f"{self._scope(run)}address-bar delivery failed ({exc}) — "
-                                    f"open the URL below by hand instead", "warn")
-            for line, level in autorun.manual_lines(run, url, "address-bar delivery failed",
-                                                    self.spec.timeout_sec):
-                self.recorder("launch", f"{self._scope(run)}{line}", level)
-            return
-        self.recorder("launch", f"{self._scope(run)}delivered — waiting for the savelog file")
-
-    def _cold_launch(self, run, url):
-        """Resolve the binary and cold-start Firefox (missing binary → None)."""
-        binary = launch.resolve_binary(self.spec.binary)
-        if not launch.binary_exists(binary):
-            self.recorder("launch", f"{self._scope(run)}Firefox not found at {binary!r} — put its FULL path in "
-                                    f"the window's Firefox binary field (Firefox shortcut → "
-                                    f"Properties → Target, or `where firefox` in cmd); "
-                                    f"looked at: {'; '.join(launch.candidate_binaries())}",
-                          "error")
-            return None
-        self.recorder("launch", f"{self._scope(run)}cold-starting Firefox with the autorun URL "
-                                f"(macro={self.spec.macro}, storage={self.spec.storage}, "
-                                f"savelog={Path(run.log_path).name})")
-        process = launch.launch_resilient(launch.profile_argv(binary, url, run.profile_args),
-                                          popen=self.seams.popen)
-        self.recorder("launch", f"{self._scope(run)}launched "
-                                f"(pid {getattr(process, 'pid', '?')}) — waiting for the "
-                                f"savelog file")
-        return process
-
-    @staticmethod
-    def _scope(run) -> str:
-        """The per-run prefix — only a multi-run sequence needs the numbering."""
         return f"run {run.index}/{run.total} ({run.label}): " if run.total > 1 else ""
 
     def _stopped_after(self, outcomes, total):
@@ -292,6 +186,113 @@ class Sequence:
         return RunResult(kind=kind, message=message, steps=tuple(self.recorder.steps),
                          lines=lines_of(outcomes))
 
+
+async def _attempt_run(seq, run, prime: bool):
+    """One delivery attempt: resolve the selector, foreground, deliver, poll."""
+    selector, windows = resolve_run_selector(run, seq.rescan)
+    if selector is None:
+        seq.recorder("launch", f"{plan.run_scope(run)}skipped — the tab is no longer open "
+                                f"(or its profile closed) since detect", "warn")
+        return logread.LogResult(kind="skipped", message="the tab is no longer open")
+    note = "" if run.selector else " (resolved fresh at launch)"
+    seq.recorder("launch", f"{plan.run_scope(run)}addressing {selector}{note}")
+    if prime:
+        _foreground_run(seq, run)
+    url = autorun.launch_url_for(seq.spec, seq.page, run, selector)
+    return await _deliver_and_poll(seq, run, url, windows)
+
+def _foreground_run(seq, run) -> None:
+    """Raise the window holding this run's tab (critical rule: visible+front).
+
+    The needle is the first non-blank pattern — a URL-only search maps the
+    window through its URL (the session half of the mapping), a title
+    pattern through both halves as before.
+    """
+    needle = (seq.spec.pattern or seq.spec.url_pattern or "").strip()
+    windows = (seq.seams.windows() if seq.seams.windows
+               else list(run.target.windows))
+    mapped = desktop.foreground_tab_window(needle, windows)
+    if mapped is not None:
+        matches, raised = mapped
+        titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
+        seq.recorder("foreground", f"{plan.run_scope(run)}{raised}/{len(matches)} Firefox "
+                                    f"window(s) on top — {titles} (holds the tab matching "
+                                    f"“{needle}”)")
+        return
+    matches, raised = desktop.foreground(needle)
+    if not matches:
+        seq.recorder("foreground", f"{plan.run_scope(run)}no Firefox window matches "
+                                    f"“{needle}” — launching anyway; the "
+                                    f"macro reuses a matching tab and never opens one "
+                                    f"(E210 if none)", "warn")
+        return
+    titles = "; ".join(title[:60] for _hwnd, title in matches[:3])
+    seq.recorder("foreground", f"{plan.run_scope(run)}{raised}/{len(matches)} Firefox "
+                                f"window(s) on top — {titles}")
+
+async def _deliver_and_poll(seq, run, url, windows):
+    """The chosen delivery, then the savelog wait (timeouts get the autopsy)."""
+    seen = seq.seams.os_windows() if seq.seams.os_windows else desktop.firefox_windows()
+    kind, payload = desktop.choose_delivery(run, seen, run.total, windows)
+    deadline = time.time() + float(seq.spec.timeout_sec)
+    if kind == "addressbar":
+        sent = _send_addressbar(seq, run, payload, url)
+        if sent:
+            handoff = verify.Delivery(hwnd=payload, url=url, deadline=deadline)
+            return await verify.await_delivery(seq, run, handoff)
+        return await verify.poll_to_deadline(seq, run, url, deadline)
+    if kind == "cold":
+        try:
+            process = _cold_launch(seq, run, url)
+        except OSError as exc:
+            seq.recorder("launch", f"{plan.run_scope(run)}Firefox would not start: {exc}", "error")
+            return logread.LogResult(kind="blocked",
+                                     message=f"Firefox would not start: {exc}")
+        if process is None:
+            return logread.LogResult(kind="blocked",
+                                     message="Firefox was not found — nothing was launched")
+    else:
+        for line, level in autorun.manual_lines(run, url, payload, seq.spec.timeout_sec):
+            seq.recorder("launch", f"{plan.run_scope(run)}{line}", level)
+    return await verify.poll_to_deadline(seq, run, url, deadline)
+
+def _send_addressbar(seq, run, hwnd, url) -> bool:
+    """Address-bar delivery; True when the keys went out (a refusal degrades)."""
+    seq.recorder("launch", f"{plan.run_scope(run)}delivering the autorun URL into the "
+                            f"profile's window (savelog={Path(run.log_path).name}, "
+                            f"no new process)")
+    send = seq.seams.deliver or delivery.deliver_url
+    try:
+        send(hwnd, url)
+    except Exception as exc:
+        seq.recorder("launch", f"{plan.run_scope(run)}address-bar delivery failed ({exc}) — "
+                                f"open the URL below by hand instead", "warn")
+        for line, level in autorun.manual_lines(run, url, "address-bar delivery failed",
+                                                seq.spec.timeout_sec):
+            seq.recorder("launch", f"{plan.run_scope(run)}{line}", level)
+            return False
+    seq.recorder("launch", f"{plan.run_scope(run)}delivered — waiting for the savelog file")
+    return True
+
+def _cold_launch(seq, run, url):
+    """Resolve the binary and cold-start Firefox (missing binary → None)."""
+    binary = launch.resolve_binary(seq.spec.binary)
+    if not launch.binary_exists(binary):
+        seq.recorder("launch", f"{plan.run_scope(run)}Firefox not found at {binary!r} — put its FULL path in "
+                                f"the window's Firefox binary field (Firefox shortcut → "
+                                f"Properties → Target, or `where firefox` in cmd); "
+                                f"looked at: {'; '.join(launch.candidate_binaries())}",
+                      "error")
+        return None
+    seq.recorder("launch", f"{plan.run_scope(run)}cold-starting Firefox with the autorun URL "
+                            f"(macro={seq.spec.macro}, storage={seq.spec.storage}, "
+                            f"savelog={Path(run.log_path).name})")
+    process = launch.launch_resilient(launch.profile_argv(binary, url, run.profile_args),
+                                      popen=seq.seams.popen)
+    seq.recorder("launch", f"{plan.run_scope(run)}launched "
+                            f"(pid {getattr(process, 'pid', '?')}) — waiting for the "
+                            f"savelog file")
+    return process
 
 async def _default_sleep(seconds: float) -> None:
     """Real async sleep — the seam's default (tests inject a fast one)."""

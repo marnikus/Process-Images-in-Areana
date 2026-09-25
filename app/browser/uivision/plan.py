@@ -163,7 +163,13 @@ def selector_for(pattern: str) -> str:
 
 
 def _relative_index(tab_pos: int, tab_count: int) -> str:
-    """`tab=N` relative to the autostart tab (it appends last, so N ≤ -1)."""
+    """`tab=N` relative to the autostart tab (`pos - count`, always ≤ -1).
+
+    Ui.Vision counts selectWindow tabs RELATIVE to the macro's start tab
+    (tab=0 IS the start tab, -1 one tab left of it): the Ctrl+T invocation
+    tab always appends LAST (0-based index = count), so a target at 0-based
+    `pos` among `count` tabs answers `pos - count` (single tab → tab=-1).
+    """
     return f"tab={tab_pos - tab_count}"
 
 
@@ -253,6 +259,11 @@ def _group_by_profile(targets) -> list:
     for target in targets or []:
         groups.setdefault(str(target.profile_dir or ""), []).append(target)
     return list(groups.values())
+
+
+def run_scope(run) -> str:
+    """`run i/n (label): ` for multi-run lines ("" when the run stands alone)."""
+    return f"run {run.index}/{run.total} ({run.label}): " if run.total > 1 else ""
 
 
 def runs_by_profile(targets, search: Search, config_dir, stamp: str) -> list:

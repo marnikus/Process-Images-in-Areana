@@ -118,10 +118,13 @@ def test_clipboard_binding_declares_pointer_sized_handles():
 
 def test_keys_binding_declares_sendinput_and_foreground():
     import ctypes
-    user32 = _dll(SendInput=lambda *a: 0, GetForegroundWindow=lambda: 0)
+    user32 = _dll(SendInput=lambda *a: 0, GetForegroundWindow=lambda: 0,
+                  GetWindowTextLengthW=lambda _h: 0, GetWindowTextW=lambda *_a: 0)
     delivery._bind_keys(user32)
     assert len(user32.SendInput.argtypes) == 3
     assert ctypes.sizeof(user32.GetForegroundWindow.restype) == ctypes.sizeof(ctypes.c_void_p)
+    assert len(user32.GetWindowTextW.argtypes) == 3
+    assert user32.GetWindowTextLengthW.restype is ctypes.c_int
 
 
 def test_set_clipboard_frees_the_block_when_lock_fails():

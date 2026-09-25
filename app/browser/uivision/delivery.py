@@ -163,6 +163,10 @@ def _bind_keys(user32) -> None:
     from ctypes import wintypes
     user32.SendInput.argtypes = [wintypes.UINT, wintypes.LPVOID, ctypes.c_int]
     user32.SendInput.restype = wintypes.UINT
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextLengthW.restype = ctypes.c_int
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowTextW.restype = ctypes.c_int
     user32.GetForegroundWindow.argtypes = []
     user32.GetForegroundWindow.restype = wintypes.HWND
 
@@ -268,3 +272,14 @@ class Win32Ops:
         """A real settle pause (tests inject instant fakes)."""
         import time
         time.sleep(seconds)
+
+    def foreground_title(self):
+        """The foreground window's title (the autorun receipt reads it)."""
+        import ctypes
+        user32 = ctypes.windll.user32
+        _bind_keys(user32)
+        hwnd = user32.GetForegroundWindow()
+        length = user32.GetWindowTextLengthW(hwnd)
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        return buf.value

@@ -1033,6 +1033,9 @@ async def test_refused_delivery_degrades_to_manual_and_still_polls(tmp_path, fro
     text = " | ".join(f"{s}:{m}" for s, m, _l in rows)
     assert "address-bar delivery failed (SendInput failed)" in text
     assert "open the URL below by hand instead" in text
+    assert "watching the session store" not in text   # refused = patient wait, no receipt theater
+    assert "re-sending the keystrokes" not in text
+    assert "savelog wait expired" in text             # ...but the timeout gets its autopsy
 
 
 async def test_delivery_to_the_resolved_window_sends_each_profile_its_tab(

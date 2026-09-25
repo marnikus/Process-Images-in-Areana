@@ -299,3 +299,12 @@ def test_plan_window_finds_the_holder_or_falls_back():
     assert plan.plan_window(THREE_TABS, "https://arena.ai/b") == [THREE_TABS[0]]
     assert plan.plan_window(THREE_TABS, "https://gone.example") == THREE_TABS
     assert plan.plan_window([], "https://arena.ai/a") == []
+
+
+def test_run_scope_numbers_only_multi_run_lines():
+    """The shared per-run prefix: `run i/n (label): `, or "" when solo."""
+    from types import SimpleNamespace
+    run = SimpleNamespace(index=2, total=3, label="Work")
+    assert plan.run_scope(run) == "run 2/3 (Work): "
+    solo = SimpleNamespace(index=1, total=1, label="Work")
+    assert plan.run_scope(solo) == ""

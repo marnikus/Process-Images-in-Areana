@@ -30,7 +30,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from . import autorun, desktop, guard, macro, paths, plan, profiles, tabs
+from . import autorun, desktop, guard, macro, paths, plan, profiles, tabs, verify
 from .sequence import RunResult, Sequence
 
 
@@ -73,6 +73,7 @@ class RunSeams:
     profiles: object = None   # callable → per-profile session rows (tests fake them)
     os_windows: object = None  # callable → [(hwnd, title)] Firefox OS windows (tests fake them)
     deliver: object = None    # callable(hwnd, url) → address-bar delivery (tests fake the keys)
+    ops: object = None  # Win32 ops (title reads; tests fake it)
 
 
 class _Recorder:
@@ -173,11 +174,12 @@ def _report_multi_matches(targets, report) -> None:
 
 
 def _report_plan(targets, spec: RunSpec, structured: bool, report) -> None:
-    """The run-plan lines: the plan summary, crowded profiles, the blank warning."""
+    """The run-plan lines: the plan summary, crowded profiles, blank/addon warnings."""
     if len(targets) >= 2:
         report("detect", f"run plan: {plan.summarize(targets, structured)}")
     _report_multi_matches(targets, report)
     _report_blank_search(targets, spec, report)
+    verify.warn_addonless_profiles(targets, report)
 
 
 def _report_blank_search(targets, spec: RunSpec, report) -> None:
