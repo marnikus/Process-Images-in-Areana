@@ -145,4 +145,4 @@ pytest suites + `test_bridge_slots` + `test_window_catalog` + JS
 | Stage vocabulary correctness | capture failures mislabeled "apply" | precise `capture` stage (12-stage vocabulary) |
 | Worst function (py) | 27 LOC / CC 8 (apply.restore_workspace) | 27 LOC / CC 8 — no regressions |
 | Test count (workspace pytest / JS panel) | 96 pytest + 14 JS | 123 pytest (8 suites; +27 incl. characterization) + 17 JS |
-| Modules / LOC in scope (persistence/workspace + services/workspace + panel) | 20 / 2211 | 20 / 2222 (same file count; net +11 lines of tests-informed guards/comments) |
+| Modules / LOC in scope (persistence/workspace + services/workspace + panel) | 20 / 2211 | 21 / 2233 (recover.py carved out of apply.py for the ≤300 RULE 18 budget; apply 284 / recover 70) |
