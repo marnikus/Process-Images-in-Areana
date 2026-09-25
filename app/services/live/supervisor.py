@@ -26,6 +26,7 @@ from app.browser.page_status import PageStatus
 from app.services import auto_connect as ac
 from app.services.batch_orchestrator import pool_summary, resolve_and_claim_tab, run_pass
 from app.services.cooldown_service import is_stuck_status
+from app.services.firefox_job_recovery import recover_firefox_jobs
 
 from .bus import LiveBus, live_bus
 from .feed import PROCESSING_REFUSAL, queued_images, recover_stale_processing
@@ -171,11 +172,17 @@ def _crash_tail(bridge, error: Exception) -> None:
     traceback.print_exc()
 
 
+async def _recover(bridge) -> None:
+    """Crash leftovers: the Firefox journal FIRST (a submitted job is never re-queued), then `processing`."""
+    await recover_firefox_jobs(bridge)
+    recover_stale_processing(bridge)
+
+
 async def run_live(bridge) -> None:
     """The live loop: plan → wait or pass → tail, until Stop / Stop-after; `idle` is written once, here."""
     bus = live_bus(bridge)
     bus.attach(asyncio.get_running_loop())
-    recover_stale_processing(bridge)
+    await _recover(bridge)
     set_run_state(bridge, "running")
     try:
         while is_live(bridge):

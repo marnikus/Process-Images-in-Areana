@@ -325,57 +325,35 @@ async def run_claimed_image(ctx: DispatchCtx, img, free_page):
 
 
 async def _run_firefox_claimed(ctx: DispatchCtx, img, page) -> None:
-    """The lane's twin of `run_claimed_image`: same bookkeeping, macro verdict (D5).
-
-    One machine-wide macro lock + the window's inter-run delay live in
-    `firefox_lane` — this side stays bookkeeping only.
-    """
+    """The lane's twin of `run_claimed_image`: same bookkeeping; `firefox_job` runs the job (D-1)."""
     bridge, pool, tab_id = ctx.bridge, ctx.pool, page.tab_id
     _emit_status_safe(bridge)
     _log_assign(bridge, img, tab_id, page)
     _start_tab_image(pool, tab_id, img)
+    reset: list = []  # the job's Ui.Vision New Chat for the finish seam
     try:
-        await _firefox_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img,
-                                             urls=ctx.urls, tab_id=tab_id,
-                                             ctrl=None, client=None))
+        await _firefox_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ctx.urls,
+                                             tab_id=tab_id, ctrl=None, client=None), reset)
     finally:
         _clear_tab_image(pool, tab_id)
-        await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id,
-                                            ctrl=None, client=None))
+        await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=None,
+                                            client=None, lane_reset=reset[0] if reset else None))
 
 
-async def _firefox_and_record(job: PageJobCtx) -> None:
-    """Prepare → verdict → the shared result handling (identical bookkeeping)."""
-    _url_row, corr_id, job_id, _final = await prepare_image_for_job(
-        job.bridge, job.img, job.urls, job.tab_id)
+async def _firefox_and_record(job: PageJobCtx, reset: list) -> None:
+    """Prepare → the Firefox image job → the shared result handling (identical bookkeeping)."""
+    from .firefox_job import JobStart, after_result, run_job
+    _url_row, corr_id, job_id, final = await prepare_image_for_job(job.bridge, job.img, job.urls, job.tab_id)
     try:
         job.bridge.job_started.emit(job_id, job.img.absolute_path)
     except Exception:
         pass
-    job.bridge._log(f"🦊 [{corr_id}] Ui.Vision lane — the macro runs this job; "
-                    "prompt template recorded, not injected", "info")
-    failed, err = await _firefox_verdict(job)
-    _handle_result(ResultCtx(bridge=job.bridge, pool=job.pool, img=job.img,
-                             tab_id=job.tab_id, corr_id=corr_id, job_id=job_id,
-                             failed=failed, err=err))
-    maybe_note_rate_limit(job.pool, job.tab_id, job.bridge, err)
-
-
-async def _firefox_verdict(job: PageJobCtx) -> tuple:
-    """(failed, error) from the savelog kinds — crash becomes a named failure, cancel propagates."""
-    from .firefox_lane import run_firefox_macro
-    page = job.pool.get_page(job.tab_id)
-    if page is None:
-        return True, "tab left the pool before the macro launched"
-    try:
-        kind, message = await run_firefox_macro(job.bridge, page)
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        return True, f"Ui.Vision blocked: {e}"
-    if kind == "ok":
-        return False, ""
-    return True, f"Ui.Vision {kind}: {message}"
+    verdict = await run_job(JobStart(job.bridge, job.pool, job.tab_id, job.img, corr_id, final), reset)
+    result = ResultCtx(bridge=job.bridge, pool=job.pool, img=job.img, tab_id=job.tab_id,
+                       corr_id=corr_id, job_id=job_id, failed=verdict.failed, err=verdict.err)
+    _handle_result(result)
+    after_result(result, verdict)
+    maybe_note_rate_limit(job.pool, job.tab_id, job.bridge, verdict.err)
 
 
 async def _run_and_record(job: PageJobCtx) -> None:

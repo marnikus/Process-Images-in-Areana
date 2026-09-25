@@ -589,3 +589,20 @@ Read-only — the app never clicks it.
 | **Written by** | Chrome: `services/live/tab_owner.resolve_owners(pool)` — on every pool join and every reconciler pass; a silent/broken reply keeps the email already known (`aka_…` is never written over a known account). Firefox (no CDP client): the same probe inside the Ui.Vision `Arena_Identify` macro (`browser/uivision/identify.py`, bounded 8 s in-page wait, reply stripped to `{email, via, overlay, text}`), driven by `services/live/firefox_identity` (I-64) |
 | **Evidence** | sidebar account node in `docs/research/Directly Chat with Frontier Image Generation AI Models.html`; owner evidence 2026-09-25 `<div class="font-heading min-w-0 flex-1 truncate text-left text-sm font-normal">mailreceiverpro@gmail.com</div>` |
 | **Site adapter** | `account_email` entry, lastVerified 2026-09-25 |
+
+---
+
+## Firefox image job — how the same selectors are used (2026-09-25, I-65)
+
+No new selectors. The Firefox lane reuses the entries above through `probe_selectors` only (RULE 21); the page JS is Chrome's probes verbatim, carried in base64 by the phase macros (`app/browser/uivision/job_scripts.py`, `job_macros.py`) because Ui.Vision pastes `${var}` raw into `executeScript` Targets.
+
+| Use | Selector source | How |
+|---|---|---|
+| Upload control (XClick → native dialog) | `probe_selectors.add_files_primary()` (`add_files_button`) | XClick — `isTrusted` input; never DOM `Click` (I-63) |
+| Attachment preview | `attachment_preview_selectors()` | exactly one visible preview whose `alt` == staged file name `arena_<corr8><ext>` (stale / wrong / multiple ⇒ reset or retry) |
+| Composer / send | `textarea_selectors()`, `send_click_primary()`, `send_presence_selector()` | prompt set in the page, SHA-256 readback; send = in-page guard, then one XClick |
+| Output / spinner / errors | `output_image_selectors()`, `spinner_selector()`, `page_errors` | Chrome's baseline + `[JOB-ID]` correlation, 3 s stability |
+| New Chat reset | `probe_selectors.new_chat_primary()` (`new_chat_button`) | XClick, then the `new_chat` clean-page checks; failure = warning |
+| Security dialog | `security_dialog_check()` | polled every 5 s only while `captcha_in_scope` |
+
+Live-unverified (spike list in the design): preview `alt` equals the uploaded file name (S4); React accepts the prompt value set under Firefox Xray wrappers.

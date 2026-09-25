@@ -19,7 +19,7 @@ def img(name="a.png", status="pending", selected=True):
 
 @pytest.mark.parametrize("status,expected", [
     ("pending", True), ("selected", True), ("failed", True),
-    ("needs_review", True), ("processing", True),
+    ("needs_review", False), ("processing", True),
     ("completed", False), ("skipped", False), ("deselected", False),
     ("", False), ("bogus", False),
 ])
@@ -29,7 +29,7 @@ def test_is_runnable_table(status, expected):
 
 def test_every_image_status_has_a_verdict():
     """A new ImageStatus member must be placed on one side explicitly."""
-    known = rsc.RUNNABLE_STATUSES | {"completed", "skipped", "deselected"}
+    known = rsc.RUNNABLE_STATUSES | {"completed", "skipped", "deselected", "needs_review"}
     assert {s.value for s in ImageStatus} == known
 
 
@@ -44,7 +44,7 @@ def test_run_panel_filters_with_the_core_predicate():
     items = [img("a", "pending", True), img("b", "completed", True), img("c", "needs_review", True)]
     assert run_control.run_scope is rsc.run_scope, "one predicate — no panel-level alias (RULE 18.1)"
     assert not hasattr(queue_scan, "selected_images")
-    assert [i.relative_path for i in run_control.run_scope(items)] == ["a", "c"]
+    assert [i.relative_path for i in run_control.run_scope(items)] == ["a"]  # D-15: review never re-sent
 
 
 def test_claim_denied_logs_once_for_settled_only():

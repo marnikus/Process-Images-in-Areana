@@ -82,3 +82,13 @@ def model_label_probe() -> Dict[str, str]:
 def new_chat_selectors() -> List[str]:
     """New Chat click-candidate selectors — semantic href first."""
     return get_selector("new_chat_button").all_selectors()
+
+
+def new_chat_primary() -> str:
+    """The New Chat link — the Firefox reset XClick target (RULE 21)."""
+    return get_selector("new_chat_button").primary
+
+
+def add_files_primary() -> str:
+    """The composer's “Add files” button — the Firefox upload XClick target (RULE 21)."""
+    return get_selector("add_files_button").primary

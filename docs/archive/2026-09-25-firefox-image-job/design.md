@@ -439,6 +439,31 @@ tests — see the 2026-09-25 StepRecorder lesson):
 * **Q3 — needs_review list: no.** Existing image status + Job History row only.
 * **Q4 — delay: only between jobs.** `inter_run_delay_sec` never applies between phases of one job (§4).
 
+## Implementation — as built (2026-09-25, "implement now full")
+
+Status: **implemented**; the plan above stays the reference, the amendments below win where they differ.
+
+| # | Decision / amendment | Why |
+|---|---|---|
+| D-2 amend | Chrome's payloads are reused verbatim but **never embedded raw**: `job_scripts` builds one expression per phase, `job_macros.loader` base64-decodes it in the page, runs it via `new Function`, awaits it and `JSON.stringify`s the reply. | Ui.Vision pastes `${var}` **raw** into `executeScript` Targets (docs: variables are not quoted), which would rewrite the JS template literals in `output_probes` / `js_snippets`. Macro-side flags therefore read `(${arenaGuard}).data.go`, never `JSON.parse(${…})`. |
+| D-8 amend | Download = Python fetch only (3 tries, 3 s settle as Chrome) → magic + PIL validation → `config/firefox_jobs/<corr>/download.bin` → atomic `_AI` save. The in-page `<a download>` + `onDownload` fallback is **not built**; a fetch/validate/save failure ends `needs_review` with `output_src` journalled, so recovery can retry the fetch later without resubmitting. | Firefox cannot rename downloads and `!LAST_DOWNLOADED_FILE_NAME` is only valid after `onDownload`; the fallback adds a second write path for a case S5 may never hit. Revisit if S5 fails live. |
+| D-15 | `needs_review` is **not runnable** (`run_scope`); only the image status + a Job History row show it (owner: no review list). | A review job may already have reached the site — a loop must never send it again. |
+| D-16 | Recovery runs in `supervisor.run_live` via `_recover`: `recover_firefox_jobs` **before** `recover_stale_processing`. | Stale-processing recovery would re-queue a `processing` image whose message was already sent; the journal must settle it first. |
+| Seams | `job_count.py` (moved out of `cooldown_service`, re-exported); `FinishCtx` gains the Firefox reset hook; `firefox_lane.run_phase(bridge, page, phase, token)` → `(kind, msg, lines)` under the machine-wide macro lock; `probe_selectors.add_files_primary` / `new_chat_primary`. | Legacy hotspots must not grow (RULE 16); selectors from one place (RULE 21). |
+| Constants | observe window 12 s, 3 misses allowed, ack wait 6 s, 2 uncertain polls, attach wait 8 s, clean-page wait 15 s, security poll 5 s, pause poll 0.5 s, min download 100 B. | Chrome's own timings where one exists. |
+
+**Live spikes (not provable in the sandbox — run on the owner's machine before trusting a batch):**
+
+* **S1** launch overhead + focus per phase macro (how long one `Arena_Job_*` run holds the lock).
+* **S2** `if_v2` / `else` / `end` syntax in the vendored Ui.Vision build.
+* **S3** native dialog: XType path + `${KEY_ENTER}` accepted (2019 forum note: sometimes needs XClick "Open").
+* **S4** attachment preview `alt` equals the uploaded file name.
+* **S5** R2 output `src` fetchable by Python without cookies.
+* **S6** CSP allows `executeScript` and a returned Promise is awaited — **evidenced** by the live `Arena_Identify` macro; still open: whether a long `ARENA_JOB=` echo line is truncated in the savelog (replies are kept small for that reason).
+* React value setter under Firefox Xray wrappers (the prompt readback proves it either way — a failure ends the job before submit, never with a double send).
+
+Quality: gate `verify_quality.py --allow-legacy --coverage-ratchet` 0 fails; pytest full suite green except the known `-n 8` flake; `npm run test:js` green; every new module ≥ 90 % line.
+
 ## Out of scope
 
 Automatic captcha solving on Firefox (no CDP; RULE 20 wait-only), parallel Ui.Vision runs, any Chrome change

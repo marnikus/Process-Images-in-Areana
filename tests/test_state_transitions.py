@@ -42,3 +42,14 @@ def test_run_transitions_invalid():
     assert validate_run_transition(RunState.IDLE.value, RunState.PAUSED.value) is False
     assert validate_run_transition(RunState.BATCH_COMPLETE.value, RunState.PAUSED.value) is False
     assert validate_run_transition(RunState.COMPLETED.value if hasattr(RunState, 'COMPLETED') else "completed", RunState.RUNNING.value) is False
+
+
+@pytest.mark.unit
+def test_firefox_job_review_edges_2026_09_25():
+    """Image job D-10: uncertain after the send → needs_review; a late result is collected."""
+    from app.core.state_machine import validate_job_transition as ok
+    assert ok("submitted", "needs_review")          # lost ack / cancel after the send
+    assert ok("downloading", "needs_review")        # result exists, download never valid
+    assert ok("saving", "needs_review")             # bytes staged, the save failed
+    assert ok("needs_review", "output_detected")    # recovery collects without a resubmit
+    assert not ok("needs_review", "submitted")      # never sent again automatically

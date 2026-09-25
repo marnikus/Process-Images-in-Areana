@@ -16,6 +16,7 @@ from typing import Any
 
 from app.browser.new_chat import ResetCtx, reset_to_new_chat
 from app.browser.page_status import PageInfo, PageStatus, now_iso
+from app.services.job_count import register_job_done, restore_page_stats  # noqa: F401 (re-export)
 from app.core.cooldown import (
     DEFAULT_MIN_SECONDS,
     DEFAULT_PENALTY_SECONDS,
@@ -35,12 +36,12 @@ _STUCK_STATUSES = frozenset({PageStatus.BUSY, PageStatus.WAITING_GENERATION,
 @dataclass
 class FinishCtx:
     """Post-job context to keep params small (RULE 16)."""
-
     pool: Any
     bridge: Any
     tab_id: str
     ctrl: Any
     client: Any
+    lane_reset: Any = None  # async () -> (ok, reason): the Firefox job's New Chat (None = CDP)
     pending_before: int = 0
     captcha_before: int = 0
     rate_limit_before: int = 0
@@ -286,6 +287,11 @@ def _steady_page(pool: Any, tab_id: str):
     return page
 
 
+def _entry_numbers(entry: dict) -> tuple[float, int]:
+    """(cooldown_until, pending_penalty) of a saved entry; missing / null → 0."""
+    return float(entry.get("cooldown_until", 0) or 0), int(entry.get("pending_penalty", 0) or 0)
+
+
 def restore_cooldown_entry(pool: Any, tab_id: str, entry: dict, now: float | None = None) -> bool:
     """Re-apply persisted wall-clock pause; never shortens a live timer."""
     if not entry or not tab_id:
@@ -295,8 +301,7 @@ def restore_cooldown_entry(pool: Any, tab_id: str, entry: dict, now: float | Non
         return False
     try:
         moment = _now_or(now)
-        until = float(entry.get("cooldown_until", 0) or 0)
-        pending = int(entry.get("pending_penalty", 0) or 0)
+        until, pending = _entry_numbers(entry)
         if not _restore_worthwhile(until, pending, moment):
             return False
         with pool._lock:
@@ -740,55 +745,17 @@ def _emit_status(ctx: FinishCtx):
 
 async def _best_effort_reset(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, str]:
     """Reset that never raises — failure is logged, never fatal."""
-    if ctx.ctrl is None:
-        return False, "no CDP controller — Firefox lane (New-chat reset not applicable)"
     try:
+        if ctx.lane_reset is not None:
+            return await ctx.lane_reset()
+        if ctx.ctrl is None:
+            return False, "no CDP controller — Firefox lane (New-chat reset not applicable)"
         reset_ctx = ResetCtx(ctrl=ctx.ctrl, client=ctx.client, engine=ctx.bridge,
                              timeout_sec=timeout_sec,
                              cancel_check=lambda: _is_cancelled(ctx.bridge))
         return await reset_to_new_chat(reset_ctx)
     except Exception as e:
         return False, str(e)
-
-
-def register_job_done(pool: Any, tab_id: str) -> int:
-    """Count one finished job for the Jobs columns (display only); -1 when unknown."""
-    try:
-        with pool._lock:
-            page = pool._pages.get(tab_id)
-            if page is None:
-                return -1
-            page.jobs_completed += 1
-            page.last_job_at = now_iso()
-            return page.jobs_completed
-    except AttributeError:
-        return -1
-
-
-def _stats_count(stats: dict, norm_key: str) -> int:
-    """Saved counter for a normalized URL key; 0 when absent."""
-    if not isinstance(stats, dict) or not norm_key:
-        return 0
-    val = stats.get(norm_key, {})
-    if not isinstance(val, dict):
-        return 0
-    count = val.get("jobs_completed", 0)
-    if isinstance(count, bool) or not isinstance(count, int):
-        return 0
-    return max(count, 0)
-
-
-def restore_page_stats(pool: Any, tab_id: str, norm_url: str, stats: dict) -> int:
-    """Re-apply one tab's saved counter; live never moves backwards."""
-    try:
-        with pool._lock:
-            page = pool._pages.get(tab_id)
-            if page is None:
-                return -1
-            page.jobs_completed = max(page.jobs_completed, _stats_count(stats, norm_url))
-            return page.jobs_completed
-    except AttributeError:
-        return -1
 
 
 async def _finish_cancelled(ctx: FinishCtx) -> bool:

@@ -50,7 +50,7 @@ python tools/verify_quality.py --json > /tmp/gate.json
 
 ```bash
 QT_QPA_PLATFORM=offscreen python -m pytest -m "not slow and not e2e" -q   # fast lane, 455 tests ~10s
-npm run test:js                                                             # JS lane, 105 tests ~1.3s, needs npm ci
+npm run test:js                                                             # JS lane, 413 tests, needs npm ci
 python -m pytest tests -q                                                   # full lane
 ```
 

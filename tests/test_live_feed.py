@@ -53,7 +53,7 @@ def test_eligible_images_is_the_only_rule():
     queue = [img(f"{s}.png", status=s) for s in ALL_STATUSES]
     before = list(queue)
     got = feed.eligible_images(queue)
-    assert sorted(i.status for i in got) == sorted(["pending", "selected", "failed", "needs_review"])
+    assert sorted(i.status for i in got) == sorted(["pending", "selected", "failed"])  # D-15
     assert queue == before and got is not queue  # snapshot copy, input untouched
     assert feed.eligible_images is run_scope.live_scope
     assert feed.ELIGIBLE is run_scope.LIVE_STATUSES

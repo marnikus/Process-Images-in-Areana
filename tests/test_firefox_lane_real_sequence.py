@@ -11,12 +11,14 @@ savelog exactly as the Ui.Vision extension does (status line, `###`, log rows).
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 from app.browser.page_pool import PagePool, tab_label_of
+from app.browser.uivision import job_macros as uv_job
 from app.browser.uivision import pool_tabs as pt
 from app.browser.uivision import sequence as seq_mod
 from app.browser.uivision.sequence import StepRecorder
@@ -93,10 +95,19 @@ async def test_identify_through_the_real_sequence_returns_the_echoed_account(rea
 
 
 @pytest.mark.asyncio
-async def test_job_macro_through_the_real_sequence_does_not_crash(real_lane):
-    fake_firefox(real_lane, "Status=OK\n###\n[echo] done\n")
-    kind, message = await fl.run_firefox_macro(real_lane.bridge, ff_page())
-    assert (kind, message) == ("ok", "macro completed")
+async def test_job_phase_through_the_real_sequence_returns_its_reply(real_lane):
+    """A phase macro runs the real path; its `ARENA_JOB=` echo comes back parsed for THIS job."""
+    reply = json.dumps({"token": "c1", "phase": "baseline", "data": {"srcs": [], "composer_len": 0}})
+    firefox = fake_firefox(real_lane, "Status=OK\n###\n"
+                                      "[info] Executing: | echo | ARENA_JOB=${arenaJob} | blue |\n"
+                                      f"[echo] ARENA_JOB={reply}\n")
+    phase = uv_job.probe_macro("c1", "baseline", "({srcs: []})")
+    kind, message, lines = await fl.run_phase(real_lane.bridge, ff_page(), phase, "c1")
+    assert (kind, message) == ("ok", "macro completed"), message
+    assert len(firefox.launches) == 1 and "job-c1-baseline-" in firefox.launches[0]
+    assert uv_job.parse_replies(lines, "c1") == {"baseline": {"srcs": [], "composer_len": 0}}
+    written = Path(real_lane.bridge.config.get_state("firefox_auto")["home"]) / "macros"
+    assert (written / "Arena_Job_Baseline.json").is_file()   # provisioned to hard-drive storage
 
 
 @pytest.mark.asyncio

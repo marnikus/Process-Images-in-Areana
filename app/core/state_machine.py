@@ -21,15 +21,15 @@ JOB_TRANSITIONS: Dict[str, Set[str]] = {
     JobStatus.ATTACHMENT_VERIFIED.value: {JobStatus.PROMPT_INSERTED.value, JobStatus.FAILED.value},
     JobStatus.PROMPT_INSERTED.value: {JobStatus.PROMPT_VERIFIED.value, JobStatus.FAILED.value},
     JobStatus.PROMPT_VERIFIED.value: {JobStatus.SUBMITTED.value, JobStatus.FAILED.value},
-    JobStatus.SUBMITTED.value: {JobStatus.WAITING_GENERATION.value, JobStatus.FAILED.value, JobStatus.PAUSED_USER_ACTION.value},
+    JobStatus.SUBMITTED.value: {JobStatus.WAITING_GENERATION.value, JobStatus.FAILED.value, JobStatus.PAUSED_USER_ACTION.value, JobStatus.NEEDS_REVIEW.value},
     JobStatus.WAITING_GENERATION.value: {JobStatus.OUTPUT_DETECTED.value, JobStatus.FAILED.value, JobStatus.NEEDS_REVIEW.value, JobStatus.PAUSED_USER_ACTION.value},
     JobStatus.OUTPUT_DETECTED.value: {JobStatus.DOWNLOADING.value, JobStatus.FAILED.value, JobStatus.NEEDS_REVIEW.value},
-    JobStatus.DOWNLOADING.value: {JobStatus.VALIDATING.value, JobStatus.FAILED.value},
+    JobStatus.DOWNLOADING.value: {JobStatus.VALIDATING.value, JobStatus.FAILED.value, JobStatus.NEEDS_REVIEW.value},
     JobStatus.VALIDATING.value: {JobStatus.SAVING.value, JobStatus.FAILED.value, JobStatus.NEEDS_REVIEW.value},
-    JobStatus.SAVING.value: {JobStatus.COMPLETED.value, JobStatus.FAILED.value},
+    JobStatus.SAVING.value: {JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.NEEDS_REVIEW.value},
     JobStatus.COMPLETED.value: set(),
     JobStatus.FAILED.value: {JobStatus.CREATED.value},  # retry creates new attempt but could transition to created
-    JobStatus.NEEDS_REVIEW.value: {JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CREATED.value},
+    JobStatus.NEEDS_REVIEW.value: {JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CREATED.value, JobStatus.OUTPUT_DETECTED.value},  # late result collected (Firefox recovery)
     JobStatus.PAUSED_USER_ACTION.value: {JobStatus.BASELINE_CAPTURED.value, JobStatus.ATTACHING.value, JobStatus.SUBMITTED.value, JobStatus.WAITING_GENERATION.value, JobStatus.FAILED.value},
     JobStatus.INTERRUPTED.value: {JobStatus.CREATED.value, JobStatus.FAILED.value},
 }

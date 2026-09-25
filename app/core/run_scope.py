@@ -27,11 +27,13 @@ from typing import Callable, Iterable, List
 
 from .enums import ImageStatus
 
+# `needs_review` is NOT runnable (Firefox image job D-15, 2026-09-25): the message
+# may already have reached the site — a loop must never send it again; the user
+# re-queues it deliberately (review → pending / selected).
 RUNNABLE_STATUSES = frozenset({
     ImageStatus.PENDING.value,
     ImageStatus.SELECTED.value,
     ImageStatus.FAILED.value,
-    ImageStatus.NEEDS_REVIEW.value,
     ImageStatus.PROCESSING.value,   # crash leftovers are re-run, not stranded
 })
 
@@ -41,7 +43,7 @@ LIVE_STATUSES = RUNNABLE_STATUSES - {ImageStatus.PROCESSING.value}
 
 
 def is_runnable(status: str) -> bool:
-    """A status a loop may claim; `completed` / `skipped` / `deselected` never are."""
+    """A status a loop may claim; `completed` / `skipped` / `deselected` / `needs_review` never are."""
     return status in RUNNABLE_STATUSES
 
 
