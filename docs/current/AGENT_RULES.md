@@ -567,3 +567,28 @@ Same principle as Old App's selector strategy.
 * Persist progress so work can resume after interruption
 
 Same as Old App's media handling but adapted to image files.
+
+---
+
+## RULE 24 — LIVE SYNC: the UI mirrors the stored value at the moment of change
+
+* Owner directive (2026-09-25, after the workspace-restore bug): every value the
+  user can SEE or EDIT must display the current stored value IMMEDIATELY when it
+  changes — from any source: a panel Save, an undo, a preset / window-preset
+  load, a workspace restore, a job-engine update, or an external file reload.
+  No visible value may wait for an app restart to become current.
+* One moment, every consumer: on the completing action (the bridge slot's success
+  path or the reply callback), push OR re-pull and re-render EVERY field that
+  shows the value — the editor that owns it AND its mirrors (generation timeout
+  lives in the Watcher window and mirrors into Settings; interval and history
+  limit each have two inputs). Rewriting a store or file alone is NEVER enough.
+* Every panel that renders persisted values must expose a loader
+  (`load()` / `refresh()` / `restore(state)`); code that mutates values calls the
+  loaders of all affected panels. Restore and undo paths are REQUIRED to run the
+  affected loaders (see the workspace restore refresh in
+  `app/ui/panels/workspace.py` + `panels/workspace.js`).
+* Background pushes (`arena_state_updated` / `progress_updated`) refresh live
+  views only and must never clobber fields the user is editing — mirrors guard
+  with a focus flag and update only when not focused.
+* Anti-pattern (the bug this rule bans): "it is saved to disk, it will show
+  after restart". If a restart is needed to see a value, the sync is broken.

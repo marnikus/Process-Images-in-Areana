@@ -480,3 +480,23 @@ which it periodically re-persists over `cooldowns.json`), and the sash grid
 Pinned by `tests/test_workspace_live_refresh.py` (the owner's exact scenario
 through the real `save_settings` slot) and four node tests in
 `tests/js/test_workspace_panel.mjs`.
+
+## M. LIVE-SYNC RULE (owner directive 2026-09-25 → AGENT_RULES RULE 24)
+
+Restore (and every other value mutation) must leave the UI current in the same
+tick — "visible after restart" is a bug. Refresh points after a workspace
+restore (`panels/workspace.js wsAfterRestore`):
+
+| Restored domain | Live refresh |
+|---|---|
+| arena_state | `get_arena_state` → re-render UrlList, ImageQueue, Progress, **Settings**, **PromptEditor**, **FolderPicker**; `arena_state_updated` + `progress_updated` signals drive UrlInterval and the queue header |
+| grid_window | `SashCore.deserialize` → live grid render/persist (validate/migrate, RULE 13) |
+| session_settings | Watcher `loadConfig`, cooldown config reload, **CDP/browser config reload (`loadCDPConfig`)**, **Firefox-auto `load()`** |
+| cooldowns | cooldown config reload + pool reconcile (§L) |
+| undo / job_history | `undo_state_changed` / `job_history_updated` pushes (limit mirror rides the payload) |
+| window_presets / arena_presets | list re-pull (`WindowPresets.refresh`, presets signal) |
+| captcha_stats | Captcha window `refresh()` |
+
+Anything added in the future that renders a persisted value MUST be added to
+these refresh points (RULE 24). "Load" links in the recent-snapshots list go
+through the same preview → Restore All/Selected flow as Browse…

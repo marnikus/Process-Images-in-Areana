@@ -66,8 +66,9 @@ function wsRenderRecent(recent, last) {
   if (!recent.length) { wsEl.wsRecentList.innerHTML = 'none yet'; return; }
   const rows = recent.map((path) => {
     const mark = path === last ? ' ⏱ last' : '';
-    const open = `<a href="#" data-open="${wsEsc(path)}" style="color:var(--accent)">open</a>`;
-    return `<div>• ${wsEsc(path.split(/[\\/]/).pop())}${mark} ${open}</div>`;
+    const links = `<a href="#" data-load="${wsEsc(path)}" style="color:var(--accent)">load</a>` +
+      ` · <a href="#" data-open="${wsEsc(path)}" style="color:var(--accent)">open</a>`;
+    return `<div>• ${wsEsc(path.split(/[\\/]/).pop())}${mark} ${links}</div>`;
   });
   wsEl.wsRecentList.innerHTML = rows.join('');
 }
@@ -225,10 +226,21 @@ function wsRunRestore(root, selected) {
   });
 }
 
-// Restored values must reach the LIVE UI, not just the files (2026-09-25 bug:
-// restore changed the stores but every panel kept showing pre-restore values,
-// and the next Settings save clobbered the restore right back).
-const WS_LIVE_PANELS = ['UrlList', 'ImageQueue', 'ProgressPanel', 'SettingsPanel'];
+// Restored values must reach the LIVE UI, not just the files (RULE 24:
+// 2026-09-25 owner directive — no visible value may wait for an app restart).
+// Panels re-rendered from the fresh arena payload after a restore.
+const WS_LIVE_PANELS = ['UrlList', 'ImageQueue', 'ProgressPanel', 'SettingsPanel',
+  'PromptEditor', 'FolderPicker'];
+
+// Config-driven panels render boot-time pulls — a restore must re-run their
+// loaders or every field they own stays stale until restart (RULE 24).
+const WS_CONFIG_RELOADERS = [
+  ['SettingsPanel', 'loadCooldownConfig'],
+  ['SettingsPanel', 'loadCDPConfig'],
+  ['WatcherPanel', 'loadConfig'],
+  ['FirefoxAutoPanel', 'load'],
+  ['ActionBlocksPanel', 'load'],
+];
 
 function wsAfterRestore(reply) {
   const restored = reply.restored || [];
@@ -288,8 +300,10 @@ function wsApplyGridTree(payload, states) {
 }
 
 function wsReloadConfigPanels() {
-  if (window.SettingsPanel?.loadCooldownConfig) window.SettingsPanel.loadCooldownConfig();
-  if (window.WatcherPanel?.loadConfig) window.WatcherPanel.loadConfig();
+  for (const [name, method] of WS_CONFIG_RELOADERS) {
+    try { window[name]?.[method]?.(); }
+    catch (e) { console.error(`[WorkspacePanel] ${name}.${method}`, e); }
+  }
 }
 
 function wsRefreshLists(restored) {
@@ -320,11 +334,17 @@ function wsWire() {
   Boot.bindOnceById('wsRestoreAllBtn', 'click', () => wsRestore(null), 'wsRestoreAll');
   Boot.bindOnceById('wsRestoreSelectedBtn', 'click', () => wsRestore(wsChosenDomains()), 'wsRestoreSel');
   Boot.bindOnceById('wsCancelPreviewBtn', 'click', wsHidePreview, 'wsCancel');
-  Boot.bindOnceById('wsRecentList', 'click', wsOpenFromClick, 'wsRecentOpen');
-  Boot.bindOnceById('wsResult', 'click', wsOpenFromClick, 'wsResultOpen');
+  Boot.bindOnceById('wsRecentList', 'click', wsPanelClick, 'wsRecentClick');
+  Boot.bindOnceById('wsResult', 'click', wsPanelClick, 'wsResultClick');
 }
 
-function wsOpenFromClick(event) {
+function wsPanelClick(event) {
+  const loadTarget = event.target.closest('[data-load]');
+  if (loadTarget) {
+    if (event.preventDefault) event.preventDefault();
+    wsLoadPreview(loadTarget.dataset.load);   // "load" — into the preview/restore flow
+    return;
+  }
   const target = event.target.closest('[data-open]');
   if (!target) return;
   if (event.preventDefault) event.preventDefault();

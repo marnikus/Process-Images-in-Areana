@@ -36,7 +36,7 @@ const PREVIEW = {
 };
 const RESTORED = {
   ok: true, result: 'success_with_warnings',
-  restored: ['arena_state', 'undo'], migrated: [],
+  restored: ['arena_state', 'undo', 'session_settings', 'cooldowns'], migrated: [],
   skipped: [{ domain_id: 'captcha_keys', stage: 'apply', policy: true,
               cause: 'secret', recommended_action: 'Re-enter the API key' }],
   reconciled: [], backup: '/cfg/workspace_recovery/20260925-180001',
@@ -49,11 +49,17 @@ function boot() {
       // static replies are objects — the harness JSON-encodes them once, exactly
       // like a real @Slot(str, result=str) reply arrives on the JS side
       get_workspace_state: STATE,
-      get_arena_state: { version: 1, urls: [], images: [], folder: {},
-        prompt: { template: 'restored!' },
+      get_arena_state: { version: 1, urls: [], images: [],
+        folder: { root_path: '/imgs' }, prompt: { template: 'restored!' },
         settings: { timeouts: { generation: 111 } }, progress: {}, jobs: [] },
       get_grid_layout: { v: 9, tree: { t: 'leaf', id: 'queue' } },
       get_window_states: { closed: ['log'], minimized: [] },
+      get_firefox_auto_config: { config: {}, paths: {}, running: false },
+      get_cdp_config: {},
+      get_chrome_launch_command: '',
+      get_action_blocks: [],
+      get_watcher_config: {},
+      get_cooldown_config: { ok: true, config: {} },
       preview_workspace: (root) => JSON.stringify(root === PREVIEW.root ? PREVIEW : { ok: false, error: 'not a snapshot' }),
       restore_workspace: () => JSON.stringify(RESTORED),
       save_workspace: { ok: true, result: 'success', path: '/cfg/workspaces/w_1', domains: [], errors: [] },
@@ -174,15 +180,65 @@ describe('workspace window (flow)', () => {
     page.anyEl('wsRestoreAllBtn').dispatch('click', {});
     await tick(); await tick();
     assert.ok(page.anyEl('wsResult').innerHTML.includes('Open folder'), 'affordance rendered');
+    // closest that answers like a real DOM node (only its own selector matches)
+    const fromData = (attr, value) => (sel) => sel === `[data-${attr}]` ? { dataset: { [attr]: value } } : null;
     // result panel: delegated click on [data-open]
     page.anyEl('wsResult').dispatch('click',
-      { target: { closest: () => ({ dataset: { open: RESTORED.workspace } }) } });
+      { target: { closest: fromData('open', RESTORED.workspace) } });
     // recent list: the "open" link
     page.anyEl('wsRecentList').dispatch('click',
-      { target: { closest: () => ({ dataset: { open: STATE.recent[0] } }) }, preventDefault: () => {} });
+      { target: { closest: fromData('open', STATE.recent[0]) }, preventDefault: () => {} });
     const opens = page.calls.filter((c) => c.slot === 'open_workspace_path').map((c) => c.args[0]);
     assert.ok(opens.includes(RESTORED.workspace), 'result Open folder opens the workspace');
     assert.ok(opens.includes(STATE.recent[0]), 'recent-list link opens the snapshot');
+  });
+});
+
+describe('workspace window (RULE 24 live sync)', () => {
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+  test('each recent checkpoint has a load link that opens the restore preview', async () => {
+    const page = boot();
+    for (let i = 0; i < 4; i++) await tick();          // boot pull renders the list
+    const recent = page.anyEl('wsRecentList').innerHTML;
+    assert.match(recent, /data-load="[^"]*my-setup_20260925-180000"/, 'load link present');
+    assert.match(recent, /data-open=/, 'open link still present');
+    page.anyEl('wsRecentList').dispatch('click', {
+      preventDefault: () => {},
+      target: { closest: (sel) => sel === '[data-load]'
+        ? { dataset: { load: STATE.recent[0] } } : null },
+    });
+    for (let i = 0; i < 4; i++) await tick();
+    const previewCall = page.calls.find((c) => c.slot === 'preview_workspace');
+    assert.ok(previewCall && previewCall.args[0] === STATE.recent[0], 'load previews that folder');
+    assert.ok(page.anyEl('wsRestoreActions'), 'restore actions shown');
+  });
+
+  test('restore re-runs every config-driven loader (no stale fields until restart)', async () => {
+    const page = boot();
+    for (let i = 0; i < 4; i++) await tick();          // settle boot-time pulls
+    const before = page.calls.length;
+    page.anyEl('wsLoadLastBtn').dispatch('click', {});
+    for (let i = 0; i < 4; i++) await tick();
+    page.anyEl('wsRestoreAllBtn').dispatch('click', {});
+    for (let i = 0; i < 8; i++) await tick();
+    const after = page.calls.slice(before);
+    const slots = after.map((c) => c.slot);
+    for (const slot of ['get_firefox_auto_config', 'get_cdp_config', 'get_action_blocks',
+                        'get_watcher_config', 'get_cooldown_config']) {
+      assert.ok(slots.includes(slot), `${slot} re-pulled after restore`);
+    }
+  });
+
+  test('restore re-renders prompt + folder fields from the fresh arena payload', async () => {
+    const page = boot();
+    for (let i = 0; i < 4; i++) await tick();
+    page.anyEl('wsLoadLastBtn').dispatch('click', {});
+    for (let i = 0; i < 4; i++) await tick();
+    page.anyEl('wsRestoreAllBtn').dispatch('click', {});
+    for (let i = 0; i < 8; i++) await tick();
+    assert.equal(page.anyEl('promptTextarea').value, 'restored!', 'prompt field refreshed');
+    assert.equal(page.anyEl('folderPathDisplay').textContent, '/imgs', 'folder field refreshed');
   });
 });
 
