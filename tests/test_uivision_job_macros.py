@@ -136,3 +136,21 @@ def test_script_helpers():
 def test_observe_embeds_chromes_strict_check_with_the_baseline():
     body = js.observe_js("c1", {"srcs": ["https://r2/old.png"], "outputs": []}, 12000, False)
     assert "https://r2/old.png" in body and '"c1"' in body and "12000" in body
+
+
+def test_flag_scripts_read_the_variable_their_probe_stores():
+    """The if_v2 flags parse the reply the probe saved — same variable name, both ends (audit F9)."""
+    submit = jm.submit_macro("c1", "1", "1")
+    attach = jm.attach_macro("c1", "/u/arena_c1.png", "1")
+    guard_store = next(c["Value"] for c in submit.commands
+                       if c["Command"] == "executeScript" and c["Description"] == "guard probe")
+    attach_store = next(c["Value"] for c in attach.commands
+                        if c["Command"] == "executeScript" and c["Description"] == "attach probe")
+    assert "${" + guard_store + "}" in jm._FLAG_JS
+    assert "${" + attach_store + "}" in jm._ESC_JS
+
+
+def test_every_phase_macro_has_the_default_savelog_deadline():
+    macros = [jm.probe_macro("c1", "baseline", "1"), jm.attach_macro("c1", "/u/a.png", "1"),
+              jm.submit_macro("c1", "1", "1"), jm.reset_macro("c1", "1")]
+    assert {m.timeout_sec for m in macros} == {60}

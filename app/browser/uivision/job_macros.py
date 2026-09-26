@@ -29,10 +29,12 @@ from . import autorun, macro, paths
 MACRO_PREFIX = "Arena_Job_"
 REPLY_MARK = "ARENA_JOB="
 _REPLY_RE = re.compile(re.escape(REPLY_MARK) + r"(\{.*\})")
+_JOB_VAR = "arenaJob"        # where a probe stores its reply
+_GUARD_VAR = "arenaGuard"    # the submit guard's reply (read by the click flag)
 # Ui.Vision pastes ${var} RAW into the script (docs: `x="${myvar}"`), so the stored
 # JSON reply arrives as an object literal — parenthesised, never JSON.parse'd.
-_FLAG_JS = "return (${arenaGuard}).data.go ? 1 : 0"
-_ESC_JS = "return (${arenaJob}).data.matched === 1 ? 0 : 1"
+_FLAG_JS = "return (${" + _GUARD_VAR + "}).data.go ? 1 : 0"
+_ESC_JS = "return (${" + _JOB_VAR + "}).data.matched === 1 ? 0 : 1"
 
 # ideal-size: 12-line JS literal reason=the one loader every phase shares (RULE 16.1.5)
 _LOADER = r"""return (function () {
@@ -80,7 +82,7 @@ def _select() -> list:
                           "reuse the pooled tab (Value EMPTY: never opens a page — E210 if gone)")]
 
 
-def _probe(token: str, phase: str, js_expr: str, var: str = "arenaJob") -> list:
+def _probe(token: str, phase: str, js_expr: str, var: str = _JOB_VAR) -> list:
     """executeScript (page JS via the loader) → echo the reply into the savelog."""
     return [macro.command("executeScript", loader(token, phase, js_expr), var, f"{phase} probe"),
             macro.command("echo", REPLY_MARK + "${" + var + "}", "blue",
@@ -116,24 +118,24 @@ def attach_macro(token: str, upload_path: str, wait_js: str) -> PhaseMacro:
                    macro.command("if_v2", "${attachEsc} == 1", "", "dialog may still be open"),
                    macro.command("XType", "${KEY_ESC}", "", "close a leftover dialog"),
                    macro.command("end", "", "", "")])
-    return _finish("attach", commands, xclick=css(add_files_primary()), timeout_sec=60)
+    return _finish("attach", commands, xclick=css(add_files_primary()))
 
 
 def submit_macro(token: str, guard_js: str, ack_js: str) -> PhaseMacro:
     """Guard (not yet sent, our prompt + preview) → ONE XClick on send → ack probe."""
-    commands = (_select() + _probe(token, "guard", guard_js, var="arenaGuard")
+    commands = (_select() + _probe(token, "guard", guard_js, var=_GUARD_VAR)
                 + [macro.command("executeScript", _FLAG_JS, "goFlag", "1 = guard passed"),
                    macro.command("if_v2", "${goFlag} == 1", "", "click only when the guard passed")]
                 + _native_click("Send message")
                 + [macro.command("end", "", "", "")]
                 + _probe(token, "submit", ack_js))
-    return _finish("submit", commands, xclick=css(send_click_primary()), timeout_sec=60)
+    return _finish("submit", commands, xclick=css(send_click_primary()))
 
 
 def reset_macro(token: str, clean_js: str) -> PhaseMacro:
     """XClick New Chat → wait for the clean page (the `new_chat` rule)."""
     commands = _select() + _native_click("New Chat") + _probe(token, "reset", clean_js)
-    return _finish("reset", commands, xclick=css(new_chat_primary()), timeout_sec=60)
+    return _finish("reset", commands, xclick=css(new_chat_primary()))
 
 
 def build_document(phase: PhaseMacro) -> dict:

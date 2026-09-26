@@ -53,7 +53,6 @@ def _gap_seconds(cfg: dict) -> int:
 
 async def _wait_gap(cfg: dict) -> None:
     """Sleep out the remaining delay since the previous job (0 = straight in)."""
-    global _LAST_AT
     left = _LAST_AT + _gap_seconds(cfg) - time.monotonic() if _LAST_AT else 0
     if left > 0:
         await asyncio.sleep(left)
@@ -121,34 +120,35 @@ async def _run_locked(spec, run, provision) -> tuple:
     return result.kind, result.message, tuple(result.lines)
 
 
-def _phase_spec(bridge, page, phase):
-    """The pool entry's spec retargeted at one job phase macro (cmd_var1/2 per phase)."""
-    spec = uv_config.build_spec(bridge, _job_config(bridge, page))
-    return replace(spec, macro=phase.name, target=phase.xclick, pause_ms=phase.wait_ms,
-                   timeout_sec=phase.timeout_sec)
+def _entry_spec(bridge, page, **overrides):
+    """The pool entry's validated spec retargeted at one macro (name, cmd_var1/2, deadline)."""
+    return replace(uv_config.build_spec(bridge, _job_config(bridge, page)), **overrides)
+
+
+def _blocked(what: str) -> tuple:
+    """Browser storage cannot receive a written macro — answered before any launch (RULE 4)."""
+    return "blocked", f"{what} needs hard-drive macro storage (xfile)", ()
+
+
+async def _run_on_entry(spec, page, log_path: str, provision) -> tuple:
+    """ONE planned run on this pool entry with its own savelog, under the machine lock."""
+    run = replace(_planned_run(spec, page), log_path=log_path)
+    return await _run_locked(spec, run, provision)
 
 
 async def run_phase(bridge, page, phase, token: str) -> tuple:
     """(kind, message, savelog lines) of one image-job phase macro on this pool entry."""
-    spec = _phase_spec(bridge, page, phase)
+    spec = _entry_spec(bridge, page, macro=phase.name, target=phase.xclick,
+                       pause_ms=phase.wait_ms, timeout_sec=phase.timeout_sec)
     if spec.storage != "xfile":
-        return "blocked", "the image job needs hard-drive macro storage (xfile)", ()
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    run = replace(_planned_run(spec, page),
-                  log_path=uv_job.log_path(spec.config_dir, token, phase.phase, stamp))
-    return await _run_locked(spec, run, lambda s: uv_job.provision(s, phase))
+        return _blocked("the image job")
+    log_path = uv_job.log_path(spec.config_dir, token, phase.phase, time.strftime("%Y%m%d-%H%M%S"))
+    return await _run_on_entry(spec, page, log_path, lambda s: uv_job.provision(s, phase))
 
 
 def _quiet_report(step: str, message: str, level: str = "info") -> None:
     """Identify steps go to the debug log only — the watcher words the user-facing line."""
     log.debug("identify %s: %s", step, message)
-
-
-def _identify_spec(bridge, page, cmd_payload: str):
-    """The job's spec retargeted at the identify macro: payload on cmd_var2, wait on cmd_var1."""
-    spec = uv_config.build_spec(bridge, _job_config(bridge, page))
-    return replace(spec, macro=uv_identify.MACRO_NAME, target=cmd_payload,
-                   pause_ms=uv_identify.WAIT_MS)
 
 
 async def run_identify(bridge, page, cmd_payload: str) -> tuple:
@@ -157,12 +157,12 @@ async def run_identify(bridge, page, cmd_payload: str) -> tuple:
     Hard-drive storage only: the browser store cannot receive a written macro,
     so that configuration answers `blocked` before anything launches (RULE 4).
     """
-    spec = _identify_spec(bridge, page, cmd_payload)
+    spec = _entry_spec(bridge, page, macro=uv_identify.MACRO_NAME, target=cmd_payload,
+                       pause_ms=uv_identify.WAIT_MS)
     if spec.storage != "xfile":
-        return "blocked", "identify needs hard-drive macro storage (xfile)", ()
+        return _blocked("identify")
     await _wait_gap(uv_config.load_config(bridge))
-    run = replace(_planned_run(spec, page),
-                  log_path=uv_identify.log_path(spec.config_dir, time.strftime("%Y%m%d-%H%M%S")))
-    result = await _run_locked(spec, run, uv_identify.provision)
+    log_path = uv_identify.log_path(spec.config_dir, time.strftime("%Y%m%d-%H%M%S"))
+    result = await _run_on_entry(spec, page, log_path, uv_identify.provision)
     note_job_end()
     return result
