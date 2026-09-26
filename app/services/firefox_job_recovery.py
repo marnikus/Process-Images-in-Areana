@@ -23,7 +23,7 @@ from typing import Any, Optional
 
 from app.core.enums import ImageStatus, JobStatus
 from app.services import firefox_job_output as out
-from app.services.firefox_job_host import persist, say, settings_of
+from app.services.firefox_job_host import persist, say, settings_of, timeout_s
 from app.services.firefox_job_journal import is_post_submit, job_folder, journal_of
 from app.services.firefox_job_upload import drop_staged
 
@@ -55,7 +55,7 @@ def _salvage(bridge, record: dict, source) -> Optional[Path]:
             return _save_bytes(bridge, source, data)
     src = record.get("output_src") or ""
     if src.startswith("http"):
-        return _save_bytes(bridge, source, out.fetch(src, 60))
+        return _save_bytes(bridge, source, out.fetch(src, timeout_s(bridge, "download", 60)))
     return None
 
 

@@ -162,9 +162,9 @@ def test_recovery_survives_a_broken_bridge(tmp_path):
     assert asyncio.run(rec.recover_firefox_jobs(bridge)) == {"dropped": 1}
 
 
-# ---- recovery: the download timeout it uses today (B1 changes this pin) ----
+# ---- recovery: the job's own download timeout (B1: was a hard-coded 60 s) ----
 
-def test_recovery_fetch_timeout_is_sixty_seconds(tmp_path, monkeypatch):
+def test_recovery_fetch_uses_the_download_timeout_setting(tmp_path, monkeypatch):
     seen = []
 
     def fetch(src, timeout, opener=None):
@@ -182,7 +182,7 @@ def test_recovery_fetch_timeout_is_sixty_seconds(tmp_path, monkeypatch):
         journal.advance("c1", step)
     journal.update("c1", output_src="https://r2/new.png")
     assert asyncio.run(rec.recover_firefox_jobs(bridge)) == {"completed": 1}
-    assert seen == [60]
+    assert seen == [5]
 
 
 # ---- lane: both runners refuse browser storage with their own words (R4 merges them) ----
