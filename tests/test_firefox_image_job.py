@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from app.browser.page_status import PageStatus
-from app.browser.uivision import autorun, job_macro, launch
+from app.browser.uivision import autorun, job_macro, launch, macro
 from app.core.enums import ImageStatus
 from app.core.models import ImageItem
 from app.services import multi_page_dispatcher as mpd
@@ -134,12 +134,70 @@ def test_every_phase_reuses_the_tab_and_never_closes_it():
         assert "click" not in names
 
 
-def test_submit_clicks_send_exactly_once_and_upload_types_the_path():
+def _stored(rows) -> str:
+    return next(row["Target"] for row in rows if row["Value"] == "!clipboard")
+
+
+def test_submit_clicks_send_exactly_once_and_upload_does_not_type_the_path():
     submit = job_macro.build_commands("submit")
     assert job_macro.xclick_targets(submit) == [job_macro.send_target()]
     upload = job_macro.build_commands("upload", {"path": "/tmp/café.png"})
     assert job_macro.xclick_targets(upload) == [job_macro.add_files_target()]
-    assert any(row["Command"] == "XType" and row["Target"] == "/tmp/café.png" for row in upload)
+    assert not any(row["Command"] == "XType" and "café" in row["Target"] for row in upload)
+    assert _stored(upload) == "/tmp/café.png"
+
+
+def test_windows_dialog_pastes_a_quoted_path_and_never_uses_locale_keys(monkeypatch):
+    monkeypatch.setattr(job_macro, "_dialog_system", lambda: "windows")
+    path = "C:\\Users\\Jiří Novák\\icon-location-pin.png"
+    commands = job_macro.build_commands("upload", {"path": path})
+    assert _stored(commands) == '"C:/Users/Jiří Novák/icon-location-pin.png"'
+    targets = [row["Target"] for row in commands]
+    assert "${KEY_CTRL+KEY_L}" not in targets
+    assert not any("KEY_ALT" in target for target in targets)
+    assert not any(row["Command"] == "XType" and "icon-location-pin" in row["Target"] for row in commands)
+    click = targets.index(job_macro.add_files_target())
+    assert click < targets.index("1000") < targets.index("${KEY_CTRL+KEY_V}") < targets.index("${KEY_ENTER}")
+    assert targets.index("${KEY_ENTER}") < targets.index("2000")
+    stores = [row for row in commands if row["Command"] == "store"]
+    assert stores[0]["Value"] == "!stringescape" and stores[0]["Target"] == "false"
+    loaded = json.loads(macro.to_json(job_macro.build_job_macro("upload", {"path": path})))
+    assert _stored(loaded["Commands"]) == '"C:/Users/Jiří Novák/icon-location-pin.png"'
+
+
+def test_linux_dialog_opens_the_location_bar_before_the_paste():
+    rows = job_macro.file_dialog_rows("/tmp/café.png", "linux")
+    targets = [row["Target"] for row in rows]
+    assert _stored(rows) == "/tmp/café.png"
+    assert targets.index("${KEY_CTRL+KEY_L}") < targets.index("${KEY_CTRL+KEY_V}")
+    assert targets.count("${KEY_ENTER}") == 1
+
+
+def test_mac_dialog_goes_to_the_folder_then_opens():
+    rows = job_macro.file_dialog_rows("/Users/me/a.png", "mac")
+    targets = [row["Target"] for row in rows]
+    assert "${KEY_CMD+KEY_SHIFT+KEY_G}" in targets
+    assert "${KEY_CMD+KEY_V}" in targets
+    assert targets.count("${KEY_ENTER}") == 2
+    go = targets.index("${KEY_ENTER}")
+    assert targets.index("${KEY_CMD+KEY_V}") < go < targets.index("${KEY_ENTER}", go + 1)
+
+
+def test_windows_unc_path_keeps_backslashes_inside_quotes():
+    rows = job_macro.file_dialog_rows("\\\\server\\share\\icon-location-pin.png", "windows")
+    assert _stored(rows) == '"\\\\server\\share\\icon-location-pin.png"'
+
+
+def test_empty_or_multiline_upload_path_is_refused():
+    with pytest.raises(ValueError):
+        job_macro.build_commands("upload", {"path": ""})
+    with pytest.raises(ValueError):
+        job_macro.build_commands("upload", {"path": "a\nb.png"})
+
+
+def test_unknown_dialog_system_is_refused():
+    with pytest.raises(ValueError):
+        job_macro.file_dialog_rows("/tmp/a.png", "freebsd")
 
 
 def test_launch_url_does_not_close_the_existing_tab():

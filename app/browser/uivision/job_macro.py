@@ -2,8 +2,9 @@
 
 Clicks are XClick only (owner rule). `selectWindow` Value stays empty, so the
 preexisting tab is reused and never opened. No close command is ever emitted —
-cleanup must not close that tab. Per-phase values are baked into the file
-(there is no fourth cmd_var); the tab selector still rides cmd_var3.
+cleanup must not close that tab. The file dialog gets the path by paste, never
+by typing it. Per-phase values are baked into the file (there is no fourth
+cmd_var); the tab selector still rides cmd_var3.
 
 Imports: sibling macro + site_adapter selectors (RULE 21).
 """
@@ -11,6 +12,7 @@ Imports: sibling macro + site_adapter selectors (RULE 21).
 from __future__ import annotations
 
 import json
+import sys
 
 from ..site_adapter import get_selector
 from . import job_probe, macro
@@ -84,13 +86,112 @@ def _clear_rows() -> list:
     return _click(remove_file_target(), "remove a stale attachment (native click)") + _probe_rows()
 
 
+# The dialog this process will drive. Tests pass a system explicitly.
+_DIALOG_SYSTEMS = ("windows", "linux", "mac")
+_SELECT_ALL = {"windows": "${KEY_CTRL+KEY_A}", "linux": "${KEY_CTRL+KEY_A}",
+               "mac": "${KEY_CMD+KEY_A}"}
+_PASTE_KEY = {"windows": "${KEY_CTRL+KEY_V}", "linux": "${KEY_CTRL+KEY_V}",
+              "mac": "${KEY_CMD+KEY_V}"}
+# Windows must NOT use this for a file path: the address bar treats an existing
+# file as "How do you want to open this file?" and never selects it for us.
+_LOCATION_KEY = {"linux": "${KEY_CTRL+KEY_L}", "mac": "${KEY_CMD+KEY_SHIFT+KEY_G}"}
+
+
+def _dialog_system() -> str:
+    """The OS file dialog the running app will actually see."""
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform == "darwin":
+        return "mac"
+    return "linux"
+
+
+def _require_upload_path(payload: dict) -> str:
+    """One path. An empty name would make Enter confirm a highlighted stranger."""
+    path = str((payload or {}).get("path") or "").strip()
+    if not path or "\n" in path or "\r" in path:
+        raise ValueError("upload path is empty or not a single path — refusing to confirm the dialog")
+    return path
+
+
+def _for_dialog(path: str, system: str) -> str:
+    """Clipboard text. Windows gets a quoted `C:/...` path so spaces and `\\U` survive."""
+    if system != "windows":
+        return path
+    native = path if path.startswith("\\\\") else path.replace("\\", "/")
+    return '"' + native + '"'
+
+
+def _pause(ms: str, note: str) -> dict:
+    return macro.command("pause", ms, "", note)
+
+
+def _xtype(keys: str, note: str) -> dict:
+    return macro.command("XType", keys, "", note)
+
+
+def file_dialog_rows(path: str, system: str) -> list:
+    """Paste `path` into the open dialog and confirm. Never type it.
+
+    Typing is what autocomplete turns into "file not found", so the image is
+    never selected. Windows already focuses the filename box — no Alt+N (Czech
+    locale), no Ctrl+L. Linux and mac open the location field first.
+    """
+    if system not in _DIALOG_SYSTEMS:
+        raise ValueError(f"unsupported file-dialog system {system!r}")
+    return (
+        [_pause("1000", "file dialog focused before any key")]
+        + _clipboard_rows(path, system)
+        + _location_rows(system)
+        + _paste_rows(system)
+        + [_pause("400", "pasted path settles before Open")]
+        + _confirm_rows(system)
+        + [_pause("2000", "dialog closes and the attachment preview renders")]
+    )
+
+
+def _clipboard_rows(path: str, system: str) -> list:
+    """`!stringescape` off first — a stored `\\Users` or `\\t` is otherwise eaten."""
+    return [
+        macro.command("store", "false", "!stringescape",
+                      "literal path — \\t \\n \\Users must not become escapes"),
+        macro.command("store", _for_dialog(path, system), "!clipboard",
+                      "path the dialog will paste"),
+    ]
+
+
+def _location_rows(system: str) -> list:
+    """Linux/mac only. Windows keeps the filename box, which already has focus."""
+    key = _LOCATION_KEY.get(system)
+    if not key:
+        return []
+    note = "GTK location bar" if system == "linux" else "Go to Folder"
+    return [_xtype(key, note), _pause("300", "location field open")]
+
+
+def _paste_rows(system: str) -> list:
+    return [
+        _xtype(_SELECT_ALL[system], "replace the focused field"),
+        _xtype(_PASTE_KEY[system], "paste the path — typing it trips autocomplete"),
+    ]
+
+
+def _confirm_rows(system: str) -> list:
+    """One Enter opens. macOS needs Go, then Open, while the panel is still up."""
+    if system != "mac":
+        return [_xtype("${KEY_ENTER}", "Open the pasted file")]
+    return [
+        _xtype("${KEY_ENTER}", "Go to the file"),
+        _pause("400", "the file is selected, the panel stays open"),
+        _xtype("${KEY_ENTER}", "Open"),
+    ]
+
+
 def _upload_rows(payload: dict) -> list:
-    path = str(payload.get("path") or "")
+    path = _require_upload_path(payload)
     return (
         _click(add_files_target(), "open the OS file dialog (native click, never DOM click)")
-        + [macro.command("pause", "400", "", "let the file dialog appear"),
-           macro.command("XType", path, "", "type the source path into the OS dialog"),
-           macro.command("XType", "${KEY_ENTER}", "", "confirm the OS dialog")]
+        + file_dialog_rows(path, _dialog_system())
         + _probe_rows()
     )
 
