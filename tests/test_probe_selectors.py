@@ -32,6 +32,10 @@ PROBE_FILES = [
     "app/browser/output_probes.py",
     "app/browser/owner_probe.py",   # D-5: the logged-in account label probe
     "app/browser/processing_probe.py",  # B12: AWAIT_PROCESSING_IMAGE indicator probe
+    # Firefox image job (steps 14–19): the five stage macros' probe bodies.
+    "app/browser/uivision/job_probes.py",
+    "app/browser/uivision/job_submit_probes.py",
+    "app/browser/uivision/job_macro.py",
 ]
 
 
@@ -127,6 +131,31 @@ def test_no_leftover_placeholders_in_built_payloads():
         "JS_VERIFY_ATTACHMENT", "JS_PAGE_READY", "JS_IS_GENERATING",
     ):
         assert "__" not in getattr(cdp_arena, name), f"{name} has an unfilled placeholder"
+
+
+@pytest.mark.unit
+def test_firefox_job_payloads_receive_site_adapter_lists():
+    """RULE 21 wiring for the whole image job: every selector list rides the payload."""
+    from app.browser.uivision import job_macro
+    sel = job_macro.job_selectors()
+    for key, expected in (("textarea", probe_selectors.textarea_selectors()),
+                          ("send", probe_selectors.send_click_selectors()),
+                          ("preview", probe_selectors.attachment_preview_selectors()),
+                          ("output", probe_selectors.output_image_selectors()),
+                          ("newchat", probe_selectors.new_chat_selectors()),
+                          ("attach", probe_selectors.add_files_selectors()),
+                          ("remove", probe_selectors.remove_file_selectors())):
+        assert sel[key] == expected, key
+    assert sel["spinner"] == [probe_selectors.spinner_selector()]
+    assert sel["security"] == [probe_selectors.security_dialog_check()["sel"]]
+    built = json.loads(job_macro.payload(job_macro.StageInputs(
+        stage="prepare", token="T", file_name="a.png", prompt="p",
+        baseline=["https://x/old.png"])))
+    for key in ("textarea", "send", "preview", "output", "spinner", "security", "newchat",
+                "attach", "remove", "readiness"):
+        assert built["sel"][key] == sel[key], key
+    assert built["secText"] == probe_selectors.security_dialog_text()
+    assert built["file"] == "a.png" and built["token"] == "T" and built["until"] == "ready"
 
 
 @pytest.mark.unit

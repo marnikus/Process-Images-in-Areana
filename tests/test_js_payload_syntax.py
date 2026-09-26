@@ -31,6 +31,9 @@ from app.browser import processing_probe
 from app.browser import recording_probes
 from app.browser import worker_badge
 from app.browser.cdp_arena import js_snippets
+from app.browser.uivision import job_macro as uivision_job_macro
+from app.browser.uivision import job_probes as uivision_job_probes
+from app.browser.uivision import job_submit_probes as uivision_job_submit
 from app.browser.uivision import macro as uivision_macro
 from app.utils import page_errors
 from app.browser.probe_requests import (MATCH_CONTAINS, MATCH_EXACT, ClickProbeSpec,
@@ -93,6 +96,19 @@ def payloads() -> dict:
     out["uivision.find_rect.element"] = uivision_macro.render_find_rect_js(
         "xpath=//a[span[text()='New Chat']]", 3000)
     out["uivision.find_rect.image"] = uivision_macro.render_find_rect_js("button.png@@0.8", 3000)
+    # the image job's seven page probes, rendered the way the extension renders them
+    inputs = uivision_job_macro.StageInputs(stage="submit", token="20260925-142530-A7F3",
+                                            image_path="/tmp/a.png", file_name="a.png",
+                                            prompt="héllo\nworld [JOB-ID: T]", baseline=["blob:old"])
+    cfg = uivision_job_macro.payload(inputs)
+    out["job.state"] = uivision_job_probes.render_state_js(cfg, 3000)
+    out["job.attach"] = uivision_job_probes.render_attach_js(cfg, 3000)
+    out["job.locate"] = uivision_job_probes.render_locate_js(cfg, 3000)
+    out["job.fetch"] = uivision_job_probes.render_fetch_js(cfg, 3000)
+    out["job.prompt"] = uivision_job_submit.render_prompt_js(cfg, 3000)
+    out["job.guard"] = uivision_job_submit.render_guard_js(cfg, 3000)
+    out["job.guard_why"] = uivision_job_submit.render_guard_why_js(cfg, 3000)
+    out["job.result"] = uivision_job_submit.render_result_js(cfg, 3000)
     for name in sorted(n for n in dir(js_snippets) if n.startswith("JS_")):
         out[f"snippet.{name}"] = _as_statement(getattr(js_snippets, name))
     return {k: _as_statement(v) for k, v in out.items()}
@@ -118,6 +134,9 @@ _BUILDERS_COVERED = {
     recording_probes: {"build_observer_js", "build_netwrap_js", "build_flush_js", "build_snapshot_js"},
     page_errors: {"build_error_scan_js"},
     uivision_macro: {"build_commands", "build_macro", "render_find_rect_js"},
+    uivision_job_probes: {"build_state_js", "build_attach_js", "build_locate_js", "build_fetch_js"},
+    uivision_job_submit: {"build_prompt_js", "build_guard_js", "build_guard_why_js",
+                          "build_result_js"},
 }
 
 

@@ -54,6 +54,21 @@ def output_image_selectors() -> List[str]:
     return get_selector("output_image").all_selectors()
 
 
+def add_files_selectors() -> List[str]:
+    """Attach-button list for the job's native XClick (the file dialog opener)."""
+    return get_selector("add_files_button").all_selectors()
+
+
+def remove_file_selectors() -> List[str]:
+    """Attachment remove-button list — the stale-tile cleanup before attaching."""
+    return get_selector("remove_file_button").all_selectors()
+
+
+def security_dialog_text() -> str:
+    """The dialog's own text marker — never a hard-coded phrase in a probe."""
+    return get_selector("security_dialog").textCondition or ""
+
+
 def spinner_selector() -> str:
     """Processing spinner selector for generating-state scans."""
     return get_selector("processing_spinner").primary

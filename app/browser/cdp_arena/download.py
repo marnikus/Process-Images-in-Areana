@@ -9,40 +9,21 @@ import json
 import logging
 from typing import Tuple
 
+from ..image_fetch import fetch_bytes     # the one HTTP fetch (Chrome + Firefox lanes)
 from ..page_recovery import evaluate_failure  # B8: why the page answered nothing
 from .js_snippets import JS_DOWNLOAD_IMAGE
 
 log = logging.getLogger("arena")
 
 
-def _sync_fetch(url: str):
-    import urllib.request
-    import ssl
-    hdr = {"User-Agent": "Mozilla/5.0 Chrome/120", "Accept": "image/*,*/*;q=0.8"}
-    req = urllib.request.Request(url, headers=hdr)
-    ctx = ssl.create_default_context()
-    try:
-        with urllib.request.urlopen(req, timeout=45, context=ctx) as r:
-            return r.read(), r.headers.get("Content-Type", "") or "", 200
-    except Exception:
-        with urllib.request.urlopen(req, timeout=45) as r2:
-            ctype = getattr(r2.headers, "get", lambda k, d="": d)("Content-Type", "") or ""
-            return r2.read(), ctype, 200
-
-
 async def _python_download(cdp, src: str, log_cb) -> Tuple[bool, bytes, str]:
+    """Page-side download failed → fetch the same URL directly (2026-09-25: shared)."""
     loop = asyncio.get_event_loop()
-    try:
-        data, ctype, _ = await loop.run_in_executor(None, lambda: _sync_fetch(src))
-        if not data or len(data) < 100:
-            return False, b"", f"Too small {len(data)}"
-        low = data[:200].lower()
-        if b"<html" in low or b"<!doctype" in low:
-            return False, b"", f"HTML page: {data[:500].decode(errors='ignore')[:200]}"
-        log_cb(f"Python download {len(data)} bytes {ctype} {src[:60]}...", "success")
-        return True, data, ctype
-    except Exception as e:
-        return False, b"", f"Python download failed: {e}"
+    ok, data, ctype, err = await loop.run_in_executor(None, lambda: fetch_bytes(src))
+    if not ok:
+        return False, b"", err
+    log_cb(f"Python download {len(data)} bytes {ctype} {src[:60]}...", "success")
+    return True, data, ctype
 
 
 def _no_result(cdp) -> str:

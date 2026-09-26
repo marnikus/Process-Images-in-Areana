@@ -28,6 +28,8 @@ from pathlib import Path
 
 from app.browser.uivision import config as uv_config
 from app.browser.uivision import identify as uv_identify
+from app.browser.uivision import job_macro as uv_job_macro
+from app.browser.uivision import job_replies as uv_job_replies
 from app.browser.uivision import plan as uv_plan
 from app.browser.uivision import runner as uv_runner
 from app.browser.uivision import tabs as uv_tabs
@@ -133,9 +135,69 @@ async def run_firefox_macro(bridge, page) -> tuple:
     return kind, message
 
 
+def _job_stage_spec(spec, inputs):
+    """The lane's spec retargeted at one job stage: macro name + its own wait budget.
+
+    The stage's payload is baked into the macro file (`job_macro.write_stage`),
+    so only the budget (`pause_ms` → `${!cmd_var1}`) changes on the command line.
+    """
+    if spec.storage != "xfile":
+        return None
+    return replace(spec, macro=uv_job_macro.macro_name(inputs.stage, inputs.token),
+                   pause_ms=int(inputs.budget_ms or uv_job_macro.budget_for(inputs.stage)))
+
+
+async def run_job_stage(bridge, page, inputs, report=None) -> tuple:
+    """(kind, message, savelog lines) of one image-job stage on this pool entry.
+
+    Same lock, gap, provisioning, foregrounding and savelog poll as every other
+    macro (`run_identify`): the stage macro is written per job+stage, the run
+    reuses the pooled tab, and cancel is honoured before the launch and inside
+    the poll (RULE 7). Hard-drive storage only — the browser store cannot
+    receive a written macro, so that configuration answers `blocked` (RULE 4).
+    """
+    global _LAST_AT
+    cfg = _job_config(bridge, page)
+    spec = _job_stage_spec(uv_config.build_spec(bridge, cfg), inputs)
+    if spec is None:
+        return "blocked", "the image job needs hard-drive macro storage (xfile)", ()
+    if getattr(bridge, "_cancel_requested", False):
+        return "stopped", "cancelled before the macro launched", ()
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    run = replace(_planned_run(spec, page),
+                  log_path=uv_job_macro.log_path(spec.config_dir, inputs.stage, stamp))
+    async with _MACRO_LOCK:
+        _fresh(run)
+        await _wait_gap(cfg)
+        uv_job_macro.write_stage(spec, inputs)
+        seq = Sequence(spec, RunSeams(stop=lambda: bool(getattr(bridge, "_cancel_requested", False))),
+                       StepRecorder(report or _reporter(bridge)))
+        seq.page = uv_job_macro.page(spec)
+        result = await seq.execute([run])
+        _LAST_AT = time.monotonic()
+    return result.kind, result.message, tuple(result.lines)
+
+
+async def reset_page(bridge, page) -> tuple:
+    """(clean, reason) — the New-chat reset through its own macro (step 15).
+
+    The reset only *click* is native (`XClick` on the New Chat link) and the
+    clean state is proved by the page (empty composer, no attachment, no
+    spinner, no dialog) — so a pool page is handed the next job only when the
+    screenshot-level truth says it is fresh.
+    """
+    inputs = uv_job_macro.StageInputs(stage="newchat", token="reset",
+                                      budget_ms=uv_job_macro.budget_for("newchat"))
+    kind, message, lines = await run_job_stage(bridge, page, inputs, _quiet_report)
+    replies = uv_job_replies.parse(lines)
+    clean, reason = uv_job_replies.clean_verdict(replies.state)
+    log.debug("firefox reset %s: %s (%s: %s)", page.tab_id, clean, kind, message)
+    return clean, reason
+
+
 def _quiet_report(step: str, message: str, level: str = "info") -> None:
-    """Identify steps go to the debug log only — the watcher words the user-facing line."""
-    log.debug("identify %s: %s", step, message)
+    """Identify/reset steps go to the debug log only — the caller words the user-facing line."""
+    log.debug("quiet %s: %s", step, message)
 
 
 def _identify_spec(bridge, page, cmd_payload: str):

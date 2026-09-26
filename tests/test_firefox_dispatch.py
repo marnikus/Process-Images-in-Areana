@@ -1,13 +1,15 @@
-"""Firefox through the ONE dispatcher (2026-09-25, design D5/D6).
+"""Firefox through the ONE dispatcher (2026-09-25, steps 14–19).
 
-`run_claimed_image` routes a `browser == "firefox"` page to the Ui.Vision
-lane with the SAME bookkeeping as the Chrome lane (prepare → job_started →
-result → shared finish/cooldown/bus wake); the image outcome follows the
-savelog verdict HONESTLY — completed carries a Ui.Vision message and never
-a fabricated "Saved …", error/timeout/stopped/corrupt fail with the savelog
-kind named (RULE 4).
+`run_claimed_image` routes a `browser == "firefox"` page to the Firefox image
+job (`services/firefox_job.run_image_job`) with the SAME bookkeeping as the
+Chrome lane (prepare → job_started → result → shared finish/cooldown/bus wake);
+the image outcome follows the job's own verdict HONESTLY — `completed` carries
+the real saved path, `needs_review` marks the image for a human and is never
+rounded to completed, a failure keeps the named reason, cancel propagates.
 
-RED at base: a Firefox page hits "⚠ No controller" and the job never runs.
+The framework test (`firefox_lane.run_firefox_macro`, the window's own Run
+button) is NOT what a dispatched job runs any more — that is the whole point of
+this round.
 """
 
 import asyncio
@@ -15,10 +17,10 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from app.browser.page_status import PageInfo, PageStatus
+from app.browser.page_status import PageInfo
 from app.core.enums import ImageStatus
 from app.core.models import ImageItem, UrlRow
-from app.services import firefox_lane as fl
+from app.services import firefox_job as fj
 from app.services import multi_page_dispatcher as mpd
 
 pytestmark = pytest.mark.unit
@@ -85,6 +87,17 @@ def ctx_for(bridge, pool, img, urls=None):
                            allowed={row.tab_id}), row
 
 
+async def _noop_finish(finish_ctx):
+    return None
+
+
+def _outcome(monkeypatch, outcome):
+    """Patch the job seam the dispatcher calls (the real job is tested elsewhere)."""
+    async def fake_job(request):
+        return outcome
+    monkeypatch.setattr(fj, "run_image_job", fake_job)
+
+
 @pytest.mark.asyncio
 async def test_run_claimed_image_routes_firefox_to_the_lane(monkeypatch):
     bridge, pool = FakeBridge(), firefox_pool()
@@ -101,77 +114,121 @@ async def test_run_claimed_image_routes_firefox_to_the_lane(monkeypatch):
     assert called, "the firefox branch must own the job (no CDP controller path)"
 
 
-async def _noop_finish(finish_ctx):
-    return None
-
-
 @pytest.mark.asyncio
-async def test_macro_ok_completes_the_image_with_an_honest_message(monkeypatch):
+async def test_completed_job_marks_the_image_and_the_jobs_column(monkeypatch):
     bridge, pool = FakeBridge(), firefox_pool()
     monkeypatch.setattr(mpd, "record_dispatch_result", lambda ctx: None)
-
-    async def ok_macro(b, page):
-        return "ok", "macro finished"
-
-    monkeypatch.setattr(fl, "run_firefox_macro", ok_macro)
+    _outcome(monkeypatch, fj.JobOutcome(fj.COMPLETED, output_path="/tmp/a_AI.png"))
     ctx, row = ctx_for(bridge, pool, make_img())
     img = make_img()
     await mpd._run_firefox_claimed(ctx, img, pool.get_page(row.tab_id))
     assert img.status == ImageStatus.COMPLETED.value
     assert bridge.job_started.calls and bridge.job_finished.calls
     payload = bridge.job_finished.calls[-1][1]
-    assert "Ui.Vision macro ok" in payload
-    assert "Saved" not in payload          # the lane writes no output files (RULE 4)
-    page = pool.get_page(row.tab_id)
-    assert page.jobs_completed >= 1        # shared finish: JOBS column moves
+    assert "Saved /tmp/a_AI.png" in payload          # the real file, never invented
+    assert pool.get_page(row.tab_id).jobs_completed >= 1   # shared finish: JOBS column moves
 
 
 @pytest.mark.asyncio
-async def test_macro_error_fails_the_image_with_the_savelog_text(monkeypatch):
+async def test_failed_job_keeps_the_named_reason(monkeypatch):
     bridge, pool = FakeBridge(), firefox_pool()
     monkeypatch.setattr(mpd, "record_dispatch_result", lambda ctx: None)
-
-    async def err_macro(b, page):
-        return "error", "E210 no matching tab"
-
-    monkeypatch.setattr(fl, "run_firefox_macro", err_macro)
+    _outcome(monkeypatch, fj.JobOutcome(fj.FAILED, error="attachment not verified: no attachment preview"))
     ctx, row = ctx_for(bridge, pool, make_img())
     img = make_img()
     await mpd._run_firefox_claimed(ctx, img, pool.get_page(row.tab_id))
     assert img.status == ImageStatus.FAILED.value
-    assert "E210 no matching tab" in img.error
+    assert "no attachment preview" in img.error
+    page = pool.get_page(row.tab_id)
+    assert page.jobs_completed == 0            # nothing was saved → the JOBS column stays
+    assert page.status.value == "error" and not page.is_cooling()   # a human resets it
+
+
+@pytest.mark.asyncio
+async def test_needs_review_never_becomes_completed(monkeypatch):
+    """Uncertain output: the image is marked for a human and the page keeps its evidence."""
+    bridge, pool = FakeBridge(), firefox_pool()
+    monkeypatch.setattr(mpd, "record_dispatch_result", lambda ctx: None)
+    _outcome(monkeypatch, fj.JobOutcome(fj.NEEDS_REVIEW, error="result uncertain: no new image"))
+    ctx, row = ctx_for(bridge, pool, make_img())
+    img = make_img()
+    await mpd._run_firefox_claimed(ctx, img, pool.get_page(row.tab_id))
+    assert img.status == ImageStatus.NEEDS_REVIEW.value
+    assert "uncertain" in img.error
     payload = bridge.job_finished.calls[-1][1]
-    assert "Ui.Vision" in payload
+    assert "needs_review" in payload and "completed" not in payload
+    assert pool.get_page(row.tab_id).status.value == "error"   # preserved, not free
+    assert "no new job" in " ".join(m for _lvl, m in bridge.logs)
 
 
 @pytest.mark.asyncio
-async def test_timeout_and_stopped_verdicts_fail_honestly(monkeypatch):
-    for kind in ("timeout", "stopped", "corrupt", "blocked"):
-        bridge, pool = FakeBridge(), firefox_pool()
-        monkeypatch.setattr(mpd, "record_dispatch_result", lambda ctx: None)
-
-        async def verdict(b, page, _k=kind):
-            return _k, f"verdict {_k}"
-
-        monkeypatch.setattr(fl, "run_firefox_macro", verdict)
-        ctx, row = ctx_for(bridge, pool, make_img())
-        img = make_img()
-        await mpd._run_firefox_claimed(ctx, img, pool.get_page(row.tab_id))
-        assert img.status == ImageStatus.FAILED.value
-        assert kind in img.error
-
-
-@pytest.mark.asyncio
-async def test_finish_after_a_firefox_job_never_fakes_a_cdp_reset(monkeypatch, tmp_path):
-    """ctrl=None: the shared finish must say "no CDP" instead of a reset failure."""
+async def test_finish_after_a_firefox_job_runs_the_macro_reset(monkeypatch, tmp_path):
+    """ctrl=None on a Firefox page: the reset goes through its own macro (step 15)."""
     from app.services.cooldown_service import FinishCtx, _best_effort_reset
     bridge, pool = FakeBridge(), firefox_pool()
+    calls = []
+
+    async def fake_reset(b, page):
+        calls.append(page.tab_id)
+        return True, "composer empty, nothing attached, no spinner, no dialog"
+
+    monkeypatch.setattr("app.services.firefox_lane.reset_page", fake_reset)
     ctx = FinishCtx(pool=pool, bridge=bridge, tab_id="9THrgpBc.Profile1_tab1",
                     ctrl=None, client=None)
     ok, reason = await _best_effort_reset(ctx, timeout_sec=0.1)
-    assert ok is False
-    assert "firefox" in reason.lower() or "no cdp" in reason.lower()
-    assert "Traceback" not in reason
+    assert ok is True and calls == ["9THrgpBc.Profile1_tab1"]
+    assert "composer empty" in reason
+
+
+@pytest.mark.asyncio
+async def test_finish_of_a_non_firefox_page_without_cdp_says_so(monkeypatch):
+    from app.browser.page_pool import PagePool
+    from app.services.cooldown_service import FinishCtx, _best_effort_reset
+    pool = PagePool(logger=lambda m, l="info": None)
+    pool.add_page(PageInfo(ws_url="ws://x", tab_id="c1", is_connected=True, browser=""))
+    ctx = FinishCtx(pool=pool, bridge=FakeBridge(), tab_id="c1", ctrl=None, client=None)
+    ok, reason = await _best_effort_reset(ctx, timeout_sec=0.1)
+    assert ok is False and "no CDP" in reason
+
+
+@pytest.mark.asyncio
+async def test_a_busy_or_cooling_firefox_worker_gets_no_second_job(monkeypatch):
+    """Step 14: busy during the job, then the cooldown timer — never two jobs at once."""
+    import time
+    from app.browser.page_status import PageStatus
+    bridge, pool = FakeBridge(), firefox_pool()
+    row = UrlRow.create("https://arena.ai/c/7", enabled=True, tab_id="9THrgpBc.Profile1_tab1")
+    allowed = {row.tab_id}
+    first = mpd._acquire_free_in(pool, allowed, "J1")
+    assert first is not None and first.tab_id == row.tab_id
+    assert mpd._acquire_free_in(pool, allowed, "J2") is None      # busy: no second claim
+    page = pool.get_page(row.tab_id)
+    page.status = PageStatus.STEADY
+    page.cooldown_until = time.time() + 60                        # cooling with a live timer
+    assert mpd._acquire_free_in(pool, allowed, "J3") is None      # cooldown: still no job
+    page.cooldown_until = 0.0
+    assert mpd._acquire_free_in(pool, allowed, "J4") is not None  # timer gone → claimable
+
+
+@pytest.mark.asyncio
+async def test_a_failed_new_chat_reset_is_a_warning_and_the_cooldown_still_starts(monkeypatch):
+    """Step 15/18: a reset failure never turns a saved job into a failure."""
+    from app.services import cooldown_service as cs
+    bridge, pool = FakeBridge(), firefox_pool()
+    logged = []
+
+    async def dirty_reset(b, page):
+        return False, "composer is not empty (5 chars)"
+
+    monkeypatch.setattr("app.services.firefox_lane.reset_page", dirty_reset)
+    monkeypatch.setattr(cs, "_emit_status", lambda ctx: None)
+    monkeypatch.setattr(cs, "load_config", lambda get: NS(enabled=True, min_seconds=30))
+    ctx = cs.FinishCtx(pool=pool, bridge=bridge, tab_id="9THrgpBc.Profile1_tab1",
+                       ctrl=None, client=None)
+    started = await cs.finish_page_after_job(ctx)
+    text = " ".join(m for _lvl, m in bridge.logs)
+    assert "New-chat reset failed" in text and "cooling anyway" in text
+    assert started is True or pool.get_page(ctx.tab_id).remaining_seconds() > 0
 
 
 @pytest.mark.asyncio
@@ -204,39 +261,40 @@ async def test_chrome_pages_keep_the_cdp_lane(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_verdict_names_a_tab_that_left_the_pool():
-    """Page vanished between claim and macro: an honest failure, never a crash."""
+async def test_job_names_a_tab_that_left_the_pool(monkeypatch):
+    """Page vanished between claim and job: an honest failure, never a crash."""
     from app.browser.page_pool import PagePool
     job = NS(pool=PagePool(logger=lambda m, l="info": None), bridge=FakeBridge(),
-             tab_id="9THrgpBc.Profile1_tab1")
-    failed, err = await mpd._firefox_verdict(job)
-    assert failed is True
-    assert "tab left the pool" in err
+             tab_id="9THrgpBc.Profile1_tab1", img=make_img())
+    outcome = await mpd._firefox_job(job, "corr", "job", "prompt")
+    assert outcome.status == fj.FAILED
+    assert "tab left the pool" in outcome.error
 
 
 @pytest.mark.asyncio
-async def test_verdict_crash_becomes_a_named_failure(monkeypatch):
-    async def boom(b, page):
+async def test_job_crash_becomes_a_named_failure(monkeypatch):
+    async def boom(request):
         raise RuntimeError("desktop gone")
 
-    monkeypatch.setattr(fl, "run_firefox_macro", boom)
-    job = NS(pool=firefox_pool(), bridge=FakeBridge(),
-             tab_id="9THrgpBc.Profile1_tab1")
-    failed, err = await mpd._firefox_verdict(job)
-    assert failed is True
-    assert err == "Ui.Vision blocked: desktop gone"
+    monkeypatch.setattr(fj, "run_image_job", boom)
+    job = NS(pool=firefox_pool(), bridge=FakeBridge(), tab_id="9THrgpBc.Profile1_tab1",
+             img=make_img())
+    outcome = await mpd._firefox_job(job, "corr", "job", "prompt")
+    assert outcome.status == fj.FAILED
+    assert outcome.error == "Firefox job error: desktop gone"
+    assert outcome.preserve is False
 
 
 @pytest.mark.asyncio
-async def test_verdict_cancel_propagates_to_the_dispatcher(monkeypatch):
-    async def cancelled(b, page):
+async def test_job_cancel_propagates_to_the_dispatcher(monkeypatch):
+    async def cancelled(request):
         raise asyncio.CancelledError()
 
-    monkeypatch.setattr(fl, "run_firefox_macro", cancelled)
-    job = NS(pool=firefox_pool(), bridge=FakeBridge(),
-             tab_id="9THrgpBc.Profile1_tab1")
+    monkeypatch.setattr(fj, "run_image_job", cancelled)
+    job = NS(pool=firefox_pool(), bridge=FakeBridge(), tab_id="9THrgpBc.Profile1_tab1",
+             img=make_img())
     with pytest.raises(asyncio.CancelledError):
-        await mpd._firefox_verdict(job)
+        await mpd._firefox_job(job, "corr", "job", "prompt")
 
 
 @pytest.mark.asyncio
@@ -251,11 +309,7 @@ async def test_job_started_emit_failure_never_kills_the_lane(monkeypatch):
     bridge.job_started = DeadEmitter()
     monkeypatch.setattr(mpd, "record_dispatch_result", lambda ctx: None)
     monkeypatch.setattr(mpd, "_finish_page_safely", _noop_finish)
-
-    async def ok_macro(b, page):
-        return "ok", "macro finished"
-
-    monkeypatch.setattr(fl, "run_firefox_macro", ok_macro)
+    _outcome(monkeypatch, fj.JobOutcome(fj.COMPLETED, output_path="/tmp/a_AI.png"))
     ctx, row = ctx_for(bridge, pool, make_img())
     img = make_img()
     await mpd._run_firefox_claimed(ctx, img, pool.get_page(row.tab_id))
