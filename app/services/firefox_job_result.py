@@ -48,17 +48,31 @@ async def phase_submit(job: FfJob) -> None:
                                 js.ack_js(job.corr, ACK_WAIT_MS))
     replies = await run_macro(job, phase, required=False)
     guard, ack = replies.get("guard") or {}, replies.get("submit") or {}
-    if guard and not guard.get("go") and not guard.get("bubble"):
-        raise JobFailure("submit guard refused — not sent (prompt ok={promptOk}, attachment ok="
-                         "{attachmentOk}, send enabled={sendEnabled})".format(**{
-                             k: guard.get(k) for k in ("promptOk", "attachmentOk", "sendEnabled")}))
-    how = "bubble" if guard.get("bubble") or ack.get("bubble") else str(ack.get("ack") or "")
+    refusal = _guard_refusal(guard)
+    if refusal:
+        raise JobFailure(refusal)
+    how = _ack_how(guard, ack)
     if how:
         job.journal.update(job.corr, submit_ack=True)
         emit(job, "SUBMIT", "success", f"submitted (ack: {how})")
         return
     job.uncertain = True
     emit(job, "SUBMIT", "running", "submit uncertain — no acknowledgement; observing, never resubmitting")
+
+
+def _guard_refusal(guard: dict) -> str:
+    """The guard's named refusal ('' = it let the click through or already saw our bubble)."""
+    if not guard or guard.get("go") or guard.get("bubble"):
+        return ""
+    return (f"submit guard refused — not sent (prompt ok={guard.get('promptOk')}, "
+            f"attachment ok={guard.get('attachmentOk')}, send enabled={guard.get('sendEnabled')})")
+
+
+def _ack_how(guard: dict, ack: dict) -> str:
+    """How the send was acknowledged: 'bubble' (proof), the ack probe's word, or '' (uncertain)."""
+    if guard.get("bubble") or ack.get("bubble"):
+        return "bubble"
+    return str(ack.get("ack") or "")
 
 
 def _settle_uncertain(job: FfJob, obs: dict, polls: int) -> None:

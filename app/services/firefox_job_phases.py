@@ -117,7 +117,7 @@ def check_attachment(job: FfJob, reply: dict) -> None:
     ours = [p for p in previews if p.get("alt") == job.staged_name]
     if len(ours) == 1 and len(previews) == 1:
         return
-    if len(ours) > 1 or (ours and len(previews) > 1):
+    if ours:  # ours ⊆ previews, and not exactly one-of-one ⇒ more than one attachment
         raise JobFailure(f"multiple attachments in the composer ({len(previews)})")
     if previews:
         raise JobFailure(f"wrong attachment preview: {previews[0].get('alt') or 'unnamed blob'}")

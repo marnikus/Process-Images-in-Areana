@@ -201,3 +201,28 @@ async def test_phase_refuses_browser_storage_with_the_job_wording():
     phase = jm.probe_macro("c1", "baseline", "1")
     kind, msg, _ = await fl.run_phase(bridge, ff_page(), phase, "c1")
     assert (kind, msg) == ("blocked", "the image job needs hard-drive macro storage (xfile)")
+
+
+# ---- R1 helpers: every new function gets a test (RULE 16) ----
+
+@pytest.mark.parametrize("guard, expected", [
+    ({}, ""),                                              # no guard answer → the ack decides
+    ({"go": True}, ""),
+    ({"go": False, "bubble": True}, ""),                   # already sent → never a refusal
+    ({"go": False, "promptOk": False, "attachmentOk": True, "sendEnabled": True},
+     "submit guard refused — not sent (prompt ok=False, attachment ok=True, send enabled=True)"),
+])
+def test_guard_refusal(guard, expected):
+    from app.services.firefox_job_result import _guard_refusal
+    assert _guard_refusal(guard) == expected
+
+
+@pytest.mark.parametrize("guard, ack, expected", [
+    ({"bubble": True}, {}, "bubble"),
+    ({}, {"bubble": True, "ack": "cleared"}, "bubble"),
+    ({}, {"ack": "cleared"}, "cleared"),
+    ({}, {}, ""),
+])
+def test_ack_how(guard, ack, expected):
+    from app.services.firefox_job_result import _ack_how
+    assert _ack_how(guard, ack) == expected
