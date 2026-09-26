@@ -147,18 +147,29 @@ def test_submit_clicks_send_exactly_once_and_upload_does_not_type_the_path():
     assert _stored(upload) == "/tmp/café.png"
 
 
-def test_windows_dialog_pastes_a_quoted_path_and_never_uses_locale_keys(monkeypatch):
+def _pairs(commands):
+    return [(row["Command"], row["Target"]) for row in commands]
+
+
+def test_windows_dialog_fills_file_name_and_clicks_open(monkeypatch):
     monkeypatch.setattr(job_macro, "_dialog_system", lambda: "windows")
     path = "C:\\Users\\Jiří Novák\\icon-location-pin.png"
     commands = job_macro.build_commands("upload", {"path": path})
     assert _stored(commands) == '"C:/Users/Jiří Novák/icon-location-pin.png"'
-    targets = [row["Target"] for row in commands]
-    assert "${KEY_CTRL+KEY_L}" not in targets
-    assert not any("KEY_ALT" in target for target in targets)
+    seq = _pairs(commands)
+    assert ("XType", "${KEY_CTRL+KEY_L}") not in seq
+    assert ("XType", "${KEY_ENTER}") not in seq
     assert not any(row["Command"] == "XType" and "icon-location-pin" in row["Target"] for row in commands)
-    click = targets.index(job_macro.add_files_target())
-    assert click < targets.index("1000") < targets.index("${KEY_CTRL+KEY_V}") < targets.index("${KEY_ENTER}")
-    assert targets.index("${KEY_ENTER}") < targets.index("2000")
+    assert seq.index(("XClick", job_macro.add_files_target())) < seq.index(("XDesktopAutomation", "true"))
+    assert seq.index(("XDesktopAutomation", "true")) < seq.index(("XType", "${KEY_ALT+KEY_N}"))
+    assert seq.index(("XType", "${KEY_ALT+KEY_N}")) < seq.index(("XType", "${KEY_CTRL+KEY_V}"))
+    paste = seq.index(("XType", "${KEY_CTRL+KEY_V}"))
+    opened = seq.index(("XClick", "ocr=Open"))
+    assert paste < opened < seq.index(("XDesktopAutomation", "false"))
+    assert seq.index(("if", "!${!statusOK}")) < seq.index(("XType", "${KEY_ALT+KEY_O}"))
+    probe = next(i for i, row in enumerate(commands)
+                 if row["Command"] == "executeScript" and row["Value"] == job_macro.REPLY_VAR)
+    assert seq.index(("XDesktopAutomation", "false")) < probe
     stores = [row for row in commands if row["Command"] == "store"]
     assert stores[0]["Value"] == "!stringescape" and stores[0]["Target"] == "false"
     loaded = json.loads(macro.to_json(job_macro.build_job_macro("upload", {"path": path})))
@@ -167,10 +178,11 @@ def test_windows_dialog_pastes_a_quoted_path_and_never_uses_locale_keys(monkeypa
 
 def test_linux_dialog_opens_the_location_bar_before_the_paste():
     rows = job_macro.file_dialog_rows("/tmp/café.png", "linux")
-    targets = [row["Target"] for row in rows]
+    seq = _pairs(rows)
     assert _stored(rows) == "/tmp/café.png"
-    assert targets.index("${KEY_CTRL+KEY_L}") < targets.index("${KEY_CTRL+KEY_V}")
-    assert targets.count("${KEY_ENTER}") == 1
+    assert seq.index(("XDesktopAutomation", "true")) < seq.index(("XType", "${KEY_CTRL+KEY_L}"))
+    assert seq.index(("XType", "${KEY_CTRL+KEY_L}")) < seq.index(("XType", "${KEY_CTRL+KEY_V}"))
+    assert sum(1 for cmd, target in seq if cmd == "XType" and target == "${KEY_ENTER}") == 1
 
 
 def test_mac_dialog_goes_to_the_folder_then_opens():

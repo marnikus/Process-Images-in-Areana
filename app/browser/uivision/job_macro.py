@@ -130,23 +130,31 @@ def _xtype(keys: str, note: str) -> dict:
     return macro.command("XType", keys, "", note)
 
 
-def file_dialog_rows(path: str, system: str) -> list:
-    """Paste `path` into the open dialog and confirm. Never type it.
+def _desktop(on: bool) -> dict:
+    """XType hits the browser unless this is on — the file dialog then stays empty."""
+    note = "keystrokes go to the OS file dialog" if on else "probe runs in the page again"
+    return macro.command("XDesktopAutomation", "true" if on else "false", "", note)
 
-    Typing is what autocomplete turns into "file not found", so the image is
-    never selected. Windows already focuses the filename box — no Alt+N (Czech
-    locale), no Ctrl+L. Linux and mac open the location field first.
+
+def file_dialog_rows(path: str, system: str) -> list:
+    """Fill the open dialog's name field and confirm. Never type the path.
+
+    The live dialog stays on Desktop with an empty File name box: XType without
+    desktop automation never reaches that OS window, and Firefox ignores Enter
+    on it. Focus File name, paste the full path, then click Open.
     """
     if system not in _DIALOG_SYSTEMS:
         raise ValueError(f"unsupported file-dialog system {system!r}")
+    confirm = _windows_open() if system == "windows" else _confirm_rows(system)
     return (
-        [_pause("1000", "file dialog focused before any key")]
+        [_pause("1200", "file dialog painted before any key")]
+        + [_desktop(True), _pause("400", "desktop automation owns the dialog")]
         + _clipboard_rows(path, system)
-        + _location_rows(system)
+        + _focus_name(system)
         + _paste_rows(system)
-        + [_pause("400", "pasted path settles before Open")]
-        + _confirm_rows(system)
-        + [_pause("2000", "dialog closes and the attachment preview renders")]
+        + [_pause("400", "full path visible in File name")]
+        + confirm
+        + [_desktop(False), _pause("1500", "dialog closed, attachment preview renders")]
     )
 
 
@@ -160,8 +168,11 @@ def _clipboard_rows(path: str, system: str) -> list:
     ]
 
 
-def _location_rows(system: str) -> list:
-    """Linux/mac only. Windows keeps the filename box, which already has focus."""
+def _focus_name(system: str) -> list:
+    """The Windows name box is not focused on open — Alt+N matches "File name:"."""
+    if system == "windows":
+        return [_xtype("${KEY_ALT+KEY_N}", "File name box in the open dialog"),
+                _pause("300", "caret in File name")]
     key = _LOCATION_KEY.get(system)
     if not key:
         return []
@@ -176,8 +187,21 @@ def _paste_rows(system: str) -> list:
     ]
 
 
+def _windows_open() -> list:
+    """Click Open. Firefox's file dialog ignores ${KEY_ENTER}."""
+    return [
+        macro.command("store", "3", "!timeout_wait", "do not hang if Open is not read"),
+        macro.command("store", "true", "!errorIgnore", "a missed Open click must not abort"),
+        macro.command("XClick", "ocr=Open", "", "Open button on the file dialog"),
+        macro.command("if", "!${!statusOK}", "", "OCR missed — use the Open accelerator"),
+        _xtype("${KEY_ALT+KEY_O}", "Open"),
+        macro.command("end", "", "", ""),
+        macro.command("store", "false", "!errorIgnore", "real failures surface again"),
+    ]
+
+
 def _confirm_rows(system: str) -> list:
-    """One Enter opens. macOS needs Go, then Open, while the panel is still up."""
+    """Linux confirms with Enter. macOS needs Go, then Open, while the panel is up."""
     if system != "mac":
         return [_xtype("${KEY_ENTER}", "Open the pasted file")]
     return [
