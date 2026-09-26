@@ -83,7 +83,7 @@ async def _confirm_upload(env, book: dict, expected: str, reply: dict) -> bool:
 
 async def _upload_new(env, book: dict, expected: str) -> bool:
     """Open the file dialog and require the preview that comes back."""
-    say(env, "Attach started", expected)
+    say(env, "Attach started", env.job.img.absolute_path)
     reply = await act(env, "upload", {"path": env.job.img.absolute_path})
     if reply.get("kind") != "ok":
         return _upload_failed(env, reply.get("message") or "upload failed")

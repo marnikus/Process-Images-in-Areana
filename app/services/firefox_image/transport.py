@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import time
 from dataclasses import dataclass, replace
 
-from app.browser.uivision import autorun, config as uv_config, launch, macro, paths
+from app.browser.uivision import autorun, config as uv_config, file_dialog, launch, macro, paths
 from app.browser.uivision import job_macro
 from app.browser.uivision.runner import RunSeams
 from app.browser.uivision.sequence import Sequence, StepRecorder
@@ -97,6 +98,28 @@ class PhaseCall:
     spec: object = None
 
 
+def _start_dialog_fill(phase: str, payload: dict, home):
+    """Windows only. The thread uses the queue absolute path, not keystrokes."""
+    if phase != "upload" or sys.platform != "win32":
+        return None
+    return file_dialog.start_fill(str((payload or {}).get("path") or ""), file_dialog.result_file(home))
+
+
+def _dialog_failure(reply: dict, home, ran_fill: bool) -> dict:
+    """A filler miss is named. A missing file means the helper never finished."""
+    if not ran_fill:
+        return reply
+    reason = file_dialog.read_result(file_dialog.result_file(home))
+    if reason == "ok":
+        return reply
+    if reason in ("", "waiting") and reply.get("kind") != "ok":
+        return reply
+    failed = dict(reply)
+    failed["kind"] = "error"
+    failed["message"] = reason if reason not in ("", "waiting") else "File Upload dialog was not open"
+    return failed
+
+
 async def _execute_phase(call: PhaseCall) -> tuple:
     """Write, then run, under the machine lock. Returns (kind, message, lines)."""
     spec, phase, payload = call.spec, call.phase, call.payload
@@ -104,10 +127,15 @@ async def _execute_phase(call: PhaseCall) -> tuple:
 
     async def work():
         lane._fresh(run)
+        worker = _start_dialog_fill(phase, payload, paths.home(spec.home))
         stop = lambda: bool(getattr(call.bridge, "_cancel_requested", False))
         seq = Sequence(spec, RunSeams(stop=stop), StepRecorder(_quiet))
         seq.page = provision_phase(spec, phase, payload)
-        result = await seq.execute([run])
+        try:
+            result = await seq.execute([run])
+        finally:
+            if worker is not None:
+                worker.join(timeout=2)
         return result.kind, result.message, tuple(result.lines)
 
     return await lane.exclusive(call.bridge, work)
@@ -129,7 +157,9 @@ async def run_phase(call: PhaseCall, execute=None) -> dict:
         return _blocked("no firefox binary")
     ready = PhaseCall(call.bridge, call.page, call.phase, call.payload or {}, spec)
     kind, message, lines = await (execute or _execute_phase)(ready)
-    return {"kind": _kind_of(call.phase, kind), "message": message, "data": parse_job_reply(lines)}
+    reply = {"kind": _kind_of(call.phase, kind), "message": message, "data": parse_job_reply(lines)}
+    ran_fill = execute is None and call.phase == "upload" and sys.platform == "win32"
+    return _dialog_failure(reply, paths.home(spec.home), ran_fill)
 
 
 class MacroTransport:

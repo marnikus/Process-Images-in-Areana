@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from app.browser.page_status import PageStatus
-from app.browser.uivision import autorun, job_macro, launch, macro
+from app.browser.uivision import autorun, file_dialog, job_macro, launch, macro
 from app.core.enums import ImageStatus
 from app.core.models import ImageItem
 from app.services import multi_page_dispatcher as mpd
@@ -151,29 +151,17 @@ def _pairs(commands):
     return [(row["Command"], row["Target"]) for row in commands]
 
 
-def test_windows_dialog_fills_file_name_and_clicks_open(monkeypatch):
+def test_windows_upload_waits_with_the_queued_path_and_does_not_type(monkeypatch):
     monkeypatch.setattr(job_macro, "_dialog_system", lambda: "windows")
     path = "C:\\Users\\Jiří Novák\\icon-location-pin.png"
     commands = job_macro.build_commands("upload", {"path": path})
-    assert _stored(commands) == '"C:/Users/Jiří Novák/icon-location-pin.png"'
-    seq = _pairs(commands)
-    assert ("XType", "${KEY_CTRL+KEY_L}") not in seq
-    assert ("XType", "${KEY_ENTER}") not in seq
-    assert not any(row["Command"] == "XType" and "icon-location-pin" in row["Target"] for row in commands)
-    assert seq.index(("XClick", job_macro.add_files_target())) < seq.index(("XDesktopAutomation", "true"))
-    assert seq.index(("XDesktopAutomation", "true")) < seq.index(("XType", "${KEY_ALT+KEY_N}"))
-    assert seq.index(("XType", "${KEY_ALT+KEY_N}")) < seq.index(("XType", "${KEY_CTRL+KEY_V}"))
-    paste = seq.index(("XType", "${KEY_CTRL+KEY_V}"))
-    opened = seq.index(("XClick", "ocr=Open"))
-    assert paste < opened < seq.index(("XDesktopAutomation", "false"))
-    assert seq.index(("if", "!${!statusOK}")) < seq.index(("XType", "${KEY_ALT+KEY_O}"))
-    probe = next(i for i, row in enumerate(commands)
-                 if row["Command"] == "executeScript" and row["Value"] == job_macro.REPLY_VAR)
-    assert seq.index(("XDesktopAutomation", "false")) < probe
-    stores = [row for row in commands if row["Command"] == "store"]
-    assert stores[0]["Value"] == "!stringescape" and stores[0]["Target"] == "false"
-    loaded = json.loads(macro.to_json(job_macro.build_job_macro("upload", {"path": path})))
-    assert _stored(loaded["Commands"]) == '"C:/Users/Jiří Novák/icon-location-pin.png"'
+    assert not any(row["Command"] == "XType" for row in commands)
+    assert not any("KEY_ALT" in (row["Target"] or "") for row in commands)
+    assert any(row["Command"] == "pause" and path in row["Description"] for row in commands)
+    click = [row["Target"] for row in commands].index(job_macro.add_files_target())
+    wait = [row["Target"] for row in commands].index(file_dialog.WAIT_MS)
+    probe = next(i for i, row in enumerate(commands) if row["Value"] == job_macro.REPLY_VAR)
+    assert click < wait < probe
 
 
 def test_linux_dialog_opens_the_location_bar_before_the_paste():
@@ -195,9 +183,99 @@ def test_mac_dialog_goes_to_the_folder_then_opens():
     assert targets.index("${KEY_CMD+KEY_V}") < go < targets.index("${KEY_ENTER}", go + 1)
 
 
-def test_windows_unc_path_keeps_backslashes_inside_quotes():
-    rows = job_macro.file_dialog_rows("\\\\server\\share\\icon-location-pin.png", "windows")
-    assert _stored(rows) == '"\\\\server\\share\\icon-location-pin.png"'
+class _Port:
+    def __init__(self, dlg=7, close_on_folder=False, name_box=True):
+        self.dlg = dlg
+        self.texts = []
+        self.opens = 0
+        self.alive_flag = bool(dlg)
+        self.close_on_folder = close_on_folder
+        self.name_box = name_box
+
+    def wait(self, _seconds):
+        return self.dlg
+
+    def set_filename(self, _dlg, text):
+        if not self.name_box:
+            return False
+        self.texts.append(text)
+        return True
+
+    def click_open(self, _dlg):
+        self.opens += 1
+        if self.close_on_folder and self.opens == 1:
+            self.alive_flag = False
+        return True
+
+    def alive(self, _dlg):
+        return self.alive_flag
+
+
+def test_filler_writes_the_queued_path_and_clicks_open(tmp_path):
+    image = tmp_path / "icon-location-pin.png"
+    image.write_bytes(b"x")
+    port = _Port()
+    reason = file_dialog.open_queued_file(str(image), port=port)
+    assert reason == ""
+    assert port.texts == [str(image)]
+    assert port.opens == 1
+
+
+def test_filler_names_a_missing_dialog_and_does_not_click_open(tmp_path):
+    image = tmp_path / "icon-location-pin.png"
+    image.write_bytes(b"x")
+    port = _Port(dlg=0)
+    reason = file_dialog.open_queued_file(str(image), port=port)
+    assert reason == "File Upload dialog was not open"
+    assert port.opens == 0
+
+
+def test_filler_reports_a_missing_queued_path(tmp_path):
+    missing = tmp_path / "icon-location-pin.png"
+    result = tmp_path / "queued_image_result.txt"
+    worker = file_dialog.start_fill(str(missing), result)
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert result.read_text(encoding="utf-8") == f"queued image path does not exist: {missing}"
+
+
+def test_win32_dialog_writes_the_queued_path_and_clicks_open():
+    user32 = _User32()
+    dialog = file_dialog.Win32Dialog(user32)
+    assert dialog.find() == 10
+    assert dialog.set_filename(10, r"C:\queue\icon-location-pin.png")
+    assert user32.texts == [(30, r"C:\queue\icon-location-pin.png")]
+    assert dialog.click_open(10)
+    assert user32.commands == [(10, file_dialog.WM_COMMAND, file_dialog.IDOK, 40)]
+
+
+class _User32:
+    def FindWindowW(self, _cls, title):
+        return 10 if title == "File Upload" else 0
+
+    def GetDlgItem(self, _parent, control_id):
+        if control_id == file_dialog.FILENAME_ID:
+            return 20
+        if control_id == file_dialog.IDOK:
+            return 40
+        return 0
+
+    def FindWindowExW(self, parent, _after, _cls, _title):
+        return 30 if parent == 20 else 0
+
+    def SendMessageW(self, hwnd, msg, wparam, lparam):
+        if msg == file_dialog.WM_SETTEXT:
+            self.texts.append((hwnd, lparam))
+        else:
+            self.commands.append((hwnd, msg, wparam, lparam))
+        return 1
+
+    def IsWindow(self, _hwnd):
+        return 1
+
+    def __init__(self):
+        self.texts = []
+        self.commands = []
 
 
 def test_empty_or_multiline_upload_path_is_refused():
