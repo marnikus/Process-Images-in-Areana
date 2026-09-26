@@ -160,7 +160,8 @@ async def test_generation_detected_with_details_and_resume():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_generation_timeout_logged_but_waits_continue():
+async def test_generation_timeout_logged_once_then_stops_waiting():
+    """Live 2026-09-27: the timeout used to log every tick forever; now once, then jobs resume."""
     cdp, jr = FakeWatcherCDP(gen=True), FakeJobRunner()
     svc = make_service(cdp, WatcherConfig(enabled=True, generation_timeout_sec=50), jr)
     logs = []
@@ -168,8 +169,8 @@ async def test_generation_timeout_logged_but_waits_continue():
     await svc.check_once()
     svc.state.waiting_since = time.time() - 60
     state = await svc.check_once()
-    assert state["status"] == "waiting_generation"
-    assert any("timeout" in msg for level, msg in logs)
+    assert state["status"] == "watching" and jr.resumed == 1 and cdp.hides == 1
+    assert sum("Generation timeout" in msg for level, msg in logs) == 1
 
 
 @pytest.mark.unit

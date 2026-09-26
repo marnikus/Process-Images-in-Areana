@@ -9,6 +9,7 @@ import json
 
 from ..probe_selectors import (
     attachment_preview_selectors,
+    model_label_probe,
     readiness_checks,
     security_dialog_check,
     send_click_selectors,
@@ -200,13 +201,27 @@ JS_PAGE_READY = _inject("""
 
 JS_SECURITY_DIALOG = build_visible_js()
 
+# Generating = a visible spinner INSIDE a response header row (the site_adapter
+# evidence: spinner beside "Response A"); any other `animate-spin` (sidebar,
+# image loader) is not a generation — it kept the Watcher waiting forever
+# (live 2026-09-27). `jobs` = the page's [JOB-ID]s: a new one = a new generation.
 JS_IS_GENERATING = _inject("""
 ;(() => {
-  let spinning=false; let count=0; let details=[];
+  let count=0; const details=[]; const jobs=[];
   try{
-    const spinners=document.querySelectorAll(__SPINNER_SELECTOR__);
-    for(const s of spinners){ if(s.offsetParent!==null){spinning=true;count++;details.push({label:'generating'});} }
+    for(const s of document.querySelectorAll(__SPINNER_SELECTOR__)){
+      const row=s.offsetParent!==null ? s.closest(__MODEL_ROW_SCOPE__) : null;
+      if(!row) continue;
+      const label=row.querySelector(__MODEL_LABEL__);
+      count++; details.push({label:(label&&label.textContent.trim())||'generating'});
+    }
   }catch(e){}
-  return {spinning:spinning,spinCount:count,details:details,isGenerating:spinning};
+  try{
+    const re=/\\[JOB-ID:\\s*([^\\]\\s]+)\\]/g; const text=(document.body&&document.body.textContent)||''; let m;
+    while((m=re.exec(text))!==null && jobs.length<50){ if(jobs.indexOf(m[1])<0) jobs.push(m[1]); }
+  }catch(e){}
+  return {spinning:count>0,spinCount:count,details:details,isGenerating:count>0,jobs:jobs};
 })()
-""", SPINNER_SELECTOR=json.dumps(spinner_selector()))
+""", SPINNER_SELECTOR=json.dumps(spinner_selector()),
+    MODEL_ROW_SCOPE=json.dumps(model_label_probe()["scope"]),
+    MODEL_LABEL=json.dumps(model_label_probe()["label"]))
