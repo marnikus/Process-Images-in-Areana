@@ -1,0 +1,5 @@
+/* jobs-edit.css — I-64: the JOBS count is click-to-edit (js/core/jobs-edit.js),
+   in the pool table and the URL list. Kept out of arena.css (already past its size ideal). */
+#poolTableBody td[title="Jobs completed"], .url-jobs-cell span[title="Jobs completed"] {
+  cursor: pointer; text-decoration: underline dotted;
+}

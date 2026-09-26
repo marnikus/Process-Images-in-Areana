@@ -228,6 +228,7 @@ FROZEN_SLOTS = frozenset({
     'set_image_selected',
     'set_last_url_preset',
     'set_page_cooldown',
+    'set_page_jobs',                 # I-64 (2026-09-25): JOBS click-to-edit
     'set_prompt',
     'set_theme',
     'set_watcher_config',
@@ -270,6 +271,7 @@ EXPECTED_PACKING = {
     'cdp_tools': 9,
     'layout_state': 14,
     'page_pool': 9,
+    'pool_jobs': 1,
     'queue_scan': 10,
     'queue_scan_folder': 2,
     'recording_sessions': 8,
@@ -317,7 +319,8 @@ def test_panel_packing():
     assert counts == EXPECTED_PACKING, f"packing drift: {counts}"
     # 127 + 6 Captcha Watcher + restore_default_blocks (2026-10-02) + set_captcha_provider (B10, 2026-10-06)
     # +2 job_history slots +5 firefox_auto slots (I-63, 2026-09-22; +show_firefox_profiles 2026-09-24)
-    assert sum(counts.values()) == 142
+    # +set_page_jobs (I-64, 2026-09-25: the JOBS count is editable)
+    assert sum(counts.values()) == 143
 
 
 @pytest.mark.unit

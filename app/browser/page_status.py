@@ -15,7 +15,7 @@ from enum import Enum
 from typing import Optional
 
 from app.core.cooldown import remaining_seconds as _remaining
-from app.core.tab_alias import format_alias
+from app.core.tab_alias import FIREFOX, format_alias, page_conn
 
 
 def now_iso() -> str:
@@ -57,11 +57,12 @@ class PageInfo:
     worker_no: int = 0  # pool join order, 1-based, assigned once by PagePool (D-3)
     alias_no: int = 0  # readable-id number, assigned once by PagePool, persisted (D-5)
     owner: str = ""    # logged-in account of this tab, from the owner probe (D-5)
+    profile: str = ""  # Firefox profile label — the alias head when no account is known (I-64)
 
     @property
     def alias(self) -> str:
-        """Readable handle `{email}_{4 digits}` — '' until the pool numbers the tab."""
-        return format_alias(self.owner, self.alias_no)
+        """Readable handle `{email}_{4 digits}` (Firefox: `{profile}_{4 digits}`) — '' until numbered."""
+        return format_alias(self.owner, self.alias_no, self.profile)
 
     @property
     def label(self) -> str:
@@ -118,21 +119,31 @@ class PageInfo:
         return {
             "ws_url": self.ws_url,
             "tab_id": self.tab_id,
-            "browser": self.browser,
-            "worker_no": self.worker_no,
             "title": self.title,
             "url": self.url,
             "status": self.status.value if isinstance(self.status, Enum) else str(self.status),
             "is_connected": self.is_connected,
             "current_job_id": self.current_job_id,
             "current_image": self.current_image or "",
-            "alias_no": self.alias_no,
-            "owner": self.owner,
             "busy_since": self.busy_since,
             "error": self.error,
             "jobs_completed": self.jobs_completed,
+            **_identity_dict(self),
             **_cooldown_dict(self),
         }
+
+
+def _identity_dict(p: "PageInfo") -> dict:
+    """Who the tab is: browser + derived lane (I-64), join order, readable id, account, profile."""
+    return {
+        "browser": p.browser,
+        "conn": page_conn(p.browser, p.tab_id),
+        "browser_mark": "🦊 " if p.browser == FIREFOX else "",   # the pool row's icon (I-64)
+        "worker_no": p.worker_no,
+        "alias_no": p.alias_no,
+        "owner": p.owner,
+        "profile": p.profile,
+    }
 
 
 def _cooldown_dict(p: "PageInfo") -> dict:

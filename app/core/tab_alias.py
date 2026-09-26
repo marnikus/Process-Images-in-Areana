@@ -1,10 +1,16 @@
 """Readable tab ids — `{email}_{4 digits}`, pure math + parsing, no I/O.
 
-The pool key stays the CDP tab id (identity, RULE 15); this module owns the
+The pool key stays the tab id (identity, RULE 15); this module owns the
 *display* handle a human can repeat: `marnikus@gmail.com_3045`. The owner
 decision (2026-09-21) is that the 4-digit number is persisted per tab, so the
 number is allocated once (highest used + 1, wrapping into the first free gap
-past 9999) and never handed to a second tab. Imports: stdlib only.
+past 9999) and never handed to a second tab. A tab whose account cannot be
+probed (a Firefox tab, I-64) is named by its profile instead (`hint`).
+
+It also owns the *shape* of a pool key (I-64, 2026-09-25): a Firefox tab id
+is `{profileDirName}_tab{N}`, anything else is a Chrome CDP target id, so the
+browser and the execution lane (`cdp` / `uivision`) are derived from the key
+and never stored twice. Imports: stdlib only.
 """
 
 from __future__ import annotations
@@ -17,6 +23,13 @@ ALIAS_MAX = 9999                # the 4-digit space the user asked for
 ALIAS_WIDTH = 4
 FALLBACK_PREFIX = "aka"         # tab whose account is not known (owner decision)
 EMAIL_MAX = 64
+HINT_MAX = 32                   # a profile name used as the alias head (I-64)
+
+FIREFOX = "firefox"
+CHROME = "chrome"
+CONN_CDP = "cdp"
+CONN_UIVISION = "uivision"
+_FIREFOX_ID_RE = re.compile(r"^(.+)_tab([1-9][0-9]*)$")
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}")
 _STRIP_CHARS = " \t\r\n.,;:!?)]}>\"'"
@@ -32,11 +45,51 @@ def normalize_owner(owner: Any) -> str:
     return text
 
 
-def format_alias(owner: Any, no: Any) -> str:
-    """`{owner-or-aka}_{4 digits}`; '' when this tab has no number yet."""
+def clean_hint(hint: Any) -> str:
+    """A display hint as one token: whitespace runs become `-`, capped at HINT_MAX."""
+    if not isinstance(hint, str):
+        return ""
+    return "-".join(hint.split())[:HINT_MAX]
+
+
+def format_alias(owner: Any, no: Any, hint: Any = "") -> str:
+    """`{owner-or-hint-or-aka}_{4 digits}`; '' when this tab has no number yet.
+
+    The account wins; `hint` (a Firefox profile name) names a tab whose account
+    is never probed, and `aka` stays the last resort.
+    """
     if not isinstance(no, int) or isinstance(no, bool) or not 0 < no <= ALIAS_MAX:
         return ""
-    return f"{normalize_owner(owner) or FALLBACK_PREFIX}_{no:0{ALIAS_WIDTH}d}"
+    head = normalize_owner(owner) or clean_hint(hint) or FALLBACK_PREFIX
+    return f"{head}_{no:0{ALIAS_WIDTH}d}"
+
+
+# ── Pool-key shape: which browser / lane a tab id belongs to (I-64) ──
+
+def firefox_tab_id(profile_dir_name: str, number: int) -> str:
+    """`{profileDirName}_tab{N}` — the stable pool key of one Firefox tab."""
+    return f"{profile_dir_name}_tab{int(number)}"
+
+
+def split_firefox_id(tab_id: Any) -> tuple:
+    """(profile dir name, N) of a Firefox tab id; ('', 0) for any other shape."""
+    match = _FIREFOX_ID_RE.match(tab_id) if isinstance(tab_id, str) else None
+    return (match.group(1), int(match.group(2))) if match else ("", 0)
+
+
+def tab_browser(tab_id: Any) -> str:
+    """The browser a pool key belongs to — derived from its shape, never stored."""
+    return FIREFOX if split_firefox_id(tab_id)[1] else CHROME
+
+
+def conn_of(browser: Any) -> str:
+    """The execution lane: Firefox runs through Ui.Vision, every other browser via CDP."""
+    return CONN_UIVISION if browser == FIREFOX else CONN_CDP
+
+
+def page_conn(browser: Any, tab_id: Any) -> str:
+    """The lane of a pooled page: its recorded browser, else the shape of its key."""
+    return conn_of(browser or tab_browser(tab_id))
 
 
 def email_from_probe(raw: Any) -> str:

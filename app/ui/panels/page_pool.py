@@ -13,6 +13,7 @@ import json
 import re
 
 from app.core.cooldown import clamp_seconds, config_to_dict, format_remaining
+from app.core.tab_alias import FIREFOX, tab_browser
 from app.persistence.cooldown_store import save_entries
 from app.services import tab_reset
 from app.services.cooldown_service import (
@@ -71,7 +72,7 @@ async def connect_pool_client(bridge, ws_url: str):
 
 
 async def finish_pool_join(bridge, info, client, ctrl) -> None:
-    """Register a joined tab: page + client, restore timers, badge the tab, announce."""
+    """Register a joined tab: page + client (None for Firefox, I-64), restore timers, badge, announce."""
     bridge._page_pool.add_page(info)
     bridge._page_pool.register_client(info.tab_id, client, ctrl)
     restore_page_state(bridge, info.tab_id)
@@ -115,6 +116,9 @@ async def _rejoin_one(bridge, pool, sockets: dict, tab_id: str) -> bool:
     """Join one re-checked row's tab (False when it is pooled already or no longer open)."""
     if pool.get_page(tab_id):
         return False
+    if tab_browser(tab_id) == FIREFOX:        # joins by id from the last Firefox scan (I-64)
+        from app.ui.services.firefox_pool import join_firefox
+        return await join_firefox(bridge, tab_id)
     ws = sockets.get(tab_id, "")
     if not ws:
         bridge._log(f"♻️ Rejoin skipped for {(tab_id or '')[:12]} — tab is not open; the next pass drops the row", "warn")

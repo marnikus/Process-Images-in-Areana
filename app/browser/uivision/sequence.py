@@ -146,7 +146,7 @@ class Sequence:
                    else list(run.target.windows))
         mapped = desktop.foreground_tab_window(needle, windows)
         if mapped is not None:
-            note, level = _mapped_note(*mapped, needle)
+            note, level = mapped_note(*mapped, needle)
             self.recorder("foreground", f"{self._scope(run)}{note}", level)
             return
         matches, raised = desktop.foreground(needle)
@@ -234,7 +234,7 @@ def launch_locator(url_pattern, selector: str) -> str:
     return f"url=*{url_pattern}* → {selector}"
 
 
-def _mapped_note(matches, raised, needle) -> tuple:
+def mapped_note(matches, raised, needle) -> tuple:
     """The mapped-path foreground line — ambiguity is NAMED, never silent (RULE 4).
 
     2026-09-25: `foreground_tab_window` refuses to raise an ambiguous set, so

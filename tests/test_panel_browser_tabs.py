@@ -406,13 +406,20 @@ async def test_popup_and_primary_guards(cfg, monkeypatch):
 
 
 def test_live_deps_wires_the_ui_seam(cfg):
-    """S6: the reconciler's callables come from ui land — fetch via cdp, join via the pool, commit without undo."""
+    """S6: the reconciler's callables come from ui land — fetch via cdp, join via the pool, commit without undo.
+
+    I-64: the fetch is Chrome's own listing merged with the Firefox discovery, and
+    the join routes a Firefox id to the id join (both bound to this bridge).
+    """
     from app.services.live.reconcile import LiveDeps
+    from app.ui.services import firefox_pool
     bridge = make_bridge(cdp=None, config=cfg)
     deps = bt_mod.live_deps(bridge)
     assert isinstance(deps, LiveDeps) and deps.log is bridge._log
     assert deps.commit.func.__name__ == "commit_urls_system"
-    assert deps.fetch_tabs.__name__ == "fetch_tabs" and deps.join_tab.__name__ == "join_tab"
+    assert deps.fetch_tabs.func is firefox_pool.merged_listing and deps.fetch_tabs.args[0] is bridge
+    assert deps.fetch_tabs.args[1].func is bt_mod.reconcile_tabs      # Chrome's half stays the panel's listing
+    assert deps.join_tab.func is firefox_pool.join_any and deps.join_tab.args == (bridge,)
 
 
 async def test_auto_scan_pass_end_to_end(cdp_server, cfg):

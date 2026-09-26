@@ -8,6 +8,8 @@ wipe the pool. The run-gating helpers (rows -> tabs direction) keep the
 I-33 invariant: a tab runs jobs only when a checked row owns it, and
 rows are never re-bound to foreign tabs. Imports services -> browser only.
 """
+# ideal-size: ~310 lines reason=every helper keys rows by the same tab identity (I-33: one live
+# tab <-> one row) — planner, dedupe, run gating and claims must agree on that key to hold I-33
 
 from __future__ import annotations
 
@@ -49,6 +51,13 @@ def _tab_key(tab: Any) -> str:
     tab_id = getattr(tab, "id", "") or ""
     if tab_id:
         return tab_id
+    return getattr(tab, "ws_url", "") or ""
+
+
+def join_handle(tab: Any) -> str:
+    """What `join_tab` receives: the socket of a CDP tab, the id of a uivision (Firefox) tab (I-64)."""
+    if getattr(tab, "conn", "") == "uivision":
+        return getattr(tab, "id", "") or ""
     return getattr(tab, "ws_url", "") or ""
 
 
@@ -144,7 +153,7 @@ def plan_auto_connect(tabs: Any, pattern: Any, rows: Any, pooled: Any) -> AutoCo
             continue
         _apply_row_action(plan, _row_action(rows_by_tab, unlinked, tab, key), tab, key)
         if key not in pooled and _row_allows_rejoin(rows_by_tab, key):
-            plan.connect.append(getattr(tab, "ws_url", "") or "")
+            plan.connect.append(join_handle(tab))
     plan.stale = sorted(pooled - live)
     return plan
 

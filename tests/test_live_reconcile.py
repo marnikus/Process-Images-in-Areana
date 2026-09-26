@@ -197,7 +197,7 @@ def test_start_reconciler_is_idempotent(tmp_path, monkeypatch):
 
 
 def test_services_never_import_ui_or_browser():
-    for mod in ("reconcile", "url_policy"):
+    for mod in ("reconcile", "url_policy", "row_sync", "sources"):   # I-64 split + multi-source helpers
         src = (Path(rc.__file__).parent / f"{mod}.py").read_text(encoding="utf-8")
         assert not re.search(r"^\s*(from|import) app\.(ui|browser)\b", src, re.M), mod
 

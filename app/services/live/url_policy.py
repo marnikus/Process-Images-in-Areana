@@ -3,9 +3,13 @@
 Removal is a table of `(reason, predicate)` pairs (RULE 19 step 2): a row is
 removed for the FIRST reason that holds, deferred (never removed) while its
 tab has a live job (RULE 15), and never-linked user rows are kept — a typed
-row is authorisation, not garbage. Closed tabs get hysteresis: a row goes
-only after `miss_threshold` consecutive fetches without its tab.
+row is authorisation, not garbage; a LINKED typed row is only unlinked (I-64,
+`split_typed`). Closed tabs get hysteresis: a row goes only after
+`miss_threshold` consecutive fetches without its tab.
 """
+# ideal-size: ~310 lines reason=the removal table, the typed-row unlink (I-64) and the reason
+# words both log (_REASON_TEXT — the RULE 2 "🔻 URL removed" lines) are one vocabulary in one
+# table; the receiver and membership rules reuse its busy gate (`busy_tabs`, RULE 15)
 
 from __future__ import annotations
 
@@ -94,6 +98,19 @@ def _decisions(spec: RemovalSpec) -> List[Tuple[Removal, bool]]:
 def removable_rows(spec: RemovalSpec) -> List[Removal]:
     """Rows to remove now (busy tabs are deferred — see `deferred_rows`)."""
     return [removal for removal, deferred in _decisions(spec) if not deferred]
+
+
+def split_typed(removals: List[Removal], rows: Iterable[Any]) -> tuple[List[Removal], List[Removal]]:
+    """(remove, unlink): a user-typed row is never auto-removed — it only loses its tab (I-64)."""
+    typed = {row.id for row in rows if getattr(row, "typed", False)}
+    return ([r for r in removals if r.row_id not in typed],
+            [r for r in removals if r.row_id in typed])
+
+
+def unlink_line(removal: Removal, tab_id: str, spec: RemovalSpec) -> str:
+    """The log line for a typed row that keeps its place but loses its tab (RULE 2)."""
+    reason = _REASON_TEXT[removal.reason](spec.pattern, spec.miss_threshold)
+    return f"🔗 Typed URL kept {removal.url} — {reason}; unlinked from tab {tab_id}"
 
 
 def deferred_rows(spec: RemovalSpec) -> List[Removal]:

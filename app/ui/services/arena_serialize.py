@@ -8,9 +8,19 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from app.core.tab_alias import conn_of, tab_browser
+
+
+def link_kind(tab_id: Any) -> Dict[str, str]:
+    """`browser` + `conn` of a row's linked tab, derived from the id (I-64); '' when unlinked."""
+    if not tab_id:
+        return {"browser": "", "conn": ""}
+    browser = tab_browser(tab_id)
+    return {"browser": browser, "conn": conn_of(browser)}
+
 
 def urls_to_js(d: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """URL rows -> {id, url, enabled, status, last_error, ...}."""
+    """URL rows -> {id, url, enabled, status, last_error, ..., browser, conn, typed}."""
     out = []
     for u in d.get("urls", []):
         out.append({
@@ -22,6 +32,8 @@ def urls_to_js(d: Dict[str, Any]) -> List[Dict[str, Any]]:
             "last_checked": u.get("last_checked"),
             "tab_id": u.get("tab_id", ""),
             "receiver": bool(u.get("receiver", False)),
+            "typed": bool(u.get("typed", False)),
+            **link_kind(u.get("tab_id", "")),
         })
     return out
 

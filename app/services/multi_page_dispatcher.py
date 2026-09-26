@@ -1,5 +1,11 @@
-"""Multi-page dispatcher — parallel dispatch to different webpages."""
-# ideal-size: ~400 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx/FreeWaitSpec; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
+"""Multi-page dispatcher — parallel dispatch to different webpages.
+
+Two execution lanes share one per-image lifecycle (I-64): a `cdp` page runs the
+action blocks through its controller; a `uivision` page (Firefox) runs one
+Ui.Vision macro through `uivision_job.run_uivision_job`. Claim, result
+bookkeeping, finish (count + cooldown) and settle are the same for both.
+"""
+# ideal-size: ~480 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx/FreeWaitSpec; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
 
 from __future__ import annotations
 
@@ -22,6 +28,7 @@ from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_aft
 from .live.bus import live_bus
 from .live.feed import queued_images
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
+from .uivision_job import is_uivision_page, run_uivision_job
 
 log = logging.getLogger("arena")
 
@@ -205,6 +212,9 @@ async def _run_image_job(ctx: PageJobCtx):
         ctx.bridge.job_started.emit(job_id, ctx.img.absolute_path)
     except Exception:
         pass
+    if is_uivision_page(ctx.pool, ctx.tab_id):
+        failed, err = await run_uivision_job(ctx.bridge, ctx.tab_id)
+        return url_row, corr_id, job_id, failed, err
     baseline = await capture_baseline(ctx.ctrl)
     job_ctx = JobCtx(bridge=ctx.bridge, ctrl=ctx.ctrl, client=ctx.client, tab_id=ctx.tab_id, img=ctx.img, urls=ctx.urls, job_id=job_id, corr_id=corr_id, final_prompt=final_prompt, baseline=baseline)
     failed, err, _, _ = await run_blocks_for_image(job_ctx)
@@ -306,7 +316,8 @@ async def run_claimed_image(ctx: DispatchCtx, img, free_page):
     bridge, pool, tab_id = ctx.bridge, ctx.pool, free_page.tab_id
     _emit_status_safe(bridge)
     ctrl, client = _get_clients(pool, tab_id)
-    if not ctrl or not client:
+    cdp = not is_uivision_page(pool, tab_id)   # a Firefox page has no controller (I-64)
+    if cdp and (not ctrl or not client):
         _log_no_ctrl(bridge, tab_id)
         _mark_steady_emit(pool, bridge, tab_id)
         return

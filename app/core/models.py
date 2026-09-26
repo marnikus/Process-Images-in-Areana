@@ -24,6 +24,7 @@ class UrlRow:
     error: Optional[str] = None
     tab_id: str = ""
     receiver: bool = False  # S7: can receive a job now (one owner: live/url_policy.mark_receivers)
+    typed: bool = False     # I-64: the user typed/edited this URL — never auto-removed, only unlinked
 
     @staticmethod
     def from_dict(d: dict) -> "UrlRow":

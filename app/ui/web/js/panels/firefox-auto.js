@@ -19,9 +19,9 @@ const FirefoxAutoPanel = {
   FIELDS: { faPattern: 'pattern', faUrlPattern: 'url_pattern', faMacro: 'macro',
             faTarget: 'target', faStorage: 'storage', faHome: 'home',
             faBinary: 'binary', faTimeout: 'timeout_sec', faPause: 'pause_ms',
-            faWaitTimeout: 'wait_timeout_sec' },
+            faWaitTimeout: 'wait_timeout_sec', faInterRunDelay: 'inter_run_delay_sec' },
 
-  NUMBERS: ['timeout_sec', 'pause_ms', 'wait_timeout_sec'],
+  NUMBERS: ['timeout_sec', 'pause_ms', 'wait_timeout_sec', 'inter_run_delay_sec'],
 
   COLORS: { success: '#4caf50', warn: '#e6a23c', error: '#ff5c5c', info: 'var(--text-secondary)' },
 

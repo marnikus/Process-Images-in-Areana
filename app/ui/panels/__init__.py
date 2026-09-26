@@ -5,6 +5,9 @@ sibling-panel reuse is allowed (single-source funcs, never import back).
 Services never import panels. Bridge composes the mixins
 (Bridge(QObject, *mixins)).
 """
+# ideal-size: 19 files reason=the design packing table (implementation-area-a.md; EXPECTED_PACKING
+# in test_bridge_slots) pins ONE flat directory, slots counted per file, and each mixin's method
+# budget is ratcheted (RULE 16) — a new slot family (pool_jobs, I-64) is a new flat file
 
 from app.ui.panels.app_settings import AppSettingsMixin
 from app.ui.panels.blocks_library import BlocksLibraryMixin

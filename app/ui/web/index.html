@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- ideal-size: ~900 lines reason=single-page QWebEngine shell with no build/include step: every panel's markup and every script/style tag must live in this one document -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Arena Image Processor</title>
@@ -13,6 +14,7 @@
 <link rel="stylesheet" href="css/live-debug.css">
 <link rel="stylesheet" href="css/job-history.css">
 <link rel="stylesheet" href="css/arena.css">
+<link rel="stylesheet" href="css/jobs-edit.css">
 <link rel="stylesheet" href="css/captcha-recordings.css">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
@@ -370,6 +372,10 @@
             <label title="How long the macro waits for the element on the found tab, and how long the RED confirmation rectangle stays visible before the XClick (500–30000)">Wait for element + confirm rect (ms)</label>
             <input id="faPause" type="number" min="500" max="30000" step="100" placeholder="3000">
           </div>
+          <div class="settings-group">
+            <label title="Seconds between two Ui.Vision macro runs. One macro runs at a time per machine: Firefox pool jobs and the test queue up behind each other (0–30, default 3)">Delay between runs (s)</label>
+            <input id="faInterRunDelay" type="number" min="0" max="30" step="1" placeholder="3">
+          </div>
         </div>
         <div style="display:flex; gap:6px; align-items:center;">
           <button id="faSaveBtn" class="btn-small btn-primary" title="Validate + save this window's config">Save</button>
@@ -388,6 +394,7 @@
             </label>
           </div>
           <div id="faProfileList" style="font-size:11px; color:var(--text-secondary); line-height:1.5; max-height:120px; overflow-y:auto;"></div>
+          <div id="faPoolHint" style="font-size:10px; color:var(--text-muted); margin-top:4px;">🦊 Checked profiles also feed the worker pool: their matching tabs join the URL list (CONN <code>uivision</code>) and take jobs one macro at a time. None checked = no Firefox tabs in the pool. Pool jobs need <b>Hard drive (xfile)</b> storage.</div>
         </div>
         <div id="faPaths" style="font-size:10px; color:var(--text-muted); line-height:1.5; word-break:break-all; white-space:pre-line;"></div>
         <div id="faStatus" style="font-size:11px; color:var(--text-secondary); line-height:1.4;"></div>
@@ -825,6 +832,7 @@
 <script src="js/panels/url-list/store.js"></script>
 <script src="js/panels/url-list/render.js"></script>
 <script src="js/panels/url-list/cells.js"></script>
+<script src="js/panels/url-list/conn.js"></script>
 <script src="js/panels/url-list/matching.js"></script>
 <script src="js/panels/url-list/cooldown.js"></script>
 <script src="js/panels/url-list/reset.js"></script>
@@ -873,6 +881,7 @@
 <script src="js/panels/watcher/actions.js"></script>
 <script src="js/panels/watcher.js"></script>
 <script src="js/core/tab-label.js"></script>
+<script src="js/core/jobs-edit.js"></script>
 <script src="js/panels/page-pool/store.js"></script>
 <script src="js/panels/page-pool/cells.js"></script>
 <script src="js/panels/page-pool/ticker.js"></script>

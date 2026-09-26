@@ -35,6 +35,7 @@ from app.services.cooldown_service import (
 from app.services.multi_page_dispatcher import dispatch_parallel
 from app.services.run_state import ensure_pool_page
 from app.services.single_job_runner import JobCtx, run_blocks_for_image
+from app.services.uivision_job import has_uivision_page, is_uivision_page
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
 
@@ -127,6 +128,8 @@ async def resolve_and_claim_tab(bridge, tab_id: str, allowed) -> str:
     if want == tab_id:
         _log_stay_reason(bridge, tab_id)
         return tab_id
+    if is_uivision_page(_pool_of(bridge), want):
+        return want              # a Firefox tab runs through Ui.Vision — no CDP move (I-64)
     return await _move_to_tab(bridge, tab_id, want)
 
 
@@ -379,7 +382,8 @@ async def prepare_batch(bridge, plan) -> BatchCtx:
     """Controller + settings + stack announce from the supervisor's plan (no re-snapshot)."""
     from app.browser.cdp_arena import CDPArenaController
     ctrl = CDPArenaController(bridge.cdp, log_callback=lambda m: bridge._log(m, "info"))
-    await _warn_unready(bridge, ctrl)
+    if getattr(bridge.cdp, "is_connected", False):   # a Firefox-only pool has no CDP page to probe
+        await _warn_unready(bridge, ctrl)
     ctx = BatchCtx(bridge=bridge, ctrl=ctrl, urls=list(plan.urls), allowed=set(plan.allowed),
                    tab_id=plan.tab_id, images=list(plan.images))
     _load_run_settings(ctx)
@@ -402,7 +406,7 @@ async def _try_parallel(ctx: BatchCtx) -> bool:
         if not pool:
             return False
         total, free = ac.counts_in(pool, ctx.allowed)
-        if total >= 2 and free >= 1:
+        if (total >= 2 and free >= 1) or has_uivision_page(pool, ctx.allowed):  # Firefox: feeder only (I-64)
             ctx.bridge._log(f"🚀 Parallel mode: {total} pages {free} free, {len(ctx.images)} images — dispatching to different pages steady/busy tracked, no double-send", "success")
             ctx.bridge._emit_pool_status()
             await dispatch_parallel(ctx.bridge, pool, ctx.images, ctx.urls)

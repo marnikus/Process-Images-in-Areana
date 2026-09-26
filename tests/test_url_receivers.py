@@ -172,4 +172,5 @@ def test_the_run_gate_is_not_reimplemented():
     assert "enabled_tab_ids(" in POLICY_SRC
     assert not re.search(r"for \w+ in .*:\s*\n\s*if .*\.enabled\b", POLICY_SRC)
     assert UrlRow.__dataclass_fields__["receiver"].default is False
-    assert list(UrlRow.__dataclass_fields__)[-1] == "receiver"  # appended last: positional constructors survive
+    # appended last (RULE 13): positional constructors survive; I-64's `typed` came after it
+    assert list(UrlRow.__dataclass_fields__)[-2:] == ["receiver", "typed"]

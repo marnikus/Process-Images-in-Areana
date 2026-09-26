@@ -1,4 +1,4 @@
-# ideal-size: ~720 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
+# ideal-size: ~870 lines reason=single cohesive job-cycle service; sync pool ops and async finish/wait share FinishCtx and helpers, splitting would make two files that always change together (RULE 18.2)
 """Job-cycle cooldowns — per-tab pause, reset, captcha penalty (spec 01-04).
 
 Sync pool ops run under the pool lock; async cycle (`finish_page_after_job`,
@@ -739,7 +739,9 @@ def _emit_status(ctx: FinishCtx):
 
 
 async def _best_effort_reset(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, str]:
-    """Reset that never raises — failure is logged, never fatal."""
+    """Reset that never raises — failure is logged, never fatal; no controller (a Firefox tab) = nothing to reset."""
+    if ctx.ctrl is None:
+        return True, ""
     try:
         reset_ctx = ResetCtx(ctrl=ctx.ctrl, client=ctx.client, engine=ctx.bridge,
                              timeout_sec=timeout_sec,

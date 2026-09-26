@@ -70,10 +70,10 @@ window.CDPRender = {
     } catch {}
   },
 
-  _connCellHtml(match, store) {
+  _connCellHtml(match, store, u) {
+    if (window.UrlListConn) return window.UrlListConn.cell(u || {}, match, store, this.esc.bind(this));  // lane + icon (I-64)
     if (match) return `<span style=\"color:var(--success, #4ade80); font-size:11px;\" title=\"${this.esc(match.title)} — ${match.url}\">● ${this.esc(match.kind)} (${match.score})</span>`;
-    if (store.tabs.length === 0) return `<span style=\"color:var(--text-muted); font-size:11px;\">○ no chrome</span>`;
-    return `<span style=\"color:var(--text-muted); font-size:11px;\">○ no tab</span>`;
+    return `<span style=\"color:var(--text-muted); font-size:11px;\">○ ${store.tabs.length === 0 ? 'no chrome' : 'no tab'}</span>`;
   },
 
   updateUrlRowsConnection(store) {
@@ -87,7 +87,7 @@ window.CDPRender = {
       const connCell = tr.querySelector('.url-conn-status');
       if (!connCell) return;
       const match = store.findBestTabForUrl(u.url);
-      connCell.innerHTML = this._connCellHtml(match, store);
+      connCell.innerHTML = this._connCellHtml(match, store, u);
     });
   },
 

@@ -1,19 +1,17 @@
-"""The Python-owned URL reconciler (S6, D-4 / D-10 / I-50).
+"""The Python-owned URL reconciler (S6, D-4 / D-10 / I-50; many sources I-64).
 
-URL rows follow Chrome in EVERY run state at a user-set cadence
-(`debug_view.interval_ms`, read every pass). One pass = today's auto-scan
-(fetch → dedupe → plan → apply → join → presence) with the idle-only prune
-replaced by `url_policy.removable_rows` (reasons, hysteresis, live-job
-deferral). A **manual** pass (the Reparse buttons) sweeps first (D-2,
-2026-09-21): every row without a live job goes, checkboxes are remembered,
-and the same pass rebuilds the list from the fetched tabs — fetch-first, so
-a failed fetch never removes. Every pass also enforces the checkbox→pool
-gate (D-3/D-4): an unchecked row's tab leaves the pool through
-`LiveDeps.leave_tab`, a busy tab defers, and `plan_auto_connect` never
-auto-rejoins it while unchecked. Row changes commit through `LiveDeps.commit`
-— the UI's URL funnel without an undo entry (system change, I-37) — and wake
-the live bus with `urls`. The service never imports `app.ui` or
-`app.browser`: the callables it needs arrive in `LiveDeps`.
+URL rows follow the browsers (Chrome over CDP, the checked Firefox profiles
+through their session stores — one merged `live.sources.TabListing`) in EVERY
+run state at a user-set cadence (`debug_view.interval_ms`, read every pass).
+One pass: fetch → rows (`row_sync.sync_rows`: dedupe, manual sweep, follow,
+plan, claim/add, the removal table) → join + presence → membership → commit
+→ summary. Fetch-first: a failed fetch never removes, and a silent browser's
+rows are held. Every pass enforces the checkbox→pool gate (D-3/D-4): an
+unchecked row's tab leaves the pool through `LiveDeps.leave_tab`, a busy tab
+defers. Row changes commit through `LiveDeps.commit` — the UI's URL funnel
+without an undo entry (system change, I-37) — and wake the live bus with
+`urls`. The service never imports `app.ui` or `app.browser`: the callables it
+needs arrive in `LiveDeps`.
 """
 
 from __future__ import annotations
@@ -25,17 +23,17 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List
 
 from app.services import auto_connect as ac
+from app.services.live import sources as src
 from app.services.live import url_policy as up
+from app.services.live.row_sync import DEFAULT_PATTERN, sync_rows
 from app.services.live.bus import live_bus
 from app.services.live.debug_view import interval_ms
 from app.services.live.feed import clear_row_assignments
 from app.services.live.tab_owner import resolve_owners
 from app.services.live.worker_badges import assert_badges
-from app.services.run_state import pooled_ids, schedule_coro
+from app.services.run_state import schedule_coro
 
 log = logging.getLogger(__name__)
-PATTERN_KEY = "url_pattern"
-DEFAULT_PATTERN = "arena.ai"
 
 
 class ScanUnavailable(RuntimeError):
@@ -152,55 +150,6 @@ class _Pass:
         return self.bridge.state.urls
 
 
-def _claim_rows(urls: list, claims) -> int:
-    """Link unlinked rows to their tabs; returns how many changed."""
-    by_id = {u.id: u for u in urls}
-    linked = 0
-    for row_id, tab_id in claims:
-        row = by_id.get(row_id)
-        if row is not None and not row.tab_id:
-            row.tab_id = tab_id
-            linked += 1
-    return linked
-
-
-def _removal_spec(p: _Pass) -> up.RemovalSpec:
-    live = ac.live_tab_keys(p.tabs)
-    p.stats["misses"] = up.advance_misses(p.urls, live, p.stats["misses"])
-    linked = [u.tab_id for u in p.urls if u.tab_id]
-    return up.RemovalSpec(rows=list(p.urls), live_keys=live, pattern=p.pattern,
-                          busy_tabs=up.busy_tabs(getattr(p.bridge, "_page_pool", None), linked),
-                          misses=p.stats["misses"])
-
-
-def _remove_rows(p: _Pass, spec: up.RemovalSpec) -> None:
-    """Apply `removable_rows` (remember the checkbox, log a reason each) and log deferrals once."""
-    removals = up.removable_rows(spec)
-    gone = {r.row_id for r in removals}
-    up.remember([u for u in p.urls if u.id in gone], p.stats["memory"])
-    p.bridge.state.urls = [u for u in p.urls if u.id not in gone]
-    for line in up.removal_lines(removals, spec.pattern, spec.miss_threshold):
-        p.deps.log(line, "warn")
-    deferred = up.deferred_rows(spec)
-    for d in deferred:
-        if d.row_id not in p.stats["deferred_logged"]:
-            p.deps.log(f"⏸ URL removal deferred {d.url} — job running on its tab (next reconcile)", "info")
-    p.stats["deferred_logged"] = {d.row_id for d in deferred}  # logged once per deferral streak
-    p.report.removed += len(removals)  # accumulates over the pass (the manual sweep counts too, D-2)
-    p.report.removed_ids = sorted(set(p.report.removed_ids) | gone)
-    p.report.deferred = len(deferred)
-
-
-def _apply_plan(p: _Pass, plan: ac.AutoConnectPlan) -> None:
-    """Claim → add → log one line per change (RULE 2)."""
-    p.report.linked = _claim_rows(p.urls, plan.claim)
-    p.report.added = up.add_rows(p.urls, plan.add, p.stats["memory"])
-    for url, tab_id in plan.add:
-        p.deps.log(f"🔺 URL added {url} (tab {tab_id}) — new matching tab", "info")
-    for row_id, tab_id in plan.claim:
-        p.deps.log(f"🔗 URL linked row {row_id} → tab {tab_id} — exact URL match", "info")
-
-
 async def _join_each(p: _Pass, sockets) -> int:
     """Join every planned socket; one bad tab never stops the others (D-1)."""
     joined = 0
@@ -220,9 +169,11 @@ async def _join_each(p: _Pass, sockets) -> int:
 async def _join_and_sync(p: _Pass, plan: ac.AutoConnectPlan) -> None:
     p.report.joined += await _join_each(p, plan.connect)
     live = {(getattr(t, "id", "") or getattr(t, "ws_url", "")) for t in p.tabs or []} - {""}
+    live |= src.held_pages(p.tabs)   # a silent browser's pages stay connected (I-64)
     revived, stale = ac.sync_pool_presence(getattr(p.bridge, "_page_pool", None), live)
     p.report.revived, p.report.stale = revived, len(stale)
     pool = getattr(p.bridge, "_page_pool", None)
+    src.refresh_firefox_pages(pool, p.tabs)
     await resolve_owners(pool)   # a navigation can land on another account (D-5)
     await assert_badges(pool)    # a navigation wipes the badge (D-5)
 
@@ -304,40 +255,6 @@ async def _fetch(p: _Pass) -> bool:
     return True
 
 
-def _sync_rows(p: _Pass) -> ac.AutoConnectPlan:
-    """Rows follow the fetched tabs: dedupe → (manual: sweep) → plan → claim/add → remove (with reasons)."""
-    p.pattern = p.bridge.config.get_state(PATTERN_KEY, DEFAULT_PATTERN)
-    spec = _removal_spec(p)  # one spec per pass: misses advance once, the sweep reuses its busy set
-    if p.source == "manual":
-        _sweep_rows(p, spec)
-    rows, duplicates = up.dedupe_rows(p.urls)
-    if duplicates:
-        p.deps.log(f"🤖 Reconcile: removed {duplicates} extra row(s) — their tab already has a row", "warn")
-    plan = ac.plan_auto_connect(p.tabs, p.pattern, rows, pooled_ids(getattr(p.bridge, "_page_pool", None)))
-    _apply_plan(p, plan)
-    _remove_rows(p, spec)
-    p.report.removed += duplicates
-    return plan
-
-
-def _sweep_rows(p: _Pass, spec: up.RemovalSpec) -> None:
-    """Manual Reparse (D-2): every row without a live job goes — this pass rebuilds the list from open tabs.
-
-    The checkbox each row had is remembered (`restore_enabled` puts it back
-    on the fresh row); rows under a live job keep their identity (RULE 15).
-    """
-    kept = [u for u in p.urls if u.tab_id in spec.busy_tabs]
-    gone = [u for u in p.urls if u not in kept]
-    if not gone and not kept:
-        return
-    up.remember(gone, p.stats["memory"])
-    p.report.swept = p.report.removed = len(gone)
-    p.report.removed_ids = sorted(u.id for u in gone)
-    p.bridge.state.urls = kept
-    kept_note = f" ({len(kept)} kept: job running)" if kept else ""
-    p.deps.log(f"🧹 Reparse: cleared {len(gone)} URL row(s) — rebuilding from open tabs{kept_note}", "info")
-
-
 def _enforce_membership(p: _Pass) -> None:
     """The URL list owns pool membership (I-56/I-58): exits leave now, busy ones defer."""
     pool = getattr(p.bridge, "_page_pool", None)
@@ -365,11 +282,15 @@ async def _pool_phase(p: _Pass, plan: ac.AutoConnectPlan) -> None:
 
 
 async def _pass(p: _Pass) -> Report:
-    """fetch → rows (only when Chrome answered tabs) → join + presence → membership → commit → summary."""
+    """fetch → rows (only when a source answered) → join + presence → membership → commit → summary."""
     if not await _fetch(p):
         return p.report
-    plan = _sync_rows(p) if p.tabs else ac.AutoConnectPlan()  # an empty fetch never touches rows
+    fox_before = src.firefox_ids(p.urls)
+    plan = sync_rows(p) if src.answered(p.tabs) else ac.AutoConnectPlan()  # an empty fetch never touches rows
     await _pool_phase(p, plan)
     _commit(p)
     _summary(p)
+    fox_line = src.firefox_line(fox_before, src.firefox_ids(p.urls), p.source == "manual")  # I-64
+    if fox_line:
+        p.deps.log(fox_line, "info")
     return p.report

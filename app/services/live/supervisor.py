@@ -26,6 +26,7 @@ from app.browser.page_status import PageStatus
 from app.services import auto_connect as ac
 from app.services.batch_orchestrator import pool_summary, resolve_and_claim_tab, run_pass
 from app.services.cooldown_service import is_stuck_status
+from app.services.uivision_job import has_uivision_page
 
 from .bus import LiveBus, live_bus
 from .feed import PROCESSING_REFUSAL, queued_images, recover_stale_processing
@@ -70,8 +71,11 @@ def is_live(bridge) -> bool:
     return not getattr(bridge, "_cancel_requested", False) and not getattr(bridge, "_stop_after", False)
 
 
-def _cdp_down(bridge) -> bool:
-    return not getattr(getattr(bridge, "cdp", None), "is_connected", False)
+def _cdp_down(bridge, allowed: set) -> bool:
+    """No CDP connection AND no checked Firefox page — a uivision worker needs no socket (I-64)."""
+    if getattr(getattr(bridge, "cdp", None), "is_connected", False):
+        return False
+    return not has_uivision_page(getattr(bridge, "_page_pool", None), allowed)
 
 
 def _cooling(page: dict) -> bool:
@@ -100,7 +104,7 @@ async def plan_pass(bridge) -> PassPlan:
     plan.allowed = ac.enabled_tab_ids(plan.urls)
     if not plan.images:
         plan.reason = "no images"
-    elif _cdp_down(bridge):
+    elif _cdp_down(bridge, plan.allowed):
         plan.reason = "cdp down"
     elif _all_cooling(bridge, plan.allowed):
         plan.reason = "all cooling"

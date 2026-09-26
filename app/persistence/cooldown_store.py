@@ -223,6 +223,21 @@ def save_pool_snapshot(path, pool) -> None:
     _write_doc(path, entries, stats, _trim_aliases(aliases))
 
 
+def set_job_count(path, url: Any, count: int) -> bool:
+    """Overwrite ONE stored job counter — the user's JOBS edit (I-64).
+
+    `save_pool_snapshot` merges counters by max, so a lowered count needs this
+    explicit write; timers and aliases are kept as they are. False for a blank URL.
+    """
+    key = normalize_url(url)
+    if not key:
+        return False
+    stats = load_stats(path)
+    stats[key] = {"jobs_completed": max(0, int(count))}
+    _write_doc(path, load_entries(path), stats, load_aliases(path))
+    return True
+
+
 def normalize_url(url: Any) -> str:
     """Canonical URL form (case/trailing-slash tolerant, query kept)."""
     if not isinstance(url, str):

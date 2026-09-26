@@ -76,7 +76,7 @@ class RunSeams:
     profiles: object = None   # callable → per-profile session rows (tests fake them)
 
 
-class _Recorder:
+class Recorder:
     """Collects the reported steps so the result can carry them (one mutable box)."""
 
     def __init__(self, report):
@@ -93,7 +93,7 @@ def _patterns(spec: RunSpec) -> plan.Patterns:
     return plan.Patterns(spec.pattern, spec.url_pattern)
 
 
-def _macro_target(spec: RunSpec):
+def macro_target(spec: RunSpec):
     """Where the macro JSON is written: the XModule home, or the import artefact."""
     if spec.storage == "xfile":
         return paths.macro_file(paths.home(spec.home), spec.macro)
@@ -107,7 +107,7 @@ def _provision(spec: RunSpec, report) -> object:
     values (selector, pause budget) ride `cmd_var1..3`, never the file.
     """
     paths.logs_dir(spec.config_dir).mkdir(parents=True, exist_ok=True)
-    target = _macro_target(spec)
+    target = macro_target(spec)
     target.parent.mkdir(parents=True, exist_ok=True)
     document = macro.build_macro(spec.macro, _patterns(spec))
     target.write_text(macro.to_json(document), encoding="utf-8")
@@ -272,7 +272,7 @@ def _detect_plugin(report, seams: RunSeams) -> None:
                          f"(XModules) or XClick cannot fire", "warn")
 
 
-def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
+def _report_open_tabs(sessions, real: bool, recorder: Recorder) -> None:
     """The flat tab list across every profile + the freshest store's receipt."""
     rows = [row for session in sessions for row in session["rows"]]
     quiet = "" if rows else " (no session store readable — is Firefox running?)"
@@ -282,7 +282,7 @@ def _report_open_tabs(sessions, real: bool, recorder: _Recorder) -> None:
     _report_tab_rows(rows, recorder)
 
 
-def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
+def _detect_phase(spec: RunSpec, recorder: Recorder, seams: RunSeams) -> list:
     """The pre-run eyes: EVERY open profile's tabs, the matches, ONE run per profile."""
     sessions = _load_profiles(seams)
     real = seams.tabs is None and seams.profiles is None
@@ -304,7 +304,7 @@ def _detect_phase(spec: RunSpec, recorder: _Recorder, seams: RunSeams) -> list:
     return planned
 
 
-def _drop_unaddressable(targets, spec: RunSpec, recorder: _Recorder) -> list:
+def _drop_unaddressable(targets, spec: RunSpec, recorder: Recorder) -> list:
     """Warn per titleless match and keep only tabs the macro can actually select."""
     addressable, titleless = plan.split_unaddressable(targets, _patterns(spec))
     for target in titleless:
@@ -314,7 +314,7 @@ def _drop_unaddressable(targets, spec: RunSpec, recorder: _Recorder) -> list:
     return addressable
 
 
-def _apply_profile_filter(targets, spec: RunSpec, sessions, recorder: _Recorder) -> list:
+def _apply_profile_filter(targets, spec: RunSpec, sessions, recorder: Recorder) -> list:
     """Keep only targets in selected profiles; skip or warn per unmatched one."""
     selected = list(spec.selected_profiles or ())
     kept = profiles.filter_targets(targets, selected)
@@ -328,7 +328,7 @@ def _apply_profile_filter(targets, spec: RunSpec, sessions, recorder: _Recorder)
     return kept
 
 
-def _report_unmatched_profile(name: str, skip: bool, wait_sec: int, recorder: _Recorder) -> None:
+def _report_unmatched_profile(name: str, skip: bool, wait_sec: int, recorder: Recorder) -> None:
     """One profile with no matching tabs — skip (move on) or wait (warn)."""
     if skip:
         recorder("detect", f'profile "{name}": no matching tab — skipped (skip_no_match)', "warn")
@@ -341,11 +341,11 @@ def _stopped(seams: RunSeams) -> bool:
     return bool(seams.stop and seams.stop())
 
 
-def _result(kind: str, message: str, recorder: _Recorder, lines: tuple = ()) -> RunResult:
+def _result(kind: str, message: str, recorder: Recorder, lines: tuple = ()) -> RunResult:
     return RunResult(kind=kind, message=message, steps=tuple(recorder.steps), lines=lines)
 
 
-def _blocked_no_search(recorder: _Recorder) -> RunResult:
+def _blocked_no_search(recorder: Recorder) -> RunResult:
     """Both patterns blank and no readable tab: nothing to search, nothing opened."""
     recorder("launch", "no tab-title and no URL pattern set (and no open tab readable) "
                        "— the macro finds the run's tab by title or URL and never "
@@ -354,7 +354,7 @@ def _blocked_no_search(recorder: _Recorder) -> RunResult:
                               "nothing opened", recorder)
 
 
-def _blocked_no_url_match(recorder: _Recorder, url_pattern: str) -> RunResult:
+def _blocked_no_url_match(recorder: Recorder, url_pattern: str) -> RunResult:
     """URL-only search with no match: the fallback selector needs a title pattern."""
     recorder("launch", f"URL “{url_pattern}” matched no open tab in any profile's "
                        f"session store — the macro selects tabs by TITLE, so open the "
@@ -365,7 +365,7 @@ def _blocked_no_url_match(recorder: _Recorder, url_pattern: str) -> RunResult:
                               f"title", recorder)
 
 
-def _fallback_or_block(spec: RunSpec, recorder: _Recorder, targets: list):
+def _fallback_or_block(spec: RunSpec, recorder: Recorder, targets: list):
     """The no-match decision: None to continue, or the block that names why.
 
     A title pattern still buys today's fallback single run (its title glob,
@@ -393,7 +393,7 @@ def _fallback_or_block(spec: RunSpec, recorder: _Recorder, targets: list):
 # ── wait for unmatched profiles (skip_no_match off) ──────────────────────────
 
 async def _wait_for_unmatched(spec: RunSpec, seams: RunSeams,
-                              recorder: _Recorder, targets: list) -> list:
+                              recorder: Recorder, targets: list) -> list:
     """Poll unmatched profiles for a matching tab; skip after timeout (RULE 7).
 
     Only waits when the user has explicitly selected profiles — anonymous
@@ -475,7 +475,7 @@ async def _default_sleep(seconds: float) -> None:
 async def run_test(spec: RunSpec, report, seams: RunSeams = None) -> RunResult:
     """One framework test end to end; every phase reports through `report`."""
     seams = seams or RunSeams()
-    recorder = _Recorder(report)
+    recorder = Recorder(report)
     targets = _detect_phase(spec, recorder, seams)
     if _stopped(seams):
         return _result("stopped", "stopped before the run began", recorder)

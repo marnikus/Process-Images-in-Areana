@@ -18,10 +18,11 @@ effort: a missing, locked or unparsable file answers "not seen", never an
 error, so a wrong guess can never look like a browser verdict (RULE 4).
 """
 
-# ideal-size: ~360 lines reason=session-store readers for every profile + the
+# ideal-size: ~390 lines reason=session-store readers for every profile + the
 # ini/roots enumeration + the addon probe + the nsProfileLock open/closed probe
 # (all OS-read concerns of one module — see runner.py's companion comment);
-# every function stays within the RULE 18 band (max 20 lines).
+# every function stays within the RULE 18 band (max 20 lines). The pool's
+# positioned reader lives in `pool/scan.py` and reuses `session_doc` (I-64).
 
 from __future__ import annotations
 
@@ -200,12 +201,28 @@ def _list(value) -> list:
     return value if isinstance(value, list) else []
 
 
+def current_entry(tab) -> dict:
+    """The history entry the tab SHOWS — `entries[index-1]`, else the last one.
+
+    `index` is 1-based; after Back the forward entries stay stored behind it
+    (`max_serialize_forward`), so the last entry is not always the page on screen.
+    """
+    entries = _list((tab or {}).get("entries"))
+    if not entries:
+        return {}
+    try:
+        pos = int((tab or {}).get("index", 0)) - 1
+    except (TypeError, ValueError):
+        pos = -1
+    entry = entries[pos] if 0 <= pos < len(entries) else entries[-1]
+    return entry if isinstance(entry, dict) else {}
+
+
 def _tab_row(tab) -> dict:
     """The tab's current entry as {"url","title"} (None when it has none)."""
-    entries = _list((tab or {}).get("entries"))
-    last = entries[-1] if entries else {}
-    url = str((last or {}).get("url") or "")
-    return {"url": url, "title": str(last.get("title") or "")} if url else None
+    entry = current_entry(tab)
+    url = str(entry.get("url") or "")
+    return {"url": url, "title": str(entry.get("title") or "")} if url else None
 
 
 def _rows_of(doc) -> list:
@@ -228,7 +245,7 @@ def _selected(row_count: int, window) -> int:
     return pos if 0 <= pos < row_count else -1
 
 
-def _window_rows(doc) -> list:
+def window_rows(doc) -> list:
     """Per-window [{"index","active","tabs"}] — the OS-window mapping's raw half."""
     out = []
     for index, window in enumerate(_list(doc.get("windows")), 1):
@@ -249,21 +266,30 @@ def _session_files(profile) -> list:
     return [backups / name for name in BACKUP_CANDIDATES] + [Path(profile) / ROOT_CANDIDATE]
 
 
-def _profile_session(profile) -> tuple:
-    """(rows, windows, stamp, source) of the first candidate that answers."""
+def session_doc(profile, read=None) -> tuple:
+    """(doc, stamp, source) of the first candidate holding a tab URL; (None, -1.0, '') else.
+
+    `read` replaces `mozlz4.read_session_file` (the pool passes its mtime cache).
+    """
+    reader = read or mozlz4.read_session_file
     for path in _session_files(profile):
-        doc = mozlz4.read_session_file(path)
-        if not isinstance(doc, dict):
-            continue
-        rows = _rows_of(doc)
-        if not rows:
+        doc = reader(path)
+        if not isinstance(doc, dict) or not _rows_of(doc):
             continue
         try:
             stamp = path.stat().st_mtime
         except OSError:
             stamp = 0.0
-        return rows, _window_rows(doc), stamp, path.name
-    return [], [], -1.0, ""
+        return doc, stamp, path.name
+    return None, -1.0, ""
+
+
+def _profile_session(profile) -> tuple:
+    """(rows, windows, stamp, source) of the first candidate that answers."""
+    doc, stamp, source = session_doc(profile)
+    if doc is None:
+        return [], [], -1.0, ""
+    return _rows_of(doc), window_rows(doc), stamp, source
 
 
 def profile_names(roots=None) -> dict:

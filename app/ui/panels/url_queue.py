@@ -150,6 +150,14 @@ def enforce_pool_membership(bridge) -> None:
         bridge._emit_pool_status()
 
 
+def _apply_edit(row, new_url: str) -> None:
+    """A user edit: the new URL, typed from now on (never auto-removed, I-64), re-checked later."""
+    row.url = new_url
+    row.typed = True
+    row.last_status = "unchecked"
+    row.error = None
+
+
 def _find_url(urls, url_id: str):
     """URL row by id (None when missing)."""
     for u in urls:
@@ -172,6 +180,7 @@ class UrlQueueMixin:
         if _duplicate_url(self.state.urls, url):
             return json.dumps({"ok": False, "error": "URL already exists"})
         item = UrlRow.create(url, enabled=True)
+        item.typed = True               # a typed URL is never auto-removed (I-64)
         self.state.urls.append(item)
         self._commit_urls()
         return json.dumps({"ok": True, "id": item.id})
@@ -204,9 +213,7 @@ class UrlQueueMixin:
             return json.dumps({"ok": False, "error": "not found"})
         if _duplicate_url(self.state.urls, new_url, skip_id=url_id):
             return json.dumps({"ok": False, "error": "URL already exists"})
-        row.url = new_url
-        row.last_status = "unchecked"
-        row.error = None
+        _apply_edit(row, new_url)
         self._commit_urls()
         return json.dumps({"ok": True, "url": new_url})
 

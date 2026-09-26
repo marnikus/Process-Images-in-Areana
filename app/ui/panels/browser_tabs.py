@@ -473,25 +473,28 @@ def live_deps(bridge) -> LiveDeps:
     """The reconciler's callables, wired in ui land (the service never imports ui/browser).
 
     `fetch_tabs` is the panel's own one-pass listing — the settings' endpoint, every row
-    a live `cdp.tabs.TabInfo` (D-1).
+    a live `cdp.tabs.TabInfo` (D-1) — merged with the checked Firefox profiles' tabs
+    (I-64); `join_tab` gets a ws URL for Chrome and a tab id for Firefox.
     """
-    async def fetch_tabs():
-        return await reconcile_tabs(bridge)
-
-    async def join_tab(ws: str):
-        await do_connect_page_pool(bridge, ws)
+    from app.ui.services.firefox_pool import join_any, merged_listing
 
     def leave_tab(tab_id: str) -> bool:
         left = leave_pool(bridge, tab_id)  # badge cleared, page removed (the one leave mechanic)
         bridge._emit_pool_status()
         return left
 
-    return LiveDeps(fetch_tabs=fetch_tabs, join_tab=join_tab, leave_tab=leave_tab,
+    return LiveDeps(fetch_tabs=partial(merged_listing, bridge, partial(reconcile_tabs, bridge)),
+                    join_tab=partial(join_any, bridge), leave_tab=leave_tab,
                     commit=partial(commit_urls_system, bridge), log=bridge._log)
 
 
 def start_url_reconciler(bridge) -> bool:
-    """Boot-time start of the Python-owned URL loop (idempotent; False when already running)."""
+    """Boot-time start of the Python-owned URL loop (idempotent; False when already running).
+
+    The loop also brings Firefox tabs into the pool (I-64), so their job lane is wired first.
+    """
+    from app.ui.services.firefox_pool import install
+    install(bridge)
     return start_reconciler(bridge, live_deps(bridge))
 
 

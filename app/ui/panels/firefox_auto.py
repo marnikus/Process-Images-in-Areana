@@ -105,7 +105,7 @@ def load_config(bridge) -> dict:
     return validate_config(cfg)
 
 
-def _config_dir(bridge) -> str:
+def app_config_dir(bridge) -> str:
     """Absolute on purpose: the autorun page rides a file:/// URL (RULE 4)."""
     from pathlib import Path
     return str(Path(getattr(bridge.config, "dir", "config")).expanduser().resolve())
@@ -114,7 +114,7 @@ def _config_dir(bridge) -> str:
 def paths_info(bridge, cfg) -> dict:
     """The files one run touches — the window shows where they live (RULE 4)."""
     from app.browser.uivision import paths as uiv_paths
-    config_dir = _config_dir(bridge)
+    config_dir = app_config_dir(bridge)
     home = uiv_paths.home(cfg["home"])
     if cfg["storage"] == "xfile":
         macro_file = uiv_paths.macro_file(home, cfg["macro"])
@@ -131,7 +131,7 @@ def build_spec(bridge, cfg):
     return RunSpec(pattern=cfg["pattern"], target=cfg["target"],
                    macro=cfg["macro"], storage=cfg["storage"], home=cfg["home"],
                    binary=cfg["binary"], timeout_sec=cfg["timeout_sec"],
-                   pause_ms=cfg["pause_ms"], config_dir=_config_dir(bridge),
+                   pause_ms=cfg["pause_ms"], config_dir=app_config_dir(bridge),
                    url_pattern=cfg["url_pattern"],
                    selected_profiles=tuple(cfg.get(PROFILE_LIST_KEY, ())),
                    skip_no_match=bool(cfg.get(SKIP_NO_MATCH_KEY, False)),
@@ -155,9 +155,25 @@ def _reporter(bridge):
     return report
 
 
+async def _gated_run(bridge, spec, report):
+    """The test inside the machine-wide Ui.Vision gate — never beside a pool job (I-64)."""
+    from app.browser.uivision.runner import RunSeams, run_test
+    from app.browser.uivision.sequence import RunResult
+    from app.services.uivision_job import uivision_gate
+    seams = RunSeams(stop=lambda: bool(getattr(bridge, "_firefox_auto_stop", False)))
+    gate = uivision_gate(bridge)
+    if gate.busy:
+        report("gate", "waiting for the Ui.Vision slot — a Firefox pool job holds it")
+    if not await gate.acquire(seams.stop):
+        return RunResult(kind="stopped", message="stopped while waiting for the Ui.Vision slot")
+    try:
+        return await run_test(spec, report, seams)
+    finally:
+        gate.release(spec.inter_run_delay_sec)
+
+
 async def do_run_test(bridge) -> None:
     """One framework test end to end; the window sees every step and the verdict."""
-    from app.browser.uivision.runner import RunSeams, run_test
     try:
         cfg = load_config(bridge)
         spec = build_spec(bridge, cfg)
@@ -166,8 +182,7 @@ async def do_run_test(bridge) -> None:
         search = f"title “{cfg['pattern']}” + URL “{cfg['url_pattern']}”"
         report("run", f"framework test — macro {cfg['macro']}, search {search}, "
                       f"target {cfg['target'][:60]}")
-        seams = RunSeams(stop=lambda: bool(getattr(bridge, "_firefox_auto_stop", False)))
-        result = await run_test(spec, report, seams)
+        result = await _gated_run(bridge, spec, report)
         emit_status(bridge, {"kind": "result", "result": result.kind, "message": result.message,
                              "lines": list(result.lines),
                              "steps": [list(step) for step in result.steps]})
