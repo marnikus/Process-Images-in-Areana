@@ -105,6 +105,21 @@ class JobJournal:
             if self._records.pop(job_id, None) is not None:
                 self._save()
 
+    def supersede(self, image_path: str, keep: str) -> List[str]:
+        """Drop the other open records of this source image (a re-queue replaces them); their ids.
+
+        A `needs_review` record keeps its `output_src`; left open, the next live
+        start would collect that OLD result beside a newer one (audit F2).
+        """
+        with self._lock:
+            stale = [k for k, r in self._records.items()
+                     if image_path and k != keep and r.get("image_path") == image_path]
+            for key in stale:
+                del self._records[key]
+            if stale:
+                self._save()
+            return stale
+
     def open_records(self) -> List[dict]:
         """Everything not terminal (in flight, interrupted or awaiting review)."""
         with self._lock:

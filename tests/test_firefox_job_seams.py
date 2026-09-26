@@ -233,3 +233,46 @@ def test_needs_review_is_reachable_exactly_from_the_post_submit_statuses():
     from app.core.state_machine import JOB_TRANSITIONS
     reachable = {s for s, nxt in JOB_TRANSITIONS.items() if JobStatus.NEEDS_REVIEW.value in nxt}
     assert reachable == set(POST_SUBMIT)
+
+
+# ---- B2: a re-queued image supersedes its older open records ----
+
+_TO_DOWNLOADING = ["baseline_captured", "attaching", "attachment_verified", "prompt_inserted",
+                   "prompt_verified", "submitted", "waiting_generation", "output_detected", "downloading"]
+
+
+def _old_review_record(bridge, image_path: str, corr: str = "c0") -> None:
+    from app.services.firefox_job_journal import job_folder
+    journal = journal_of(bridge)
+    journal.create(corr, image_id="img-1", image_path=image_path)
+    for step in _TO_DOWNLOADING:
+        assert journal.advance(corr, step)
+    assert journal.advance(corr, "needs_review", output_src="https://r2/old.png", needs_review=True)
+    folder = job_folder(bridge, corr)
+    folder.mkdir(parents=True)
+    (folder / "download.part").write_bytes(b"torn")
+
+
+@pytest.mark.asyncio
+async def test_a_requeued_image_never_gets_a_second_result_from_its_old_review_record(tmp_path, monkeypatch):
+    from app.services.firefox_job_journal import job_folder
+    bridge = Bridge(tmp_path / "cfg")
+    _old_review_record(bridge, str(tmp_path / "photo.png"))
+    verdict, bridge, img, _ = await run(tmp_path, happy_site(PROMPT), monkeypatch, bridge=bridge)
+    assert not verdict.failed and img.output_path.endswith("photo_AI.png")
+    assert journal_of(bridge).get("c0") is None and not job_folder(bridge, "c0").exists()
+    assert "superseded" in bridge.text()
+    bridge.state.images.append(img)
+    assert await rec.recover_firefox_jobs(bridge) == {}
+    assert sorted(p.name for p in tmp_path.glob("photo_AI*")) == ["photo_AI.png"]
+    assert img.output_path.endswith("photo_AI.png")
+
+
+def test_supersede_drops_only_older_open_records_of_the_same_image():
+    journal = JobJournal()
+    journal.create("old", image_path="/a/photo.png")
+    journal.create("other", image_path="/a/else.png")
+    journal.create("new", image_path="/a/photo.png")
+    assert journal.supersede("/a/photo.png", keep="new") == ["old"]
+    assert journal.get("old") is None and journal.get("other") and journal.get("new")
+    assert journal.supersede("", keep="new") == []

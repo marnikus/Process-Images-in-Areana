@@ -192,10 +192,20 @@ def _new_job(start: JobStart) -> FfJob:
     if page is None:
         raise JobFailure("tab left the pool before the job started")
     journal = journal_of(start.bridge)
+    image_path = str(start.img.absolute_path)
     journal.create(start.corr, tab_id=start.tab_id, image_id=getattr(start.img, "id", ""),
-                   image_path=str(start.img.absolute_path))
-    return FfJob(bridge=start.bridge, pool=start.pool, page=page, img=start.img,
-                 corr=start.corr, prompt=start.prompt, journal=journal)
+                   image_path=image_path)
+    job = FfJob(bridge=start.bridge, pool=start.pool, page=page, img=start.img,
+                corr=start.corr, prompt=start.prompt, journal=journal)
+    _supersede(job, image_path)
+    return job
+
+
+def _supersede(job: FfJob, image_path: str) -> None:
+    """A re-queued image replaces its older records: never collect their old results later."""
+    for old in job.journal.supersede(image_path, keep=job.corr):
+        shutil.rmtree(job_folder(job.bridge, old), ignore_errors=True)
+        log(job, f"older record [{old}] of this image superseded — its result is no longer collected")
 
 
 async def _run(job: FfJob) -> Verdict:
