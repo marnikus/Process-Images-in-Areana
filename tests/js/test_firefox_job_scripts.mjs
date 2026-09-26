@@ -37,7 +37,9 @@ bodies = {
   "ack": js.ack_js("c1", 50), "clean": js.clean_js(50), "security": js.security_js(False),
   "observe": js.observe_js("c1", base, 0, False), "boom": "(() => { throw new Error('kaput'); })()",
 }
+from app.browser.uivision import file_dialog as fd
 print(json.dumps({"targets": {k: jm.loader("c1", k, v) for k, v in bodies.items()},
+                  "stillOpen": fd.still_open_js("arena_c1.png"),
                   "sha": sha_of(p), "len": utf16_len(p)}))
 `;
 
@@ -222,5 +224,24 @@ describe('firefox job — composer = the element the insert writes (B3)', () => 
   test('New Chat is clean when the visible composer is empty', async () => {
     const c = await run(page(HIDDEN_PRIMARY()), 'clean');
     assert.equal(c.clean, true, JSON.stringify(c.state));
+  });
+});
+
+/* Live fix 2026-09-26: the fallback Enter / ESC of the attach macro fire only while the
+   OS dialog is provably still up — the page has no focus AND our preview is absent. */
+describe('firefox job — file dialog still open? (file_dialog.still_open_js)', () => {
+  const stillOpen = (w, focused) => {
+    Object.defineProperty(w.document, 'hasFocus', { value: () => focused, configurable: true });
+    return w.eval(`(function () { ${GEN.stillOpen} })()`);
+  };
+  test('no focus + no preview of ours → 1 (send the fallback key)', () => {
+    assert.equal(stillOpen(page(withPreview('')), false), 1);
+    assert.equal(stillOpen(page(withPreview('someone.png')), false), 1);
+  });
+  test('page focused → 0 (the dialog is gone; a key would land in the page)', () => {
+    assert.equal(stillOpen(page(withPreview('')), true), 0);
+  });
+  test('our preview present → 0 even without focus', () => {
+    assert.equal(stillOpen(page(withPreview('arena_c1.png')), false), 0);
   });
 });

@@ -46,9 +46,10 @@ async def test_the_dialog_receives_the_unique_staged_copy(tmp_path, monkeypatch)
     site = happy_site(PROMPT)
     await run(tmp_path, site, monkeypatch)
     attach = next(p for p in site.phases if p.phase == "attach")
-    typed = [c["Target"] for c in attach.commands if c["Command"] == "XType"]
-    assert typed[0].endswith("arena_c1.png") and str(typed[0]).isascii()
-    assert typed[1] == "${KEY_ENTER}"
+    pasted = [c["Target"] for c in attach.commands if c["Value"] == "!clipboard"]  # live fix 2026-09-26
+    assert len(pasted) == 1 and pasted[0].endswith('arena_c1.png"') and pasted[0].isascii()
+    assert "\\" not in pasted[0]  # forward slashes only: no escape can eat the path
+    assert not any("arena_c1" in c["Target"] for c in attach.commands if c["Command"] == "XType")
 
 
 @pytest.mark.parametrize("name,fmt,ext", [("p.jpg", "JPEG", ".jpeg"), ("p.jpeg", "JPEG", ".jpeg"),

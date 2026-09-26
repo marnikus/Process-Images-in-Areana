@@ -31,6 +31,7 @@ from app.browser import processing_probe
 from app.browser import recording_probes
 from app.browser import worker_badge
 from app.browser.cdp_arena import js_snippets
+from app.browser.uivision import file_dialog as uivision_file_dialog
 from app.browser.uivision import job_macros as uivision_job_macros
 from app.browser.uivision import job_scripts as uivision_job_scripts
 from app.browser.uivision import macro as uivision_macro
@@ -128,6 +129,8 @@ def _firefox_job_payloads() -> dict:
         out[f"uivision.job.{name}"] = f";({body})"
         out[f"uivision.job_loader.{name}"] = (
             f"(function () {{ {uivision_job_macros.loader('c1', name, body)} }})")
+    out["uivision.file_dialog.still_open_js"] = (
+        f"(function () {{ {uivision_file_dialog.still_open_js('arena_c1.png')} }})")
     return out
 
 

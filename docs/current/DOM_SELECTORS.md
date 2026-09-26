@@ -598,7 +598,7 @@ No new selectors. The Firefox lane reuses the entries above through `probe_selec
 
 | Use | Selector source | How |
 |---|---|---|
-| Upload control (XClick → native dialog) | `probe_selectors.add_files_primary()` (`add_files_button`) | XClick — `isTrusted` input; never DOM `Click` (I-63) |
+| Upload control (XClick → native dialog) | `probe_selectors.add_files_primary()` (`add_files_button`) | XClick — `isTrusted` input; never DOM `Click` (I-63). The OS dialog is not DOM: `uivision/file_dialog` pastes the path from `!clipboard` in desktop mode (Alt+N, Ctrl+A, Ctrl+V, Alt+O; Enter/ESC only while the page has no focus and our preview is absent) |
 | Attachment preview | `attachment_preview_selectors()` | exactly one visible preview whose `alt` == staged file name `arena_<corr8><ext>` (stale / wrong / multiple ⇒ reset or retry) |
 | Composer / send | `textarea_selectors()`, `send_click_primary()`, `send_presence_selector()` | composer = the FIRST VISIBLE match of `textarea_selectors()` for the insert AND every read (readback, guard, observe, New Chat clean — `job_scripts` prelude `__composerEl`, 2026-09-26 B3); prompt set in the page, SHA-256 readback; send = in-page guard, then one XClick |
 | Output / spinner / errors | `output_image_selectors()`, `spinner_selector()`, `page_errors` | Chrome's baseline + `[JOB-ID]` correlation, 3 s stability |

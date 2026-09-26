@@ -21,7 +21,8 @@ from app.browser.uivision import macro
 pytestmark = pytest.mark.unit
 
 UV_VARS = {"${!cmd_var1}", "${!cmd_var2}", "${!cmd_var3}", "${KEY_ENTER}", "${KEY_ESC}",
-           "${arenaJob}", "${arenaGuard}", "${attachEsc}", "${goFlag}"}
+           "${arenaJob}", "${arenaGuard}", "${attachEsc}", "${goFlag}", "${dialogOpen}",
+           "${KEY_ALT+KEY_N}", "${KEY_CTRL+KEY_A}", "${KEY_CTRL+KEY_V}", "${KEY_ALT+KEY_O}"}
 
 
 def commands(phase):
@@ -56,11 +57,14 @@ def test_the_loader_carries_the_body_base64_and_names_token_and_phase():
     assert '"c1"' in target and '"prompt"' in target and target.startswith("return ")
 
 
-def test_attach_types_the_staged_path_into_the_dialog_and_escapes_on_a_miss():
+def test_attach_pastes_the_staged_path_into_the_dialog_and_escapes_on_a_miss():
+    """Live fix 2026-09-26: the path is pasted (never typed); the dialog rows are file_dialog's."""
     phase = jm.attach_macro("c1", "C:/up/arena_c1.png", "1")
     rows = commands(phase)
     xtypes = [t for c, t, _ in rows if c == "XType"]
-    assert xtypes == ["C:/up/arena_c1.png", "${KEY_ENTER}", "${KEY_ESC}"]
+    assert xtypes == ["${KEY_ALT+KEY_N}", "${KEY_CTRL+KEY_A}", "${KEY_CTRL+KEY_V}", "${KEY_ALT+KEY_O}",
+                      "${KEY_ENTER}", "${KEY_ESC}"]
+    assert ("store", '"C:/up/arena_c1.png"', "!clipboard") in rows
     assert [c for c, _, _ in rows].count("XClick") == 1
     assert phase.xclick.startswith("css=") and "Add files" in phase.xclick
     assert ("if_v2", "${attachEsc} == 1", "") in rows

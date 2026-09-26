@@ -20,11 +20,12 @@ from __future__ import annotations
 
 import base64
 import json
+import ntpath
 import re
 from dataclasses import dataclass
 
 from ..probe_selectors import new_chat_primary, send_click_primary, add_files_primary
-from . import autorun, macro, paths
+from . import autorun, file_dialog, macro, paths
 
 MACRO_PREFIX = "Arena_Job_"
 REPLY_MARK = "ARENA_JOB="
@@ -34,7 +35,8 @@ _GUARD_VAR = "arenaGuard"    # the submit guard's reply (read by the click flag)
 # Ui.Vision pastes ${var} RAW into the script (docs: `x="${myvar}"`), so the stored
 # JSON reply arrives as an object literal — parenthesised, never JSON.parse'd.
 _FLAG_JS = "return (${" + _GUARD_VAR + "}).data.go ? 1 : 0"
-_ESC_JS = "return (${" + _JOB_VAR + "}).data.matched === 1 ? 0 : 1"
+# 1 = our preview is missing AND the OS dialog still holds the focus (ESC is safe to send)
+_ESC_JS = "return (${" + _JOB_VAR + "}).data.matched === 1 || document.hasFocus() ? 0 : 1"
 
 # ideal-size: 12-line JS literal reason=the one loader every phase shares (RULE 16.1.5)
 _LOADER = r"""return (function () {
@@ -107,17 +109,13 @@ def probe_macro(token: str, phase: str, js_expr: str, timeout_sec: int = 60) -> 
 
 
 def attach_macro(token: str, upload_path: str, wait_js: str) -> PhaseMacro:
-    """XClick “Add files” → type the staged path into the OS dialog → Enter → verify; ESC on miss."""
+    """XClick “Add files” → paste the staged path into the OS dialog → Open → verify; ESC if left open."""
+    staged_name = ntpath.basename(str(upload_path))
     commands = (_select() + _native_click("Add files")
-                + [macro.command("pause", "2000", "", "let the OS file dialog open"),
-                   macro.command("XType", upload_path, "", "absolute path of the staged upload"),
-                   macro.command("pause", "500", "", ""),
-                   macro.command("XType", "${KEY_ENTER}", "", "confirm the dialog")]
+                + file_dialog.fill_and_open(upload_path, staged_name)
                 + _probe(token, "attach", wait_js)
-                + [macro.command("executeScript", _ESC_JS, "attachEsc", "1 = our preview missing"),
-                   macro.command("if_v2", "${attachEsc} == 1", "", "dialog may still be open"),
-                   macro.command("XType", "${KEY_ESC}", "", "close a leftover dialog"),
-                   macro.command("end", "", "", "")])
+                + [macro.command("executeScript", _ESC_JS, "attachEsc", "1 = preview missing, dialog up")]
+                + file_dialog.escape_when("${attachEsc} == 1"))
     return _finish("attach", commands, xclick=css(add_files_primary()))
 
 
