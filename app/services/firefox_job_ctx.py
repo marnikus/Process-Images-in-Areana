@@ -17,11 +17,10 @@ from pathlib import Path
 from typing import Any
 
 from app.browser.uivision import job_macros as uv_job
+from app.services import firefox_job_host as host
 from app.services import firefox_lane as fl
 from app.services.captcha.policy import captcha_in_scope
 from app.services.run_state import JobAction
-
-JOBS_DIR = "firefox_jobs"
 
 
 class JobFailure(Exception):
@@ -70,20 +69,14 @@ class FfJob:
 
 
 def log(job: FfJob, message: str, level: str = "info") -> None:
-    try:
-        job.bridge._log(f"🦊 [{job.corr}] {message}", level)
-    except Exception:
-        pass
+    """One app-log line with the lane marker + the correlation prefix."""
+    host.say(job.bridge, f"🦊 [{job.corr}] {message}", level)
 
 
 def emit(job: FfJob, block: str, status: str, message: str) -> None:
     """Chrome's block event + the matching log line (RULE 2)."""
-    try:
-        job.bridge._emit_job_action_status(JobAction(job.corr, block, status, message))
-    except Exception:
-        pass
-    level = {"failed": "error", "success": "info"}.get(status, "info")
-    log(job, f"{block}: {message}", level)
+    host.call("block event", lambda: job.bridge._emit_job_action_status(JobAction(job.corr, block, status, message)))
+    log(job, f"{block}: {message}", "error" if status == "failed" else "info")
 
 
 def in_scope(job: FfJob) -> bool:
@@ -91,39 +84,15 @@ def in_scope(job: FfJob) -> bool:
     return captcha_in_scope(job.bridge)
 
 
-def timeout_s(job: FfJob, key: str, default: int) -> int:
-    """`settings.timeouts[key]` — the same knobs the Chrome lane reads."""
-    try:
-        return int(job.bridge.state.settings.timeouts.get(key, default))
-    except Exception:
-        return default
-
-
-def settings_of(job: FfJob):
-    return getattr(getattr(job.bridge, "state", None), "settings", None)
-
-
-def config_dir(bridge) -> Path:
-    """The app's config folder (the journal, uploads and job folders live under it)."""
-    directory = getattr(getattr(bridge, "config", None), "dir", None)
-    return Path(directory) if isinstance(directory, (str, Path)) else Path(".")
-
-
-def job_dir(job: FfJob) -> Path:
-    """`<config>/firefox_jobs/<corr>/` — the staged download lives here."""
-    return config_dir(job.bridge) / JOBS_DIR / job.corr
-
-
 def mark_pool(job: FfJob, kind: str) -> None:
     """Chrome's pool calls: `busy` / `generation` / `captcha` + one pool push."""
-    try:
+    def _mark() -> None:
         if kind == "busy":
             job.pool.mark_busy(job.tab_id, job.corr)
         else:
             job.pool.mark_waiting(job.tab_id, kind)
         job.bridge._emit_pool_status()
-    except Exception:
-        pass
+    host.call("pool status", _mark)
 
 
 async def complete(coro):

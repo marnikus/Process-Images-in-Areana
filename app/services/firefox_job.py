@@ -28,10 +28,11 @@ from app.browser.uivision import job_macros as uv_job
 from app.browser.uivision import job_scripts as js
 from app.core.enums import ImageStatus, JobStatus
 from app.services import firefox_lane as fl
+from app.services import firefox_job_host as host
 from app.services.firefox_job_ctx import (
-    FfJob, JobCancelled, JobFailure, cancel_requested, complete, config_dir, job_dir, log, run_macro,
+    FfJob, JobCancelled, JobFailure, cancel_requested, complete, log, run_macro,
 )
-from app.services.firefox_job_journal import is_post_submit, journal_of
+from app.services.firefox_job_journal import is_post_submit, job_folder, journal_of
 from app.services.firefox_job_phases import (
     check_attachment, phase_attach, phase_baseline, phase_prompt, reset_page,
 )
@@ -101,7 +102,7 @@ async def _pipeline(job: FfJob) -> None:
     error = check_source(job.img.absolute_path)
     if error:
         raise JobFailure(error)
-    job.staged = str(stage_upload(config_dir(job.bridge), job.img.absolute_path, job.corr))
+    job.staged = str(stage_upload(host.config_dir(job.bridge), job.img.absolute_path, job.corr))
     await checkpoint(job)
     for phase in (phase_baseline, phase_attach, phase_prompt):
         await phase(job)
@@ -114,7 +115,7 @@ async def _pipeline(job: FfJob) -> None:
 def _forget(job: FfJob) -> None:
     """Drop the journal record + the job folder (nothing left to recover)."""
     job.journal.drop(job.corr)
-    shutil.rmtree(job_dir(job), ignore_errors=True)
+    shutil.rmtree(job_folder(job.bridge, job.corr), ignore_errors=True)
 
 
 def _settle_ok(job: FfJob) -> Verdict:
@@ -161,17 +162,9 @@ def _settle_cancel(job: FfJob) -> Verdict:
     return _settle_failed(job, "Cancelled")
 
 
-def _persist(bridge) -> None:
-    try:
-        bridge.state.recalculate_progress()
-        bridge._save_arena()
-    except Exception:
-        pass
-
-
 def _mark_review(bridge, img, message: str) -> None:
     img.status, img.error = ImageStatus.NEEDS_REVIEW.value, message
-    _persist(bridge)
+    host.persist(bridge)
 
 
 def lane_reset(job: FfJob):
@@ -240,7 +233,7 @@ def after_result(ctx, verdict: Verdict) -> None:
         _mark_review(ctx.bridge, ctx.img, verdict.err)
     elif not verdict.failed and cancelled:
         ctx.img.status, ctx.img.error = ImageStatus.COMPLETED.value, None
-        _persist(ctx.bridge)
+        host.persist(ctx.bridge)
     else:
         return
     if cancelled:

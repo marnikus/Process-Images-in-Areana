@@ -27,8 +27,10 @@ from app.browser.uivision import job_scripts as js
 from app.core.enums import JobStatus
 from app.services import firefox_job_output as out
 from app.services.firefox_job_ctx import (
-    FfJob, JobCancelled, JobFailure, cancel_requested, emit, in_scope, job_dir, log, mark_pool, run_macro, settings_of, timeout_s,
+    FfJob, JobCancelled, JobFailure, cancel_requested, emit, in_scope, log, mark_pool, run_macro,
 )
+from app.services.firefox_job_host import settings_of, timeout_s
+from app.services.firefox_job_journal import job_folder
 from app.services.firefox_job_phases import advance, wait_security
 from app.utils.page_errors import match_page_error
 
@@ -146,7 +148,7 @@ async def _poll_once(job: FfJob, clock: _WaitClock) -> str:
 
 async def phase_wait(job: FfJob) -> None:
     """WAIT_OUTPUT: poll until THIS job's result is ready, or the timeout → needs_review."""
-    clock = _WaitClock(timeout_s(job, "generation", 180))
+    clock = _WaitClock(timeout_s(job.bridge, "generation", 180))
     advance(job, JobStatus.WAITING_GENERATION.value)
     mark_pool(job, "generation")
     emit(job, "WAIT_OUTPUT", "running", f"Waiting for generation — timeout {clock.seconds * 1000}ms")
@@ -162,7 +164,7 @@ async def phase_wait(job: FfJob) -> None:
 
 async def _fetch(job: FfJob) -> bytes:
     """FETCH_TRIES GETs of the correlated src (3 s apart, Chrome's settle delay)."""
-    timeout, last = timeout_s(job, "download", 60), ""
+    timeout, last = timeout_s(job.bridge, "download", 60), ""
     for attempt in range(1, FETCH_TRIES + 1):
         await asyncio.sleep(FETCH_SETTLE_S)
         try:
@@ -175,7 +177,7 @@ async def _fetch(job: FfJob) -> bytes:
 
 def _save(job: FfJob, data: bytes, ext: str):
     """SAVING checkpoint (target recorded) → atomic `_AI` save beside the source."""
-    spec = out.output_spec(settings_of(job), ext)
+    spec = out.output_spec(settings_of(job.bridge), ext)
     try:
         return out.save_beside(job.img.absolute_path, data, spec)
     except out.OutputError as exc:
@@ -187,7 +189,7 @@ async def phase_collect(job: FfJob) -> None:
     advance(job, JobStatus.DOWNLOADING.value)
     emit(job, "DOWNLOAD", "running", "download started")
     data = await _fetch(job)
-    staged = out.stage_bytes(job_dir(job), data)
+    staged = out.stage_bytes(job_folder(job.bridge, job.corr), data)
     job.journal.update(job.corr, download_path=str(staged), bytes_sha256=out.sha256(data))
     emit(job, "DOWNLOAD", "success", f"Downloaded {len(data)}")
     await finish_save(job, data)

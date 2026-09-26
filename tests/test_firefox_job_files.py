@@ -267,3 +267,10 @@ def test_transient_classification():
     err.winerror = 32
     assert out._transient(err) and not out._transient(OSError(28, "full"))
     assert os.sep  # platform-neutral module
+
+
+def test_job_folder_lives_under_the_config_dir():
+    from types import SimpleNamespace as NS
+    from app.services.firefox_job_journal import JOBS_DIR, job_folder
+    assert job_folder(NS(config=NS(dir="/cfg")), "c1") == Path("/cfg") / JOBS_DIR / "c1"
+    assert job_folder(NS(), "c1") == Path(".") / JOBS_DIR / "c1"

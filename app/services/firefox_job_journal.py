@@ -25,8 +25,10 @@ from typing import Any, Dict, List, Optional
 from app.core.enums import JobStatus
 from app.core.state_machine import validate_job_transition
 from app.persistence.json_store import load_json, save_json_atomic
+from app.services.firefox_job_host import config_dir
 
 FILE_NAME = "firefox_jobs.json"
+JOBS_DIR = "firefox_jobs"   # <config>/firefox_jobs/<corr>/ — the job's staged download
 
 # a record in one of these may already have reached the site — never resubmit it
 POST_SUBMIT = frozenset({
@@ -116,11 +118,15 @@ def journal_of(bridge) -> JobJournal:
     """The bridge's journal (created on first use; memory-only without a config dir)."""
     journal = getattr(bridge, "_firefox_journal", None)
     if journal is None:
-        directory = getattr(getattr(bridge, "config", None), "dir", None)
-        ok = isinstance(directory, (str, Path))
-        journal = JobJournal(Path(directory) / FILE_NAME if ok else None)
+        directory = config_dir(bridge, None)
+        journal = JobJournal(directory / FILE_NAME if directory else None)
         try:
             bridge._firefox_journal = journal
         except Exception:
             pass
     return journal
+
+
+def job_folder(bridge, corr: str) -> Path:
+    """`<config>/firefox_jobs/<corr>/` — where a job's validated download is staged."""
+    return config_dir(bridge) / JOBS_DIR / corr
