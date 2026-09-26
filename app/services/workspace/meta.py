@@ -19,7 +19,6 @@ from app.persistence.workspace.manifest import FORMAT_NAME, MIN_WORKSPACE_FORMAT
 META_FILE = "workspace_meta.json"
 DEFAULT_DIR_NAME = "workspaces"
 RECENT_CAP = 10          # recent-snapshot list length
-TEMP_MAX = 10            # stale unpublished temp folders tolerated (fsio hygiene)
 
 
 def config_dir(bridge) -> Path:

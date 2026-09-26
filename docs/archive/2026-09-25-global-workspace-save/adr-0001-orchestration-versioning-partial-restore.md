@@ -42,3 +42,7 @@ The app persists ~10 independent JSON stores (see design §A.1), all atomic per 
 | Migrating snapshots in place (upgrade-on-read writes back) | Mutating the user's snapshot destroys the evidence of what was saved; migrations are pure and produce in-memory docs only. |
 | Trusting `run_state`/`processing`/CDP `tab_id` on restore | Violates task rules 7/9 and repo invariants (L-2, I-50); stale runtime state is converted (`interrupted`/`idle`) and reconciled through the existing live machinery. |
 | Splitting `session.json` into per-domain files first (refactor-before-feature) | Touches every `set_state` call site for zero user value before the feature exists; the key-ownership contract achieves isolation without the churn; a physical split can be a later, separately-tested refactor. |
+
+## Outcome (2026-09-25)
+
+Superseded in form only by the W9 refactor (WORKSPACE_REFACTOR_AUDIT.md): module boundaries moved (coordinator → meta/save/restore/apply/recover), every decision here — single orchestration path, workspace_format versioning, partial-restore semantics, stage vocabulary — is unchanged, except the one documented report change: capture failures now report stage `capture` (design §F).
