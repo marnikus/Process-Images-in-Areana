@@ -603,6 +603,6 @@ No new selectors. The Firefox lane reuses the entries above through `probe_selec
 | Composer / send | `textarea_selectors()`, `send_click_primary()`, `send_presence_selector()` | prompt set in the page, SHA-256 readback; send = in-page guard, then one XClick |
 | Output / spinner / errors | `output_image_selectors()`, `spinner_selector()`, `page_errors` | Chrome's baseline + `[JOB-ID]` correlation, 3 s stability |
 | New Chat reset | `probe_selectors.new_chat_primary()` (`new_chat_button`) | XClick, then the `new_chat` clean-page checks; failure = warning |
-| Security dialog | `security_dialog_check()` | polled every 5 s only while `captcha_in_scope` |
+| Security dialog | `JS_SECURITY_DIALOG` (= `captcha_probes.build_visible_js()`, `captcha_js/visible.js` — Chrome's badge-aware predicate) | polled every 5 s only while `captcha_in_scope` |
 
 Live-unverified (spike list in the design): preview `alt` equals the uploaded file name (S4); React accepts the prompt value set under Firefox Xray wrappers.

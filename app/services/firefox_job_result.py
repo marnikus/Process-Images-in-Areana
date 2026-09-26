@@ -176,7 +176,7 @@ async def _fetch(job: FfJob) -> bytes:
 
 
 def _save(job: FfJob, data: bytes, ext: str):
-    """SAVING checkpoint (target recorded) → atomic `_AI` save beside the source."""
+    """Atomic `_AI` save beside the source (worker thread); a failure is needs_review."""
     spec = out.output_spec(settings_of(job.bridge), ext)
     try:
         return out.save_beside(job.img.absolute_path, data, spec)
@@ -196,7 +196,7 @@ async def phase_collect(job: FfJob) -> None:
 
 
 async def finish_save(job: FfJob, data: bytes) -> None:
-    """VALIDATE + SAVE from secured bytes (also the recovery's re-save entry)."""
+    """VALIDATE → SAVING checkpoint → atomic save, from bytes already staged on disk."""
     advance(job, JobStatus.VALIDATING.value)
     try:
         ext = out.validate_image(data)

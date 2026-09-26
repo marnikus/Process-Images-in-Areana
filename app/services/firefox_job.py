@@ -11,6 +11,10 @@ and re-verifies it on resume; Cancel before the submit ends safely (nothing
 sent), Cancel after the submit keeps the evidence and settles needs_review
 (no New Chat, no count). A started phase macro always runs to its end.
 
+Settling: an uncertain outcome is needs_review only once the submit line is
+crossed (`_settle_review`, record + bytes kept); anything else is a plain
+failure that forgets the record (`_settle_failed`).
+
 `run_job` returns a `Verdict`; `after_result` applies what `_handle_result`
 cannot know (needs_review, a save that finished despite a Cancel);
 `lane_reset` is the finish seam's New Chat (Ui.Vision XClick + clean check).
@@ -223,7 +227,7 @@ async def run_job(start: JobStart, reset_out: list) -> Verdict:
         return await _run(job)
     finally:
         drop_staged(job.staged)
-        fl.note_job_end()
+        fl.note_job_end()  # fallback stamp; the finish seam's New Chat (lane_reset) stamps again, later
 
 
 def after_result(ctx, verdict: Verdict) -> None:

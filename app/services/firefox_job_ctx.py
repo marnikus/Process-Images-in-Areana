@@ -1,7 +1,7 @@
 """Firefox image job — the shared context every phase uses (design §3/§17, 2026-09-25).
 
 `FfJob` is the job's value object (RULE 16 parameter budget: phases take ONE
-argument). `run_macro` runs one phase macro to its verdict and returns the
+argument). Bridge calls go through `firefox_job_host` (never raise, never silent). `run_macro` runs one phase macro to its verdict and returns the
 job's parsed replies; it is uncancellable by design — a started macro always
 finishes (the OS dialog is never abandoned, the lock never released early) and
 a cancel is re-raised afterwards. Events use Chrome's `JobAction` with Chrome's

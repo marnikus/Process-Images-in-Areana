@@ -5,8 +5,9 @@ One record per in-flight Firefox image job, keyed by the correlation id, in
 `persistence.json_store`, RULE 13). The record is the `JobRecord` shape
 (`job_id`, `status`, `baseline`, `submitted_at`, `output_src`, `saved_path`,
 `error`, `needs_review`, …) plus the Firefox evidence the recovery needs
-(`tab_id`, `image_id`, `staged_upload`, `prompt_sha256`, `submit_ack`,
-`download_path`, `bytes_sha256`, `target_path`).
+(`tab_id`, `image_id`, `image_path`, `staged_upload`, `prompt_sha256`,
+`submit_ack`, `download_path`, `bytes_sha256`). `job_folder` is the matching
+`<config>/firefox_jobs/<corr>/` folder the staged download lives in.
 
 Status moves are validated against the ONE table `core/state_machine.JOB_TRANSITIONS`
 (design D-10): an illegal move is refused and reported, never written. The
