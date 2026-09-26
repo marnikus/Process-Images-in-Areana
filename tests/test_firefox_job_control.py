@@ -142,7 +142,7 @@ async def test_cancel_during_pause_ends_before_submit(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_manual_security_waits_marks_the_pool_and_records_the_captcha(tmp_path, monkeypatch):
     from app.services import firefox_job_phases as ph
-    monkeypatch.setattr(ph, "SECURITY_POLL_S", 0)
+    monkeypatch.setattr(ph, "solve_seconds", lambda b: 0)
     monkeypatch.setattr("app.services.firefox_job_ctx.captcha_in_scope", lambda b: True)
     noted = []
     monkeypatch.setattr(ph, "note_captcha_event", lambda pool, tab, bridge, source: noted.append(tab))
@@ -156,7 +156,7 @@ async def test_manual_security_waits_marks_the_pool_and_records_the_captcha(tmp_
 @pytest.mark.asyncio
 async def test_security_not_cleared_within_the_cap_fails(tmp_path, monkeypatch):
     from app.services import firefox_job_phases as ph
-    monkeypatch.setattr(ph, "SECURITY_POLL_S", 0)
+    monkeypatch.setattr(ph, "solve_seconds", lambda b: 0)
     monkeypatch.setattr(ph, "pause_cap_seconds", lambda b: -1)
     monkeypatch.setattr("app.services.firefox_job_ctx.captcha_in_scope", lambda b: True)
     site = happy_site(PROMPT, baseline=baseline(security=True), security={"security": {"security": True}})

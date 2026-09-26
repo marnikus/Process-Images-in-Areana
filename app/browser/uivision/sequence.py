@@ -183,13 +183,9 @@ class Sequence:
             self.recorder("launch", f"Firefox not found at {binary!r} — put its FULL path in "
                                     f"the window’s Firefox binary field (Firefox shortcut → "
                                     f"Properties → Target, or `where firefox` in cmd); "
-                                    f"looked at: {'; '.join(launch.candidate_binaries())}",
-                          "error")
+                                    f"looked at: {'; '.join(launch.candidate_binaries())}", "error")
             return None
-        url = autorun.launch_url(autorun.LaunchSpec(
-            page_path=str(self.page), macro=self.spec.macro, storage=self.spec.storage,
-            log_path=run.log_path, pause_ms=self.spec.pause_ms,
-            target=self.spec.target, tab=run.selector))
+        url = _launch_url(self.spec, self.page, run)
         self.recorder("launch", f"{self._scope(run)}starting Firefox with the autorun URL "
                                 f"(macro={self.spec.macro}, storage={self.spec.storage}, "
                                 f"savelog={Path(run.log_path).name}{_profile_note(run)}, "
@@ -228,6 +224,14 @@ class Sequence:
         self.recorder("result", f"{kind}: {message}", result_level(kind))
         return RunResult(kind=kind, message=message, steps=tuple(self.recorder.steps),
                          lines=lines_of(outcomes))
+
+
+def _launch_url(spec, page_path, run) -> str:
+    """One run's official autorun URL (closeRPA from the spec: stacked window or not)."""
+    return autorun.launch_url(autorun.LaunchSpec(
+        page_path=str(page_path), macro=spec.macro, storage=spec.storage,
+        log_path=run.log_path, pause_ms=spec.pause_ms, target=spec.target, tab=run.selector,
+        close_rpa=getattr(spec, "close_rpa", True)))
 
 
 async def _default_sleep(seconds: float) -> None:

@@ -25,7 +25,8 @@ const FA_IDS = ['faPattern', 'faUrlPattern', 'faMacro', 'faTarget', 'faStorage',
   'faHome', 'faBinary', 'faTimeout', 'faPause', 'faSaveBtn', 'faRunBtn', 'faStopBtn',
   'faState', 'faPaths', 'faStatus', 'faSteps',
   'faShowProfilesBtn', 'faSkipNoMatch', 'faSkipNoMatchWrap', 'faProfileList',
-  'faWaitTimeout', 'faDelay', 'faNotesToggle', 'faNotes'];
+  'faWaitTimeout', 'faDelay', 'faNotesToggle', 'faNotes',
+  'faCaptchaSolve', 'faStackUiv', 'faStackUivWrap'];
 
 function inside(node, ancestor) {
   for (let n = node; n; n = n.parent) if (n === ancestor) return true;
@@ -74,7 +75,7 @@ const CFG = { pattern: 'Arena', url_pattern: 'https://arena.ai/image/',
   target: "xpath=//a[span[text()='New Chat']]",
   macro: 'Python_XClick_Demo', storage: 'xfile', home: '', binary: '', timeout_sec: 90, pause_ms: 3000,
   selected_profiles: [], skip_no_match: false, wait_timeout_sec: 60,
-  inter_run_delay_sec: 3 };
+  inter_run_delay_sec: 3, captcha_solve_sec: 50, stack_uivision: true };
 const PATHS = { home: '/home/u/Desktop/uivision',
   macro_file: '/home/u/Desktop/uivision/macros/Python_XClick_Demo.json',
   autorun_file: '/cfg/uivision/ui.vision.html', log_dir: '/cfg/uivision/logs' };
@@ -246,5 +247,17 @@ describe('firefox_auto window (content)', () => {
     assert.ok('skip_no_match' in payload, 'skip_no_match in save payload');
     assert.equal(payload.skip_no_match, true);
     assert.ok(Array.isArray(payload.selected_profiles));
+  });
+
+  test('captcha solve time + stack Ui.Vision window load and save (owner 2026-09-26)', () => {
+    const h = bootFaPanel();
+    assert.equal(h.byId.faCaptchaSolve.value, 50, 'solve time filled from the config');
+    assert.equal(h.byId.faStackUiv.checked, true, 'stack checkbox filled from the config');
+    h.byId.faCaptchaSolve.value = '120';
+    h.byId.faStackUiv.checked = false;
+    h.click('faSaveBtn');
+    const payload = JSON.parse(h.call('save_firefox_auto_config').args[0]);
+    assert.equal(payload.captcha_solve_sec, 120, 'a number, not a string');
+    assert.equal(payload.stack_uivision, false);
   });
 });

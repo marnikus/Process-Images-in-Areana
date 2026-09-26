@@ -374,6 +374,16 @@
             <label title="Machine-wide pause between two Ui.Vision macros (0–30 s, default 3). Firefox jobs run one at a time — this gap lets Firefox settle before the next foreground run.">Delay between jobs (s)</label>
             <input id="faDelay" type="number" min="0" max="30" step="1" placeholder="3">
           </div>
+          <div class="settings-group">
+            <label title="Image job: when a security check (captcha) appears, you get this many seconds to solve it — no Ui.Vision macro runs meanwhile (no reload, reset or recheck). Then ONE check; still there → another window, until the captcha cap (10–600, default 50)">Captcha solve time (s)</label>
+            <input id="faCaptchaSolve" type="number" min="10" max="600" step="5" placeholder="50">
+          </div>
+        </div>
+        <div class="settings-row">
+          <label id="faStackUivWrap" style="display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-secondary); cursor:pointer;" title="Checked: the Ui.Vision helper window opens once per image job and stays open for every phase (upload → image saved); the task's last macro closes it — on success or failure. Unchecked: each macro opens and closes its own window.">
+            <input id="faStackUiv" type="checkbox">
+            Stack Ui.Vision window (open once per task)
+          </label>
         </div>
         <div style="display:flex; gap:6px; align-items:center;">
           <button id="faSaveBtn" class="btn-small btn-primary" title="Validate + save this window's config">Save</button>

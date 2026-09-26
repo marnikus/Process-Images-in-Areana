@@ -65,6 +65,7 @@ class PhaseMacro:
     xclick: str = ""          # cmd_var2 — the XClick locator (css=…)
     wait_ms: int = 3000       # cmd_var1 — the RED find-rect budget
     timeout_sec: int = 60     # savelog deadline for this phase
+    last: bool = False        # the task's final macro — closes a stacked Ui.Vision window
 
     @property
     def name(self) -> str:
@@ -151,6 +152,13 @@ def reset_macro(token: str, clean_js: str) -> PhaseMacro:
     """XClick New Chat → wait for the clean page (the `new_chat` rule)."""
     commands = _select() + _native_click("New Chat") + _probe(token, "reset", clean_js)
     return _finish("reset", commands, xclick=css(new_chat_primary()))
+
+
+def close_macro() -> PhaseMacro:
+    """No page work: its only job is `closeRPA=1` — ends a stacked window when New Chat is skipped."""
+    return _finish("close", [macro.command("echo", "task finished — closing the Ui.Vision window",
+                                           "blue", "stacked helper window ends with the task")],
+                   last=True, timeout_sec=30)
 
 
 def build_document(phase: PhaseMacro) -> dict:

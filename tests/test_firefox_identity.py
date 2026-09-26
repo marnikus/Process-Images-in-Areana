@@ -7,10 +7,12 @@ which pooled Firefox tabs are due; `drain` runs the identify macro through the
 
 Covered: temp name = profile (never `aka_…`), success, delayed load (retry
 succeeds), missing element (fallback + bounded retries), macro failure/crash,
-duplicate account names, reconnect, navigation, manual refresh, busy deferral,
+duplicate account names, reconnect, task finished (a URL change alone never
+re-labels — owner 2026-09-26), manual refresh, busy deferral,
 stale-overlay clear, and the fallback chain's rungs.
 """
 
+# ideal-size: 316 lines reason=one lifecycle contract whose every test shares the local fixture family (fake clock, scripted run_identify, pool env); a split first needs a shared harness module (structural change, kept separate from the 2026-09-26 behaviour change)
 import json
 from types import SimpleNamespace
 
@@ -217,39 +219,47 @@ async def test_same_account_in_two_profiles_stays_two_workers(env):
 # ── revalidation triggers ────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_navigation_reconnect_and_manual_refresh_revalidate(env):
+async def test_task_finished_reconnect_and_manual_refresh_revalidate_but_a_url_never(env):
+    """Owner 2026-09-26: a job walks the tab through chat URLs — no re-label per URL."""
     tabs = join(env, ff_tab())
     runner = use(env, Runner())
     fi.observe(env.bridge, tabs)
     await fi.drain(env.bridge)
-    assert fi.observe(env.bridge, tabs) is False                   # steady: nothing due
-    moved = [ff_tab(url="https://arena.ai/c/2")]
-    assert fi.observe(env.bridge, moved) is True
+    for n in range(2, 5):                                          # URL change alone: never
+        assert fi.observe(env.bridge, [ff_tab(url=f"https://arena.ai/c/{n}")]) is False
     page = env.pool.get_page("A.Profile1_tab1")
-    assert page.url == "https://arena.ai/c/2"
-    assert fi.book_of(env.bridge).tracks["A.Profile1_tab1"].reason == "navigation"
+    assert page.url == "https://arena.ai/c/4"                      # the URL is still tracked
+    env.pool.mark_busy("A.Profile1_tab1", "job-1")
+    assert fi.observe(env.bridge, tabs) is False                   # running a task: never
+    env.pool.mark_steady("A.Profile1_tab1")
+    assert fi.observe(env.bridge, tabs) is True
+    assert fi.book_of(env.bridge).tracks["A.Profile1_tab1"].reason == "task finished"
     await fi.drain(env.bridge)
     page.is_connected = False
-    fi.observe(env.bridge, moved)
+    fi.observe(env.bridge, tabs)
     page.is_connected = True
-    fi.observe(env.bridge, moved)
+    fi.observe(env.bridge, tabs)
     assert fi.book_of(env.bridge).tracks["A.Profile1_tab1"].reason == "reconnect"
     await fi.drain(env.bridge)
-    fi.observe(env.bridge, moved, manual=True)
+    fi.observe(env.bridge, tabs, manual=True)
     assert fi.book_of(env.bridge).tracks["A.Profile1_tab1"].reason == "manual refresh"
     await fi.drain(env.bridge)
     assert len(runner.calls) == 4
 
 
 @pytest.mark.asyncio
-async def test_account_change_on_reload_updates_the_label(env):
+async def test_account_change_on_restart_updates_the_label(env):
     tabs = join(env, ff_tab())
     use(env, Runner(ok_reply(EMAIL), ok_reply("other@gmail.com")))
     fi.observe(env.bridge, tabs)
     await fi.drain(env.bridge)
-    fi.observe(env.bridge, [ff_tab(url="https://arena.ai/c/9")])
+    page = env.pool.get_page("A.Profile1_tab1")
+    page.is_connected = False                                      # the page restarted
+    fi.observe(env.bridge, tabs)
+    page.is_connected = True
+    fi.observe(env.bridge, tabs)
     await fi.drain(env.bridge)
-    assert env.pool.get_page("A.Profile1_tab1").label == "other@gmail.com"
+    assert page.label == "other@gmail.com"
 
 
 @pytest.mark.asyncio

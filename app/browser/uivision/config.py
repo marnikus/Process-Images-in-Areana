@@ -28,6 +28,14 @@ TEXT_FIELDS = ("pattern", "url_pattern", "target", "home", "binary")
 # 2026-09-24: profile selection + skip-no-match — the panel's two new controls
 PROFILE_LIST_KEY = "selected_profiles"
 SKIP_NO_MATCH_KEY = "skip_no_match"
+# 2026-09-26: the image job's captcha solve window + the stacked helper window
+SOLVE_KEY = "captcha_solve_sec"
+SOLVE_RANGE = (10, 600)          # seconds the user gets per window before ONE check
+STACK_KEY = "stack_uivision"     # True = one Ui.Vision window per task (closeRPA=0 until the end)
+# every clamped number of the window: key → (low, high); a bad value keeps the default
+_NUMBER_RANGES = {"timeout_sec": TIMEOUT_RANGE, "pause_ms": PAUSE_RANGE,
+                  "wait_timeout_sec": WAIT_TIMEOUT_RANGE,
+                  "inter_run_delay_sec": INTER_RUN_DELAY_RANGE, SOLVE_KEY: SOLVE_RANGE}
 
 
 def _defaults() -> dict:
@@ -57,14 +65,11 @@ def validate_config(data) -> dict:
     cfg["macro"] = uiv_macro.validate_macro_name(row.get("macro", cfg["macro"]))
     storage = str(row.get("storage", cfg["storage"]) or "").strip().lower()
     cfg["storage"] = storage if storage in STORAGE_MODES else _defaults()["storage"]
-    cfg["timeout_sec"] = _clamp_int(row.get("timeout_sec"), TIMEOUT_RANGE, cfg["timeout_sec"])
-    cfg["pause_ms"] = _clamp_int(row.get("pause_ms"), PAUSE_RANGE, cfg["pause_ms"])
+    for key, bounds in _NUMBER_RANGES.items():
+        cfg[key] = _clamp_int(row.get(key), bounds, cfg[key])
     cfg[PROFILE_LIST_KEY] = _validate_profiles(row.get(PROFILE_LIST_KEY, cfg[PROFILE_LIST_KEY]))
     cfg[SKIP_NO_MATCH_KEY] = bool(row.get(SKIP_NO_MATCH_KEY, cfg[SKIP_NO_MATCH_KEY]))
-    cfg["wait_timeout_sec"] = _clamp_int(row.get("wait_timeout_sec"),
-                                         WAIT_TIMEOUT_RANGE, cfg["wait_timeout_sec"])
-    cfg["inter_run_delay_sec"] = _clamp_int(row.get("inter_run_delay_sec"),
-                                            INTER_RUN_DELAY_RANGE, cfg["inter_run_delay_sec"])
+    cfg[STACK_KEY] = bool(row.get(STACK_KEY, cfg[STACK_KEY]))
     return cfg
 
 

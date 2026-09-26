@@ -2,7 +2,6 @@
 
 import copy
 from pathlib import Path
-from typing import Any
 
 from .json_store import load_json as _load_json, save_json_atomic as _atomic_write
 
@@ -48,6 +47,8 @@ DEFAULT_SESSION = {
         "skip_no_match": False,      # True = skip a profile with no matching tabs; False = wait
         "wait_timeout_sec": 60,      # when skip_no_match is off, how long to wait for the user to open a tab (10…300)
         "inter_run_delay_sec": 3,    # seconds to wait between runs (gives Firefox time to process)
+        "captcha_solve_sec": 50,     # security check: user's solve time, NO macros meanwhile (10…600)
+        "stack_uivision": False,     # keep ONE Ui.Vision window open per task, close at its end
     },
 }
 

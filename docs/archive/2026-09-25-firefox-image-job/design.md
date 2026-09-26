@@ -471,3 +471,26 @@ Quality: gate `verify_quality.py --allow-legacy --coverage-ratchet` 0 fails; pyt
 Automatic captcha solving on Firefox (no CDP; RULE 20 wait-only), parallel Ui.Vision runs, any Chrome change
 beyond the one defaulted `FinishCtx.lane_reset` field and the one extra `JOB_TRANSITIONS` edge, UI for the journal, changing the Firefox
 identity rules (`{profileDir}_tab{N}` stays the stable id).
+
+## As-built addendum — task window (owner, 2026-09-26)
+
+Live complaint: a detected captcha was re-probed every 5 s, each probe a full
+Ui.Vision launch (new autostart tab, helper window, foreground raise), so the
+user could not solve it; every phase also opened + closed the helper window;
+the identify macro re-ran whenever the tab's URL changed (several times per job).
+
+* **Solve window.** `wait_security` = `_solve_window` (lane quiet via
+  `firefox_lane.hold_quiet(corr, s)`, Cancel checked each `SOLVE_STEP_S`) →
+  `_still_blocked` (ONE probe) → repeat until `pause_cap_seconds`. The quiet
+  check sits INSIDE `_MACRO_LOCK`, so a macro of another tab queued before the
+  window cannot slip in. Per-owner windows: two tabs in captcha never end each
+  other's window. Setting `captcha_solve_sec` (10–600, default 50).
+* **Stacked helper window.** Ui.Vision's `closeRPA=0` keeps the RPA window
+  after a command-line macro (docs "Command Line Parameters"; an erroring macro
+  keeps it open regardless). `RunSpec.close_rpa` → `Sequence._launch` →
+  `LaunchSpec`. `run_phase` closes when `phase.last` or the option is off. The
+  task's last macro: post-task New Chat (`reset_page(last=True)`), else
+  `close_macro()` (echo only, no page work) when New Chat is skipped for review.
+* **Identify triggers.** `navigation` removed; `task finished` = the tracked
+  tab was `is_busy()` at the last pass and is not now. Manual Reparse stays
+  the user's override for a reload the session store cannot see.

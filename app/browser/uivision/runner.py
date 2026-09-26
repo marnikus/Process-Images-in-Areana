@@ -55,12 +55,12 @@ class RunSpec:
     timeout_sec: int
     pause_ms: int         # the macro's wait + confirmation-rect budget (ms)
     config_dir: str
-    url_pattern: str = ""  # tab-URL substring ('' = any URL); appended last so positional
-                           # constructors survive (the I-53 corollary pattern)
+    url_pattern: str = ""  # tab-URL substring ('' = any URL); new fields go last (I-53 corollary)
     selected_profiles: tuple = ()  # profile dirs checked in the UI (() = every profile)
     skip_no_match: bool = False   # True = skip profiles with no matching tabs; False = wait
     wait_timeout_sec: int = 60    # when skip_no_match is off, seconds to wait for a tab (10…300)
     inter_run_delay_sec: int = 3  # seconds to wait between runs (gives Firefox time to process)
+    close_rpa: bool = True        # closeRPA: False keeps the Ui.Vision window for the next macro
 
 
 @dataclass(frozen=True)

@@ -171,14 +171,25 @@ def _mark_review(bridge, img, message: str) -> None:
     host.persist(bridge)
 
 
+async def close_helper(job: FfJob) -> None:
+    """New Chat skipped: a stacked Ui.Vision window still closes at the task's end (never raises)."""
+    if not fl.stacking(job.bridge):
+        return
+    try:
+        await run_macro(job, uv_job.close_macro(), required=False)
+    except Exception as exc:  # cosmetic: the next macro that closes will end the window
+        log(job, f"Ui.Vision window close failed: {exc}", "warn")
+
+
 def lane_reset(job: FfJob):
-    """The finish seam's New Chat: skipped while the page is review evidence."""
+    """The finish seam's New Chat (the task's last macro): skipped while the page is review evidence."""
     async def _reset() -> tuple:
         try:
             if job.skip_reset:
                 log(job, "New Chat skipped — the page is kept as review evidence")
+                await close_helper(job)
                 return True, "skipped (needs review)"
-            ok, reason = await reset_page(job)
+            ok, reason = await reset_page(job, last=True)
             if ok:
                 log(job, reason)
             return ok, reason

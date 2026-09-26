@@ -8,9 +8,11 @@ worker; the label simply stays on its fallback rung (`FirefoxPageInfo.alias`).
 
 `observe(bridge, tabs, manual)` runs at the end of every reconcile pass (the
 `LiveDeps.identify` seam) and never awaits a macro, so discovery is never
-blocked. It marks pages due on: first sight, navigation (the session URL
-changed), reconnect, a manual Reparse, or a number/name that no longer matches
-the overlay last aimed at. One background drain then runs the identify macro
+blocked. It marks pages due on: first sight, reconnect (the page restarted),
+a finished task (the tab went busy → idle), a manual Reparse, or a number/name
+that no longer matches the overlay last aimed at. A URL change alone is NOT a
+trigger (owner, 2026-09-26): a job moves the tab through several chat URLs,
+and re-labelling on each one re-ran the macro all the time. One background drain then runs the identify macro
 per due page (`firefox_lane.run_identify` — the jobs' machine-wide lock). A
 failed attempt retries after 15 / 45 / 120 s, then rests until the next
 trigger. A tab that left the pool while still open gets one clear run, so no
@@ -46,6 +48,7 @@ class Track:
 
     url: str = ""
     connected: bool = True
+    busy: bool = False               # the tab was running a task at the last pass
     aimed: str = ""                  # overlay text of the last attempt (`2# name`)
     attempts: int = 0                # failures in the current trigger cycle
     due_at: Optional[float] = 0.0    # monotonic stamp; None = resting
@@ -105,20 +108,21 @@ def _observe_page(book: Book, entry, row, manual: bool) -> None:
     tab_id, page = entry
     track = book.tracks.get(tab_id)
     if track is None:
-        book.tracks[tab_id] = track = Track(url=page.url, connected=page.is_connected)
+        book.tracks[tab_id] = track = Track(url=page.url, connected=page.is_connected,
+                                            busy=page.is_busy())
     book.clears.pop(tab_id, None)            # back in the pool: the redraw replaces it
-    reason = _trigger(track, page, row, manual)
+    reason = _trigger(track, page, manual)
     if row is not None:
         page.url, page.title = row.url or page.url, row.title or page.title
     if reason:
         track.due_at, track.attempts, track.reason = 0.0, 0, reason
-    track.url, track.connected = page.url, page.is_connected
+    track.url, track.connected, track.busy = page.url, page.is_connected, page.is_busy()
 
 
-def _trigger(track: Track, page, row, manual: bool) -> str:
+def _trigger(track: Track, page, manual: bool) -> str:
     """Why this page must be identified again ('' = nothing changed)."""
-    if row is not None and row.url and row.url != track.url:
-        return "navigation"
+    if track.busy and not page.is_busy():
+        return "task finished"
     if page.is_connected and not track.connected:
         return "reconnect"
     if manual:

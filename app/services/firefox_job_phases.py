@@ -1,6 +1,7 @@
 """Firefox image job — the pre-submit phases (design §4/§6.1/§6.2, 2026-09-25).
 
-Baseline → (manual security wait) → attach + positive verify → prompt insert +
+Baseline → (manual security wait: the user's solve window, no macros, then
+one check — 2026-09-26) → attach + positive verify → prompt insert +
 exact readback. Every phase writes its journal checkpoint through
 `JobJournal.advance` (validated against `JOB_TRANSITIONS`) and emits Chrome's
 block event (`OBSERVE_BASELINE`, `CHECK_SECURITY`, `ATTACH_IMAGE`,
@@ -16,18 +17,21 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
+from dataclasses import replace
 
+from app.browser.uivision import config as uv_config
 from app.browser.uivision import job_macros as uv_job
 from app.browser.uivision import job_scripts as js
 from app.core.enums import JobStatus
+from app.services import firefox_lane as fl
 from app.services.captcha.policy import pause_cap_seconds
 from app.services.cooldown_service import note_captcha_event
 from app.services.firefox_job_journal import is_post_submit
 from app.services.firefox_job_ctx import (
-    FfJob, JobFailure, emit, in_scope, log, mark_pool, run_macro,
+    FfJob, JobCancelled, JobFailure, cancel_requested, emit, in_scope, log, mark_pool, run_macro,
 )
 
-SECURITY_POLL_S = 5
+SOLVE_STEP_S = 1.0     # cancel granularity inside a solve window
 ATTACH_WAIT_MS = 8000
 CLEAN_WAIT_MS = 15000
 
@@ -57,23 +61,46 @@ def sha_of(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def solve_seconds(bridge) -> int:
+    """The user's captcha solve time (the window's `captcha_solve_sec`, default 50 s)."""
+    return int(uv_config.load_config(bridge)[uv_config.SOLVE_KEY])
+
+
+async def _solve_window(job: FfJob, seconds: float) -> None:
+    """The user's solve time: the lane is quiet (no macro at all); Cancel is honoured each step."""
+    fl.hold_quiet(job.corr, seconds)
+    try:
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if cancel_requested(job.bridge):
+                raise JobCancelled()
+            await asyncio.sleep(min(SOLVE_STEP_S, max(0.0, end - time.monotonic())))
+    finally:
+        fl.end_quiet(job.corr)
+
+
+async def _still_blocked(job: FfJob) -> bool:
+    """The ONE check after a solve window: is the security check still on the page?"""
+    phase = uv_job.probe_macro(job.corr, "security", js.security_js(True))
+    return bool((await run_macro(job, phase)).get("security", {}).get("security"))
+
+
 async def wait_security(job: FfJob, restore: str = "busy") -> float:
-    """Manual security check: `waiting_captcha` until cleared or the cap (never solves)."""
+    """Manual security check: solve window → one check, repeated until cleared or the cap."""
     mark_pool(job, "captcha")
-    emit(job, "CHECK_SECURITY", "running", "security check visible — waiting for the user "
-                                         "(Firefox never solves, RULE 20)")
-    cap, t0 = pause_cap_seconds(job.bridge), time.monotonic()
+    window, cap, t0 = solve_seconds(job.bridge), pause_cap_seconds(job.bridge), time.monotonic()
+    emit(job, "CHECK_SECURITY", "running", f"security check visible — solve it now: {window}s "
+                                         f"with no macros, then one check (Firefox never solves, RULE 20)")
     while True:
-        reply = (await run_macro(job, uv_job.probe_macro(job.corr, "security",
-                                                         js.security_js(True)))).get("security", {})
-        if not reply.get("security"):
+        await _solve_window(job, window)
+        if not await _still_blocked(job):
             note_captcha_event(job.pool, job.tab_id, job.bridge, source="firefox job")
             mark_pool(job, restore)
             emit(job, "CHECK_SECURITY", "success", "Security done")
             return time.monotonic() - t0
         if time.monotonic() - t0 > cap:
             raise JobFailure(f"security check not cleared within {cap}s", review=_after_send(job))
-        await asyncio.sleep(SECURITY_POLL_S)
+        log(job, f"security check still visible — another {window}s to solve it", "warn")
 
 
 async def _baseline_reply(job: FfJob) -> dict:
@@ -169,10 +196,13 @@ async def phase_prompt(job: FfJob) -> None:
     emit(job, "VERIFY_PROMPT", "success", f"verified sha {job.prompt_sha[:12]}")
 
 
-async def reset_page(job: FfJob) -> tuple:
-    """XClick New Chat + the clean-page check → (ok, reason); never raises."""
+async def reset_page(job: FfJob, last: bool = False) -> tuple:
+    """XClick New Chat + the clean-page check → (ok, reason); never raises.
+
+    `last` = the post-task reset: the task's final macro, so it closes a
+    stacked Ui.Vision window; the mid-job stale-composer cleanup keeps it."""
     try:
-        phase = uv_job.reset_macro(job.corr, js.clean_js(CLEAN_WAIT_MS))
+        phase = replace(uv_job.reset_macro(job.corr, js.clean_js(CLEAN_WAIT_MS)), last=last)
         reply = (await run_macro(job, phase)).get("reset") or {}
     except JobFailure as exc:
         return False, str(exc)

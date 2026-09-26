@@ -13,15 +13,16 @@ const FirefoxAutoPanel = {
   steps: [],
   profiles: [],        /* last fetched profile rows (from the bridge) */
   selectedProfiles: [], /* profile dirs the user checked ([] = every profile) */
-  skipNoMatch: false,   /* skip a profile with no matching tab when true */
 
   /* element id → config key (one table: payload(), applyConfig() and the tests read it) */
   FIELDS: { faPattern: 'pattern', faUrlPattern: 'url_pattern', faMacro: 'macro',
             faTarget: 'target', faStorage: 'storage', faHome: 'home',
             faBinary: 'binary', faTimeout: 'timeout_sec', faPause: 'pause_ms',
-            faWaitTimeout: 'wait_timeout_sec', faDelay: 'inter_run_delay_sec' },
+            faWaitTimeout: 'wait_timeout_sec', faDelay: 'inter_run_delay_sec',
+            faCaptchaSolve: 'captcha_solve_sec' },
 
-  NUMBERS: ['timeout_sec', 'pause_ms', 'wait_timeout_sec', 'inter_run_delay_sec'],
+  NUMBERS: ['timeout_sec', 'pause_ms', 'wait_timeout_sec', 'inter_run_delay_sec', 'captcha_solve_sec'],
+  CHECKS: { faSkipNoMatch: 'skip_no_match', faStackUiv: 'stack_uivision' },  /* checkbox id → bool key */
 
   COLORS: { success: '#4caf50', warn: '#e6a23c', error: '#ff5c5c', info: 'var(--text-secondary)' },
 
@@ -72,10 +73,9 @@ const FirefoxAutoPanel = {
   applyConfig(cfg) {
     Object.keys(this.FIELDS).forEach((id) => this._set(id, cfg[this.FIELDS[id]]));
     if (Array.isArray(cfg.selected_profiles)) this.selectedProfiles = cfg.selected_profiles.slice();
-    if (cfg.skip_no_match !== undefined) {
-      this.skipNoMatch = !!cfg.skip_no_match;
-      const cb = this._el('faSkipNoMatch');
-      if (cb) cb.checked = this.skipNoMatch;
+    for (const [id, key] of Object.entries(this.CHECKS)) {
+      const cb = this._el(id);
+      if (cb && cfg[key] !== undefined) cb.checked = !!cfg[key];
     }
   },
 
@@ -86,7 +86,7 @@ const FirefoxAutoPanel = {
       out[key] = this.NUMBERS.includes(key) ? parseInt(this._val(id), 10) : String(this._val(id));
     });
     out.selected_profiles = this._readSelectedProfiles();
-    out.skip_no_match = !!(this._el('faSkipNoMatch') && this._el('faSkipNoMatch').checked);
+    for (const [id, key] of Object.entries(this.CHECKS)) out[key] = !!(this._el(id) && this._el(id).checked);
     return out;
   },
 
@@ -197,11 +197,7 @@ const FirefoxAutoPanel = {
       if (!r || !r.ok) { this.setStatus(`⚠ profiles: ${(r && r.error) || 'unknown error'}`, 'warn'); return; }
       this.profiles = r.profiles || [];
       if (Array.isArray(r.selected)) this.selectedProfiles = r.selected.slice();
-      if (r.skip_no_match !== undefined) {
-        this.skipNoMatch = !!r.skip_no_match;
-        const cb = this._el('faSkipNoMatch');
-        if (cb) cb.checked = this.skipNoMatch;
-      }
+      this.applyConfig({ skip_no_match: r.skip_no_match });   /* the checkbox half of the reply */
       this.renderProfiles();
     });
     return true;

@@ -15,6 +15,12 @@ macro at a time (native input needs the foreground, §4.3); the window's own
 The identify macro (`run_identify`) shares the SAME lock and critical section
 (`_run_locked`): account detection + the visual tab id overlay never race a job.
 
+2026-09-26 (owner): a captcha solve window makes the lane QUIET (`hold_quiet`)
+— every macro, of every tab, waits inside the lock until the window ends, so
+nothing reloads, resets or steals focus while the user solves. `stacking` =
+the window's "Stack Ui.Vision window" option: a job's phases launch with
+`closeRPA=0` and only the task's `last` macro closes the helper window.
+
 Layer: services → browser only (`uivision.config` is shared with the panel —
 RULE 10).
 """
@@ -41,6 +47,7 @@ _MACRO_LOCK = asyncio.Lock()   # one Ui.Vision macro at a time per machine (§4.
 _LAST_AT = 0.0                 # monotonic stamp of the previous job's end
 _GAP_DEFAULT = 3               # owner's default delay, seconds
 _GAP_CEILING = 30
+_QUIET: dict = {}              # owner (job token) → monotonic end of its captcha solve window
 
 
 def _gap_seconds(cfg: dict) -> int:
@@ -105,6 +112,35 @@ def note_job_end() -> None:
     _LAST_AT = time.monotonic()
 
 
+def hold_quiet(owner: str, seconds: float) -> None:
+    """Start a solve window: no Firefox macro launches until it ends (or `end_quiet`)."""
+    _QUIET[owner] = time.monotonic() + max(0.0, float(seconds))
+
+
+def end_quiet(owner: str) -> None:
+    _QUIET.pop(owner, None)
+
+
+def quiet_left() -> float:
+    """Seconds until the last open solve window ends (0 = the lane may run macros)."""
+    return max([0.0] + [until - time.monotonic() for until in _QUIET.values()])
+
+
+async def _await_quiet() -> None:
+    while quiet_left() > 0:
+        await asyncio.sleep(min(1.0, quiet_left()))
+
+
+def stacking(bridge) -> bool:
+    """The window's "Stack Ui.Vision window" option (one helper window per task)."""
+    return bool(uv_config.load_config(bridge).get(uv_config.STACK_KEY))
+
+
+def _closes_helper(bridge, phase) -> bool:
+    """closeRPA for one phase: always, unless stacking and this is not the task's last macro."""
+    return bool(getattr(phase, "last", False)) or not stacking(bridge)
+
+
 async def _run_locked(spec, run, provision) -> tuple:
     """Lock → fresh savelog → provision → ONE run → (kind, message, savelog lines).
 
@@ -113,6 +149,7 @@ async def _run_locked(spec, run, provision) -> tuple:
     file dialog is never abandoned half-way); cancel is honoured between runs.
     """
     async with _MACRO_LOCK:
+        await _await_quiet()   # inside the lock: a waiter queued before the window cannot slip in
         _fresh(run)
         seq = Sequence(spec, RunSeams(), StepRecorder(_quiet_report))
         seq.page = provision(spec)
@@ -139,7 +176,8 @@ async def _run_on_entry(spec, page, log_path: str, provision) -> tuple:
 async def run_phase(bridge, page, phase, token: str) -> tuple:
     """(kind, message, savelog lines) of one image-job phase macro on this pool entry."""
     spec = _entry_spec(bridge, page, macro=phase.name, target=phase.xclick,
-                       pause_ms=phase.wait_ms, timeout_sec=phase.timeout_sec)
+                       pause_ms=phase.wait_ms, timeout_sec=phase.timeout_sec,
+                       close_rpa=_closes_helper(bridge, phase))
     if spec.storage != "xfile":
         return _blocked("the image job")
     log_path = uv_job.log_path(spec.config_dir, token, phase.phase, time.strftime("%Y%m%d-%H%M%S"))
