@@ -122,29 +122,43 @@ def _settle_ok(job: FfJob) -> Verdict:
     return Verdict(False)
 
 
-def _settle_failure(job: FfJob, message: str, review: bool) -> Verdict:
-    """needs_review keeps the record + bytes (recovery input); a plain failure forgets."""
-    if review and job.journal.advance(job.corr, JobStatus.NEEDS_REVIEW.value,
-                                      error=message, needs_review=True):
-        job.review = job.skip_reset = True
-        log(job, f"⚠ needs review — {message}", "warn")
-        return Verdict(True, f"needs review — {message}", True)
+def _settle_failed(job: FfJob, message: str) -> Verdict:
+    """Nothing reached the site (or nothing is worth keeping): record + folder forgotten."""
     job.journal.advance(job.corr, JobStatus.FAILED.value, error=message)
     _forget(job)
     return Verdict(True, message)
 
 
+def _settle_review(job: FfJob, message: str, shown: str) -> Verdict:
+    """The site may have the message: keep the record + bytes as evidence, no New Chat.
+
+    Decided by the submit line, never by whether the journal accepted the write —
+    needs_review is reachable from exactly the post-submit statuses (pinned by
+    `test_needs_review_is_reachable_exactly_from_the_post_submit_statuses`).
+    """
+    job.journal.advance(job.corr, JobStatus.NEEDS_REVIEW.value, error=message, needs_review=True)
+    job.review = job.skip_reset = True
+    log(job, f"⚠ {shown}", "warn")
+    return Verdict(True, shown, True)
+
+
+def _sent(job: FfJob) -> bool:
+    return is_post_submit(job.journal.get(job.corr))
+
+
+def _settle_failure(job: FfJob, message: str, review: bool) -> Verdict:
+    """An uncertain outcome after the submit is needs_review; anything else a plain failure."""
+    if review and _sent(job):
+        return _settle_review(job, message, f"needs review — {message}")
+    return _settle_failed(job, message)
+
+
 def _settle_cancel(job: FfJob) -> Verdict:
     """After the submit: evidence kept, needs_review, no New Chat; before: nothing sent."""
-    if is_post_submit(job.journal.get(job.corr)):
-        job.journal.advance(job.corr, JobStatus.NEEDS_REVIEW.value, error=CANCEL_REVIEW, needs_review=True)
-        job.review = job.skip_reset = True
-        log(job, f"⚠ {CANCEL_REVIEW}", "warn")
-        return Verdict(True, CANCEL_REVIEW, True)
-    job.journal.advance(job.corr, JobStatus.FAILED.value, error="Cancelled")
-    _forget(job)
+    if _sent(job):
+        return _settle_review(job, CANCEL_REVIEW, CANCEL_REVIEW)
     log(job, "Cancelled before submit — nothing was sent", "warn")
-    return Verdict(True, "Cancelled")
+    return _settle_failed(job, "Cancelled")
 
 
 def _persist(bridge) -> None:
@@ -201,7 +215,7 @@ async def _run(job: FfJob) -> Verdict:
         raise
     except Exception as exc:  # a bug must still settle honestly (RULE 4)
         logger.exception("Firefox job crashed")
-        return _settle_failure(job, f"Firefox job crashed: {exc}", is_post_submit(job.journal.get(job.corr)))
+        return _settle_failure(job, f"Firefox job crashed: {exc}", True)
 
 
 async def run_job(start: JobStart, reset_out: list) -> Verdict:

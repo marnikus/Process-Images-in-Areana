@@ -226,3 +226,10 @@ def test_guard_refusal(guard, expected):
 def test_ack_how(guard, ack, expected):
     from app.services.firefox_job_result import _ack_how
     assert _ack_how(guard, ack) == expected
+
+
+def test_needs_review_is_reachable_exactly_from_the_post_submit_statuses():
+    """R2 decides review by the submit line — valid only while these two sets are equal."""
+    from app.core.state_machine import JOB_TRANSITIONS
+    reachable = {s for s, nxt in JOB_TRANSITIONS.items() if JobStatus.NEEDS_REVIEW.value in nxt}
+    assert reachable == set(POST_SUBMIT)
