@@ -24,6 +24,7 @@ from app.services import firefox_job as fj
 from app.services import firefox_job_output as out
 from app.services import firefox_job_result as fres
 from app.services import firefox_lane as fl
+from app.services.firefox_job_journal import journal_of
 from app.services.firefox_job_phases import prompt_text, sha_of, utf16_len
 
 TAB = "9THrgpBc.Profile1_tab1"
@@ -187,3 +188,16 @@ async def run(tmp_path: Path, site: Site, monkeypatch, prompt="[JOB-ID: c1]\nmak
     start = fj.JobStart(bridge=bridge, pool=firefox_pool(), tab_id=TAB, img=img, corr=corr, prompt=prompt)
     verdict = await fj.run_job(start, reset_out)
     return verdict, bridge, img, reset_out
+
+
+PROMPT = "[JOB-ID: c1]\nmake it red"
+
+
+def blocks(bridge, status="success"):
+    """The Chrome-shaped action blocks the job logged with `status`."""
+    return [b for b, s, _ in bridge.actions if s == status]
+
+
+def record(bridge, corr="c1"):
+    """The journal record of `corr` as the job left it."""
+    return journal_of(bridge).get(corr)
