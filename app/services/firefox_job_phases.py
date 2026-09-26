@@ -112,7 +112,7 @@ async def phase_baseline(job: FfJob) -> None:
 
 
 def check_attachment(job: FfJob, reply: dict) -> None:
-    """Exactly ONE visible preview, and it carries our unique staged name (§6.1)."""
+    """Exactly ONE visible preview, and it carries the uploaded file's name (§6.1)."""
     previews = list(reply.get("previews") or [])
     ours = [p for p in previews if p.get("alt") == job.staged_name]
     if len(ours) == 1 and len(previews) == 1:

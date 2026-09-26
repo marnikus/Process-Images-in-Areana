@@ -78,10 +78,11 @@ def test_submit_clicks_send_at_most_once_and_only_behind_the_guard():
     assert "Send message" in phase.xclick and phase.name == "Arena_Job_Submit"
 
 
-def test_flag_scripts_read_the_raw_pasted_reply():
-    """Ui.Vision pastes ${var} raw — the reply is an object literal, not a string."""
-    assert "JSON.parse" not in jm._FLAG_JS and "(${arenaGuard})" in jm._FLAG_JS
-    assert "(${arenaJob})" in jm._ESC_JS
+def test_flag_scripts_read_the_reply_as_a_json_string_or_an_object():
+    """Live 2026-09-26: Ui.Vision renders ${var} as a JSON STRING (".data is undefined").
+    Executed for real in tests/js/test_firefox_job_scripts.mjs (string, object, garbage)."""
+    for src, var in ((jm._FLAG_JS, "${arenaGuard}"), (jm._ESC_JS, "${arenaJob}")):
+        assert var in src and "JSON.parse" in src and "typeof r === 'string'" in src
 
 
 def test_no_phase_ever_uses_a_dom_click():

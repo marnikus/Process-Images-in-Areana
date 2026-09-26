@@ -41,6 +41,7 @@ from app.browser.uivision import file_dialog as fd
 print(json.dumps({"targets": {k: jm.loader("c1", k, v) for k, v in bodies.items()},
                   "stillOpen": fd.still_open_js("arena_c1.png"),
                   "uploadItem": "return " + js.upload_item_js(),
+                  "escJs": jm._ESC_JS, "flagJs": jm._FLAG_JS,
                   "sha": sha_of(p), "len": utf16_len(p)}))
 `;
 
@@ -280,5 +281,36 @@ describe('firefox job — the + popup\'s Add files item (job_scripts.upload_item
     const w = page(PLUS + '<div data-arena-upload-item="1" id="old"></div>');
     assert.equal(tagRun(w), 0);
     assert.equal(tagged(w).length, 0);
+  });
+});
+
+/* Live report 2026-09-26: "can't access property "matched", "{\"token\"…}".data is undefined" —
+   Ui.Vision renders a stored ${var} into executeScript as a JSON STRING literal. The ESC and
+   send-guard flags must read the reply either way; a reply they cannot read never clicks. */
+describe('firefox job — macro flags read the stored reply (job_macros._ESC_JS / _FLAG_JS)', () => {
+  const REPLY = (data) => JSON.stringify({ token: 'c1', phase: 'x', data });
+  const asString = (s) => JSON.stringify(s);   // how Ui.Vision renders ${var} (stringified)
+  const flag = (w, src, name, value, focused = false) => {
+    Object.defineProperty(w.document, 'hasFocus', { value: () => focused, configurable: true });
+    return w.eval(`(function () { ${src.replace('${' + name + '}', value)} })()`);
+  };
+  test('ESC: preview missing + dialog up → 1, from a JSON string or an object', () => {
+    const r = REPLY({ previews: [], matched: 0 });
+    assert.equal(flag(page(''), GEN.escJs, 'arenaJob', asString(r)), 1);
+    assert.equal(flag(page(''), GEN.escJs, 'arenaJob', r), 1);
+  });
+  test('ESC: our preview matched, or the page has focus → 0', () => {
+    assert.equal(flag(page(''), GEN.escJs, 'arenaJob', asString(REPLY({ matched: 1 }))), 0);
+    assert.equal(flag(page(''), GEN.escJs, 'arenaJob', asString(REPLY({ matched: 0 })), true), 0);
+  });
+  test('ESC: an unreadable reply falls back to the focus test alone', () => {
+    assert.equal(flag(page(''), GEN.escJs, 'arenaJob', asString('garbage')), 1);
+    assert.equal(flag(page(''), GEN.escJs, 'arenaJob', asString('garbage'), true), 0);
+  });
+  test('send guard: go=true → 1 (string or object); go=false or unreadable → 0', () => {
+    assert.equal(flag(page(''), GEN.flagJs, 'arenaGuard', asString(REPLY({ go: true }))), 1);
+    assert.equal(flag(page(''), GEN.flagJs, 'arenaGuard', REPLY({ go: true })), 1);
+    assert.equal(flag(page(''), GEN.flagJs, 'arenaGuard', asString(REPLY({ go: false }))), 0);
+    assert.equal(flag(page(''), GEN.flagJs, 'arenaGuard', asString('garbage')), 0);
   });
 });

@@ -1,26 +1,29 @@
-"""Firefox job upload staging — source checks + the uniquely named copy (design D-3/D-4).
+"""Firefox job upload — source checks + the path the OS file dialog receives (design D-3/D-4).
 
-Firefox cannot fill `input[type=file]` from an extension, so the phase macro
-types a path into the OS file dialog. Two rules make that safe:
+Firefox cannot fill `input[type=file]` from an extension, so the attach macro
+pastes a path into the OS file dialog (`uivision/file_dialog`). Rules:
 
 * the source is checked BEFORE any page action — exists, supported extension,
   PIL-readable, content matching the extension (a missing / unsupported file
   fails with zero macro launches);
-* the dialog receives a COPY named `arena_<corr><ext>` in an ASCII-only folder
-  — XType never has to type Unicode, and the attachment preview is verified by
-  that exact unique name, which also exposes a stale attachment of another job.
+* the dialog receives the QUEUE FILE ITSELF by its absolute path (live fix
+  2026-09-26: the old `arena_<corr><ext>` staging copy was handed over as a
+  relative `config/uivision/uploads/…` path the dialog rejected). The copy
+  existed so XType never typed Unicode — the path is pasted now — and so the
+  preview had a unique name; the preview must now carry the queue file's name,
+  and the baseline still refuses a composer holding any earlier attachment;
+* `drop_staged` only ever deletes a legacy `arena_*` copy inside an uploads
+  folder — a journal's `staged_upload` now names the owner's image.
 """
 
 from __future__ import annotations
 
 import os
-import shutil
-import tempfile
 from pathlib import Path
 from typing import Optional
 
 SUPPORTED = {".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".webp": "WEBP"}
-UPLOADS_DIR = "uploads"
+_LEGACY_DIRS = {"uploads", "arena_uploads"}   # where the pre-2026-09-26 copies lived
 
 
 def _pil_format(path: Path) -> Optional[str]:
@@ -50,37 +53,18 @@ def check_source(path) -> str:
     return ""
 
 
-def staged_name(corr: str, source) -> str:
-    """`arena_<corr><ext>` — the name the preview must carry."""
-    return f"arena_{corr}{Path(source).suffix.lower()}"
+def upload_path(source) -> str:
+    """The queue file's absolute path — what the dialog opens (never resolved to UNC)."""
+    return os.path.abspath(str(source))
 
 
-def _is_ascii(path: Path) -> bool:
-    return str(path).isascii()
-
-
-def upload_dir(config_dir) -> Path:
-    """The first ASCII-only staging folder: config → temp → public (else config)."""
-    base = Path(config_dir) / "uivision" / UPLOADS_DIR
-    candidates = [base, Path(tempfile.gettempdir()) / "arena_uploads"]
-    public = os.environ.get("PUBLIC", "")
-    if public:
-        candidates.append(Path(public) / "arena_uploads")
-    return next((c for c in candidates if _is_ascii(c)), base)
-
-
-def stage_upload(config_dir, source, corr: str) -> Path:
-    """Copy the source to the staging folder under its unique name; the copy's path."""
-    folder = upload_dir(config_dir)
-    folder.mkdir(parents=True, exist_ok=True)
-    target = folder / staged_name(corr, source)
-    shutil.copy2(source, target)
-    return target
+def _is_legacy_copy(path: Path) -> bool:
+    return path.name.startswith("arena_") and path.parent.name in _LEGACY_DIRS
 
 
 def drop_staged(path) -> None:
-    """Remove a staged copy (best effort — a leftover is harmless, never fatal)."""
-    if not path:
+    """Remove a legacy staging copy (best effort); anything else — the owner's image — stays."""
+    if not path or not _is_legacy_copy(Path(path)):
         return
     try:
         Path(path).unlink(missing_ok=True)

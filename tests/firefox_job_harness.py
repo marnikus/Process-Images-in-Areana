@@ -77,9 +77,9 @@ def baseline(previews=None, **extra):
     return {"baseline": data}
 
 
-def attached(ext: str = ".png"):
-    return lambda token: {"attach": {"previews": [{"alt": f"arena_{token}{ext}", "blob": True}],
-                                     "matched": 1}}
+def attached(name: str = "photo.png"):
+    """The page shows ONE preview named like the uploaded queue file (live fix 2026-09-26)."""
+    return lambda token: {"attach": {"previews": [{"alt": name, "blob": True}], "matched": 1}}
 
 
 def prompt_ok(prompt: str):
@@ -105,8 +105,8 @@ def observed(found=True, src=NEW_SRC, job=None, **extra):
     return reply
 
 
-def happy_site(text: str, ext: str = ".png", **over) -> Site:
-    script = {"baseline": baseline(), "attach": attached(ext), "prompt": prompt_ok(text),
+def happy_site(text: str, name: str = "photo.png", **over) -> Site:
+    script = {"baseline": baseline(), "attach": attached(name), "prompt": prompt_ok(text),
               "submit": sent(), "observe": observed(), "reset": {"reset": {"clean": True, "state": {}}}}
     script.update(over)
     return Site(**script)

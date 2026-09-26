@@ -4,7 +4,7 @@ The dispatcher claims a Firefox page exactly like a Chrome one and hands the
 job here; bookkeeping (image status, Job History, count, cooldown) stays the
 dispatcher's and `cooldown_service`'s — the SAME code Chrome runs.
 
-Pipeline: source check → staged copy → baseline → attach → prompt → SUBMIT
+Pipeline: source check → upload path (the queue file) → baseline → attach → prompt → SUBMIT
 (once) → wait / correlate → collect (download, validate, atomic `_AI` save).
 Between the pre-submit phases a Pause holds at the last verified checkpoint
 and re-verifies it on resume; Cancel before the submit ends safely (nothing
@@ -41,7 +41,7 @@ from app.services.firefox_job_phases import (
     check_attachment, phase_attach, phase_baseline, phase_prompt, reset_page,
 )
 from app.services.firefox_job_result import phase_collect, phase_submit, phase_wait
-from app.services.firefox_job_upload import check_source, drop_staged, stage_upload
+from app.services.firefox_job_upload import check_source, upload_path
 from app.services.job_history import record_dispatch_result
 
 logger = logging.getLogger("arena")
@@ -106,7 +106,7 @@ async def _pipeline(job: FfJob) -> None:
     error = check_source(job.img.absolute_path)
     if error:
         raise JobFailure(error)
-    job.staged = str(stage_upload(host.config_dir(job.bridge), job.img.absolute_path, job.corr))
+    job.staged = upload_path(job.img.absolute_path)  # the queue file itself (live fix 2026-09-26)
     await checkpoint(job)
     for phase in (phase_baseline, phase_attach, phase_prompt):
         await phase(job)
@@ -236,7 +236,6 @@ async def run_job(start: JobStart, reset_out: list) -> Verdict:
     try:
         return await _run(job)
     finally:
-        drop_staged(job.staged)
         fl.note_job_end()  # fallback stamp; the finish seam's New Chat (lane_reset) stamps again, later
 
 

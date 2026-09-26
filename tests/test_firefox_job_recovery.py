@@ -81,7 +81,8 @@ def test_a_review_record_without_evidence_stays_as_it_is(tmp_path):
 
 
 def test_before_submit_the_record_is_dropped_and_the_staged_copy_removed(tmp_path):
-    staged = tmp_path / "arena_c1.png"
+    staged = tmp_path / "uploads" / "arena_c1.png"   # a legacy (pre 2026-09-26) staging copy
+    staged.parent.mkdir()
     staged.write_bytes(GOOD)
     bridge, img, _ = setup(tmp_path, "prompt_verified", staged_upload=str(staged))
     assert run(bridge) == {"dropped": 1}
@@ -147,3 +148,12 @@ def test_the_live_loop_reconciles_before_requeueing(monkeypatch):
     except Exception:
         pass
     assert order[:2] == ["firefox", "stale"]
+
+
+def test_recovery_never_deletes_the_queue_image_named_in_staged_upload(tmp_path):
+    """Since 2026-09-26 `staged_upload` holds the queue image itself — dropping the
+    record must leave the owner's file alone."""
+    bridge, img, src = setup(tmp_path, "prompt_verified")
+    journal_of(bridge).update("c1", staged_upload=str(src))
+    assert run(bridge) == {"dropped": 1}
+    assert journal_of(bridge).get("c1") is None and src.is_file()

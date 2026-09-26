@@ -50,7 +50,7 @@ class FfJob:
     corr: str
     prompt: str
     journal: Any
-    staged: str = ""
+    staged: str = ""          # the upload path = the queue file (journal key `staged_upload`)
     baseline: dict = field(default_factory=dict)
     err_base: str = ""
     prompt_sha: str = ""
@@ -65,6 +65,7 @@ class FfJob:
 
     @property
     def staged_name(self) -> str:
+        """The name the attachment preview must carry (the queue file's name)."""
         return Path(self.staged).name if self.staged else ""
 
 

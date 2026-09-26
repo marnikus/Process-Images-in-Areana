@@ -33,12 +33,14 @@ REPLY_MARK = "ARENA_JOB="
 _REPLY_RE = re.compile(re.escape(REPLY_MARK) + r"(\{.*\})")
 _JOB_VAR = "arenaJob"        # where a probe stores its reply
 _GUARD_VAR = "arenaGuard"    # the submit guard's reply (read by the click flag)
-# Ui.Vision pastes ${var} RAW into the script (docs: `x="${myvar}"`), so the stored
-# JSON reply arrives as an object literal — parenthesised, never JSON.parse'd.
-_FLAG_JS = "return (${" + _GUARD_VAR + "}).data.go ? 1 : 0"
+# Live 2026-09-26: Ui.Vision renders a stored ${var} into executeScript as a JSON STRING
+# literal (".data is undefined" in the owner's log) — the flags accept a string or an
+# object, and a reply they cannot read never clicks send.
+_READ = "var r = ${%s}; try { if (typeof r === 'string') r = JSON.parse(r); } catch (e) { r = null; } "
+_FLAG_JS = _READ % _GUARD_VAR + "return r && r.data && r.data.go ? 1 : 0"
 # 1 = our preview is missing AND the OS dialog still holds the focus (ESC is safe to send)
 UPLOAD_ITEM = f"css=[{UPLOAD_ITEM_ATTR}]"   # the + popup's “Add files” item, tagged by upload_item_js
-_ESC_JS = "return (${" + _JOB_VAR + "}).data.matched === 1 || document.hasFocus() ? 0 : 1"
+_ESC_JS = _READ % _JOB_VAR + "return (r && r.data && r.data.matched === 1) || document.hasFocus() ? 0 : 1"
 
 # ideal-size: 12-line JS literal reason=the one loader every phase shares (RULE 16.1.5)
 _LOADER = r"""return (function () {

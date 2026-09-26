@@ -97,26 +97,26 @@ def test_check_source_names_every_refusal(tmp_path):
     assert "extension says WEBP" in up.check_source(source_image(tmp_path, "x.webp", "PNG"))
 
 
-def test_stage_and_drop_the_unique_copy(tmp_path):
-    src = source_image(tmp_path, "Fotka ž.PNG")
-    staged = up.stage_upload(tmp_path / "cfg", src, "c1")
-    assert staged.name == "arena_c1.png" == up.staged_name("c1", src)
-    assert staged.read_bytes() == src.read_bytes()
-    up.drop_staged(staged)
-    up.drop_staged(staged)
+def test_the_upload_path_is_the_queue_file_made_absolute(tmp_path, monkeypatch):
+    """Live fix 2026-09-26: no staging copy — the dialog gets the queue file itself."""
+    src = source_image(tmp_path, "Fotka ž 2026.PNG")
+    assert up.upload_path(src) == str(src.resolve())
+    monkeypatch.chdir(tmp_path)
+    assert up.upload_path("Fotka ž 2026.PNG") == str(src.resolve())
+
+
+def test_drop_staged_removes_only_a_legacy_staging_copy_never_the_queue_image(tmp_path):
+    image = source_image(tmp_path, "icon-box-package.png")
+    up.drop_staged(image)                                   # a new record's staged_upload = the image
+    up.drop_staged(tmp_path / "arena_c1.png")                  # arena_* outside an uploads folder
+    assert image.is_file()
+    for folder in ("uploads", "arena_uploads"):
+        legacy = tmp_path / folder / "arena_c1.png"
+        legacy.parent.mkdir()
+        legacy.write_bytes(b"x")
+        up.drop_staged(legacy)
+        assert not legacy.exists()
     up.drop_staged("")
-    assert not staged.exists()
-
-
-def test_upload_dir_prefers_an_ascii_path(tmp_path, monkeypatch):
-    assert up.upload_dir(tmp_path / "cfg") == tmp_path / "cfg" / "uivision" / "uploads"
-    monkeypatch.setattr(up.tempfile, "gettempdir", lambda: "/tmp/ascii")
-    assert up.upload_dir("/home/jiří/cfg") == Path("/tmp/ascii/arena_uploads")
-    monkeypatch.setattr(up.tempfile, "gettempdir", lambda: "/tmp/ž")
-    monkeypatch.setenv("PUBLIC", "/pub")
-    assert up.upload_dir("/home/jiří/cfg") == Path("/pub/arena_uploads")
-    monkeypatch.delenv("PUBLIC")
-    assert up.upload_dir("/home/jiří/cfg") == Path("/home/jiří/cfg/uivision/uploads")
 
 
 def test_drop_staged_swallows_os_errors(monkeypatch):
@@ -124,7 +124,7 @@ def test_drop_staged_swallows_os_errors(monkeypatch):
         raise PermissionError("locked")
 
     monkeypatch.setattr(Path, "unlink", locked)
-    up.drop_staged("/x/arena_c1.png")
+    up.drop_staged("/x/uploads/arena_c1.png")
 
 
 # ── download gate ────────────────────────────────────────────────────────────

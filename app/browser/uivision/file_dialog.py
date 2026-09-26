@@ -11,7 +11,7 @@ dialog stayed open. Causes and the rule each one sets:
   runs inside `XDesktopAutomation true … false`; page probes run outside it.
 * `!StringEscape` (default on) turns `\\u` `\\t` `\\n` of a Windows path into
   escapes, and a path typed char by char is rewritten by the dialog's
-  autocomplete → the path is stored in `!clipboard` (escapes off, quoted, `/`)
+  autocomplete → the path is stored in `!clipboard` (escapes off, quoted, native)
   and pasted; it is never XType'd.
 * The name box is not focused on open → Alt+N ("File name" / "Název souboru").
 * Firefox's dialog ignores a bare Enter (Ui.Vision forum) → Open = Alt+O; Enter
@@ -30,11 +30,11 @@ OPEN_VAR = "dialogOpen"      # 1 = the dialog is still up after Open
 
 
 def dialog_path(path) -> str:
-    """The clipboard text: `"C:/…/arena_x.png"` (quotes keep spaces, `/` survives any escape)."""
+    """The clipboard text: the native path in quotes (spaces survive; stored with escapes off)."""
     text = str(path or "").strip()
     if not text or any(ch in text for ch in '\r\n"') or "${" in text:
         raise ValueError(f"upload path cannot go through the file dialog: {text!r}")
-    return '"' + text.replace("\\", "/") + '"'
+    return '"' + text + '"'
 
 
 def still_open_js(staged_name: str) -> str:

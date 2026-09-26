@@ -37,19 +37,21 @@ async def test_one_image_completes_sent_once_and_saved_beside_the_source(tmp_pat
     assert blocks(bridge) == CHROME_ORDER                          # Chrome's block ids, in order
     assert record(bridge) is None                                  # journal settled
     assert not (tmp_path / "cfg" / "firefox_jobs" / "c1").exists()
-    assert not list((tmp_path / "cfg" / "uivision" / "uploads").glob("*"))  # staged copy dropped
+    assert not (tmp_path / "cfg" / "uivision" / "uploads").exists()  # no staging copy any more
     assert "🦊 [c1]" in bridge.text()
 
 
 @pytest.mark.asyncio
-async def test_the_dialog_receives_the_unique_staged_copy(tmp_path, monkeypatch):
+async def test_the_dialog_receives_the_queue_image_path_and_the_image_stays(tmp_path, monkeypatch):
+    """Live fix 2026-09-26: the owner saw `config/uivision/uploads/arena_….png` (a relative
+    staging copy) rejected by the dialog — the dialog gets the queue file's absolute path."""
     site = happy_site(PROMPT)
-    await run(tmp_path, site, monkeypatch)
+    _, _, img, _ = await run(tmp_path, site, monkeypatch)
     attach = next(p for p in site.phases if p.phase == "attach")
-    pasted = [c["Target"] for c in attach.commands if c["Value"] == "!clipboard"]  # live fix 2026-09-26
-    assert len(pasted) == 1 and pasted[0].endswith('arena_c1.png"') and pasted[0].isascii()
-    assert "\\" not in pasted[0]  # forward slashes only: no escape can eat the path
-    assert not any("arena_c1" in c["Target"] for c in attach.commands if c["Command"] == "XType")
+    pasted = [c["Target"] for c in attach.commands if c["Value"] == "!clipboard"]
+    assert pasted == ['"' + str((tmp_path / "photo.png").resolve()) + '"']
+    assert Path(img.absolute_path).is_file(), "the queue image is never deleted"
+    assert not any("photo" in c["Target"] for c in attach.commands if c["Command"] == "XType")
 
 
 @pytest.mark.parametrize("name,fmt,ext", [("p.jpg", "JPEG", ".jpeg"), ("p.jpeg", "JPEG", ".jpeg"),
@@ -57,8 +59,7 @@ async def test_the_dialog_receives_the_unique_staged_copy(tmp_path, monkeypatch)
 @pytest.mark.asyncio
 async def test_jpeg_and_webp_sources_upload_under_their_own_extension(tmp_path, monkeypatch,
                                                                       name, fmt, ext):
-    src_ext = "." + name.rsplit(".", 1)[1]
-    site = happy_site(PROMPT, ext=src_ext)
+    site = happy_site(PROMPT, name=name)
     verdict, _, img, _ = await run(tmp_path, site, monkeypatch, src_name=name, fmt=fmt)
     assert verdict.failed is False and img.output_path.endswith("p_AI.png")  # result format decides
 
@@ -114,8 +115,8 @@ async def test_stale_attachment_that_survives_new_chat_fails_unsent(tmp_path, mo
 
 @pytest.mark.parametrize("previews,needle", [
     ([{"alt": "someone_else.png"}], "wrong attachment preview"),
-    ([{"alt": "arena_c1.png"}, {"alt": "x.png"}], "multiple attachments"),
-    ([{"alt": "arena_c1.png"}, {"alt": "arena_c1.png"}], "multiple attachments"),
+    ([{"alt": "photo.png"}, {"alt": "x.png"}], "multiple attachments"),
+    ([{"alt": "photo.png"}, {"alt": "photo.png"}], "multiple attachments"),
 ])
 @pytest.mark.asyncio
 async def test_wrong_or_extra_preview_fails_before_submit(tmp_path, monkeypatch, previews, needle):

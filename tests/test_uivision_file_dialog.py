@@ -39,8 +39,11 @@ def desktop_spans(seq):
     return out, on
 
 
-def test_dialog_path_is_quoted_with_forward_slashes():
-    assert fd.dialog_path(PATH) == '"C:/Users/nora/Process/config/uivision/uploads/arena_c1.png"'
+def test_dialog_path_is_the_native_path_quoted():
+    """`!StringEscape` is off while it is stored, so backslashes stay literal (live 2026-09-26)."""
+    assert fd.dialog_path(PATH) == '"' + PATH + '"'
+    queue = r"F:\Stocks 2026\icons testing\single\icon-box-package.png"
+    assert fd.dialog_path(queue) == '"' + queue + '"'
 
 
 @pytest.mark.parametrize("bad", ["", "  ", "C:/a\nb.png", 'C:/a"b.png', "C:/${x}/a.png"])

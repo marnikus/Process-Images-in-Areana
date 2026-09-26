@@ -88,7 +88,7 @@ async def test_pause_holds_before_submit_then_reverifies_and_continues(tmp_path,
 
     def recheck(token):
         reply = verify(token)
-        reply["observe"]["previews"] = [{"alt": f"arena_{token}.png"}]
+        reply["observe"]["previews"] = [{"alt": "photo.png"}]
         return reply
 
     site = happy_site(PROMPT, prompt=prompt_then_pause, observe=[recheck, observed()])
@@ -113,7 +113,7 @@ async def test_page_changed_during_pause_fails_safely_unsent(tmp_path, monkeypat
 
     def with_preview(token):
         reply = observed(found=False, composer_sha="changed")(token)
-        reply["observe"]["previews"] = [{"alt": f"arena_{token}.png"}]
+        reply["observe"]["previews"] = [{"alt": "photo.png"}]
         return reply
 
     site.script["observe"] = [with_preview]
