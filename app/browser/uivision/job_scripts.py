@@ -28,12 +28,12 @@ from ..cdp_arena.js_snippets import (
     JS_SEND_STATE,
 )
 from ..output_probes import build_baseline_js, build_check_js
-from ..probe_selectors import attachment_preview_selectors, textarea_primary
+from ..probe_selectors import attachment_preview_selectors, textarea_selectors
 
 STABLE_MS = 3000        # Chrome's "wait 3 s, re-check" before a result counts
 POLL_MS = 1500
 
-# ideal-size: 20-line JS literal reason=one prelude string shared by every phase body
+# ideal-size: 26-line JS literal reason=one prelude string shared by every phase body
 _PRELUDE = r"""
   const __sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const __sha = async (text) => {
@@ -51,7 +51,13 @@ _PRELUDE = r"""
     }
     return out;
   };
-  const __composer = () => { const el = document.querySelector(__TEXTAREA__); return el ? el.value : null; };
+  const __composerEl = () => {  // Chrome's insert rule: the FIRST VISIBLE textarea (B3)
+    for (const sel of __TEXTAREA_SELS__) {
+      for (const el of document.querySelectorAll(sel)) { if (el.offsetParent !== null) return el; }
+    }
+    return null;
+  };
+  const __composer = () => { const el = __composerEl(); return el ? el.value : null; };
   const __bubble = (marker) => {
     const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let n;
@@ -63,7 +69,7 @@ _PRELUDE = r"""
   };
   const __try = (fn, fallback) => { try { return fn(); } catch (e) { return fallback; } };
 """.replace("__PREVIEW_SELS__", json.dumps(attachment_preview_selectors())) \
-   .replace("__TEXTAREA__", json.dumps(textarea_primary()))
+   .replace("__TEXTAREA_SELS__", json.dumps(textarea_selectors()))
 
 
 def expr(js: str) -> str:
@@ -183,8 +189,8 @@ def clean_js(budget_ms: int) -> str:
     return _body(f"""
   const t0 = Date.now(); let state = {{}};
   while (true) {{
-    const el = document.querySelector({json.dumps(textarea_primary())});
-    state = {{loaded: document.readyState === 'complete', composer: !!el && el.offsetParent !== null,
+    const el = __composerEl();
+    state = {{loaded: document.readyState === 'complete', composer: !!el,
       empty: !!el && el.value === '', previews: __previews().length}};
     if (state.loaded && state.composer && state.empty && !state.previews) return {{clean: true, state: state}};
     if (Date.now() - t0 >= {int(budget_ms)}) return {{clean: false, state: state}};

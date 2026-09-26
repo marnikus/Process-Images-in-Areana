@@ -194,3 +194,33 @@ describe('firefox job — baseline / observe / security / loader', () => {
     assert.match(r.error, /kaput/);
   });
 });
+
+/* Audit B3 (2026-09-26): Chrome's insert writes into the FIRST VISIBLE textarea of
+   textarea_selectors(); every read (readback, guard, observe, clean) must see that
+   same element — a hidden primary must not shadow the visible fallback. */
+const HIDDEN_PRIMARY = (value = '') => `<form><div class="flex flex-wrap gap-2"></div>
+  <textarea name="message" hidden>stale draft</textarea>
+  <textarea placeholder="Describe the image">${value}</textarea>
+  <button aria-label="Send message">Send</button></form>`;
+
+describe('firefox job — composer = the element the insert writes (B3)', () => {
+  test('readback sees the visible fallback, not a hidden primary', async () => {
+    const w = page(HIDDEN_PRIMARY());
+    const r = await run(w, 'prompt');
+    assert.equal(r.ok, true, r.error);
+    assert.equal(r.sha256, GEN.sha);
+    assert.equal(w.document.querySelector('textarea[placeholder]').value, PROMPT);
+  });
+
+  test('the guard reads the same element', async () => {
+    const w = page(HIDDEN_PRIMARY().replace('__NOPE__', ''));
+    w.document.querySelector('textarea[placeholder]').value = PROMPT;
+    const g = await run(w, 'guard');
+    assert.equal(g.promptOk, true);
+  });
+
+  test('New Chat is clean when the visible composer is empty', async () => {
+    const c = await run(page(HIDDEN_PRIMARY()), 'clean');
+    assert.equal(c.clean, true, JSON.stringify(c.state));
+  });
+});
