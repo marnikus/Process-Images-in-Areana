@@ -122,4 +122,33 @@ cognitive 8, max nesting 2, max params 4, 1 function > 20 LOC (documented JS
 literal); 9 silent swallows (6 unjustified); 4 duplicated seams; feature tests
 152 passed; feature coverage 97 % (line+branch combined), 23 missed lines.
 
-After: filled in §10 when the steps land.
+After: see §10.
+
+## 10. As built (2026-09-26) — steps, commits, after-metrics
+
+| Step | Commit | Outcome |
+|---|---|---|
+| S0 | `7b5a73e` | `tests/test_firefox_job_seams.py` (23 characterization tests) + `job_scripts`/loader in the syntax lane with a meta-test (F11) |
+| R1 | `9ddf36a` | `check_attachment` CC 10 → 8; `phase_submit` CC 10 → `_guard_refusal` + `_ack_how` (F5) |
+| R2 | `d3f4d63` | `_settle_failed` / `_settle_review` shared by failure + cancel; the POST_SUBMIT → needs_review invariant pinned (F1) |
+| R3 | `e3356d6` | new leaf `firefox_job_host` (`call`/`say`/`persist`/`config_dir`/`settings_of`/`timeout_s`, each failure → `arena` warning); `JOBS_DIR`/`job_folder` in the journal; recovery no longer imports ctx (F3, F4, F7 half) |
+| R4 | `ed26643` | lane `_entry_spec` / `_blocked` / `_run_on_entry` shared by `run_phase` + `run_identify`; macros drop the 3× default `timeout_sec`, flag scripts use `_JOB_VAR`/`_GUARD_VAR` (F8, F9) |
+| R5 | `cc03711` | docstrings / `note_job_end` comment / `DOM_SELECTORS.md` security row (F10, F14) |
+| B1 | `f7ab07f` | **behaviour** — recovery fetch uses `timeouts.download` (default 60) (F7) |
+| B2 | `4787d3c` | **behaviour** — `JobJournal.supersede(image_path, keep)`: a new job drops older open records of the same image + their job folder, logged (F2). Keyed on `image_path` (the `_AI` target's identity); a pre-submit failure of the new job still drops the old record — re-queue is a deliberate redo (D-15) |
+| B3 | `db5cf58` | **behaviour** — prelude `__composerEl()` = first visible of `textarea_selectors()` (Chrome's insert rule) for readback / guard / observe / clean (F6); 3 jsdom RED → GREEN |
+| R6 | `3c3ba09` | `test_firefox_job.py` 535 → 168 + `test_firefox_job_submit.py` 160 + `test_firefox_job_control.py` 226; 48 test ids identical (F15) |
+
+F12 / F13 stay accepted as designed (legacy dispatcher ratchet).
+
+| Metric | Before (`ef63e66`) | After (`3c3ba09`) |
+|---|---|---|
+| Feature modules / lines | 11 / 1,868 | 12 / 1,903 (+ `firefox_job_host` 62) |
+| Max CC | 10 (×2: `check_attachment`, `phase_submit`) | 9 (`output.check_response`, untouched) |
+| Max cognitive / nesting / params | 8 / 2 / 4 | 8 / 2 / 4 |
+| Functions > 20 LOC | 1 (`observe_js`, documented JS literal) | 1 (same) |
+| Silent `except` | 9 (6 unjustified) | 3 (all best-effort: journal setattr, `drop_staged`, `lane._fresh`) |
+| Duplicated seams | 4 | 0 |
+| Feature tests | 152 passed (9 files) | 205 passed (13 files) · jsdom 14 → 17 |
+| Feature coverage (line+branch) | 97 %, 23 missed lines | 99 %, 8 missed lines |
+| Largest feature test file | 535 lines | 226 lines |

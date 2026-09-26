@@ -443,6 +443,8 @@ tests — see the 2026-09-25 StepRecorder lesson):
 
 Status: **implemented**; the plan above stays the reference, the amendments below win where they differ.
 
+Refactor 2026-09-26: code audit + TDD refactor in `../2026-09-26-firefox-job-refactor/audit.md` (new `firefox_job_host` leaf; behaviour fixes B1 recovery fetch timeout, B2 supersede of older records of a re-queued image, B3 composer = first visible textarea) — it wins over this section where they differ.
+
 | # | Decision / amendment | Why |
 |---|---|---|
 | D-2 amend | Chrome's payloads are reused verbatim but **never embedded raw**: `job_scripts` builds one expression per phase, `job_macros.loader` base64-decodes it in the page, runs it via `new Function`, awaits it and `JSON.stringify`s the reply. | Ui.Vision pastes `${var}` **raw** into `executeScript` Targets (docs: variables are not quoted), which would rewrite the JS template literals in `output_probes` / `js_snippets`. Macro-side flags therefore read `(${arenaGuard}).data.go`, never `JSON.parse(${…})`. |

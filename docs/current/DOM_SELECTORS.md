@@ -600,7 +600,7 @@ No new selectors. The Firefox lane reuses the entries above through `probe_selec
 |---|---|---|
 | Upload control (XClick → native dialog) | `probe_selectors.add_files_primary()` (`add_files_button`) | XClick — `isTrusted` input; never DOM `Click` (I-63) |
 | Attachment preview | `attachment_preview_selectors()` | exactly one visible preview whose `alt` == staged file name `arena_<corr8><ext>` (stale / wrong / multiple ⇒ reset or retry) |
-| Composer / send | `textarea_selectors()`, `send_click_primary()`, `send_presence_selector()` | prompt set in the page, SHA-256 readback; send = in-page guard, then one XClick |
+| Composer / send | `textarea_selectors()`, `send_click_primary()`, `send_presence_selector()` | composer = the FIRST VISIBLE match of `textarea_selectors()` for the insert AND every read (readback, guard, observe, New Chat clean — `job_scripts` prelude `__composerEl`, 2026-09-26 B3); prompt set in the page, SHA-256 readback; send = in-page guard, then one XClick |
 | Output / spinner / errors | `output_image_selectors()`, `spinner_selector()`, `page_errors` | Chrome's baseline + `[JOB-ID]` correlation, 3 s stability |
 | New Chat reset | `probe_selectors.new_chat_primary()` (`new_chat_button`) | XClick, then the `new_chat` clean-page checks; failure = warning |
 | Security dialog | `JS_SECURITY_DIALOG` (= `captcha_probes.build_visible_js()`, `captcha_js/visible.js` — Chrome's badge-aware predicate) | polled every 5 s only while `captcha_in_scope` |
