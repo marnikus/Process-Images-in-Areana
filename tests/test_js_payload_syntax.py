@@ -31,6 +31,8 @@ from app.browser import processing_probe
 from app.browser import recording_probes
 from app.browser import worker_badge
 from app.browser.cdp_arena import js_snippets
+from app.browser.uivision import job_macros as uivision_job_macros
+from app.browser.uivision import job_scripts as uivision_job_scripts
 from app.browser.uivision import macro as uivision_macro
 from app.utils import page_errors
 from app.browser.probe_requests import (MATCH_CONTAINS, MATCH_EXACT, ClickProbeSpec,
@@ -93,9 +95,47 @@ def payloads() -> dict:
     out["uivision.find_rect.element"] = uivision_macro.render_find_rect_js(
         "xpath=//a[span[text()='New Chat']]", 3000)
     out["uivision.find_rect.image"] = uivision_macro.render_find_rect_js("button.png@@0.8", 3000)
+    out.update(_firefox_job_payloads())
     for name in sorted(n for n in dir(js_snippets) if n.startswith("JS_")):
         out[f"snippet.{name}"] = _as_statement(getattr(js_snippets, name))
     return {k: _as_statement(v) for k, v in out.items()}
+
+
+_JOB_BASELINE = {"srcs": ["https://x/old.png"], "outputs": []}
+
+# every page-JS body of the Firefox image job, built by the REAL builders (audit F11)
+_JOB_BODIES = {
+    "baseline_js": lambda js: js.baseline_js(True),
+    "attach_wait_js": lambda js: js.attach_wait_js("arena_c1.png", 50),
+    "prompt_js": lambda js: js.prompt_js("[JOB-ID: c1]\nčervená `${x}` \"q\""),
+    "guard_js": lambda js: js.guard_js("c1", "ab" * 32, "arena_c1.png"),
+    "ack_js": lambda js: js.ack_js("c1", 50),
+    "observe_js": lambda js: js.observe_js("c1", _JOB_BASELINE, 50, True),
+    "clean_js": lambda js: js.clean_js(50),
+    "security_js": lambda js: js.security_js(True),
+}
+
+
+def _firefox_job_payloads() -> dict:
+    """Each job body as the loader evaluates it, plus the loader Target itself.
+
+    The Target is an `executeScript` function BODY (it `return`s), so it is
+    checked wrapped in the anonymous function Ui.Vision puts around it.
+    """
+    out = {}
+    for name, build in _JOB_BODIES.items():
+        body = build(uivision_job_scripts)
+        out[f"uivision.job.{name}"] = f";({body})"
+        out[f"uivision.job_loader.{name}"] = (
+            f"(function () {{ {uivision_job_macros.loader('c1', name, body)} }})")
+    return out
+
+
+def test_every_firefox_job_script_is_in_the_syntax_lane():
+    module = uivision_job_scripts
+    builders = {n for n in dir(module) if n.endswith("_js") and not n.startswith("_")
+                and getattr(getattr(module, n), "__module__", "") == module.__name__}  # own, not re-imported
+    assert builders == set(_JOB_BODIES), f"register {sorted(builders ^ set(_JOB_BODIES))} in _JOB_BODIES"
 
 
 def _as_statement(js: str) -> str:
