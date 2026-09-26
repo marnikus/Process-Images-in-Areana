@@ -114,6 +114,7 @@ _JOB_BODIES = {
     "observe_js": lambda js: js.observe_js("c1", _JOB_BASELINE, 50, True),
     "clean_js": lambda js: js.clean_js(50),
     "security_js": lambda js: js.security_js(True),
+    "upload_item_js": lambda js: js.upload_item_js(),
 }
 
 

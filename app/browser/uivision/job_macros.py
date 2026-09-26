@@ -26,6 +26,7 @@ from dataclasses import dataclass
 
 from ..probe_selectors import new_chat_primary, send_click_primary, add_files_primary
 from . import autorun, file_dialog, macro, paths
+from .job_scripts import UPLOAD_ITEM_ATTR, upload_item_js
 
 MACRO_PREFIX = "Arena_Job_"
 REPLY_MARK = "ARENA_JOB="
@@ -36,6 +37,7 @@ _GUARD_VAR = "arenaGuard"    # the submit guard's reply (read by the click flag)
 # JSON reply arrives as an object literal — parenthesised, never JSON.parse'd.
 _FLAG_JS = "return (${" + _GUARD_VAR + "}).data.go ? 1 : 0"
 # 1 = our preview is missing AND the OS dialog still holds the focus (ESC is safe to send)
+UPLOAD_ITEM = f"css=[{UPLOAD_ITEM_ATTR}]"   # the + popup's “Add files” item, tagged by upload_item_js
 _ESC_JS = "return (${" + _JOB_VAR + "}).data.matched === 1 || document.hasFocus() ? 0 : 1"
 
 # ideal-size: 12-line JS literal reason=the one loader every phase shares (RULE 16.1.5)
@@ -108,10 +110,23 @@ def probe_macro(token: str, phase: str, js_expr: str, timeout_sec: int = 60) -> 
     return _finish(phase, _select() + _probe(token, phase, js_expr), timeout_sec=timeout_sec)
 
 
+def _open_upload_item() -> list:
+    """The + opens a popup; its “Add files” item opens the OS dialog (live 2026-09-26).
+
+    Gated on the tag: a UI whose + opens the dialog directly skips the rows."""
+    return [macro.command("pause", "700", "", "the + popup opens"),
+            macro.command("executeScript", "return " + upload_item_js(), "uploadItem", "tag the Add files item"),
+            macro.command("if_v2", "${uploadItem} == 1", "", "popup UI: click its Add files item"),
+            macro.command("executeScript", macro.render_find_rect_js(UPLOAD_ITEM, 1500), "",
+                          "find + RED rect: Add files item"),
+            macro.command("XClick", UPLOAD_ITEM, "", "native click: Add files item (opens the dialog)"),
+            macro.command("end", "", "", "")]
+
+
 def attach_macro(token: str, upload_path: str, wait_js: str) -> PhaseMacro:
     """XClick “Add files” → paste the staged path into the OS dialog → Open → verify; ESC if left open."""
     staged_name = ntpath.basename(str(upload_path))
-    commands = (_select() + _native_click("Add files")
+    commands = (_select() + _native_click("Add files") + _open_upload_item()
                 + file_dialog.fill_and_open(upload_path, staged_name)
                 + _probe(token, "attach", wait_js)
                 + [macro.command("executeScript", _ESC_JS, "attachEsc", "1 = preview missing, dialog up")]

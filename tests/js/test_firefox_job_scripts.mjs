@@ -40,6 +40,7 @@ bodies = {
 from app.browser.uivision import file_dialog as fd
 print(json.dumps({"targets": {k: jm.loader("c1", k, v) for k, v in bodies.items()},
                   "stillOpen": fd.still_open_js("arena_c1.png"),
+                  "uploadItem": "return " + js.upload_item_js(),
                   "sha": sha_of(p), "len": utf16_len(p)}))
 `;
 
@@ -243,5 +244,41 @@ describe('firefox job — file dialog still open? (file_dialog.still_open_js)', 
   });
   test('our preview present → 0 even without focus', () => {
     assert.equal(stillOpen(page(withPreview('arena_c1.png')), false), 0);
+  });
+});
+
+/* Live fix 2026-09-26: Arena's “+” (aria-label "Add files") opens a popup whose
+   “Add files — Up to 15MB per file” item (paperclip icon) opens the OS dialog. The
+   script tags that item for the macro's XClick; never the “+” itself. */
+const PLUS = '<form><textarea name="message"></textarea><button aria-label="Add files"><svg class="lucide lucide-plus"></svg></button></form>';
+const ITEM = (attrs = 'role="menuitem"') => `<div ${attrs}><span class="flex min-w-0 flex-1 flex-col"><span>Add files</span>
+  <span>Up to 15MB per file</span></span><svg class="lucide lucide-paperclip text-text-secondary size-5 flex-none"></svg></div>`;
+const tagged = (w) => Array.from(w.document.querySelectorAll('[data-arena-upload-item]'));
+const tagRun = (w) => w.eval(`(function () { ${GEN.uploadItem} })()`);
+
+describe('firefox job — the + popup\'s Add files item (job_scripts.upload_item_js)', () => {
+  test('open popup → the paperclip item is tagged, never the + button', () => {
+    const w = page(PLUS + `<div role="menu">${ITEM()}</div>`);
+    assert.equal(tagRun(w), 1);
+    const t = tagged(w);
+    assert.equal(t.length, 1);
+    assert.equal(t[0].getAttribute('role'), 'menuitem');
+    assert.match(t[0].textContent, /Up to 15MB/);
+  });
+  test('no popup (or a hidden one) → 0 and nothing tagged', () => {
+    assert.equal(tagRun(page(PLUS)), 0);
+    const w = page(PLUS + `<div role="menu" hidden>${ITEM()}</div>`);
+    assert.equal(tagRun(w), 0);
+    assert.equal(tagged(w).length, 0);
+  });
+  test('a role-less popup still matches by structure (span > span text + paperclip)', () => {
+    const w = page(PLUS + `<div class="popover">${ITEM('class="item"')}</div>`);
+    assert.equal(tagRun(w), 1);
+    assert.equal(tagged(w)[0].className, 'item');
+  });
+  test('a stale tag from an earlier run is cleared first', () => {
+    const w = page(PLUS + '<div data-arena-upload-item="1" id="old"></div>');
+    assert.equal(tagRun(w), 0);
+    assert.equal(tagged(w).length, 0);
   });
 });

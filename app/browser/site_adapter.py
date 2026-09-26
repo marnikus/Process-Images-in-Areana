@@ -7,6 +7,7 @@ probe file (enforced by tests/test_probe_selectors.py).
 Replaceable because webpage structure will change — update this file +
 DOM_SELECTORS.md only. Imports: `selector.py` only (same layer).
 """
+# ideal-size: ~310 lines reason=pure-data registry, one SelectorObject per page element (RULE 18.2)
 from .selector import SelectorObject
 from typing import Dict, List
 
@@ -57,6 +58,19 @@ SELECTORS: Dict[str, SelectorObject] = {
         verification="click triggers file chooser or file input",
         evidence="Directly Chat...html confirmed",
         lastVerified="2026-09-15",
+    ),
+    "add_files_menu_item": SelectorObject(
+        name="add_files_menu_item",
+        primary='[role="menuitem"]:has(svg.lucide-paperclip)',
+        fallbacks=[
+            '[role="menu"] :has(> svg.lucide-paperclip)',
+            '[data-radix-popper-content-wrapper] :has(> svg.lucide-paperclip)',
+            ':is(button, [role="menuitem"], [role="option"], label, a, div):has(> svg.lucide-paperclip):has(> span > span)',
+        ],
+        textCondition="Add files", textConditionType="contains", mustBeEnabled=True,
+        verification="the + (add_files_button) opens a popup; this item opens the OS file dialog",
+        evidence="user HTML + screenshot 2026-09-26: item > span(span 'Add files', span 'Up to 15MB per file') + svg.lucide-paperclip",
+        lastVerified="2026-09-26",
     ),
     "file_input": SelectorObject(
         name="file_input",

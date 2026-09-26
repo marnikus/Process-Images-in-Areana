@@ -21,7 +21,7 @@ from app.browser.uivision import macro
 pytestmark = pytest.mark.unit
 
 UV_VARS = {"${!cmd_var1}", "${!cmd_var2}", "${!cmd_var3}", "${KEY_ENTER}", "${KEY_ESC}",
-           "${arenaJob}", "${arenaGuard}", "${attachEsc}", "${goFlag}", "${dialogOpen}",
+           "${arenaJob}", "${arenaGuard}", "${attachEsc}", "${goFlag}", "${dialogOpen}", "${uploadItem}",
            "${KEY_ALT+KEY_N}", "${KEY_CTRL+KEY_A}", "${KEY_CTRL+KEY_V}", "${KEY_ALT+KEY_O}"}
 
 
@@ -65,7 +65,7 @@ def test_attach_pastes_the_staged_path_into_the_dialog_and_escapes_on_a_miss():
     assert xtypes == ["${KEY_ALT+KEY_N}", "${KEY_CTRL+KEY_A}", "${KEY_CTRL+KEY_V}", "${KEY_ALT+KEY_O}",
                       "${KEY_ENTER}", "${KEY_ESC}"]
     assert ("store", '"C:/up/arena_c1.png"', "!clipboard") in rows
-    assert [c for c, _, _ in rows].count("XClick") == 1
+    assert [c for c, _, _ in rows].count("XClick") == 2  # the + and (gated) its popup item
     assert phase.xclick.startswith("css=") and "Add files" in phase.xclick
     assert ("if_v2", "${attachEsc} == 1", "") in rows
 
@@ -158,3 +158,29 @@ def test_every_phase_macro_has_the_default_savelog_deadline():
     macros = [jm.probe_macro("c1", "baseline", "1"), jm.attach_macro("c1", "/u/a.png", "1"),
               jm.submit_macro("c1", "1", "1"), jm.reset_macro("c1", "1")]
     assert {m.timeout_sec for m in macros} == {60}
+
+
+# ── 2026-09-26 live fix: “+” opens a popup; its “Add files” item opens the OS dialog ──
+
+def test_the_add_files_menu_item_selectors_come_from_the_site_adapter():
+    from app.browser.probe_selectors import add_files_menu_item_selectors, add_files_menu_item_text
+    sels = add_files_menu_item_selectors()
+    assert sels and all("lucide-paperclip" in s for s in sels)
+    assert add_files_menu_item_text() == "Add files"
+
+
+def test_attach_clicks_plus_then_the_add_files_item_then_fills_the_dialog():
+    phase = jm.attach_macro("c1", "C:/up/arena_c1.png", "1")
+    rows = commands(phase)
+    clicks = [i for i, (c, _, _) in enumerate(rows) if c == "XClick"]
+    assert len(clicks) == 2, "the + button, then the popup's Add files item"
+    assert rows[clicks[0]][1] == macro.TARGET_VAR and "Add files" in phase.xclick
+    tag = rows.index(("executeScript", "return " + js.upload_item_js(), "uploadItem"))
+    gate = rows.index(("if_v2", "${uploadItem} == 1", ""))
+    item = rows[clicks[1]]
+    assert item[1] == jm.UPLOAD_ITEM == "css=[data-arena-upload-item]"
+    assert clicks[0] < tag < gate < clicks[1] < rows.index(("end", "", ""), gate)
+    rect = rows[clicks[1] - 1]
+    assert rect[0] == "executeScript" and jm.UPLOAD_ITEM in rect[1], "RED find rect before the item click"
+    clip = next(i for i, r in enumerate(rows) if r[2] == "!clipboard")
+    assert clicks[1] < clip, "the dialog rows run after the item opened it"

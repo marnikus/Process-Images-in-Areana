@@ -92,3 +92,13 @@ def new_chat_primary() -> str:
 def add_files_primary() -> str:
     """The composer's “Add files” button — the Firefox upload XClick target (RULE 21)."""
     return get_selector("add_files_button").primary
+
+
+def add_files_menu_item_selectors() -> List[str]:
+    """The “Add files” item of the popup the + button opens (it opens the OS dialog)."""
+    return get_selector("add_files_menu_item").all_selectors()
+
+
+def add_files_menu_item_text() -> str:
+    """The item's label — preferred when several candidates match."""
+    return get_selector("add_files_menu_item").textCondition or ""

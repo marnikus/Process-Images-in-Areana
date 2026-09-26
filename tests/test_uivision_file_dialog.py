@@ -98,5 +98,5 @@ def test_attach_macro_uses_the_dialog_rows_and_escapes_only_a_dialog_still_open(
     tagged, left_on = desktop_spans(seq)
     assert [t for c, t, on in tagged if c == "XType" and not on] == [], "no key in browser mode"
     assert left_on is False
-    assert [c for c, _, _ in seq].count("XClick") == 1
+    assert [t for c, t, _ in seq if c == "XClick"] == [jm.macro.TARGET_VAR, jm.UPLOAD_ITEM]
     assert "document.hasFocus()" in jm._ESC_JS

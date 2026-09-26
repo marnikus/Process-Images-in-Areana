@@ -28,7 +28,13 @@ from ..cdp_arena.js_snippets import (
     JS_SEND_STATE,
 )
 from ..output_probes import build_baseline_js, build_check_js
-from ..probe_selectors import attachment_preview_selectors, textarea_selectors
+from ..probe_selectors import (
+    add_files_menu_item_selectors,
+    add_files_menu_item_text,
+    add_files_primary,
+    attachment_preview_selectors,
+    textarea_selectors,
+)
 
 STABLE_MS = 3000        # Chrome's "wait 3 s, re-check" before a result counts
 POLL_MS = 1500
@@ -201,3 +207,33 @@ def clean_js(budget_ms: int) -> str:
 def security_js(in_scope: bool) -> str:
     """The captcha probe alone (the manual-security wait polls this)."""
     return _body(f"\n  return {{security: {_security(in_scope)}}};")
+
+
+UPLOAD_ITEM_ATTR = "data-arena-upload-item"
+
+# ideal-size: 17-line JS literal reason=one page script, the Python around it is a single replace chain
+_UPLOAD_ITEM = r"""(() => {
+  const sels = __SELS__, text = __TEXT__, plus = __PLUS__, tag = __TAG__;
+  document.querySelectorAll('[' + tag + ']').forEach((el) => el.removeAttribute(tag));
+  const shown = (el) => el.offsetParent !== null || el.getClientRects().length > 0;
+  const seen = [];
+  for (const sel of sels) {
+    let found = [];
+    try { found = Array.from(document.querySelectorAll(sel)); } catch (e) { continue; }
+    for (const el of found) {
+      if (shown(el) && !el.matches(plus) && !seen.includes(el)) seen.push(el);
+    }
+  }
+  const pick = seen.find((el) => (el.textContent || '').includes(text)) || seen[0];
+  if (!pick) return 0;
+  pick.setAttribute(tag, '1');
+  return 1;
+})()"""
+
+
+def upload_item_js() -> str:
+    """Tag the visible “Add files” item of the + popup (never the + itself): 1 tagged, 0 none."""
+    return (_UPLOAD_ITEM.replace("__SELS__", json.dumps(add_files_menu_item_selectors()))
+            .replace("__TEXT__", json.dumps(add_files_menu_item_text()))
+            .replace("__PLUS__", json.dumps(add_files_primary()))
+            .replace("__TAG__", json.dumps(UPLOAD_ITEM_ATTR)))
