@@ -205,3 +205,46 @@ Delivered as designed. Rounds: the probe/macro/reply trio + `image_fetch`
 extraction; `firefox_result` + `firefox_journal` + `firefox_recovery`; the
 `firefox_job` stage machine + lane/dispatcher/cooldown seams; tests; then the
 living truth in `docs/current/SYSTEM_OF_RECORD.md` (I-65) and README.
+
+## 9. Amendment (2026-09-26) — a locate answer is the bare locator
+
+Field report (the owner's live log, 2026-09-26 19:15): every prepare run died
+after 4–6 s with `Status=Error: Unexpected token (1:2)`, the stage logged
+`prepare macro: error` and "🛑 needs review: the prepare macro answered nothing",
+the page was parked in `needs_review` (no reset, no cooldown, no new job), and
+the next image repeated the identical error byte for byte.
+
+Cause: `job_probes._LOCATE_TEMPLATE` answered a JSON envelope
+(`{"ok": true, "loc": "xpath=…"}`) where both consumers need the bare value.
+The macro's guard is a Ui.Vision `if` whose Target is **evaluated as
+JavaScript** (`executeScript_Sandbox` runs an ES5 sandbox): the JSON quotes
+double up inside the already-quoted condition, the parse fails, and the `if`
+aborts the whole macro before any command runs — which is exactly why nothing
+was ever attached. The second consumer, `XClick ${arenaX}`, is a native locator
+in the Value column: a JSON blob could never resolve there either.
+
+Fix: `_LOCATE_TEMPLATE` returns `pick ? xpathOf(pick) : ''` — the variable *is*
+the locator, and `''` is the guard's own false case. `job_replies.locate_verdict`
+already parsed exactly that shape, so no Python consumer changed.
+
+Invariant (now pinned by tests): an answer consumed in a JS-evaluated field or
+as an `XClick`/locator target must be **bare** — `xpath=…`, `''`, `true`,
+`false`. Only `arenaRemove`, `arenaAttach`, `arenaSend`, `arenaNewChat` and
+`arenaGuard` are consumed that way; the JSON answers (`arenaState*`,
+`arenaPrompt`, `arenaAttachRep`, `arenaResult`, `arenaData`) are echo-only and
+parsed by Python from the savelog.
+
+Locks:
+
+* `tests/js/test_firefox_job_probes.mjs` (29) builds the five real documents with
+  the Python builder, derives each answer by **executing the owning probe body**
+  against a markup and an empty page state (never a typed-in answer — the first
+  version of this lock passed with the broken producer), parses every `if`
+  target with acorn in ES5 mode for every answer combination, pins the guard
+  counts (prepare 2, submit 1, newchat 1, probe 0, fetch 0) and asserts every
+  `XClick` target is `''` or `xpath=/…`. With the old JSON answer six tests fail;
+  with the fix 29/29 pass.
+* `tests/test_firefox_job_macro.py` adds the Python-side view: only JS-safe
+  answers may appear inside an `if`/`XClick` target (located by name, so a new
+  macro cannot skip the rule), the locate probe's body contains no
+  `JSON.stringify`, and the baked payload stays a quoted JS string literal.

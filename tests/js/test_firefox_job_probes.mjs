@@ -24,6 +24,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
+import { parse } from 'acorn';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../..');
@@ -44,6 +45,7 @@ out = {
   "stateClean": job_probes.render_state_js(payload("newchat"), 4000),
   "locate": job_probes.render_locate_js(payload("prepare", extra={"list": ["button[aria-label=\\"Add files\\"]"],
                                                                  "pick": "first", "key": "attach"}), 1000),
+  "locateMissing": job_probes.render_locate_js(payload("prepare", extra={"list": ["#not-here"]}), 400),
   "attach": job_probes.render_attach_js(payload("prepare"), 1500),
   "attachAfterCleanup": job_probes.render_attach_js(
       payload("prepare", extra={"before": ["b.png|blob:https://arena.ai/9"]}), 800),
@@ -53,6 +55,8 @@ out = {
   "why": job_submit_probes.render_guard_why_js(payload("submit"), 4000),
   "result": job_submit_probes.render_result_js(payload("submit"), 2500),
   "resultFast": job_submit_probes.render_result_js(payload("submit"), 700),
+  "docs": {stage: jm.build_document(jm.StageInputs(stage=stage, **base))
+           for stage in jm.STAGES},
 }
 print(json.dumps(out))
 `;
@@ -98,6 +102,14 @@ async function run(win, js) {
   return typeof raw === 'string' && raw.startsWith('{') ? JSON.parse(raw) : raw;
 }
 
+/* The value the extension stores in the macro variable — the probe's answer
+   VERBATIM, never convenience-parsed (a JSON answer is exactly what breaks a
+   JS-evaluated condition, so the lock has to see it as the extension does). */
+async function runRaw(win, js) {
+  const raw = await win.eval(`Promise.resolve((function () { ${js} })())`);
+  return typeof raw === 'string' ? raw : String(raw);
+}
+
 const COMPOSER = (extra = '') => `<form>`
   + `<textarea name="message" rows="1"></textarea>`
   + `<button type="button" aria-label="Add files">+</button>`
@@ -130,12 +142,12 @@ describe('Firefox image-job probes', () => {
     assert.equal(dirty.previews[0].alt, 'a.png');
   });
 
-  test('locate: the Add files button comes back as an xpath the extension can click', async () => {
+  test('locate: the Add files button comes back as a BARE xpath the extension can click', async () => {
     const win = page(COMPOSER());
     const reply = await run(win, JS.locate);
-    assert.equal(reply.ok, true);
-    assert.match(reply.loc, /^xpath=\/html\[1\]\//);
-    assert.equal(reply.key, 'attach');
+    assert.match(reply, /^xpath=\/html\[1\]\//);      // the macro's XClick target
+    const empty = await run(page(COMPOSER()), JS.locateMissing);
+    assert.equal(empty, '');                             // '' skips the guarded click
   });
 
   test('attach: exactly one NEW tile named like the sent file is the pass', async () => {
@@ -296,4 +308,84 @@ describe('Firefox image-job probes', () => {
     assert.equal(reply.ok, false);                       // jsdom has no canvas: named, never silent
     assert.match(reply.note, /blocked by CORS/);
   });
+});
+
+/* The fields Ui.Vision evaluates as JavaScript — every `if` target — and the
+   fields it hands to a native click — every `XClick` target — must survive the
+   answers the probes really produce. A JSON answer inside a quoted `if`
+   condition is a syntax error (`Status=Error: Unexpected token (1:N)`) and the
+   whole macro dies before the attachment is even attempted (2026-09-26, live
+   report). The answers below are therefore not typed in: each one is produced by
+   executing the variable's OWN probe body, exactly as it is baked into the
+   document, so this lock cannot drift from production. */
+describe('the macro document is safe where Ui.Vision evaluates JavaScript', () => {
+  const NEW_CHAT = '<a href="/image/direct">New Chat</a>';
+  const GUARD_PAGE = () => page(COMPOSER() + TILE('a.png', 'blob:https://arena.ai/1'));
+  const MARKUP = {
+    arenaRemove: async () => page(TILE('a.png', 'blob:https://arena.ai/1')),
+    arenaAttach: async () => page(COMPOSER()),
+    arenaSend: async () => page(COMPOSER()),
+    arenaNewChat: async () => page(NEW_CHAT),
+    arenaGuard: async () => {                      // the guard needs a ready composer
+      const win = GUARD_PAGE();
+      await runRaw(win, JS.prompt);
+      return win;
+    },
+  };
+  const MISSING = { arenaGuard: async () => page(COMPOSER()) };
+  // one `if` per guarded click, and none where nothing is clicked
+  const GUARDS = { prepare: 2, submit: 1, newchat: 1, probe: 0, fetch: 0 };
+  const vars = (text) => [...String(text).matchAll(/\$\{(arena\w+)\}/g)].map((m) => m[1]);
+
+  let ANSWERS = {};
+
+  before(async () => {
+    const producers = {};
+    for (const doc of Object.values(JS.docs)) {
+      for (const cmd of doc.Commands) {
+        if (cmd.Command === 'executeScript' && MARKUP[cmd.Value]) producers[cmd.Value] = cmd;
+      }
+    }
+    for (const [name, cmd] of Object.entries(producers)) {
+      const body = String(cmd.Target).replace(/\$\{!cmd_var1\}/g, '"4000"');
+      ANSWERS[name] = [
+        await runRaw(await MARKUP[name](), body),                    // the element is there
+        await runRaw(await (MISSING[name] ? MISSING[name]() : page('')), body),  // nothing there
+      ];
+    }
+  });
+
+  for (const [stage, doc] of Object.entries(JS.docs)) {
+    const evaluated = doc.Commands.filter((c) => c.Command === 'if');
+    const clicks = doc.Commands.filter((c) => c.Command === 'XClick');
+
+    test(`${stage}: every if condition parses (ES5) with the answer the probe gives`, () => {
+      assert.equal(evaluated.length, GUARDS[stage], `${stage} guard count`);
+      for (const cmd of evaluated) {
+        const names = vars(cmd.Target);
+        assert.ok(names.length, `${stage}: a condition without an answer is a guess: ${cmd.Target}`);
+        for (const value of names.map((n) => ANSWERS[n])) {
+          assert.ok(value, `${stage}: ${names} has no probe answer to check`);
+          for (const answer of value) {
+            const code = cmd.Target.replace(/\$\{(arena\w+)\}/g, () => answer);
+            assert.doesNotThrow(() => parse(code, { ecmaVersion: 5 }),
+              `${stage}: Ui.Vision evaluates ${code} as JavaScript`);
+          }
+        }
+      }
+    });
+
+    test(`${stage}: every XClick target is an empty or xpath locator, never an answer blob`, () => {
+      for (const cmd of clicks) {
+        const names = vars(cmd.Target);
+        assert.ok(names.length, `${stage}: XClick must use a located target, not ${cmd.Target}`);
+        for (const name of names) {
+          for (const answer of ANSWERS[name]) {
+            assert.ok(answer === '' || String(answer).startsWith('xpath=/'),
+              `${stage}: XClick would receive ${JSON.stringify(answer)}`);
+          }
+        }
+      }
+    });
+  }
 });

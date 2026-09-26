@@ -13,11 +13,13 @@ RED at base: `app/browser/uivision/job_macro.py` did not exist.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from app.browser.uivision import job_macro as jm
+from app.browser.uivision import job_probes as jp
 from app.browser.uivision import macro as uv_macro
 from app.browser.uivision.runner import RunSpec
 
@@ -191,3 +193,43 @@ def test_payload_is_compact_json_that_keeps_the_extra_keys():
     data = json.loads(text)
     assert data["why"] == "lost ack"
     assert text == json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+# The answers whose NATURE the macro's own fields depend on: a locator goes
+# straight into `XClick ${…}` and a boolean guards the click. Everything else a
+# probe answers (state, attachment, prompt, result, bytes) is JSON and may only
+# be `echo`ed — Ui.Vision evaluates an `if` target as JavaScript
+# (`executeScript_Sandbox`), so a JSON answer inside one is a syntax error that
+# kills the whole macro (`Status=Error: Unexpected token (1:N)`) before the
+# attachment is even attempted. Live report 2026-09-26: the prepare stage failed
+# in 4–6 s on every job for exactly this reason.
+JS_SAFE_ANSWERS = {"arenaRemove", "arenaAttach", "arenaSend", "arenaNewChat", "arenaGuard"}
+
+
+def test_only_js_safe_answers_reach_an_if_condition_or_an_xclick_target():
+    for stage in jm.STAGES:
+        for cmd in commands(stage):
+            if cmd["Command"] not in ("if", "XClick"):
+                continue
+            used = set(re.findall(r"\$\{(arena\w+)\}", cmd["Target"]))
+            assert used, f"{stage}: {cmd['Command']} without a located answer: {cmd['Target']}"
+            assert used <= JS_SAFE_ANSWERS, f"{stage}: {cmd['Command']} would evaluate {used}"
+
+
+def test_the_locate_probe_answers_the_bare_locator_its_consumers_use():
+    """The variable IS the locator: XClick resolves it, `locate_verdict` reads it."""
+    body = jp.build_locate_js()
+    assert "return pick ? xpathOf(pick) : '';" in body
+    assert "JSON.stringify" not in body
+
+
+def test_the_baked_payload_arrives_as_a_quoted_js_literal():
+    """The payload is a JS string literal the page parses, never an object literal.
+
+    `JSON.parse({"job":…})` is valid JavaScript and throws at run time, so the
+    probe would answer with an empty config and the whole job would run blind.
+    """
+    body = targets(commands("prepare"), "executeScript")[0]
+    assert body.startswith("return (function () {")
+    assert 'JSON.parse("{\\"job\\":\\"prepare\\",' in body
+    assert 'JSON.parse({"job"' not in body

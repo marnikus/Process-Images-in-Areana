@@ -177,6 +177,16 @@ _ATTACH_TEMPLATE = r"""return (function () {
 
 # One element locator for the macro's XClick: the site_adapter list finds it,
 # the probe answers with an absolute xpath the extension resolves natively.
+#
+# The answer is the BARE locator (or ''), never a JSON envelope: this variable
+# rides straight into the macro's `if "${arenaX}" != ""` guard and into the
+# `XClick ${arenaX}` target, and Ui.Vision evaluates the `if` target as
+# JavaScript (`executeScript_Sandbox`) — a JSON answer puts its own `"` inside
+# that quoted condition and the whole macro dies with
+# `Status=Error: Unexpected token (1:N)` before anything is attached
+# (2026-09-26, live report: the prepare stage failed in 4–6 s, every job).
+# `job_replies.locate_verdict` reads the same variable from the savelog, so the
+# bare shape is the ONE contract both sides share.
 _LOCATE_TEMPLATE = r"""return (function () {
   __PRELUDE__
   var nodes = all(cfg.list || []).filter(function (el) {
@@ -185,8 +195,7 @@ _LOCATE_TEMPLATE = r"""return (function () {
     return true;
   });
   var pick = String(cfg.pick || 'first') === 'last' ? nodes[nodes.length - 1] : nodes[0];
-  return JSON.stringify({ok: !!pick, key: String(cfg.key || ''), count: nodes.length,
-                         loc: pick ? xpathOf(pick) : '', tag: pick ? String(pick.tagName || '') : ''});
+  return pick ? xpathOf(pick) : '';
 })()"""
 
 # The bytes of the correlated image, exactly in Chrome's order: in-page fetch

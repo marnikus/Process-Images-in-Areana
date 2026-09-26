@@ -1,3 +1,22 @@
+# Quality re-check — 2026-09-26h (localize answer field fix, I-65 follow-up)
+
+Snapshot of the RULE 16 gates after the field-fix round (design amendment §9 in
+`docs/archive/2026-09-25-firefox-image-job-pipeline/design.md`): the locate probes
+answered a JSON envelope where the macro's `if` guard (ES5 JavaScript) and
+`XClick` (native locator) need a bare `xpath=…`; every prepare run aborted in the
+field with `Status=Error: Unexpected token (1:2)`. Only `job_probes.py` changed
+in production.
+
+| Gate | Command | Result |
+|---|---|---|
+| Python tests | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -p no:randomly` | **2,444 passed · 6 skipped · 0 fail** (+3 over the shipped round: the JS-safety rule, the bare-locate body and the quoted-payload pin in `test_firefox_job_macro.py`, now 16 tests; the eight job files total 108) |
+| JS tests | `npm run test:js` | **428 pass · 4 skipped · 0 fail** (432 subtests). `tests/js/test_firefox_job_probes.mjs` is 29 tests: it derives every macro answer by executing the owning probe body, so the JSON producer fails 6 of them |
+| Bug proven caught | `node --test tests/js/test_firefox_job_probes.mjs` with the old JSON answer restored | **6 fail** (`prepare: every if condition parses (ES5)…`, three `XClick target is an empty or xpath locator` cases, `locate: … BARE xpath`) → the lock reproduces the field abort instead of blessing it |
+| Size/complexity | `tools/verify_quality.py --changed --base origin/main --allow-legacy --coverage-ratchet` | **✅ PASSED — 15 files checked, 0 fail, 0 warn**; `job_probes.py` 291 lines (under the 300 ideal, no `# ideal-size:` header needed) |
+| Coverage | `coverage run --branch --source=app -m pytest tests -q -p no:cacheprovider` then `coverage json -o coverage.json` | **89.88 % line / 86.67 % branch** (unchanged); `uivision/job_probes.py` 100 %, `firefox_job.py` 90.5 %, `cooldown_service.py` 94.16 % (floor 94.12), `multi_page_dispatcher.py` 91.6 % (floor 90.0) |
+| RULE 18 | `wc -l` | touched files: `job_probes.py` 291 (production), `tests/js/test_firefox_job_probes.mjs` 391, `tests/test_firefox_job_macro.py` 235 — all inside their ideal bands |
+| Environment facts | — | `coverage run --branch --source=app` is the only coverage command the ratchet trusts (pytest-cov without `--cov-branch` reports branch 0.0 % and false-drops ~20 untouched files); `radon` must be importable from the literal `python` on PATH; `package.json` already declares `acorn` (direct import in the JS lock) |
+
 # Quality re-check — 2026-09-25g (Firefox image job end-to-end, I-65)
 
 Snapshot of the RULE 16 gates after the round (`docs/archive/2026-09-25-firefox-image-job-pipeline/design.md`,
