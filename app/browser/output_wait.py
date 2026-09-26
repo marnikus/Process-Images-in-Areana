@@ -117,8 +117,10 @@ async def _poll_check(check_fn: Callable, poll_interval: float):
 
 
 def _reraise_abort(exc: Exception) -> None:
+    """A page error or a lost link ends the wait at once (retrying cannot help)."""
     from ..utils.page_errors import PageErrorAbort
-    if isinstance(exc, PageErrorAbort):
+    from .page_recovery import LinkLost
+    if isinstance(exc, (PageErrorAbort, LinkLost)):
         raise exc
 
 

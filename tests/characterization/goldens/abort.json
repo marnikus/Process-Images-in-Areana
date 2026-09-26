@@ -28,7 +28,7 @@
  "clicks": [
   "button[aria-label=\"Add files\"]"
  ],
- "evals": 3,
+ "evals": 4,
  "signals": [
   [
    "job_started",

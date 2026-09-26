@@ -14,7 +14,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from .probe_selectors import new_chat_selectors, textarea_primary
+from .page_recovery import LinkLost, heal_link
+from .probe_selectors import attachment_preview_selectors, new_chat_selectors, textarea_primary
 from .visual_click import ClickRequest, find_and_click
 
 # (selector, label_selector, match_text) — semantic href first, no classes.
@@ -49,11 +50,17 @@ _PAGE_LOADED_TEMPLATE = """;(() => {
   } catch (e) { return {complete: false, error: String(e)}; }
 })()"""
 
+# Clean composer = no text AND no leftover attachment preview (2026-09-26): a
+# stale preview would ride along with the next job's image.
 _COMPOSER_EMPTY_TEMPLATE = """;(() => {
   try {
     const ta = document.querySelector(__TEXTAREA_PRIMARY__);
     if (!ta) return {empty: false, len: -1};
-    return {empty: ta.value.length === 0, len: ta.value.length};
+    let previews = 0;
+    for (const sel of __PREVIEW_SELECTORS__) {
+      for (const el of document.querySelectorAll(sel)) { if (el.offsetParent !== null) previews++; }
+    }
+    return {empty: ta.value.length === 0 && previews === 0, len: ta.value.length, previews: previews};
   } catch (e) { return {empty: false, error: String(e)}; }
 })()"""
 
@@ -64,8 +71,9 @@ def build_page_loaded_js() -> str:
 
 
 def build_composer_empty_js() -> str:
-    """Probe: new-chat composer is clean (empty value)."""
-    return _COMPOSER_EMPTY_TEMPLATE.replace("__TEXTAREA_PRIMARY__", repr(textarea_primary()))
+    """Probe: new-chat composer is clean (empty value, no attachment preview)."""
+    return (_COMPOSER_EMPTY_TEMPLATE.replace("__TEXTAREA_PRIMARY__", repr(textarea_primary()))
+            .replace("__PREVIEW_SELECTORS__", json.dumps(attachment_preview_selectors())))
 
 
 def _report(engine: Any, message: str, level: str = "info"):
@@ -112,18 +120,35 @@ async def _is_composer_empty(client: Any) -> bool:
     return bool(_as_dict(raw).get("empty"))
 
 
+async def _heal_first(ctx: ResetCtx) -> str:
+    """A closed socket is re-attached to the same tab first; '' or why it could not be."""
+    try:
+        await heal_link(ctx.client, lambda m, l="info": _report(ctx.engine, m, l))
+    except LinkLost as exc:
+        return str(exc)
+    return ""
+
+
+async def _try_candidate(ctx: ResetCtx, candidate: tuple) -> bool:
+    """One (selector, label_selector, match_text) through the visual runner."""
+    selector, label_selector, match_text = candidate
+    req = ClickRequest(selector=selector, label_selector=label_selector,
+                       match_text=match_text, label="New Chat")
+    try:
+        return await find_and_click(ctx.client, req, engine=ctx.engine) == "ok"
+    except Exception as e:
+        _report(ctx.engine, f"New Chat click error {selector}: {e}", "warn")
+        return False
+
+
 async def _click_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
-    """Try candidates in order via the visual runner."""
-    for selector, label_selector, match_text in NEW_CHAT_CANDIDATES:
-        req = ClickRequest(selector=selector, label_selector=label_selector,
-                           match_text=match_text, label="New Chat")
-        try:
-            result = await find_and_click(ctx.client, req, engine=ctx.engine)
-        except Exception as e:
-            _report(ctx.engine, f"New Chat click error {selector}: {e}", "warn")
-            continue
-        if result == "ok":
-            return True, selector
+    """Heal a closed socket, then try the candidates in order."""
+    lost = await _heal_first(ctx)
+    if lost:
+        return False, lost
+    for candidate in NEW_CHAT_CANDIDATES:
+        if await _try_candidate(ctx, candidate):
+            return True, candidate[0]
     return False, "new-chat button not found"
 
 
@@ -181,7 +206,7 @@ async def _wait_page_loaded(ctx: ResetCtx) -> tuple[bool, str]:
 
 
 async def reset_to_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
-    """Click New Chat, then wait for the full page load."""
+    """Click New Chat (a closed socket is healed first), then wait for the full page load."""
     _report(ctx.engine, "↩ Resetting to new chat after generation", "info")
     clicked, click_info = await _click_new_chat(ctx)
     if not clicked:
@@ -189,6 +214,6 @@ async def reset_to_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
         return False, click_info
     _report(ctx.engine, f"↩ New Chat clicked ({click_info}), waiting for load", "info")
     ok, reason = await _wait_page_loaded(ctx)
-    _report(ctx.engine, f"↩ New-chat reset {'ready' if ok else 'failed'}: {reason}",
-            "success" if ok else "error")
+    _report(ctx.engine, (f"↩ ✔ New chat open — clean composer confirmed ({reason})" if ok
+                         else f"↩ New-chat reset failed: {reason}"), "success" if ok else "error")
     return ok, reason

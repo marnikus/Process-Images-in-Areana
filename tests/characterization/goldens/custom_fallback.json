@@ -99,7 +99,7 @@
   "button[aria-label=\"Add files\"]",
   "button[aria-label=\"Send message\"]:not([disabled])"
  ],
- "evals": 0,
+ "evals": 3,
  "signals": [
   [
    "job_started",

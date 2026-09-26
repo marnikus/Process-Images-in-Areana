@@ -14,6 +14,11 @@ job fetches it from Python and never needs the browser's download folder:
   overwriting) + `naming.atomic_write_bytes` in the source folder, retrying a
   transient sharing violation; `find_saved` reconciles a save whose state write
   was interrupted (a sibling of the `_AI` family with the same SHA-256).
+
+`fetch`'s gate lives in `utils/http_image` and `save_beside` / `output_spec` in
+`services/job_flow/image_output` since 2026-09-26 — the Chrome lane uses the same ones
+(docs/archive/2026-09-26-chrome-job-save-and-confirmations/design.md); the
+names stay importable from here.
 """
 
 from __future__ import annotations
@@ -21,53 +26,21 @@ from __future__ import annotations
 import hashlib
 import io
 import os
-import time
-import urllib.request
 from pathlib import Path
 from typing import Optional
 
-from app.core.naming import OutputSpec, atomic_write_bytes, get_output_path, parse_ai_output
-
-MIN_BYTES = 100
-SAVE_TRIES = 3
-_UA = {"User-Agent": "Mozilla/5.0 (Arena Image Processor)"}
-
-
-class OutputError(Exception):
-    """A result that must not be saved (named reason)."""
+from app.core.naming import parse_ai_output
+from app.services.job_flow.image_output import SAVE_TRIES, output_spec, save_beside  # noqa: F401 — re-export (one owner)
+from app.utils.http_image import MIN_BYTES, OutputError, check_response, fetch_image  # noqa: F401 — re-export
 
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def check_response(status: int, ctype: str, length, data: bytes) -> None:
-    """The download gate (raises OutputError with the reason)."""
-    if status != 200:
-        raise OutputError(f"HTTP {status}")
-    head = data[:64].lstrip().lower()
-    if "text/html" in (ctype or "").lower() or head.startswith((b"<!doctype", b"<html")):
-        raise OutputError("got an HTML page, not an image")
-    if len(data) < MIN_BYTES:
-        raise OutputError(f"only {len(data)} bytes")
-    if length not in (None, "") and str(length).isdigit() and int(length) != len(data):
-        raise OutputError(f"partial download {len(data)}/{length} bytes")
-
-
 def fetch(src: str, timeout: float, opener=None) -> bytes:
-    """GET the result; the checked bytes or OutputError."""
-    open_url = opener or urllib.request.urlopen
-    try:
-        with open_url(urllib.request.Request(src, headers=_UA), timeout=timeout) as resp:
-            data = resp.read()
-            status = int(getattr(resp, "status", 200) or 200)
-            headers = getattr(resp, "headers", {}) or {}
-            check_response(status, headers.get("Content-Type", ""), headers.get("Content-Length"), data)
-            return data
-    except OutputError:
-        raise
-    except Exception as exc:
-        raise OutputError(f"download failed: {exc}") from exc
+    """GET the result; the checked bytes or OutputError (`utils.http_image` owns the gate)."""
+    return fetch_image(src, timeout, opener)[0]
 
 
 def validate_image(data: bytes) -> str:
@@ -106,33 +79,6 @@ def read_staged(path, expected_sha: str) -> Optional[bytes]:
     except (OSError, TypeError):
         return None
     return data if sha256(data) == expected_sha else None
-
-
-def output_spec(settings, ext: str) -> OutputSpec:
-    """The Chrome lane's naming settings (`single_job_runner.save_image`)."""
-    out = getattr(settings, "output", None) or {}
-    return OutputSpec(suffix=out.get("suffix", "_AI"), preserve_format=out.get("preserve_format", True),
-                      overwrite=out.get("overwrite", False), downloaded_ext=ext,
-                      unique_template=out.get("unique_suffix_template", "{base}_AI_{n}{ext}"))
-
-
-def _transient(exc: OSError) -> bool:
-    """Sharing-violation class (Windows 32/33, or a PermissionError on replace)."""
-    return getattr(exc, "winerror", None) in (32, 33) or isinstance(exc, PermissionError)
-
-
-def save_beside(source, data: bytes, spec: OutputSpec, sleep=time.sleep) -> Path:
-    """Atomic save next to the source under the `_AI` rule; transient errors retried."""
-    source = Path(source)
-    for attempt in range(1, SAVE_TRIES + 1):
-        target = get_output_path(source, spec)
-        try:
-            return atomic_write_bytes(source.parent, target, data)
-        except OSError as exc:
-            if attempt == SAVE_TRIES or not _transient(exc):
-                raise OutputError(f"save failed: {exc}") from exc
-            sleep(0.5 * attempt)
-    raise OutputError("save failed")  # pragma: no cover — loop always returns or raises
 
 
 def find_saved(source, expected_sha: str, suffix: str = "_AI") -> Optional[Path]:

@@ -6,6 +6,9 @@ the live queue / URL rows / pool (`plan_pass`), runs the existing lane
 **waits** on the S4 bus instead of ending — no work, no usable tab, all
 tabs cooling and CDP down are wait states with one throttled line each
 (`REASON_LINES`, one per 5 min per reason and one on every reason change).
+CDP down also re-attaches the remembered tab (`heal_cdp`, every
+`RECONNECT_MS`) — before 2026-09-26 the line promised "reconnecting" but
+nothing reconnected after a socket loss.
 Only the user ends it: Stop (`cancel_current` cancels the future) or
 Stop-after-current (`_stop_after`, the pass finishes its image first).
 
@@ -22,6 +25,7 @@ import asyncio
 import traceback
 from dataclasses import dataclass, field
 
+from app.browser.page_recovery import reconnect_same_tab
 from app.browser.page_status import PageStatus
 from app.services import auto_connect as ac
 from app.services.batch_orchestrator import pool_summary, resolve_and_claim_tab, run_pass
@@ -36,6 +40,7 @@ __all__ = ["PassPlan", "REASON_LINES", "PROCESSING_REFUSAL", "run_live", "set_ru
 
 WAIT_S = 1.0            # bus poll fallback
 THROTTLE_MS = 300_000   # one wait line per reason per 5 min
+RECONNECT_MS = 10_000   # "cdp down": one same-tab reconnect try per 10 s (2026-09-26)
 
 REASON_LINES = {
     "no images": ("🟢 Run live — 0 queued images (Reset/Retry or Scan adds work instantly)", "info"),
@@ -135,6 +140,24 @@ def _next_ready(bridge, allowed: set) -> str:
     return f"{secs // 60:02d}:{secs % 60:02d}"
 
 
+async def heal_cdp(bridge, bus: LiveBus) -> bool:
+    """`cdp down` promises "reconnecting": re-attach the remembered tab, throttled; True = connected."""
+    if not bus.throttle("live:reconnect", RECONNECT_MS):
+        return False
+    try:
+        return await reconnect_same_tab(bridge.cdp, bridge._log)
+    except Exception as exc:  # RULE 4: say it, the run stays live
+        bridge._log(f"🔌 reconnect attempt failed: {exc}", "warn")
+        return False
+
+
+async def _wait_or_heal(bridge, plan: PassPlan, bus: LiveBus) -> None:
+    """A healed socket re-plans at once; every other wait state waits (one throttled line)."""
+    if plan.reason == "cdp down" and await heal_cdp(bridge, bus):
+        return
+    await wait_reason(bridge, plan, bus)
+
+
 async def wait_reason(bridge, plan: PassPlan, bus: LiveBus) -> None:
     """One throttled line per reason (plus one on every change), then wait for a wake or the poll."""
     template, level = REASON_LINES[plan.reason]
@@ -188,7 +211,7 @@ async def run_live(bridge) -> None:
         while is_live(bridge):
             plan = await plan_pass(bridge)
             if plan.reason:
-                await wait_reason(bridge, plan, bus)
+                await _wait_or_heal(bridge, plan, bus)
                 continue
             await run_pass(bridge, plan)
             _pass_tail(bridge)

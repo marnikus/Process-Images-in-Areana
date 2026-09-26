@@ -6,12 +6,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, field, replace
-from pathlib import Path
+from dataclasses import replace
 from typing import Any, Dict, List, Optional
 
 from app.core.enums import ImageStatus
-from app.core.naming import OutputSpec, atomic_write_bytes, get_output_path
 from app.browser.dom_highlight import build_find_probe, build_highlight_probe
 from app.browser.probe_selectors import (
     send_click_primary,
@@ -24,39 +22,14 @@ from app.browser.visual_click import ClickRequest, find_and_click
 from app.services.await_processing import handle_await_processing
 from app.core.pause_clock import PauseClock
 from app.services.captcha.policy import captcha_in_scope, pause_cap_seconds
+from app.services.job_flow.confirm import confirm_clean_start, confirm_composer, confirm_sent
+from app.services.job_flow.ctx import JobCtx, emit_action as _emit_action, report as _report_recovery
 from app.services.job_history import note_captcha_count
+from app.services.job_flow.output import _handle_save, _handle_validate, _infer_ext, save_image  # noqa: F401 — re-export
+from app.services.job_flow.steps import finish_steps, start_steps, track_block
 from app.services.run_state import JobAction
 
 log = logging.getLogger("arena")
-
-
-@dataclass
-class JobCtx:
-    """Context to keep params ≤4."""
-
-    bridge: Any
-    ctrl: Any
-    client: Any
-    tab_id: str
-    img: Any
-    urls: List[Any]
-    job_id: str
-    corr_id: str
-    final_prompt: str
-    baseline: Dict[str, Any] = field(default_factory=dict)
-    new_src: Optional[str] = None
-    file_bytes: Optional[bytes] = None
-    ctype: Optional[str] = None
-    ext: Optional[str] = None
-    old_srcs: List[str] = field(default_factory=list)
-
-
-def _emit_action(ctx: JobCtx, block: Any, status: str, msg: str):
-    """Emit action status."""
-    try:
-        ctx.bridge._emit_job_action_status(JobAction(ctx.job_id, block, status, msg))
-    except Exception:
-        pass
 
 
 def _get_blocks(ctx: JobCtx) -> List[Any]:
@@ -292,14 +265,6 @@ async def _settle_and_note(ctx: JobCtx):
     return settled
 
 
-def _report_recovery(ctx: JobCtx, msg: str, level: str = "info"):
-    """Revival log with the job correlation prefix (RULE 2)."""
-    try:
-        ctx.bridge._log(f"[{ctx.corr_id}] {msg}", level)
-    except Exception:
-        pass
-
-
 def _arm_revival(ctx: JobCtx):
     """Arm post-captcha revival for this generation wait (services-owned)."""
     from app.services.captcha.recovery import arm_resume
@@ -376,38 +341,6 @@ async def download_image(ctx: JobCtx, src: str) -> tuple[bool, bytes, str]:
         return False, b"", str(e)
 
 
-async def save_image(ctx: JobCtx, file_bytes: bytes) -> Optional[Path]:
-    """Save atomically (validated ext or .png)."""
-    try:
-        settings = ctx.bridge.state.settings
-        suffix = settings.output.get("suffix", "_AI")
-        overwrite = settings.output.get("overwrite", False)
-        preserve = settings.output.get("preserve_format", True)
-        tpl = settings.output.get("unique_suffix_template", "{base}_AI_{n}{ext}")
-        ext = getattr(ctx, "ext", None) or ".png"
-        src_path = Path(ctx.img.absolute_path)
-        spec = OutputSpec(suffix=suffix, preserve_format=preserve, overwrite=overwrite,
-                          downloaded_ext=ext, unique_template=tpl)
-        out_path = get_output_path(src_path, spec)
-        atomic_write_bytes(src_path.parent, out_path, file_bytes)
-        _emit_saved_rect(ctx, out_path.name)
-        return out_path
-    except Exception as e:
-        log.warning(f"save {e}")
-        return None
-
-
-def _emit_saved_rect(ctx: JobCtx, name: str):
-    """Saved-file confirmation rect (best effort, UI only)."""
-    try:
-        dur = ctx.bridge.config.get_state("highlight_duration", 3)
-        payload = {"x": 100, "y": 100, "width": 200, "height": 200,
-                   "duration": dur, "label": f"Saved {name}"}
-        ctx.bridge.highlight_rect.emit(json.dumps(payload))
-    except Exception:
-        pass
-
-
 # ---- block handlers each small ----
 
 async def _handle_baseline(ctx: JobCtx, block: Any):
@@ -480,13 +413,17 @@ async def _handle_prompt(ctx: JobCtx, block: Any):
 
 
 async def _handle_submit(ctx: JobCtx, block: Any):
-    """Handle submit (settle React, then visual-first submit)."""
+    """Settle React, confirm image + prompt in the composer, click, confirm the send."""
     await asyncio.sleep(0.8)  # let React enable the button after prompt insert
+    if await confirm_composer(ctx):  # our JOB-ID message is already in the chat: never click twice
+        _emit_action(ctx, block, "success", "Already sent (JOB-ID message visible)")
+        return
     ok, reason = await submit_job(ctx, block)
     if not ok:
         raise RuntimeError(reason)
     _emit_action(ctx, block, "success", reason)
     await check_security(ctx)  # F4: captcha often pops at submit time
+    await confirm_sent(ctx)
 
 
 async def _handle_wait(ctx: JobCtx, block: Any):
@@ -522,56 +459,6 @@ async def _handle_download(ctx: JobCtx, block: Any):
     ctx.file_bytes = f
     ctx.ctype = c
     _emit_action(ctx, block, "success", f"Downloaded {len(f)}")
-
-
-def _pil_format(data: bytes) -> Optional[str]:
-    """Lowercase PIL format when bytes decode to a sized image."""
-    try:
-        from PIL import Image
-        import io
-        im = Image.open(io.BytesIO(data))
-        if im.width and im.height:
-            return (im.format or "PNG").lower()
-    except Exception:
-        return None
-    return None
-
-
-def _src_suffix(src: str) -> str:
-    """Extension hint from the source URL (last resort: .png)."""
-    for suffix in (".png", ".jpg", ".jpeg", ".webp"):
-        if suffix in (src or ""):
-            return ".jpg" if suffix == ".jpeg" else suffix
-    return ".png"
-
-
-def _infer_ext(ctx: JobCtx) -> str:
-    """Image ext from bytes (PIL) or src suffix; raises when too small."""
-    fmt = _pil_format(ctx.file_bytes or b"")
-    if fmt:
-        return f".{fmt}"
-    if len(ctx.file_bytes or b"") < 100:
-        raise RuntimeError("Validation failed: unreadable image")
-    return _src_suffix(ctx.new_src or "")
-
-
-async def _handle_validate(ctx: JobCtx, block: Any):
-    """Handle validate (sets ctx.ext for SAVE)."""
-    if not ctx.file_bytes:
-        raise RuntimeError("No bytes")
-    ctx.ext = _infer_ext(ctx)
-    _emit_action(ctx, block, "success", f"Valid {ctx.ext} {len(ctx.file_bytes)} bytes")
-
-
-async def _handle_save(ctx: JobCtx, block: Any):
-    """Handle save."""
-    if not ctx.file_bytes:
-        raise RuntimeError("No bytes to save")
-    out = await save_image(ctx, ctx.file_bytes)
-    if not out:
-        raise RuntimeError("Save failed")
-    ctx.img.output_path = str(out)
-    _emit_action(ctx, block, "success", f"Saved {out.name}")
 
 
 async def _handle_advance(ctx: JobCtx, block: Any):
@@ -828,15 +715,20 @@ async def _run_one_checked(ctx: JobCtx, block: Any) -> tuple[bool, str, bool]:
         pass
     try:
         await _handle_one_block(ctx, block)
+        track_block(ctx, getattr(block, "block_id", ""), None)
         return False, "", False
     except Exception as e:
-        err = str(e)
-        try:
-            _emit_action(ctx, block, "failed", err)
-        except Exception:
-            pass
-        should_break = bool(getattr(block, "required", False))
-        return True, err, should_break
+        return _block_failed(ctx, block, str(e))
+
+
+def _block_failed(ctx: JobCtx, block: Any, err: str) -> tuple[bool, str, bool]:
+    """Mark the step failed (tracker + red block); a required block breaks the stack."""
+    track_block(ctx, getattr(block, "block_id", ""), err)
+    try:
+        _emit_action(ctx, block, "failed", err)
+    except Exception:
+        pass
+    return True, err, bool(getattr(block, "required", False))
 
 
 def _output_secured(ctx: JobCtx) -> bool:
@@ -954,10 +846,20 @@ def _emit_captcha_job_lines(ctx: JobCtx, failed: bool, error: str) -> None:
             pass
 
 
+async def _clean_start_then_blocks(ctx: JobCtx, blocks: List[Any]) -> tuple[bool, str]:
+    """A dirty composer at job start fails the job before anything is sent (design D-3)."""
+    dirty = await confirm_clean_start(ctx)
+    if dirty:
+        return True, dirty
+    return await _loop_blocks(ctx, blocks)
+
+
 async def run_blocks_for_image(ctx: JobCtx) -> tuple[bool, str, Optional[str], Optional[bytes]]:
     blocks = _get_blocks(ctx)
     _init_old_srcs(ctx)
     _reset_captcha_reports(ctx)
-    failed, error = await _loop_blocks(ctx, blocks)
+    start_steps(ctx)
+    failed, error = await _clean_start_then_blocks(ctx, blocks)
     _emit_captcha_job_lines(ctx, failed, error)
+    finish_steps(ctx, failed, error, _is_cancelled(ctx))
     return failed, error, ctx.new_src, ctx.file_bytes

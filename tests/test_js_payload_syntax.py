@@ -113,6 +113,7 @@ _JOB_BODIES = {
     "ack_js": lambda js: js.ack_js("c1", 50),
     "observe_js": lambda js: js.observe_js("c1", _JOB_BASELINE, 50, True),
     "clean_js": lambda js: js.clean_js(50),
+    "composer_state_js": lambda js: js.composer_state_js("c1", "[JOB-ID: c1]\nčervená `${x}` \"q\""),
     "security_js": lambda js: js.security_js(True),
     "upload_item_js": lambda js: js.upload_item_js(),
 }

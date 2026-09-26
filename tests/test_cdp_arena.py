@@ -7,7 +7,9 @@ real output_wait module (fast timeouts).
 """
 
 import asyncio
+import base64
 import json
+import re
 import time
 
 import pytest
@@ -50,6 +52,7 @@ class ArenaResponder:
             "dom_doc": {"root": {"nodeId": 5}},
         }
         self.evals = []
+        self.b64, self.freed, self.slices = "", False, 0
 
     def __call__(self, method, params, server):
         if method != "Runtime.evaluate":
@@ -65,8 +68,8 @@ class ArenaResponder:
             return _val(s["check"]), None
         if "output_srcs" in expr:
             return _val(s["baseline"]), None
-        if "tryFetch" in expr:
-            return _val(s["download"]), None
+        if "__arenaDl" in expr:
+            return _val(self._slot(expr)), None
         if "no-scrollbar" in expr:
             return _val(s["page_ready"]), None
         if "Security Verification" in expr:
@@ -90,6 +93,22 @@ class ArenaResponder:
         if "window.location.reload" in expr:
             return _val(True), None
         return _val({"ok": True}), None
+
+    def _slot(self, expr):
+        """The sliced page download: fetch-to-slot meta, slices, free (2026-09-26)."""
+        if "viaCanvas" in expr:
+            data = self.state["download"]
+            if data is None:
+                return {"ok": False, "error": "fetch: TypeError: Failed to fetch"}
+            self.b64 = base64.b64encode(data).decode()
+            return {"ok": True, "size": len(data), "b64len": len(self.b64),
+                    "contentType": "image/png", "method": "fetch"}
+        if "delete window.__arenaDl" in expr:
+            self.freed = True
+            return True
+        start, count = (int(x) for x in re.findall(r", (\d+), (\d+)\)$", expr)[0])
+        self.slices += 1
+        return self.b64[start:start + count]
 
     def _cdp_command(self, method, params):
         if method == "DOM.getDocument":
@@ -324,13 +343,18 @@ async def test_settle_inside_the_wait_is_charged_to_the_pause_clock(arena):
 
 # ── download ──
 
-async def test_download_image_js_success(arena):
+async def test_download_blob_src_is_pulled_in_slices_and_the_slot_freed(arena, monkeypatch):
+    """2026-09-26: a blob: src cannot be fetched from Python — the page copies it
+    into a window slot and Python reads it in slices (never one giant reply)."""
+    from app.browser.cdp_arena import download
+    monkeypatch.setattr(download, "CHUNK_CHARS", 64)
     ctrl = await _connected(arena)
     resp = arena[2]
-    resp.state["download"] = {"ok": True, "bytes": [137, 80, 78, 71] * 50,
-                              "contentType": "image/png"}
+    resp.state["download"] = b"\x89PNG" + bytes(range(256)) * 2
     ok, data, ctype = await ctrl.download_image("blob:arena/img.png")
-    assert ok is True and len(data) == 200 and ctype == "image/png"
+    assert ok is True and data == resp.state["download"] and ctype == "image/png"
+    assert resp.slices == -(-len(resp.b64) // 64) and resp.slices > 5
+    assert resp.freed is True
 
 
 class _FakeHttpResp:
@@ -342,8 +366,7 @@ class _FakeHttpResp:
 
     @property
     def headers(self):
-        return {"Content-Type": self._ctype,
-                "get": lambda k, d="": self._ctype if k == "Content-Type" else d}
+        return {"Content-Type": self._ctype}
 
     def __enter__(self):
         return self
@@ -352,62 +375,53 @@ class _FakeHttpResp:
         return False
 
 
-async def test_download_image_python_fallback_paths(arena, monkeypatch):
+async def test_download_https_src_is_fetched_by_python_first(arena, monkeypatch):
     import urllib.request
     ctrl = await _connected(arena)
     resp = arena[2]
-    logs = []
-    ctrl.set_log_callback(logs.append)  # stage details land in the log
-    resp.state["download"] = {"ok": False, "error": "cors denied", "method": "fetch"}
-
     good = b"\x89PNG" + b"x" * 300
-    monkeypatch.setattr(urllib.request, "urlopen",
-                        lambda req, timeout=None, context=None: _FakeHttpResp(good))
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: _FakeHttpResp(good))
     ok, data, ctype = await ctrl.download_image("https://arena.ai/out/1.png")
     assert ok is True and data == good and ctype == "image/png"
-
-    html_body = b"<!DOCTYPE html><html><head><meta charset='utf-8'><title>login</title></head><body>sign in first please</body></html>"
-    assert len(html_body) > 100  # size check runs before the HTML sniff
-    monkeypatch.setattr(urllib.request, "urlopen",
-                        lambda req, timeout=None, context=None: _FakeHttpResp(html_body))
-    ok, _, err = await ctrl.download_image("https://arena.ai/out/2.png")
-    # wire message is the collapse; the HTML sniff detail goes to the log
-    assert ok is False and "All methods failed" in err
-    assert any("HTML page" in m for m in logs)
-
-    monkeypatch.setattr(urllib.request, "urlopen",
-                        lambda req, timeout=None, context=None: _FakeHttpResp(b"small"))
-    ok, _, err = await ctrl.download_image("https://arena.ai/out/3.png")
-    assert ok is False and any("Too small" in m for m in logs)
-
-    def boom(req, timeout=None, context=None):
-        raise OSError("network down")
-    monkeypatch.setattr(urllib.request, "urlopen", boom)
-    ok, _, err = await ctrl.download_image("https://arena.ai/out/4.png")
-    assert ok is False and "All methods failed" in err
-    assert any("Python download failed" in m for m in logs)
+    assert not any("__arenaDl" in e for e in resp.evals)  # no DevTools traffic at all
 
 
-async def test_download_reports_why_the_page_answered_nothing(arena, cdp_server, monkeypatch):
-    """B8: a protocol error during the in-page attempt is named in the log,
-    and the Python fallback still delivers the bytes."""
+@pytest.mark.parametrize("body,needle", [
+    (b"<!DOCTYPE html><html><head><title>login</title></head><body>sign in first please</body></html>", "HTML page"),
+    (b"small", "only 5 bytes"),
+])
+async def test_download_python_refusal_falls_back_to_the_page(arena, monkeypatch, body, needle):
     import urllib.request
     ctrl = await _connected(arena)
     resp = arena[2]
     logs = []
     ctrl.set_log_callback(logs.append)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: _FakeHttpResp(body))
+    resp.state["download"] = b"\x89PNG" + b"y" * 300
+    ok, data, _ctype = await ctrl.download_image("https://arena.ai/out/2.png")
+    assert ok is True and data == resp.state["download"] and resp.freed
+    assert any(needle in m and "trying the page" in m for m in logs)
+
+
+async def test_download_names_every_method_when_all_fail(arena, cdp_server, monkeypatch):
+    """B8 kept: the page's empty answer is named — now next to Python's reason."""
+    import urllib.request
+    ctrl = await _connected(arena)
+    resp = arena[2]
 
     def gone_mid_download(method, params, server):
-        if method == "Runtime.evaluate" and "tryFetch" in params.get("expression", ""):
+        if method == "Runtime.evaluate" and "__arenaDl" in params.get("expression", ""):
             return None, {"code": -32000, "message": "Execution context was destroyed."}
         return resp(method, params, server)
     cdp_server.responder = gone_mid_download
-    good = b"\x89PNG" + b"x" * 300
-    monkeypatch.setattr(urllib.request, "urlopen",
-                        lambda req, timeout=None, context=None: _FakeHttpResp(good))
-    ok, data, _ctype = await ctrl.download_image("https://arena.ai/out/9.png")
-    assert ok is True and data == good
-    assert any("No result (Execution context was destroyed.) trying Python" in m for m in logs)
+
+    def boom(req, timeout=None):
+        raise OSError("network down")
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    ok, _, err = await ctrl.download_image("https://arena.ai/out/9.png")
+    assert ok is False and err.startswith("All methods failed for https://arena.ai/out/9.png")
+    assert "Python download failed: download failed: network down" in err
+    assert "No result (Execution context was destroyed.)" in err
 
 
 # ── highlight / overlay / reload ──

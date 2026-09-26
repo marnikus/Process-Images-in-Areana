@@ -162,7 +162,8 @@ async def test_two_optional_failures_are_both_listed_in_the_warning(tmp_path, mo
 async def test_save_failure_after_download_still_fails_the_job(tmp_path, monkeypatch):
     async def _no_save(ctx, data):
         return None
-    monkeypatch.setattr(sjr, "save_image", _no_save)
+    from app.services.job_flow import output as job_output  # SAVE lives here since 2026-09-26
+    monkeypatch.setattr(job_output, "save_image", _no_save)
     stack = [make_block(b) for b in CORE + TAIL]
     bridge, img, failed, err, _data = await _run(tmp_path, monkeypatch, stack)
     assert failed is True and err == "Save failed"

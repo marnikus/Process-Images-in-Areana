@@ -20,6 +20,14 @@ Public API
 evaluate_failure(cdp)             human reason for the last empty evaluate
 is_transient_loss(cdp)            True when waiting/reconnecting can help
 recover_page_context(cdp, report) wait (and reconnect) until the document answers
+reconnect_same_tab(cdp, report)   re-attach a closed socket to the remembered tab
+heal_link(cdp, report)            socket closed → recover, else raise `LinkLost`
+
+`heal_link` exists because a closed socket never comes back by itself: the
+field case of 2026-09-26 (a 20 MB image pulled through one evaluate reply
+closed the socket with 1009 "message too big") left every later probe of the
+job — and every later job — answering "CDP not connected"
+(docs/archive/2026-09-26-chrome-job-save-and-confirmations/design.md D-2).
 """
 
 from __future__ import annotations
@@ -27,6 +35,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
+
+from ..utils.page_errors import LinkLost  # noqa: F401 — raised here; lives beside PageErrorAbort
 
 log = logging.getLogger("arena")
 
@@ -72,21 +82,44 @@ def is_transient_loss(cdp) -> bool:
     return False
 
 
-async def _reconnect_if_closed(cdp, report: Reporter) -> None:
-    """Socket closed under us: re-attach to the SAME tab (never re-pick tabs)."""
+def link_closed(cdp) -> bool:
+    """True when the client reports a closed socket (fakes without the contract: never)."""
+    return getattr(cdp, "is_connected", True) is False
+
+
+def _reconnect_target(cdp):
+    """(ws url, connect) of a client that can re-attach to its tab, else None."""
     url = str(getattr(cdp, "_current_ws_url", "") or "")
-    if getattr(cdp, "is_connected", True) or not url:
-        return
     connect: Optional[Callable[[str], Awaitable[bool]]] = getattr(cdp, "connect", None)
-    if connect is None:
-        return
-    report(f"🔌 CDP socket closed — reconnecting to the same tab {url[-24:]}", "warn")
+    return (url, connect) if url and connect is not None else None
+
+
+async def _connect_quietly(connect, url: str) -> bool:
     try:
-        ok = await connect(url)
+        return bool(await connect(url))
     except Exception as exc:  # connect() reports its own details
-        ok = False
         log.warning("page_recovery reconnect raised: %s", exc)
-    report("🔌 reconnected" if ok else "🔌 reconnect failed", "info" if ok else "warn")
+        return False
+
+
+async def reconnect_same_tab(cdp, report: Optional[Reporter] = None) -> bool:
+    """Socket closed under us: re-attach to the SAME tab (never re-pick tabs); True = connected."""
+    if cdp is None:
+        return False
+    if not link_closed(cdp):
+        return True
+    target = _reconnect_target(cdp)
+    if target is None:
+        return False
+    say = report or _noop
+    say(f"🔌 CDP socket closed — reconnecting to the same tab {target[0][-24:]}", "warn")
+    ok = await _connect_quietly(target[1], target[0])
+    say("🔌 reconnected" if ok else "🔌 reconnect failed", "info" if ok else "warn")
+    return ok
+
+
+async def _reconnect_if_closed(cdp, report: Reporter) -> None:
+    await reconnect_same_tab(cdp, report)
 
 
 async def _document_answers(cdp) -> bool:
@@ -119,3 +152,13 @@ async def recover_page_context(cdp, report: Optional[Reporter] = None,
             return True
     say(f"❌ page context did not come back after {attempts} attempts ({reason})", "error")
     return False
+
+
+async def heal_link(cdp, report: Optional[Reporter] = None) -> None:
+    """A closed socket is re-attached to the same tab before the next probe, or `LinkLost`."""
+    if not link_closed(cdp):
+        return
+    if await recover_page_context(cdp, report):
+        return
+    reason = evaluate_failure(cdp)[:90] or "socket closed"
+    raise LinkLost(f"CDP connection lost — reconnect to the same tab failed ({reason})")

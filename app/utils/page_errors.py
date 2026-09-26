@@ -74,6 +74,10 @@ class PageErrorAbort(Exception):
     """Raised by the output poll to abort the wait on a page error."""
 
 
+class LinkLost(ConnectionError):
+    """The DevTools socket is closed and re-attaching to the same tab failed (2026-09-26)."""
+
+
 def _fresh_lines(corpus: str, baseline: str) -> list:
     """Corpus lines not already present at wait start (stale-safe)."""
     if not corpus or not isinstance(corpus, str):

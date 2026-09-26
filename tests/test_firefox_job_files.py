@@ -17,6 +17,7 @@ import pytest
 from app.core.enums import JobStatus
 from app.core.naming import OutputSpec
 from app.services import firefox_job_output as out
+from app.services.job_flow import image_output  # save_beside moved here (2026-09-26); `out` re-exports it
 from app.services import firefox_job_upload as up
 from app.services.firefox_job_journal import JobJournal, is_post_submit, journal_of
 from tests.firefox_job_harness import image_bytes, source_image
@@ -219,7 +220,7 @@ def test_save_beside_names_by_the_ai_rule_and_never_overwrites(tmp_path):
 
 def test_save_beside_retries_a_sharing_violation(tmp_path, monkeypatch):
     src = source_image(tmp_path)
-    calls, real = [], out.atomic_write_bytes
+    calls, real = [], image_output.atomic_write_bytes
 
     def flaky(folder, target, data):
         calls.append(target)
@@ -227,7 +228,7 @@ def test_save_beside_retries_a_sharing_violation(tmp_path, monkeypatch):
             raise PermissionError("in use")
         return real(folder, target, data)
 
-    monkeypatch.setattr(out, "atomic_write_bytes", flaky)
+    monkeypatch.setattr(image_output, "atomic_write_bytes", flaky)
     slept = []
     assert out.save_beside(src, GOOD, spec(), sleep=slept.append).name == "photo_AI.png"
     assert slept == [0.5]
@@ -237,7 +238,7 @@ def test_save_beside_names_a_permanent_failure(tmp_path, monkeypatch):
     def full(folder, target, data):
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr(out, "atomic_write_bytes", full)
+    monkeypatch.setattr(image_output, "atomic_write_bytes", full)
     with pytest.raises(out.OutputError, match="No space left"):
         out.save_beside(source_image(tmp_path), GOOD, spec(), sleep=lambda s: None)
 
@@ -246,7 +247,7 @@ def test_save_beside_gives_up_after_the_last_transient_try(tmp_path, monkeypatch
     def denied(folder, target, data):
         raise PermissionError("access denied")
 
-    monkeypatch.setattr(out, "atomic_write_bytes", denied)
+    monkeypatch.setattr(image_output, "atomic_write_bytes", denied)
     with pytest.raises(out.OutputError, match="access denied"):
         out.save_beside(source_image(tmp_path), GOOD, spec(), sleep=lambda s: None)
 
@@ -262,10 +263,10 @@ def test_find_saved_matches_the_family_by_hash_only(tmp_path):
 
 
 def test_transient_classification():
-    assert out._transient(PermissionError("x"))
+    assert image_output._transient(PermissionError("x"))
     err = OSError("x")
     err.winerror = 32
-    assert out._transient(err) and not out._transient(OSError(28, "full"))
+    assert image_output._transient(err) and not image_output._transient(OSError(28, "full"))
     assert os.sep  # platform-neutral module
 
 

@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, Tuple, Callable, List
 from ..output_probes import build_check_js
 from ..output_state import flatten_diagnostics
 from ..output_wait import WaitSpec as PollSpec, wait_for_new_output_with_spec
+from ..page_recovery import heal_link
 from ...utils.page_errors import PageErrorAbort, match_dead_generation, match_page_error
 from .state import capture_baseline, scan_page_errors
 
@@ -173,6 +174,7 @@ async def _prepare_wait(cdp, spec: WaitSpec) -> PollContext:
 async def _run_wait(cdp, spec: WaitSpec, ctx: PollContext) -> Tuple[str, Dict[str, Any]]:
     """Poll until the wait's own gates settle (done/abort mapping included)."""
     async def check_fn():
+        await heal_link(cdp, lambda m, _l="info": _log(m))  # closed socket: same tab, else LinkLost ends the wait
         await _security_gate(cdp, spec.ctrl)
         diag = await _poll_diag_or_revive(spec.ctrl, ctx, cdp)
         return await _run_resume_gate(spec.ctrl, diag)

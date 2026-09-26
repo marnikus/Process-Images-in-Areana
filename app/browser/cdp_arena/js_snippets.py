@@ -127,54 +127,58 @@ JS_VERIFY_ATTACHMENT = _inject("""
 })
 """, ATTACHMENT_PREVIEW_SELECTORS=json.dumps(attachment_preview_selectors()))
 
-JS_DOWNLOAD_IMAGE = """
-async (src) => {
-  const tryFetch=async(url)=>{
-    try{
-      const res=await fetch(url,{credentials:'include',mode:'cors'});
-      if(!res.ok) return {ok:false,status:res.status,method:'fetch'};
-      const buf=await res.arrayBuffer();
-      const first=new Uint8Array(buf.slice(0,100));
-      const text=new TextDecoder().decode(first).toLowerCase();
-      if(text.includes('<html')||text.includes('<!doctype')) return {ok:false,error:'HTML',method:'fetch'};
-      return {ok:true,bytes:Array.from(new Uint8Array(buf)),contentType:res.headers.get('content-type')||'',method:'fetch'};
-    }catch(e){return {ok:false,error:e.toString(),method:'fetch'};}
+# Page-side download in slices (2026-09-26, design D-1): the image is fetched
+# ONCE into `window.__arenaDl[key]` as base64 and only its size comes back; the
+# Python side pulls `JS_READ_SLOT` slices and frees the slot. The old snippet
+# returned the whole image as a JSON number array in one reply (~4 bytes per
+# image byte) — a 20 MB PNG closed the socket with 1009 "message too big".
+# Fetch order: no credentials (presigned R2 src), with credentials (same-origin /
+# blob:), then the page's own <img> via canvas (PNG re-encode, last resort).
+JS_FETCH_TO_SLOT = """
+async (src, key) => {
+  const store = (window.__arenaDl = window.__arenaDl || {});
+  const toB64 = (blob) => new Promise((ok, no) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(',')[1] || '');
+    r.onerror = () => no(r.error || new Error('read failed'));
+    r.readAsDataURL(blob);
+  });
+  const viaFetch = async (credentials) => {
+    const res = await fetch(src, {credentials});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.blob();
   };
-  const tryCanvas=async(url)=>{
-    try{
-      let imgEl=null;
-      const all=document.querySelectorAll('img');
-      for(const im of all){if(im.src===url){imgEl=im;break;}}
-      if(!imgEl) imgEl=document.querySelector(`img[src="${url}"]`);
-      if(!imgEl) return {ok:false,error:'img not found',method:'canvas'};
-      if(!imgEl.complete||imgEl.naturalWidth===0){
-        await new Promise((res,rej)=>{
-          const to=setTimeout(()=>rej('timeout'),5000);
-          imgEl.onload=()=>{clearTimeout(to);res();};
-          imgEl.onerror=()=>{clearTimeout(to);rej('load error');};
-          if(imgEl.complete){clearTimeout(to);res();}
-        });
-      }
-      const canvas=document.createElement('canvas');
-      canvas.width=imgEl.naturalWidth||imgEl.width;
-      canvas.height=imgEl.naturalHeight||imgEl.height;
-      if(canvas.width===0) return {ok:false,error:'zero dim',method:'canvas'};
-      const ctx=canvas.getContext('2d');
-      ctx.drawImage(imgEl,0,0);
-      const dataUrl=canvas.toDataURL('image/png');
-      const base64=dataUrl.split(',')[1];
-      const binary=atob(base64);
-      const bytes=new Uint8Array(binary.length);
-      for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-      return {ok:true,bytes:Array.from(bytes),contentType:'image/png',method:'canvas'};
-    }catch(e){return {ok:false,error:e.toString(),method:'canvas'};}
+  const viaCanvas = async () => {
+    const img = Array.from(document.images).find((im) => im.src === src);
+    if (!img || !img.naturalWidth) throw new Error('img not on page');
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    c.getContext('2d').drawImage(img, 0, 0);
+    return new Promise((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error('canvas empty'))), 'image/png'));
   };
-  let r=await tryFetch(src);
-  if(r.ok) return r;
-  let c=await tryCanvas(src);
-  if(c.ok) return c;
-  return {ok:false,error:`Fetch ${JSON.stringify(r)} Canvas ${JSON.stringify(c)}`,src};
+  const tries = [['fetch', () => viaFetch('omit')], ['fetch+cookies', () => viaFetch('include')], ['canvas', viaCanvas]];
+  const errors = [];
+  for (const [method, run] of tries) {
+    try {
+      const blob = await run();
+      const b64 = await toB64(blob);
+      store[key] = b64;
+      return {ok: true, size: blob.size, b64len: b64.length, contentType: blob.type || '', method};
+    } catch (e) { errors.push(method + ': ' + String(e && e.message || e)); }
+  }
+  return {ok: false, error: errors.join('; ')};
 }
+"""
+
+JS_READ_SLOT = """
+((key, start, count) => {
+  const s = (window.__arenaDl || {})[key];
+  return typeof s === 'string' ? s.slice(start, start + count) : null;
+})
+"""
+
+JS_FREE_SLOT = """
+((key) => { if (window.__arenaDl) delete window.__arenaDl[key]; return true; })
 """
 
 _SECURITY_DIALOG = security_dialog_check()

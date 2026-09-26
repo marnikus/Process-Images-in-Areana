@@ -1,5 +1,8 @@
 """Page-side JS for the Firefox image job — one expression per phase (2026-09-25).
 
+The Chrome lane reuses `composer_state_js` for its step confirmations over CDP
+(docs/archive/2026-09-26-chrome-job-save-and-confirmations/design.md D-3).
+
 Every body here is a plain JS *expression* (an async IIFE) that the phase
 macro evaluates inside the pooled tab through the base64 loader in
 `job_macros` (so Ui.Vision's `${…}` interpolation never touches it). The
@@ -188,6 +191,23 @@ def observe_js(corr: str, baseline: dict, window_ms: int, in_scope: bool) -> str
     errors: __try(() => ({expr(build_error_scan_js())}), ''),
     bubble: __bubble({json.dumps(marker(corr))}), previews: __previews(),
     composer_sha: await __sha(composer === null ? '' : composer)}};""")
+
+
+def composer_state_js(corr: str, prompt: str) -> str:
+    """Chrome step confirmations (2026-09-26): composer, previews, sent proof, page errors.
+
+    One read, no waiting — the Chrome lane polls it from Python over CDP
+    (`services/job_flow/confirm`), so the same prelude proves the same facts in both lanes.
+    """
+    return _body(f"""
+  const expected = {json.dumps(prompt, ensure_ascii=False)};
+  const composer = __composer();
+  const send = __try(() => ({expr(JS_SEND_STATE)})(), {{enabled: false}});
+  return {{composer_len: composer === null ? -1 : composer.length, prompt_ok: composer === expected,
+    marker_in_composer: composer !== null && composer.indexOf({json.dumps(marker(corr))}) >= 0,
+    previews: __previews(), bubble: __bubble({json.dumps(marker(corr))}), send_enabled: !!send.enabled,
+    generating: __try(() => ({expr(JS_IS_GENERATING)}).isGenerating, false),
+    errors: __try(() => ({expr(build_error_scan_js())}), '')}};""")
 
 
 def clean_js(budget_ms: int) -> str:
