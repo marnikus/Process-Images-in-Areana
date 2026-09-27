@@ -222,7 +222,10 @@ def test_failed_apply_with_failed_rollback_is_damaged_and_loud(bridge, snapshot,
     reply = restore_workspace(bridge, str(snapshot))
     damaged = [r for r in reply["skipped"] if r.get("status") == "damaged"]
     assert damaged and "recovery" in damaged[0]["cause"]
-    assert reply["result"] == "success_with_warnings"  # independents still restored
+    # audit #2 A3: live state of the damaged domain is unknown → the restore is `failed`,
+    # yet independents still restored (listed, not rolled back)
+    assert reply["result"] == "failed" and reply["ok"] is False
+    assert "undo" in reply["restored"]
 
 
 def test_strict_dependency_skip_chain(bridge, snapshot, monkeypatch):

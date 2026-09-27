@@ -103,8 +103,12 @@ def _policy_row(provider, entry: dict) -> dict:
 
 
 def _rollback(bridge, provider, previous, exc: Exception) -> dict:
-    """Roll back to the pre-apply capture; an impossible rollback is `damaged`, loud."""
-    if previous.ok and previous.doc is not None and not previous.excluded:
+    """Roll back to the pre-apply capture; an impossible rollback is `damaged`, loud.
+
+    `rolled_back` says whether a rollback actually ran (no usable capture → False).
+    """
+    can_roll_back = bool(previous.ok and previous.doc is not None and not previous.excluded)
+    if can_roll_back:
         try:
             provider.apply(bridge, previous.doc)
         except Exception as rb_exc:
@@ -116,7 +120,7 @@ def _rollback(bridge, provider, previous, exc: Exception) -> dict:
     error = WorkspaceError(provider.domain_id, "apply",
                            f"{type(exc).__name__}: {exc}"[:400])
     return {"domain_id": provider.domain_id, "status": "skipped",
-            "rolled_back": True, **error.to_dict()}
+            "rolled_back": can_roll_back, **error.to_dict()}
 
 
 def _apply_domain(bridge, provider, doc) -> dict:

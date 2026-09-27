@@ -32,8 +32,12 @@ def save_report(*, timing: dict, domains: list, errors: list,
 
 
 def restore_result(restored: list, skipped: list) -> str:
-    """success | success_with_warnings | failed — one rule, no silent outcomes."""
-    if not restored and skipped:
+    """success | success_with_warnings | failed — one rule, no silent outcomes.
+
+    A `damaged` domain (apply and rollback both failed) leaves live state unknown,
+    so the whole restore is `failed` even when other domains restored.
+    """
+    if (not restored and skipped) or any(r.get("status") == "damaged" for r in skipped):
         return RESTORE_FAILED
     return RESTORE_WARNINGS if skipped else RESTORE_OK
 

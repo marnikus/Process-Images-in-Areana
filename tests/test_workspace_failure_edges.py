@@ -94,3 +94,38 @@ def test_unreadable_snapshot_file_is_a_row_not_a_crash(bridge, snapshot, monkeyp
     reply = restore_workspace(bridge, snapshot)
     assert reply["result"] == "failed"
     assert {r["stage"] for r in reply["skipped"] if not r.get("policy")} == {"parse"}
+
+
+# ---- step 5 (A2, A3): the report never claims more than happened ------------
+
+def test_rolled_back_only_when_a_rollback_ran(bridge, snapshot, monkeypatch):
+    """P2: no usable pre-apply capture → no rollback → rolled_back is False."""
+    from app.services.workspace.provider import CaptureResult
+    provider = type(get("undo"))
+    monkeypatch.setattr(provider, "capture", lambda self, b: CaptureResult(ok=False))
+    monkeypatch.setattr(provider, "apply", _raise(RuntimeError("disk")))
+    row = _row(restore_workspace(bridge, snapshot, selected=["undo"]), "undo")
+    assert row["stage"] == "apply" and row["rolled_back"] is False
+
+
+def test_rolled_back_true_when_the_rollback_succeeded(bridge, snapshot, monkeypatch):
+    provider = type(get("undo"))
+    real_apply, calls = provider.apply, []
+
+    def apply_once_fails(self, b, doc):
+        calls.append(doc)
+        if len(calls) == 1:
+            raise RuntimeError("disk")
+        return real_apply(self, b, doc)
+    monkeypatch.setattr(provider, "apply", apply_once_fails)
+    row = _row(restore_workspace(bridge, snapshot, selected=["undo"]), "undo")
+    assert row["rolled_back"] is True and len(calls) == 2
+
+
+def test_damaged_domain_fails_the_restore(bridge, snapshot, monkeypatch):
+    """P3: apply AND rollback failed → live state unknown → result failed, not warnings."""
+    monkeypatch.setattr(type(get("undo")), "apply", _raise(RuntimeError("disk")))
+    reply = restore_workspace(bridge, snapshot)
+    assert _row(reply, "undo")["status"] == "damaged"
+    assert reply["result"] == "failed" and reply["ok"] is False
+    assert "session_settings" in reply["restored"]
