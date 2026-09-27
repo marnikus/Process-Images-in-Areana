@@ -35,6 +35,27 @@ class LoopState:
     start: float = 0.0
 
 
+# Answers the spinner / mismatch handlers already put into words.
+_ALREADY_TOLD = frozenset({"generating_spinner_visible", "generating_no_new_yet",
+                           "no_exact_below_found_wait_next", "job_id_mismatch_no_matching_image"})
+
+
+def note_reason(diag: dict, log_cb: Callable) -> None:
+    """Put a probe answer into words — '🔍 Output check: not_complete (…/full.png)'."""
+    reason = str(diag.get("reason") or "")
+    if not reason or reason in _ALREADY_TOLD:
+        return
+    src = str(diag.get("src") or "")
+    log_cb(f"🔍 Output check: {reason}" + (f" ({src[-60:]})" if src else ""))
+
+
+def _remember(state: LoopState, diag: dict, log_cb: Callable) -> None:
+    """Keep the answer; a CHANGED answer is told once (I-70: a wait is never silent)."""
+    if diag.get("reason") != state.last.get("reason"):
+        note_reason(diag, log_cb)
+    state.last = diag
+
+
 def should_continue_after_spinner(reason: str) -> bool:
     return reason in ("generating_spinner_visible", "generating_no_new_yet", "job_id_mismatch_no_matching_image")
 
@@ -202,7 +223,7 @@ async def wait_for_new_output_with_spec(check_fn, log_cb, cancel_check, spec: Wa
         if diag is None:
             state.last = err
             continue
-        state.last = diag
+        _remember(state, diag, log_cb)
         if is_ready_result(diag):
             result, done = await _handle_ready_branch(diag, check_fn, log_cb, spec)
             if done:
