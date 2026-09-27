@@ -196,4 +196,4 @@ python tools/verify_quality.py --changed --allow-legacy --json > quality.json
 
 ---
 
-*Last updated: 2026-09-27b — stale `max_cog 0` baseline entries: verify at the pre-change commit before correcting; JS `max_cc` counts `||` — keep guards in the caller. Previously 2026-09-19 — Round 0 R0.1–R0.6: metrics_report one command, JS gate acorn, baseline ratchet per-metric maxima, vulture/jscpd/coverage lanes, fast lane + JS lane + npm ci docs, mutation decision mutmut baseline.*
+*Last updated: 2026-09-27c — stale `max_cog 0` baseline entries (again `output_wait.py`, 14 at HEAD): verify at the pre-change commit before correcting; JS `max_cc` counts `||` — keep guards in the caller. Previously 2026-09-19 — Round 0 R0.1–R0.6: metrics_report one command, JS gate acorn, baseline ratchet per-metric maxima, vulture/jscpd/coverage lanes, fast lane + JS lane + npm ci docs, mutation decision mutmut baseline.*

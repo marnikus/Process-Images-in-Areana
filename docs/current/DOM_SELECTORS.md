@@ -545,6 +545,19 @@ All selectors will be centralized in `app/browser/site_adapter.py` as constants 
 - `bridge.py` verifies before both WAIT and DOWNLOAD, fails without atomic_write.
 - `pytest 45 passed`, `verify_quality --changed --allow-legacy` PASSED.
 
+## E5. Output Check — First Ready Image Wins + User Message Excluded (2026-09-27, I-70)
+
+**Owner report:** image finished on the page, overlay "wait for finish generation", log silent after Submit, then `Timeout after 120000ms`.
+**Cause:** the check returned on the FIRST pooled candidate that was not `complete` (`not_complete`) or broken (`naturalWidth 0`, `zero_width`) without looking at the next — one lazy / hidden / broken image masked the finished one, and both answers were silent and never reached the fallback.
+
+| Field | Value |
+|---|---|
+| **Rule** | the first candidate that is `complete`, `naturalWidth > 0` and visible wins; a waiting candidate is reported only when none is ready; a response-row spinner still holds a ready image |
+| **user_message** (site_adapter) | primary `div.group.flex-col.self-end`, fallback `div.justify-end > div.group.self-end`, scope `ol` — an image inside it (the uploaded reference `img.aspect-square.w-32.cursor-pointer`, which matches output selectors) is filtered `user_message`, never an output. The JOB-ID marker scan skips elements over 2000 chars, so a long prompt left the old container-based reference guard blind |
+| **Evidence** | saved page: `div.mx-auto.max-w-[800px].flex.w-full.justify-end > div.group.flex.max-w-[min(768px,100%)].flex-col.gap-1.self-end > … > img.aspect-square.w-32` inside `ol.flex-col-reverse` |
+| **Log** | every changed probe answer is logged once: `🔍 Output check: <reason> (<src tail>)` (`output_wait._remember`) |
+| **Tests** | `tests/js/test_output_ready_first.mjs` (real payload, saved-page structure), `tests/test_output_wait_talks.py` |
+
 ## L. New Chat Reset — Post-Generation Return to Clean Chat (2026-09-16)
 
 **Purpose:** After each job, return the tab to a clean new chat (spec 01).
