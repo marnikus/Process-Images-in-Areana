@@ -57,6 +57,10 @@ before(() => {
 /* jsdom has no layout: give it the two facts the probe's visibility check
    reads — an element hidden by [hidden] / display:none / .hidden (or inside
    one) has no offsetParent and an empty rect; everything else is 10×10. */
+// The real response header row (saved page): spinner beside the model label.
+const ROW = '<div class="flex min-w-0 flex-1 items-center gap-2"><div class="h-5 w-5 flex-shrink-0 animate-spin">'
+  + '<canvas></canvas></div><span><span class="truncate">Response A</span></span></div>';
+
 function run(html, which = 'default') {
   const dom = new JSDOM(`<body>${html}</body>`, { pretendToBeVisual: true });
   const w = dom.window;
@@ -110,7 +114,11 @@ describe('processing probe — idle pages answer false at once', () => {
 
   test('bare probe (no block selector, no text) still checks the site spinner only', () => {
     assert.equal(run('<div>Processing…</div>', 'bare').processing, false);
-    assert.equal(run('<div class="animate-spin"></div>', 'bare').processing, true);
+    assert.equal(run(ROW, 'bare').processing, true);
+  });
+
+  test('a spinner outside a response header row (sidebar chat still generating) is idle (I-69)', () => {
+    assert.equal(run('<nav><a><div class="ml-[1px] h-4 w-4 flex-none animate-spin"></div></a></nav>', 'bare').processing, false);
   });
 
   test('a long sentence that merely contains the word never counts', () => {
@@ -121,10 +129,10 @@ describe('processing probe — idle pages answer false at once', () => {
 
 describe('processing probe — busy pages answer true with the indicator', () => {
   test('visible site spinner (Response A/B row)', () => {
-    const r = run(`<div class="flex"><div class="h-5 w-5 animate-spin"><canvas></canvas></div><span>Response A</span></div>`);
+    const r = run(ROW);
     assert.equal(r.processing, true);
     assert.equal(r.indicators[0].kind, 'spinner');
-    assert.equal(r.indicators[0].sel, GEN.spinner);
+    assert.equal(r.indicators[0].sel, 'response-row spinner');
   });
 
   test('div:has-text("Processing") label — own text', () => {

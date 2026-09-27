@@ -12,11 +12,11 @@ Per RULE 21 selector priority, RULE 22 correlation token.
 
 import json
 
-from .probe_selectors import model_label_probe, output_image_selectors, spinner_selector
+from .probe_selectors import generating_spinners_js, model_label_probe, output_image_selectors
 
 # Single source is site_adapter via probe_selectors (RULE 21).
 SELECTORS_V3 = output_image_selectors()
-_SPINNER_SEL = json.dumps(spinner_selector())
+_GEN_SPINNERS = generating_spinners_js()  # only a response-row spinner is generating (I-69)
 _MODEL_LABEL = model_label_probe()
 
 JS_BASELINE_V3 = """
@@ -53,8 +53,7 @@ JS_BASELINE_V3 = """
     }
     let spinning = false;
     try {
-      const spinners = document.querySelectorAll(__SPINNER_SELECTOR__);
-      for (const s of spinners) { if (s.offsetParent !== null) { spinning = true; break; } }
+      spinning = (__GEN_SPINNERS__)().length > 0;
     } catch(e) {}
     return {
       output_count: outputs.length,
@@ -68,7 +67,7 @@ JS_BASELINE_V3 = """
     return {output_count:0, output_srcs:[], error:String(e), timestamp:Date.now(), spinning:false};
   }
 })
-""".replace("__SELECTORS__", json.dumps(SELECTORS_V3)).replace("__SPINNER_SELECTOR__", _SPINNER_SEL)
+""".replace("__SELECTORS__", json.dumps(SELECTORS_V3)).replace("__GEN_SPINNERS__", _GEN_SPINNERS)
 
 JS_CHECK_NEW_OUTPUT_V3 = """
 ((oldSrcs, correlationId, oldOutputs) => {
@@ -77,19 +76,11 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     let spinCount = 0;
     let spinDetails = [];
     try {
-      const spinners = document.querySelectorAll(__SPINNER_SELECTOR__);
-      for (const s of spinners) {
-        if (s.offsetParent !== null) {
-          spinning = true;
-          spinCount++;
-          let parent = s.closest(__MODEL_ROW_SCOPE__);
-          let label = '';
-          if (parent) {
-            const trunc = parent.querySelector(__MODEL_LABEL__);
-            if (trunc) label = trunc.textContent.trim();
-          }
-          spinDetails.push({label: label || 'unknown', visible: true});
-        }
+      for (const s of (__GEN_SPINNERS__)()) {
+        spinning = true;
+        spinCount++;
+        const trunc = s.closest(__MODEL_ROW_SCOPE__).querySelector(__MODEL_LABEL__);
+        spinDetails.push({label: (trunc && trunc.textContent.trim()) || 'unknown', visible: true});
       }
     } catch(e) {}
 
@@ -726,7 +717,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
     return {ready:false, reason:'no_new', spinning: false, spinCount: 0, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.map(j=>({id:j.jobId, top:j.top})), validBelow: validBelow.length, validAbove: validAbove.length, allNew: allNew.length, jobId: correlationId, expectedJobId: correlationId, mismatchDetails: mismatchDetails.slice(0,10), layoutReverse: layoutReverse, orderCheck: `No new images at all, oldSrcs ${oldSrcs.length} expected ${correlationId}`, debugAllImgs: debugAllImgs.slice(0,10), debugFiltered: debugFiltered.slice(0,10), oldSrcsSample: oldSrcs.slice(0,3).map(s=>s.slice(0,80))};
   } catch(e) { return {ready:false, reason:String(e), spinning: false}; }
 })
-""".replace("__SELECTORS__", json.dumps(SELECTORS_V3)).replace("__SPINNER_SELECTOR__", _SPINNER_SEL) \
+""".replace("__SELECTORS__", json.dumps(SELECTORS_V3)).replace("__GEN_SPINNERS__", _GEN_SPINNERS) \
     .replace("__MODEL_ROW_SCOPE__", json.dumps(_MODEL_LABEL["scope"])) \
     .replace("__MODEL_LABEL__", json.dumps(_MODEL_LABEL["label"]))
 

@@ -8,6 +8,7 @@ site_adapter only (same layer).
 
 from __future__ import annotations
 
+import json
 from typing import Dict, List
 
 from .site_adapter import get_readiness_requirements, get_selector
@@ -57,6 +58,17 @@ def output_image_selectors() -> List[str]:
 def spinner_selector() -> str:
     """Processing spinner selector for generating-state scans."""
     return get_selector("processing_spinner").primary
+
+
+# A visible `processing_spinner` counts only inside a response header row
+# (`model_label` scope — the selector's own evidence: spinner beside "Response A").
+# The sidebar puts the same `div.animate-spin` beside every chat still generating,
+# so any other spinner is never this page's job (I-66, I-69).
+def generating_spinners_js() -> str:
+    """JS `() => Element[]` — the ONE "this page is generating" rule (output, processing, Watcher)."""
+    sel, scope = json.dumps(spinner_selector()), json.dumps(model_label_probe()["scope"])
+    return (f"(() => Array.from(document.querySelectorAll({sel}))"
+            f".filter((s) => s.offsetParent !== null && !!s.closest({scope})))")
 
 
 def readiness_checks() -> List[Dict[str, str]]:

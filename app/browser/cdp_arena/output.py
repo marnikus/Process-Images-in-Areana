@@ -146,9 +146,24 @@ async def _map_wait_result(cdp, result, baseline, timeout_ms):
 
 
 def _timeout_text(result, timeout_ms) -> str:
-    """'Timeout after Nms' plus the pause evidence when a captcha wait was absorbed."""
+    """'Timeout after Nms — last check: <reason>' plus the captcha pause evidence (I-69, RULE 4)."""
     note = result.get("pause_note") or ""
-    return f"Timeout after {timeout_ms}ms" + (f" ({note})" if note else "")
+    return f"Timeout after {timeout_ms}ms{_last_check(result)}" + (f" ({note})" if note else "")
+
+
+def _last_check(result) -> str:
+    """What the probe answered last — the report's only clue why nothing was taken."""
+    last = result.get("last") or result   # a mismatch timeout IS its own last answer
+    reason = last.get("reason", "")
+    if reason in ("", "timeout"):
+        return ""
+    return f" — last check: {reason}{_spinner_note(last)}"
+
+
+def _spinner_note(diag) -> str:
+    """' (spinner: Max, Response B)' — which response rows were still spinning."""
+    labels = ", ".join(str(d.get("label", "")) for d in diag.get("spinDetails") or [])
+    return f" (spinner: {labels})" if labels else ""
 
 
 async def _build_poll_context(baseline: Dict[str, Any], correlation_id, err_base) -> PollContext:

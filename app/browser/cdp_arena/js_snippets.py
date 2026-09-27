@@ -9,12 +9,12 @@ import json
 
 from ..probe_selectors import (
     attachment_preview_selectors,
+    generating_spinners_js,
     model_label_probe,
     readiness_checks,
     security_dialog_check,
     send_click_selectors,
     send_presence_selector,
-    spinner_selector,
     textarea_primary,
     textarea_selectors,
 )
@@ -209,10 +209,8 @@ JS_IS_GENERATING = _inject("""
 ;(() => {
   let count=0; const details=[]; const jobs=[];
   try{
-    for(const s of document.querySelectorAll(__SPINNER_SELECTOR__)){
-      const row=s.offsetParent!==null ? s.closest(__MODEL_ROW_SCOPE__) : null;
-      if(!row) continue;
-      const label=row.querySelector(__MODEL_LABEL__);
+    for(const s of (__GEN_SPINNERS__)()){
+      const label=s.closest(__MODEL_ROW_SCOPE__).querySelector(__MODEL_LABEL__);
       count++; details.push({label:(label&&label.textContent.trim())||'generating'});
     }
   }catch(e){}
@@ -222,6 +220,6 @@ JS_IS_GENERATING = _inject("""
   }catch(e){}
   return {spinning:count>0,spinCount:count,details:details,isGenerating:count>0,jobs:jobs};
 })()
-""", SPINNER_SELECTOR=json.dumps(spinner_selector()),
+""", GEN_SPINNERS=generating_spinners_js(),
     MODEL_ROW_SCOPE=json.dumps(model_label_probe()["scope"]),
     MODEL_LABEL=json.dumps(model_label_probe()["label"]))

@@ -151,3 +151,23 @@ def test_owner_probe_reply_is_read_as_an_email():
     assert owner_probe.interpret_owner("")["email"] == ""
     assert owner_probe.interpret_owner("boom")["email"] == ""
     assert owner_probe.interpret_owner(None)["email"] == ""
+
+
+def test_generating_spinners_js_is_the_row_scoped_rule_from_site_adapter():
+    """I-69: one JS source for "generating" — the spinner selector AND the model-row scope."""
+    from app.browser.probe_selectors import generating_spinners_js, model_label_probe, spinner_selector
+    js = generating_spinners_js()
+    assert json.dumps(spinner_selector()) in js
+    assert f".closest({json.dumps(model_label_probe()['scope'])})" in js
+    assert "offsetParent !== null" in js
+
+
+def test_every_generating_probe_uses_the_one_rule():
+    """Output wait, AWAIT_PROCESSING_IMAGE and the Watcher embed the same helper (no 4th copy)."""
+    from app.browser.cdp_arena.js_snippets import JS_IS_GENERATING
+    from app.browser.output_probes import build_baseline_js, build_check_js
+    from app.browser.probe_selectors import generating_spinners_js
+    from app.browser.processing_probe import build_processing_probe
+    rule = generating_spinners_js()
+    for payload in (build_check_js([], "J", []), build_baseline_js(), build_processing_probe("", ""), JS_IS_GENERATING):
+        assert rule in payload

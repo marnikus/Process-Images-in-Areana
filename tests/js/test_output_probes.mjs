@@ -35,7 +35,9 @@ const MODEL_LABEL = 'span.truncate';
 function fill(template) {
   return template
     .replaceAll('__SELECTORS__', JSON.stringify(SELECTORS))
-    .replaceAll('__SPINNER_SELECTOR__', JSON.stringify(SPINNER))
+    // probe_selectors.generating_spinners_js(), on the stub document (I-69: row-scoped spinners only)
+    .replaceAll('__GEN_SPINNERS__', `(() => document.querySelectorAll(${JSON.stringify(SPINNER)})`
+      + `.filter((s) => s.offsetParent !== null && !!s.closest(${JSON.stringify(MODEL_ROW)})))`)
     .replaceAll('__MODEL_ROW_SCOPE__', JSON.stringify(MODEL_ROW))
     .replaceAll('__MODEL_LABEL__', JSON.stringify(MODEL_LABEL));
 }
@@ -168,15 +170,30 @@ describe('output probes v4 — Tier A (no browser)', () => {
     assert.equal(res.mismatchDetails[0].associated, 'JOB2');
   });
 
-  test('check SPINNER: visible spinner with no new image keeps waiting', () => {
+  const headerRow = el({ querySelector: (sel) => (sel === MODEL_LABEL ? el({ textContent: 'Response A' }) : null) });
+  const rowSpinner = () => el({ className: 'animate-spin', offsetParent: {},
+                                closest: (sel) => (sel === MODEL_ROW ? headerRow : null) });
+
+  test('check SPINNER: visible response-row spinner with no new image keeps waiting', () => {
+    const res = runCheck({
+      'div, span, p, pre': [jobTextEl('JOB123', 100)],
+      [SELECTORS[0]]: [],
+      [SPINNER]: [rowSpinner()],
+    }, [], 'JOB123');
+    assert.equal(res.ready, false);
+    assert.equal(res.reason, 'generating_no_new_yet');
+    assert.equal(res.spinning, true);
+    assert.deepEqual(JSON.parse(JSON.stringify(res.spinDetails)), [{ label: 'Response A', visible: true }]);
+  });
+
+  test('check SPINNER: a spinner outside any response row (sidebar chat) is not generating', () => {
     const res = runCheck({
       'div, span, p, pre': [jobTextEl('JOB123', 100)],
       [SELECTORS[0]]: [],
       [SPINNER]: [el({ className: 'animate-spin', offsetParent: {} })],
     }, [], 'JOB123');
-    assert.equal(res.ready, false);
-    assert.equal(res.reason, 'generating_no_new_yet');
-    assert.equal(res.spinning, true);
+    assert.equal(res.reason, 'no_new');
+    assert.equal(res.spinning, false);
   });
 
   test('check NO NEW: nothing appeared and not spinning', () => {

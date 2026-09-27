@@ -5,7 +5,9 @@ NOT the new-output wait (output_probes): an idle page must answer `false`
 at once, otherwise a wait placed before ATTACH_IMAGE burns its timeout.
 
 Any one visible indicator ⇒ processing:
-  * the site's processing spinner (site_adapter `processing_spinner`, RULE 21);
+  * the site's processing spinner inside a response header row — the one
+    rule `probe_selectors.generating_spinners_js` (I-69: a sidebar spinner is
+    another chat, never this page);
   * each comma-separated part of the block selector — a part written in the
     Playwright form `div:has-text("Processing")` (never valid CSS, so the
     block's default selector could never have been queried as-is) becomes
@@ -22,7 +24,7 @@ import json
 import re
 from typing import Any, Dict, List
 
-from .probe_selectors import spinner_selector
+from .probe_selectors import generating_spinners_js
 
 _HAS_TEXT_RE = re.compile(r""":has-text\((["'])(.*?)\1\)""")
 _ANY = "*"
@@ -30,7 +32,7 @@ _ANY = "*"
 _PROBE_JS = """
 (() => {
   try {
-    const spinnerSel = __SPINNER__;
+    const genSpinners = __GEN_SPINNERS__;
     const parts = __PARTS__;
     const matchText = __MATCH_TEXT__;
     const out = {processing: false, indicators: [], skipped: []};
@@ -73,7 +75,7 @@ _PROBE_JS = """
       }
       return false;
     };
-    if (spinnerSel && firstVisible(spinnerSel, '')) note('spinner', spinnerSel, '');
+    if (genSpinners().some(visible)) note('spinner', 'response-row spinner', '');
     for (const p of parts) { if (firstVisible(p.sel, p.text)) note('selector', p.sel, p.text); }
     if (matchText && document.body) {
       const SKIP = {SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1, TITLE: 1, TEMPLATE: 1};
@@ -147,7 +149,7 @@ def selector_parts(selector: str) -> List[Dict[str, str]]:
 def build_processing_probe(selector: str, match_text: str = "") -> str:
     """JS (returns a JSON string) — `processing`, `indicators`, `skipped`."""
     return (_PROBE_JS
-            .replace("__SPINNER__", json.dumps(spinner_selector()))
+            .replace("__GEN_SPINNERS__", generating_spinners_js())
             .replace("__PARTS__", json.dumps(selector_parts(selector)))
             .replace("__MATCH_TEXT__", json.dumps((match_text or "").strip().lower())))
 
