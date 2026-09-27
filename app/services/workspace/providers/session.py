@@ -139,10 +139,6 @@ class SessionSettingsProvider(_SessionDomainProvider):
     def _keys(self) -> tuple:
         return settings_keys()
 
-    def plan(self, bridge, doc) -> str:
-        incoming = sorted(key for key in self._keys() if key in doc)
-        return f"{len(incoming)} session key(s): {', '.join(incoming[:6])}…"
-
     def reconcile(self, bridge) -> list:
         """Push restored watcher keys into the LIVE watcher (it holds its own copy)."""
         watcher = getattr(bridge, "_watcher", None)
@@ -197,9 +193,6 @@ class GridWindowProvider(_SessionDomainProvider):
         if key == "window_states":
             return filter_window_states(value)
         return value
-
-    def plan(self, bridge, doc) -> str:
-        return "grid layout, window states and geometry (screen clamp on apply)"
 
     def reconcile(self, bridge) -> list:
         return ["geometry may need clamping to this machine's screen"]

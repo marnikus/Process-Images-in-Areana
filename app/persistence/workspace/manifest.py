@@ -10,8 +10,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .integrity import canonical_bytes
-
 FORMAT_NAME = "arena-workspace"
 WORKSPACE_FORMAT = 1
 MIN_WORKSPACE_FORMAT = 1
@@ -84,15 +82,3 @@ def entry_for(manifest: dict, domain_id: str) -> dict | None:
     return entry if isinstance(entry, dict) else None
 
 
-def domain_for_file(manifest: dict, rel_path: str) -> list[str]:
-    """Domain ids owning one workspace file (manifest lookup, never name-guessing)."""
-    hits = []
-    for domain_id, entry in manifest.get("domains", {}).items():
-        if isinstance(entry, dict) and entry.get("path") == rel_path:
-            hits.append(domain_id)
-    return hits
-
-
-def manifest_bytes(manifest: dict) -> bytes:
-    """Canonical manifest serialisation (written last, same shape everywhere)."""
-    return canonical_bytes(manifest)

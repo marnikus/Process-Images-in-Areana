@@ -87,11 +87,6 @@ class ArenaStateProvider(StateProvider):
     def validate(self, doc) -> str | None:
         return semantic_error(doc)
 
-    def plan(self, bridge, doc) -> str:
-        images = doc.get("images", []) if isinstance(doc, dict) else []
-        urls = doc.get("urls", []) if isinstance(doc, dict) else []
-        return f"{len(urls)} URL row(s), {len(images)} queue row(s)"
-
     def apply(self, bridge, doc) -> ApplyOutcome:
         candidate = AppState.from_dict(dict(doc))
         swap_state(bridge.state, candidate)

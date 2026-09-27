@@ -49,6 +49,3 @@ def all_providers() -> list:
     return [get(domain_id) for domain_id in RESTORE_ORDER if get(domain_id)]
 
 
-def file_providers() -> list:
-    """Providers that own a workspace file (policy-excluded domains stay out)."""
-    return [p for p in all_providers() if p.native_rel_path]

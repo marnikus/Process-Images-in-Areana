@@ -62,10 +62,6 @@ class CooldownsProvider(StateProvider):
     def validate(self, doc) -> str | None:
         return sections_error(doc)
 
-    def plan(self, bridge, doc) -> str:
-        entries = doc.get("entries", {}) if isinstance(doc, dict) else {}
-        return f"{len(entries)} cooldown timer(s), {len(doc.get('aliases', {}) if isinstance(doc, dict) else {})} alias(es)"
-
     def apply(self, bridge, doc) -> ApplyOutcome:
         clean = {key: doc[key] for key in _SECTIONS if key in doc}
         save_json_atomic(cooldown_file(bridge), clean)

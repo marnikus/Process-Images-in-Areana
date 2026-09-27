@@ -44,9 +44,6 @@ class JobHistoryProvider(StateProvider):
     def validate(self, doc) -> str | None:
         return history_error(doc)
 
-    def plan(self, bridge, doc) -> str:
-        return f"{len(doc.get('entries', []))} history row(s)"
-
     def apply(self, bridge, doc) -> ApplyOutcome:
         path = _history_file(bridge)
         if path is None:

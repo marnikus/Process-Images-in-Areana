@@ -61,10 +61,6 @@ class StateProvider:
         """Pure old→current conversion; returns (doc, note)."""
         return doc, ""
 
-    def plan(self, bridge, doc) -> str:
-        """One-line preview of what will change (shown before restore)."""
-        return self.display_name
-
     def apply(self, bridge, doc) -> ApplyOutcome:
         """Stage + commit atomically for this domain; raises on failure."""
         raise NotImplementedError(f"{self.domain_id} cannot apply")

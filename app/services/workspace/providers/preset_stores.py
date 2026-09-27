@@ -42,11 +42,6 @@ class _StoreProvider(StateProvider):
         self._store(bridge).replace_all(copy.deepcopy(doc))
         return ApplyOutcome(ok=True)
 
-    def plan(self, bridge, doc) -> str:
-        section = doc.get(self.section) if isinstance(doc, dict) else None
-        count = len(section) if hasattr(section, "__len__") else 0
-        return f"{count} preset(s)"
-
 
 class WindowPresetsProvider(_StoreProvider):
     """Window layout presets (grid + window_states docs with preview/confirm/apply)."""

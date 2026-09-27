@@ -44,9 +44,6 @@ class CaptchaStatsProvider(StateProvider):
     def validate(self, doc) -> str | None:
         return stats_error(doc)
 
-    def plan(self, bridge, doc) -> str:
-        return "captcha counters and per-site stats (balance marked stale)"
-
     def apply(self, bridge, doc) -> ApplyOutcome:
         save_json_atomic(stats_file(bridge), doc)
         return ApplyOutcome(ok=True)

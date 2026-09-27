@@ -46,9 +46,6 @@ class UndoProvider(StateProvider):
     def validate(self, doc) -> str | None:
         return history_error(doc)
 
-    def plan(self, bridge, doc) -> str:
-        return f"{len(doc.get('history', []))} undo entr(y/ies), index {doc.get('index')}"
-
     def apply(self, bridge, doc) -> ApplyOutcome:
         ok = bridge.config.undo.set(list(doc.get("history", [])), int(doc.get("index", -1)))
         if not ok:

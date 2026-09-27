@@ -15,7 +15,7 @@ from app.persistence.workspace.errors import STAGES, WorkspaceError
 from app.persistence.workspace.integrity import (canonical_bytes, doc_entry,
                                                 safe_rel_path, sha256_bytes)
 from app.persistence.workspace.manifest import (build_manifest, check_format,
-                                                domain_for_file, entry_for,
+                                                entry_for,
                                                 parse_manifest, read_manifest)
 
 pytestmark = pytest.mark.unit
@@ -103,8 +103,6 @@ def test_manifest_roundtrip_and_lookups():
     assert err is None and parsed["snapshot_id"] == "ws_x"
     assert entry_for(parsed, "arena_state")["path"] == "state/app_state.json"
     assert entry_for(parsed, "nope") is None
-    assert domain_for_file(parsed, "state/app_state.json") == ["arena_state"]
-    assert domain_for_file(parsed, "state/unknown.json") == []
 
 
 @pytest.mark.parametrize("mutation,fragment", [
