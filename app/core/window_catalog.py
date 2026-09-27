@@ -28,13 +28,14 @@ WINDOWS = [
     {"id": "live_debug", "title": "Live Worker & Queue Debug"},
     {"id": "job_history", "title": "Job History"},
     {"id": "firefox_auto", "title": "Firefox auto with Extension"},
+    {"id": "workspace", "title": "Global Saving System"},
 ]
 WINDOW_IDS = [w["id"] for w in WINDOWS]
 WINDOW_TITLES = {w["id"]: w["title"] for w in WINDOWS}
 # Windows this app renamed. A stored layout that still uses one keeps its
 # position + sizes under the new id (never rejected, never default-substituted).
 LEGACY_WINDOW_IDS = {"captcha_records": "recordings"}
-GRID_VERSION = 8  # 7 → 8: the 18th window (firefox_auto); older layouts migrate (extra leaf), never rejected
+GRID_VERSION = 9  # 8 → 9: the 19th window (workspace); older layouts migrate (extra leaf), never rejected
 
 
 def default_grid_tree() -> dict:
@@ -55,7 +56,7 @@ def default_grid_tree() -> dict:
             split("col", [leaf("action_blocks"), leaf("block_config")], [55, 45]),
             split("col", [leaf("browser"), leaf("firefox_auto"), leaf("arena_presets"),
                           leaf("progress"), leaf("watcher"), leaf("live_debug"),
-                          leaf("job_history")], [18, 14, 12, 14, 14, 14, 14]),
+                          leaf("job_history"), leaf("workspace")], [16, 13, 11, 12, 13, 12, 12, 11]),
         ], [45, 35, 20]),
         leaf("log"),
     ], [38, 40, 22])

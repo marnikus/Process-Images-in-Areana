@@ -28,6 +28,17 @@ class _BaseMixin:
     def save(self):
         _atomic_write(self.path, self._data)
 
+    def replace_all(self, data: dict):
+        """Workspace restore entry point: validated wholesale replacement of the store."""
+        if not isinstance(data, dict):
+            raise ValueError("preset store needs an object")
+        for key in DEFAULTS:
+            if not isinstance(data.get(key), type(DEFAULTS[key])):
+                raise ValueError(f"preset store section '{key}' has the wrong type")
+        self._data = copy.deepcopy(data)
+        self.save()
+        return True
+
     def all_data(self):
         return copy.deepcopy(self._data)
 

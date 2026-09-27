@@ -342,7 +342,7 @@ class TestLegacyWindowMigration:
         assert ls._try_migrate(json.dumps({"v": ls.GRID_VERSION, "tree": [1, 2]}), "window set mismatch") == \
             (None, "window set mismatch")
         # a v5 tree already at max depth cannot take another leaf → the migration's own reason is reported
-        ids = [i for i in ls.WINDOW_IDS if i not in ("live_debug", "job_history", "firefox_auto")]
+        ids = [i for i in ls.WINDOW_IDS if i not in ("live_debug", "job_history", "firefox_auto", "workspace")]
         tree = {"t": "split", "dir": "row", "children": [{"t": "leaf", "id": i} for i in ids[:4]], "sizes": [25] * 4}
         for i in ids[4:]:
             tree = {"t": "split", "dir": "col", "children": [tree, {"t": "leaf", "id": i}], "sizes": [50, 50]}

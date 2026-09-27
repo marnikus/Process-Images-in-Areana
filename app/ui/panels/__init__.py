@@ -19,6 +19,7 @@ from app.ui.panels.run_control import RunControlMixin
 from app.ui.panels.undo_history import UndoHistoryMixin
 from app.ui.panels.url_queue import UrlQueueMixin
 from app.ui.panels.watcher_captcha import WatcherCaptchaMixin
+from app.ui.panels.workspace import WorkspaceMixin
 
 __all__ = [
     "AppSettingsMixin",
@@ -34,4 +35,5 @@ __all__ = [
     "UndoHistoryMixin",
     "UrlQueueMixin",
     "WatcherCaptchaMixin",
+    "WorkspaceMixin",
 ]

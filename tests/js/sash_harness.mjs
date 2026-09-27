@@ -1,5 +1,6 @@
 /* sash_harness.mjs — load the REAL sash-grid JS (all part files + facade)
    into a minimal DOM with a CSS-flexbox layout engine, for Tier-A Node tests.
+   (window registry mirrors app/core/window_catalog.py — currently 19 windows.)
 
    Mirrors how index.html wires the app: sash-core → ui-helpers → parts →
    sash-grid.js facade, then SashGrid.init() against a #sashGrid that holds
@@ -16,7 +17,7 @@ const read = (f) => fs.readFileSync(path.join(WEB, 'js', f), 'utf-8');
 export const ALL_WINDOW_IDS = [
   'url_list', 'folder', 'queue', 'prompt', 'run', 'progress', 'watcher', 'log',
   'settings', 'captcha', 'browser', 'action_blocks', 'block_config', 'arena_presets', 'recordings',
-  'live_debug', 'job_history', 'firefox_auto',
+  'live_debug', 'job_history', 'firefox_auto', 'workspace',
 ];
 
 // Panel element ids that predate the camelCase rule stay explicit — the DOM id

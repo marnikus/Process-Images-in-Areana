@@ -258,6 +258,8 @@ FROZEN_SLOTS = frozenset({
     'run_firefox_auto_test',
     'stop_firefox_auto_test',
     'show_firefox_profiles',  # 2026-09-24: profile listing for the selection filter
+    'get_workspace_state', 'save_workspace', 'preview_workspace',
+    'restore_workspace', 'browse_workspace_folder', 'open_workspace_path',
 })
 
 
@@ -280,6 +282,7 @@ EXPECTED_PACKING = {
     'watcher_solver': 7,
     'job_history': 2,
     'firefox_auto': 5,
+    'workspace': 6,
 }
 
 
@@ -317,7 +320,8 @@ def test_panel_packing():
     assert counts == EXPECTED_PACKING, f"packing drift: {counts}"
     # 127 + 6 Captcha Watcher + restore_default_blocks (2026-10-02) + set_captcha_provider (B10, 2026-10-06)
     # +2 job_history slots +5 firefox_auto slots (I-63, 2026-09-22; +show_firefox_profiles 2026-09-24)
-    assert sum(counts.values()) == 142
+    # +6 workspace slots (Global Saving System, 2026-09-25)
+    assert sum(counts.values()) == 148
 
 
 @pytest.mark.unit
