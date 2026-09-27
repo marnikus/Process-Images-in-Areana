@@ -14,9 +14,10 @@ tab pings once: it answers → our socket is wedged → re-dial in place (same
 client object, the job keeps it); it is silent too → the page / Chrome is not
 answering, and the wait's reason says so.
 
-ideal-size: ~120 lines — one responsibility (is the socket or the tab silent,
-and re-dial); kept apart from page_recovery (the page-level waits) and the
-transport (the wire) so neither grows past its gate.
+I-73 (owner log 22:38, a verified image 75 s after Submit): a socket that heard
+Chrome seconds ago is alive — the PAGE is busy, never re-dialled; a reply to a
+command we stopped waiting for is told with its delay (`⌛ Chrome answered …
+34 s after it was sent`) — the measured busy time.
 """
 from __future__ import annotations
 
@@ -29,7 +30,11 @@ from typing import Optional
 log = logging.getLogger("arena")
 
 FRESH_PING_S = 3.0
+SECOND_PING_S = 1.5
+RECENT_RX_S = 5.0
 REDIAL_TIMEOUT_S = 15.0
+LATE_BOOK_MAX = 32
+LATE_TELL_EVERY_S = 20.0
 _PING = json.dumps({"id": 1, "method": "Runtime.evaluate",
                     "params": {"expression": "1", "returnByValue": True}})
 
@@ -54,13 +59,33 @@ async def _ping_once(url: str) -> bool:
 
 
 async def revive_silent_socket(cdp) -> bool:
-    """Our socket is silent but a fresh one answers: re-dial the same tab in place."""
+    """Our socket is silent but a fresh one answers: re-dial the same tab in place.
+
+    I-73 (owner log 22:38): a socket that heard Chrome seconds ago is alive —
+    the PAGE is busy; and when a fresh socket answers, ours gets one more ping
+    first (the page just came back, our queued replies flow again). Only a
+    socket that stays silent while the tab answers others is re-dialled.
+    """
     url = str(getattr(cdp, "_current_ws_url", "") or "")
     if not url or not callable(getattr(cdp, "connect", None)):
         return False
-    if not await fresh_socket_answers(url):
-        _note_silent_tab(cdp)
+    if heard_recently(cdp):
+        _note(cdp, _BUSY_PAGE)
         return False
+    if not await fresh_socket_answers(url):
+        _note(cdp, _SILENT_TAB)
+        return False
+    return await _answers_again(cdp) or await _redial_reported(cdp, url)
+
+
+async def _answers_again(cdp) -> bool:
+    """The tab answers a fresh socket: does ours answer now too (busy page, not a wedge)?"""
+    from ..page_recovery import page_answers
+    return await page_answers(cdp, SECOND_PING_S)
+
+
+async def _redial_reported(cdp, url: str) -> bool:
+    """Re-dial with the before/after lines."""
     _tell(cdp, f"🔌 CDP socket went silent ({rx_text(cdp)}) while the tab still answers — re-dialling it")
     ok = await _redial(cdp, url)
     _tell(cdp, "🔌 CDP socket re-dialled — continuing" if ok else "🔌 CDP re-dial failed")
@@ -70,12 +95,40 @@ async def revive_silent_socket(cdp) -> bool:
 
 
 _SILENT_TAB = "a fresh socket to the tab got no answer either"
+_BUSY_PAGE = "the socket is alive — the page itself is busy"
 
 
-def _note_silent_tab(cdp) -> None:
-    """Say once, in the evaluate record, that the tab itself is silent (not only our socket)."""
-    if _SILENT_TAB not in str(cdp.last_error):
-        cdp.last_error = f"{cdp.last_error}; {_SILENT_TAB}"[:300]
+def _note(cdp, words: str) -> None:
+    """Say once, in the evaluate record, what the silence is (tab silent / page busy)."""
+    if words not in str(cdp.last_error):
+        cdp.last_error = f"{cdp.last_error}; {words}"[:300]
+
+
+def heard_recently(cdp) -> bool:
+    """Chrome sent our socket something within RECENT_RX_S — the socket is not the silent part."""
+    last = getattr(cdp, "last_rx", None) or {}
+    return bool(last) and time.monotonic() - float(last.get("at", 0.0)) <= RECENT_RX_S
+
+
+def note_timed_out(transport, cmd_id: int, method: str, timeout: float) -> None:
+    """Remember a command we stopped waiting for; its late reply measures how busy the page was."""
+    book = transport.__dict__.setdefault("timed_out", {})
+    book[cmd_id] = (method, time.monotonic() - float(timeout))
+    while len(book) > LATE_BOOK_MAX:
+        book.pop(next(iter(book)))
+
+
+def note_late_reply(transport, msg_id) -> None:
+    """A reply for a timed-out command: tell how late it came (throttled per socket)."""
+    entry = (getattr(transport, "timed_out", None) or {}).pop(msg_id, None)
+    if entry is None:
+        return
+    late = time.monotonic() - entry[1]
+    transport.last_late_s = late
+    if time.monotonic() - getattr(transport, "_late_told_at", -LATE_TELL_EVERY_S) >= LATE_TELL_EVERY_S:
+        transport._late_told_at = time.monotonic()
+        _tell(transport, f"⌛ Chrome answered {entry[0]} {late:.0f} s after it was sent — the page was "
+                         f"busy that long (the app's checks take well under a second)")
 
 
 async def _redial(cdp, url: str) -> bool:

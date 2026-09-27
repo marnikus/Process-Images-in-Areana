@@ -26,7 +26,7 @@ class FakeCdp:
         self.state_polls = 0
         self._corpus = corpus
 
-    async def evaluate(self, js):
+    async def evaluate(self, js, timeout=30.0):
         if 'role="alert"' in js:  # error-scan probe
             return self._corpus
         if "if(!els.length)" in js:  # JS_SEND_STATE probe

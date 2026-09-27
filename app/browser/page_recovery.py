@@ -24,6 +24,7 @@ page_unresponsive(cdp)            I-71: the last evaluate timed out (page not an
 page_answers(cdp) / still_frozen  I-71: a 3 s ping instead of another 30 s probe;
                                   I-72: a silent socket is re-dialled (cdp/liveness)
 unresponsive_text(cdp)            I-71: 'page not answering (<transport reason>)'
+page_check(cdp, js)               I-73: a page check waits 5 s, not 30 s
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from typing import Awaitable, Callable, Optional
 
 log = logging.getLogger("arena")
 
+CHECK_TIMEOUT_S = 5.0
 RECOVERY_ATTEMPTS = 3
 RECOVERY_DELAY_S = 1.0
 RECOVERY_SETTLE_S = 1.0
@@ -56,6 +58,16 @@ _READY_JS = "(function(){try{return document.readyState}catch(e){return ''}})()"
 
 def _noop(_msg: str, _level: str = "info") -> None:
     return None
+
+
+async def page_check(cdp, js: str):
+    """A page check waits CHECK_TIMEOUT_S, not the 30 s command default (I-73).
+
+    Measured in Chrome on a 5,305-node chat page: the output check 56 ms, the
+    Watcher probe 2 ms, the error scan 8 ms. A check still unanswered after 5 s
+    means the page is busy — ask again soon instead of sitting out 30 s.
+    """
+    return await cdp.evaluate(js, timeout=CHECK_TIMEOUT_S)
 
 
 def evaluate_failure(cdp) -> str:

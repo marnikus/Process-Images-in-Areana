@@ -32,11 +32,12 @@ class FrozenPage:
     browser-side commands (history) still answer, a ping answers only when told."""
 
     def __init__(self, answers_ping=False, timed_out=False):
-        self.answers_ping, self.calls = answers_ping, []
+        self.answers_ping, self.calls, self.eval_timeouts = answers_ping, [], []
         self.last_error, self.last_error_kind = (TIMED_OUT, "transport") if timed_out else ("", "")
 
-    async def evaluate(self, expr, await_promise=True):
+    async def evaluate(self, expr, await_promise=True, timeout=30.0):
         self.calls.append("evaluate")
+        self.eval_timeouts.append(timeout)
         self.last_error, self.last_error_kind = TIMED_OUT, "transport"
         return None
 
@@ -89,11 +90,12 @@ async def test_a_timed_out_check_is_page_unresponsive_and_skips_the_30s_error_sc
     assert diag == {"ready": False, "reason": "page_unresponsive",
                     "detail": FROZEN}
     assert page.calls == ["evaluate"]                 # was: check + error scan (+30 s)
+    assert page.eval_timeouts == [5.0]                # I-73: a page check waits 5 s, not 30 s
 
 
 async def test_a_check_that_threw_is_no_result_with_its_reason_and_still_scans():
     class Throws(FrozenPage):
-        async def evaluate(self, expr, await_promise=True):
+        async def evaluate(self, expr, await_promise=True, timeout=30.0):
             self.calls.append("evaluate")
             self.last_error, self.last_error_kind = "TypeError: boom", "js"
             return None
@@ -226,3 +228,11 @@ async def test_is_generating_marks_an_unanswered_probe():
     page = FrozenPage()
     gen, details = await is_generating(page)
     assert gen is False and details == {"unanswered": True, "error": TIMED_OUT}
+
+
+async def test_the_watcher_probe_and_the_error_scan_are_page_checks_of_5s():
+    from app.browser.cdp_arena.state import is_generating, scan_page_errors
+    page = FrozenPage()
+    await is_generating(page)
+    await scan_page_errors(page)
+    assert page.eval_timeouts == [5.0, 5.0]           # I-73: was the 30 s command default

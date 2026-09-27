@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Tuple, Optional
 
 from ..output_probes import build_baseline_js
 from ..output_probes import build_check_js
+from app.browser.page_recovery import page_check
 from .js_snippets import JS_PAGE_READY, JS_SECURITY_DIALOG, JS_IS_GENERATING
 from ...utils.page_errors import build_error_scan_js
 
@@ -27,7 +28,7 @@ async def capture_baseline(cdp) -> Dict[str, Any]:
 
 async def scan_page_errors(cdp) -> str:
     try:
-        res = await cdp.evaluate(build_error_scan_js())
+        res = await page_check(cdp, build_error_scan_js())
         return res if isinstance(res, str) else ""
     except Exception:
         return ""
@@ -47,7 +48,7 @@ async def is_security_dialog_visible(cdp) -> bool:
 
 async def is_generating(cdp) -> Tuple[bool, Dict[str, Any]]:
     try:
-        result = await cdp.evaluate(JS_IS_GENERATING)
+        result = await page_check(cdp, JS_IS_GENERATING)
         if not result:   # I-71: no answer is not "spinner gone" — the Watcher holds its state
             return False, await _unanswered(cdp)
         is_gen = bool(result.get("isGenerating") or result.get("spinning"))

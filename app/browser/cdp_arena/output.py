@@ -104,7 +104,7 @@ async def _poll_diag_or_revive(ctrl, ctx: PollContext, cdp=None) -> Dict[str, An
 
 async def _poll_output_diag(cdp, ctx: PollContext, ctrl) -> Dict[str, Any]:
     js = build_check_js(ctx.old_srcs, ctx.correlation_id, ctx.old_outputs)
-    diag = _read_check(cdp, await cdp.evaluate(js))
+    diag = _read_check(cdp, await page_recovery.page_check(cdp, js))
     if diag.get("ready") or diag.get("reason") == "page_unresponsive":
         return diag   # I-71: no banner scan (another 30 s) on a page that is not answering
     err = match_page_error(await scan_page_errors(cdp), ctx.err_base)

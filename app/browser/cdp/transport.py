@@ -30,6 +30,7 @@ except ImportError:
         return _Sig()
 
 from ..cdp_events import CDPEventRouter, route_cdp_message
+from .liveness import note_late_reply, note_timed_out
 from .dialogs import DialogWatch, close_open_dialog, send_unblocked
 
 log = logging.getLogger("arena")
@@ -109,6 +110,7 @@ class CDPTransport(QObject):
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
+            note_timed_out(self, cmd_id, method, timeout)
             raise TimeoutError(f"CDP command {method} timed out after {timeout}s") from None
         finally:                 # timeout or cancel: free our own waiter, never a neighbour's
             self._pending.pop(cmd_id, None)
@@ -138,13 +140,11 @@ class CDPTransport(QObject):
             except Exception:
                 pass
 
-    async def evaluate(self, expression: str, await_promise: bool = True):
+    async def evaluate(self, expression: str, await_promise: bool = True, timeout: float = 30.0):
         try:
             await close_open_dialog(self)
-            r = await send_unblocked(
-                self, "Runtime.evaluate",
-                {"expression": expression, "returnByValue": True, "awaitPromise": await_promise},
-            )
+            params = {"expression": expression, "returnByValue": True, "awaitPromise": await_promise}
+            r = await send_unblocked(self, "Runtime.evaluate", params, timeout)
         except Exception as e:
             _note_eval_error(self, "transport", _exc_text(e))
             return None
@@ -163,6 +163,7 @@ def _route(transport, raw, data: dict) -> None:
     transport.last_rx = {"at": time.monotonic(), "bytes": size, "kind": kind}
     if size > getattr(transport, "largest_rx", {}).get("bytes", 0):
         transport.largest_rx = {"bytes": size, "kind": kind}
+    note_late_reply(transport, data.get("id"))
     route_cdp_message(transport, data)
 
 

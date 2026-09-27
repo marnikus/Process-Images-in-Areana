@@ -25,6 +25,7 @@ class FakeChrome:
 
     def __init__(self):
         self.silent, self.hung, self.sockets, self.server = set(), False, [], None
+        self.delay = 0.0                                  # a busy page: every reply comes late
 
     async def handler(self, ws):
         self.sockets.append(ws)
@@ -32,6 +33,7 @@ class FakeChrome:
         async for raw in ws:
             if self.hung or ws in self.silent:
                 continue
+            await asyncio.sleep(self.delay)
             await ws.send(json.dumps({"id": json.loads(raw)["id"],
                                       "result": {"result": {"type": "number", "value": 1}}}))
 
@@ -52,6 +54,8 @@ class FakeChrome:
 def quick(monkeypatch):
     monkeypatch.setattr(pr, "PING_TIMEOUT_S", 0.3)
     monkeypatch.setattr(lv, "FRESH_PING_S", 0.5)
+    monkeypatch.setattr(lv, "SECOND_PING_S", 0.3)
+    monkeypatch.setattr(lv, "RECENT_RX_S", 0.0)       # I-73: nothing counts as "heard just now"
 
 
 async def _client(chrome):
@@ -151,3 +155,52 @@ async def test_the_watchers_unanswered_tick_redials_a_wedged_socket_and_keeps_th
         assert notes[-1] == "🔌 CDP socket re-dialled — continuing"
         assert await client.evaluate("1") == 1           # the next Watcher tick reads the page again
         await client.disconnect()
+
+
+# ── I-73: a busy page is not a wedged socket (owner log 2026-09-27 22:38) ──
+
+async def test_a_socket_that_heard_chrome_just_now_is_not_redialled(quick, monkeypatch):
+    monkeypatch.setattr(lv, "RECENT_RX_S", 30.0)
+    async with FakeChrome() as chrome:
+        client, notes = await _client(chrome)
+        chrome.wedge()
+        _timed_out(client)
+        assert await pr.still_frozen(client) is True     # still waiting — but no re-dial
+        assert await pr.still_frozen(client) is True
+        assert len(chrome.sockets) == 1                  # not even a fresh socket was opened
+        assert client.last_error.count("the socket is alive — the page itself is busy") == 1
+        assert notes == []
+        chrome.silent.clear()
+        await client.disconnect()
+
+
+async def test_a_page_that_just_came_back_answers_our_socket_without_a_redial(quick):
+    async with FakeChrome() as chrome:
+        client, notes = await _client(chrome)
+        _timed_out(client)
+        assert await lv.revive_silent_socket(client) is True
+        assert len(chrome.sockets) == 2                  # ours + the throw-away one, no re-dial
+        assert notes == [] and client.last_error == ""
+        await client.disconnect()
+
+
+async def test_a_late_reply_tells_how_long_the_page_was_busy_once_per_window(quick):
+    async with FakeChrome() as chrome:
+        client, notes = await _client(chrome)
+        chrome.delay = 0.4
+        assert await client.evaluate("1", timeout=0.1) is None
+        assert await client.evaluate("1", timeout=0.1) is None
+        await asyncio.sleep(1.0)
+        late = [n for n in notes if n.startswith("⌛ Chrome answered Runtime.evaluate ")]
+        assert len(late) == 1 and late[0].endswith("the app's checks take well under a second)")
+        assert 0.3 < client.last_late_s < 1.5 and client.timed_out == {}
+        chrome.delay = 0.0
+        await client.disconnect()
+
+
+def test_the_timed_out_book_is_bounded():
+    t = type("T", (), {})()
+    for i in range(lv.LATE_BOOK_MAX + 8):
+        lv.note_timed_out(t, i, "Runtime.evaluate", 5.0)
+    assert len(t.timed_out) == lv.LATE_BOOK_MAX and 0 not in t.timed_out
+    lv.note_late_reply(t, None)                          # an event has no id: nothing happens
