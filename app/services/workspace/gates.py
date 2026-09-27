@@ -30,6 +30,14 @@ def load_files(root: Path, manifest: dict, providers: list) -> dict:
 
 
 def load_one(root: Path, entry: dict, rel: str):
+    """Parsed doc or WorkspaceError; an unreadable file is a `parse` row, never a raise."""
+    try:
+        return _gated(root, entry, rel)
+    except OSError as exc:
+        return WorkspaceError(entry_owner(entry), "parse", f"cannot read file: {exc}")
+
+
+def _gated(root: Path, entry: dict, rel: str):
     safe = safe_rel_path(rel)
     if not safe or rel != safe:
         return WorkspaceError(entry_owner(entry), "unsafe_path", f"unsafe path: {rel!r}")
@@ -47,7 +55,7 @@ def load_one(root: Path, entry: dict, rel: str):
                               evidence=(entry.get("sha256", "")[:12], actual_sha[:12]))
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
+    except ValueError as exc:
         return WorkspaceError(entry_owner(entry), "parse", f"invalid JSON: {exc}")
 
 
