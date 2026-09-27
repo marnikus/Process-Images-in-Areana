@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from .milestones import MILESTONE_PHASES, build_milestone
 from .models import RecordingLimits, utc_now
-from .network import NetworkCollector
+from .network import NetworkCollector, set_network_events
 from .probes import drain_probe, install_probe, snapshot_probe, stop_probe
 from .sanitize import clean_mapping, redact_text
 from .store import RecordingStore
@@ -73,8 +73,17 @@ async def write_event(rec: "CaptchaRecorder", kind: str, payload: dict[str, Any]
         rec._counts["network"] += 1
 
 
-def detach_listener(rec: "CaptchaRecorder") -> None:
-    """Unsubscribe from the CDP router so a later session starts clean."""
+async def attach_listener(rec: "CaptchaRecorder") -> None:
+    """Subscribe to the CDP router; switch Network events on (I-72: only while recording)."""
+    router = getattr(rec.ctrl.cdp, "events", None)
+    if router is not None:
+        router.add(rec.network.on_event)
+    await set_network_events(rec.ctrl.cdp, True)
+
+
+async def detach_listener(rec: "CaptchaRecorder") -> None:
+    """Network events off, unsubscribe from the router so a later session starts clean."""
+    await set_network_events(rec.ctrl.cdp, False)
     router = getattr(rec.ctrl.cdp, "events", None)
     if router is not None:
         router.remove(rec.network.on_event)
@@ -103,9 +112,7 @@ class CaptchaRecorder:
 
     async def start(self) -> None:
         await self.ctrl.cdp.evaluate(install_probe())
-        router = getattr(self.ctrl.cdp, "events", None)
-        if router is not None:
-            router.add(self.network.on_event)
+        await attach_listener(self)
         self.active = True
         evidence = {key: self.encounter.get(key) for key in (
             "source", "kind", "integration", "invisible", "anchor", "challenge",
@@ -130,7 +137,7 @@ class CaptchaRecorder:
         # the worker is joined; the page-side agent is disconnected so a later
         # encounter on the same page cannot inherit a stale queue
         await self.ctrl.cdp.evaluate(stop_probe())
-        self._detach_listener()
+        await detach_listener(self)
         return self.store.finish(self.session_id, finish_updates(self, outcome))
 
     async def note_outcome(self, phase: str, outcome: Any) -> None:
@@ -187,8 +194,6 @@ class CaptchaRecorder:
     async def _event(self, kind: str, payload: dict[str, Any], network: bool = False) -> None:
         await write_event(self, kind, payload, network)
 
-    def _detach_listener(self) -> None:
-        detach_listener(self)
 
     @staticmethod
     def _outcome_payload(outcome: Any) -> dict[str, Any]:

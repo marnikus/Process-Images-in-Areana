@@ -76,7 +76,8 @@ async def test_recorder_captures_diff_network_body_and_finish(tmp_path):
     assert "secret-token-shape" not in json.dumps(events)
     assert "?q=" not in json.dumps(events)
     assert "A" * 100 not in json.dumps(events)
-    assert cdp.sent[0][0] == "Network.getResponseBody"
+    # I-72: the recording switches Network on for itself and off at finish
+    assert [m for m, _p, _t in cdp.sent] == ["Network.enable", "Network.getResponseBody", "Network.disable"]
     assert result["snapshot_count"] >= 1 and result["network_count"] == 2
     # D1: finish() returns the manifest itself — normal path records zero loss
     assert result["dropped_events"] == 0

@@ -113,8 +113,9 @@ async def test_connect_success_enables_domains(cdp_server):
     ok = await client.connect("ws://10.0.0.9:9222/devtools/page/t1")
     assert ok is True and client.is_connected
     assert len(client.connected.calls) == 1
-    for dom in ("Page", "DOM", "Runtime", "Network"):
+    for dom in ("Page", "DOM", "Runtime"):
         assert f"{dom}.enable" in cdp_server.methods()
+    assert "Network.enable" not in cdp_server.methods()   # I-72: only a captcha recording turns it on
     assert client._current_tab_id == "t1"
 
 

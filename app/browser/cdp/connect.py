@@ -102,8 +102,15 @@ def _get_connect_lock(transport):
     return transport._connect_lock
 
 
+# I-72: no "Network" — with it Chrome copies every request, WebSocket frame and
+# EventSource message (payload included) to every connection; one large frame
+# (measured: 60 MB) kills the socket with 1009. Only a captcha recording needs
+# it and switches it on for itself (captcha_recording.network.set_network_events).
+CDP_DOMAINS = ("Page", "DOM", "Runtime")
+
+
 async def _enable_cdp_domains(transport):
-    for dom in ("Page", "DOM", "Runtime", "Network"):
+    for dom in CDP_DOMAINS:
         try:
             await transport.send(f"{dom}.enable", timeout=10)
         except Exception as e:

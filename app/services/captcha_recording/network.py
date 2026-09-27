@@ -9,6 +9,7 @@ no event can be dropped by a cross-loop queue race.
 from __future__ import annotations
 
 import base64
+import logging
 import threading
 from collections import deque
 from typing import Any, Awaitable, Callable
@@ -16,6 +17,7 @@ from urllib.parse import urlsplit
 
 from .sanitize import redact_text, safe_url, textual_mime
 
+log = logging.getLogger("arena")
 EventSink = Callable[[str, dict[str, Any], bool], Awaitable[None]]
 MAX_QUEUED_EVENTS = 5_000
 
@@ -115,6 +117,14 @@ class NetworkCollector:
         except Exception as exc:
             message = f"response body unavailable: {type(exc).__name__}"
             await self.sink("warning", {"message": message}, False)
+
+
+async def set_network_events(cdp: Any, on: bool) -> None:
+    """Network events only while a recording runs (I-72: connections no longer enable them)."""
+    try:
+        await cdp.send("Network.enable" if on else "Network.disable", {}, timeout=10)
+    except Exception as exc:   # fail-open: the recording keeps its DOM evidence
+        log.warning("captcha recording: Network.%s failed: %s", "enable" if on else "disable", exc)
 
 
 def _category(url: str) -> str:

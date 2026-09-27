@@ -345,3 +345,28 @@ async def test_finish_full_lifecycle(tmp_path):
     assert manifest["event_count"] >= 1
     assert manifest["snapshot_count"] >= 1
     assert manifest["ended_at"]
+
+
+# ── I-72: Network events only while recording (connections no longer enable them) ──
+
+class SendingCDP(FakeCDP):
+    def __init__(self, fail=False):
+        super().__init__()
+        self.sent, self.fail = [], fail
+
+    async def send(self, method, params=None, timeout=30):
+        self.sent.append(method)
+        if self.fail:
+            raise RuntimeError("socket gone")
+        return {}
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_network_is_on_only_between_start_and_finish(tmp_path, fail):
+    cdp = SendingCDP(fail=fail)
+    rec = CaptchaRecorder(RecordingStore(tmp_path / "n"), SimpleNamespace(cdp=cdp),
+                          {"eid": "e1", "url": "https://arena.ai/c/1"}, RecordingLimits(**LIMITS))
+    await rec.start()
+    assert cdp.sent == ["Network.enable"]
+    await rec.finish(outcome())           # a failing switch never breaks the recording
+    assert cdp.sent == ["Network.enable", "Network.disable"]
