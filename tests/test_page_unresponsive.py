@@ -44,7 +44,7 @@ class FrozenPage:
     async def send(self, method, params=None, timeout=30):
         self.calls.append(f"{method}@{timeout:g}")
         if method == "Page.getNavigationHistory":
-            return {"currentIndex": 0, "entries": [{"url": "https://arena.ai/c/abc"}]}
+            return {"id": 1, "result": {"currentIndex": 0, "entries": [{"url": "https://arena.ai/c/abc"}]}}
         if method == "Runtime.evaluate" and self.answers_ping:
             return {"result": {"result": {"type": "number", "value": 1}}}
         raise TimeoutError(f"CDP command {method} timed out after {timeout:g}s")

@@ -238,7 +238,8 @@ async def _open_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
 async def _new_chat_url(client: Any) -> tuple[str, str]:
     """`<tab origin><New Chat path>` from the browser's own history — works while the page JS is stuck."""
     try:
-        hist = await client.send("Page.getNavigationHistory", {}, timeout=10)
+        reply = await client.send("Page.getNavigationHistory", {}, timeout=10)
+        hist = reply["result"]   # I-74: send() hands back Chrome's whole message ({"id", "result"})
         url = hist["entries"][hist["currentIndex"]]["url"]
     except Exception as e:
         return "", f"page address unknown ({e})"

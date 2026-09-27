@@ -35,7 +35,7 @@ class NavClient:
     async def send(self, method, params=None, timeout=30):
         self.sent.append((method, params or {}))
         if method == "Page.getNavigationHistory":
-            return {"currentIndex": 0, "entries": [{"url": self.url}]}
+            return {"id": 1, "result": {"currentIndex": 0, "entries": [{"url": self.url}]}}   # Chrome's real shape
         if self.nav_error:
             raise TimeoutError(self.nav_error)
         self.clean = True
