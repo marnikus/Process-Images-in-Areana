@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any
 
 from .json_store import load_json as _load_json, save_json_atomic as _atomic_write
 

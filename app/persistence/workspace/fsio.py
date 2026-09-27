@@ -91,6 +91,11 @@ def publish(temp: Path, target: Path) -> None:
     except OSError as exc:
         if exc.errno != errno.EXDEV:
             raise
+    _publish_by_copy(temp, target)
+
+
+def _publish_by_copy(temp: Path, target: Path) -> None:
+    """Cross-volume publish: copy next to the target, then one same-volume rename."""
     staged = target.with_name(target.name + f".copy-{os.getpid()}")
     copy_tree(temp, staged)
     try:

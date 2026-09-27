@@ -38,6 +38,7 @@ LEGACY_WINDOW_IDS = {"captcha_records": "recordings"}
 GRID_VERSION = 9  # 8 → 9: the 19th window (workspace); older layouts migrate (extra leaf), never rejected
 
 
+# ideal-size: 22 lines reason=one literal tree = the default grid wire shape (v8); splitting it scatters the layout a reader must see whole
 def default_grid_tree() -> dict:
     def leaf(i):
         return {"t": "leaf", "id": i}

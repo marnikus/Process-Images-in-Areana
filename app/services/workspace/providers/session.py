@@ -11,9 +11,9 @@ unknown window ids are a semantic error, never silently healed.
 
 from __future__ import annotations
 
-from app.core.layout_service import canonical_grid_payload, leaf_ids
-from app.core.window_catalog import GRID_VERSION, LEGACY_WINDOW_IDS, WINDOW_IDS
-from app.persistence.json_store import load_json, save_json_atomic
+from app.core.layout_service import canonical_grid_payload
+from app.core.window_catalog import GRID_VERSION, WINDOW_IDS
+from app.persistence.json_store import save_json_atomic
 from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
 
 GRID_KEYS = ("grid_layout", "window_states", "window_geometry")

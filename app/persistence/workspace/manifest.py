@@ -17,6 +17,7 @@ WORKSPACE_FORMAT = 1
 MIN_WORKSPACE_FORMAT = 1
 
 
+# ideal-size: 22 lines reason=one dict literal = the manifest.json wire format (design §D); splitting hides the schema
 def build_manifest(*, header: dict, app_meta: dict, compat: dict,
                    domains: dict) -> dict:
     """The one manifest builder (every registered domain appears — included or excluded).

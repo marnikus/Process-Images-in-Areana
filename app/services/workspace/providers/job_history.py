@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from app.persistence.json_store import load_json, save_json_atomic
 from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
-from app.services.job_history import FILE_NAME, JobHistoryStore, _history_file
+from app.services.job_history import JobHistoryStore, _history_file
 
 
 def history_error(doc) -> str | None:

@@ -18,6 +18,7 @@ from app.persistence.config_manager import ConfigManager
 from app.persistence.workspace.integrity import sha256_bytes
 from app.services.workspace import restore as ws_restore
 from app.services.workspace import save as ws_save
+from app.services.workspace import gates as ws_gates
 from app.services.workspace.apply import restore_workspace
 from app.services.workspace.save import SaveRequest
 from app.services.workspace.registry import get
@@ -364,21 +365,20 @@ def test_expand_strict_keeps_registered_providers_outside_the_order_tuple(monkey
 
 def test_load_one_gate_evidence_fields(tmp_path):
     from app.persistence.workspace.integrity import sha256_bytes
-    from app.services.workspace import apply as ws_apply
     root = tmp_path
     good = b'"abcd"'  # valid JSON, parses to the string "abcd"
     entry = {"display_name": "Undo History", "path": "state/undo.json",
              "bytes": len(good), "sha256": sha256_bytes(good)}
     (root / "state").mkdir()
     (root / "state/undo.json").write_bytes(good)
-    assert ws_apply.load_one(root, entry, "state/undo.json") == "abcd"
+    assert ws_gates.load_one(root, entry, "state/undo.json") == "abcd"
     (root / "state/undo.json").write_bytes(b'"xxxx"')  # same size, different sha
-    bad_sha = ws_apply.load_one(root, entry, "state/undo.json")
+    bad_sha = ws_gates.load_one(root, entry, "state/undo.json")
     assert bad_sha.stage == "checksum" and bad_sha.expected == entry["sha256"][:12]
     assert len(bad_sha.actual) == 12
-    unsafe = ws_apply.load_one(root, {"path": "../escape.json"}, "../escape.json")
+    unsafe = ws_gates.load_one(root, {"path": "../escape.json"}, "../escape.json")
     assert unsafe.stage == "unsafe_path"
-    missing = ws_apply.load_one(root, {"path": "state/gone.json"}, "state/gone.json")
+    missing = ws_gates.load_one(root, {"path": "state/gone.json"}, "state/gone.json")
     assert missing.stage == "missing"
 
 

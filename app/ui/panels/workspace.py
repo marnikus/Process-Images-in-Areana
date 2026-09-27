@@ -101,6 +101,16 @@ def _dialog_folder(mode: str) -> dict:
     return {"ok": True, "path": chosen}
 
 
+def clamp_to_screen(geometry: dict, screen) -> dict:
+    """Pure clamp: fit width/height, keep ≥100 px of the window on the screen."""
+    return {
+        "x": max(screen.left(), min(int(geometry.get("x", 0)), screen.right() - 100)),
+        "y": max(screen.top(), min(int(geometry.get("y", 0)), screen.bottom() - 100)),
+        "width": min(int(geometry.get("width", 0)), screen.width()),
+        "height": min(int(geometry.get("height", 0)), screen.height()),
+    }
+
+
 def clamp_restored_geometry(bridge) -> str:
     """Clamp a restored window geometry onto the current screen (grid W6 rule).
 
@@ -113,11 +123,7 @@ def clamp_restored_geometry(bridge) -> str:
     try:
         from app.ui.qt_compat import QApplication
         screen = QApplication.primaryScreen().availableGeometry()
-        width = min(int(geometry.get("width", 0)), screen.width())
-        height = min(int(geometry.get("height", 0)), screen.height())
-        x = max(screen.left(), min(int(geometry.get("x", 0)), screen.right() - 100))
-        y = max(screen.top(), min(int(geometry.get("y", 0)), screen.bottom() - 100))
-        clamped = {"x": x, "y": y, "width": width, "height": height}
+        clamped = clamp_to_screen(geometry, screen)
         if clamped != geometry:
             bridge.config.set_state(window_geometry=clamped)
             return "window geometry clamped to this screen"

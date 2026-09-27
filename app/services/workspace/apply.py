@@ -4,22 +4,22 @@ Selection + strict-dependency expansion, recovery backup of live files,
 the file gates (safe-path → checksum → parse), the per-domain transaction
 (dependency → schema → migration → semantic → apply with rollback to the
 pre-apply capture), derived-state reconcile, and the restore-report written
-into the workspace folder. The read-only preview lives in `restore.py`.
+into the workspace folder. The read-only preview lives in `restore.py`; the file gates in `gates.py`.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from app.persistence.workspace import fsio
 from app.persistence.workspace.errors import WorkspaceError
-from app.persistence.workspace.integrity import canonical_bytes, file_sha, safe_rel_path
+from app.persistence.workspace.integrity import canonical_bytes
 from app.persistence.workspace.manifest import entry_for, read_manifest
 from . import reports
-from .meta import config_dir, live_run_error, log_message, utc_now_iso
-from .recover import RECOVERY_KEEP, backup_live, prune_recovery  # noqa: F401 (RECOVERY_KEEP re-export)
-from .registry import RESTORE_ORDER, get, restore_order
+from .gates import load_files
+from .meta import live_run_error, log_message
+from .recover import backup_live
+from .registry import get, restore_order
 from .save import record_restore
 
 
@@ -63,47 +63,6 @@ def expand_strict(providers: list) -> list:
                 pending.append(get(dep))
     ordered_ids = restore_order(set(chosen))
     return [p for p in (get(i) for i in ordered_ids) if p]
-
-
-def load_files(root: Path, manifest: dict, providers: list) -> dict:
-    """rel → parsed doc or WorkspaceError — checksum + parse gates once per file."""
-    docs: dict = {}
-    for provider in providers:
-        entry = entry_for(manifest, provider.domain_id) or {}
-        rel = entry.get("path")
-        if not rel:
-            continue
-        if rel in docs:
-            continue
-        docs[rel] = load_one(root, entry, rel)
-    return docs
-
-
-def load_one(root: Path, entry: dict, rel: str):
-    safe = safe_rel_path(rel)
-    if not safe or rel != safe:
-        return WorkspaceError(entry_owner(entry), "unsafe_path", f"unsafe path: {rel!r}")
-    path = root / safe
-    if not path.exists():
-        return WorkspaceError(entry_owner(entry), "missing", f"file missing: {safe}")
-    if entry.get("bytes") is not None and path.stat().st_size != entry["bytes"]:
-        return WorkspaceError(entry_owner(entry), "checksum",
-                              f"size mismatch ({path.stat().st_size} ≠ {entry['bytes']})",
-                              evidence=(entry.get("bytes"), path.stat().st_size))
-    actual_sha = file_sha(path)
-    if entry.get("sha256") and actual_sha != entry["sha256"]:
-        return WorkspaceError(entry_owner(entry), "checksum",
-                              "sha-256 mismatch — file changed after save",
-                              evidence=(entry.get("sha256", "")[:12], actual_sha[:12]))
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return WorkspaceError(entry_owner(entry), "parse", f"invalid JSON: {exc}")
-
-
-def entry_owner(entry: dict) -> str:
-    """Best-effort owner name for a file-level problem row."""
-    return entry.get("display_name", "workspace file")
 
 
 def _skip_row(provider, error: WorkspaceError) -> dict:
@@ -244,11 +203,18 @@ def restore_workspace(bridge, root, selected=None) -> dict:
         if row["status"] != "restored":
             run["failed"].add(provider.domain_id)
     report = _finish(bridge, root, rows, backup)
-    log_message(bridge, f"♻️ Workspace restore from {root.name}: {report['result']} — "
-                 f"{len(report['restored'])} restored, {len(report['skipped'])} skipped",
-         "success" if report["result"] == "success" else
-         ("warn" if report["result"] == "success_with_warnings" else "error"))
+    _log_result(bridge, root, report)
     return {"ok": report["result"] != "failed", **report}
+
+
+_RESULT_LEVEL = {"success": "success", "success_with_warnings": "warn"}
+
+
+def _log_result(bridge, root: Path, report: dict) -> None:
+    """One app-log line per restore; anything but success/warnings logs as error."""
+    log_message(bridge, f"♻️ Workspace restore from {root.name}: {report['result']} — "
+                        f"{len(report['restored'])} restored, {len(report['skipped'])} skipped",
+                _RESULT_LEVEL.get(report["result"], "error"))
 
 
 def _finish(bridge, root: Path, rows: list, backup: str) -> dict:

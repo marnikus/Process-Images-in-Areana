@@ -95,6 +95,17 @@ def file_docs(captures: list) -> dict:
     return docs
 
 
+def _capture_block(capture) -> dict:
+    """The manifest `capture` block: failed, policy-excluded, or included with notes."""
+    if capture.error:
+        return {"ok": False, "excluded": True, "excluded_reason": capture.error["cause"]}
+    if capture.result.excluded:
+        return {"ok": True, "excluded": True,
+                "excluded_reason": capture.result.excluded_reason,
+                "redacted_reference": capture.result.doc}
+    return {"ok": True, "excluded": False, "notes": list(capture.result.notes)}
+
+
 def domain_entries(captures: list, file_entries: dict) -> dict:
     """One manifest entry per registered domain — included fully, excluded with reason."""
     entries = {}
@@ -108,16 +119,7 @@ def domain_entries(captures: list, file_entries: dict) -> dict:
             "sensitivity": p.sensitivity,
         }
         entry.update(file_entries.get(p.native_rel_path, {}))
-        if capture.error:
-            entry["capture"] = {"ok": False, "excluded": True,
-                                "excluded_reason": capture.error["cause"]}
-        elif capture.result.excluded:
-            entry["capture"] = {"ok": True, "excluded": True,
-                                "excluded_reason": capture.result.excluded_reason,
-                                "redacted_reference": capture.result.doc}
-        else:
-            entry["capture"] = {"ok": True, "excluded": False,
-                                "notes": list(capture.result.notes)}
+        entry["capture"] = _capture_block(capture)
         entries[p.domain_id] = entry
     return entries
 
@@ -177,24 +179,30 @@ def _abort_result(request: SaveRequest, captures: list, started: str) -> dict:
             "snapshot_id": snapshot_id_for(started, request.name)}
 
 
+def _stage(run: dict, captures: list, temp: Path) -> dict:
+    """Write state files + env into the temp folder, manifest LAST; return the report."""
+    run["file_entries"] = _write_state_files(temp, captures)
+    _write_env(temp, run["bridge"])
+    started = run["started"]
+    timing = {"snapshot_id": snapshot_id_for(started, run["request"].name),
+              "started_utc": started, "finished_utc": utc_now_iso()}
+    report = reports.save_report(
+        timing=timing, domains=_report_rows(captures),
+        errors=[c.error for c in captures if c.error], published=True)
+    manifest = _snapshot_manifest(run, captures, report)
+    fsio.write_bytes(temp, "manifest.json", canonical_bytes(manifest))
+    return report
+
+
 def _publish_save(run: dict, captures: list) -> dict:
     """Build the temp folder, write the manifest last, publish, then report.
 
     `run` bundles bridge/request/target/started for one save execution.
     """
-    bridge, request = run["bridge"], run["request"]
-    target, started = run["target"], run["started"]
+    bridge, target = run["bridge"], run["target"]
     temp = fsio.new_temp_dir(target)
     try:
-        run["file_entries"] = _write_state_files(temp, captures)
-        _write_env(temp, bridge)
-        timing = {"snapshot_id": snapshot_id_for(started, request.name),
-                  "started_utc": started, "finished_utc": utc_now_iso()}
-        report = reports.save_report(
-            timing=timing, domains=_report_rows(captures),
-            errors=[c.error for c in captures if c.error], published=True)
-        manifest = _snapshot_manifest(run, captures, report)
-        fsio.write_bytes(temp, "manifest.json", canonical_bytes(manifest))
+        report = _stage(run, captures, temp)
         fsio.publish(temp, target)
     except (OSError, FileExistsError) as exc:
         return _publish_failed(target, temp, exc)

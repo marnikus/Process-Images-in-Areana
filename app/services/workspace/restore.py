@@ -16,12 +16,29 @@ from app.persistence.workspace.manifest import entry_for, read_manifest
 from . import reports
 from .registry import restore_order
 
+def _row_head(entry: dict, domain_id: str) -> dict:
+    """The identity columns every preview row carries, whatever its status."""
+    return {"domain_id": domain_id, "display_name": entry.get("display_name", domain_id),
+            "required": entry.get("required", False),
+            "sensitivity": entry.get("sensitivity", "public"),
+            "dependencies": entry.get("dependencies", {})}
+
+
+def _file_status(row: dict, entry: dict, path: Path) -> dict:
+    """ok / size_mismatch for a domain file that exists on disk."""
+    actual = path.stat().st_size
+    row.update(file=entry["path"], bytes=entry.get("bytes"),
+               schema_version=entry.get("schema_version"))
+    if actual != entry.get("bytes"):
+        row.update(status="size_mismatch", note=f"on disk {actual} bytes")
+    else:
+        row.update(status="ok")
+    return row
+
+
 def _preview_row(root: Path, manifest: dict, domain_id: str) -> dict:
     entry = entry_for(manifest, domain_id) or {}
-    row = {"domain_id": domain_id, "display_name": entry.get("display_name", domain_id),
-           "required": entry.get("required", False),
-           "sensitivity": entry.get("sensitivity", "public"),
-           "dependencies": entry.get("dependencies", {})}
+    row = _row_head(entry, domain_id)
     if not entry:
         row.update(status="not_in_manifest", note="domain unknown to this snapshot")
         return row
@@ -29,17 +46,11 @@ def _preview_row(root: Path, manifest: dict, domain_id: str) -> dict:
         row.update(status="excluded", note=entry.get("capture", {}).get(
             "excluded_reason", "policy-excluded"))
         return row
-    rel, path = entry["path"], root / entry["path"]
+    path = root / entry["path"]
     if not path.exists():
-        row.update(status="missing", file=rel)
+        row.update(status="missing", file=entry["path"])
         return row
-    actual = path.stat().st_size
-    row.update(file=rel, bytes=entry.get("bytes"), schema_version=entry.get("schema_version"))
-    if actual != entry.get("bytes"):
-        row.update(status="size_mismatch", note=f"on disk {actual} bytes")
-    else:
-        row.update(status="ok")
-    return row
+    return _file_status(row, entry, path)
 
 
 def preview_restore(root) -> dict:

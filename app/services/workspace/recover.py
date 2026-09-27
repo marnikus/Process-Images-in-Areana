@@ -8,12 +8,11 @@ absences.
 """
 from __future__ import annotations
 
-import json
 import shutil
 import time
 from pathlib import Path
 
-from .meta import config_dir, log_message, utc_now_iso
+from .meta import config_dir, utc_now_iso
 
 
 RECOVERY_DIR = "workspace_recovery"
@@ -35,26 +34,39 @@ def _copy_live_file(path: Path, backup: Path, name: str) -> str | None:
     return name
 
 
+def _affected_files(bridge, providers: list) -> dict:
+    """{domain_id: [live Path, ...]} for every provider about to be restored."""
+    files: dict = {}
+    for provider in providers:
+        for path in provider.live_paths(bridge):
+            files.setdefault(provider.domain_id, []).append(path)
+    return files
+
+
+def _copy_affected(files: dict, backup: Path) -> tuple:
+    """(copied, absent) — {domain_id: [name]} each; a missing live file is `absent`."""
+    copied: dict = {}
+    absent: dict = {}
+    for domain_id, paths in files.items():
+        for path in paths:
+            name = _copy_live_file(path, backup, f"{domain_id}__{path.name}")
+            (copied if name else absent).setdefault(domain_id, []).append(
+                name or path.name)
+    return copied, absent
+
+
 def backup_live(bridge, providers: list) -> str:
     """Copy every affected live file into a recovery snapshot (task RESTORE 4).
 
     A live file that does not exist yet (fresh machine) is recorded under
     `absent` in recovery.json instead of failing the whole restore.
     """
-    files = {}
-    for provider in providers:
-        for path in provider.live_paths(bridge):
-            files.setdefault(provider.domain_id, []).append(path)
+    files = _affected_files(bridge, providers)
     if not files:
         return ""
     backup = _recovery_dir(bridge)
     backup.mkdir(parents=True, exist_ok=True)
-    copied, absent = {}, {}
-    for domain_id, paths in files.items():
-        for path in paths:
-            name = _copy_live_file(path, backup, f"{domain_id}__{path.name}")
-            (copied if name else absent).setdefault(domain_id, []).append(
-                name or path.name)
+    copied, absent = _copy_affected(files, backup)
     from app.persistence.workspace.integrity import canonical_bytes
     (backup / "recovery.json").write_bytes(canonical_bytes(
         {"created_utc": utc_now_iso(), "files": copied, "absent": absent}))
