@@ -9,6 +9,7 @@ transactional inside each domain). No Qt, no app.ui imports.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -16,6 +17,33 @@ from pathlib import Path
 def config_dir(bridge) -> Path:
     """The live config directory (one home for meta, recovery, index and providers)."""
     return Path(getattr(bridge.config, "dir", "config"))
+
+
+def read_live_json(path) -> tuple:
+    """(doc, "") for a readable object or a missing file ({}); (None, cause) otherwise.
+
+    RULE 4: a live file that exists but is unreadable, corrupt or not an object is
+    BROKEN, never "empty" — capturing it as {} would let a later restore wipe the store.
+    """
+    if not path or not Path(path).exists():
+        return {}, ""
+    path = Path(path)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, f"live file {path.name} is unreadable: {exc}"
+    if not isinstance(doc, dict):
+        return None, f"live file {path.name} is not a JSON object"
+    return doc, ""
+
+
+def live_capture(path, empty_note: str = "") -> "CaptureResult":
+    """CaptureResult for a one-file store read with `read_live_json`."""
+    doc, cause = read_live_json(path)
+    if cause:
+        return CaptureResult(ok=False, notes=[cause])
+    notes = [empty_note] if empty_note and not (path and Path(path).exists()) else []
+    return CaptureResult(ok=True, doc=doc, notes=notes)
 
 
 @dataclass

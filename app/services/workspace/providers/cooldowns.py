@@ -11,9 +11,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.persistence.cooldown_store import load_entries, load_stats, normalize_url
-from app.persistence.json_store import load_json, save_json_atomic
+from app.persistence.json_store import save_json_atomic
 from app.services.cooldown_service import restore_cooldown_entry, restore_page_stats
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture
 
 _SECTIONS = ("version", "entries", "stats", "aliases")
 
@@ -21,16 +21,6 @@ _SECTIONS = ("version", "entries", "stats", "aliases")
 def cooldown_file(bridge) -> Path:
     from app.services.run_state import cooldowns_path
     return Path(cooldowns_path(bridge))
-
-
-def read_live(path: Path) -> dict:
-    """One retry on a transient read miss (the file is replaced on every pool push)."""
-    if not Path(path).exists():
-        return {}
-    try:
-        return load_json(path, {})
-    except OSError:
-        return load_json(path, {})
 
 
 def sections_error(doc) -> str | None:
@@ -55,9 +45,7 @@ class CooldownsProvider(StateProvider):
         return self._one_file(cooldown_file(bridge))
 
     def capture(self, bridge) -> CaptureResult:
-        doc = read_live(cooldown_file(bridge))
-        notes = [] if doc else ["no live cooldown file — captured empty"]
-        return CaptureResult(ok=True, doc=doc, notes=notes)
+        return live_capture(cooldown_file(bridge), "no live cooldown file — captured empty")
 
     def validate(self, doc) -> str | None:
         return sections_error(doc)

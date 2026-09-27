@@ -8,9 +8,9 @@ monotonic promise — a restored log never reuses job numbers (I-61).
 
 from __future__ import annotations
 
-from app.persistence.json_store import load_json, save_json_atomic
+from app.persistence.json_store import save_json_atomic
 from app.persistence.workspace.errors import WorkspaceError
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture
 from app.services.job_history import JobHistoryStore, _history_file
 
 
@@ -38,9 +38,7 @@ class JobHistoryProvider(StateProvider):
         return self._one_file(_history_file(bridge))
 
     def capture(self, bridge) -> CaptureResult:
-        path = _history_file(bridge)
-        doc = load_json(path, {}) if path else {}
-        return CaptureResult(ok=True, doc=doc)
+        return live_capture(_history_file(bridge))
 
     def validate(self, doc) -> str | None:
         return history_error(doc)

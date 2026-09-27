@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.persistence.json_store import load_json, save_json_atomic
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, config_dir
+from app.persistence.json_store import save_json_atomic
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, config_dir, live_capture
 
 FILE_NAME = "captcha_stats.json"
 
@@ -39,7 +39,7 @@ class CaptchaStatsProvider(StateProvider):
         return self._one_file(stats_file(bridge))
 
     def capture(self, bridge) -> CaptureResult:
-        return CaptureResult(ok=True, doc=load_json(stats_file(bridge), {}))
+        return live_capture(stats_file(bridge))
 
     def validate(self, doc) -> str | None:
         return stats_error(doc)

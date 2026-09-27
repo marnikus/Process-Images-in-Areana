@@ -245,3 +245,34 @@ def test_index_write_failure_is_logged(bridge, monkeypatch):
     reply = ws_save.save_workspace(bridge, SaveRequest(name="ix"))
     assert reply["ok"] is True
     assert any(lvl == "warn" and "workspace_meta" in m for lvl, m in lines)
+
+
+# ---- step 9 (V3, RULE 4): a corrupt live file is broken, not empty -----------
+
+def _live_file(bridge, domain_id: str) -> Path:
+    from app.services import job_history
+    from app.services.workspace.providers import captcha_stats, cooldowns
+    return {"job_history": lambda: Path(job_history._history_file(bridge)),
+            "captcha_stats": lambda: captcha_stats.stats_file(bridge),
+            "cooldowns": lambda: cooldowns.cooldown_file(bridge)}[domain_id]()
+
+
+@pytest.mark.parametrize("domain_id", ["job_history", "captcha_stats", "cooldowns"])
+@pytest.mark.parametrize("content", ['{"entries": [{"x": 1}]', "[1, 2]"])
+def test_corrupt_live_file_refuses_the_save(bridge, domain_id, content):
+    """P5: a truncated job_history.json was saved as `{}` — a later restore wipes history."""
+    path = _live_file(bridge, domain_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    reply = ws_save.save_workspace(bridge, SaveRequest(name="c"))
+    assert reply["ok"] is False and domain_id in reply["error"]
+    cause = next(e["cause"] for e in reply["errors"] if e["domain_id"] == domain_id)
+    assert path.name in cause
+
+
+@pytest.mark.parametrize("domain_id", ["job_history", "captcha_stats", "cooldowns"])
+def test_missing_live_file_still_captures_empty(bridge, domain_id):
+    """Fresh machine: no file is a legitimate empty store (the other half of RULE 4)."""
+    assert not _live_file(bridge, domain_id).exists()
+    reply = ws_save.save_workspace(bridge, SaveRequest(name="fresh"))
+    assert reply["ok"] is True and reply["result"] == "success"
