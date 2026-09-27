@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.persistence.json_store import load_json, save_json_atomic
-from .meta import META_FILE, RECENT_CAP, config_dir, utc_now_iso
+from .meta import META_FILE, RECENT_CAP, config_dir, log_message, utc_now_iso
 
 
 def _meta_path(bridge) -> Path:
@@ -26,8 +26,9 @@ def _read_meta(bridge) -> dict:
 def _write_meta(bridge, meta: dict) -> None:
     try:
         save_json_atomic(_meta_path(bridge), meta)
-    except OSError:
-        pass
+    except OSError as exc:
+        log_message(bridge, f"⚠️ Workspace index not saved ({META_FILE}): {exc} — "
+                            "the snapshot itself is fine; the recent list may be stale", "warn")
 
 
 def record_snapshot(bridge, path: str) -> None:

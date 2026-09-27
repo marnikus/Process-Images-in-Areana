@@ -20,7 +20,8 @@ def save_report(*, timing: dict, domains: list, errors: list,
 
     `timing` carries snapshot_id/started_utc/finished_utc (one identity bundle).
     """
-    failed_required = [e for e in errors if e.get("stage") in ("semantic", "apply")]
+    required = {d["domain_id"] for d in domains if d.get("required")}
+    failed_required = [e for e in errors if e.get("domain_id") in required]
     if not published:
         result = SAVE_RESULT_FAILED
     elif errors:

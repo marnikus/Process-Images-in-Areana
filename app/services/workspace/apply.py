@@ -257,7 +257,9 @@ def _finish(bridge, root: Path, rows: list, backup: str) -> dict:
                 "reconciled": _reconcile_all(bridge, restored_ids)}
     report = reports.restore_report(workspace=str(root), outcomes=outcomes,
                                     backup=backup)
-    _write_restore_report(root, report)
+    note = fsio.write_report(root, "reports/restore-report.json", canonical_bytes(report))
+    if note:
+        report["report_note"] = note
     record_restore(bridge, str(root), report["result"])
     return report
 
@@ -272,18 +274,3 @@ def _reconcile_all(bridge, restored_ids: list) -> list:
         except Exception as exc:
             notes.append(f"{domain_id}: reconcile failed: {type(exc).__name__}: {exc}")
     return notes
-
-
-def _write_restore_report(root: Path, report: dict) -> None:
-    """Into `<root>/reports/`; a read-only folder gets a sibling file instead."""
-    try:
-        fsio.write_bytes(root, "reports/restore-report.json", canonical_bytes(report))
-        return
-    except OSError:
-        pass
-    try:
-        sibling = root.with_name(root.name + ".restore-report.json")
-        sibling.write_bytes(canonical_bytes(report))
-        report["report_note"] = f"folder read-only — report written beside it: {sibling.name}"
-    except OSError:
-        report["report_note"] = "report could not be written to disk (in-UI copy only)"

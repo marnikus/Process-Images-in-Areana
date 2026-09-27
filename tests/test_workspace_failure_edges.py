@@ -200,3 +200,48 @@ def test_preview_of_a_non_object_queue_file_does_not_crash(snapshot):
     (snapshot / "state" / "app_state.json").write_text("[]")
     preview = preview_restore(snapshot)
     assert preview["ok"] and preview["path_remap_needed"] == []
+
+
+# ---- step 8 (S1, S3, S4, S8): the save reply matches the folder on disk ------
+
+def test_post_publish_report_failure_is_a_note_not_a_crash(bridge, monkeypatch):
+    """P6: the snapshot was published and valid, yet the caller got an exception."""
+    from app.persistence.workspace import fsio
+    real = fsio.write_bytes
+
+    def locked_report(root, rel, data):
+        if rel == "reports/save-report.json":
+            raise PermissionError(13, "locked by sync")
+        return real(root, rel, data)
+    monkeypatch.setattr(fsio, "write_bytes", locked_report)
+    reply = ws_save.save_workspace(bridge, SaveRequest(name="pp"))
+    assert reply["ok"] is True and "report" in reply["report_note"]
+    assert snapshot_index.recent_snapshots(bridge) == [reply["path"]]
+
+
+def test_failed_folder_names_where_the_partial_folder_really_is(bridge, monkeypatch):
+    """S4: `failed_folder` was reported even when renaming the temp failed."""
+    from app.persistence.workspace import fsio
+    monkeypatch.setattr(fsio, "publish", _raise(PermissionError(13, "target locked")))
+    monkeypatch.setattr(Path, "rename", _raise(PermissionError(13, "temp locked")))
+    reply = ws_save.save_workspace(bridge, SaveRequest(name="pf"))
+    assert reply["ok"] is False and Path(reply["failed_folder"]).is_dir()
+
+
+def test_failed_required_lists_a_required_domains_capture_failure(bridge, monkeypatch):
+    """P4: `failed_required` filtered stages save never produces → always []."""
+    from app.services.workspace.provider import CaptureResult
+    monkeypatch.setattr(type(get("arena_state")), "capture",
+                        lambda self, b: CaptureResult(ok=False, notes=["boom"]))
+    reply = ws_save.save_workspace(bridge, SaveRequest(name="p", allow_partial=True))
+    assert [e["domain_id"] for e in reply["failed_required"]] == ["arena_state"]
+    assert not get("undo").required
+
+
+def test_index_write_failure_is_logged(bridge, monkeypatch):
+    """S8: `workspace_meta.json` write errors were swallowed silently."""
+    monkeypatch.setattr(snapshot_index, "save_json_atomic", _raise(PermissionError(13, "locked")))
+    lines = _logs(bridge, monkeypatch)
+    reply = ws_save.save_workspace(bridge, SaveRequest(name="ix"))
+    assert reply["ok"] is True
+    assert any(lvl == "warn" and "workspace_meta" in m for lvl, m in lines)

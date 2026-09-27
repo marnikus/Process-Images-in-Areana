@@ -62,11 +62,29 @@ def _with_backoff(action) -> None:
 
 def write_bytes(root: Path, rel: str, data: bytes) -> dict:
     """Write one file inside the (temp) workspace root; returns its integrity entry."""
-
     path = Path(root) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     return bytes_entry(rel, data)
+
+
+def write_report(root: Path, rel: str, data: bytes) -> str:
+    """A report into `<root>/<rel>`, else beside the folder, else nowhere — never raises.
+
+    Returns "" when written in place, otherwise a note saying where it went.
+    """
+    root = Path(root)
+    try:
+        write_bytes(root, rel, data)
+        return ""
+    except OSError:
+        pass
+    sibling = root.with_name(f"{root.name}.{Path(rel).name}")
+    try:
+        sibling.write_bytes(data)
+        return f"folder read-only — report written beside it: {sibling.name}"
+    except OSError:
+        return "report could not be written to disk (in-UI copy only)"
 
 
 def copy_tree(src: Path, dst: Path) -> None:

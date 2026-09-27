@@ -145,7 +145,7 @@ def _write_env(temp: Path, bridge) -> None:
 
 
 def _report_rows(captures: list) -> list:
-    return [{"domain_id": c.provider.domain_id,
+    return [{"domain_id": c.provider.domain_id, "required": bool(c.provider.required),
              "ok": not c.error and bool(c.result and c.result.ok),
              "excluded": bool(c.error or (c.result and c.result.excluded))}
             for c in captures]
@@ -205,10 +205,10 @@ def _publish_save(run: dict, captures: list) -> dict:
         fsio.publish(temp, target)
     except OSError as exc:  # FileExistsError is an OSError
         return _publish_failed(target, temp, exc)
-    fsio.write_bytes(target, "reports/save-report.json", canonical_bytes(report))
     record_snapshot(bridge, str(target))
+    note = fsio.write_report(target, "reports/save-report.json", canonical_bytes(report))
     log_message(bridge, f"💾 Workspace saved: {target.name} — {report['result']}", "success")
-    return {"ok": True, **report, "path": str(target)}
+    return {"ok": True, **report, "path": str(target), **({"report_note": note} if note else {})}
 
 
 def _snapshot_manifest(run: dict, captures: list, report: dict) -> dict:
@@ -229,7 +229,7 @@ def _publish_failed(target: Path, temp: Path, exc: Exception) -> dict:
     try:
         temp.rename(failed)
     except OSError:
-        pass
+        failed = temp            # the partial folder stays where it is — say so
     return {"ok": False, "result": reports.SAVE_RESULT_FAILED,
             "error": f"publish failed: {exc}", "failed_folder": str(failed),
             "previous_snapshots_untouched": True}
