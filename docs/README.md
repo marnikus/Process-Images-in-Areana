@@ -37,6 +37,11 @@ These are kept for context, but `docs/current/` is authoritative if conflict:
 
 ---
 
+## Latest repair — 2026-09-27
+
+- `docs/archive/2026-09-27-stalled-cdp-recovery/design.md` — evidence, limits and design for same-tab CDP session repair (without reloading/resubmitting) and query-aware route matching, I-72.
+- `docs/archive/2026-09-27-stalled-cdp-recovery/validation.md` — regression tests, quality measurements and remaining live-browser acceptance.
+
 ## Archive (dated, never edited to catch up)
 
 `docs/archive/<YYYY-MM-DD>-<topic>/` — every design/plan/root-cause doc goes here, dated by day written. Archived docs are record of what was believed then, never edited.

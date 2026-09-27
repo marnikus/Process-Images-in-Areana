@@ -130,10 +130,10 @@ async def recover_page_context(cdp, report: Optional[Reporter] = None,
 # New Chat reset hung on the same 30 s probes. Once one evaluate has timed
 # out, callers ask a 3 s ping first instead of queueing more 30 s probes.
 # Measured in Chrome: neither `Page.reload` nor a same-site `Page.navigate`
-# rescues a page whose main thread is stuck — only waiting does; a blocking
+# rescues a page whose main thread is stuck. A stalled session can instead
+# be repaired without navigating (cdp.recovery); a blocking
 # JavaScript dialog is answered by `cdp.dialogs` (see `cdp/dialogs.py`).
 PING_TIMEOUT_S = 3.0
-_PING = {"expression": "1", "returnByValue": True}
 
 
 def page_unresponsive(cdp) -> bool:
@@ -143,15 +143,16 @@ def page_unresponsive(cdp) -> bool:
 
 
 async def page_answers(cdp, timeout_s: float = PING_TIMEOUT_S) -> bool:
-    """One cheap ping; an answer clears the timed-out record (the page is back)."""
-    from .cdp.dialogs import close_open_dialog
-    await close_open_dialog(cdp)
-    try:
-        await cdp.send("Runtime.evaluate", dict(_PING), timeout=timeout_s)
-    except Exception:
-        return False
-    cdp.last_error, cdp.last_error_kind = "", ""
-    return True
+    """Ping, then repair one stalled session without reloading or replaying a job."""
+    from .cdp.recovery import ping, repair_stalled_session
+    failed_socket = getattr(cdp, "_ws", None)
+    ready = await ping(cdp, timeout_s)
+    if not ready:
+        ready = await repair_stalled_session(cdp, failed_socket)
+    if ready:
+        cdp.last_error, cdp.last_error_kind = "", ""
+        cdp._stalled_repair_attempted = False
+    return ready
 
 
 async def still_frozen(cdp) -> bool:

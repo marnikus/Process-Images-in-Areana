@@ -1,5 +1,14 @@
 # Quality re-check — 2026-09-21 (Reparse fresh sweep + checkbox pool gate)
 
+## 2026-09-27 — stalled CDP session repair (I-72)
+
+Python 2,795 passed / 13 skipped; JS 474 passed / 4 skipped. Changed-production
+Rule 16 gate: zero failures/warnings. Coverage 91.30% statements / 87.24% branches;
+new repair module 100%/100%, max function 13 LOC, CC5, cognitive4. No new vulture
+or duplication findings. Full-repo baseline debt and live-browser limitation are
+recorded in `docs/archive/2026-09-27-stalled-cdp-recovery/validation.md`.
+
+
 Snapshot of the RULE 16 gates after the round (`docs/archive/2026-09-21-reparse-sweep-and-checkbox-pool/design.md`).
 
 | Gate | Command | Result |

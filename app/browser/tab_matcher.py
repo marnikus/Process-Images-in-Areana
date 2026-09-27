@@ -48,14 +48,8 @@ def _parse(query: str):
     if not q:
         return "", "", False
     if "/" in q or "." in q:
-        path = ""
-        host = q
-        if "/" in q:
-            host, path = q.split("/", 1)
-            path = "/" + path
-        if ":" in host:
-            host = host.split(":", 1)[0]
-        return host, path, True
+        parsed = urlparse("//" + q)
+        return parsed.hostname or "", parsed.path.rstrip("/"), True
     return "", "", False
 
 def _site_key(host: str) -> str:
@@ -72,18 +66,16 @@ def _parsed_target(tab_url: str):
     except Exception:
         return "", ""
 
-def _score_url_like(query_parts, q_norm, tab_parts):
+def _score_url_like(query_parts, tab_parts):
     q_host, q_path = query_parts
     tab_host, tab_path = tab_parts
     if _site_key(tab_host) != _site_key(q_host):
-        if q_norm in f"{tab_host}{tab_path}":
-            return 60, "keyword"
-        return None
-    if q_path and tab_path.startswith(q_path):
+        return 0, ""
+    if q_path and (tab_path.rstrip("/") + "/").startswith(q_path + "/"):
         return 300, "url_path"
     if not q_path:
         return 200, "host"
-    return 60, "keyword"
+    return 0, ""
 
 def _score_keyword(q_norm, url_norm, tab_title):
     if q_norm and (q_norm in url_norm or q_norm in (tab_title or "").lower()):
@@ -101,9 +93,7 @@ def score_tab(query: str, tab_url: str, tab_title: str = ""):
         return 500, "url_exact"
     q_host, q_path, is_url_like = _parse(query)
     if is_url_like and q_host:
-        verdict = _score_url_like((q_host, q_path), q_norm, _parsed_target(tab_url))
-        if verdict is not None:
-            return verdict
+        return _score_url_like((q_host, q_path), _parsed_target(tab_url))
     return _score_keyword(q_norm, url_norm, tab_title)
 
 def _tab_url(tab: dict):
