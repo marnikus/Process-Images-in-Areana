@@ -20,7 +20,7 @@ from pathlib import Path
 from app.core.naming import OutputSpec, atomic_write_bytes, get_output_path
 from app.utils.http_image import OutputError
 
-SAVE_TRIES = 3
+SAVE_TRIES = 5  # 2026-09-27: Drive denies a replace for ~1 s (0.5+1+1.5+2 s of retry)
 
 
 def output_spec(settings, ext: str) -> OutputSpec:

@@ -12,7 +12,9 @@ from typing import Dict, Any, Optional, Tuple, Callable, List
 from ..output_probes import build_check_js
 from ..output_state import flatten_diagnostics
 from ..output_wait import WaitSpec as PollSpec, wait_for_new_output_with_spec
-from ..page_recovery import heal_link
+from ..output_wait_status import timeout_detail
+from ..page_recovery import evaluate_failure, heal_link
+from ..turn_probe import guard_thumbnail, read_turn, settles, summary
 from ...utils.page_errors import PageErrorAbort, match_dead_generation, match_page_error
 from .state import capture_baseline, scan_page_errors
 
@@ -103,15 +105,34 @@ async def _poll_diag_or_revive(ctrl, ctx: PollContext, cdp=None) -> Dict[str, An
 
 
 async def _poll_output_diag(cdp, ctx: PollContext, ctrl) -> Dict[str, Any]:
-    js = build_check_js(ctx.old_srcs, ctx.correlation_id, ctx.old_outputs)
-    res = await cdp.evaluate(js)
-    diag = flatten_diagnostics(res) if res else {"ready": False, "reason": "no_result"}
+    diag = await _read_output(cdp, ctx)
     if diag.get("ready"):
         return diag
     err = match_page_error(await scan_page_errors(cdp), ctx.err_base)
     if err:
         raise PageErrorAbort(err)
     return diag
+
+
+async def _read_output(cdp, ctx: PollContext) -> Dict[str, Any]:
+    """D-2: this job's turn decides first; the v4 check only when the turn cannot."""
+    turn = await read_turn(cdp, ctx.correlation_id)
+    if settles(turn):
+        return turn
+    diag = await _legacy_diag(cdp, ctx)
+    if not turn:
+        return diag
+    diag = guard_thumbnail(diag, turn)  # never the user's own attachment
+    diag.setdefault("turn", summary(turn))
+    return diag
+
+
+async def _legacy_diag(cdp, ctx: PollContext) -> Dict[str, Any]:
+    """The v4 check; an empty answer carries the transport's reason (D-2)."""
+    res = await cdp.evaluate(build_check_js(ctx.old_srcs, ctx.correlation_id, ctx.old_outputs))
+    if res:
+        return flatten_diagnostics(res)
+    return {"ready": False, "reason": "no_result", "error": evaluate_failure(cdp)}
 
 
 async def _security_gate(cdp, ctrl) -> None:
@@ -147,9 +168,10 @@ async def _map_wait_result(cdp, result, baseline, timeout_ms):
 
 
 def _timeout_text(result, timeout_ms) -> str:
-    """'Timeout after Nms' plus the pause evidence when a captcha wait was absorbed."""
+    """'Timeout after Nms' + captcha pause evidence + what the last check saw (D-3)."""
     note = result.get("pause_note") or ""
-    return f"Timeout after {timeout_ms}ms" + (f" ({note})" if note else "")
+    text = f"Timeout after {timeout_ms}ms" + (f" ({note})" if note else "")
+    return text + timeout_detail(result.get("last"))
 
 
 async def _build_poll_context(baseline: Dict[str, Any], correlation_id, err_base) -> PollContext:

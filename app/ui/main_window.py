@@ -21,6 +21,17 @@ except Exception:
     CDPClient = None
 
 
+# QWebEngineSettings switched on for the UI page: local file access for thumbnails
+# (file:// from a file:// origin), and the clipboard for the log's "Copy all" (2026-09-27).
+_WEB_SETTINGS_ON = (
+    "LocalContentCanAccessFileUrls",
+    "LocalContentCanAccessRemoteUrls",
+    "LocalStorageEnabled",
+    "AllowRunningInsecureContent",
+    "JavascriptCanAccessClipboard",
+)
+
+
 class _ConsolePage(QWebEnginePage):
     """Every page console message (incl. uncaught TypeErrors) → app log WITH
     file:line — 2026-09-25: the terminal showed only `js: fn is not a function`,
@@ -91,14 +102,11 @@ class MainWindow(QMainWindow):
                 print(f"CDP client init failed: {e}")
 
     def _configure_web_settings(self) -> None:
-        # Enable local file access for thumbnails — file:// from file:// origin
         try:
             from PySide6.QtWebEngineCore import QWebEngineSettings
             settings = self.view.page().settings()
-            settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
-            settings.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
-            settings.setAttribute(QWebEngineSettings.LocalStorageEnabled, True)
-            settings.setAttribute(QWebEngineSettings.AllowRunningInsecureContent, True)
+            for name in _WEB_SETTINGS_ON:
+                settings.setAttribute(getattr(QWebEngineSettings, name), True)
         except Exception as e:
             print(f"WebEngine settings tweak failed: {e}")
 

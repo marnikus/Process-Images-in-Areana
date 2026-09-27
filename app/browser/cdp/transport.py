@@ -97,16 +97,17 @@ class CDPTransport(QObject):
         if (ws := self._ws) is None or not self._connected:
             raise ConnectionError("CDP not connected")
         self._cmd_id += 1
-        loop = asyncio.get_event_loop()
-        fut = loop.create_future()
-        self._pending[self._cmd_id] = fut
-        payload = json.dumps({"id": self._cmd_id, "method": method, "params": params or {}})
-        await _send_payload(self, self._cmd_id, ws, payload)
+        cmd_id = self._cmd_id  # this command's own id: concurrent sends move the counter
+        fut = asyncio.get_event_loop().create_future()
+        self._pending[cmd_id] = fut
+        payload = json.dumps({"id": cmd_id, "method": method, "params": params or {}})
+        await _send_payload(self, cmd_id, ws, payload)
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
-            self._pending.pop(self._cmd_id, None)
             raise TimeoutError(f"CDP command {method} timed out after {timeout}s")
+        finally:
+            self._pending.pop(cmd_id, None)  # timed out or cancelled: no stale entry
 
     async def _receive_loop(self):
         try:

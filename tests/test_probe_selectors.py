@@ -32,6 +32,7 @@ PROBE_FILES = [
     "app/browser/output_probes.py",
     "app/browser/owner_probe.py",   # D-5: the logged-in account label probe
     "app/browser/processing_probe.py",  # B12: AWAIT_PROCESSING_IMAGE indicator probe
+    "app/browser/turn_probe.py",  # 2026-09-27 D-1: this job's answer turn
 ]
 
 

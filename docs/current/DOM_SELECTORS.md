@@ -592,6 +592,24 @@ Read-only — the app never clicks it.
 
 ---
 
+## E5. Output — Turn Probe: this job's answer by visual order (2026-09-27, I-67)
+
+Design: `archive/2026-09-27-chrome-output-detection-and-reset/design.md`. Payload: `app/browser/turn_probe.py` (runs before the v4 check in section E4).
+
+| Field | Value |
+|---|---|
+| **Anchor** | The text node matching `JOB-ID:\s*<id>\s*]`, lowest on screen, outside `chat_chrome`. A text node, so a prompt longer than 2 000 characters is still found. |
+| **chat_chrome** | `[data-sidebar="sidebar"]`, `body nav`, `body aside`, `body header`, `body form`. On the saved page all 174 `[data-sidebar]` nodes sit inside the 2 `[data-sidebar="sidebar"]` roots. |
+| **Region** | From the anchor down to the next `[JOB-ID:` prompt (else the end of the page). |
+| **generating_status** | `main p`, `main span` with text containing `Generating image` (Direct-mode answer shows `<p class="relative inline-block … text-shimmer">Generating image...</p>`). A `processing_spinner` in the region also means generating. |
+| **Output** | `img` in the region shown ≥ 200 × 200 px; any src (`https:` / `blob:` / `data:`). Ready = `complete` + `naturalWidth > 0` + opacity ≥ 0.5; largest wins. |
+| **Thumbnails** | Images shown < 200 px (the sent attachment `img.aspect-square.w-32` is 128 px) are `refs`, never outputs; a v4 answer on one is refused. |
+| **Evidence** | Real Chromium 153 on fixtures made from `docs/research/Directly Chat…html` (design §5): https / data / blob outputs, older job above, same-id revival, sidebar spinner, fade-in. |
+
+## N. Page Restart — New Chat by navigation (2026-09-27, I-67)
+
+`site_adapter.NEW_CHAT_PATH = "/image/direct"` — the `new_chat_button` href, and the `page_restart` destination (tab origin from `Target.getTargetInfo` + this path) when the New Chat click stage fails.
+
 ## Firefox image job — how the same selectors are used (2026-09-25, I-65)
 
 No new selectors. The Firefox lane reuses the entries above through `probe_selectors` only (RULE 21); the page JS is Chrome's probes verbatim, carried in base64 by the phase macros (`app/browser/uivision/job_scripts.py`, `job_macros.py`) because Ui.Vision pastes `${var}` raw into `executeScript` Targets.

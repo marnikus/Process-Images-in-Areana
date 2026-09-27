@@ -1,9 +1,14 @@
-"""Post-generation reset — click New Chat, wait for full page load.
+"""Post-generation reset — click New Chat, wait for full page load; else restart the page.
 
 Spec 01: after each job the tab returns to a clean new chat; the tab is
 marked ready only after the page is fully loaded. Clicks go through the
 shared visual runner (RULE 1); every step is reported (RULE 2); selectors
-are semantic-first (RULE 21). Imports: same layer only.
+are semantic-first (RULE 21).
+
+2026-09-27 D-4: both stages are time-boxed, so a page that stops answering
+cannot hang the reset. When the click stage fails, the tab is navigated to
+its New Chat page (`page_restart`) and the same clean-composer proof runs.
+Imports: same layer only.
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from .page_recovery import LinkLost, heal_link
+from .page_restart import restart_to_new_chat
 from .probe_selectors import attachment_preview_selectors, new_chat_selectors, textarea_primary
 from .visual_click import ClickRequest, find_and_click
 
@@ -28,6 +34,7 @@ NEW_CHAT_CANDIDATES = (
     (_NC_SELS[1], "span", "New Chat"),
     (_NC_SELS[2], "", ""),
 )
+STAGE_SLACK_S = 20.0  # each stage may take its load timeout + this, then it is cut
 
 
 @dataclass
@@ -205,15 +212,41 @@ async def _wait_page_loaded(ctx: ResetCtx) -> tuple[bool, str]:
         await asyncio.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
 
 
-async def reset_to_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
-    """Click New Chat (a closed socket is healed first), then wait for the full page load."""
-    _report(ctx.engine, "↩ Resetting to new chat after generation", "info")
+async def _bounded(ctx: ResetCtx, work, stage: str) -> tuple[bool, str]:
+    """Run one stage within timeout_sec + STAGE_SLACK_S (a silent page cannot hang it)."""
+    budget = max(1.0, float(ctx.timeout_sec or 30)) + STAGE_SLACK_S
+    try:
+        return await asyncio.wait_for(work, timeout=budget)
+    except asyncio.TimeoutError:
+        return False, f"{stage}: the page did not answer within {budget:.0f}s"
+
+
+async def _click_and_wait(ctx: ResetCtx) -> tuple[bool, str]:
+    """Stage 1: click New Chat (closed socket healed first), then the clean-composer proof."""
     clicked, click_info = await _click_new_chat(ctx)
     if not clicked:
-        _report(ctx.engine, f"↩ New-chat reset failed: {click_info}", "error")
         return False, click_info
     _report(ctx.engine, f"↩ New Chat clicked ({click_info}), waiting for load", "info")
+    return await _wait_page_loaded(ctx)
+
+
+async def _restart_and_wait(ctx: ResetCtx, why: str) -> tuple[bool, str]:
+    """Stage 2: navigate the tab to its New Chat page, then the same proof."""
+    _report(ctx.engine, f"🔄 New Chat did not open ({why}) — restarting the page", "warn")
+    ok, info = await restart_to_new_chat(ctx.client)
+    if not ok:
+        return False, f"{why}; page restart failed: {info}"
+    _report(ctx.engine, f"🔄 Page restarted at {info}, waiting for a clean composer", "info")
     ok, reason = await _wait_page_loaded(ctx)
+    return ok, (f"after page restart: {reason}" if ok else f"{why}; after page restart: {reason}")
+
+
+async def reset_to_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
+    """Click New Chat and prove a clean composer; else restart the page there (D-4)."""
+    _report(ctx.engine, "↩ Resetting to new chat after generation", "info")
+    ok, reason = await _bounded(ctx, _click_and_wait(ctx), "New Chat")
+    if not ok and not _is_cancelled(ctx) and reason != "cancelled":
+        ok, reason = await _bounded(ctx, _restart_and_wait(ctx, reason), "page restart")
     _report(ctx.engine, (f"↩ ✔ New chat open — clean composer confirmed ({reason})" if ok
                          else f"↩ New-chat reset failed: {reason}"), "success" if ok else "error")
     return ok, reason

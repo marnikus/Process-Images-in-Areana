@@ -7,9 +7,13 @@ probe file (enforced by tests/test_probe_selectors.py).
 Replaceable because webpage structure will change — update this file +
 DOM_SELECTORS.md only. Imports: `selector.py` only (same layer).
 """
-# ideal-size: ~310 lines reason=pure-data registry, one SelectorObject per page element (RULE 18.2)
+# ideal-size: ~340 lines reason=pure-data registry, one SelectorObject per page element (RULE 18.2)
 from .selector import SelectorObject
 from typing import Dict, List
+
+# The New Chat link's own href: the click target below and the page-restart
+# destination (2026-09-27, new_chat/page_restart) — one literal, two users.
+NEW_CHAT_PATH = "/image/direct"
 
 # Define selectors per spec and research.
 # Fallback lists are the live verified probe lists (byte-identical to what
@@ -205,6 +209,32 @@ SELECTORS: Dict[str, SelectorObject] = {
         evidence="spec G + user report 2026-09-16; list matches live output_probes v4 SELECTORS_V3 exactly",
         lastVerified="2026-09-19",
     ),
+    "chat_chrome": SelectorObject(
+        name="chat_chrome",
+        primary='[data-sidebar="sidebar"]',
+        fallbacks=["body nav", "body aside", "body header", "body form"],
+        scope=None,
+        mustBeVisible=False,
+        mustBeEnabled=False,
+        expectedCount=0,
+        verification="regions that are NOT the chat transcript: sidebar chat titles (named after the prompt, so they carry [JOB-ID]), their spinners, the header title and the composer — the turn probe ignores them",
+        evidence="Directly Chat...html 2026-09-27: sidebar spinner div.animate-spin inside a[data-sidebar=menu-button]; chat titles repeat the prompt",
+        lastVerified="2026-09-27",
+    ),
+    "generating_status": SelectorObject(
+        name="generating_status",
+        primary="main p",
+        fallbacks=["main span"],
+        scope=None,
+        mustBeVisible=True,
+        mustBeEnabled=False,
+        expectedCount=0,
+        textCondition="Generating image",
+        textConditionType="contains",
+        verification="text-shimmer status in the answer turn while the image is generated (Direct mode shows no image placeholder)",
+        evidence="Directly Chat...html: <p class=\"relative inline-block … text-shimmer\">Generating image...</p> in the Max answer",
+        lastVerified="2026-09-27",
+    ),
     "security_dialog": SelectorObject(
         name="security_dialog",
         primary='div[role="dialog"][data-state="open"]',
@@ -280,10 +310,10 @@ SELECTORS: Dict[str, SelectorObject] = {
     ),
     "new_chat_button": SelectorObject(
         name="new_chat_button",
-        primary='a[href="/image/direct"]',
+        primary=f'a[href="{NEW_CHAT_PATH}"]',
         fallbacks=[
-            'li[data-sidebar="menu-item"] a[href="/image/direct"]',
-            'a[data-sidebar="menu-button"][href="/image/direct"]',
+            f'li[data-sidebar="menu-item"] a[href="{NEW_CHAT_PATH}"]',
+            f'a[data-sidebar="menu-button"][href="{NEW_CHAT_PATH}"]',
         ],
         scope='li[data-sidebar="menu-item"]',
         mustBeVisible=True,

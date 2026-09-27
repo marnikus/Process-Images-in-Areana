@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from .site_adapter import get_readiness_requirements, get_selector
+from .site_adapter import NEW_CHAT_PATH, get_readiness_requirements, get_selector
 
 
 def account_email_probe() -> Dict[str, str]:
@@ -102,3 +102,19 @@ def add_files_menu_item_selectors() -> List[str]:
 def add_files_menu_item_text() -> str:
     """The item's label — preferred when several candidates match."""
     return get_selector("add_files_menu_item").textCondition or ""
+
+
+def chat_chrome_selectors() -> List[str]:
+    """Non-transcript regions (sidebar, nav, header, composer) the turn probe skips."""
+    return get_selector("chat_chrome").all_selectors()
+
+
+def generating_status() -> Dict[str, List[str] | str]:
+    """Answer-turn 'Generating image' status: element selectors + the text."""
+    status = get_selector("generating_status")
+    return {"sels": status.all_selectors(), "text": status.textCondition}
+
+
+def new_chat_path() -> str:
+    """The New Chat link's href — the page-restart destination (2026-09-27)."""
+    return NEW_CHAT_PATH

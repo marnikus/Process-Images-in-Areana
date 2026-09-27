@@ -19,6 +19,7 @@ from .output_wait_fallback import (
     _has_assoc_mismatch,
     _is_mismatch_block,
 )
+from .output_wait_status import WaitStatus
 
 
 @dataclass
@@ -191,20 +192,31 @@ async def _handle_non_ready_branch(diag: dict, log_cb: Callable, state: LoopStat
     return None
 
 
+async def _stop_result(cancel_check, state: LoopState, spec: WaitSpec, log_cb: Callable) -> dict | None:
+    """Cancel first, then the (pause-aware) timeout."""
+    cancelled = await _check_cancelled(cancel_check, state)
+    return cancelled or await _check_timeout(state, spec, log_cb)
+
+
+async def _poll_once(check_fn: Callable, spec: WaitSpec, state: LoopState, status: WaitStatus) -> dict | None:
+    """One timed check; every answer reaches the status line (D-3)."""
+    t0 = time.monotonic()
+    diag, err = await _poll_check(check_fn, spec.poll_interval)
+    state.last = diag if diag is not None else err
+    status.note(state.last, time.monotonic() - t0)
+    return diag
+
+
 async def wait_for_new_output_with_spec(check_fn, log_cb, cancel_check, spec: WaitSpec) -> dict:
     state = LoopState(last={"ready": False, "reason": "not_started"}, start=time.monotonic())
+    status = WaitStatus(log_cb, spec.timeout, state.start)
     while True:
-        cancelled = await _check_cancelled(cancel_check, state)
-        if cancelled:
-            return cancelled
-        timed_out = await _check_timeout(state, spec, log_cb)
-        if timed_out:
-            return timed_out
-        diag, err = await _poll_check(check_fn, spec.poll_interval)
+        stop = await _stop_result(cancel_check, state, spec, log_cb)
+        if stop:
+            return stop
+        diag = await _poll_once(check_fn, spec, state, status)
         if diag is None:
-            state.last = err
             continue
-        state.last = diag
         if is_ready_result(diag):
             result, done = await _handle_ready_branch(diag, check_fn, log_cb, spec)
             if done:

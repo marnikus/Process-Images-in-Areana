@@ -73,6 +73,7 @@
 .log-panel { overflow: hidden; }
 .log-console {
   flex: 1; overflow-y: auto;
+  overflow-anchor: none;  /* follow mode owns the scroll position (log-console.js D-5) */
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   line-height: 1.6;
