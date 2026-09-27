@@ -57,6 +57,11 @@ class FakeBridge:
         self.logs.append((level, message))
 
 
+
+async def fresh_chat(_bridge, _client, _ctrl):
+    """The I-74 new-chat gate at the unit seam: the tab is a new chat."""
+    return True, ""
+
 def make_img(name="a.png", **kw):
     data = {"id": kw.get("id", "i-" + name), "relative_path": name,
             "absolute_path": f"/tmp/{name}", "filename": name,
@@ -100,6 +105,7 @@ def runner_fakes(monkeypatch):
 
     monkeypatch.setattr(mpd, "capture_baseline", fake_baseline)
     monkeypatch.setattr(mpd, "run_blocks_for_image", fake_run)
+    monkeypatch.setattr(mpd, "ensure_new_chat", fresh_chat)   # I-74 gate: part of the same seam
 
     async def fake_finish(ctx):
         ctx.pool.mark_steady(ctx.tab_id)

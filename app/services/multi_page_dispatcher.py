@@ -21,6 +21,7 @@ from .job_history import note_job_started, record_dispatch_result
 from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status, maybe_note_rate_limit
 from .live.bus import live_bus
 from .live.feed import queued_images
+from .new_chat_gate import ensure_new_chat
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
 
 log = logging.getLogger("arena")
@@ -205,6 +206,9 @@ async def _run_image_job(ctx: PageJobCtx):
         ctx.bridge.job_started.emit(job_id, ctx.img.absolute_path)
     except Exception:
         pass
+    fresh, why = await ensure_new_chat(ctx.bridge, ctx.client, ctx.ctrl)   # I-74: before the baseline
+    if not fresh:
+        return url_row, corr_id, job_id, True, why
     baseline = await capture_baseline(ctx.ctrl)
     job_ctx = JobCtx(bridge=ctx.bridge, ctrl=ctx.ctrl, client=ctx.client, tab_id=ctx.tab_id, img=ctx.img, urls=ctx.urls, job_id=job_id, corr_id=corr_id, final_prompt=final_prompt, baseline=baseline)
     failed, err, _, _ = await run_blocks_for_image(job_ctx)

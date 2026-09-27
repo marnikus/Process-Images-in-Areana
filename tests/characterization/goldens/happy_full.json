@@ -170,7 +170,7 @@
   "button.open",
   "button[aria-label=\"Send message\"]:not([disabled])"
  ],
- "evals": 3,
+ "evals": 4,
  "signals": [
   [
    "job_started",

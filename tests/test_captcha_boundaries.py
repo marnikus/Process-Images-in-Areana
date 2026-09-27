@@ -169,9 +169,11 @@ def test_url_row_link_tab():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_dispatch_records_owner_row_without_relinking():
+async def test_dispatch_records_owner_row_without_relinking(monkeypatch):
     """I-33: dispatch records the tab's OWN checked row; ownership belongs
     to auto-connect, so runs never re-bind a row to a foreign tab."""
+    from tests.test_multi_page_dispatcher_run import fresh_chat
+    monkeypatch.setattr("app.services.multi_page_dispatcher.ensure_new_chat", fresh_chat)   # I-74 seam
     pool = PagePool()
     pool.add_page(make_info("t9"))
     saved = []

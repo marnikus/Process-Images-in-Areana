@@ -28,6 +28,9 @@ class _Sig:
         pass
 
 
+FRESH_CHAT = {"path": "/image/direct", "messages": 0, "outputs": 0, "attachments": 0, "composer": 0}
+
+
 class FakeCDP:
     """Minimal CDP client: attrs the batch loop reads + scripted evaluate."""
 
@@ -50,8 +53,10 @@ class FakeCDP:
     async def fetch_tabs(self):
         return []
 
-    async def evaluate(self, js: str) -> str:
+    async def evaluate(self, js: str, timeout: float = 30.0) -> str:
         self.eval_calls.append(js[:60])
+        if "location.pathname" in js:   # I-74 chat-page probe: a fresh New Chat, never scripted
+            return json.dumps(FRESH_CHAT)
         if self._eval_script:
             res = self._eval_script.pop(0)
         else:

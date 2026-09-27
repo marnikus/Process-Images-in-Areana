@@ -13,6 +13,14 @@ from app.services import batch_orchestrator as bo
 from tests.characterization.harness import make_block
 
 
+
+@pytest.fixture(autouse=True)
+def _new_chat_gate_is_fresh(monkeypatch):
+    """The I-74 gate sits at the job-runner seam this file fakes; its own tests: test_new_chat_gate."""
+    async def fresh(_bridge, _client, _ctrl):
+        return True, ""
+    monkeypatch.setattr(bo, "ensure_new_chat", fresh)
+
 def make_img(name="pic1.png", status="pending", selected=True):
     return SimpleNamespace(id=name, relative_path=name, absolute_path=f"/tmp/{name}",
                            status=status, selected=selected, assigned_url_id=None,

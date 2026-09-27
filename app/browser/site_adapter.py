@@ -18,6 +18,10 @@ from typing import Dict, List
 # The New Chat link's href — also the page the reset opens directly when the
 # click fails (new_chat, I-69). One literal, RULE 21.
 NEW_CHAT_PATH = "/image/direct"
+# A started conversation lives under this path (saved page 2026-09-27:
+# arena.ai/c/01a0a4f3-…; owner screenshot 22:40: arena.ai/c/01a0e496-…).
+# A job never starts there — new_chat_gate opens a New Chat first (I-74).
+CONVERSATION_PATH_PREFIX = "/c/"
 
 SELECTORS: Dict[str, SelectorObject] = {
     "model_label": SelectorObject(

@@ -36,15 +36,16 @@ NEW_CHAT_CANDIDATES = (
 )
 
 
+# Context to keep params small (RULE 16); `purpose` words the first log line
+# ("after generation" — the post-job reset; "before the job" — I-74's gate).
 @dataclass
 class ResetCtx:
-    """Context to keep params small (RULE 16)."""
-
     ctrl: Any
     client: Any
     engine: Any = None
     timeout_sec: float = 30.0
     cancel_check: Optional[Callable[[], bool]] = None
+    purpose: str = "after generation"
 
 
 _PAGE_LOADED_TEMPLATE = """;(() => {
@@ -198,7 +199,7 @@ async def _wait_page_loaded(ctx: ResetCtx) -> tuple[bool, str]:
 
 async def reset_to_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
     """Click New Chat and wait for the load; a failed click or load opens the page directly."""
-    _report(ctx.engine, "↩ Resetting to new chat after generation", "info")
+    _report(ctx.engine, f"↩ Resetting to new chat {ctx.purpose}", "info")
     ok, why = await _click_and_wait(ctx)
     if not ok and not _is_cancelled(ctx):
         _report(ctx.engine, f"↩ New Chat did not work ({why}) — opening {new_chat_path()} directly", "warn")

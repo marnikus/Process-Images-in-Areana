@@ -34,6 +34,7 @@ from app.services.cooldown_service import (
 )
 from app.services.multi_page_dispatcher import dispatch_parallel
 from app.services.run_state import ensure_pool_page
+from app.services.new_chat_gate import ensure_new_chat
 from app.services.single_job_runner import JobCtx, run_blocks_for_image
 from app.utils.correlation import build_final_prompt, generate_correlation_id
 
@@ -232,6 +233,9 @@ def build_job_ids(ctx: BatchCtx, img: Any, url_row) -> tuple:
 async def _execute_image(ctx: BatchCtx, img: Any, url_row) -> ImageResult:
     """Build ids, run the converged block stack, wrap the outcome."""
     corr_id, job_id, final_prompt = build_job_ids(ctx, img, url_row)
+    fresh, why = await ensure_new_chat(ctx.bridge, ctx.bridge.cdp, ctx.ctrl)   # I-74
+    if not fresh:
+        return ImageResult(img=img, failed=True, error=why, job_id=job_id, corr_id=corr_id)
     job_ctx = JobCtx(bridge=ctx.bridge, ctrl=ctx.ctrl, client=ctx.bridge.cdp,
                      tab_id=ctx.tab_id, img=img, urls=ctx.urls, job_id=job_id,
                      corr_id=corr_id, final_prompt=final_prompt)

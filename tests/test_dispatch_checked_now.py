@@ -23,7 +23,7 @@ from app.services import cooldown_service as cs
 from app.services import multi_page_dispatcher as mpd
 from app.services.live.bus import live_bus
 from tests.test_instant_dispatch import Gate, _no_baseline, _until, bridge_with, two_tab_pool
-from tests.test_multi_page_dispatcher_run import make_img, make_urls
+from tests.test_multi_page_dispatcher_run import fresh_chat, make_img, make_urls
 
 pytestmark = pytest.mark.unit
 
@@ -32,6 +32,7 @@ pytestmark = pytest.mark.unit
 def seam(monkeypatch):
     gate = Gate()
     monkeypatch.setattr(mpd, "capture_baseline", _no_baseline)
+    monkeypatch.setattr(mpd, "ensure_new_chat", fresh_chat)   # I-74 gate: part of the same seam
     monkeypatch.setattr(mpd, "run_blocks_for_image", gate.make_run())
     gate.finishes = []
 

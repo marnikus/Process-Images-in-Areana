@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
-from .site_adapter import NEW_CHAT_PATH, get_readiness_requirements, get_selector
+from .site_adapter import CONVERSATION_PATH_PREFIX, NEW_CHAT_PATH, get_readiness_requirements, get_selector
 
 
 def account_email_probe() -> Dict[str, str]:
@@ -104,6 +104,19 @@ def new_chat_selectors() -> List[str]:
 def new_chat_path() -> str:
     """The New Chat page path (the link's href) — the reset's direct-open target (I-69)."""
     return NEW_CHAT_PATH
+
+
+def conversation_path_prefix() -> str:
+    """Path prefix of a started conversation — never a job's starting page (I-74)."""
+    return CONVERSATION_PATH_PREFIX
+
+
+_STORAGE_HOSTS = ("cloudflarestorage", "messages-prod")
+
+
+def chat_output_selectors() -> List[str]:
+    """Output-image selectors that name Arena's image storage (a promo card is never one)."""
+    return [sel for sel in output_image_selectors() if any(h in sel for h in _STORAGE_HOSTS)]
 
 
 def new_chat_primary() -> str:
