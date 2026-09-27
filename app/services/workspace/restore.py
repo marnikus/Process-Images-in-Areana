@@ -12,9 +12,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.persistence.workspace.integrity import safe_rel_path
 from app.persistence.workspace.manifest import entry_for, read_manifest
 from . import reports
 from .registry import restore_order
+
+
+def _inside(root: Path, rel: str) -> Path | None:
+    """The file for a manifest path, or None when the path is unsafe (same rule as restore)."""
+    safe = safe_rel_path(rel)
+    return root / safe if safe and safe == rel else None
+
 
 def _row_head(entry: dict, domain_id: str) -> dict:
     """The identity columns every preview row carries, whatever its status."""
@@ -46,7 +54,11 @@ def _preview_row(root: Path, manifest: dict, domain_id: str) -> dict:
         row.update(status="excluded", note=entry.get("capture", {}).get(
             "excluded_reason", "policy-excluded"))
         return row
-    path = root / entry["path"]
+    path = _inside(root, entry["path"])
+    if path is None:
+        row.update(status="unsafe_path", file=entry["path"],
+                   note="path escapes the snapshot folder — restore will refuse it")
+        return row
     if not path.exists():
         row.update(status="missing", file=entry["path"])
         return row
@@ -66,14 +78,21 @@ def preview_restore(root) -> dict:
         remap=_remap_notes(root, manifest))}
 
 
+def _folder_root(doc) -> str:
+    """The saved queue folder root, "" when the doc has none (any shape tolerated)."""
+    folder = doc.get("folder") if isinstance(doc, dict) else None
+    return folder.get("root_path", "") if isinstance(folder, dict) else ""
+
+
 def _remap_notes(root: Path, manifest: dict) -> list:
     """Path-based resources that need user attention on this machine."""
     notes = []
-    entry = entry_for(manifest, "arena_state")
-    if entry and entry.get("path"):
+    entry = entry_for(manifest, "arena_state") or {}
+    path = _inside(root, entry["path"]) if entry.get("path") else None
+    if path:
         try:
-            doc = json.loads((root / entry["path"]).read_text(encoding="utf-8"))
-            folder_root = (doc.get("folder") or {}).get("root_path", "")
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            folder_root = _folder_root(doc)
             if folder_root and not Path(folder_root).exists():
                 notes.append(f"folder root not found on this machine: {folder_root} — "
                              "restore, then re-pick the folder (queue rows keep their statuses)")

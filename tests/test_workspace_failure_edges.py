@@ -177,3 +177,26 @@ def test_prune_logs_what_it_removed(bridge, snapshot, monkeypatch):
     lines = _logs(bridge, monkeypatch)
     restore_workspace(bridge, snapshot)
     assert any("recovery" in m and "pruned 1" in m for _lvl, m in lines)
+
+
+# ---- step 7 (R1): the preview applies the restore's safe-path rule ------------
+
+def test_preview_never_reads_outside_the_snapshot(snapshot, tmp_path):
+    """P9: `../../x` was stat-ed and parsed; restore refuses the same path."""
+    from app.services.workspace.restore import preview_restore
+    outside = tmp_path / "outside_secret.json"          # snapshot = tmp/workspaces/<snap>
+    outside.write_text(json.dumps({"folder": {"root_path": "/nonexistent/secret"}}))
+    manifest = json.loads((snapshot / "manifest.json").read_text())
+    manifest["domains"]["arena_state"]["path"] = "../../" + outside.name
+    (snapshot / "manifest.json").write_text(json.dumps(manifest))
+    preview = preview_restore(snapshot)
+    row = next(d for d in preview["domains"] if d["domain_id"] == "arena_state")
+    assert row["status"] == "unsafe_path"
+    assert preview["path_remap_needed"] == []
+
+
+def test_preview_of_a_non_object_queue_file_does_not_crash(snapshot):
+    from app.services.workspace.restore import preview_restore
+    (snapshot / "state" / "app_state.json").write_text("[]")
+    preview = preview_restore(snapshot)
+    assert preview["ok"] and preview["path_remap_needed"] == []
