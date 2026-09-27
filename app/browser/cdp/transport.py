@@ -32,6 +32,7 @@ except ImportError:
 from ..cdp_events import CDPEventRouter, route_cdp_message
 from .liveness import note_late_reply, note_timed_out
 from .dialogs import DialogWatch, close_open_dialog, send_unblocked
+from .home_loop import on_home_loop, running_loop
 
 log = logging.getLogger("arena")
 
@@ -83,6 +84,7 @@ class CDPTransport(QObject):
     async def disconnect(self):
         await _disconnect(self)
 
+    @on_home_loop            # I-76: the socket is only ever touched by the loop that opened it
     async def send(self, method: str, params: dict | None = None, timeout: float = 30) -> dict:
         if (ws := self._ws) is None or not self._connected:
             raise ConnectionError("CDP not connected")
@@ -161,6 +163,7 @@ async def _send_payload(transport, cmd_id: int, ws, payload: str) -> None:
         raise
 
 
+@on_home_loop
 async def _disconnect(transport) -> None:
     """Close on purpose: fail waiters, stop the receive loop, close the socket."""
     transport._connected = False
@@ -203,8 +206,29 @@ def _fail_pending(transport, reason: str) -> None:
     """
     pending, transport._pending = transport._pending, {}
     for fut in pending.values():
-        if not fut.done():
-            fut.set_exception(ConnectionError(reason))
+        _fail_on_its_loop(fut, ConnectionError(reason))
+
+
+def _fail_on_its_loop(fut, exc: Exception) -> None:
+    """Fail a waiter on its OWN loop (I-76): directly when we are on it, else thread-safe.
+
+    `_fail_pending` also runs from a garbage-collected receive loop on any
+    thread; a direct set_exception there is qasync's `assert timerid not in
+    self.__callbacks` (owner log 2026-09-27).
+    """
+    try:
+        loop = fut.get_loop()
+        if loop is running_loop():
+            _set_exception_if_pending(fut, exc)
+        else:
+            loop.call_soon_threadsafe(_set_exception_if_pending, fut, exc)
+    except RuntimeError:
+        pass                      # its loop is closed — nobody waits on it any more
+
+
+def _set_exception_if_pending(fut, exc: Exception) -> None:
+    if not fut.done():
+        fut.set_exception(exc)
 
 
 def _receive_error(transport, e: Exception) -> None:

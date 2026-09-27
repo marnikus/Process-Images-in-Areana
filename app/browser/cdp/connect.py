@@ -9,6 +9,7 @@ import logging
 import re
 from typing import List
 
+from .home_loop import on_home_loop
 from .tabs import _normalize_ws_url
 
 log = logging.getLogger("arena")
@@ -269,6 +270,7 @@ async def _handle_lock_mismatch_retry(transport, ws_url: str, exc: RuntimeError)
         return await _connect_inner(transport, ws_url)
 
 
+@on_home_loop   # I-76: the socket opens on — and stays with — the transport's home loop
 async def connect_with_lock(transport, ws_url: str) -> bool:
     if _should_reuse_existing(transport, ws_url):
         log.info(f"CDP already connected to {ws_url[:80]}, reusing")
