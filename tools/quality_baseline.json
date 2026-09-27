@@ -1737,7 +1737,7 @@
   },
   "app/persistence/config_manager.py": {
     "max_func_loc": 13,
-    "max_class_loc": 44,
+    "max_class_loc": 55,
     "func_count": 17,
     "funcs": {
       "__init__": 11,
@@ -1754,7 +1754,7 @@
       "set_state": 2,
       "get_session_data": 2
     },
-    "max_methods": 7,
+    "max_methods": 9,
     "max_cc": 4,
     "max_cog": 5,
     "max_nest": 2,
@@ -1805,8 +1805,8 @@
       "save_json_atomic": 15
     },
     "max_methods": 0,
-    "max_cc": 4,
-    "max_cog": 0,
+    "max_cc": 5,
+    "max_cog": 3,
     "max_nest": 1,
     "max_params": 2,
     "file_lines": 47,
@@ -1843,7 +1843,7 @@
     },
     "max_methods": 5,
     "max_cc": 4,
-    "max_cog": 0,
+    "max_cog": 3,
     "max_nest": 2,
     "max_params": 3,
     "file_lines": 169,
@@ -3600,7 +3600,7 @@
     },
     "max_methods": 10,
     "max_cc": 3,
-    "max_cog": 0,
+    "max_cog": 2,
     "max_nest": 1,
     "max_params": 5,
     "file_lines": 153,

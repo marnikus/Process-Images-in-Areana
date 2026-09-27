@@ -212,18 +212,26 @@ def _restore_row(run: dict, provider) -> dict:
     return _restore_one(run, provider, entry, loaded)
 
 
+def _preflight(root: Path, selected) -> tuple:
+    """(manifest, providers, None) or (None, None, refusal) — nothing touched yet."""
+    manifest, err = read_manifest(root)
+    if err:
+        return None, None, err
+    providers, unknown = selection_providers(manifest, selected)
+    if unknown:
+        return None, None, f"unknown domain(s): {', '.join(unknown)}"
+    providers = expand_strict(providers)
+    if not providers:
+        return None, None, "no restorable domains selected"
+    return manifest, providers, None
+
+
 def restore_workspace(bridge, root, selected=None) -> dict:
     """Selected/all domains, dependency order, per-domain transaction (task RESTORE 2–10)."""
     root = Path(root)
-    manifest, err = read_manifest(root)
-    if err:
-        return {"ok": False, "error": err}
-    providers, unknown = selection_providers(manifest, selected)
-    if unknown:
-        return {"ok": False, "error": f"unknown domain(s): {', '.join(unknown)}"}
-    providers = expand_strict(providers)
-    if not providers:
-        return {"ok": False, "error": "no restorable domains selected"}
+    manifest, providers, refusal = _preflight(root, selected)
+    if refusal:
+        return {"ok": False, "error": refusal}
     backup = backup_live(bridge, providers)
     run = {"bridge": bridge, "manifest": manifest,
        "files": load_files(root, manifest, providers), "failed": set()}

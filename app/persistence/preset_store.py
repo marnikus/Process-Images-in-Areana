@@ -15,6 +15,14 @@ DEFAULTS = {
 }
 
 
+def shape_error(data) -> str | None:
+    """Why `data` cannot replace the whole store (every DEFAULTS section, right type), or None."""
+    if not isinstance(data, dict):
+        return "preset store needs an object"
+    bad = next((k for k in DEFAULTS if not isinstance(data.get(k), type(DEFAULTS[k]))), None)
+    return f"preset store section '{bad}' has the wrong type" if bad else None
+
+
 class _BaseMixin:
     path: Path
     _data: dict
@@ -30,11 +38,9 @@ class _BaseMixin:
 
     def replace_all(self, data: dict):
         """Workspace restore entry point: validated wholesale replacement of the store."""
-        if not isinstance(data, dict):
-            raise ValueError("preset store needs an object")
-        for key in DEFAULTS:
-            if not isinstance(data.get(key), type(DEFAULTS[key])):
-                raise ValueError(f"preset store section '{key}' has the wrong type")
+        problem = shape_error(data)
+        if problem:
+            raise ValueError(problem)
         self._data = copy.deepcopy(data)
         self.save()
         return True

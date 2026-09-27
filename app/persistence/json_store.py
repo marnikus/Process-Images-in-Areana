@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import copy
 import errno
+import functools
 import json
 import os
 import tempfile
@@ -26,19 +27,45 @@ _REPLACE_BACKOFF_SEC = 0.02
 _TRANSIENT_ERRNOS = (errno.EACCES, errno.EBUSY, errno.EPERM)
 
 
+def _is_transient(exc: OSError) -> bool:
+    """A sharing violation another process (sync client, indexer) will release soon."""
+    return isinstance(exc, PermissionError) or exc.errno in _TRANSIENT_ERRNOS
+
+
+def _transient_or_raise(exc: OSError) -> bool:
+    """False for a transient sharing violation; re-raise every other OSError."""
+    if _is_transient(exc):
+        return False
+    raise exc
+
+
+def _try_replace(tmp_path: Path, target: Path) -> bool:
+    """One `replace`; False on a transient failure, any other OSError propagates."""
+    try:
+        tmp_path.replace(target)
+    except OSError as exc:
+        return _transient_or_raise(exc)
+    return True
+
+
+def _attempt(replace_once, delay: float) -> bool:
+    """One non-final try; on a transient failure wait `delay` before the next one."""
+    if replace_once():
+        return True
+    time.sleep(delay)
+    return False
+
+
 def _replace_retry(tmp_path: Path, target: Path) -> None:
-    """`replace` with bounded backoff on transient sharing violations (B10)."""
-    delay = _REPLACE_BACKOFF_SEC
-    for attempt in range(1, _REPLACE_ATTEMPTS + 1):
-        try:
-            tmp_path.replace(target)
-            return
-        except OSError as exc:
-            transient = isinstance(exc, PermissionError) or exc.errno in _TRANSIENT_ERRNOS
-            if attempt >= _REPLACE_ATTEMPTS or not transient:
-                raise
-        time.sleep(delay)
-        delay *= 2
+    """`replace` with bounded doubling backoff on transient sharing violations (B10).
+
+    The last attempt runs bare so its error — transient or not — reaches the caller.
+    """
+    delays = (_REPLACE_BACKOFF_SEC * 2 ** i for i in range(_REPLACE_ATTEMPTS - 1))
+    replace_once = functools.partial(_try_replace, tmp_path, target)
+    if any(_attempt(replace_once, delay) for delay in delays):
+        return
+    tmp_path.replace(target)
 
 
 def load_json(path: Path, default: Any) -> Any:
