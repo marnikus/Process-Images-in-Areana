@@ -43,7 +43,7 @@ const RESTORED = {
   workspace: PREVIEW.root,
 };
 
-function boot() {
+function boot(overrides = {}) {
   return bootPage({
     replies: {
       // static replies are objects — the harness JSON-encodes them once, exactly
@@ -64,6 +64,7 @@ function boot() {
       restore_workspace: () => JSON.stringify(RESTORED),
       save_workspace: { ok: true, result: 'success', path: '/cfg/workspaces/w_1', domains: [], errors: [] },
       browse_workspace_folder: { ok: true, path: PREVIEW.root },
+      ...overrides,
     },
   });
 }
@@ -313,5 +314,19 @@ describe('workspace window (live refresh after restore)', () => {
     const walk = (n) => n.t === 'leaf' ? leaves.push(n.id) : n.children.forEach(walk);
     walk(page2.sb.SashGrid.root);
     assert.equal(leaves.length, 19, 'tree validated/migrated through SashCore');
+  });
+});
+
+describe('workspace window (a crashed slot is a failure, audit #2 U1)', () => {
+  test('an empty restore reply shows "restore failed", never "restored"', async () => {
+    // QWebChannel answers '' when the Python slot raises
+    const page = boot({ restore_workspace: () => '' });
+    page.anyEl('wsLoadLastBtn').dispatch('click', {});
+    await tick(); await tick();
+    page.anyEl('wsRestoreAllBtn').dispatch('click', {});
+    await tick(); await tick();
+    assert.equal(page.anyEl('wsStatus').textContent, 'restore failed');
+    assert.ok(page.anyEl('wsResult').innerHTML.includes('Restore failed'), 'failure shown');
+    assert.ok(!page.anyEl('wsResult').innerHTML.includes('undefined'), 'no "Result: undefined"');
   });
 });

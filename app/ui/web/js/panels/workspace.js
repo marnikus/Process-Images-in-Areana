@@ -196,7 +196,7 @@ function wsRestoredRows(reply) {
 }
 
 function wsRestoreSummary(reply) {
-  if (reply.ok === false && !reply.restored) {
+  if (reply.ok !== true && !(reply.restored || []).length) {   // '' reply = crashed slot
     return { title: 'Restore failed', rows: [reply.error || 'unknown error'] };
   }
   return { title: 'Workspace restore', rows: wsRestoredRows(reply),
@@ -222,7 +222,7 @@ function wsRunRestore(root, selected) {
   wsStatusText('restoring…');
   _call('restore_workspace', root, JSON.stringify({ selected })).then((raw) => {
     const reply = wsParse(raw);
-    wsStatusText(reply.ok === false ? 'restore failed' : 'restored');
+    wsStatusText(reply.ok === true ? 'restored' : 'restore failed');
     wsRenderResult(wsRestoreSummary(reply));
     wsHidePreview();
     wsAfterRestore(reply);

@@ -16,7 +16,7 @@ from app.services.workspace import apply as ws_apply
 from app.services.workspace import restore as ws_restore
 from app.services.workspace import save as ws_save
 from app.services.workspace import snapshot_index as ws_index
-from app.services.workspace.meta import default_base
+from app.services.workspace.meta import default_base, log_message
 from app.services.workspace.save import SaveRequest
 from app.ui.qt_compat import QFileDialog, Slot
 from app.ui.services import file_service, undo_entries
@@ -52,7 +52,27 @@ def _do_save(bridge, opts: dict) -> dict:
 
 
 def _do_restore(bridge, root: str, opts: dict) -> dict:
-    return ws_apply.restore_workspace(bridge, root, selected=opts.get("selected"))
+    """Restore, then clamp + live-refresh whatever WAS restored — even in a failed run
+    (a damaged domain fails the run, yet the restored ones must reach the UI, RULE 24)."""
+    result = ws_apply.restore_workspace(bridge, root, selected=opts.get("selected"))
+    restored = result.get("restored") or []
+    if restored:
+        notes = result.setdefault("reconciled", [])
+        if "grid_window" in restored:
+            notes.extend(filter(None, [clamp_restored_geometry(bridge)]))
+        notes.extend(_post_restore_refresh(bridge, restored))
+    return result
+
+
+def _answer(bridge, action: str, work) -> str:
+    """A mutating slot's JSON reply — never an exception (QWebChannel would answer '')."""
+    try:
+        result = work()
+    except Exception as exc:
+        error = f"workspace {action} crashed: {type(exc).__name__}: {exc}"
+        log_message(bridge, f"❌ {error}", "error")
+        result = {"ok": False, "error": error}
+    return json.dumps(result, ensure_ascii=False)
 
 
 def _emit_refresh(bridge, emit, note: str, notes: list) -> None:
@@ -142,8 +162,7 @@ class WorkspaceMixin:
 
     @Slot(str, result=str)
     def save_workspace(self, options_json: str):
-        result = _do_save(self, _options(options_json))
-        return json.dumps(result, ensure_ascii=False)
+        return _answer(self, "save", lambda: _do_save(self, _options(options_json)))
 
     @Slot(str, result=str)
     def preview_workspace(self, root: str):
@@ -151,15 +170,7 @@ class WorkspaceMixin:
 
     @Slot(str, str, result=str)
     def restore_workspace(self, root: str, options_json: str):
-        result = _do_restore(self, root, _options(options_json))
-        if result.get("ok"):
-            if "grid_window" in (result.get("restored") or []):
-                note = clamp_restored_geometry(self)
-                if note:
-                    result.setdefault("reconciled", []).append(note)
-            result.setdefault("reconciled", []).extend(
-                _post_restore_refresh(self, result.get("restored") or []))
-        return json.dumps(result, ensure_ascii=False)
+        return _answer(self, "restore", lambda: _do_restore(self, root, _options(options_json)))
 
     @Slot(str, result=str)
     def browse_workspace_folder(self, mode: str):

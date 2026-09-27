@@ -276,3 +276,35 @@ def test_missing_live_file_still_captures_empty(bridge, domain_id):
     assert not _live_file(bridge, domain_id).exists()
     reply = ws_save.save_workspace(bridge, SaveRequest(name="fresh"))
     assert reply["ok"] is True and reply["result"] == "success"
+
+
+# ---- step 10 (U1): the slots always answer; refresh follows what was restored
+
+@pytest.mark.parametrize("slot,target", [("restore_workspace", "ws_apply.restore_workspace"),
+                                         ("save_workspace", "ws_save.save_workspace")])
+def test_a_crashing_slot_answers_an_error_and_logs_it(bridge, monkeypatch, slot, target):
+    """P10: the slot raised → QWebChannel sent '' → the window said "restored"."""
+    from app.ui.panels import workspace as panel
+    module, name = target.split(".")
+    monkeypatch.setattr(getattr(panel, module), name, _raise(OSError("disk full")))
+    lines = _logs(bridge, monkeypatch)
+    args = ("/somewhere", "{}") if slot == "restore_workspace" else ("{}",)
+    reply = json.loads(getattr(bridge, slot)(*args))
+    assert reply["ok"] is False and "OSError: disk full" in reply["error"]
+    assert any(lvl == "error" and "disk full" in m for lvl, m in lines)
+
+
+def test_damaged_restore_still_refreshes_the_restored_panels(bridge, snapshot, monkeypatch):
+    """A3 made a damaged run `ok: false`; the domains it DID restore still need RULE 24."""
+    class Spy:
+        payloads: list = []
+
+        def emit(self, *payload):
+            self.payloads.extend(payload)
+    spy = Spy()
+    bridge.job_history_updated = spy        # emitted only by the slot's RULE 24 table
+    monkeypatch.setattr(type(get("undo")), "apply", _raise(RuntimeError("disk")))
+    reply = json.loads(bridge.restore_workspace(str(snapshot), "{}"))
+    assert reply["ok"] is False and "job_history" in reply["restored"]
+    assert spy.payloads, "restored job history must reach the UI even when the run failed"
+    assert "job history re-pushed" in reply["reconciled"]
