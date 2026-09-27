@@ -15,6 +15,7 @@ from app.services import job_history
 from app.services.workspace import apply as ws_apply
 from app.services.workspace import restore as ws_restore
 from app.services.workspace import save as ws_save
+from app.services.workspace import snapshot_index as ws_index
 from app.services.workspace.meta import default_base
 from app.services.workspace.save import SaveRequest
 from app.ui.qt_compat import QFileDialog, Slot
@@ -33,9 +34,9 @@ def _options(raw: str) -> dict:
 def _state_payload(bridge) -> dict:
     return {
         "default_dir": str(default_base(bridge)),
-        "recent": ws_save.recent_snapshots(bridge),
-        "last_snapshot": ws_save.last_snapshot(bridge),
-        "last_restore": ws_save.last_restore(bridge),
+        "recent": ws_index.recent_snapshots(bridge),
+        "last_snapshot": ws_index.last_snapshot(bridge),
+        "last_restore": ws_index.last_restore(bridge),
     }
 
 

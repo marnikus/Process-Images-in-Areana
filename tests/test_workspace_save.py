@@ -13,6 +13,7 @@ from app.persistence.config_manager import ConfigManager
 from app.persistence.workspace import fsio
 from app.persistence.workspace.manifest import read_manifest
 from app.services.workspace import save as ws_save
+from app.services.workspace import snapshot_index as ws_index
 from app.services.workspace.meta import default_base
 from app.services.workspace.save import SaveRequest
 from app.services.workspace.provider import CaptureResult
@@ -123,15 +124,15 @@ def test_selected_subset_saves_only_those_domains(bridge):
 
 def test_recent_and_last_snapshot_meta(bridge):
     first, second = _save(bridge, name="m1"), _save(bridge, name="m2")
-    recent = ws_save.recent_snapshots(bridge)
+    recent = ws_index.recent_snapshots(bridge)
     assert recent[0] == second["path"] and first["path"] in recent
-    assert ws_save.last_snapshot(bridge) == second["path"]
-    ws_save.record_restore(bridge, first["path"], "success_with_warnings")
-    assert ws_save.last_restore(bridge)["result"] == "success_with_warnings"
+    assert ws_index.last_snapshot(bridge) == second["path"]
+    ws_index.record_restore(bridge, first["path"], "success_with_warnings")
+    assert ws_index.last_restore(bridge)["result"] == "success_with_warnings"
 
 
 def test_last_snapshot_drops_when_folder_removed(bridge):
     reply = _save(bridge, name="gone")
     shutil.rmtree(reply["path"])
-    assert ws_save.last_snapshot(bridge) == ""
-    assert reply["path"] not in ws_save.recent_snapshots(bridge)
+    assert ws_index.last_snapshot(bridge) == ""
+    assert reply["path"] not in ws_index.recent_snapshots(bridge)

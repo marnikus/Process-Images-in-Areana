@@ -20,7 +20,7 @@ from .gates import load_files
 from .meta import live_run_error, log_message
 from .recover import backup_live
 from .registry import get, restore_order
-from .save import record_restore
+from .snapshot_index import record_restore
 
 
 def _selected_ids(manifest: dict, selected) -> list:
