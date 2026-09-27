@@ -1,10 +1,10 @@
-# ideal-size: 6 frozen JS slots; save/preview/restore bodies delegate to the
-# services coordinator (module funcs) — splitting would scatter slot<->helper
+# ideal-size: 6 frozen JS slots; save/preview/restore bodies delegate to
+# app/services/workspace (module funcs) — splitting would scatter slot<->helper
 # pairs that always change together (RULE 18.2)
 """Workspace panel — the "Global Saving System" window (19th window, I-51).
 
 Slots only (thin); folder/manifest/report logic lives in
-`app/services/workspace/` (meta/save/restore/apply — no Qt). The window
+`app/services/workspace/` (save/restore/apply/snapshot_index — no Qt). The window
 keeps every existing feature Save/Preset control untouched (task rule 2):
 it is an orchestrator over the native stores, nothing else.
 """

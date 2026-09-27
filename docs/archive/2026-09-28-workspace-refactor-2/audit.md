@@ -50,7 +50,7 @@ Probes lived in an uncommitted `tests/_probe_ws_test.py`; each becomes a committ
 | S1 | Medium | `reports.save_report` `failed_required` | **P4**: filters stages `semantic/apply`, which save never produces → always `[]`, even when required `arena_state` fails capture. S2: `required` has no behavioural effect (any failure aborts without `allow_partial`, **P4b**) — it is a report flag; design §C.5.6 says otherwise. |
 | S8 | Medium | `save.py` 239–292, `apply` imports `record_restore` from `save` | Snapshot index is a second responsibility in `save.py` (292 LOC, at RULE 18 edge); restore depends on save. `_write_meta` swallows `OSError` silently. |
 | C3 | Low | `recover.prune_recovery` | docstring and §C.6.4 say "logged"; nothing logs. |
-| V1 | Low (dead) | `StateProvider.plan` + 9 overrides | 0 callers (grep). Design §C.2/§E.2 list it as preview input, but §C.6.1 fixes preview as **manifest-only**, which a doc-based `plan()` cannot be. Delete. |
+| V1 | Low (dead) | `StateProvider.plan` + 8 overrides (9 defs) | 0 callers (grep). Design §C.2/§E.2 list it as preview input, but §C.6.1 fixes preview as **manifest-only**, which a doc-based `plan()` cannot be. Delete. |
 | V2 | Low (dead) | `manifest.manifest_bytes`, `registry.file_providers` | 0 callers. `registry.domain_for_file` test-only (RULE 18: no test-only public API). |
 | V4 | Low | `meta.config_dir`, `captcha_stats.stats_file`, `policies._masked_presence` | config-dir resolution written 3×; providers may not import `meta` (architecture test). |
 | P1–P5 | Low | persistence hygiene | garbled `persistence/workspace/__init__` docstring; cycle-free local imports (`save._write_env`, `save.inclusion_policy`, `recover.backup_live`, provider `WorkspaceError` imports); `WorkspaceError(evidence: tuple = None)` hint; `except (OSError, FileExistsError)` redundant. |
@@ -104,7 +104,7 @@ changes a file format; each B-step is guarded by its own test, so a revert re-re
 
 | # | Kind | Change | Tests before → after |
 |---|---|---|---|
-| 1 | S | delete `plan()` ×10, `manifest_bytes`, `file_providers`, `domain_for_file` (+ its test-only assertion) | suite green before/after; grep proves 0 callers |
+| 1 | S | delete `plan()` ×9, `manifest_bytes`, `file_providers`, `domain_for_file` (+ its test-only assertion) | suite green before/after; grep proves 0 callers |
 | 2 | S | `snapshot_index.py` ← index from `save.py`; `apply` imports it; `save` re-exports nothing new | existing index tests unchanged, green |
 | 3 | S | hygiene P1–P5; `provider.config_dir` single home (V4) | architecture + suite green |
 | 4 | B | A1: guard `migrate`/`validate`/pre-apply `capture` → rows; report always written | red: P1 (crash → report + `last_restore`), migrate-raises → `migration`, capture-raises → not applied |
@@ -123,13 +123,28 @@ produced, `report_note` on save, `unsafe_path` preview status); slot names/signa
 contract minus the dead `plan()`; restore order; strict/optional semantics; partial-save flag.
 All 125 existing workspace tests + 17 JS stay green unmodified except the one `domain_for_file` assertion (step 1).
 
-## 7. Metrics (before → after filled at the end)
+## 7. Metrics (measured; same commands before and after)
 
-| Metric | Before (`9c99e5d`) | After |
+| Metric | Before (`9c99e5d`) | After (`4843edb`) |
 |---|---|---|
-| modules / LOC (persistence+services+panel .py) | 25 / 2339 | see §O of the design doc |
-| functions, max CC, max function LOC | 202, 10 (`safe_rel_path`), 21 | |
-| workspace pytest / JS tests | 125 / 17 | |
-| branch coverage (workspace scope) | 90% | |
-| reproduced failure-edge defects (P1–P10) | 10 | 0 |
-| dead public symbols | 13 (`plan`×10, 3 helpers) | 0 |
+| modules / LOC (persistence + services + panel .py) | 25 / 2339 | 26 / 2415 (+`snapshot_index.py`; −54 dead, +guards) |
+| functions / max CC / max function LOC | 202 / 10 (`safe_rel_path`, untouched) / 21 (`build_manifest`, untouched) | 198 / 10 / 21 (same two) |
+| largest file | `save.py` 292 | `apply.py` 276 (`save.py` 235) |
+| workspace pytest / JS tests | 125 / 17 | 154 / 18 |
+| full suite | 2843 passed, 6 skipped | 2872 passed, 6 skipped · JS 485 pass / 0 fail |
+| workspace-scope coverage (pytest-cov TOTAL, workspace tests only) | 90% | 93% (`apply` 91→96, `recover` 93→100) |
+| reproduced failure-edge defects (P1–P10) | 10 | 0 (original probe script re-run on `4843edb`) |
+| dead public symbols | 12 | 0 |
+| `verify_quality --allow-legacy --coverage-ratchet` (all changed files) | — | 0 fail, 0 warn |
+
+## 8. Execution log
+
+Commits (each gate-green, each revertable on its own): `39d68c3` S1 dead code · `1c0ff4c` S2 snapshot
+index · `b14d282` S3 hygiene · `842cc27` A1 · `234e185` A2/A3 · `8a341c7` C1/A5/C2/C3 · `3fafbb9` R1 ·
+`c80ed95` S1/S3/S4/S8 · `55bec0f` V3 · `4843edb` U1. Found while executing and folded into its step:
+`gates.load_one` raised on an unreadable file (step 4); preview `_remap_notes` crashed on a non-object
+queue doc (step 7); step 5 would have skipped the RULE 24 refresh of the domains a *failed* run did
+restore — caught by a test in step 10, refresh now keys on `restored`, not `ok`.
+Not done (see §2 Info rows): V5/V6/A4/A6/S6/S7, U2 cross-language refresh table.
+RULE 18.4: `GLOBAL_WORKSPACE_SAVE_DESIGN.md` is 544 lines (> 200 ideal) — pre-existing; this pass
+rewrote drifted text in place and added a 15-line §O instead of growing sections.

@@ -1,4 +1,4 @@
-# Global Workspace Save — Design (implemented; merged onto the Firefox/Watcher line 2026-09-27, §N)
+# Global Workspace Save — Design (implemented; merged onto the Firefox/Watcher line 2026-09-27, §N; failure edges hardened 2026-09-28, §O)
 
 **Status:** design gate — no production code written. On approval this file drives implementation phases W1…W10 (§11); after the feature lands it is archived to `docs/archive/<date>-global-workspace-save/` and its durable rows move into `SYSTEM_OF_RECORD.md` (RULE 17).
 **Size note:** this doc intentionally exceeds the RULE 18.4 context-file ideal (60–200 lines) because the task mandates one self-contained gate deliverable with embedded inventory/maps/risks. Every table below is evidence-backed from the files cited in §A.
@@ -136,41 +136,44 @@ app/services/workspace/
     reports.py                 # save-report/restore-report builders (pure, deterministic)
     meta.py                    # snapshot identity/env: paths, UTC, ids, app_meta, compat, log
     save.py                    # the whole SAVE side: SaveRequest, selection, capture under the
-                               #   feed lock, validation, temp build, manifest-last, publish, meta
+                               #   feed lock, validation, temp build, manifest-last, publish
+    snapshot_index.py          # workspace_meta.json: recent list, last save, last restore
     restore.py                 # PREVIEW only (read-only): per-domain status rows + remap notes
-    apply.py                   # the whole MUTATING side: selection + strict expansion, recovery
-                               #   backup, file gates, per-domain transactions, reconcile, report
+    gates.py                   # restore file gates: safe-path → size/sha → parse (never raises)
+    recover.py                 # recovery backup of live files (real or the restore refuses) + prune
+    apply.py                   # the whole MUTATING side: selection + strict expansion,
+                               #   per-domain transactions, reconcile, report
     providers/                 # one small file per domain (§B table), each ≤300 LOC
 
 (2026-09-25 refactor: the planned coordinator.py/reconcile.py pair became
 meta/save/restore/apply — the audit in WORKSPACE_REFACTOR_AUDIT.md §4; boundaries
 otherwise exactly as designed. Provider modules import nothing from services.)
 app/ui/panels/workspace.py     # 19th window mixin: slots only (thin)
-app/ui/web/js/panels/workspace.js + workspace/{store,render,actions}.js
+app/ui/web/js/panels/workspace.js     # one file (368 lines)
 ```
 
 **Architecture tests** (new `tests/test_workspace_architecture.py`): `app/persistence/workspace/**` imports nothing from `app/ui*`/`app/services`; `app/services/workspace/providers/**` never imports `app/ui*`; provider modules never import meta/save/restore/apply; the services never import Qt.
 
-### C.2 Provider contract (conceptual; Python `typing.Protocol`)
+### C.2 Provider contract (as built: `services/workspace/provider.py`, base class `StateProvider`)
 
 ```python
-class StateProvider(Protocol):
-    domain_id: str            # stable, e.g. "arena_state"
-    display_name: str         # e.g. "Queue, URLs, Folder, Prompt, Jobs"
-    native_rel_path: str      # "state/app_state.json" ("" for redaction-only domains)
-    schema_version: str       # native schema version captured
-    supported_migrations: tuple[str, ...]   # older versions migrate() accepts
-    dependencies: dict[str, str]            # {"cooldowns": "optional"} ; strict|"optional"
+class StateProvider:
+    domain_id, display_name, native_rel_path   # "" path = file-less policy domain
+    schema_version: str; supported_migrations: tuple   # versions this build can READ
+    required: bool            # report flag: listed in save-report `failed_required`
+    dependencies: dict        # {"cooldowns": "optional"} ; "strict" | "optional"
     sensitivity: str          # "public" | "personal" | "secret"
-    derived_fields: tuple[str, ...]         # recomputed after restore
-    def capture(self, bridge) -> CaptureResult: ...      # coherent doc + meta (snapshot boundary)
-    def validate(self, data, entry) -> list[Problem]: ... # checksum/schema/semantic checks
-    def migrate(self, data, from_version) -> tuple[data, str]: ...
-    def plan(self, bridge, data) -> RestorePlan: ...      # fields that will change (preview)
-    def apply(self, bridge, data) -> ApplyResult: ...     # transactional inside the domain
-    def rollback(self, bridge, backup): ...               # last-known-good for THIS domain
-    def reconcile(self, bridge) -> list[str]: ...         # derived/live recompute notes
+    def live_paths(self, bridge) -> list[Path]         # files the recovery backup copies
+    def capture(self, bridge) -> CaptureResult          # ok=False + notes when broken (RULE 4)
+    def validate(self, doc) -> str | None               # semantic check; None = valid
+    def migrate(self, doc, from_version) -> (doc, note) # pure; snapshot never rewritten
+    def apply(self, bridge, doc) -> ApplyOutcome        # idempotent: rollback = apply(pre-apply capture)
+    def reconcile(self, bridge) -> list[str]            # derived/live recompute notes
 ```
+
+One-file stores read their live file with `provider.read_live_json` / `live_capture`: a missing
+file is an empty store, an unreadable / corrupt / non-object file fails capture. The earlier
+`plan()` preview hook was removed (2026-09-28): preview is manifest-only (§C.6.1).
 
 ### C.3 Snapshot boundary and capture
 
@@ -180,16 +183,16 @@ class StateProvider(Protocol):
 
 ### C.4 Shared-file contract (`session.json`)
 
-`session_settings` and `grid_window` both own keys inside one physical file. Ownership table (in `providers/session.py`, one constant): grid_window owns exactly `grid_layout`, `window_states`, `window_geometry`; everything else in `DEFAULT_SESSION` belongs to `session_settings`. The workspace exports **one** `state/session.json`. On restore: stage merged doc (incoming values for owned keys only; keys a domain doesn't own keep current live values — unknown incoming keys are preserved, never dropped, reported as `unowned_keys_kept`); validate grid sub-domain first (`canonical_grid_payload` + §C.6); if grid keys fail → **apply session_settings keys only**, skip grid_window, keep current layout, report; else apply both in one atomic file commit, grid last. Rollback restores the pre-apply values of the union of both domains' owned keys (captured before apply).
+`session_settings` and `grid_window` both own keys inside one physical file. Ownership table (in `providers/session.py`, one constant): grid_window owns exactly `grid_layout`, `window_states`, `window_geometry`; everything else in `DEFAULT_SESSION` belongs to `session_settings`. The workspace exports **one** `state/session.json`. On restore each domain merges ITS owned keys into the current live `session.json` doc and commits it with one `save_json_atomic` + store reload (two per-domain transactions, `session_settings` first, `grid_window` last); keys a domain doesn't own keep their live values. Grid keys invalid → grid_window skipped, current layout kept, session_settings still applied, reported. Rollback of one domain re-applies that domain's pre-apply keys only.
 
 ### C.5 Save algorithm (maps task SAVE 1–8)
 
 1. Resolve target = `<base>/<name>_<UTC yyyyMMdd-HHMMSS>/`; refuse existing target (never merge into an existing folder).
-2. Create sibling temp dir `<target>.tmp-<pid>`; per provider: `capture()` → deterministic bytes → immediate `validate()` (schema/semantic) → size+sha256.
+2. Create a sibling temp dir (`tempfile.mkdtemp` beside the target); per provider: `capture()` → deterministic bytes → immediate `validate()` (schema/semantic) → size+sha256.
 3. Write each file into `state/` (atomic per-file write inside temp is unnecessary — the whole folder is unpublished — but bytes are fsynced where the platform supports it).
-4. Write `reports/save-report.json`; write `metadata/app-environment.json` (redacted); write `manifest.json` **last** (its presence = commit marker).
+4. Write `metadata/app-environment.json` (redacted); write `manifest.json` **last** (its presence = commit marker). After publish: record the snapshot in the index, then write `reports/save-report.json` (unwritable → beside the folder or a `report_note`; the snapshot stays valid).
 5. Publish: `os.rename(temp, target)` (atomic, same volume). On `EXDEV`/cross-volume: copy tree to `<target>.copy-<pid>`, fsync, rename. Target exists mid-publish (crash between rename attempts) → keep temp, report.
-6. On any provider capture/validate failure: exclude the domain, mark `required`-and-failed → abort with the temp folder **removed only after** user-visible error (retain `<target>.tmp-<pid>` renamed to `<target>.failed-<ts>` when removal fails — never delete on the error path silently).
+6. On ANY provider capture failure (required or not) without `allow_partial`: abort with the temp folder **removed only after** user-visible error (a failed publish keeps the partial folder as `<target>.failed-<ts>`, or in place when that rename fails too; `failed_folder` names where it really is).
 7. Locks/access-denied (cloud sync): bounded exponential backoff on folder ops (5 tries, 0.05 s×2 — mirrors `_replace_with_retry`), then actionable error naming the path; previous snapshots untouched.
 8. Never claim success if a required domain failed; partial snapshots only after explicit user confirmation (`allow_partial=true` → manifest marks `snapshot_kind: "partial"` with per-domain `excluded_reason`).
 
@@ -198,7 +201,7 @@ class StateProvider(Protocol):
 1. `preview_restore(path)`: read **manifest only** → compatibility (workspace_format, app build range, per-domain native versions vs `supported_migrations`), per-file presence/size pre-check, sensitive exclusions, path-remap needs (folder root missing on this machine), migrations pending. No mutation.
 2. User picks **Restore All** or selects domains/files. Selection by native file resolves **through the manifest** (path→domain lookup; unknown file → reported, never guessed).
 3. Strict dependencies expand automatically; optional deps are shown as "will also restore / will skip".
-4. **Recovery backup**: copy every affected live file into `config/workspace_recovery/<UTC ts>/` + `recovery.json` (domain→file). This is the last-known-good; not deleted automatically (bounded: keep last 10, prune oldest with a log line).
+4. **Recovery backup**: copy every affected live file into `config/workspace_recovery/<UTC ts>/` + `recovery.json` (domain→file). This is the last-known-good: an existing live file that cannot be copied, or a folder that cannot be written, **refuses the restore before any change**; same-second folders get `-02`, `-03`…; keep last 10, prune oldest with a log line.
 5. Per domain in topological order: safe-path check (no `..`, no absolute, resolves inside the workspace) → size+sha256 → JSON parse → schema version → semantic validation (provider `validate`) → compatibility → migration (pure, to in-memory doc; source snapshot never rewritten).
 6. Stage: build the new in-memory/live doc, keep old values for rollback, then **commit atomically per domain** (per file `save_json_atomic`-equivalent with retry; shared session file = one commit §C.4).
 7. Failure → record (stage, cause, expected-vs-actual) → skip strict dependents → continue independents → **no rollback of already-committed domains**.
@@ -309,9 +312,9 @@ Every registered provider appears — included with full entry, excluded with a 
 
 ### D.4 Report schemas (deterministic)
 
-`save-report.json`: `{"snapshot_id", "started_utc", "finished_utc", "result": "success|partial|failed", "domains": [{domain_id, ok, excluded, bytes, sha256, error?}], "errors": [WorkspaceError…], "published": true}`.
-`restore-report.json`: `{"workspace": "<path>", "restored": [ids], "skipped": [{"domain_id", "stage", "cause", "expected", "actual", "dependents_blocked": [ids], "recommended_action"}], "migrated": [{"domain_id", "from", "to"}], "reconciled": [notes], "result": "success|success_with_warnings|failed", "backup": "config/workspace_recovery/<ts>/"}`.
-Failure stage enum (one vocabulary, `persistence/workspace/errors.py`): `missing | unsafe_path | checksum | parse | schema | semantic | migration | dependency | apply | reconcile | rollback`.
+`save-report.json`: `{"snapshot_id", "started_utc", "finished_utc", "result": "success|partial|failed", "domains": [{domain_id, required, ok, excluded}], "errors": [WorkspaceError…], "failed_required": [errors of required domains], "published": true}`; the reply may add `report_note`.
+`restore-report.json`: `{"workspace": "<path>", "restored": [ids], "skipped": [{"domain_id", "status": "skipped|damaged", "stage", "cause", "expected"?, "actual"?, "rolled_back"?, "recommended_action"}], "migrated": [{"domain_id", "note"}], "reconciled": [notes], "result": "success|success_with_warnings|failed", "backup": "config/workspace_recovery/<ts>/"}`.
+Failure stage enum (one vocabulary, `persistence/workspace/errors.py`): `missing | unsafe_path | checksum | parse | schema | semantic | migration | dependency | apply | reconcile | rollback` (`reconcile` failures are notes in `reconciled`, not rows; `capture` is the save-side stage).
 
 ---
 
@@ -348,7 +351,7 @@ UI            Coordinator                         Providers                     
 │             │ backup affected live files → config/workspace_recovery/<ts>/ + recovery.json
 │             │ for domain in topo order:          │                                 │
 │             │  safe-path→checksum→parse→schema→semantic→compat→migrate (pure)        │
-│             │  plan() → stage → apply() atomically (one commit per domain/file)      │
+│             │  pre-apply capture → apply() (one transaction per domain)              │
 │             │  on error: record(stage) → skip strict dependents → continue        │
 │             │ reconcile(): progress, run_state→idle, stale jobs→interrupted,        │
 │             │              grid via canonical path, geometry clamp                  │
@@ -369,12 +372,15 @@ UI            Coordinator                         Providers                     
 | Truncated / invalid JSON | `parse` | skipped | skipped | restored | parse error position |
 | Unknown future schema version | `schema` | skipped | skipped | restored | "saved by newer app (schema 9 > supported 8) — update the app" |
 | Valid JSON, invalid content (e.g. urls not a list) | `semantic` | skipped | skipped | restored | which invariant failed |
-| Migration raises | `migration` | skipped | skipped | restored | from→to, exception class |
+| Migration raises | `migration` | skipped | skipped | restored | exception class + message |
+| Validate raises (malformed but stamped doc) | `semantic` | skipped | skipped | restored | exception class + message |
+| Pre-apply capture unreadable | `apply` | **not applied** (no rollback point) | skipped | restored | "pre-apply values unreadable — not applied" |
 | Dependency failed (strict) | `dependency` | skipped (dependent) | — | restored | chain X←Y explained |
-| Apply raises mid-write | `apply` | **rolled back** to backup (transactional) | skipped | restored (never rolled back) | error + "recovered previous values" |
-| Reconcile raises | `reconcile` | restored + flagged | — | — | warning with note |
-| Rollback itself fails | `rollback` | marked `damaged`, recovery backup path surfaced | — | — | "open recovery folder" (never silent) |
-| Capture raises (saving) | `capture` | domain excluded from the snapshot (still reported) | — (save continues) | save refusal lists failed domains; partial save allowed by explicit flag |
+| Apply raises mid-write | `apply` | **rolled back** to the pre-apply capture; `rolled_back` true only if that ran | skipped | restored (never rolled back) | error + rollback flag |
+| Reconcile raises | — (note) | restored; `reconciled` carries the failure note | — | — | warning with note |
+| Rollback itself fails | `rollback` | marked `damaged` → whole result `failed` (restored ids still listed) | — | — | "open recovery folder" (never silent) |
+| Recovery backup cannot be written | — | restore refused, nothing changed | — | — | cause + "free the locked file" |
+| Capture raises / live file corrupt (saving) | `capture` | domain excluded from the snapshot (still reported) | — (save continues) | save refusal lists failed domains; partial save allowed by explicit flag |
 | Grid invalid (any of the above inside session.json) | any | grid keys skipped; session_settings keys still applied; **current layout retained** | — | restored | "layout not restored — invalid grid (reason). Apply default layout?" (explicit opt-in, never silent) |
 | Unknown file in `state/` | — | not applied | — | — | "unknown file — no domain owns it" (never inferred by filename) |
 
@@ -385,7 +391,7 @@ Default substitution never happens implicitly; "restore defaults for X" is a sep
 ## G. Migration and rollback plan
 
 - **Versioning:** workspace_format starts at 1 (min 1). Each domain records its native `schema_version` at capture; providers declare `supported_migrations`. Future versions: restore refuses with precise message (no best-effort guess). Older supported versions: pure `migrate()` to current in-memory doc — **never rewrites the snapshot on disk**.
-- **Unknown-field preservation:** provider `validate` flags unknown keys as `kept_unknown` (they ride through apply for `session_settings`/`arena_state` because their loaders are already tolerant); providers with strict dataclasses (`grid_window` keys) drop unknown keys **with a report line**, documented per provider.
+- **Unknown-field preservation:** unknown keys ride through apply where the native loaders are tolerant (`session_settings`, `arena_state`); `grid_window` keeps only its three owned keys. No per-key report line is emitted.
 - **Duplicate sources of truth:** per §B.3 — the per-key home table decides; nothing "loads whichever file is newest".
 - **Rollback layers:** (1) domain-level: pre-apply values of owned keys/files, applied on `apply` failure; (2) snapshot-level: `config/workspace_recovery/<ts>/` full copies of every affected file, surfaced in the report and in the window's "last recovery" line; (3) app-level: every commit reuses the existing atomic writers, so a crash mid-commit leaves the previous valid file (temp discarded).
 - **Stable IDs:** app-owned ids (`UrlRow.id`, image `id`/fingerprint, preset names, `snapshot_id`) persist verbatim; session-scoped ids (CDP `tab_id`, `worker_no`) restore as hints only and are reconciled by the existing join/reconcile machinery.
@@ -521,3 +527,18 @@ This feature was built on `f5cb06e`; the target line had since gained the Firefo
 3. **Live-run guard.** `meta.live_run_error` (checked first in `apply._preflight`) refuses a restore while `bridge._run_state != "idle"`: both lanes run inside `run_live`, and an in-flight job settling into a swapped queue/job history is exactly the stale-resurrection class §B.3 forbids. The persisted `run_state` alone does not block (reconciled to idle as before). Save stays allowed during a run — capture is pull-based under the state lock and the restore side reconciles in-flight rows.
 4. **Job counts** from Firefox jobs land in `job_history.json` like Chrome's, so the `job_history` domain covers them unchanged.
 5. **Post-merge structure (no behaviour change).** File gates (`load_files`/`load_one`/`entry_owner`) live in `app/services/workspace/gates.py`; `apply.py` keeps only the mutating side. `json_store._replace_retry` is split into `_is_transient` / `_transient_or_raise` / `_try_replace` / `_attempt` with the same 5 attempts and 0.02 s doubling backoff.
+
+## O. Failure-edge hardening (audit #2, 2026-09-28, SoR I-77)
+
+Audit + plan: `docs/archive/2026-09-28-workspace-refactor-2/audit.md` (ten defects reproduced on
+the real code first, each now a red-first test in `tests/test_workspace_failure_edges.py`).
+Contract added on top of §C/§F: (1) a provider crash inside restore is that domain's row
+(`migration` / `semantic` / `apply`), and the run always ends in a report + `last_restore`;
+(2) `rolled_back` is true only when a rollback ran; a `damaged` domain fails the whole restore;
+(3) the recovery backup is real or the restore refuses before any change; (4) the preview uses the
+restore's safe-path rule (`unsafe_path` row); (5) post-publish report/index failures are notes, not
+crashes; `failed_required` lists required capture failures; (6) a corrupt live store fails capture
+instead of saving `{}` (RULE 4); (7) the save/restore slots always answer (`ok: false` + error log),
+the post-restore refresh follows what was restored even in a failed run, and the JS treats any
+non-`ok` reply as a failure. Structure: the dead `plan()` hook and three unused helpers were removed,
+and the snapshot index left `save.py` for `snapshot_index.py`.

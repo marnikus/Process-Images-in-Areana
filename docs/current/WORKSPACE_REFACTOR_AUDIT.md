@@ -1,5 +1,7 @@
 # Workspace Save/Restore — Refactor Audit & Plan (2026-09-25)
 
+> Follow-up (2026-09-28): failure-edge audit #2 + TDD refactor — `docs/archive/2026-09-28-workspace-refactor-2/audit.md` (SoR I-77).
+
 Scope: ONLY the new global save/restore feature (commit range `6eb15e2..4a49f99`):
 `app/persistence/workspace/**`, `app/services/workspace/**`, `app/ui/panels/workspace.py`,
 `app/ui/web/js/panels/workspace.js`, `tests/test_workspace_*.py`,
