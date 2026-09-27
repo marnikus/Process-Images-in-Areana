@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
-from .site_adapter import get_readiness_requirements, get_selector
+from .site_adapter import NEW_CHAT_PATH, get_readiness_requirements, get_selector
 
 
 def account_email_probe() -> Dict[str, str]:
@@ -94,6 +94,11 @@ def model_label_probe() -> Dict[str, str]:
 def new_chat_selectors() -> List[str]:
     """New Chat click-candidate selectors — semantic href first."""
     return get_selector("new_chat_button").all_selectors()
+
+
+def new_chat_path() -> str:
+    """The New Chat page path (the link's href) — the reset's direct-open target (I-69)."""
+    return NEW_CHAT_PATH
 
 
 def new_chat_primary() -> str:

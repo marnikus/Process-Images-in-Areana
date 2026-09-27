@@ -15,6 +15,10 @@ from typing import Dict, List
 # Fallback lists are the live verified probe lists (byte-identical to what
 # cdp_arena.py / output_probes.py send today — see DOM_SELECTORS.md).
 
+# The New Chat link's href — also the page the reset opens directly when the
+# click fails (new_chat, I-69). One literal, RULE 21.
+NEW_CHAT_PATH = "/image/direct"
+
 SELECTORS: Dict[str, SelectorObject] = {
     "model_label": SelectorObject(
         name="model_label",
@@ -280,10 +284,10 @@ SELECTORS: Dict[str, SelectorObject] = {
     ),
     "new_chat_button": SelectorObject(
         name="new_chat_button",
-        primary='a[href="/image/direct"]',
+        primary=f'a[href="{NEW_CHAT_PATH}"]',
         fallbacks=[
-            'li[data-sidebar="menu-item"] a[href="/image/direct"]',
-            'a[data-sidebar="menu-button"][href="/image/direct"]',
+            f'li[data-sidebar="menu-item"] a[href="{NEW_CHAT_PATH}"]',
+            f'a[data-sidebar="menu-button"][href="{NEW_CHAT_PATH}"]',
         ],
         scope='li[data-sidebar="menu-item"]',
         mustBeVisible=True,

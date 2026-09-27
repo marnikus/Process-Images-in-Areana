@@ -3,7 +3,10 @@
 Spec 01: after each job the tab returns to a clean new chat; the tab is
 marked ready only after the page is fully loaded. Clicks go through the
 shared visual runner (RULE 1); every step is reported (RULE 2); selectors
-are semantic-first (RULE 21). Imports: same layer only.
+are semantic-first (RULE 21). When the click fails or the page never gets
+clean, the reset opens the New Chat page itself — `Page.navigate` to the
+link's own path on the tab's origin, a full page restart — and waits for
+the same proof (I-69). Imports: same layer only.
 """
 
 from __future__ import annotations
@@ -13,8 +16,9 @@ import json
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
+from urllib.parse import urlsplit
 
-from .probe_selectors import new_chat_selectors, textarea_primary
+from .probe_selectors import new_chat_path, new_chat_selectors, textarea_primary
 from .visual_click import ClickRequest, find_and_click
 
 # (selector, label_selector, match_text) — semantic href first, no classes.
@@ -181,14 +185,52 @@ async def _wait_page_loaded(ctx: ResetCtx) -> tuple[bool, str]:
 
 
 async def reset_to_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
-    """Click New Chat, then wait for the full page load."""
+    """Click New Chat and wait for the load; a failed click or load opens the page directly."""
     _report(ctx.engine, "↩ Resetting to new chat after generation", "info")
-    clicked, click_info = await _click_new_chat(ctx)
+    ok, why = await _click_and_wait(ctx)
+    if not ok and not _is_cancelled(ctx):
+        _report(ctx.engine, f"↩ New Chat did not work ({why}) — opening {new_chat_path()} directly", "warn")
+        ok, detail = await _open_new_chat(ctx)
+        why = detail if ok else f"{why}; direct open: {detail}"
+    return _finish_reset(ctx, ok, why)
+
+
+async def _click_and_wait(ctx: ResetCtx) -> tuple[bool, str]:
+    """The normal way back: click the sidebar link, then the readiness proof."""
+    clicked, why = await _click_new_chat(ctx)
     if not clicked:
-        _report(ctx.engine, f"↩ New-chat reset failed: {click_info}", "error")
-        return False, click_info
-    _report(ctx.engine, f"↩ New Chat clicked ({click_info}), waiting for load", "info")
-    ok, reason = await _wait_page_loaded(ctx)
+        return False, why
+    _report(ctx.engine, f"↩ New Chat clicked ({why}), waiting for load", "info")
+    return await _wait_page_loaded(ctx)
+
+
+def _finish_reset(ctx: ResetCtx, ok: bool, reason: str) -> tuple[bool, str]:
+    """The one closing line of a reset (RULE 2)."""
     _report(ctx.engine, f"↩ New-chat reset {'ready' if ok else 'failed'}: {reason}",
             "success" if ok else "error")
     return ok, reason
+
+
+async def _open_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
+    """Restart the tab on the New Chat page (`Page.navigate`), then the same readiness proof."""
+    url, why = await _new_chat_url(ctx.client)
+    if not url:
+        return False, why
+    try:
+        await ctx.client.send("Page.navigate", {"url": url}, timeout=15)
+    except Exception as e:
+        return False, f"navigation failed: {e}"
+    return await _wait_page_loaded(ctx)
+
+
+async def _new_chat_url(client: Any) -> tuple[str, str]:
+    """`<tab origin><New Chat path>` from the browser's own history — works while the page JS is stuck."""
+    try:
+        hist = await client.send("Page.getNavigationHistory", {}, timeout=10)
+        url = hist["entries"][hist["currentIndex"]]["url"]
+    except Exception as e:
+        return "", f"page address unknown ({e})"
+    parts = urlsplit(str(url))
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return "", f"page address unknown ({url})"
+    return f"{parts.scheme}://{parts.netloc}{new_chat_path()}", ""
