@@ -9,6 +9,7 @@ monotonic promise — a restored log never reuses job numbers (I-61).
 from __future__ import annotations
 
 from app.persistence.json_store import load_json, save_json_atomic
+from app.persistence.workspace.errors import WorkspaceError
 from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
 from app.services.job_history import JobHistoryStore, _history_file
 
@@ -47,7 +48,6 @@ class JobHistoryProvider(StateProvider):
     def apply(self, bridge, doc) -> ApplyOutcome:
         path = _history_file(bridge)
         if path is None:
-            from app.persistence.workspace.errors import WorkspaceError
             raise WorkspaceError(self.domain_id, "apply", "no config dir for the history file")
         save_json_atomic(path, {"next_job_no": doc.get("next_job_no", 1),
                                 "entries": doc.get("entries", [])})

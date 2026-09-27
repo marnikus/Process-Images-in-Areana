@@ -8,6 +8,7 @@ history and is rejected by design.
 
 from __future__ import annotations
 
+from app.persistence.workspace.errors import WorkspaceError
 from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
 
 
@@ -49,7 +50,6 @@ class UndoProvider(StateProvider):
     def apply(self, bridge, doc) -> ApplyOutcome:
         ok = bridge.config.undo.set(list(doc.get("history", [])), int(doc.get("index", -1)))
         if not ok:
-            from app.persistence.workspace.errors import WorkspaceError
             raise WorkspaceError(self.domain_id, "apply",
                                  "undo store refused the write (disk or lock)")
         return ApplyOutcome(ok=True)

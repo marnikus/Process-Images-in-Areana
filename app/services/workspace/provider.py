@@ -13,6 +13,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def config_dir(bridge) -> Path:
+    """The live config directory (one home for meta, recovery, index and providers)."""
+    return Path(getattr(bridge.config, "dir", "config"))
+
+
 @dataclass
 class CaptureResult:
     """One coherent capture at the snapshot boundary."""

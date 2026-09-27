@@ -12,6 +12,7 @@ import shutil
 import time
 from pathlib import Path
 
+from app.persistence.workspace.integrity import canonical_bytes
 from .meta import config_dir, utc_now_iso
 
 
@@ -67,7 +68,6 @@ def backup_live(bridge, providers: list) -> str:
     backup = _recovery_dir(bridge)
     backup.mkdir(parents=True, exist_ok=True)
     copied, absent = _copy_affected(files, backup)
-    from app.persistence.workspace.integrity import canonical_bytes
     (backup / "recovery.json").write_bytes(canonical_bytes(
         {"created_utc": utc_now_iso(), "files": copied, "absent": absent}))
     prune_recovery(bridge)

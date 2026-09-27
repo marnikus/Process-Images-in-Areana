@@ -17,10 +17,12 @@ from pathlib import Path
 from app.persistence.workspace import fsio
 from app.persistence.workspace.errors import WorkspaceError
 from app.persistence.workspace.integrity import canonical_bytes
-from app.persistence.workspace.manifest import build_manifest
+from app.persistence.workspace.manifest import FORMAT_NAME, WORKSPACE_FORMAT, build_manifest
 from . import reports
 from .meta import (app_meta, compat_block, default_base, log_message,
                    snapshot_id_for, utc_now_iso)
+from .providers.policies import INCLUSION_POLICY
+from .registry import all_providers
 from .snapshot_index import record_snapshot
 
 
@@ -45,7 +47,6 @@ class Capture:
 
 def selected_providers(selected) -> list:
     """All providers, or the explicitly selected subset (save-side selection)."""
-    from .registry import all_providers
     providers = all_providers()
     if selected is None:
         return providers
@@ -132,13 +133,11 @@ def _write_state_files(temp: Path, captures: list) -> dict:
 
 def inclusion_policy() -> dict:
     """Documented per-resource inclusion policy (design §D.3) — one home: policies."""
-    from .providers.policies import INCLUSION_POLICY
     return dict(INCLUSION_POLICY)
 
 
 def _write_env(temp: Path, bridge) -> None:
     """metadata/app-environment.json — redacted (no user paths, no secrets)."""
-    from app.persistence.workspace.manifest import FORMAT_NAME, WORKSPACE_FORMAT
     env = {**app_meta(bridge), "grid_version": compat_block()["grid_version"],
            "workspace_format": WORKSPACE_FORMAT, "format": FORMAT_NAME,
            "inclusion_policy": inclusion_policy()}
@@ -204,7 +203,7 @@ def _publish_save(run: dict, captures: list) -> dict:
     try:
         report = _stage(run, captures, temp)
         fsio.publish(temp, target)
-    except (OSError, FileExistsError) as exc:
+    except OSError as exc:  # FileExistsError is an OSError
         return _publish_failed(target, temp, exc)
     fsio.write_bytes(target, "reports/save-report.json", canonical_bytes(report))
     record_snapshot(bridge, str(target))

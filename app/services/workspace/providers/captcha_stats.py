@@ -9,13 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.persistence.json_store import load_json, save_json_atomic
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, config_dir
 
 FILE_NAME = "captcha_stats.json"
 
 
 def stats_file(bridge) -> Path:
-    return Path(getattr(bridge.config, "dir", "config")) / FILE_NAME
+    return config_dir(bridge) / FILE_NAME
 
 
 def stats_error(doc) -> str | None:

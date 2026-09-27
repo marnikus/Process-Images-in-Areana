@@ -14,15 +14,13 @@ import time
 from pathlib import Path
 
 from app.core.window_catalog import GRID_VERSION
+from app.persistence.workspace.integrity import sha256_bytes
 from app.persistence.workspace.manifest import FORMAT_NAME, MIN_WORKSPACE_FORMAT, WORKSPACE_FORMAT
+from .provider import config_dir  # re-exported: the one home is provider.py (providers may not import meta)
 
 META_FILE = "workspace_meta.json"
 DEFAULT_DIR_NAME = "workspaces"
 RECENT_CAP = 10          # recent-snapshot list length
-
-
-def config_dir(bridge) -> Path:
-    return Path(getattr(bridge.config, "dir", "config"))
 
 
 def default_base(bridge) -> Path:
@@ -34,7 +32,6 @@ def utc_now_iso() -> str:
 
 
 def snapshot_id_for(created_utc: str, name: str) -> str:
-    from app.persistence.workspace.integrity import sha256_bytes
     digest = sha256_bytes(f"{name}|{created_utc}".encode("utf-8"))[:8]
     return f"ws_{created_utc.replace('-', '').replace(':', '')}_{digest}"
 

@@ -38,7 +38,7 @@ class WorkspaceError(Exception):
     """One structured domain failure; `to_dict()` is the report row."""
 
     def __init__(self, domain_id: str, stage: str, cause: str,
-                 evidence: tuple = None):
+                 evidence: tuple | None = None):
         """`evidence` is an optional (expected, actual) pair for checksum rows."""
         if stage not in STAGES:
             raise ValueError(f"unknown stage: {stage}")

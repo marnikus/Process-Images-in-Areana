@@ -10,7 +10,7 @@ future capability). Both refuse apply with a precise, actionable error.
 from __future__ import annotations
 
 from app.persistence.workspace.errors import WorkspaceError
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, config_dir
 
 KEYS_EXCLUDED = "secret: redacted presence metadata only — raw keys never leave the machine (RULE 20)"
 RECORDINGS_EXCLUDED = ("default-excluded: page-derived captcha evidence; an opt-in copy is a "
@@ -31,7 +31,7 @@ INCLUSION_POLICY = {"logs": "excluded:runtime", "source_images": "excluded:files
 def _masked_presence(bridge) -> dict:
     """{provider_id: {present, masked}} — the same masking the Captcha window shows."""
     from app.services.captcha.key_store import CaptchaKeyStore
-    settings = CaptchaKeyStore(str(getattr(bridge.config, "dir", "config"))).load()
+    settings = CaptchaKeyStore(str(config_dir(bridge))).load()
     presence = {}
     for provider_id, key in (settings.keys or {}).items():
         presence[provider_id] = {"present": bool(key),

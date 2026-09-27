@@ -16,6 +16,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from .integrity import bytes_entry
+
 ATTEMPTS = 5
 BACKOFF_SEC = 0.05
 _TRANSIENT = (errno.EACCES, errno.EBUSY, errno.EPERM)
@@ -60,7 +62,6 @@ def _with_backoff(action) -> None:
 
 def write_bytes(root: Path, rel: str, data: bytes) -> dict:
     """Write one file inside the (temp) workspace root; returns its integrity entry."""
-    from .integrity import bytes_entry
 
     path = Path(root) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
