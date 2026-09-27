@@ -8,6 +8,8 @@ wipe the pool. The run-gating helpers (rows -> tabs direction) keep the
 I-33 invariant: a tab runs jobs only when a checked row owns it, and
 rows are never re-bound to foreign tabs. Imports services -> browser only.
 """
+# ideal-size: ~310 lines — one cohesive row↔tab ownership module (planner + run
+# gate share _tab_key/enabled_tab_ids); splitting would duplicate those helpers.
 
 from __future__ import annotations
 
@@ -223,6 +225,13 @@ def enabled_tab_ids(urls: Any) -> set:
         if getattr(u, "enabled", False) and getattr(u, "tab_id", ""):
             out.add(u.tab_id)
     return out
+
+
+def checked_tab_ids_now(bridge: Any, fallback: Any) -> set:
+    """Tabs whose row is checked NOW — a pass's planned set goes stale on a click (I-69).
+    `fallback` (that planned set) is used only when there is no live URL list."""
+    urls = getattr(getattr(bridge, "state", None), "urls", None)
+    return enabled_tab_ids(urls) if urls is not None else set(fallback or ())
 
 
 def row_for_tab(urls: Any, tab_id: str):

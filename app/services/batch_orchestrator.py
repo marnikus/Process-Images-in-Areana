@@ -168,8 +168,8 @@ async def await_pause_or_abort(ctx: BatchCtx) -> bool:
 
 
 async def _claim_tab(ctx: BatchCtx) -> bool:
-    """Refresh the run tab per image; False when none usable."""
-    tab_id = await resolve_and_claim_tab(ctx.bridge, ctx.tab_id, ctx.allowed)
+    """Refresh the run tab per image (checked NOW, I-69); False when none usable."""
+    tab_id = await resolve_and_claim_tab(ctx.bridge, ctx.tab_id, ac.checked_tab_ids_now(ctx.bridge, ctx.allowed))
     if not tab_id:
         ctx.bridge._log("❌ No usable checked tab left in pool — stopping batch", "error")
         return False

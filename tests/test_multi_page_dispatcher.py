@@ -57,7 +57,7 @@ def test_acquire_free_in_tolerates_empty_and_garbage():
 
 
 def wait_spec(pool, allowed="checked", timeout=2.0, cancel=None):
-    return mpd.FreeWaitSpec(pool=pool, allowed={allowed}, job_id="job1",
+    return mpd.FreeWaitSpec(pool=pool, allowed_now=lambda: {allowed}, job_id="job1",
                             timeout_sec=timeout, cancel_check=cancel)
 
 

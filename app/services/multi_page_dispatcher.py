@@ -143,7 +143,7 @@ class FreeWaitSpec:
     """Wait inputs for one checked free page (keeps params ≤4, RULE 16)."""
 
     pool: object
-    allowed: set
+    allowed_now: object  # () -> set: tabs whose row is checked at THIS attempt (I-69)
     job_id: str
     timeout_sec: float
     cancel_check: object = None
@@ -160,7 +160,7 @@ async def _wait_free_in(spec: FreeWaitSpec):
     loop = asyncio.get_event_loop()
     start = loop.time()
     while not _gave_up(spec, loop.time() - start):
-        got = _acquire_free_in(spec.pool, spec.allowed, spec.job_id)
+        got = _acquire_free_in(spec.pool, spec.allowed_now(), spec.job_id)
         if got:
             return got
         await spec.wake_wait(_WAIT_POLL_SEC)
@@ -168,8 +168,8 @@ async def _wait_free_in(spec: FreeWaitSpec):
 
 
 async def _acquire_page(pool, bridge, job_id: str, allowed: set):
-    """One gate for both wait styles: only tabs owned by checked rows."""
-    spec = FreeWaitSpec(pool=pool, allowed=allowed, job_id=job_id,
+    """One gate for both wait styles: only tabs whose row is checked at claim time (I-69)."""
+    spec = FreeWaitSpec(pool=pool, allowed_now=lambda: ac.checked_tab_ids_now(bridge, allowed), job_id=job_id,
                         timeout_sec=cooldown_aware_timeout(pool),
                         cancel_check=lambda: not _feeding(bridge),
                         wake_wait=live_bus(bridge).wait)
@@ -303,6 +303,13 @@ async def run_one_image_on_page(bridge, pool, img, urls):
     await run_claimed_image(ctx, img, free_page)
 
 
+def _live_urls(ctx: DispatchCtx):
+    """The URL rows as they are NOW (I-69): a job records the row that owns its tab
+    at claim time; the pass's snapshot only when there is no live list."""
+    urls = getattr(ctx.bridge.state, "urls", None)
+    return ctx.urls if urls is None else urls
+
+
 async def run_claimed_image(ctx: DispatchCtx, img, free_page):
     """Run `img` on a page the caller already claimed (the feeder path, B-1)."""
     bridge, pool, tab_id = ctx.bridge, ctx.pool, free_page.tab_id
@@ -318,7 +325,7 @@ async def run_claimed_image(ctx: DispatchCtx, img, free_page):
     _log_assign(bridge, img, tab_id, free_page)
     _start_tab_image(pool, tab_id, img)
     try:
-        await _run_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ctx.urls, tab_id=tab_id, ctrl=ctrl, client=client))
+        await _run_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=_live_urls(ctx), tab_id=tab_id, ctrl=ctrl, client=client))
     finally:
         _clear_tab_image(pool, tab_id)
         await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client))
@@ -332,7 +339,7 @@ async def _run_firefox_claimed(ctx: DispatchCtx, img, page) -> None:
     _start_tab_image(pool, tab_id, img)
     reset: list = []  # the job's Ui.Vision New Chat for the finish seam
     try:
-        await _firefox_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ctx.urls,
+        await _firefox_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=_live_urls(ctx),
                                              tab_id=tab_id, ctrl=None, client=None), reset)
     finally:
         _clear_tab_image(pool, tab_id)
