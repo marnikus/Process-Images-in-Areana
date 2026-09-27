@@ -49,10 +49,8 @@ window.UrlListListeners = {
     const action = btn.dataset.action;
     if (!urlId || !action) return;
     const map = {
-      test: () => facade.testUrl(urlId),
       toggle: () => facade.toggleUrl(urlId),
       remove: () => facade.removeUrl(urlId),
-      edit: () => facade.editUrl(urlId),
       connect: () => facade.connectUrl(urlId),
       'stop-job': () => facade.stopJob(urlId),
     };

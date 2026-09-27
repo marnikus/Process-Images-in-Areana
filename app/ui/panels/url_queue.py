@@ -1,14 +1,14 @@
 """URL queue panel — URL rows, URL presets, run-gate helpers.
 
 Owns the I-33 row<->tab helpers (single source; `app.ui.bridge` keeps
-compat re-exports used by `tests/test_url_selection.py`) plus the 9 slots.
+compat re-exports used by `tests/test_url_selection.py`) plus the 7 slots
+(Test/Edit row actions removed 2026-09-27 — rows follow open tabs, I-68).
 Imports go panels -> services/core only. Every slot returns a JSON string
 (QWebChannel callbacks never fire for `None`), and every row mutation goes
 through `commit_urls` (persist + emit + undo) — 2026-10-02 bugfix.
 """
 
 import json
-from datetime import datetime
 
 from app.core.models import UrlRow
 from app.services.live.url_policy import (add_rows, dedupe_rows, defer_line, exit_line,
@@ -78,7 +78,7 @@ MAX_URL_LEN = 2048  # browsers/CDP choke on longer; keeps the arena.json row san
 
 
 def _valid_new_url(url: str):
-    """Trimmed URL or an error string (add/edit gate)."""
+    """Trimmed URL or an error string (the add gate)."""
     url = (url or "").strip()
     if not url:
         return None, "empty URL"
@@ -89,9 +89,9 @@ def _valid_new_url(url: str):
     return url, ""
 
 
-def _duplicate_url(urls, url: str, skip_id: str = "") -> bool:
-    """Same URL already on another row (case-sensitive, trailing-slash exact)."""
-    return any(u.url == url and u.id != skip_id for u in urls)
+def _duplicate_url(urls, url: str) -> bool:
+    """Same URL already on a row (case-sensitive, trailing-slash exact)."""
+    return any(u.url == url for u in urls)
 
 
 def commit_urls(bridge) -> None:
@@ -193,37 +193,6 @@ class UrlQueueMixin:
         row.enabled = not row.enabled
         self._commit_urls()
         return json.dumps({"ok": True, "enabled": row.enabled})
-
-    @Slot(str, str, result=str)
-    def edit_url(self, url_id: str, new_url: str):
-        new_url, err = _valid_new_url(new_url)
-        if err:
-            return json.dumps({"ok": False, "error": err})
-        row = _find_url(self.state.urls, url_id)
-        if row is None:
-            return json.dumps({"ok": False, "error": "not found"})
-        if _duplicate_url(self.state.urls, new_url, skip_id=url_id):
-            return json.dumps({"ok": False, "error": "URL already exists"})
-        row.url = new_url
-        row.last_status = "unchecked"
-        row.error = None
-        self._commit_urls()
-        return json.dumps({"ok": True, "url": new_url})
-
-    @Slot(str, result=str)
-    def test_url(self, url_id: str):
-        row = _find_url(self.state.urls, url_id)
-        if row is None:
-            return json.dumps({"ok": False, "error": "not found"})
-        if row.url.startswith("http"):
-            row.last_status = "ready"
-            row.last_checked = datetime.utcnow().isoformat() + "Z"
-            self._save_arena()
-            return json.dumps({"ok": True, "status": "ready"})
-        row.last_status = "error"
-        row.error = "Invalid URL"
-        self._save_arena()
-        return json.dumps({"ok": False, "error": "Invalid URL"})
 
     @Slot(result=str)
     def get_url_presets(self):

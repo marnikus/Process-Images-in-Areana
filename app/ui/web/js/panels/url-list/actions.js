@@ -38,40 +38,6 @@ window.UrlListActions = {
     if (b && b.toggle_url) b.toggle_url(id, () => {});
   },
 
-  testUrl(id) {
-    const b = this._bridge();
-    if (!b || !b.test_url) return;
-    LogConsole.log('Testing URL ' + id + '...', 'info');
-    b.test_url(id, (res) => {
-      try { const r=JSON.parse(res); LogConsole.log('Test result: '+(r.ok?'OK':r.error), r.ok?'success':'error'); } catch {}
-    });
-  },
-
-  editUrl(id) {
-    const row = this._store().snapshotUrls().find(u => String(u.id) === String(id));
-    const current = row ? row.url : '';
-    const apply = (newUrl) => this._applyEdit(id, newUrl);
-    if (window.Dialog && window.Dialog.promptEdit) {
-      window.Dialog.promptEdit('Edit URL', current || 'https://…', 'Save', apply);
-      return;
-    }
-    const typed = typeof prompt === 'function' ? prompt('Edit URL:', current) : null;  // standalone fallback
-    if (typed) apply(typed);
-  },
-
-  _applyEdit(id, newUrl) {
-    const b = this._bridge();
-    if (!b || !b.edit_url) { LogConsole.log('Edit failed: bridge slot edit_url missing', 'error'); return; }
-    b.edit_url(id, newUrl, (res) => {
-      try {
-        const r = JSON.parse(res);
-        if (!r.ok) { LogConsole.log('Edit failed: ' + r.error, 'error'); return; }
-        LogConsole.log('URL updated: ' + (r.url || newUrl), 'success');
-        // B7: no stale snapshot push-back (see _onAdd) — edit_url committed already.
-      } catch {}
-    });
-  },
-
   connectUrl(id) {
     const urlObj = this._store().snapshotUrls().find(u => u.id === id);
     let url = urlObj ? urlObj.url : '';

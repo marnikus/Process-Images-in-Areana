@@ -124,7 +124,7 @@ def test_cdp_tools_guards_on_missing_cdp_or_image(cfg):
 
 # ── url_queue ──
 
-def test_url_queue_add_remove_toggle_edit_test(cfg):
+def test_url_queue_add_remove_toggle(cfg):
     host, _ = make_host((UrlQueueMixin,), config=cfg, state=make_state(),
                         url_presets_updated=Signal(str), presets_changed=Signal(str, str))
     added = json.loads(host.add_url("https://arena.ai/image/direct"))
@@ -134,12 +134,8 @@ def test_url_queue_add_remove_toggle_edit_test(cfg):
     assert json.loads(host.add_url("not a url"))["ok"] is False
     row_id = added["id"]
     assert json.loads(host.toggle_url(row_id))["enabled"] is False
-    assert json.loads(host.edit_url(row_id, "https://arena.ai/other"))["ok"] is True
-    assert json.loads(host.edit_url(row_id, ""))["error"] == "empty URL"
-    assert json.loads(host.test_url(row_id))["status"] == "ready"
-    assert json.loads(host.test_url("ghost"))["error"] == "not found"
-    host.state.urls[0].url = "ftp://not-http"  # a non-http row is reported, not crashed on
-    assert json.loads(host.test_url(row_id))["error"] == "Invalid URL" and host.state.urls[0].last_status == "error"
+    assert json.loads(host.add_url(""))["error"] == "empty URL"
+    assert not hasattr(host, "edit_url") and not hasattr(host, "test_url")  # removed 2026-09-27
     assert json.loads(host.remove_url(row_id))["ok"] is True
     assert json.loads(host.remove_url(row_id))["error"] == "not found"
     assert json.loads(host.toggle_url("ghost"))["error"] == "not found"

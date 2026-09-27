@@ -149,7 +149,6 @@ FROZEN_SLOTS = frozenset({
     'diagnose_chrome',
     'disconnect_page_pool',
     'drop_ai_suffix',
-    'edit_url',
     'ensure_primary_connected',
     'export_action_blocks',
     'export_custom_block',
@@ -237,7 +236,6 @@ FROZEN_SLOTS = frozenset({
     'stop_after_current',
     'stop_tab_job',
     'stop_watcher',
-    'test_url',
     'toggle_url',
     'undo',
     'undo_grid_layout',
@@ -277,7 +275,7 @@ EXPECTED_PACKING = {
     'recording_sessions': 8,
     'run_control': 10,
     'undo_history': 10,
-    'url_queue': 9,
+    'url_queue': 7,
     'watcher_captcha': 10,
     'watcher_solver': 7,
     'job_history': 2,
@@ -321,7 +319,8 @@ def test_panel_packing():
     # 127 + 6 Captcha Watcher + restore_default_blocks (2026-10-02) + set_captcha_provider (B10, 2026-10-06)
     # +2 job_history slots +5 firefox_auto slots (I-63, 2026-09-22; +show_firefox_profiles 2026-09-24)
     # +6 workspace slots (Global Saving System, 2026-09-25)
-    assert sum(counts.values()) == 148
+    # -2 url_queue edit_url/test_url (URL row Test/Edit removed, 2026-09-27)
+    assert sum(counts.values()) == 146
 
 
 @pytest.mark.unit

@@ -43,8 +43,6 @@ const UrlList = {
   addUrl() { return this._actions?.addUrl(); },
   removeUrl(id) { return this._actions?.removeUrl(id); },
   toggleUrl(id) { return this._actions?.toggleUrl(id); },
-  testUrl(id) { return this._actions?.testUrl(id); },
-  editUrl(id) { return this._actions?.editUrl(id); },
   connectUrl(id) { return this._actions?.connectUrl(id); },
   stopJob(id) { return this._actions?.stopJob(id); },
   coolAction(a,b) { return this._actions?.coolAction(a,b); },

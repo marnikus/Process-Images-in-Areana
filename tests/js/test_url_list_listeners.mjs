@@ -28,8 +28,8 @@ function facadeSpy() {
   const calls = [];
   const rec = (name) => (...a) => calls.push([name, ...a]);
   return { calls, addUrl: rec('addUrl'), reparseTabs: rec('reparseTabs'), popupTabs: rec('popupTabs'),
-           saveCooldownConfig: rec('saveCooldownConfig'), toggleUrl: rec('toggleUrl'), testUrl: rec('testUrl'),
-           removeUrl: rec('removeUrl'), editUrl: rec('editUrl'), connectUrl: rec('connectUrl'),
+           saveCooldownConfig: rec('saveCooldownConfig'), toggleUrl: rec('toggleUrl'),
+           removeUrl: rec('removeUrl'), connectUrl: rec('connectUrl'),
            stopJob: rec('stopJob'), coolAction: rec('coolAction') };
 }
 
@@ -85,7 +85,7 @@ describe('UrlListListeners.onTableClick', () => {
     const cool = new El('button'); cool.dataset = { action: 'cool-reset', urlId: 'u3', tabId: 't' };
     L.onTableClick(f, evOn(cool));
     assert.deepEqual(f.calls, [
-      ['toggleUrl', 'u1'], ['testUrl', 'u2'], ['toggleUrl', 'u2'], ['removeUrl', 'u2'], ['editUrl', 'u2'],
+      ['toggleUrl', 'u1'], ['toggleUrl', 'u2'], ['removeUrl', 'u2'],   // 'test'/'edit': removed 2026-09-27, routed nowhere
       ['connectUrl', 'u2'], ['stopJob', 'u2'], ['coolAction', 'cool-reset', cool],
     ]);
   });

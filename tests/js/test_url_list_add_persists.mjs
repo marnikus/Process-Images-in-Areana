@@ -1,5 +1,5 @@
 /**
- * url-list/actions.js — an added / edited URL row must stay (B7).
+ * url-list/actions.js — an added URL row must stay (B7).
  *
  * Root cause (bugfix-verification.md §B7): after `add_url` / `edit_url`
  * replied ok, `_onAdd` / `_applyEdit` pushed `window.App.state.urls` back to
@@ -33,17 +33,12 @@ function harness() {
   const logs = [];
   // "Python" side: rows as committed by the slots.
   const server = { urls: [{ id: 'url_old', url: 'https://old.example', tab_id: 'T1' }] };
-  const calls = { add_url: [], edit_url: [], push_global_history: [] };
+  const calls = { add_url: [], push_global_history: [] };
   const bridge = {
     add_url(val, cb) {
       calls.add_url.push(val);
       server.urls = [...server.urls, { id: 'url_new', url: val, tab_id: '' }];   // commit_urls()
       cb(JSON.stringify({ ok: true, id: 'url_new' }));
-    },
-    edit_url(id, url, cb) {
-      calls.edit_url.push([id, url]);
-      server.urls = server.urls.map((u) => (u.id === id ? { ...u, url } : u));
-      cb(JSON.stringify({ ok: true, url }));
     },
     push_global_history(kind, json) {
       calls.push_global_history.push([kind, json]);
@@ -100,15 +95,14 @@ describe('URL add / edit never pushes a stale row snapshot back to Python (B7)',
     assert.equal(h.calls.push_global_history.length, 0);
   });
 
-  test('Edit: committed change survives; no push_global_history', () => {
+  test('Test / Edit row actions are gone (2026-09-27): no client path calls their slots', () => {
     const h = harness();
-    h.A._applyEdit('url_old', 'https://old.example/edited');
-    h.flush();
-    assert.deepEqual(h.calls.edit_url, [['url_old', 'https://old.example/edited']]);
-    assert.equal(h.calls.push_global_history.length, 0);
-    assert.equal(h.server.urls.find((u) => u.id === 'url_old').url, 'https://old.example/edited');
-    assert.equal(h.server.urls.find((u) => u.id === 'url_old').tab_id, 'T1', 'tab link kept');
-    assert.ok(h.logs.some(([m]) => m === 'URL updated: https://old.example/edited'));
+    assert.equal(typeof h.A.testUrl, 'undefined');
+    assert.equal(typeof h.A.editUrl, 'undefined');
+    assert.equal(typeof h.A._applyEdit, 'undefined');
+    assert.ok(!/\b(test_url|edit_url)\b/.test(read('panels/url-list/actions.js')));
+    assert.ok(!/data-action="(test|edit)"/.test(read('panels/url-list/render.js')), 'row template has no Test/Edit button');
+    assert.ok(/data-action="cool-edit"/.test(read('panels/url-list/render.js')), 'the cooldown ✎ stays');
   });
 
   test('regression replay: the old push-back WOULD have dropped the row (documents the mechanism)', () => {
