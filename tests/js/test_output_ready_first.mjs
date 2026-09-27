@@ -83,6 +83,15 @@ describe('output check — a waiting image never masks the finished one', () => 
     assert.equal(r.src, `${R2}out.png`);
   });
 
+  test('long prompt marker is found without a broad ancestor text scan', () => {
+    const r = run(PAGE());
+    assert.equal(r.ready, true, r.reason);
+    assert.equal(r.jobFound, true);
+    assert.equal(r.associatedJobId, JOB);
+    assert.equal(r.jobTop, 0, 'the active prompt marker beats its sidebar duplicate');
+    assert.equal(CHECK.includes("querySelectorAll('div, span, p, pre')"), false);
+  });
+
   test('finished image + a never-loading lazy copy → ready (was not_complete until the 120 s timeout)', () => {
     const r = run(PAGE({ extra: LAZY_COPY }));
     assert.equal(r.ready, true, r.reason);

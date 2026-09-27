@@ -55,7 +55,7 @@ function el(overrides = {}) {
   };
 }
 
-function docStub(lists, treeNodes = []) {
+function docStub(lists) {
   return {
     querySelectorAll: (sel) => lists[sel] ? lists[sel].slice() : [],
     querySelector(sel) {
@@ -65,7 +65,12 @@ function docStub(lists, treeNodes = []) {
       }
       return null;
     },
-    createTreeWalker: () => ({ nextNode: () => null }),
+    createTreeWalker: () => {
+      const nodes = Object.values(lists).flat().filter((node) => node.textContent)
+        .map((parentElement) => ({ nodeValue: parentElement.textContent, parentElement }));
+      let index = 0;
+      return { nextNode: () => nodes[index++] || null };
+    },
     body: el(),
   };
 }

@@ -109,33 +109,48 @@ JS_CHECK_NEW_OUTPUT_V3 = """
       text: text.slice(0,200),
       isUserBubble: isUserBubble
     });
+    const currentPrompt = (el) => {
+      try { return !!el.closest(__USER_MESSAGE__); } catch(e) { return false; }
+    };
     try {
+      // A text-node walk is linear in the text corpus. Reading textContent on
+      // every ancestor re-traverses nested prompt/history text quadratically
+      // and can monopolize the renderer on long conversations.
+      const seenContainers = new Set();
+      const conversation = document.querySelector('ol') || document.body;
+      const walker = document.createTreeWalker(conversation, NodeFilter.SHOW_TEXT);
       const jobRegex = /\\[JOB-ID:\\s*([^\\]\\s]+)\\]/g;
-      const allEls = document.querySelectorAll('div, span, p, pre');
-      let seenContainers = new Set();
-      for (const el of allEls) {
-        if (!el.textContent) continue;
-        if (el.tagName === 'TEXTAREA' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
-        const txt = el.textContent;
-        if (txt.length > 2000) continue;
+      let node;
+      while (node = walker.nextNode()) {
+        const text = node.nodeValue || '';
+        if (!text) continue;
+        const ids = [];
         let match;
         jobRegex.lastIndex = 0;
-        while ((match = jobRegex.exec(txt)) !== null) {
-          const jobId = match[1];
-          if (!jobId || jobId.length < 3) continue;
+        while ((match = jobRegex.exec(text)) !== null) {
+          if (match[1] && match[1].length >= 3) ids.push(match[1]);
+        }
+        if (correlationId && text.includes(correlationId) && !ids.includes(correlationId)) {
+          ids.push(correlationId);
+        }
+        if (ids.length === 0) continue;
+        const el = node.parentElement;
+        if (!el || ['TEXTAREA', 'SCRIPT', 'STYLE'].includes(el.tagName)) continue;
+        for (const jobId of ids) {
           let container = null;
           let cur = el;
           for (let i=0; i<12 && cur; i++) {
             try {
               if (!cur.getBoundingClientRect) { cur = cur.parentElement; continue; }
               const r = cur.getBoundingClientRect();
-              if (r.height < 20 || r.height > window.innerHeight * 0.95) { cur = cur.parentElement; continue; }
-              if (r.width > window.innerWidth * 0.98) { cur = cur.parentElement; continue; }
-              const hasJob = cur.textContent && cur.textContent.includes(jobId);
+              if (r.height < 20 || r.height > window.innerHeight * 0.95 || r.width > window.innerWidth * 0.98) {
+                cur = cur.parentElement;
+                continue;
+              }
               const hasImg = !!cur.querySelector('img');
               const hasFlex = cur.classList && (cur.classList.contains('flex') || cur.classList.contains('group'));
               const isNoScrollbar = cur.classList && cur.classList.contains('no-scrollbar');
-              if (hasJob && (hasImg || hasFlex) && !isNoScrollbar) {
+              if ((hasImg || hasFlex) && !isNoScrollbar) {
                 container = cur;
                 break;
               }
@@ -146,43 +161,28 @@ JS_CHECK_NEW_OUTPUT_V3 = """
           if (!container) {
             container = el.closest('div.flex.min-w-0.flex-1.flex-col.items-end, div.group, div.flex.flex-col, div[data-message-id]') || el.closest('div') || el;
           }
-          let key = jobId + '|' + (container ? (container.getBoundingClientRect().top + '|' + container.getBoundingClientRect().left) : el.getBoundingClientRect().top);
-          if (seenContainers.has(key)) continue;
-          seenContainers.add(key);
           try {
             const rect = container.getBoundingClientRect();
-            allJobs.push(jobRecord(jobId, el, container, rect, txt, (container.className||'').includes('items-end')));
+            const key = jobId + '|' + rect.top + '|' + rect.left;
+            if (seenContainers.has(key)) continue;
+            seenContainers.add(key);
+            const record = jobRecord(jobId, el, container, rect, text,
+              (container.className||'').includes('items-end'));
+            record._currentPrompt = currentPrompt(el);
+            allJobs.push(record);
           } catch(e) {}
         }
       }
-      if (allJobs.length === 0 && correlationId) {
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        let node;
-        while (node = walker.nextNode()) {
-          const val = node.nodeValue || '';
-          if (val.includes(correlationId)) {
-            let parent = node.parentElement;
-            if (parent && parent.tagName !== 'TEXTAREA' && parent.tagName !== 'SCRIPT') {
-              try {
-                const r = parent.getBoundingClientRect();
-                allJobs.push(jobRecord(correlationId, parent,
-                  parent.closest('div.flex.min-w-0.flex-1.flex-col.items-end, div.group, div.flex.flex-col') || parent,
-                  r, val, true));
-                break;
-              } catch(e) {}
-            }
-          }
+      // Duplicate IDs can occur in sidebar labels and the active prompt. Keep
+      // the prompt occurrence for the current job so geometry is chat-local.
+      const preferred = new Map();
+      for (const job of allJobs) {
+        const prev = preferred.get(job.jobId);
+        if (!prev || (job.jobId === correlationId && job._currentPrompt && !prev._currentPrompt)) {
+          preferred.set(job.jobId, job);
         }
       }
-      let deduped = [];
-      let seenIds = new Set();
-      for (const j of allJobs) {
-        if (!seenIds.has(j.jobId)) {
-          seenIds.add(j.jobId);
-          deduped.push(j);
-        }
-      }
-      allJobs = deduped;
+      allJobs = Array.from(preferred.values());
       allJobs.sort((a,b)=>{
         try {
           if (a.el === b.el) return 0;
@@ -211,7 +211,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
       try {
         for (let i=0; i<allJobs.length; i++) {
           const j = allJobs[i];
-          if (j.jobId === correlationId || j.text.includes(correlationId) || (j.el && j.el.textContent && j.el.textContent.includes(correlationId))) {
+          if (j.jobId === correlationId) {
             jobEl = j.el;
             jobContainer = j.container;
             jobTop = j.top;
@@ -228,19 +228,6 @@ JS_CHECK_NEW_OUTPUT_V3 = """
               nextJobEl = allJobs[i+1].el;
             }
             break;
-          }
-        }
-        if (!jobFound) {
-          const allEls = document.querySelectorAll('div, span, p, pre');
-          for (const el of allEls) {
-            if (!el.textContent) continue;
-            if (el.textContent.includes(correlationId)) {
-              jobEl = el;
-              jobContainer = el.closest('div.flex.min-w-0.flex-1.flex-col.items-end, div.group, div.flex.flex-col') || el.closest('div') || el;
-              try { jobTop = jobContainer.getBoundingClientRect().top; } catch(e) {}
-              jobFound = true;
-              break;
-            }
           }
         }
       } catch(e) {}
