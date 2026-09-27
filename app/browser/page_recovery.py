@@ -21,7 +21,8 @@ evaluate_failure(cdp)             human reason for the last empty evaluate
 is_transient_loss(cdp)            True when waiting/reconnecting can help
 recover_page_context(cdp, report) wait (and reconnect) until the document answers
 page_unresponsive(cdp)            I-71: the last evaluate timed out (page not answering)
-page_answers(cdp) / still_frozen  I-71: a 3 s ping instead of another 30 s probe
+page_answers(cdp) / still_frozen  I-71: a 3 s ping instead of another 30 s probe;
+                                  I-72: a silent socket is re-dialled (cdp/liveness)
 unresponsive_text(cdp)            I-71: 'page not answering (<transport reason>)'
 """
 
@@ -142,12 +143,12 @@ def page_unresponsive(cdp) -> bool:
     return kind == "transport" and "timed out" in evaluate_failure(cdp).lower()
 
 
-async def page_answers(cdp, timeout_s: float = PING_TIMEOUT_S) -> bool:
+async def page_answers(cdp, timeout_s: Optional[float] = None) -> bool:
     """One cheap ping; an answer clears the timed-out record (the page is back)."""
     from .cdp.dialogs import close_open_dialog
     await close_open_dialog(cdp)
     try:
-        await cdp.send("Runtime.evaluate", dict(_PING), timeout=timeout_s)
+        await cdp.send("Runtime.evaluate", dict(_PING), timeout=timeout_s or PING_TIMEOUT_S)
     except Exception:
         return False
     cdp.last_error, cdp.last_error_kind = "", ""
@@ -155,10 +156,14 @@ async def page_answers(cdp, timeout_s: float = PING_TIMEOUT_S) -> bool:
 
 
 async def still_frozen(cdp) -> bool:
-    """The page timed out before and still does not answer a short ping."""
-    return page_unresponsive(cdp) and not await page_answers(cdp)
+    """Timed out before, no answer to a 3 s ping, and a fresh socket could not revive it (I-72)."""
+    if not page_unresponsive(cdp) or await page_answers(cdp):
+        return False
+    from .cdp.liveness import revive_silent_socket
+    return not await revive_silent_socket(cdp)
 
 
 def unresponsive_text(cdp) -> str:
-    """'page not answering (CDP command Runtime.evaluate timed out after 30s)'."""
-    return f"page not answering ({evaluate_failure(cdp)[:90] or 'no reply'})"
+    """'page not answering (<transport reason>; last message 34 s ago: …)'."""
+    from .cdp.liveness import rx_text
+    return f"page not answering ({evaluate_failure(cdp)[:160] or 'no reply'}; {rx_text(cdp)})"

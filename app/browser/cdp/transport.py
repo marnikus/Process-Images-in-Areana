@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Optional
 
 try:
@@ -120,7 +121,7 @@ class CDPTransport(QObject):
                     data = json.loads(raw)
                 except Exception:
                     continue
-                route_cdp_message(self, data)
+                _route(self, raw, data)
             log.warning(f"CDP receive loop ended for {self._current_ws_url[:80]}")
         except asyncio.CancelledError:
             log.info(f"CDP receive loop cancelled for {self._current_ws_url[:80]}")
@@ -154,6 +155,15 @@ class CDPTransport(QObject):
         self.last_error = ""
         self.last_error_kind = ""
         return value
+
+
+def _route(transport, raw, data: dict) -> None:
+    """Note what arrived (I-72: a silent socket names its last message), then route it."""
+    size, kind = len(raw), str(data.get("method") or "reply")
+    transport.last_rx = {"at": time.monotonic(), "bytes": size, "kind": kind}
+    if size > getattr(transport, "largest_rx", {}).get("bytes", 0):
+        transport.largest_rx = {"bytes": size, "kind": kind}
+    route_cdp_message(transport, data)
 
 
 async def _send_payload(transport, cmd_id: int, ws, payload: str) -> None:

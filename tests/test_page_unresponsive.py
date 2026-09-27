@@ -24,6 +24,7 @@ from tests.test_new_chat import FakeCtrl, FakeEngine, make_ctx
 pytestmark = pytest.mark.unit
 
 TIMED_OUT = "TimeoutError: CDP command Runtime.evaluate timed out after 30s"
+FROZEN = f"page not answering ({TIMED_OUT}; nothing received yet)"   # fakes receive nothing
 
 
 class FrozenPage:
@@ -72,7 +73,7 @@ async def test_an_answered_ping_clears_the_record():
 async def test_an_unanswered_ping_keeps_the_record():
     page = FrozenPage(timed_out=True)
     assert await pr.still_frozen(page) is True
-    assert pr.unresponsive_text(page) == f"page not answering ({TIMED_OUT})"
+    assert pr.unresponsive_text(page) == FROZEN
 
 
 async def test_a_page_that_never_timed_out_is_not_pinged():
@@ -86,7 +87,7 @@ async def test_a_timed_out_check_is_page_unresponsive_and_skips_the_30s_error_sc
     page = FrozenPage()
     diag = await out._poll_output_diag(page, out.PollContext(), None)
     assert diag == {"ready": False, "reason": "page_unresponsive",
-                    "detail": f"page not answering ({TIMED_OUT})"}
+                    "detail": FROZEN}
     assert page.calls == ["evaluate"]                 # was: check + error scan (+30 s)
 
 
@@ -111,11 +112,11 @@ async def test_a_frozen_wait_pings_tells_once_and_times_out_with_the_reason(monk
     status, info = await out.wait_for_new_output(page, out.WaitSpec(timeout_ms=200, log_cb=said.append))
     assert status == "failed" and time.monotonic() - started < 5
     assert info["error"] == (f"Timeout after 200ms — last check: page_unresponsive "
-                             f"(page not answering ({TIMED_OUT}))")
+                             f"({FROZEN})")
     assert page.calls.count("evaluate") <= 2          # the error-corpus scan + one check — then pings
     assert set(page.calls[2:]) <= {"Runtime.evaluate@3"}
     assert info["last_baseline"] == {}                # no 30 s baseline on a page that is not answering
-    assert said.count(f"🔍 Output check: page_unresponsive — page not answering ({TIMED_OUT})") == 1
+    assert said.count(f"🔍 Output check: page_unresponsive — {FROZEN}") == 1
 
 
 def test_the_log_line_carries_the_detail():
@@ -134,7 +135,7 @@ async def test_new_chat_on_a_frozen_page_skips_the_find_probes_and_says_why(monk
     started = time.monotonic()
     ok, reason = await nc.reset_to_new_chat(make_ctx(ctrl=FakeCtrl(), client=page, engine=engine, timeout=1))
     assert ok is False and time.monotonic() - started < 5
-    assert reason.startswith(f"page not answering ({TIMED_OUT}); direct open: navigation failed")
+    assert reason.startswith(f"{FROZEN}; direct open: navigation failed")
     assert any("New Chat did not work (page not answering" in m for m, _ in engine.records)
     assert engine.records[-1][1] == "error"
 
@@ -142,7 +143,7 @@ async def test_new_chat_on_a_frozen_page_skips_the_find_probes_and_says_why(monk
 async def test_readiness_on_a_frozen_page_costs_a_ping_not_a_probe():
     page = FrozenPage(timed_out=True)
     ok, note = await nc._check_ready(make_ctx(ctrl=FakeCtrl(), client=page))
-    assert (ok, note) == (False, f"page not answering ({TIMED_OUT})")
+    assert (ok, note) == (False, FROZEN)
     assert page.calls == ["Runtime.evaluate@3"]
 
 

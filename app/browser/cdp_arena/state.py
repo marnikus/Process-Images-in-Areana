@@ -49,12 +49,20 @@ async def is_generating(cdp) -> Tuple[bool, Dict[str, Any]]:
     try:
         result = await cdp.evaluate(JS_IS_GENERATING)
         if not result:   # I-71: no answer is not "spinner gone" — the Watcher holds its state
-            return False, {"unanswered": True, "error": str(getattr(cdp, "last_error", "") or "no answer")}
+            return False, await _unanswered(cdp)
         is_gen = bool(result.get("isGenerating") or result.get("spinning"))
         return is_gen, result
     except Exception as e:
         log.debug(f"is_generating failed {e}")
         return False, {"error": str(e)}
+
+
+async def _unanswered(cdp) -> Dict[str, Any]:
+    """The hold record; I-72: a silent socket is re-dialled here (the Watcher's tick)."""
+    from app.browser.page_recovery import still_frozen
+    error = str(getattr(cdp, "last_error", "") or "no answer")
+    await still_frozen(cdp)
+    return {"unanswered": True, "error": error}
 
 
 async def get_generation_state(cdp, correlation_id: Optional[str] = None) -> Dict[str, Any]:
