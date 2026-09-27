@@ -74,6 +74,8 @@ def wire_cdp(bridge) -> None:
         bridge.cdp.error.connect(lambda e: on_cdp_error(bridge, e))
     except Exception:
         pass
+    from app.browser.cdp.dialogs import report_to_log
+    report_to_log(bridge.cdp, bridge._log)   # I-71: an answered JS dialog is a warn line
 
 
 def on_cdp_error(bridge, err_msg: str) -> None:

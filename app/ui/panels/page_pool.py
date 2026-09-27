@@ -7,6 +7,7 @@ restore/cooldowns-path/pooled-ids twins were deleted after the flip
 (proven equivalent, same log lines). Browser imports stay lazy inside
 `do_connect_page_pool` (fault tolerance + panels never import browser
 at top level). Imports go panels -> services/core only.
+ideal-size: ~320 lines — the 9 frozen pool slots' module helpers live together (R6).
 """
 
 import json
@@ -61,11 +62,12 @@ def ws_endpoint(bridge, ws_url: str) -> tuple:
 
 async def connect_pool_client(bridge, ws_url: str):
     """A client dialled to this tab's own endpoint (None + a logged reason when refused)."""
+    from app.browser.cdp.dialogs import report_to_log
     from app.browser.cdp_client import CDPClient
     host, port, _tab_id = ws_endpoint(bridge, ws_url)
     client = CDPClient(host=host, port=port)
     if await client.connect(ws_url):
-        return client
+        return report_to_log(client, bridge._log)   # I-71: answered JS dialogs are told
     bridge._log(f"❌ Pool connect failed {ws_url[:80]}", "error")
     return None
 

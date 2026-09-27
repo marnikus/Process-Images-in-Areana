@@ -136,3 +136,47 @@ async def test_unanswered_command_on_a_live_socket_still_times_out():
     with pytest.raises(TimeoutError):
         await t.send("Runtime.evaluate", {"expression": "1"}, timeout=0.1)
     assert t._pending == {}                            # timeout path still pops
+
+
+# ── I-71 (2026-09-27): a timeout must release ITS OWN waiter, never a neighbour's ──
+
+class ManualSocket:
+    """Accepts frames; the test answers them by id when it chooses."""
+
+    def __init__(self):
+        self.ids = []
+
+    async def send(self, payload):
+        import json
+        self.ids.append(json.loads(payload)["id"])
+
+
+async def test_a_timeout_does_not_steal_the_reply_of_a_command_sent_after_it():
+    """The old code popped `self._cmd_id` — the NEWEST id — when an older command
+    timed out: the neighbour's waiter vanished, its reply was dropped and it
+    burned its own 30 s — one slow moment became a chain of timeouts."""
+    from app.browser.cdp_events import route_cdp_message
+    t = CDPTransport()
+    t._connected = True
+    t._ws = sock = ManualSocket()
+    slow = asyncio.ensure_future(t.send("Runtime.evaluate", {"expression": "slow"}, timeout=0.05))
+    await asyncio.sleep(0)
+    quick = asyncio.ensure_future(t.send("Runtime.evaluate", {"expression": "quick"}, timeout=2))
+    with pytest.raises(TimeoutError):
+        await slow
+    route_cdp_message(t, {"id": sock.ids[1], "result": {"result": {"value": 7}}})
+    reply = await asyncio.wait_for(quick, timeout=1)
+    assert reply["result"]["result"]["value"] == 7
+    assert t._pending == {}
+
+
+async def test_a_cancelled_command_gives_its_waiter_back():
+    t = CDPTransport()
+    t._connected = True
+    t._ws = ManualSocket()
+    job = asyncio.ensure_future(t.send("Runtime.evaluate", {"expression": "1"}, timeout=5))
+    await asyncio.sleep(0)
+    job.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await job
+    assert t._pending == {}

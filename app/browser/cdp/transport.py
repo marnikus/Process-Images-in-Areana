@@ -29,6 +29,7 @@ except ImportError:
         return _Sig()
 
 from ..cdp_events import CDPEventRouter, route_cdp_message
+from .dialogs import DialogWatch, close_open_dialog, send_unblocked
 
 log = logging.getLogger("arena")
 
@@ -46,6 +47,8 @@ class CDPTransport(QObject):
         self._cmd_id = 0
         self._pending: dict[int, asyncio.Future] = {}
         self.events = CDPEventRouter()
+        self.dialogs = DialogWatch()             # I-71: a JS dialog blocks every evaluate
+        self.events.add(self.dialogs.on_event)
         self._receive_task: Optional[asyncio.Task] = None
         self._connected = False
         self._current_ws_url = ""
@@ -97,16 +100,17 @@ class CDPTransport(QObject):
         if (ws := self._ws) is None or not self._connected:
             raise ConnectionError("CDP not connected")
         self._cmd_id += 1
-        loop = asyncio.get_event_loop()
-        fut = loop.create_future()
-        self._pending[self._cmd_id] = fut
-        payload = json.dumps({"id": self._cmd_id, "method": method, "params": params or {}})
-        await _send_payload(self, self._cmd_id, ws, payload)
+        cmd_id = self._cmd_id    # I-71: THIS command's id — `self._cmd_id` moves on meanwhile
+        fut = asyncio.get_event_loop().create_future()
+        self._pending[cmd_id] = fut
+        payload = json.dumps({"id": cmd_id, "method": method, "params": params or {}})
+        await _send_payload(self, cmd_id, ws, payload)
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
-            self._pending.pop(self._cmd_id, None)
-            raise TimeoutError(f"CDP command {method} timed out after {timeout}s")
+            raise TimeoutError(f"CDP command {method} timed out after {timeout}s") from None
+        finally:                 # timeout or cancel: free our own waiter, never a neighbour's
+            self._pending.pop(cmd_id, None)
 
     async def _receive_loop(self):
         try:
@@ -135,8 +139,9 @@ class CDPTransport(QObject):
 
     async def evaluate(self, expression: str, await_promise: bool = True):
         try:
-            r = await self.send(
-                "Runtime.evaluate",
+            await close_open_dialog(self)
+            r = await send_unblocked(
+                self, "Runtime.evaluate",
                 {"expression": expression, "returnByValue": True, "awaitPromise": await_promise},
             )
         except Exception as e:
