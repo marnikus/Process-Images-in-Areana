@@ -19,7 +19,7 @@ import pytest
 from app.core.enums import ImageStatus
 from app.services import multi_page_dispatcher as mpd
 from app.services.live.bus import live_bus
-from tests.test_multi_page_dispatcher_run import FakeBridge, make_img, make_pool, make_urls
+from tests.test_multi_page_dispatcher_run import FakeBridge, make_img, make_pool, make_urls, with_urls
 
 pytestmark = pytest.mark.unit
 
@@ -84,7 +84,7 @@ async def test_an_image_queued_mid_pass_starts_on_the_idle_tab_at_once(seam):
     b.selected = False  # not queued when the pass is planned
     bridge = bridge_with([a, b])
     pool = two_tab_pool()
-    pass_task = asyncio.create_task(mpd.dispatch_parallel(bridge, pool, [a], make_urls(["t1", "t2"])))
+    pass_task = asyncio.create_task(mpd.dispatch_parallel(with_urls(bridge, ["t1", "t2"]), pool, [a]))
     await asyncio.sleep(0.05)
     assert seam.started == [("a.png", "t1")] or seam.started == [("a.png", "t2")]
 
@@ -109,7 +109,7 @@ async def test_a_tab_freeing_up_wakes_the_next_image_without_waiting_for_the_pol
     bridge = bridge_with([a, b, c])
     pool = two_tab_pool()
     pool.mark_busy("t2", "someone-else")  # only t1 can take work; the feeder must wait for it
-    pass_task = asyncio.create_task(mpd.dispatch_parallel(bridge, pool, [a, b, c], make_urls(["t1", "t2"])))
+    pass_task = asyncio.create_task(mpd.dispatch_parallel(with_urls(bridge, ["t1", "t2"]), pool, [a, b, c]))
     await asyncio.wait_for(_until(lambda: len(seam.started) == 1), 1.0)
     await asyncio.sleep(0.5)  # long enough for b to be waiting for a page (inside the 5 s poll)
     assert len(seam.started) == 1
@@ -130,7 +130,7 @@ async def test_the_feeder_never_sends_an_image_twice_and_honours_claim_denied(se
     a, b = make_img("a.png", id="i1"), make_img("b.png", id="i2")
     b.status = ImageStatus.COMPLETED.value  # in the seed list by mistake — claim-time rule refuses it (I-44)
     bridge = bridge_with([a, b])
-    await asyncio.wait_for(mpd.dispatch_parallel(bridge, two_tab_pool(), [a, a, b], make_urls(["t1", "t2"])), 2.0)
+    await asyncio.wait_for(mpd.dispatch_parallel(with_urls(bridge, ["t1", "t2"]), two_tab_pool(), [a, a, b]), 2.0)
     assert [f for f, _ in seam.started] == ["a.png"]
     assert any("Skipping b.png" in m for _, m in bridge.logs)
 
@@ -142,7 +142,7 @@ async def test_cancel_and_stop_after_stop_the_feeder_without_a_new_task(seam):
     bridge = bridge_with([a, b])
     pool = make_pool(["t1"])
     pool.register_client("t1", object(), object())
-    pass_task = asyncio.create_task(mpd.dispatch_parallel(bridge, pool, [a, b], make_urls(["t1"])))
+    pass_task = asyncio.create_task(mpd.dispatch_parallel(with_urls(bridge, ["t1"]), pool, [a, b]))
     await asyncio.wait_for(_until(lambda: len(seam.started) == 1), 1.0)
     bridge._stop_after = True
     live_bus(bridge).wake("stop")
@@ -157,7 +157,7 @@ async def test_cancel_and_stop_after_stop_the_feeder_without_a_new_task(seam):
 async def test_the_feeder_ends_when_the_queue_is_empty_and_all_tasks_are_done(seam):
     a = make_img("a.png", id="i1")
     bridge = bridge_with([a])
-    await asyncio.wait_for(mpd.dispatch_parallel(bridge, two_tab_pool(), [a], make_urls(["t1", "t2"])), 2.0)
+    await asyncio.wait_for(mpd.dispatch_parallel(with_urls(bridge, ["t1", "t2"]), two_tab_pool(), [a]), 2.0)
     assert a.status == ImageStatus.COMPLETED.value
     assert bridge.arena_emits >= 1
 
@@ -182,7 +182,7 @@ async def test_a_single_image_on_a_two_tab_pool_goes_parallel_so_it_can_take_the
     bridge = make_bridge(images=[one], urls=urls, pool=pool)
     sent = []
 
-    async def fake_dispatch(bridge_, pool_, images, urls_):
+    async def fake_dispatch(bridge_, pool_, images):
         sent.extend(images)
 
     monkeypatch.setattr(bo, "dispatch_parallel", fake_dispatch)
@@ -199,6 +199,6 @@ async def test_a_free_page_wait_that_times_out_while_feeding_logs_and_moves_on(s
     bridge = bridge_with([a])
     pool = make_pool(["t1"], busy=("t1",))  # never frees
     pool.register_client("t1", object(), object())
-    await asyncio.wait_for(mpd.dispatch_parallel(bridge, pool, [a], make_urls(["t1"])), 2.0)
+    await asyncio.wait_for(mpd.dispatch_parallel(with_urls(bridge, ["t1"]), pool, [a]), 2.0)
     assert seam.started == [] and a.status != ImageStatus.PROCESSING.value
     assert any("No free page for a.png" in m for _, m in bridge.logs)

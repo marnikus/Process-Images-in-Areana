@@ -79,8 +79,8 @@ def firefox_pool(tab_id="9THrgpBc.Profile1_tab1"):
 def ctx_for(bridge, pool, img, urls=None):
     row = UrlRow.create("https://arena.ai/c/7", enabled=True,
                         tab_id="9THrgpBc.Profile1_tab1")
-    return mpd.DispatchCtx(bridge=bridge, pool=pool, urls=list(urls or [row]),
-                           allowed={row.tab_id}), row
+    bridge.state.urls = list(urls or [row])  # the rows the dispatcher reads live (I-68)
+    return mpd.DispatchCtx(bridge=bridge, pool=pool), row
 
 
 @pytest.mark.asyncio

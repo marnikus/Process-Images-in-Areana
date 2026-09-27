@@ -17,6 +17,7 @@ from app.browser.page_pool import PagePool
 from app.browser.page_status import PageInfo, PageStatus
 from app.browser.uivision import pool_tabs as pt
 from app.services import batch_orchestrator as bo
+from app.services import run_tab as rt
 from app.services.live import supervisor as sv
 from app.core.models import UrlRow
 from tests.characterization.harness import CORE_STACK, build_bridge, build_stack
@@ -76,7 +77,7 @@ async def test_move_to_tab_claims_a_firefox_primary_in_place(tmp_path, monkeypat
         return True
 
     env.bridge.cdp.connect = no_connect
-    got = await bo._move_to_tab(env.bridge, "", FF)
+    got = await rt._move_to_tab(env.bridge, "", FF)
     assert got == FF
     assert connects == []          # no socket to move to — claimed in place
 
@@ -85,12 +86,11 @@ def test_parallel_lane_opens_for_a_single_firefox_page(tmp_path, monkeypatch):
     env = env_with_firefox(tmp_path)
     dispatched = []
 
-    async def spy_dispatch(bridge, pool, images, urls):
+    async def spy_dispatch(bridge, pool, images):
         dispatched.append(len(images))
 
     monkeypatch.setattr(bo, "dispatch_parallel", spy_dispatch)
-    ctx = bo.BatchCtx(bridge=env.bridge, ctrl=None, allowed={FF},
-                      images=[object()])
+    ctx = bo.BatchCtx(bridge=env.bridge, ctrl=None, images=[object()])
     assert asyncio_run(bo._try_parallel(ctx)) is True
     assert dispatched == [1]
 
@@ -104,11 +104,11 @@ def test_single_chrome_page_keeps_the_sequential_lane(tmp_path, monkeypatch):
     env.bridge.state.urls = [UrlRow.create("https://arena.ai", enabled=True, tab_id="c1")]
     dispatched = []
 
-    async def spy_dispatch(bridge, pool, images, urls):
+    async def spy_dispatch(bridge, pool, images):
         dispatched.append(1)
 
     monkeypatch.setattr(bo, "dispatch_parallel", spy_dispatch)
-    ctx = bo.BatchCtx(bridge=env.bridge, ctrl=None, allowed={"c1"}, images=[object()])
+    ctx = bo.BatchCtx(bridge=env.bridge, ctrl=None, images=[object()])
     assert asyncio_run(bo._try_parallel(ctx)) is False
     assert dispatched == []
 
@@ -121,7 +121,7 @@ def asyncio_run(coro):
 def test_has_firefox_without_a_pool_is_false(tmp_path):
     env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1, tab_ids=[])
     env.bridge._page_pool = None
-    ctx = bo.BatchCtx(bridge=env.bridge, ctrl=None, allowed={FF}, images=[object()])
+    ctx = bo.BatchCtx(bridge=env.bridge, ctrl=None, images=[object()])
     assert bo._has_firefox(ctx) is False
 
 
@@ -129,5 +129,5 @@ def test_has_firefox_survives_a_pool_without_a_pages_map(tmp_path):
     from types import SimpleNamespace as NS
     env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1, tab_ids=[])
     env.bridge._page_pool = NS(_pages=None)   # .values() raises → AttributeError → False
-    ctx = bo.BatchCtx(bridge=env.bridge, ctrl=None, allowed={FF}, images=[object()])
+    ctx = bo.BatchCtx(bridge=env.bridge, ctrl=None, images=[object()])
     assert bo._has_firefox(ctx) is False

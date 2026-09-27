@@ -20,6 +20,7 @@ from app.browser.page_pool import PagePool
 from app.browser.page_status import PageInfo, PageStatus
 from app.services import cooldown_service as svc
 from app.services import multi_page_dispatcher as mpd
+from app.services import page_gate as pg
 
 pytestmark = pytest.mark.unit
 
@@ -88,7 +89,7 @@ def test_resolve_allowed_uses_pool_order_within_the_checked_set():
 
 def test_acquire_free_in_takes_the_first_allowed_in_pool_order():
     pool = pool_of(("a", 4), ("b", 1), ("checked", 9))
-    got = mpd._acquire_free_in(pool, {"a", "b"}, "job1")
+    got = pg.acquire_free_in(pool, {"a", "b"}, "job1")
     assert got is not None and got.tab_id == "a"
     assert got.status == PageStatus.BUSY and got.current_job_id == "job1"
 
@@ -122,14 +123,14 @@ def _body_of(source: str, name: str) -> str:
 def test_no_routing_helper_reads_the_job_counter():
     page_pool = (APP / "browser" / "page_pool.py").read_text(encoding="utf-8")
     cooldown = (APP / "services" / "cooldown_service.py").read_text(encoding="utf-8")
-    dispatch = (APP / "services" / "multi_page_dispatcher.py").read_text(encoding="utf-8")
+    gate = (APP / "services" / "page_gate.py").read_text(encoding="utf-8")
 
     assert "_pick_lowest_count" not in page_pool, "the count-based picker is gone"
     assert "_best_ready_id" not in cooldown, "the count-based ready picker is gone"
     assert "jobs_completed" not in page_pool, "the pool never reads the counter"
     for name in ("_first_ready_id", "_resolve_allowed_tab"):
         assert "jobs_completed" not in _body_of(cooldown, name), f"{name} routes by order alone"
-    assert "jobs_completed" not in _body_of(dispatch, "_acquire_free_in")
+    assert "jobs_completed" not in _body_of(gate, "acquire_free_in")
 
 
 def test_the_rule_is_named_for_what_it_does():

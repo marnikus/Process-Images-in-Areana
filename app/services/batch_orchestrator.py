@@ -1,4 +1,4 @@
-# ideal-size: ~450 lines reason=single per-pass body owns prepare/parallel-gate/sequential sharing BatchCtx; splitting would scatter one pass flow that always changes together (RULE 18.2)
+# ideal-size: ~400 lines reason=single per-pass body owns prepare/parallel-gate/sequential sharing BatchCtx; splitting would scatter one pass flow that always changes together (RULE 18.2)
 """Batch orchestrator — one pass of the live run (A3, S5).
 
 Owns the pass body: prepare (controller + settings + stack announce from the
@@ -15,7 +15,6 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.browser.page_pool import tab_label_of
 from app.core.enums import ImageStatus
 from app.core.run_scope import claim_denied
 from app.services import auto_connect as ac
@@ -27,25 +26,25 @@ from app.services.cooldown_service import (
     finish_page_after_job,
     is_stuck_status,
     maybe_note_rate_limit,
-    resolve_primary_tab,
     set_tab_image,
     wait_for_batch_ready,
     wait_for_tab_ready,
 )
 from app.services.multi_page_dispatcher import dispatch_parallel
 from app.services.run_state import ensure_pool_page
+from app.services.run_tab import pool_of, resolve_and_claim_tab, still_checked
 from app.services.single_job_runner import JobCtx, run_blocks_for_image
 from app.utils.correlation import build_final_prompt, generate_correlation_id
+
+_RECLAIM_TRIES = 3  # claims per image when the claimed tab is unchecked during its cooldown (RULE 7: bounded)
 
 
 @dataclass
 class BatchCtx:
     """Batch run state (keeps params ≤3, RULE 16)."""
 
-    bridge: Any
+    bridge: Any  # the checked rows are read from it live (I-68) — never copied into the batch
     ctrl: Any
-    urls: list = field(default_factory=list)
-    allowed: set = field(default_factory=set)
     tab_id: str = ""
     images: list = field(default_factory=list)
     prompt_template: str = ""
@@ -60,85 +59,6 @@ class ImageResult:
     error: str
     job_id: str
     corr_id: str
-
-
-def _pool_of(bridge):
-    return getattr(bridge, "_page_pool", None)
-
-
-def pool_summary(pool) -> str:
-    """One-line pool state for run decisions (the supervisor's wait lines reuse it)."""
-    try:
-        pages = pool.status_snapshot().get("pages", [])
-    except Exception:
-        return "pool n/a"
-    bits = []
-    for page in pages:
-        bit = f"{(page.get('tab_id') or '?')[:6]}:{page.get('status')}({'c' if page.get('is_connected') else 'd'})"
-        bit += f"·j{page.get('jobs_completed', 0)}"
-        if page.get("current_image"):
-            bit += f"·▶{page.get('current_image')}"
-        bits.append(bit)
-    return ", ".join(bits) or "pool empty"
-
-
-def _log_stay_reason(bridge, tab_id: str) -> None:
-    """Warn when staying on an unready primary, with pool state."""
-    try:
-        pool = _pool_of(bridge)
-        if not (pool and tab_id):
-            return
-        page = pool.get_page(tab_id)
-        if page is None or page.is_free():
-            return
-        bridge._log(f"⏳ No ready tab — staying on {tab_label_of(pool, tab_id)} ({page.status}) — pool: {pool_summary(pool)}", "warn")
-    except Exception:
-        pass
-
-
-def _pool_ws(pool, want: str) -> str:
-    """Websocket URL of a pooled page (missing-safe)."""
-    page = pool.get_page(want) if pool else None
-    return getattr(page, "ws_url", "") or ""
-
-
-def _claim_no_cdp(bridge, pool, want: str) -> bool:
-    """A Firefox primary is claimed in place — there is no socket to move to (D4)."""
-    page = pool.get_page(want) if pool else None
-    if page is None or getattr(page, "browser", "") != "firefox":
-        return False
-    bridge._log(f"🦊 Primary {want[:12]} is Firefox — pool dispatch (no CDP move)", "info")
-    return True
-
-
-async def _move_to_tab(bridge, tab_id: str, want: str) -> str:
-    """Reconnect to a readier tab; stay on failure."""
-    try:
-        pool = _pool_of(bridge)
-        if _claim_no_cdp(bridge, pool, want):
-            return want
-        ws = _pool_ws(pool, want)
-        if ws and bridge.cdp and await bridge.cdp.connect(ws):
-            bridge._log(f"🔀 Run moved to ready tab {want[:12]}", "info")
-            return want
-        bridge._log(f"⚠ Reconnect to ready tab {want[:12]} failed — staying on {(tab_id or '?')[:12]} — pool: {pool_summary(pool)}", "warn")
-    except Exception as e:
-        bridge._log(f"⚠ Primary move failed ({e}) — pool: {pool_summary(_pool_of(bridge))}", "warn")
-    return tab_id
-
-
-async def resolve_and_claim_tab(bridge, tab_id: str, allowed) -> str:
-    """Prefer a ready pooled tab owned by a checked row (I-33)."""
-    try:
-        want = resolve_primary_tab(_pool_of(bridge), tab_id, allowed)
-    except Exception:
-        return tab_id
-    if not want:
-        return ""
-    if want == tab_id:
-        _log_stay_reason(bridge, tab_id)
-        return tab_id
-    return await _move_to_tab(bridge, tab_id, want)
 
 
 def should_continue(ctx: BatchCtx, img: Any) -> bool:
@@ -168,8 +88,8 @@ async def await_pause_or_abort(ctx: BatchCtx) -> bool:
 
 
 async def _claim_tab(ctx: BatchCtx) -> bool:
-    """Refresh the run tab per image; False when none usable."""
-    tab_id = await resolve_and_claim_tab(ctx.bridge, ctx.tab_id, ctx.allowed)
+    """Refresh the run tab per image from the checkboxes as they are now; False when none usable."""
+    tab_id = await resolve_and_claim_tab(ctx.bridge, ctx.tab_id, ac.live_allowed(ctx.bridge))
     if not tab_id:
         ctx.bridge._log("❌ No usable checked tab left in pool — stopping batch", "error")
         return False
@@ -181,9 +101,9 @@ async def await_cooldown_if_pooled(ctx: BatchCtx) -> bool:
     """Single-page cooldown gate; False only on cancel (RULE 7)."""
     bridge = ctx.bridge
     try:
-        if _pool_of(bridge) and ctx.tab_id:
+        if pool_of(bridge) and ctx.tab_id:
             await ensure_pool_page(bridge, ctx.tab_id)
-            ready = await wait_for_tab_ready(_pool_of(bridge), ctx.tab_id, bridge)
+            ready = await wait_for_tab_ready(pool_of(bridge), ctx.tab_id, bridge)
             if not ready and getattr(bridge, "_cancel_requested", False):
                 return False
     except Exception as e:
@@ -191,11 +111,23 @@ async def await_cooldown_if_pooled(ctx: BatchCtx) -> bool:
     return True
 
 
+async def _claim_ready_tab(ctx: BatchCtx) -> bool:
+    """Claim a checked tab and wait out its cooldown; unchecked during the wait → claim again (I-68)."""
+    for _ in range(_RECLAIM_TRIES):
+        if not await _claim_tab(ctx) or not await await_cooldown_if_pooled(ctx):
+            return False
+        if still_checked(ctx.bridge, ctx.tab_id):
+            return True
+        ctx.bridge._log(f"⏭ Tab {ctx.tab_id[:12]} was unchecked during its cooldown — claiming another checked tab", "warn")
+    ctx.bridge._log("❌ Checked tabs kept changing during the cooldown wait — stopping batch", "error")
+    return False
+
+
 def _start_tab_image(ctx: BatchCtx, img: Any) -> None:
     """Record the image on its tab; drop any stale stop request."""
     try:
         import os
-        pool = _pool_of(ctx.bridge)
+        pool = pool_of(ctx.bridge)
         clear_tab_abort(pool, ctx.tab_id)
         set_tab_image(pool, ctx.tab_id, os.path.basename(img.relative_path or ""))
         ctx.bridge._emit_pool_status()
@@ -205,7 +137,7 @@ def _start_tab_image(ctx: BatchCtx, img: Any) -> None:
 
 def mark_processing(ctx: BatchCtx, img: Any):
     """Claim the image for this tab (row never re-bound, I-33)."""
-    url_row = ac.pick_url_for_tab(ctx.urls, ctx.tab_id)
+    url_row = ac.pick_url_for_tab(ac.live_rows(ctx.bridge), ctx.tab_id)
     img.assigned_url_id = url_row.id if url_row else None
     img.attempt_count += 1
     img.status = ImageStatus.PROCESSING.value
@@ -233,7 +165,7 @@ async def _execute_image(ctx: BatchCtx, img: Any, url_row) -> ImageResult:
     """Build ids, run the converged block stack, wrap the outcome."""
     corr_id, job_id, final_prompt = build_job_ids(ctx, img, url_row)
     job_ctx = JobCtx(bridge=ctx.bridge, ctrl=ctx.ctrl, client=ctx.bridge.cdp,
-                     tab_id=ctx.tab_id, img=img, urls=ctx.urls, job_id=job_id,
+                     tab_id=ctx.tab_id, img=img, urls=ac.live_rows(ctx.bridge), job_id=job_id,
                      corr_id=corr_id, final_prompt=final_prompt)
     failed, error, _src, _data = await run_blocks_for_image(job_ctx)
     return ImageResult(img=img, failed=failed, error=error, job_id=job_id, corr_id=corr_id)
@@ -283,13 +215,13 @@ def _settle_image(ctx: BatchCtx, res: ImageResult) -> None:
     ctx.bridge.state.recalculate_progress()
     ctx.bridge._save_arena()
     if res.failed and res.error:
-        maybe_note_rate_limit(_pool_of(ctx.bridge), ctx.tab_id, ctx.bridge, res.error)
+        maybe_note_rate_limit(pool_of(ctx.bridge), ctx.tab_id, ctx.bridge, res.error)
 
 
 async def _finish_primary_tab(ctx: BatchCtx) -> None:
     """Post-job reset + cooldown; settles a stuck page when finish fails."""
     try:
-        pool = _pool_of(ctx.bridge)
+        pool = pool_of(ctx.bridge)
         if not (pool and ctx.tab_id):
             return
         finish_ctx = FinishCtx(pool=pool, bridge=ctx.bridge, tab_id=ctx.tab_id,
@@ -308,7 +240,7 @@ async def _finish_primary_tab(ctx: BatchCtx) -> None:
 def _settle_stuck(ctx: BatchCtx) -> None:
     """Best-effort steady for a busy-like page; cooling untouched."""
     try:
-        pool = _pool_of(ctx.bridge)
+        pool = pool_of(ctx.bridge)
         if not (pool and ctx.tab_id):
             return
         page = pool.get_page(ctx.tab_id)
@@ -338,9 +270,7 @@ async def _run_one_image(ctx: BatchCtx, img: Any) -> str:
         return "stop"
     if await await_pause_or_abort(ctx):
         return "stop"
-    if not await _claim_tab(ctx):
-        return "stop"
-    if not await await_cooldown_if_pooled(ctx):
+    if not await _claim_ready_tab(ctx):
         return "stop"
     res = await _execute_image(ctx, img, mark_processing(ctx, img))
     done = finish_image(ctx, res)
@@ -391,8 +321,7 @@ async def prepare_batch(bridge, plan) -> BatchCtx:
     from app.browser.cdp_arena import CDPArenaController
     ctrl = CDPArenaController(bridge.cdp, log_callback=lambda m: bridge._log(m, "info"))
     await _warn_unready(bridge, ctrl)
-    ctx = BatchCtx(bridge=bridge, ctrl=ctrl, urls=list(plan.urls), allowed=set(plan.allowed),
-                   tab_id=plan.tab_id, images=list(plan.images))
+    ctx = BatchCtx(bridge=bridge, ctrl=ctrl, tab_id=plan.tab_id, images=list(plan.images))
     _load_run_settings(ctx)
     _announce_stack(ctx)
     return ctx
@@ -400,11 +329,12 @@ async def prepare_batch(bridge, plan) -> BatchCtx:
 
 def _has_firefox(ctx: BatchCtx) -> bool:
     """A checked Firefox page means feeder work — the sequential lane is CDP-only (D4)."""
-    pool = _pool_of(ctx.bridge)
+    pool = pool_of(ctx.bridge)
     if pool is None:
         return False
     try:
-        return any(getattr(p, "browser", "") == "firefox" and p.tab_id in ctx.allowed
+        allowed = ac.live_allowed(ctx.bridge)
+        return any(getattr(p, "browser", "") == "firefox" and p.tab_id in allowed
                    for p in pool._pages.values())
     except AttributeError:
         return False
@@ -421,14 +351,14 @@ def _log_parallel_fallback(ctx: BatchCtx, total: int) -> None:
 async def _try_parallel(ctx: BatchCtx) -> bool:
     """Parallel (feeder) dispatch whenever 2+ checked pages exist — any image count (B-3); else sequential."""
     try:
-        pool = _pool_of(ctx.bridge)
+        pool = pool_of(ctx.bridge)
         if not pool:
             return False
-        total, free = ac.counts_in(pool, ctx.allowed)
+        total, free = ac.counts_in(pool, ac.live_allowed(ctx.bridge))
         if _has_firefox(ctx) or (total >= 2 and free >= 1):
             ctx.bridge._log(f"🚀 Parallel mode: {total} pages {free} free, {len(ctx.images)} images — dispatching to different pages steady/busy tracked, no double-send", "success")
             ctx.bridge._emit_pool_status()
-            await dispatch_parallel(ctx.bridge, pool, ctx.images, ctx.urls)
+            await dispatch_parallel(ctx.bridge, pool, ctx.images)
             return True
         _log_parallel_fallback(ctx, total)
     except Exception as e:
@@ -439,7 +369,7 @@ async def _try_parallel(ctx: BatchCtx) -> bool:
 async def _await_batch_gate(ctx: BatchCtx) -> bool:
     """Batch-start gate: pooled tabs steady before the first job."""
     try:
-        pool = _pool_of(ctx.bridge)
+        pool = pool_of(ctx.bridge)
         if pool and ctx.tab_id:
             await ensure_pool_page(ctx.bridge, ctx.tab_id)
             if not await wait_for_batch_ready(pool, [ctx.tab_id], ctx.bridge):

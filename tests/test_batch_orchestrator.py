@@ -10,6 +10,7 @@ from app.browser.page_pool import PagePool
 from app.browser.page_status import PageInfo, PageStatus
 from app.core.models import UrlRow
 from app.services import batch_orchestrator as bo
+from app.services import run_tab as rt
 from tests.characterization.harness import make_block
 
 
@@ -66,9 +67,7 @@ def make_ctrl(ready=True):
 
 
 def make_ctx(bridge, tab_id="tab1", images=None):
-    urls = bridge.state.urls
-    return bo.BatchCtx(bridge=bridge, ctrl=make_ctrl(), urls=urls,
-                       allowed={u.tab_id for u in urls if u.tab_id},
+    return bo.BatchCtx(bridge=bridge, ctrl=make_ctrl(),
                        tab_id=tab_id, images=list(images or []),
                        prompt_template="draw x")
 
@@ -96,20 +95,20 @@ def info(tab_id, status=PageStatus.STEADY, ws="ws://x"):
 @pytest.mark.asyncio
 async def test_resolve_stays_and_moves():
     bridge = make_bridge()
-    assert await bo.resolve_and_claim_tab(bridge, "tab1", set()) == "tab1"
+    assert await rt.resolve_and_claim_tab(bridge, "tab1", set()) == "tab1"
     pool = pool_with(info("tab1"))
     bridge = make_bridge(pool=pool)
-    assert await bo.resolve_and_claim_tab(bridge, "tab1", {"tab1"}) == "tab1"
-    assert await bo.resolve_and_claim_tab(bridge, "gone", {"tab1"}) == "tab1"
+    assert await rt.resolve_and_claim_tab(bridge, "tab1", {"tab1"}) == "tab1"
+    assert await rt.resolve_and_claim_tab(bridge, "gone", {"tab1"}) == "tab1"
     assert _connected.last == "ws://x"
 
 
 @pytest.mark.asyncio
 async def test_resolve_empty_and_fallbacks(monkeypatch):
     bridge = make_bridge()
-    assert await bo.resolve_and_claim_tab(bridge, "", set()) == ""
-    monkeypatch.setattr(bo, "resolve_primary_tab", lambda *a: (_ for _ in ()).throw(RuntimeError("x")))
-    assert await bo.resolve_and_claim_tab(bridge, "tab1", set()) == "tab1"
+    assert await rt.resolve_and_claim_tab(bridge, "", set()) == ""
+    monkeypatch.setattr(rt, "resolve_primary_tab", lambda *a: (_ for _ in ()).throw(RuntimeError("x")))
+    assert await rt.resolve_and_claim_tab(bridge, "tab1", set()) == "tab1"
 
 
 @pytest.mark.asyncio
@@ -121,22 +120,22 @@ async def test_move_to_tab_failure_stays(monkeypatch):
     pool.mark_busy("tab1", "other")  # force the resolver to prefer tab2
     bridge = make_bridge(pool=pool)
     bridge.cdp.connect = _no
-    assert await bo.resolve_and_claim_tab(bridge, "tab1", {"tab1", "tab2"}) == "tab1"
+    assert await rt.resolve_and_claim_tab(bridge, "tab1", {"tab1", "tab2"}) == "tab1"
     assert any("staying on" in m for m, _ in bridge._logs)
 
 
 def test_pool_summary_and_stay_reason():
-    assert bo.pool_summary(None) == "pool n/a"
-    assert bo.pool_summary(object()) == "pool n/a"
+    assert rt.pool_summary(None) == "pool n/a"
+    assert rt.pool_summary(object()) == "pool n/a"
     pool = pool_with(info("tab1"))
-    assert "tab1" in bo.pool_summary(pool)
+    assert "tab1" in rt.pool_summary(pool)
     bridge = make_bridge(pool=pool)
-    bo._log_stay_reason(bridge, "tab1")  # free -> silent
+    rt._log_stay_reason(bridge, "tab1")  # free -> silent
     assert bridge._logs == []
     pool.mark_busy("tab1", "j")
-    bo._log_stay_reason(bridge, "tab1")  # busy -> warn
+    rt._log_stay_reason(bridge, "tab1")  # busy -> warn
     assert any("No ready tab" in m for m, _ in bridge._logs)
-    bo._log_stay_reason(make_bridge(), "tab1")  # no pool -> silent
+    rt._log_stay_reason(make_bridge(), "tab1")  # no pool -> silent
 
 
 # ---- gates ----
@@ -368,7 +367,7 @@ async def test_parallel_fallback_does_not_redo_completed(monkeypatch):
     bridge = make_bridge(images=[a, b], urls=urls, pool=pool)
     ctx = make_ctx(bridge, tab_id="t1", images=[a, b])
 
-    async def _dies_after_first(bridge_, pool_, images, urls_):
+    async def _dies_after_first(bridge_, pool_, images):
         images[0].status, images[0].attempt_count = "completed", 1
         raise RuntimeError("pool went away")
 
@@ -399,8 +398,9 @@ async def test_prepare_batch_builds_the_ctx_from_the_plan(monkeypatch):
     bridge = make_bridge(images=[make_img(), make_img("late.png")], urls=urls)
     plan = SimpleNamespace(images=[bridge.state.images[0]], urls=urls, allowed={"tab1"}, tab_id="tab1")
     ctx = await bo.prepare_batch(bridge, plan)
-    assert (ctx.tab_id, ctx.allowed, ctx.images) == ("tab1", {"tab1"}, [bridge.state.images[0]])
-    assert ctx.images is not plan.images and ctx.urls is not plan.urls  # copies: the pass owns its lists
+    assert (ctx.tab_id, ctx.images) == ("tab1", [bridge.state.images[0]])
+    assert ctx.images is not plan.images  # a copy: the pass owns its image list
+    assert not hasattr(ctx, "allowed") and not hasattr(ctx, "urls")  # I-68: the checkboxes are read live
     assert ctx.prompt_template == "draw x"
     assert any("Action blocks stack" in m for m, _ in bridge._logs)
 

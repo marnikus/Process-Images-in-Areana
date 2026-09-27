@@ -9,6 +9,7 @@ import pytest
 from app.browser.page_pool import PagePool
 from app.browser.page_status import PageInfo, PageStatus
 from app.services import multi_page_dispatcher as mpd
+from app.services import page_gate as pg
 
 pytestmark = pytest.mark.unit
 
@@ -30,7 +31,7 @@ def test_acquire_free_in_takes_only_allowed_in_pool_order():
     """2026-09-21: the first free checked page takes the job — counts are display only."""
     pool = pool_with(make_page("free1", jobs=4), make_page("free2", jobs=1),
                      make_page("checked", jobs=9))
-    got = mpd._acquire_free_in(pool, {"checked", "free2"}, "job1")
+    got = pg.acquire_free_in(pool, {"checked", "free2"}, "job1")
     assert got is not None and got.tab_id == "free2"  # first allowed in pool order
     assert got.status == PageStatus.BUSY and got.current_job_id == "job1"
     assert pool.get_page("free1").status == PageStatus.STEADY  # not checked: untouched
@@ -39,7 +40,7 @@ def test_acquire_free_in_takes_only_allowed_in_pool_order():
 
 def test_acquire_free_in_only_ever_touches_the_checked_set():
     pool = pool_with(make_page("free1", jobs=4), make_page("checked", jobs=9))
-    got = mpd._acquire_free_in(pool, {"checked"}, "job1")
+    got = pg.acquire_free_in(pool, {"checked"}, "job1")
     assert got is not None and got.tab_id == "checked"
     assert pool.get_page("free1").status == PageStatus.STEADY
 
@@ -47,17 +48,17 @@ def test_acquire_free_in_only_ever_touches_the_checked_set():
 def test_acquire_free_in_none_when_only_foreign_free():
     pool = pool_with(make_page("free1"), make_page("checked"))
     pool.mark_busy("checked", "other")
-    assert mpd._acquire_free_in(pool, {"checked"}, "job1") is None
+    assert pg.acquire_free_in(pool, {"checked"}, "job1") is None
 
 
 def test_acquire_free_in_tolerates_empty_and_garbage():
     pool = pool_with(make_page("a"))
-    assert mpd._acquire_free_in(pool, set(), "job1") is None
-    assert mpd._acquire_free_in(None, {"a"}, "job1") is None
+    assert pg.acquire_free_in(pool, set(), "job1") is None
+    assert pg.acquire_free_in(None, {"a"}, "job1") is None
 
 
 def wait_spec(pool, allowed="checked", timeout=2.0, cancel=None):
-    return mpd.FreeWaitSpec(pool=pool, allowed={allowed}, job_id="job1",
+    return pg.FreeWaitSpec(pool=pool, allowed_now=lambda: {allowed}, job_id="job1",
                             timeout_sec=timeout, cancel_check=cancel)
 
 
@@ -73,7 +74,7 @@ async def test_wait_free_in_returns_page_when_allowed_frees():
 
     import asyncio
     task = asyncio.create_task(freer())
-    got = await mpd._wait_free_in(wait_spec(pool, cancel=lambda: False))
+    got = await pg.wait_free_in(wait_spec(pool, cancel=lambda: False))
     await task
     assert got is not None and got.tab_id == "checked"
 
@@ -82,9 +83,9 @@ async def test_wait_free_in_returns_page_when_allowed_frees():
 async def test_wait_free_in_honours_cancel_and_timeout():
     pool = pool_with(make_page("checked"))
     pool.mark_busy("checked", "other")
-    got = await mpd._wait_free_in(wait_spec(pool, timeout=5.0, cancel=lambda: True))
+    got = await pg.wait_free_in(wait_spec(pool, timeout=5.0, cancel=lambda: True))
     assert got is None  # cancel breaks immediately
-    got = await mpd._wait_free_in(wait_spec(pool, timeout=0.05, cancel=lambda: False))
+    got = await pg.wait_free_in(wait_spec(pool, timeout=0.05, cancel=lambda: False))
     assert got is None  # bounded timeout, no infinite wait
 
 
@@ -112,8 +113,11 @@ async def test_prepare_image_assigns_owning_row_without_foreign_relink():
 async def test_acquire_page_returns_free_checked_page():
     from types import SimpleNamespace
     pool = pool_with(make_page("checked"), make_page("foreign"))
-    bridge = SimpleNamespace(_cancel_requested=False)
-    got = await mpd._acquire_page(pool, bridge, "job1", {"checked"})
+    from app.core.models import UrlRow
+    rows = [UrlRow.create("https://arena.ai/c", enabled=True, tab_id="checked"),
+            UrlRow.create("https://arena.ai/f", enabled=False, tab_id="foreign")]
+    bridge = SimpleNamespace(_cancel_requested=False, state=SimpleNamespace(urls=rows))
+    got = await mpd._acquire_page(pool, bridge, "job1")
     assert got is not None and got.tab_id == "checked"
     assert pool.get_page("foreign").status == PageStatus.STEADY
 

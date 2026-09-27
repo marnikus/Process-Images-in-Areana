@@ -82,6 +82,12 @@ def make_urls(tab_ids, enabled=True):
     return [UrlRow.create(f"https://arena.ai/{t}", enabled=enabled, tab_id=t) for t in tab_ids]
 
 
+def with_urls(bridge, tab_ids, enabled=True):
+    """Rows where production keeps them: the dispatcher reads `bridge.state.urls` live (I-68)."""
+    bridge.state.urls = make_urls(tab_ids, enabled)
+    return bridge
+
+
 @pytest.fixture
 def runner_fakes(monkeypatch):
     """Fake the job-runner seam; return a record list mutated by the fakes."""
@@ -116,7 +122,7 @@ async def test_run_success_completes_image_and_finishes_page(runner_fakes):
     pool.register_client("t1", object(), object())
     bridge = FakeBridge()
     img = make_img()
-    await mpd.run_one_image_on_page(bridge, pool, img, make_urls(["t1"]))
+    await mpd.run_one_image_on_page(with_urls(bridge, ["t1"]), pool, img)
     assert img.status == ImageStatus.COMPLETED.value
     assert bridge.job_started.calls and bridge.job_finished.calls
     assert "completed" in bridge.job_finished.calls[0][1]
@@ -131,7 +137,7 @@ async def test_run_failure_marks_failed_and_emits_error(runner_fakes):
     pool.register_client("t1", object(), object())
     bridge = FakeBridge()
     img = make_img()
-    await mpd.run_one_image_on_page(bridge, pool, img, make_urls(["t1"]))
+    await mpd.run_one_image_on_page(with_urls(bridge, ["t1"]), pool, img)
     assert img.status == ImageStatus.FAILED.value and img.error == "block exploded"
     assert "failed" in bridge.job_finished.calls[0][1]
     assert any(level == "error" for level, _ in bridge.logs)
@@ -143,7 +149,7 @@ async def test_run_cancel_before_start_is_noop(runner_fakes):
     pool.register_client("t1", object(), object())
     bridge = FakeBridge(cancel=True)
     img = make_img()
-    await mpd.run_one_image_on_page(bridge, pool, img, make_urls(["t1"]))
+    await mpd.run_one_image_on_page(with_urls(bridge, ["t1"]), pool, img)
     assert img.status != ImageStatus.PROCESSING.value
     assert runner_fakes["calls"] == 0 and not bridge.job_finished.calls
 
@@ -157,7 +163,7 @@ async def test_settled_image_never_acquires_a_page(runner_fakes):
     done = make_img("done.png")
     done.status, done.attempt_count, done.selected = ImageStatus.COMPLETED.value, 1, True
     fresh = make_img("fresh.png")
-    ctx = mpd.DispatchCtx(bridge=bridge, pool=pool, urls=make_urls(["t1"]), allowed={"t1"}, seed=[done, fresh])
+    ctx = mpd.DispatchCtx(bridge=with_urls(bridge, ["t1"]), pool=pool, seed=[done, fresh])
     await mpd._feed_tasks(ctx)  # B-1: the feeder replaced the per-image semaphore worker
     await asyncio.gather(*ctx.tasks)
     assert (done.status, done.attempt_count) == (ImageStatus.COMPLETED.value, 1)
@@ -173,7 +179,7 @@ async def test_run_no_free_page_logs_warning(runner_fakes):
     pool = make_pool(["t1"], busy=("t1",))
     bridge = FakeBridge()
     img = make_img()
-    await mpd.run_one_image_on_page(bridge, pool, img, make_urls(["t1"]))
+    await mpd.run_one_image_on_page(with_urls(bridge, ["t1"]), pool, img)
     assert runner_fakes["calls"] == 0
     assert any("No free page" in msg for _, msg in bridge.logs if isinstance(msg, str))
     assert img.status != ImageStatus.PROCESSING.value
@@ -184,7 +190,7 @@ async def test_run_without_registered_controller_marks_steady(runner_fakes):
     pool = make_pool(["t1"])  # no register_client
     bridge = FakeBridge()
     img = make_img()
-    await mpd.run_one_image_on_page(bridge, pool, img, make_urls(["t1"]))
+    await mpd.run_one_image_on_page(with_urls(bridge, ["t1"]), pool, img)
     assert runner_fakes["calls"] == 0
     assert any("No controller" in msg for _, msg in bridge.logs if isinstance(msg, str))
     assert pool.get_page("t1").status == PageStatus.STEADY
@@ -197,7 +203,7 @@ async def test_run_job_exception_fails_image_with_reason(runner_fakes):
     pool.register_client("t1", object(), object())
     bridge = FakeBridge()
     img = make_img()
-    await mpd.run_one_image_on_page(bridge, pool, img, make_urls(["t1"]))
+    await mpd.run_one_image_on_page(with_urls(bridge, ["t1"]), pool, img)
     assert img.status == ImageStatus.FAILED.value and "cdp dropped" in img.error
     assert any("failed: cdp dropped" in msg for _, msg in bridge.logs if isinstance(msg, str))
 
@@ -212,7 +218,7 @@ async def test_run_cancelled_mid_job_marks_cancelled(runner_fakes):
     pool.register_client("t1", object(), object())
     bridge = FakeBridge()
     img = make_img()
-    await mpd.run_one_image_on_page(bridge, pool, img, make_urls(["t1"]))
+    await mpd.run_one_image_on_page(with_urls(bridge, ["t1"]), pool, img)
     assert img.status == ImageStatus.FAILED.value and img.error == "Cancelled"
     assert not bridge.job_finished.calls  # cancelled job emits no finished payload
 
@@ -249,7 +255,7 @@ async def test_dispatch_parallel_runs_all_images(runner_fakes):
     pool.register_client("t2", object(), object())
     bridge = FakeBridge()
     imgs = [make_img("a.png", id="i1"), make_img("b.png", id="i2")]
-    await mpd.dispatch_parallel(bridge, pool, imgs, make_urls(["t1", "t2"]))
+    await mpd.dispatch_parallel(with_urls(bridge, ["t1", "t2"]), pool, imgs)
     assert all(img.status == ImageStatus.COMPLETED.value for img in imgs)
     assert bridge._run_state == "running"  # S5: the dispatcher's tail logs + emits only (D-8)
     assert bridge.arena_emits >= 1
@@ -261,10 +267,10 @@ async def test_dispatch_parallel_skips_without_checked_tabs(runner_fakes):
     pool = make_pool(["t1"])
     bridge = FakeBridge()
     img = make_img()
-    await mpd.dispatch_parallel(bridge, pool, [img], make_urls(["t1"], enabled=False))
+    await mpd.dispatch_parallel(with_urls(bridge, ["t1"], enabled=False), pool, [img])
     assert runner_fakes["calls"] == 0 and img.status != ImageStatus.PROCESSING.value
     assert any("no checked URL owns a tab" in msg for _, msg in bridge.logs if isinstance(msg, str))
-    await mpd.dispatch_parallel(bridge, None, [img], make_urls(["t1"]))  # no pool: no-op
+    await mpd.dispatch_parallel(with_urls(bridge, ["t1"]), None, [img])  # no pool: no-op
     assert runner_fakes["calls"] == 0
 
 
@@ -279,7 +285,7 @@ async def test_dispatch_parallel_stops_when_cancel_flips(runner_fakes):
     pool.register_client("t2", object(), object())
     bridge = FakeBridge()
     imgs = [make_img("a.png", id="i1"), make_img("b.png", id="i2")]
-    await mpd.dispatch_parallel(bridge, pool, imgs, make_urls(["t1", "t2"]))
+    await mpd.dispatch_parallel(with_urls(bridge, ["t1", "t2"]), pool, imgs)
     assert runner_fakes["calls"] == 1  # second task never created
     assert imgs[1].status != ImageStatus.PROCESSING.value
 
@@ -290,7 +296,7 @@ async def test_dispatch_parallel_honours_stop_after(runner_fakes):
     pool.register_client("t1", object(), object())
     bridge = FakeBridge(stop_after=True)
     img = make_img()
-    await mpd.dispatch_parallel(bridge, pool, [img], make_urls(["t1"]))
+    await mpd.dispatch_parallel(with_urls(bridge, ["t1"]), pool, [img])
     assert runner_fakes["calls"] == 0 and img.status != ImageStatus.PROCESSING.value
     assert any("Parallel batch complete" in m for _, m in bridge.logs)  # finalization still runs (log + emits only, S5)
 
@@ -322,3 +328,31 @@ async def test_wait_pause_breaks_on_cancel(monkeypatch):
     monkeypatch.setattr(mpd.asyncio, "sleep", instant_sleep)
     await mpd._wait_pause(bridge)
     assert len(sleeps) == 1  # one poll, then cancel breaks
+
+
+class BrokenUiBridge(FakeBridge):
+    """Every UI-facing callback raises — the window closing mid-run, a dead signal."""
+
+    def _emit_pool_status(self):
+        raise RuntimeError("pool view gone")
+
+    def _emit_arena_state(self):
+        raise RuntimeError("state view gone")
+
+    def _save_arena(self):
+        raise RuntimeError("disk full")
+
+
+@pytest.mark.asyncio
+async def test_a_broken_ui_never_stops_the_dispatcher(runner_fakes):
+    """RULE 4: emits / saves are best-effort — the jobs still run and settle, the pages end steady."""
+    pool = make_pool(["t1", "t2"])
+    for t in ("t1", "t2"):
+        pool.register_client(t, object(), object())
+    bridge = BrokenUiBridge()
+    imgs = [make_img("a.png"), make_img("b.png"), make_img("c.png")]
+    bridge.state.images = list(imgs)
+    await asyncio.wait_for(mpd.dispatch_parallel(with_urls(bridge, ["t1", "t2"]), pool, imgs), 3.0)
+    assert [i.status for i in imgs] == [ImageStatus.COMPLETED.value] * 3
+    assert runner_fakes["calls"] == 3
+    assert {pool.get_page(t).status for t in ("t1", "t2")} == {PageStatus.STEADY}

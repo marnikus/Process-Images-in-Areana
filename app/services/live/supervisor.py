@@ -28,7 +28,8 @@ from dataclasses import dataclass, field
 from app.browser.page_recovery import reconnect_same_tab
 from app.browser.page_status import PageStatus
 from app.services import auto_connect as ac
-from app.services.batch_orchestrator import pool_summary, resolve_and_claim_tab, run_pass
+from app.services.batch_orchestrator import run_pass
+from app.services.run_tab import pool_summary, resolve_and_claim_tab
 from app.services.cooldown_service import is_stuck_status
 from app.services.firefox_job_recovery import recover_firefox_jobs
 

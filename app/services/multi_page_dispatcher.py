@@ -1,5 +1,5 @@
 """Multi-page dispatcher — parallel dispatch to different webpages."""
-# ideal-size: ~400 lines reason=single dispatch flow owns acquire/run/finish/settle helpers sharing PageJobCtx/ResultCtx/FreeWaitSpec; splitting would scatter one per-image lifecycle across files that always change together (RULE 18.2)
+# ideal-size: ~440 lines reason=single dispatch flow owns feed/run/finish/settle helpers sharing PageJobCtx/ResultCtx (the page gate lives in page_gate.py); splitting further would scatter one per-image lifecycle across files that always change together (RULE 18.2)
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from .job_history import note_job_started, record_dispatch_result
 from .cooldown_service import FinishCtx, cooldown_aware_timeout, finish_page_after_job, is_stuck_status, maybe_note_rate_limit
 from .live.bus import live_bus
 from .live.feed import queued_images
+from .page_gate import FreeWaitSpec, wait_free_in
 from .single_job_runner import JobCtx, capture_baseline, run_blocks_for_image
 
 log = logging.getLogger("arena")
@@ -30,10 +31,8 @@ _WAIT_POLL_SEC = 0.5
 
 @dataclass
 class DispatchCtx:  # one open pass of the feeder (B-1): what was handed out, and to whom
-    bridge: object
+    bridge: object  # the checked rows are read from it live at every claim (I-68) — never copied here
     pool: PagePool
-    urls: List[UrlRow]
-    allowed: set = field(default_factory=set)  # tab ids owned by checked rows (I-33)
     seed: list = field(default_factory=list)   # the plan's images: served first, then the live queue
     claimed: set = field(default_factory=set)  # image ids already given a task this pass
     tasks: list = field(default_factory=list)
@@ -116,64 +115,13 @@ async def _wait_pause(bridge):
             break
 
 
-def _acquire_free_in(pool, allowed: set, job_id: str):
-    """Lock-guarded acquire of a free page inside the checked-tab set (I-33).
-
-    External-lock pattern (same as sync_pool_presence): PagePool keeps its
-    15-method cap, dispatch keeps the gating decision. The first free checked
-    page in pool order takes the job — the job counter is display only
-    (2026-09-21: the I-28 load-balancing concept is gone)."""
-    try:
-        with pool._lock:
-            for p in pool._pages.values():
-                p.try_expire()
-            free = [p for p in pool._pages.values()
-                    if p.is_free() and p.tab_id in (allowed or set())]
-            if not free:
-                return None
-            page = free[0]
-    except AttributeError:
-        return None
-    pool.mark_busy(page.tab_id, job_id)
-    return page
-
-
-@dataclass
-class FreeWaitSpec:
-    """Wait inputs for one checked free page (keeps params ≤4, RULE 16)."""
-
-    pool: object
-    allowed: set
-    job_id: str
-    timeout_sec: float
-    cancel_check: object = None
-    wake_wait: object = asyncio.sleep  # async (seconds) -> None; the bus wait, so a freed page is taken at once (B-2)
-
-
-def _gave_up(spec: FreeWaitSpec, waited_sec: float) -> bool:
-    """Cancel asked, or the bounded wait ran out (RULE 7)."""
-    return bool(spec.cancel_check and spec.cancel_check()) or waited_sec > spec.timeout_sec
-
-
-async def _wait_free_in(spec: FreeWaitSpec):
-    """Wait for a checked free page; the bus wake is the path, the poll the fallback."""
-    loop = asyncio.get_event_loop()
-    start = loop.time()
-    while not _gave_up(spec, loop.time() - start):
-        got = _acquire_free_in(spec.pool, spec.allowed, spec.job_id)
-        if got:
-            return got
-        await spec.wake_wait(_WAIT_POLL_SEC)
-    return None
-
-
-async def _acquire_page(pool, bridge, job_id: str, allowed: set):
-    """One gate for both wait styles: only tabs owned by checked rows."""
-    spec = FreeWaitSpec(pool=pool, allowed=allowed, job_id=job_id,
+async def _acquire_page(pool, bridge, job_id: str):
+    """One gate for both wait styles: only tabs whose row is checked at the moment of the claim."""
+    spec = FreeWaitSpec(pool=pool, allowed_now=lambda: ac.live_allowed(bridge), job_id=job_id,
                         timeout_sec=cooldown_aware_timeout(pool),
                         cancel_check=lambda: not _feeding(bridge),
-                        wake_wait=live_bus(bridge).wait)
-    return await _wait_free_in(spec)
+                        wake_wait=live_bus(bridge).wait, poll_sec=_WAIT_POLL_SEC)
+    return await wait_free_in(spec)
 
 
 def _get_clients(pool, tab_id) -> Tuple[object, object]:
@@ -291,12 +239,12 @@ async def _finish_page_safely(finish_ctx: FinishCtx) -> None:
         live_bus(finish_ctx.bridge).wake("page free")
 
 
-async def run_one_image_on_page(bridge, pool, img, urls):
+async def run_one_image_on_page(bridge, pool, img):
     """Claim the first free checked page, then run `img` on it (the single-image entry)."""
     if bridge._cancel_requested:
         return
-    ctx = DispatchCtx(bridge=bridge, pool=pool, urls=urls, allowed=ac.enabled_tab_ids(urls))
-    free_page = await _acquire_page(pool, bridge, img.id, ctx.allowed)
+    ctx = DispatchCtx(bridge=bridge, pool=pool)
+    free_page = await _acquire_page(pool, bridge, img.id)
     if not free_page:
         _log_no_free(bridge, img)
         return
@@ -318,7 +266,7 @@ async def run_claimed_image(ctx: DispatchCtx, img, free_page):
     _log_assign(bridge, img, tab_id, free_page)
     _start_tab_image(pool, tab_id, img)
     try:
-        await _run_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ctx.urls, tab_id=tab_id, ctrl=ctrl, client=client))
+        await _run_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ac.live_rows(bridge), tab_id=tab_id, ctrl=ctrl, client=client))
     finally:
         _clear_tab_image(pool, tab_id)
         await _finish_page_safely(FinishCtx(pool=pool, bridge=bridge, tab_id=tab_id, ctrl=ctrl, client=client))
@@ -332,7 +280,7 @@ async def _run_firefox_claimed(ctx: DispatchCtx, img, page) -> None:
     _start_tab_image(pool, tab_id, img)
     reset: list = []  # the job's Ui.Vision New Chat for the finish seam
     try:
-        await _firefox_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ctx.urls,
+        await _firefox_and_record(PageJobCtx(bridge=bridge, pool=pool, img=img, urls=ac.live_rows(bridge),
                                              tab_id=tab_id, ctrl=None, client=None), reset)
     finally:
         _clear_tab_image(pool, tab_id)
@@ -407,19 +355,19 @@ def _handle_exception(bridge, img, tab_id, e):
         pass
 
 
-async def dispatch_parallel(bridge, pool, images, urls):
+async def dispatch_parallel(bridge, pool, images):
     """The feeder (B-1): serve the plan's images, then keep re-reading the live queue while the pass is
-    open, so an image queued mid-pass reaches an idle tab at once instead of waiting for the pass to end."""
+    open, so an image queued mid-pass reaches an idle tab at once instead of waiting for the pass to end.
+    Which tabs may take work is read live at each claim (I-68): an uncheck mid-pass stops the tab at once."""
     if not pool or not images:
         return
-    allowed = ac.enabled_tab_ids(urls)
-    if not allowed:
+    if not ac.live_allowed(bridge):
         try:
             bridge._log("⚠ Parallel dispatch skipped — no checked URL owns a tab", "warn")
         except Exception:
             pass
         return
-    ctx = DispatchCtx(bridge=bridge, pool=pool, urls=urls, allowed=allowed, seed=list(images))
+    ctx = DispatchCtx(bridge=bridge, pool=pool, seed=list(images))
     await _feed_tasks(ctx)
     await _await_tasks(bridge, ctx.tasks)
     _finalize_batch(bridge)
@@ -459,7 +407,7 @@ async def _serve(ctx: DispatchCtx, img) -> None:
 
 async def _start_on_free_page(ctx: DispatchCtx, img) -> None:
     """Wait for a checked free page, then run `img` on it as its own task."""
-    page = await _acquire_page(ctx.pool, ctx.bridge, img.id, ctx.allowed)
+    page = await _acquire_page(ctx.pool, ctx.bridge, img.id)
     if page is None:
         if _feeding(ctx.bridge):
             _log_no_free(ctx.bridge, img)

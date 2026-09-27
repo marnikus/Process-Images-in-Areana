@@ -225,6 +225,20 @@ def enabled_tab_ids(urls: Any) -> set:
     return out
 
 
+def live_rows(bridge: Any) -> list:
+    """The URL rows as they are NOW — never a pass-time copy (I-68).
+
+    A checkbox, a ✕ or an undo lands in `bridge.state.urls` at once; every
+    run gate reads it here at use, so an uncheck reaches the very next claim.
+    """
+    return list(getattr(getattr(bridge, "state", None), "urls", None) or [])
+
+
+def live_allowed(bridge: Any) -> set:
+    """Tab ids owned by checked rows right now — THE run gate (I-33, read live I-68)."""
+    return enabled_tab_ids(live_rows(bridge))
+
+
 def row_for_tab(urls: Any, tab_id: str):
     """The checked row owning this tab, else None."""
     if not tab_id:
