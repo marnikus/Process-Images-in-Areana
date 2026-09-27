@@ -457,7 +457,7 @@
 
     <!-- ACTIVITY LOG -->
     <div class="panel log-panel" id="winLog" data-window="log">
-      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">terminal</span> Activity Log <span class="spacer"></span><button id="clearLogBtn" class="btn-small">Clear</button></h3>
+      <h3 class="win-title"><span class="win-grip material-icons" title="Drag to move">drag_indicator</span><span class="material-icons">terminal</span> Activity Log <span class="spacer"></span><button id="copyLogBtn" class="btn-small" title="Copy the whole log (every line since start, not only the lines shown) to the clipboard">Copy all</button><button id="clearLogBtn" class="btn-small">Clear</button></h3>
       <div id="logConsole" class="log-console"></div>
     </div>
 
@@ -876,6 +876,7 @@
 <script src="js/window-presets-preview.js"></script>
 <script src="js/window-presets.js"></script>
 <script src="js/log-console.js"></script>
+<script src="js/log-tools.js"></script>
 <script src="js/panels/url-list/store.js"></script>
 <script src="js/panels/url-list/render.js"></script>
 <script src="js/panels/url-list/cells.js"></script>
