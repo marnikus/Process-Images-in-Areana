@@ -182,6 +182,18 @@ SELECTORS: Dict[str, SelectorObject] = {
         evidence="spec G",
         lastVerified="2026-09-19",
     ),
+    "user_message": SelectorObject(
+        name="user_message",
+        primary="div.group.flex-col.self-end",
+        fallbacks=["div.justify-end > div.group.self-end"],
+        scope="ol",
+        mustBeVisible=False,
+        mustBeEnabled=False,
+        expectedCount=0,  # one per user turn
+        verification="an image inside the user's own message is the uploaded reference, never an output (I-70)",
+        evidence="saved page: div.mx-auto.max-w-[800px].flex.w-full.justify-end > div.group.flex.flex-col.gap-1.self-end > … > img.aspect-square.w-32.cursor-pointer",
+        lastVerified="2026-09-27",
+    ),
     "output_image": SelectorObject(
         name="output_image",
         primary='div.no-scrollbar img[src*=".r2.cloudflarestorage.com/"]',

@@ -12,7 +12,8 @@ Per RULE 21 selector priority, RULE 22 correlation token.
 
 import json
 
-from .probe_selectors import generating_spinners_js, model_label_probe, output_image_selectors
+from .probe_selectors import (generating_spinners_js, model_label_probe, output_image_selectors,
+                              user_message_selector)
 
 # Single source is site_adapter via probe_selectors (RULE 21).
 SELECTORS_V3 = output_image_selectors()
@@ -263,6 +264,11 @@ JS_CHECK_NEW_OUTPUT_V3 = """
       return !old.complete || old.naturalWidth===0 || old.opacity==='0' || (old.className&&old.className.includes('opacity-0')) || !old.visible;
     }
 
+    // The user's own message holds the uploaded reference picture — never this job's output (I-70).
+    function inUserMessage(el) {
+      try { return !!el.closest(__USER_MESSAGE__); } catch(e) { return false; }
+    }
+
     function isReferenceImage(el) {
       try {
         const cls = el.className || '';
@@ -410,6 +416,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
             }
           }
           if (el.naturalWidth && el.naturalWidth < 50 && el.naturalHeight < 50) { debugFiltered.push({reason:'tiny_natural', src:el.src.slice(-80), w:el.naturalWidth, sel}); continue; }
+          if (inUserMessage(el)) { debugFiltered.push({reason:'user_message', src:el.src.slice(-80), sel}); continue; }
           if (isReferenceImage(el)) { debugFiltered.push({reason:'isReference', src:el.src.slice(-80), cls:(el.className||'').slice(0,40), sel}); continue; }
 
           const rect = el.getBoundingClientRect();
@@ -547,6 +554,7 @@ JS_CHECK_NEW_OUTPUT_V3 = """
           const cls = el.className || '';
           const isLargeFallback = width >= 400 || rect.width >= 400 || cls.includes('50vh');
           if (!isLargeFallback) continue;
+          if (inUserMessage(el)) continue;
           if (isReferenceImage(el)) {
             const isSmall = rect.width <= 140 || cls.includes('w-32') || cls.includes('h-16') || cls.includes('w-16');
             const is50vh = cls.includes('50vh');
@@ -675,24 +683,26 @@ JS_CHECK_NEW_OUTPUT_V3 = """
       pool = matchingPool;
     }
 
-    for (const cand of pool) {
-      const el = cand.el;
-      if (!el.complete) {
-        return {ready:false, reason:'not_complete', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, validBelow: validBelow.length, validAbove: validAbove.length, jobFound: jobFound, jobTop: jobTop, jobIndex: jobIndex, allJobs: allJobs.length, isLarge: cand.isLarge, top: cand.top, jobId: correlationId, associatedJobId: cand.associatedJobId, expectedJobId: correlationId, layoutReverse: layoutReverse, orderCheck: `Below prompt: jobTop ${jobTop} img top ${cand.top} associated ${cand.associatedJobId} expected ${correlationId}`};
-      }
-      if (el.naturalWidth === 0) {
-        return {ready:false, reason:'zero_width', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, isLarge: cand.isLarge, associatedJobId: cand.associatedJobId, expectedJobId: correlationId};
-      }
-      if (!cand.visible) continue;
+    // A lazy / hidden / broken image never masks the finished one (I-70): the first READY
+    // candidate wins; a waiting candidate is reported only when no candidate is ready.
+    const isReady = (c) => c.el.complete && c.el.naturalWidth !== 0 && c.visible;
+    let cand = pool.find(isReady);
+    if (cand) {
       if (spinning) {
         return {ready:false, reason:'generating_spinner_visible', src: cand.src, spinning: true, spinCount: spinCount, spinDetails: spinDetails, width: cand.width, height: cand.height, rect: cand.rect, jobFound: jobFound, jobTop: jobTop, jobIndex: jobIndex, allJobs: allJobs.length, validBelow: validBelow.length, validAbove: validAbove.length, isLarge: cand.isLarge, top: cand.top, associatedJobId: cand.associatedJobId, expectedJobId: correlationId, layoutReverse: layoutReverse, orderCheck: `Below prompt but spinning, associated ${cand.associatedJobId} expected ${correlationId}`};
       }
       return {ready:true, src: cand.src, width: cand.width, height: cand.height, spinning: false, rect: cand.rect, selector: cand.selector, jobFound: jobFound, jobTop: jobTop, prevJobTop: prevJobTop, nextJobTop: nextJobTop, jobIndex: jobIndex, allJobs: allJobs.length, validBelow: validBelow.length, validAbove: validAbove.length, belowCount: belowCandidates.length, aboveCount: aboveCandidates.length, isLarge: cand.isLarge, top: cand.top, associatedJobId: cand.associatedJobId, expectedJobId: correlationId, domPrevJobId: cand.domPrevJobId, visualPrevJobId: cand.visualPrevJobId, layoutReverse: layoutReverse, orderCheck: `Verified below prompt: jobTop ${jobTop} < img top ${cand.top} isAssistant ${cand.isAssistantBubble} associated ${cand.associatedJobId} == expected ${correlationId} (CORRECT KEY MATCH)`};
     }
-
-    if (pool.length > 0) {
-      const first = pool[0];
-      const reason = !first.visible ? 'hidden' : (!first.complete ? 'not_complete' : 'loading');
+    cand = pool[0];
+    if (cand && !cand.el.complete) {
+      return {ready:false, reason:'not_complete', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, validBelow: validBelow.length, validAbove: validAbove.length, jobFound: jobFound, jobTop: jobTop, jobIndex: jobIndex, allJobs: allJobs.length, isLarge: cand.isLarge, top: cand.top, jobId: correlationId, associatedJobId: cand.associatedJobId, expectedJobId: correlationId, layoutReverse: layoutReverse, orderCheck: `Below prompt: jobTop ${jobTop} img top ${cand.top} associated ${cand.associatedJobId} expected ${correlationId}`};
+    }
+    if (cand && cand.el.naturalWidth === 0) {
+      return {ready:false, reason:'zero_width', src: cand.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, jobFound: jobFound, jobTop: jobTop, isLarge: cand.isLarge, associatedJobId: cand.associatedJobId, expectedJobId: correlationId};
+    }
+    if (cand) {
+      const first = cand;
+      const reason = !first.visible ? 'hidden' : 'loading';
       return {ready:false, reason: reason, src: first.src, spinning: spinning, spinCount: spinCount, spinDetails: spinDetails, candidates: pool.length, validBelow: validBelow.length, validAbove: validAbove.length, jobFound: jobFound, jobTop: jobTop, associatedJobId: first.associatedJobId, expectedJobId: correlationId};
     }
 
@@ -719,7 +729,8 @@ JS_CHECK_NEW_OUTPUT_V3 = """
 })
 """.replace("__SELECTORS__", json.dumps(SELECTORS_V3)).replace("__GEN_SPINNERS__", _GEN_SPINNERS) \
     .replace("__MODEL_ROW_SCOPE__", json.dumps(_MODEL_LABEL["scope"])) \
-    .replace("__MODEL_LABEL__", json.dumps(_MODEL_LABEL["label"]))
+    .replace("__MODEL_LABEL__", json.dumps(_MODEL_LABEL["label"])) \
+    .replace("__USER_MESSAGE__", json.dumps(user_message_selector()))
 
 
 def build_baseline_js() -> str:

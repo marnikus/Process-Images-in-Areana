@@ -55,6 +55,11 @@ def output_image_selectors() -> List[str]:
     return get_selector("output_image").all_selectors()
 
 
+def user_message_selector() -> str:
+    """The user's own chat message (prompt + uploaded reference) as one `closest()` list (I-70)."""
+    return ", ".join(get_selector("user_message").all_selectors())
+
+
 def spinner_selector() -> str:
     """Processing spinner selector for generating-state scans."""
     return get_selector("processing_spinner").primary
