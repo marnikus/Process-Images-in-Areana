@@ -380,3 +380,32 @@ def test_load_one_gate_evidence_fields(tmp_path):
     assert unsafe.stage == "unsafe_path"
     missing = ws_apply.load_one(root, {"path": "state/gone.json"}, "state/gone.json")
     assert missing.stage == "missing"
+
+
+@pytest.mark.parametrize("live", ["running", "paused", "stopping"])
+def test_restore_is_refused_while_a_run_is_live(bridge, snapshot, live):
+    """A live run (Chrome pool + Firefox lane share run_live) owns the queue:
+    swapping app_state/job history under it would let an in-flight job settle
+    into a replaced queue. Refuse before anything is touched."""
+    bridge.state.prompt["user_prompt"] = "live prompt"
+    bridge._run_state = live
+    reply = restore_workspace(bridge, str(snapshot))
+    assert reply["ok"] is False
+    assert "Stop the run" in reply["error"] and live in reply["error"]
+    assert bridge.state.prompt["user_prompt"] == "live prompt"
+    assert not (snapshot / "reports" / "restore-report.json").exists()
+
+
+def test_persisted_run_state_alone_does_not_block_restore(bridge, snapshot):
+    """Only the LIVE flag blocks; a stale persisted run_state is reconciled instead."""
+    bridge.state.run_state = RunState.RUNNING.value
+    assert bridge._run_state == "idle"
+    assert restore_workspace(bridge, str(snapshot))["ok"] is True
+
+
+def test_live_run_error_reads_only_the_live_flag():
+    from types import SimpleNamespace
+    from app.services.workspace.meta import live_run_error
+    assert live_run_error(SimpleNamespace()) is None            # no flag yet = idle
+    assert live_run_error(SimpleNamespace(_run_state="idle")) is None
+    assert "paused" in live_run_error(SimpleNamespace(_run_state="paused"))

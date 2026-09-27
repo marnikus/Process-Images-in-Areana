@@ -9,8 +9,6 @@ into the workspace folder. The read-only preview lives in `restore.py`.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import json
 from pathlib import Path
 
@@ -19,10 +17,11 @@ from app.persistence.workspace.errors import WorkspaceError
 from app.persistence.workspace.integrity import canonical_bytes, file_sha, safe_rel_path
 from app.persistence.workspace.manifest import entry_for, read_manifest
 from . import reports
-from .meta import config_dir, log_message, utc_now_iso
+from .meta import config_dir, live_run_error, log_message, utc_now_iso
 from .recover import RECOVERY_KEEP, backup_live, prune_recovery  # noqa: F401 (RECOVERY_KEEP re-export)
 from .registry import RESTORE_ORDER, get, restore_order
 from .save import record_restore
+
 
 def _selected_ids(manifest: dict, selected) -> list:
     """Manifest ids for this restore.
@@ -212,8 +211,11 @@ def _restore_row(run: dict, provider) -> dict:
     return _restore_one(run, provider, entry, loaded)
 
 
-def _preflight(root: Path, selected) -> tuple:
+def _preflight(bridge, root: Path, selected) -> tuple:
     """(manifest, providers, None) or (None, None, refusal) — nothing touched yet."""
+    busy = live_run_error(bridge)
+    if busy:
+        return None, None, busy
     manifest, err = read_manifest(root)
     if err:
         return None, None, err
@@ -229,7 +231,7 @@ def _preflight(root: Path, selected) -> tuple:
 def restore_workspace(bridge, root, selected=None) -> dict:
     """Selected/all domains, dependency order, per-domain transaction (task RESTORE 2–10)."""
     root = Path(root)
-    manifest, providers, refusal = _preflight(root, selected)
+    manifest, providers, refusal = _preflight(bridge, root, selected)
     if refusal:
         return {"ok": False, "error": refusal}
     backup = backup_live(bridge, providers)

@@ -2,7 +2,7 @@
 
 The one home for everything that describes a snapshot rather than moving
 state: config paths, UTC stamps, snapshot ids, the redacted app-env block,
-the compat block, and the bridge log helper. No capture/apply logic lives
+the compat block, the bridge log helper and the live-run read (I-67). No capture/apply logic lives
 here (that is save.py / apply.py). No Qt, no app.ui imports.
 """
 
@@ -70,3 +70,13 @@ def log_message(bridge, message: str, level: str = "info") -> None:
         bridge._log(message, level)
     except Exception:
         pass
+
+
+def live_run_error(bridge) -> str | None:
+    """Refusal while a run is live — Chrome pool and Firefox lane both run inside
+    `run_live`, whose only state writer is `supervisor.set_run_state` (I-67)."""
+    live = getattr(bridge, "_run_state", "idle")
+    if live == "idle":
+        return None
+    return (f"A run is {live} — its jobs own the queue and job history. "
+            "Stop the run, then restore.")

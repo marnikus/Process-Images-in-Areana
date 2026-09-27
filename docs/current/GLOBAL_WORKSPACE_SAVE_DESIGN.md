@@ -1,4 +1,4 @@
-# Global Workspace Save — Phase 0 Design (APPROVAL PENDING)
+# Global Workspace Save — Design (implemented; merged onto the Firefox/Watcher line 2026-09-27, §N)
 
 **Status:** design gate — no production code written. On approval this file drives implementation phases W1…W10 (§11); after the feature lands it is archived to `docs/archive/<date>-global-workspace-save/` and its durable rows move into `SYSTEM_OF_RECORD.md` (RULE 17).
 **Size note:** this doc intentionally exceeds the RULE 18.4 context-file ideal (60–200 lines) because the task mandates one self-contained gate deliverable with embedded inventory/maps/risks. Every table below is evidence-backed from the files cited in §A.
@@ -66,7 +66,7 @@ All claims below were verified by reading the named files on this branch (`arena
 | 10 | `job_history` | Job History | `JobHistoryStore` | `config/job_history.json` | `{"next_job_no", "entries[]"}` cap 500 | append at the two settle sites (`multi_page_dispatcher._handle_result`, `batch_orchestrator.finish_image`), Clear, limit | `get_job_history` slot; `job_history_updated` push | none | no | tab identity columns resolve through live pool at render | shape-validated on load; `next_job_no` never reused |
 | 11 | `captcha_recordings` | Captcha Session Recordings | `RecordingStore` | `config/captcha_recordings/<id>/` | per-session manifest+events+checkpoints | recorder lifecycle | Records window, comparison | none | sanitized but page-derived → **excluded by default** (optional-inclusion policy §D.3) | sessions "active" are stale after restart (recovered as interrupted by design) | retention/512 MiB cap self-manages |
 
-**Explicitly out of scope for capture:** `logs/`, `output/*_AI` files and source images (RULE 14: outputs are filesystem truth; the workspace stores the *references* already inside `arena_state`), `config/uivision/` runtime (re-provisioned per run), Qt WebEngine profile/local storage.
+**Explicitly out of scope for capture:** `logs/`, `output/*_AI` files and source images (RULE 14: outputs are filesystem truth; the workspace stores the *references* already inside `arena_state`), `config/uivision/` runtime (re-provisioned per run), the Firefox job journal `config/firefox_jobs.json` + staged downloads `config/firefox_jobs/<corr>/` (in-flight crash-recovery state, see §N), Qt WebEngine profile/local storage.
 
 ### B.1 Write-path map (every path that mutates persisted state)
 
@@ -509,3 +509,15 @@ restore (`panels/workspace.js wsAfterRestore`):
 Anything added in the future that renders a persisted value MUST be added to
 these refresh points (RULE 24). "Load" links in the recent-snapshots list go
 through the same preview → Restore All/Selected flow as Browse…
+
+---
+
+## N. Integration with the Firefox/Watcher line (merge 2026-09-27)
+
+This feature was built on `f5cb06e`; the target line had since gained the Firefox image job (I-65), three Firefox window features and the Watcher wait fix (I-66). Integration decisions (SoR I-67):
+
+1. **Firefox window settings** (`firefox_auto.captcha_solve_sec`, `stack_uivision` and the older keys) are `DEFAULT_SESSION` keys, so `session.settings_keys()` picks them up automatically — domain `session_settings`, no new provider. After a restore `WS_CONFIG_RELOADERS` calls `FirefoxAutoPanel.load()`, whose `FIELDS`/`CHECKS` maps cover both new keys (RULE 24).
+2. **Firefox job journal is not a domain.** `config/firefox_jobs.json` + `config/firefox_jobs/<corr>/` describe jobs that were in flight; restoring them would revive stale work (same rule as `run_state`, §B.3). Recovery (`firefox_job_recovery._image_of`) already tolerates a queue that no longer holds the image → `needs_review`, never a resubmit.
+3. **Live-run guard.** `meta.live_run_error` (checked first in `apply._preflight`) refuses a restore while `bridge._run_state != "idle"`: both lanes run inside `run_live`, and an in-flight job settling into a swapped queue/job history is exactly the stale-resurrection class §B.3 forbids. The persisted `run_state` alone does not block (reconciled to idle as before). Save stays allowed during a run — capture is pull-based under the state lock and the restore side reconciles in-flight rows.
+4. **Job counts** from Firefox jobs land in `job_history.json` like Chrome's, so the `job_history` domain covers them unchanged.
+
