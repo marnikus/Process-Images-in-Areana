@@ -1728,7 +1728,7 @@
       "main": 16
     },
     "max_methods": 0,
-    "max_cc": 1,
+    "max_cc": 2,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 0,

@@ -6,12 +6,13 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from qasync import QEventLoop
 
+from .core.loop_noise import quiet_socket_teardown
 from .ui.main_window import MainWindow
 from .utils.logging import setup_logger
 
 def main() -> int:
     app = QApplication(sys.argv)
-    loop = QEventLoop(app)
+    loop = quiet_socket_teardown(QEventLoop(app))   # I-75
     asyncio.set_event_loop(loop)
 
     logger = setup_logger()
