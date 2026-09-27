@@ -220,7 +220,9 @@ def restore_workspace(bridge, root, selected=None) -> dict:
     manifest, providers, refusal = _preflight(bridge, root, selected)
     if refusal:
         return {"ok": False, "error": refusal}
-    backup = backup_live(bridge, providers)
+    backup, backup_refusal = backup_live(bridge, providers)
+    if backup_refusal:
+        return {"ok": False, "error": backup_refusal}
     run = {"bridge": bridge, "manifest": manifest,
        "files": load_files(root, manifest, providers), "failed": set()}
     rows = []

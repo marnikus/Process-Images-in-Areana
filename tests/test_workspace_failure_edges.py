@@ -129,3 +129,51 @@ def test_damaged_domain_fails_the_restore(bridge, snapshot, monkeypatch):
     assert _row(reply, "undo")["status"] == "damaged"
     assert reply["result"] == "failed" and reply["ok"] is False
     assert "session_settings" in reply["restored"]
+
+
+# ---- step 6 (C1, A5, C2, C3): the recovery backup is real or the restore refuses
+
+def _logs(bridge, monkeypatch) -> list:
+    lines: list = []
+    monkeypatch.setattr(bridge, "_log", lambda message, level="info": lines.append((level, message)))
+    return lines
+
+
+def test_backup_copy_failure_refuses_before_any_change(bridge, snapshot, monkeypatch):
+    """P7: a locked live file was recorded as `absent` and the restore said success."""
+    from app.services.workspace import recover
+    bridge.state.prompt["user_prompt"] = "live prompt"
+    monkeypatch.setattr(recover.shutil, "copy2", _raise(PermissionError(13, "locked")))
+    reply = restore_workspace(bridge, snapshot)
+    assert reply["ok"] is False and "recovery backup" in reply["error"]
+    assert "nothing was changed" in reply["error"]
+    assert bridge.state.prompt["user_prompt"] == "live prompt"
+
+
+def test_backup_folder_failure_refuses(bridge, snapshot, monkeypatch):
+    """A5: mkdir / recovery.json OSError escaped the restore."""
+    from app.services.workspace import recover
+    monkeypatch.setattr(recover, "_recovery_dir", _raise(PermissionError(13, "read-only config")))
+    reply = restore_workspace(bridge, snapshot)
+    assert reply["ok"] is False and "recovery backup" in reply["error"]
+
+
+def test_same_second_restores_keep_separate_backups(bridge, snapshot, monkeypatch):
+    """P8: the second backup overwrote the first — the only pre-restore copy."""
+    from app.services.workspace import recover
+    monkeypatch.setattr(recover.time, "strftime", lambda fmt, *a: "20260928-120000")
+    first = restore_workspace(bridge, snapshot)["backup"]
+    second = restore_workspace(bridge, snapshot)["backup"]
+    assert first != second and Path(first).is_dir() and Path(second).is_dir()
+    assert sorted([first, second]) == [first, second]      # prune order stays chronological
+
+
+def test_prune_logs_what_it_removed(bridge, snapshot, monkeypatch):
+    """C3: prune was documented as logged; nothing logged."""
+    from app.services.workspace import recover
+    base = Path(bridge.config.dir) / recover.RECOVERY_DIR
+    for i in range(recover.RECOVERY_KEEP):
+        (base / f"20200101-0000{i:02d}").mkdir(parents=True)
+    lines = _logs(bridge, monkeypatch)
+    restore_workspace(bridge, snapshot)
+    assert any("recovery" in m and "pruned 1" in m for _lvl, m in lines)
