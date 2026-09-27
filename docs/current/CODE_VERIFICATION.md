@@ -34,7 +34,7 @@ python tools/verify_quality.py --changed --allow-legacy
 
 - Checks only files changed vs merge-base `origin/main` (R0.3: uses `git merge-base`, not `...HEAD` only, so worktrees gated correctly; fallback HEAD~1..HEAD if no common ancestor)
 - Includes **JS gate** R0.2: acorn-based func LOC, params, nesting, rough CC, same fail lines as Python (30/4/4/10). Deliberately bloated JS fails gate.
-- **Baseline ratchet** R0.3: `quality_baseline.json` stores per-metric maxima per file (max_func_loc, max_class_loc, max_methods, max_cc, max_cog, max_nest, max_params, file_lines, func_count, coverage per file). Gate **fails on any increase**, even in legacy files. `--allow-legacy` may only suppress pre-existing values, never new growth.
+- **Baseline ratchet** R0.3: `quality_baseline.json` stores per-metric maxima per file (max_func_loc, max_class_loc, max_methods, max_cc, max_cog, max_nest, max_params, file_lines, func_count, coverage per file). Gate **fails on any increase**, even in legacy files. `--allow-legacy` may only suppress pre-existing values, never new growth. A `max_cog` of `0` recorded before the cognitive tool was installed is stale: re-measure the file at the pre-change commit (`git stash -u` or a worktree), and only when the value is unchanged there correct the entry through a JSON round-trip — never raise it to hide new growth (2026-09-27: `reconcile.py` 8, `browser_tabs.py` 7, `url_queue.py` 5).
 - Fails on: new func LOC>30, class>150, params>4, methods>15, CC>10, cog>15, nest>4, JS same, anti-gaming `_partN`, `**kwargs` dodge, ratchet growth.
 
 ### 3. Full gate (all files) — for review
@@ -196,4 +196,4 @@ python tools/verify_quality.py --changed --allow-legacy --json > quality.json
 
 ---
 
-*Last updated: 2026-09-19 — Round 0 R0.1–R0.6: metrics_report one command, JS gate acorn, baseline ratchet per-metric maxima, vulture/jscpd/coverage lanes, fast lane + JS lane + npm ci docs, mutation decision mutmut baseline.*
+*Last updated: 2026-09-27 — stale `max_cog 0` baseline entries: verify at the pre-change commit before correcting. Previously 2026-09-19 — Round 0 R0.1–R0.6: metrics_report one command, JS gate acorn, baseline ratchet per-metric maxima, vulture/jscpd/coverage lanes, fast lane + JS lane + npm ci docs, mutation decision mutmut baseline.*
