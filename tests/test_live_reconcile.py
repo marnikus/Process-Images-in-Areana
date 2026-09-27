@@ -186,6 +186,18 @@ def test_the_manual_slot_triggers_an_immediate_pass(tmp_path, monkeypatch):
     scheduled[0].close()
 
 
+def test_a_manual_click_reaches_the_reconciler_while_a_pass_runs(tmp_path, monkeypatch):
+    """The slot must not drop the click itself — `reconcile_once` queues it (I-68)."""
+    env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1)
+    env.bridge._page_pool = object()
+    env.bridge._auto_scan_running = True
+    scheduled = []
+    monkeypatch.setattr(browser_tabs, "schedule_coro", lambda b, coro: scheduled.append(coro) or coro)
+    assert env.bridge.auto_connect_scan("manual") == "pending"
+    assert len(scheduled) == 1 and scheduled[0].cr_code.co_name == "reconcile_once"
+    scheduled[0].close()
+
+
 def test_start_reconciler_is_idempotent(tmp_path, monkeypatch):
     env = build_bridge(tmp_path, build_stack(CORE_STACK), n_images=1)
     scheduled = []

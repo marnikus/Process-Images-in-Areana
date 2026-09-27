@@ -15,6 +15,11 @@ auto-rejoins it while unchecked. Row changes commit through `LiveDeps.commit`
 the live bus with `urls`. The service never imports `app.ui` or
 `app.browser`: the callables it needs arrive in `LiveDeps`. The row steps
 (claim/add/remove/sweep) live in `live/reconcile_rows.py`.
+
+ideal-size(reason): ~320 lines (was 378 before the row steps moved out) — the
+pass phases (fetch → rows → join/presence → membership → commit → summary)
+and the pass entry with its Reparse queue (I-68) are one sequence; splitting
+them again would scatter each phase from the `_Pass` it mutates.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ from app.services.live import url_policy as up
 from app.services.live.bus import live_bus
 from app.services.live.debug_view import interval_ms
 from app.services.live.feed import clear_row_assignments
+from app.services.live.listing import held_keys
 from app.services.live.reconcile_rows import DEFAULT_PATTERN, sync_rows
 from app.services.live.tab_owner import resolve_owners
 from app.services.live.worker_badges import assert_badges
@@ -171,7 +177,8 @@ async def _join_each(p: _Pass, sockets) -> int:
 
 async def _join_and_sync(p: _Pass, plan: ac.AutoConnectPlan) -> None:
     p.report.joined += await _join_each(p, plan.connect)
-    live = {(getattr(t, "id", "") or getattr(t, "ws_url", "")) for t in p.tabs or []} - {""}
+    live = ({(getattr(t, "id", "") or getattr(t, "ws_url", "")) for t in p.tabs or []}
+            | held_keys(p.tabs)) - {""}   # a held browser's pages are never marked stale
     revived, stale = ac.sync_pool_presence(getattr(p.bridge, "_page_pool", None), live)
     p.report.revived, p.report.stale = revived, len(stale)
     pool = getattr(p.bridge, "_page_pool", None)
@@ -234,14 +241,31 @@ def _summary(p: _Pass) -> None:
 
 
 async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
-    """One pass (loop, `auto_connect_scan` slot, Reparse); overlapping passes are skipped."""
+    """One pass (loop, `auto_connect_scan` slot, Reparse); overlapping passes are skipped.
+
+    A Reparse click that meets a running pass is QUEUED and runs the moment
+    that pass ends — a user's Reparse is never dropped (2026-09-27, I-68).
+    """
     if getattr(bridge, "_auto_scan_running", False):
+        _queue_if_manual(bridge, deps, source)
         return Report(error="busy")
     bridge._auto_scan_running = True
     try:
-        return await _pass(_Pass(bridge, deps, source, _stats(bridge)))
+        report = await _pass(_Pass(bridge, deps, source, _stats(bridge)))
     finally:
         bridge._auto_scan_running = False
+    if getattr(bridge, "_reparse_queued", False):
+        bridge._reparse_queued = False
+        return await reconcile_once(bridge, deps, "manual")
+    return report
+
+
+def _queue_if_manual(bridge, deps: LiveDeps, source: str) -> None:
+    """Remember a Reparse that arrived mid-pass (logged once per queue)."""
+    if source != "manual" or getattr(bridge, "_reparse_queued", False):
+        return
+    bridge._reparse_queued = True
+    deps.log("🔄 Reparse queued — runs right after the current pass", "info")
 
 
 async def _fetch(p: _Pass) -> bool:
@@ -285,10 +309,11 @@ async def _pool_phase(p: _Pass, plan: ac.AutoConnectPlan) -> None:
 
 
 async def _pass(p: _Pass) -> Report:
-    """fetch → rows (only when Chrome answered tabs) → join + presence → membership → commit → summary."""
+    """fetch → rows (tabs answered, or a manual Reparse) → join + presence → membership → commit → summary."""
     if not await _fetch(p):
         return p.report
-    plan = sync_rows(p) if p.tabs else ac.AutoConnectPlan()  # an empty fetch never touches rows
+    rebuild = bool(p.tabs) or p.source == "manual"   # auto: an empty fetch never touches rows
+    plan = sync_rows(p) if rebuild else ac.AutoConnectPlan()
     await _pool_phase(p, plan)
     _commit(p)
     _summary(p)

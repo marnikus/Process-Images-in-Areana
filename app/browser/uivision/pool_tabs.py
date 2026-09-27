@@ -15,6 +15,8 @@ Imports: sibling uivision modules + `page_status` only — no services, no ui.
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +24,7 @@ from ..page_status import PageInfo
 from . import plan, profiles, tabs
 
 FIREFOX_SCHEME = "firefox://"
+_FIREFOX_ID = re.compile(r".+_tab\d+$")
 BROWSER = "firefox"
 
 
@@ -75,6 +78,11 @@ class FirefoxPageInfo(PageInfo):
 def tab_id_for(profile_dir, index: int) -> str:
     """`{profile-dir-basename}_tab{N}` — stable across rescans (owner §2.2)."""
     return f"{Path(str(profile_dir)).name}_tab{int(index)}"
+
+
+def is_firefox_tab_id(tab_id) -> bool:
+    """True for the `{profile-dir}_tab{N}` shape `tab_id_for` builds (Chrome ids never match)."""
+    return isinstance(tab_id, str) and _FIREFOX_ID.search(tab_id) is not None
 
 
 def ws_for(tab_id: str) -> str:

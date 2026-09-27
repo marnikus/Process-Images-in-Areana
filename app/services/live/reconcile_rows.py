@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from app.services import auto_connect as ac
 from app.services.live import url_policy as up
+from app.services.live.listing import held_keys
 from app.services.run_state import pooled_ids
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ def claim_rows(urls: list, claims) -> int:
 
 
 def removal_spec(p: "_Pass") -> up.RemovalSpec:
-    live = ac.live_tab_keys(p.tabs)
+    live = ac.live_tab_keys(p.tabs) | held_keys(p.tabs)   # held = present, never "missing"
     p.stats["misses"] = up.advance_misses(p.urls, live, p.stats["misses"])
     linked = [u.tab_id for u in p.urls if u.tab_id]
     return up.RemovalSpec(rows=list(p.urls), live_keys=live, pattern=p.pattern,
@@ -88,13 +89,29 @@ def sync_rows(p: "_Pass") -> ac.AutoConnectPlan:
     return plan
 
 
+def _sweep_keeps(p: "_Pass", spec: up.RemovalSpec) -> tuple:
+    """(busy, held) tab keys the sweep must keep.
+
+    busy = a live job on the tab — only while a run is live (a flag left over
+    from an ended run never pins a row); held = the browser did not answer.
+    """
+    running = getattr(p.bridge, "_run_state", "idle") != "idle"
+    return (set(spec.busy_tabs) if running else set()), held_keys(p.tabs)
+
+
+def _kept_note(busy: int, held: int) -> str:
+    reasons = [f"{busy} job running"] * bool(busy) + [f"{held} browser not answering"] * bool(held)
+    return f" (kept: {', '.join(reasons)})" if reasons else ""
+
+
 def sweep_rows(p: "_Pass", spec: up.RemovalSpec) -> None:
     """Manual Reparse (D-2): every row without a live job goes — this pass rebuilds the list from open tabs.
 
     The checkbox each row had is remembered (`restore_enabled` puts it back
     on the fresh row); rows under a live job keep their identity (RULE 15).
     """
-    kept = [u for u in p.urls if u.tab_id in spec.busy_tabs]
+    busy, held = _sweep_keeps(p, spec)
+    kept = [u for u in p.urls if u.tab_id and u.tab_id in busy | held]
     gone = [u for u in p.urls if u not in kept]
     if not gone and not kept:
         return
@@ -102,5 +119,5 @@ def sweep_rows(p: "_Pass", spec: up.RemovalSpec) -> None:
     p.report.swept = p.report.removed = len(gone)
     p.report.removed_ids = sorted(u.id for u in gone)
     p.bridge.state.urls = kept
-    kept_note = f" ({len(kept)} kept: job running)" if kept else ""
-    p.deps.log(f"🧹 Reparse: cleared {len(gone)} URL row(s) — rebuilding from open tabs{kept_note}", "info")
+    note = _kept_note(sum(u.tab_id in busy for u in kept), sum(u.tab_id in held for u in kept))
+    p.deps.log(f"🧹 Reparse: cleared {len(gone)} URL row(s) — rebuilding from open tabs{note}", "info")

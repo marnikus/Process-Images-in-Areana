@@ -104,6 +104,7 @@ async def test_a_busy_row_keeps_its_identity_and_assignment(tmp_path):
     busy = UrlRow.create("https://arena.ai/c/1", enabled=True, tab_id="t1")
     busy.receiver = True
     env = mkenv(tmp_path, [tab("t1")], urls=[busy], pool=pool)
+    env.bridge._run_state = "running"  # a live job exists only inside a live run (I-68)
     report = await rc.reconcile_once(env.bridge, env.deps, "manual")
     assert env.bridge.state.urls == [busy] and report.swept == 0
     assert any("kept" in m for m in env.deps.lines)  # the sweep says why it kept the row

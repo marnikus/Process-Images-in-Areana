@@ -2,8 +2,9 @@
 
 `browser_tabs.reconcile_tabs` = Chrome rows + Firefox rows; the sentinel
 `firefox://…` joins through `LiveDeps.join_tab` routing, presence keeps the
-page alive, and a Chrome endpoint that did not answer skips the WHOLE pass
-(a failed fetch is a wait, not a removal) even when Firefox answered.
+page alive. A Chrome endpoint that did not answer no longer skips the pass
+when Firefox answered (2026-09-27, I-68): Firefox reconciles, every Chrome
+row/page is HELD (a failed fetch is still a wait, not a removal).
 
 RED at base: no firefox rows appear and the sentinel never joins.
 """
@@ -99,23 +100,67 @@ async def test_firefox_tab_enters_rows_and_pool_via_sentinel(tmp_path, monkeypat
     assert any("🔺 URL added https://arena.ai/c/7" in m for m in env.deps.lines)
 
 
-@pytest.mark.asyncio
-async def test_cdp_failure_skips_the_pass_before_the_firefox_merge(tmp_path, monkeypatch):
-    from app.services.live.reconcile import ScanUnavailable
-    fake_firefox(tmp_path, monkeypatch)
+def chrome_down(monkeypatch, reason="[WinError 10061] connection refused"):
+    """The real shape of a dead endpoint: no rows + the scan names why (never an exception)."""
+    async def rows(bridge):
+        bridge._scan_failed, bridge._scan_missing = "", {"chrome": reason}
+        return []
+    monkeypatch.setattr(browser_tabs, "live_tab_rows", rows)
+
+
+def chrome_row_and_page(env):
+    """A linked Chrome row whose tab sits in the pool — what Chrome-down must not touch."""
+    from app.browser.page_status import PageInfo
+    env.bridge._page_pool.add_page(PageInfo(tab_id="c1", ws_url=chrome_tab("c1").ws_url,
+                                            title="T", url="https://arena.ai/c/1"))
     linked = UrlRow.create("https://arena.ai/c/1", enabled=True, tab_id="c1")
+    env.bridge.state.urls = [linked]
+    return linked
 
-    async def dead(_bridge):
-        raise ScanUnavailable("endpoint down")
 
-    monkeypatch.setattr(browser_tabs, "live_tab_rows", dead)
-    env = env_with(tmp_path, urls=[linked])
-    for _ in range(3):
+@pytest.mark.asyncio
+async def test_chrome_down_firefox_still_joins_and_chrome_is_held(tmp_path, monkeypatch):
+    """2026-09-27 owner report: "Firefox still asking to connect manually" — a Chrome
+    endpoint that did not answer used to skip the WHOLE pass, so Firefox never joined."""
+    fake_firefox(tmp_path, monkeypatch)
+    chrome_down(monkeypatch)
+    env = env_with(tmp_path)
+    linked = chrome_row_and_page(env)
+    for _ in range(3):   # past the 2-miss hysteresis: held keys never count as missing
         report = await rc.reconcile_once(env.bridge, env.deps.as_deps(), "auto")
         assert report.removed == 0
-        assert env.bridge.state.urls == [linked]
-        assert env.bridge._page_pool.get_page("c1") is None
-    assert env.bridge.state.urls[0].tab_id == "c1"  # untouched, Firefox never merged in
+    urls = env.bridge.state.urls
+    assert urls[0] is linked and urls[0].tab_id == "c1"
+    assert [u.tab_id for u in urls[1:]] == [FF_TAB]
+    assert env.bridge._page_pool.get_page(FF_TAB).browser == "firefox"
+    assert env.bridge._page_pool.get_page("c1").is_connected  # held: never marked stale
+
+
+@pytest.mark.asyncio
+async def test_chrome_down_and_no_firefox_still_skips_the_pass(tmp_path, monkeypatch):
+    fake_firefox(tmp_path, monkeypatch, rows=[])
+    chrome_down(monkeypatch)
+    env = env_with(tmp_path)
+    linked = chrome_row_and_page(env)
+    for _ in range(3):
+        report = await rc.reconcile_once(env.bridge, env.deps.as_deps(), "auto")
+        assert report.error and report.removed == 0
+    assert env.bridge.state.urls == [linked]
+
+
+@pytest.mark.asyncio
+async def test_reparse_with_chrome_down_rebuilds_firefox_and_keeps_chrome(tmp_path, monkeypatch):
+    fake_firefox(tmp_path, monkeypatch)
+    chrome_down(monkeypatch)
+    env = env_with(tmp_path)
+    linked = chrome_row_and_page(env)
+    await rc.reconcile_once(env.bridge, env.deps.as_deps(), "auto")
+    ff_old = env.bridge.state.urls[1]
+    await rc.reconcile_once(env.bridge, env.deps.as_deps(), "manual")
+    urls = env.bridge.state.urls
+    assert urls[0] is linked                                  # Chrome said nothing: kept
+    assert urls[1].tab_id == FF_TAB and urls[1].id != ff_old.id  # Firefox: fresh row
+    assert any("not answering" in m for m in env.deps.lines)
 
 
 @pytest.mark.asyncio

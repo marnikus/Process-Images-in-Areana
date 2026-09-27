@@ -183,13 +183,38 @@ async def reconcile_tabs(bridge):
     still open. The reconciler already knows how to wait (`_fetch` → "Reconcile
     skipped"), so an unusable pass says so instead of pretending to be empty.
     """
-    from app.services.live.reconcile import ScanUnavailable
     rows = await live_tab_rows(bridge)
+    reason = _scan_reason(bridge)
+    if rows or not reason:
+        return rows + _firefox_rows(bridge)
+    return _firefox_only(bridge, reason)
+
+
+def _scan_reason(bridge) -> str:
+    """Why the Chrome pass said nothing ("" when it answered, even with zero tabs)."""
     missing = getattr(bridge, "_scan_missing", None) or {}
-    reason = getattr(bridge, "_scan_failed", "") or ("; ".join(missing.values()) if missing else "")
-    if not rows and reason:
+    return getattr(bridge, "_scan_failed", "") or ("; ".join(missing.values()) if missing else "")
+
+
+def _firefox_only(bridge, reason: str):
+    """Chrome did not answer: Firefox still reconciles, every Chrome key is HELD (I-68).
+
+    Nothing answered at all → `ScanUnavailable` (the pass waits, as before).
+    """
+    from app.services.live.listing import Listing
+    from app.services.live.reconcile import ScanUnavailable
+    firefox = _firefox_rows(bridge)
+    if not firefox:
         raise ScanUnavailable(reason[:300])
-    return rows + _firefox_rows(bridge)
+    return Listing(firefox, held=_chrome_keys(bridge))
+
+
+def _chrome_keys(bridge) -> set:
+    """Tab keys of every Chrome row and pooled Chrome page (Firefox ids excluded)."""
+    from app.browser.uivision import pool_tabs
+    keys = {u.tab_id for u in bridge.state.urls if u.tab_id}
+    keys |= set(pooled_ids(getattr(bridge, "_page_pool", None)))
+    return {k for k in keys if not pool_tabs.is_firefox_tab_id(k)}
 
 
 def _firefox_rows(bridge) -> list:
@@ -637,8 +662,8 @@ class BrowserTabsMixin:
         """Non-blocking auto-connect scan: rows + pool follow open tabs."""
         if not self.cdp or not self._page_pool:
             return json.dumps({"ok": False, "error": "CDP or pool not ready"})
-        if self._auto_scan_running:
-            return "pending"  # a pass is in flight; the reconciler owns the flag
+        if self._auto_scan_running and source != "manual":
+            return "pending"  # an auto pass is in flight; a Reparse is queued by reconcile_once
         schedule_coro(self, reconcile_once(self, live_deps(self), source or "auto"))
         return "pending"
 
