@@ -81,22 +81,7 @@ class CDPTransport(QObject):
         return self._host, self._port
 
     async def disconnect(self):
-        self._connected = False
-        _fail_pending(self, "CDP disconnected")   # waiters must not burn timeouts
-        ws, self._ws = self._ws, None            # detach first; teardown owns close
-        if self._receive_task:
-            self._receive_task.cancel()
-            try:
-                await self._receive_task
-            except Exception:
-                pass
-            self._receive_task = None
-        if ws:
-            try:
-                await ws.close()
-            except Exception:
-                pass
-        self.disconnected.emit()
+        await _disconnect(self)
 
     async def send(self, method: str, params: dict | None = None, timeout: float = 30) -> dict:
         if (ws := self._ws) is None or not self._connected:
@@ -174,6 +159,26 @@ async def _send_payload(transport, cmd_id: int, ws, payload: str) -> None:
     except Exception:
         transport._pending.pop(cmd_id, None)
         raise
+
+
+async def _disconnect(transport) -> None:
+    """Close on purpose: fail waiters, stop the receive loop, close the socket."""
+    transport._connected = False
+    _fail_pending(transport, "CDP disconnected")   # waiters must not burn timeouts
+    ws, transport._ws = transport._ws, None        # detach first; teardown owns close
+    if transport._receive_task:
+        transport._receive_task.cancel()
+        try:
+            await transport._receive_task
+        except Exception:
+            pass
+        transport._receive_task = None
+    if ws:
+        try:
+            await ws.close()
+        except Exception:
+            pass
+    transport.disconnected.emit()
 
 
 def _receive_teardown(transport) -> bool:
