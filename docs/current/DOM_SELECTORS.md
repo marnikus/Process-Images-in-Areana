@@ -258,6 +258,7 @@ form.flex.w-full.flex-col
 | **expectedCount** | 0..2 (0=idle, 1-2=generating — Response A and Response B each have own spinner for side-by-side arena) |
 | **Verification** | spinner visible ⇒ processing; not visible ⇒ idle. In `wait_for_new_output`, check spinner: if spinning true, log "Generation started — spinner visible Response A/B" and continue polling. When spinner disappears + new output image appears, consider completed. |
 | **Evidence** | Saved HTML shows model selector button with Max text + user HTML 2026-09-16 shows Response A/B spinner with canvas 28x28 |
+| **Scope rule 2026-09-27 (I-69)** | A spinner counts ONLY with `closest(Scope)` non-null — the sidebar shows the same `div.animate-spin` beside every other generating chat, which held the output wait until timeout. One JS source: `probe_selectors.generating_spinners_js()` (output probe, processing probe, Watcher). |
 | **Fix 2026-09-16** | `JS_CHECK_NEW_OUTPUT` now returns `spinning`, `spinCount`, `spinDetails` (label), and `wait_for_new_output` logs spinner start, polls while spinning, waits for spinner gone + new image. |
 
 ---
@@ -561,6 +562,7 @@ href="/image/direct"] > svg + span "New Chat"`.
 | **Click path** | Shared visual runner `find_and_click` (RULE 1): RED find → pause → ORANGE click, candidates tried in order |
 | **Loaded gate** | `document.readyState === "complete"` + `is_page_ready()` (textarea + send + file + output, no dialog) + composer `textarea.value === ""` |
 | **Verification** | Reset returns ready only when all three hold (else timeout reason); cooldown starts after reset, tab steady only after pause expires |
+| **Direct open (2026-09-27, I-69)** | Click or load failed ⇒ `Page.navigate` to `<origin>/image/direct` (`site_adapter.NEW_CHAT_PATH` = the link's href, `probe_selectors.new_chat_path()`), then the same loaded gate; never on cancel |
 | **Evidence** | User-provided sidebar HTML 2026-09-16 |
 | **Action Blocks** | None — automatic post-job step (`app/browser/new_chat.py` via `app/services/cooldown_service.py`), not a toggleable block |
 | **Site adapter** | `new_chat_button` entry, lastVerified 2026-09-16 |
