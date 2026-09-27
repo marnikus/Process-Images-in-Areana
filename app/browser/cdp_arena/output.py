@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, Tuple, Callable, List
 
+from .. import page_recovery
 from ..output_probes import build_check_js
 from ..output_state import flatten_diagnostics
 from ..output_wait import WaitSpec as PollSpec, wait_for_new_output_with_spec
@@ -103,14 +104,32 @@ async def _poll_diag_or_revive(ctrl, ctx: PollContext, cdp=None) -> Dict[str, An
 
 async def _poll_output_diag(cdp, ctx: PollContext, ctrl) -> Dict[str, Any]:
     js = build_check_js(ctx.old_srcs, ctx.correlation_id, ctx.old_outputs)
-    res = await cdp.evaluate(js)
-    diag = flatten_diagnostics(res) if res else {"ready": False, "reason": "no_result"}
-    if diag.get("ready"):
-        return diag
+    diag = _read_check(cdp, await cdp.evaluate(js))
+    if diag.get("ready") or diag.get("reason") == "page_unresponsive":
+        return diag   # I-71: no banner scan (another 30 s) on a page that is not answering
     err = match_page_error(await scan_page_errors(cdp), ctx.err_base)
     if err:
         raise PageErrorAbort(err)
     return diag
+
+
+def _read_check(cdp, res) -> Dict[str, Any]:
+    """The check's answer as a diag; no answer keeps the transport's reason (I-71)."""
+    if res:
+        return flatten_diagnostics(res)
+    if page_recovery.page_unresponsive(cdp):
+        return _frozen_diag(cdp)
+    return _no_result_diag(cdp)
+
+
+def _no_result_diag(cdp) -> Dict[str, Any]:
+    """The check answered nothing: keep the transport's reason (I-71 — a bare `no_result` hid it)."""
+    return {"ready": False, "reason": "no_result", "detail": page_recovery.evaluate_failure(cdp)[:120]}
+
+
+def _frozen_diag(cdp) -> Dict[str, Any]:
+    """'page_unresponsive' + the transport's words — what the wait tells and times out with."""
+    return {"ready": False, "reason": "page_unresponsive", "detail": page_recovery.unresponsive_text(cdp)}
 
 
 async def _security_gate(cdp, ctrl) -> None:
@@ -140,7 +159,7 @@ async def _map_wait_result(cdp, result, baseline, timeout_ms):
                              "baseline": baseline, "rect": rect}
     if result.get("reason") == "cancelled":
         return "failed", {"error": "Cancelled", "cancelled": True}
-    final_baseline = await capture_baseline(cdp)
+    final_baseline = {} if page_recovery.page_unresponsive(cdp) else await capture_baseline(cdp)
     return "failed", {"error": _timeout_text(result, timeout_ms),
                       "last_baseline": final_baseline, "last_check": result}
 
@@ -157,7 +176,8 @@ def _last_check(result) -> str:
     reason = last.get("reason", "")
     if reason in ("", "timeout"):
         return ""
-    return f" — last check: {reason}{_spinner_note(last)}"
+    detail = f" ({last['detail']})" if last.get("detail") else ""
+    return f" — last check: {reason}{detail}{_spinner_note(last)}"
 
 
 def _spinner_note(diag) -> str:
@@ -188,6 +208,8 @@ async def _prepare_wait(cdp, spec: WaitSpec) -> PollContext:
 async def _run_wait(cdp, spec: WaitSpec, ctx: PollContext) -> Tuple[str, Dict[str, Any]]:
     """Poll until the wait's own gates settle (done/abort mapping included)."""
     async def check_fn():
+        if await page_recovery.still_frozen(cdp):   # I-71: a 3 s ping, not three 30 s probes
+            return _frozen_diag(cdp)
         await _security_gate(cdp, spec.ctrl)
         diag = await _poll_diag_or_revive(spec.ctrl, ctx, cdp)
         return await _run_resume_gate(spec.ctrl, diag)

@@ -45,8 +45,9 @@ def note_reason(diag: dict, log_cb: Callable) -> None:
     reason = str(diag.get("reason") or "")
     if not reason or reason in _ALREADY_TOLD:
         return
-    src = str(diag.get("src") or "")
-    log_cb(f"🔍 Output check: {reason}" + (f" ({src[-60:]})" if src else ""))
+    src, detail = str(diag.get("src") or ""), str(diag.get("detail") or "")
+    log_cb(f"🔍 Output check: {reason}" + (f" — {detail}" if detail else "")
+           + (f" ({src[-60:]})" if src else ""))
 
 
 def _remember(state: LoopState, diag: dict, log_cb: Callable) -> None:

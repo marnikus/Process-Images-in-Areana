@@ -8,6 +8,8 @@ started, yet the one wait never ended. Three rules now bound it:
   scoped to a response header row) and no wait is running.
 * **Restart** — a `[JOB-ID: …]` that was not on the page when the wait began
   appears: that is a new generation, so its clock starts from zero (one line).
+* **Hold** — the page did not answer (I-71): nothing is known, so nothing
+  ends; only the timeout can end the wait.
 * **End** — the spinner is gone (`handle_clear` resumes as before), or the
   timeout passes: ONE timeout line, overlay hidden, jobs resumed, and the wait
   stays quiet (`stale`) until the spinner disappears or a new JOB-ID appears.
@@ -35,6 +37,11 @@ def page_jobs(details) -> frozenset:
     return frozenset(str(j) for j in jobs or () if j)
 
 
+def unanswered(details) -> bool:
+    """The generation probe got no answer from the page (`cdp_arena.state.is_generating`)."""
+    return isinstance(details, dict) and bool(details.get("unanswered"))
+
+
 def fresh_jobs(episode: Episode, jobs: frozenset) -> frozenset:
     """JOB-IDs that appeared since the wait began — a new generation (none before a baseline)."""
     return jobs - episode.jobs if episode.jobs else frozenset()
@@ -48,10 +55,14 @@ class GenerationWatch:
         self.cdp_probe, self.job_ctrl = deps.cdp_probe, deps.job_ctrl
         self._deps, self._log = deps, log   # `log` binds late: `set_logger` swaps the sink
         self.episode = Episode()
+        self._told_silence = False    # the "page is not answering" line was told for this stretch
 
     async def handle(self, cdp, is_gen: bool, details) -> bool:
         """True = this tick belongs to a generation (the loop skips the clear step)."""
         self.state.last_generation_details = details
+        if unanswered(details):
+            return await self._hold(cdp, details)
+        self._told_silence = False
         if not is_gen:
             self.episode = Episode()        # spinner gone: the next one is a new generation
             return False
@@ -61,6 +72,21 @@ class GenerationWatch:
             await self._start(cdp, details, jobs, fresh)
         elif not self.episode.stale:
             self.episode.jobs = self.episode.jobs or jobs
+            await self._check_timeout(cdp)
+        return True
+
+    async def _hold(self, cdp, details) -> bool:
+        """The page did not answer: nothing is known — keep the wait (its timeout still ends it).
+
+        I-71: a timed-out probe used to read as "spinner gone": the Watcher
+        logged "generation finished", cleared the overlay and resumed jobs
+        while the page was simply not answering. One line per silent stretch.
+        """
+        if not self._told_silence:
+            self._told_silence = True
+            self._log(f"👁️ Watcher: the page is not answering ({str(details.get('error', ''))[:90]}) "
+                      f"— holding the current state", "warn")
+        if self.state.waiting_kind == "generation" and not self.episode.stale:
             await self._check_timeout(cdp)
         return True
 

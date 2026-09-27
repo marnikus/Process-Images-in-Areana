@@ -6,7 +6,9 @@ shared visual runner (RULE 1); every step is reported (RULE 2); selectors
 are semantic-first (RULE 21). When the click fails or the page never gets
 clean, the reset opens the New Chat page itself — `Page.navigate` to the
 link's own path on the tab's origin, a full page restart — and waits for
-the same proof (I-69). Imports: same layer only.
+the same proof (I-69). A page that stopped answering (a timed-out probe
+and no answer to a 3 s ping) is told as such and skips the 30 s probes
+(I-71). Imports: same layer only.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 from urllib.parse import urlsplit
 
+from . import page_recovery
 from .probe_selectors import new_chat_path, new_chat_selectors, textarea_primary
 from .visual_click import ClickRequest, find_and_click
 
@@ -117,18 +120,25 @@ async def _is_composer_empty(client: Any) -> bool:
 
 
 async def _click_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
-    """Try candidates in order via the visual runner."""
-    for selector, label_selector, match_text in NEW_CHAT_CANDIDATES:
-        req = ClickRequest(selector=selector, label_selector=label_selector,
-                           match_text=match_text, label="New Chat")
-        try:
-            result = await find_and_click(ctx.client, req, engine=ctx.engine)
-        except Exception as e:
-            _report(ctx.engine, f"New Chat click error {selector}: {e}", "warn")
-            continue
-        if result == "ok":
-            return True, selector
+    """Try candidates in order via the visual runner; a page that stopped answering ends it (I-71)."""
+    for candidate in NEW_CHAT_CANDIDATES:
+        if await page_recovery.still_frozen(ctx.client):   # no more 30 s FIND probes
+            return False, page_recovery.unresponsive_text(ctx.client)
+        if await _try_candidate(ctx, candidate) == "ok":
+            return True, candidate[0]
     return False, "new-chat button not found"
+
+
+async def _try_candidate(ctx: ResetCtx, candidate: tuple) -> str:
+    """One (selector, label, text) candidate through the visual runner: its result, or 'error'."""
+    selector, label_selector, match_text = candidate
+    req = ClickRequest(selector=selector, label_selector=label_selector,
+                       match_text=match_text, label="New Chat")
+    try:
+        return await find_and_click(ctx.client, req, engine=ctx.engine)
+    except Exception as e:
+        _report(ctx.engine, f"New Chat click error {selector}: {e}", "warn")
+        return "error"
 
 
 def _is_cancelled(ctx: ResetCtx) -> bool:
@@ -158,6 +168,8 @@ def _fresh_chat_ready(ready: bool, reasons) -> bool:
 
 async def _check_ready(ctx: ResetCtx) -> tuple[bool, str]:
     """One readiness probe: (ready, status-note for timeout messages)."""
+    if await page_recovery.still_frozen(ctx.client):       # a 3 s ping keeps the deadline honest
+        return False, page_recovery.unresponsive_text(ctx.client)
     if not await _is_document_complete(ctx.client):
         return False, "document not complete"
     try:

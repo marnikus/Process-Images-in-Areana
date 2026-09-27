@@ -20,6 +20,9 @@ Public API
 evaluate_failure(cdp)             human reason for the last empty evaluate
 is_transient_loss(cdp)            True when waiting/reconnecting can help
 recover_page_context(cdp, report) wait (and reconnect) until the document answers
+page_unresponsive(cdp)            I-71: the last evaluate timed out (page not answering)
+page_answers(cdp) / still_frozen  I-71: a 3 s ping instead of another 30 s probe
+unresponsive_text(cdp)            I-71: 'page not answering (<transport reason>)'
 """
 
 from __future__ import annotations
@@ -119,3 +122,43 @@ async def recover_page_context(cdp, report: Optional[Reporter] = None,
             return True
     say(f"❌ page context did not come back after {attempts} attempts ({reason})", "error")
     return False
+
+
+# --- I-71: a page that stopped answering ---------------------------------
+# Owner log 2026-09-27: after the page stopped answering, every output poll
+# cost ~90 s (security gate + check + error scan, 30 s timeout each) and the
+# New Chat reset hung on the same 30 s probes. Once one evaluate has timed
+# out, callers ask a 3 s ping first instead of queueing more 30 s probes.
+# Measured in Chrome: neither `Page.reload` nor a same-site `Page.navigate`
+# rescues a page whose main thread is stuck — only waiting does; a blocking
+# JavaScript dialog is answered by `cdp.dialogs` (see `cdp/dialogs.py`).
+PING_TIMEOUT_S = 3.0
+_PING = {"expression": "1", "returnByValue": True}
+
+
+def page_unresponsive(cdp) -> bool:
+    """True when the last evaluate on this connection timed out (the page did not answer)."""
+    kind = str(getattr(cdp, "last_error_kind", "") or "")
+    return kind == "transport" and "timed out" in evaluate_failure(cdp).lower()
+
+
+async def page_answers(cdp, timeout_s: float = PING_TIMEOUT_S) -> bool:
+    """One cheap ping; an answer clears the timed-out record (the page is back)."""
+    from .cdp.dialogs import close_open_dialog
+    await close_open_dialog(cdp)
+    try:
+        await cdp.send("Runtime.evaluate", dict(_PING), timeout=timeout_s)
+    except Exception:
+        return False
+    cdp.last_error, cdp.last_error_kind = "", ""
+    return True
+
+
+async def still_frozen(cdp) -> bool:
+    """The page timed out before and still does not answer a short ping."""
+    return page_unresponsive(cdp) and not await page_answers(cdp)
+
+
+def unresponsive_text(cdp) -> str:
+    """'page not answering (CDP command Runtime.evaluate timed out after 30s)'."""
+    return f"page not answering ({evaluate_failure(cdp)[:90] or 'no reply'})"

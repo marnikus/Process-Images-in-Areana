@@ -48,8 +48,8 @@ async def is_security_dialog_visible(cdp) -> bool:
 async def is_generating(cdp) -> Tuple[bool, Dict[str, Any]]:
     try:
         result = await cdp.evaluate(JS_IS_GENERATING)
-        if not result:
-            return False, {}
+        if not result:   # I-71: no answer is not "spinner gone" — the Watcher holds its state
+            return False, {"unanswered": True, "error": str(getattr(cdp, "last_error", "") or "no answer")}
         is_gen = bool(result.get("isGenerating") or result.get("spinning"))
         return is_gen, result
     except Exception as e:
