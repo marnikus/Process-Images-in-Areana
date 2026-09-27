@@ -323,6 +323,24 @@ Sign-in detection heuristics:
 * URL contains "/auth" or "/login"
 * Presence of `a[href*="auth"]` with sign-in text
 
+### H.1 New chat — asked before every job (I-74, 2026-09-27)
+
+A job never navigates; it runs on whatever the tab shows. `chat_page.build_chat_page_js`
+reads what a started conversation leaves behind — any one of these means **not** a new chat:
+
+| Evidence | Source (site_adapter / probe_selectors) | Evidence for it |
+|---|---|---|
+| path starts with `/c/` | `CONVERSATION_PATH_PREFIX` → `conversation_path_prefix()` | saved page `arena.ai/c/01a0a4f3-…`; owner screenshot 22:40 `arena.ai/c/01a0e496-…` |
+| user message present | `user_message` (I-70) | saved page: 1 × `div.group.flex-col.self-end` |
+| generated image present | `chat_output_selectors()` — the `output_image` list filtered to Arena-storage srcs (`cloudflarestorage`, `messages-prod`); the broad `img.cursor-pointer` fallbacks are excluded (the sidebar promo card matches them on a fresh page) | owner HTML 22:40: `img[src^="https://messages-prod.…r2.cloudflarestorage.com/…"]` |
+| prompt box text / no prompt box | `textarea_primary()` | saved page: `textarea[name="message"]` in a `form` |
+| attached file in the composer | `attachment_preview_image`, counted inside the textarea's `form` only | |
+
+Verified in real Chrome (headless 153, app's own `CDPClient`) on the saved page served at its
+`/c/…` path and on a fresh page at `/image/direct`: `(False, 'a started chat (/c/01a0a4f3-…/), 1
+message(s) on the page')` / `(True, 'new chat')`. Note: a browser-saved page rewrites the New Chat
+link to an absolute `https://arena.ai/image/direct`; the live site's is relative.
+
 ---
 
 ## I. Selector Object Structure — For Every Element
