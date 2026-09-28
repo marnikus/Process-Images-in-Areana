@@ -259,6 +259,7 @@ def restore_preset_cooldown(bridge, doc: dict) -> None:
                 cooldown_captcha_penalty_seconds=clamp_seconds(cd.get("captcha_penalty_seconds", 900), 900),
                 cooldown_rate_limit_penalty_seconds=clamp_seconds(cd.get("rate_limit_penalty_seconds", 1800), 1800))
             bridge._log("Restored cooldown settings from preset", "info")
+            bridge.cooldown_config_updated.emit(bridge.get_cooldown_config())   # views show them
         except Exception as e:
             log.warning(f"Failed to restore cooldown from preset: {e}")
 

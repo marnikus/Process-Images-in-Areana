@@ -83,6 +83,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
     page_pool_updated = Signal(str)  # JSON snapshot steady/busy
     thumbnail_ready = Signal(str, str)  # img_id, payload_json — non-blocking thumb
     job_history_updated = Signal(str)  # JSON {entries, limit, total, next_job_no}
+    cooldown_config_updated = Signal(str)  # JSON = get_cooldown_config reply; both views re-render
     firefox_auto_updated = Signal(str)  # JSON status stream of the Firefox-auto window (I-63)
 
     def __init__(self, config_manager: ConfigManager, state_path: Path, cdp_client=None, parent=None):

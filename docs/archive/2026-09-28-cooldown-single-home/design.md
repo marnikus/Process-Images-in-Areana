@@ -27,9 +27,16 @@ acceptance points and reverses one decision the spec did not approve.
 * **D3 — the Settings module is renamed** `NewTabSetting` → `JobCycleSetting`
   (`job-cycle-setting.js`): it now owns the whole Settings → Job Cycle box (enable + new
   tab), and a name that says "new tab" would mislead. (Structure — same commit as D2.)
-* **D4 — no stale views**: `JobCycleSetting.refreshAll()` reloads both views from the one
-  state; called after a Settings save, after a URL List save (`UrlListCooldown.save`),
-  and after an arena preset load / import (F4).
+* **D4 — no stale views, one refresh point**: after every successful `set_cooldown_config`
+  and every preset cooldown restore the bridge pushes the stored state —
+  `cooldown_config_updated`, the same JSON as the `get_cooldown_config` reply — and
+  `JobCycleSetting.apply()` (connected by the module itself, like `JobHistory`) re-renders
+  BOTH views (`UrlListCooldown.applyConfig` + the Settings switch / new-tab option).
+  *Rejected first draft:* reloading from each caller (Settings save, the URL List save
+  callback, the preset render and import callbacks) — four places to remember, and the
+  frozen `url-list/cooldown.js` (48 lines, `max_cc` at the hard limit 10) cannot take the
+  hook; the push also covers any future writer. Accepted growth: `bridge.py` class LOC
+  95 → 96 (one `Signal` line; Qt signals are class attributes).
 * **D5 — behaviour unchanged**: no Python change to clamping, stacking or the cooldown
   cycle; `restore_preset_cooldown` keeps its full-restore semantics.
 

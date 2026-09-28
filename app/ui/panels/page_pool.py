@@ -307,7 +307,9 @@ class PagePoolMixin:
             cfg = _save_cooldown(self.config, data)
             tab = new_tab.save_setting(self.config, data)
             self._log(_cooldown_line(cfg, tab), "success")
-            return json.dumps({"ok": True, "config": cfg, "new_tab": tab}, ensure_ascii=False)
+            reply = json.dumps({"ok": True, "config": cfg, "new_tab": tab}, ensure_ascii=False)
+            self.cooldown_config_updated.emit(reply)   # URL List bar + Settings switch re-render
+            return reply
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 

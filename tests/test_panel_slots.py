@@ -45,7 +45,18 @@ def make_host(mixins, **attrs):
         host._emit_arena_state = lambda: None
     if not hasattr(host, "_emit_pool_status"):
         host._emit_pool_status = lambda: None
+    if not hasattr(host, "cooldown_config_updated"):
+        host.cooldown_config_updated = RecordingSignal()
     return host, logs
+
+
+class RecordingSignal:
+    """Stands in for a bridge Signal on a mixin host; keeps what was emitted."""
+    def __init__(self):
+        self.emitted = []
+
+    def emit(self, *args):
+        self.emitted.append(args)
 
 
 def make_state(urls=(), images=()):

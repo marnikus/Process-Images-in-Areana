@@ -541,12 +541,16 @@
         <div style="font-size:10px; color:var(--text-muted);">Same setting as the Job History header's "show last" — saving here or there updates both; the log itself keeps the last 500 on disk.</div>
       </div>
       <!-- Job Cycle — what happens after each job (I-79). The pause / captcha / rate-limit
-           values live ONLY in the URL List bar (2026-09-28 owner: no duplicate controls). -->
+           values live ONLY in the URL List bar (2026-09-28 owner: no duplicate controls);
+           the enable switch is kept here as a second view of the same stored key. -->
       <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin:10px 0; background:var(--bg-card);">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
           <span class="material-icons" style="font-size:16px; color:var(--accent);">timer</span>
           <b style="font-size:12px;">Job Cycle (after each job)</b>
         </div>
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin:4px 0 6px;" title="Same switch as the URL List bar's &quot;on&quot; — saving here or there updates both. The pause and penalty lengths are set in the URL List bar.">
+          <input id="cooldownEnabled" type="checkbox" checked> Enable minimum pause between jobs
+        </label>
         <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin:4px 0 6px;" title="After each job (failed or success) the job's tab is closed and the worker continues in a fresh tab at the URL below — cooldown, job count and number move with it. Chrome tabs only.">
           <input id="newTabEnabled" type="checkbox"> Start new chat as new tab (close the job's tab, continue in a fresh one)
         </label>

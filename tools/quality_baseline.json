@@ -3584,7 +3584,7 @@
   },
   "app/ui/bridge.py": {
     "max_func_loc": 15,
-    "max_class_loc": 95,
+    "max_class_loc": 96,
     "func_count": 10,
     "funcs": {
       "__init__": 15,
