@@ -50,3 +50,16 @@ tab; its 5-minute reminder is off, the other reasons keep theirs; `_live_reason`
 still holds the plain reason for the run badge, the phase is `_live_phase`).
 The one-off pause-start line at the job's finish (`⏳ Page … cooling 05:00 (total …)`)
 is not a wait line and is unchanged.
+
+## 5. Round 3 (same day, owner): "leave only 04:00 and then 00:30"
+
+For a 5-minute pause the two lines are **04:00 and 00:30** — the first minute of the
+wait has passed, and 30 s are left. **Round 2's phases replaced:** `countdown_note(start,
+left)` = `first minute` once 60 s of the wait have passed, `last 30 s` at ≤ 30 s left;
+`CountdownNotes` (one per wait) fixes the start at its first check and returns each note
+once. So the wait is silent at its start (the run badge says "waiting for cooldown"; a
+finished job's own pause line names the length). A wait of ≤ 90 s logs only 00:30; one of
+≤ 30 s logs one line at once. Both loggers: `wait_for_tab_ready` (20 lines now, was 22)
+and the supervisor's all-cooling reason (a fresh wait gets fresh notes; `_live_phase` gone).
+`CountdownNotes` is the first class in `core/cooldown.py` (2 methods, 15 lines) — recorded
+in the baseline: the notes need state in two callers; a closure would only hide the class.

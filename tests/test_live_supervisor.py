@@ -130,7 +130,9 @@ async def test_no_tab_all_cooling_and_cdp_down_are_wait_states(tmp_path, monkeyp
     await env.sleep(0.06)
     assert not task.done() and env.bridge._run_state == "running"
     head = sv.REASON_LINES[reason][0].split("{")[0]
-    assert sum(m.startswith(head) for m in logs(env)) == 1
+    # the cooldown wait is silent at its start (owner 2026-09-28: 60 s in + 30 s before the end only;
+    # the run badge says "waiting for cooldown"); every other wait state says why at once
+    assert sum(m.startswith(head) for m in logs(env)) == (0 if reason == "all cooling" else 1)
     assert env.recs["job_started"].calls == []  # a wait state never dispatches
     env.bridge._cancel_requested = True
     task.cancel()

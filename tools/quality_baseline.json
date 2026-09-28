@@ -1383,7 +1383,7 @@
   },
   "app/core/cooldown.py": {
     "max_func_loc": 14,
-    "max_class_loc": 7,
+    "max_class_loc": 15,
     "func_count": 7,
     "funcs": {
       "clamp_seconds": 11,
@@ -1394,7 +1394,7 @@
       "cooldown_total": 5,
       "format_remaining": 8
     },
-    "max_methods": 0,
+    "max_methods": 2,
     "max_cc": 4,
     "max_cog": 3,
     "max_nest": 1,

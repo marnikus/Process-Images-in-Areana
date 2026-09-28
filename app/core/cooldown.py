@@ -87,13 +87,30 @@ def cooldown_total(base_seconds: int, pending_penalty: int) -> int:
     return base + extra
 
 
-def countdown_phase(seconds: float) -> str:
-    """'last minute' once 60 s or less are left, else 'cooling'.
+def countdown_note(start_left: float, left: float) -> str:
+    """The wait note due now: 'first minute' once 60 s of the wait have passed,
+    'last 30 s' at 30 s or less left, '' before either (owner rule 2026-09-28:
+    a 5-minute pause logs 04:00 and 00:30, nothing else)."""
+    if left <= 30:
+        return "last 30 s"
+    return "first minute" if start_left - left >= 60 else ""
 
-    A cooldown wait logs only when its phase changes: one line when it starts, one
-    in its last minute — two at most (owner rule 2026-09-28, no countdown spam).
-    """
-    return "last minute" if float(seconds) <= 60 else "cooling"
+
+class CountdownNotes:
+    """One cooldown wait's log notes — each falls due once, two lines at most."""
+
+    def __init__(self) -> None:
+        self._start: float | None = None
+        self._last = ""
+
+    def due(self, left: float) -> str:
+        """The note to log at this check ('' = stay quiet); the first check fixes the start."""
+        self._start = left if self._start is None else self._start
+        note = countdown_note(self._start, left)
+        if not note or note == self._last:
+            return ""
+        self._last = note
+        return note
 
 
 def format_remaining(seconds: int) -> str:

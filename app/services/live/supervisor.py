@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from app.browser.page_status import PageStatus
 from app.services import auto_connect as ac
 from app.services.batch_orchestrator import pool_summary, resolve_and_claim_tab, run_pass
-from app.core.cooldown import countdown_phase
+from app.core.cooldown import CountdownNotes
 from app.services.cooldown_service import is_stuck_status
 from app.services.firefox_job_recovery import recover_firefox_jobs
 
@@ -141,24 +141,29 @@ def _next_ready(bridge, allowed: set) -> str:
     return "--:--" if secs is None else f"{secs // 60:02d}:{secs % 60:02d}"
 
 
-def _wait_phase(bridge, plan: PassPlan) -> str:
-    """The cooldown wait's phase: it is announced at its start and once in its last minute."""
-    secs = _soonest_ready(bridge, plan.allowed) if plan.reason == "all cooling" else None
-    return "" if secs is None else countdown_phase(secs)
+def _cooling_line_due(bridge, plan: PassPlan, fresh: bool) -> bool:
+    """The all-cooling wait speaks twice at most: 60 s in, then 30 s before the soonest tab is ready."""
+    if fresh or getattr(bridge, "_live_notes", None) is None:
+        bridge._live_notes = CountdownNotes()
+    secs = _soonest_ready(bridge, plan.allowed)
+    return secs is not None and bool(bridge._live_notes.due(secs))
 
 
-def _reminder_due(bus: LiveBus, reason: str) -> bool:
-    """The 5-minute reminder — not for the cooldown wait, whose two lines are enough."""
-    return reason != "all cooling" and bus.throttle(f"live:{reason}", THROTTLE_MS)
+def _reminder_or_change(bus: LiveBus, reason: str, fresh: bool) -> bool:
+    """Other waits: a line on every change + a 5-min reminder (throttle first: it records the window)."""
+    return bus.throttle(f"live:{reason}", THROTTLE_MS) or fresh
 
 
 async def wait_reason(bridge, plan: PassPlan, bus: LiveBus) -> None:
-    """One line per reason change (+ a 5-min reminder; the cooldown: start + last minute), then wait."""
+    """The wait's line when due (cooldown: 60 s in + 30 s before the end), then wait for a wake."""
     template, level = REASON_LINES[plan.reason]
-    phase = _wait_phase(bridge, plan)
-    changed = (getattr(bridge, "_live_reason", None), getattr(bridge, "_live_phase", "")) != (plan.reason, phase)
-    bridge._live_reason, bridge._live_phase = plan.reason, phase
-    if _reminder_due(bus, plan.reason) or changed:  # reminder first: the throttle records its window
+    fresh = getattr(bridge, "_live_reason", None) != plan.reason
+    bridge._live_reason = plan.reason
+    if plan.reason == "all cooling":
+        due = _cooling_line_due(bridge, plan, fresh)
+    else:
+        due = _reminder_or_change(bus, plan.reason, fresh)
+    if due:
         pool = getattr(bridge, "_page_pool", None)
         bridge._log(template.format(pool=pool_summary(pool), next_ready=_next_ready(bridge, plan.allowed)), level)
     await bus.wait(WAIT_S)
