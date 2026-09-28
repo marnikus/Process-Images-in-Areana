@@ -21,6 +21,7 @@ from typing import Any, Dict, List
 from app.core.action_blocks import (
     BLOCK_DEFINITIONS,
     DEFAULT_STACK_ORDER,
+    DESCRIPTION_STACK_ORDER,
     ActionBlock,
     create_default_block,
     stack_to_dicts,
@@ -32,6 +33,16 @@ REQUIRED_BLOCK_IDS = tuple(bt for bt, d in BLOCK_DEFINITIONS.items() if d.get("r
 def build_default_stack() -> List[ActionBlock]:
     """Fresh default blocks (new ids every call) in DEFAULT_STACK_ORDER."""
     return [create_default_block(bt) for bt in DEFAULT_STACK_ORDER]
+
+
+def build_description_stack() -> List[ActionBlock]:
+    """Stack for Generate Image Description workflow."""
+    return [create_default_block(bt) for bt in DESCRIPTION_STACK_ORDER]
+
+
+def build_description_dicts() -> List[Dict[str, Any]]:
+    """Description stack as JSON-ready dicts."""
+    return stack_to_dicts(build_description_stack())
 
 
 def build_default_dicts() -> List[Dict[str, Any]]:

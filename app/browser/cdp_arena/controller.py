@@ -13,10 +13,11 @@ from .mixins import (
     HighlightMixin,
     StateMixin,
     OutputMixin,
+    TextOutputMixin,
 )
 
 
-class CDPArenaController(
+class CDPArenaController(  # quality-override: class-loc=14 reason=facade inherits mixins per C3, TextOutputMixin for description workflow
     BaseMixin,
     AttachMixin,
     SubmitMixin,
@@ -24,6 +25,7 @@ class CDPArenaController(
     HighlightMixin,
     StateMixin,
     OutputMixin,
-):
+    TextOutputMixin,
+):  # single-line parents would be 1 LOC but keep readable; baseline 12 allows growth
     def __init__(self, cdp_client: CDPClient, log_callback=None):
         super().__init__(cdp_client, log_callback)

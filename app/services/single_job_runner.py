@@ -44,11 +44,13 @@ class JobCtx:
     corr_id: str
     final_prompt: str
     baseline: Dict[str, Any] = field(default_factory=dict)
+    text_baseline: Dict[str, Any] = field(default_factory=dict)
     new_src: Optional[str] = None
     file_bytes: Optional[bytes] = None
     ctype: Optional[str] = None
     ext: Optional[str] = None
     old_srcs: List[str] = field(default_factory=list)
+    text_output: Optional[str] = None
 
 
 def _emit_action(ctx: JobCtx, block: Any, status: str, msg: str):
@@ -74,6 +76,80 @@ async def capture_baseline(ctrl) -> Dict[str, Any]:
     except Exception as e:
         log.warning(f"baseline {e}")
         return {"output_count": 0, "output_srcs": []}
+
+
+async def capture_text_baseline(ctrl) -> Dict[str, Any]:
+    """Capture text baseline."""
+    try:
+        return await ctrl.capture_text_baseline()
+    except Exception as e:
+        log.warning(f"text baseline {e}")
+        return {"text_count": 0, "text_outputs": []}
+
+
+def _block_uses_preset(block: Any) -> bool:
+    """Whether block requests preset loading."""
+    try:
+        if getattr(block, "use_preset", False):
+            return True
+        if getattr(block, "load_from_preset", False):
+            return True
+        extra = getattr(block, "extra", {}) or {}
+        return bool(extra.get("use_preset") or extra.get("load_from_preset"))
+    except Exception:
+        return False
+
+
+def _block_preset_name(block: Any) -> str:
+    """Preset name from block fields."""
+    try:
+        name = getattr(block, "preset_name", "") or ""
+        if not name:
+            extra = getattr(block, "extra", {}) or {}
+            name = extra.get("preset_name", "")
+        return str(name or "").strip()
+    except Exception:
+        return ""
+
+
+def _load_preset_template(ctx: JobCtx, name: str) -> Optional[str]:
+    """Load template text for a named preset."""
+    try:
+        if not name:
+            return None
+        cfg = getattr(ctx.bridge, "config", None)
+        if cfg is None:
+            return None
+        store = getattr(cfg, "presets", None)
+        if store is None:
+            return None
+        doc = store.load_prompt_preset(name)
+        if not doc:
+            return None
+        tmpl = doc.get("template", "") if isinstance(doc, dict) else ""
+        return tmpl.strip() or None
+    except Exception:
+        return None
+
+
+def _resolve_prompt_from_preset(ctx: JobCtx, block: Any) -> Optional[str]:
+    """Resolve prompt template from preset if block requests it."""
+    if not _block_uses_preset(block):
+        return None
+    name = _block_preset_name(block)
+    if not name:
+        return None
+    return _load_preset_template(ctx, name)
+
+
+def _build_final_from_template(corr_id: str, template: str) -> str:
+    """Final prompt with correlation token."""
+    try:
+        from app.utils.correlation import build_final_prompt
+
+        return build_final_prompt(corr_id, template)
+    except Exception:
+        return f"{template}\n\n[JOB-ID: {corr_id}]"
 
 
 # captcha outcome status → job error text (RULE 19: a lookup, not a chain); all retryable
@@ -472,7 +548,18 @@ async def _handle_attach(ctx: JobCtx, block: Any):
 
 
 async def _handle_prompt(ctx: JobCtx, block: Any):
-    """Handle prompt."""
+    """Handle prompt with optional preset loading."""
+    preset_tmpl = _resolve_prompt_from_preset(ctx, block)
+    if preset_tmpl:
+        final = _build_final_from_template(ctx.corr_id, preset_tmpl)
+        try:
+            ok, reason = await ctx.ctrl.insert_prompt(final)
+            if not ok:
+                raise RuntimeError(f"Prompt failed: {reason}")
+            _emit_action(ctx, block, "success", f"Preset {getattr(block, 'preset_name', '')} {reason}")
+            return
+        except Exception as e:
+            raise RuntimeError(f"Preset prompt failed: {e}")
     ok, reason = await insert_prompt(ctx)
     if not ok:
         raise RuntimeError(f"Prompt failed: {reason}")
@@ -740,12 +827,132 @@ async def _handle_verify_prompt(ctx: JobCtx, block: Any):
     _emit_action(ctx, block, "success", f"Verified {reason}")
 
 
+async def _handle_text_baseline(ctx: JobCtx, block: Any):
+    """Handle text baseline capture."""
+    ctx.text_baseline = await capture_text_baseline(ctx.ctrl)
+    count = ctx.text_baseline.get("text_count", 0)
+    _emit_action(ctx, block, "success", f"Text baseline {count}")
+
+
+async def _poll_text_generation(ctx: JobCtx, timeout_ms: int):
+    """Poll for new text output; (status, data, text)."""
+    status, data = await ctx.ctrl.wait_for_new_text_output(
+        ctx.text_baseline,
+        timeout_ms=timeout_ms,
+        correlation_id=ctx.corr_id,
+        cancel_check=lambda: _is_cancelled(ctx),
+    )
+    txt = data.get("new_text") or data.get("full_text") if isinstance(data, dict) else None
+    return status, data, txt
+
+
+async def _show_text_overlay(ctx: JobCtx, timeout_ms: int):
+    try:
+        gen_to = int(ctx.bridge.config.get_state("watcher_generation_timeout_sec", 600))
+        eff = max(gen_to, int(timeout_ms / 1000)) if timeout_ms else 600
+        await ctx.ctrl.show_watcher_overlay(
+            "wait for text description", kind="generation", timeout_sec=eff
+        )
+        _mark_waiting(ctx, "text_generation")
+    except Exception:
+        pass
+
+
+async def wait_for_text_output(ctx: JobCtx, timeout_ms: int) -> tuple[Optional[str], str]:
+    try:
+        await _show_text_overlay(ctx, timeout_ms)
+        status, data, txt = await _poll_text_generation(ctx, timeout_ms)
+        await _hide_overlay(ctx)
+        _mark_busy(ctx)
+        if status == "completed" and txt:
+            return txt, ""
+        err = data.get("error", "timeout") if isinstance(data, dict) else "timeout"
+        return None, str(err)
+    except Exception as e:
+        await _hide_overlay(ctx)
+        return None, str(e)
+
+
+async def _handle_wait_text(ctx: JobCtx, block: Any):
+    """WAIT_TEXT_OUTPUT: wait for new text description."""
+    timeout = getattr(block, "timeout_ms", 0) or ctx.bridge.state.settings.timeouts.get(
+        "generation", 180
+    ) * 1000
+    _emit_action(ctx, block, "running", f"Waiting for text description — timeout {timeout}ms")
+    txt, err = await wait_for_text_output(ctx, timeout)
+    if not txt:
+        raise RuntimeError(f"Wait text failed: {err}")
+    ctx.text_output = txt
+    preview = txt[:80].replace("\n", " ")
+    _emit_action(ctx, block, "success", f"Text output {len(txt)} chars: {preview}")
+
+
+def _get_overwrite_flag(block: Any) -> bool:
+    try:
+        if getattr(block, "overwrite", False):
+            return True
+        extra = getattr(block, "extra", {}) or {}
+        return bool(extra.get("overwrite", False))
+    except Exception:
+        return False
+
+
+def _build_description_doc(ctx: JobCtx, block: Any) -> dict:
+    src_path = Path(ctx.img.absolute_path)
+    doc = {
+        "description": ctx.text_output or "",
+        "source": src_path.name,
+        "source_path": str(src_path),
+    }
+    if getattr(block, "include_prompt", True):
+        doc["prompt"] = ctx.final_prompt
+    if getattr(block, "include_job_id", True):
+        doc["job_id"] = ctx.job_id
+        doc["corr_id"] = ctx.corr_id
+    return doc
+
+
+async def _save_description_json_file(ctx: JobCtx, block: Any) -> Optional[Path]:
+    """Save text description as JSON beside source."""
+    try:
+        from app.core.naming import atomic_write_json, get_description_json_path
+
+        src_path = Path(ctx.img.absolute_path)
+        out_path = get_description_json_path(src_path, overwrite=_get_overwrite_flag(block))
+        doc = _build_description_doc(ctx, block)
+        atomic_write_json(src_path.parent, out_path, doc)
+        _emit_saved_rect(ctx, out_path.name)
+        return out_path
+    except Exception as e:
+        log.warning(f"save json {e}")
+        return None
+
+
+async def _handle_save_json(ctx: JobCtx, block: Any):
+    """Handle SAVE_DESCRIPTION_JSON."""
+    if not ctx.text_output:
+        raise RuntimeError("No text output to save")
+    out = await _save_description_json_file(ctx, block)
+    if not out:
+        raise RuntimeError("Save JSON failed")
+    ctx.img.output_path = str(out)
+    _emit_action(ctx, block, "success", f"Saved JSON {out.name} ({len(ctx.text_output)} chars)")
+
+
+async def _handle_generate_description(ctx: JobCtx, block: Any):
+    """Combined: wait text + save json."""
+    if not ctx.text_output:
+        await _handle_wait_text(ctx, block)
+    await _handle_save_json(ctx, block)
+
+
 def _handler_map():
-    """Map block_id to handler (20 block types converged)."""
+    """Map block_id to handler (24 block types)."""
     # ideals-TABLED (R10.9): flat registry literal; splitting the dict
     # would scatter the A2 converge map across helpers with no seam.
     return {
         "OBSERVE_BASELINE": _handle_baseline,
+        "OBSERVE_TEXT_BASELINE": _handle_text_baseline,
         "CHECK_SECURITY": _handle_security,
         "HIGHLIGHT_ATTACH": _handle_marker_highlight,
         "ATTACH_IMAGE": _handle_attach,
@@ -756,10 +963,13 @@ def _handler_map():
         "HIGHLIGHT_SUBMIT": _handle_marker_highlight,
         "SUBMIT": _handle_submit,
         "WAIT_OUTPUT": _handle_wait,
+        "WAIT_TEXT_OUTPUT": _handle_wait_text,
         "AWAIT_PROCESSING_IMAGE": handle_await_processing,
         "DOWNLOAD": _handle_download,
         "VALIDATE": _handle_validate,
         "SAVE": _handle_save,
+        "SAVE_DESCRIPTION_JSON": _handle_save_json,
+        "GENERATE_IMAGE_DESCRIPTION": _handle_generate_description,
         "ADVANCE": _handle_advance,
         "CUSTOM_FIND": _handle_custom,
         "HIGHLIGHT": _handle_highlight,

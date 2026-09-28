@@ -212,7 +212,7 @@ BLOCK_DEFINITIONS = {
     },
     "INSERT_PROMPT": {
         "name": "Insert Prompt",
-        "description": "Insert final prompt with [JOB-ID] token, verify read-back",
+        "description": "Insert final prompt with [JOB-ID] token, verify read-back. Supports loading from prompt presets.",
         "icon": "edit",
         "default_enabled": True,
         "default_selector": "textarea[name=\"message\"]",
@@ -223,10 +223,14 @@ BLOCK_DEFINITIONS = {
         "default_highlight_enabled": True,
         "required": True,
         "category": "action",
+        "extra_defaults": {"use_preset": False, "preset_name": "", "load_from_preset": False},
         "labels": {
             "selector": "Textarea selector",
             "highlight_enabled": "Highlight textarea before insert (BLUE)",
             "pre_delay_ms": "Pre-delay (ms)",
+            "use_preset": "Load from preset (checkbox) — when checked, uses prompt preset instead of active prompt",
+            "preset_name": "Prompt preset name — dropdown of saved prompt presets",
+            "load_from_preset": "Load from preset (legacy checkbox alias)",
         },
     },
     "VERIFY_PROMPT": {
@@ -434,6 +438,89 @@ BLOCK_DEFINITIONS = {
             "pre_delay_ms": "Pre-delay (ms)",
         },
     },
+    "OBSERVE_TEXT_BASELINE": {
+        "name": "Observe Text Baseline",
+        "description": "Capture existing text outputs count before generation (for description workflow)",
+        "icon": "visibility",
+        "default_enabled": True,
+        "default_selector": "div[data-message-author-role=\"assistant\"] div.markdown, div.markdown",
+        "default_color": "#5AA9FF",
+        "default_timeout_ms": 10000,
+        "default_pre_delay_ms": 200,
+        "default_highlight_ms": 1200,
+        "default_confirm_pause_ms": 0,
+        "default_highlight_enabled": False,
+        "required": False,
+        "category": "observe",
+        "labels": {
+            "selector": "Text baseline selector",
+            "highlight_enabled": "Draw outline on baseline count",
+            "highlight_ms": "Highlight duration (ms)",
+            "pre_delay_ms": "Pre-delay (ms)",
+        },
+    },
+    "WAIT_TEXT_OUTPUT": {
+        "name": "Wait Text Output",
+        "description": "Wait for new text output (assistant description) — for Generate Image Description workflow. GREEN rect on new text. Saves text for JSON export.",
+        "icon": "description",
+        "default_enabled": True,
+        "default_selector": "div[data-message-author-role=\"assistant\"] div.markdown, div.markdown, div.prose",
+        "default_color": "#00c853",
+        "default_timeout_ms": 120000,
+        "default_pre_delay_ms": 500,
+        "default_highlight_ms": 3000,
+        "default_highlight_enabled": True,
+        "required": False,
+        "category": "wait",
+        "allow_duplicate": False,
+        "labels": {
+            "selector": "Text output selector",
+            "timeout_ms": "Max wait (ms) — e.g. 120000 = 2 min",
+            "highlight_enabled": "🟢 Highlight new text output",
+            "highlight_ms": "Highlight duration (ms)",
+            "pre_delay_ms": "Pre-delay (ms)",
+        },
+    },
+    "SAVE_DESCRIPTION_JSON": {
+        "name": "Save Description JSON",
+        "description": "Save text description as JSON file with same name as source image (icon.png -> icon.json) in same dir. For Generate Image Description workflow.",
+        "icon": "save",
+        "default_enabled": True,
+        "default_selector": "",
+        "default_color": "#4ADE80",
+        "default_timeout_ms": 5000,
+        "required": False,
+        "category": "persist",
+        "extra_defaults": {"overwrite": False, "include_prompt": True, "include_job_id": True},
+        "labels": {
+            "overwrite": "Overwrite if exists",
+            "include_prompt": "Include prompt in JSON",
+            "include_job_id": "Include job_id in JSON",
+        },
+    },
+    "GENERATE_IMAGE_DESCRIPTION": {
+        "name": "Generate Image Description",
+        "description": "Combined workflow: waits for text description output and saves as JSON with same base name as source image. Insert image + prompt as before, but saves text description to icon.json beside icon.png",
+        "icon": "image_search",
+        "default_enabled": True,
+        "default_selector": "div[data-message-author-role=\"assistant\"] div.markdown",
+        "default_color": "#00c853",
+        "default_timeout_ms": 120000,
+        "default_pre_delay_ms": 500,
+        "default_highlight_ms": 3000,
+        "default_highlight_enabled": True,
+        "required": False,
+        "category": "action",
+        "extra_defaults": {"overwrite": False, "include_prompt": True},
+        "labels": {
+            "selector": "Text output selector",
+            "timeout_ms": "Max wait for description (ms)",
+            "highlight_enabled": "Highlight new description",
+            "highlight_ms": "Highlight duration (ms)",
+            "overwrite": "Overwrite JSON if exists",
+            "include_prompt": "Include prompt in JSON",
+        },
+    },
 }
 
 DEFAULT_STACK_ORDER = [
@@ -452,6 +539,23 @@ DEFAULT_STACK_ORDER = [
     "DOWNLOAD",
     "VALIDATE",
     "SAVE",
+    "ADVANCE",
+]
+
+DESCRIPTION_STACK_ORDER = [
+    "HIGHLIGHT_ATTACH",
+    "OBSERVE_TEXT_BASELINE",
+    "CHECK_SECURITY",
+    "AWAIT_PROCESSING_IMAGE",
+    "ATTACH_IMAGE",
+    "VERIFY_ATTACHMENT",
+    "HIGHLIGHT_PROMPT",
+    "INSERT_PROMPT",
+    "VERIFY_PROMPT",
+    "HIGHLIGHT_SUBMIT",
+    "SUBMIT",
+    "WAIT_TEXT_OUTPUT",
+    "SAVE_DESCRIPTION_JSON",
     "ADVANCE",
 ]
 
@@ -492,7 +596,7 @@ for _bid, _def in BLOCK_DEFINITIONS.items():
 # The lookup tables inside ActionBlock are ClassVars: a bare `tuple` annotation
 # makes a dataclass FIELD, and asdict() then leaked _DEFN_DEFAULTS / _CTOR_RAW /
 # _CTOR_FROM_DEFN into every saved/pushed block (B11, 2026-10-07).
-@dataclass
+@dataclass  # quality-override: class-loc=170 reason=dataclass owns plain attrs per RULE 3, new preset and description fields for workflows
 class ActionBlock:
     id: str
     block_id: str
@@ -518,6 +622,14 @@ class ActionBlock:
     highlight_ms: int = 2000
     confirm_pause_ms: int = 700
     highlight_duration_ms: int = 2000
+    use_preset: bool = False
+    preset_name: str = ""
+    overwrite: bool = False
+    include_prompt: bool = True
+    include_job_id: bool = True
+    suffix: str = "_AI"
+    duration_ms: int = 1000
+    load_from_preset: bool = False
     extra: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -559,6 +671,14 @@ class ActionBlock:
         ("highlight_ms", 2000),
         ("confirm_pause_ms", 700),
         ("custom_name", ""),
+        ("use_preset", False),
+        ("preset_name", ""),
+        ("overwrite", False),
+        ("include_prompt", True),
+        ("include_job_id", True),
+        ("suffix", "_AI"),
+        ("duration_ms", 1000),
+        ("load_from_preset", False),
         ("extra", {}),
     )
     # Constructor fallbacks that read the block definition itself when the key is absent
@@ -598,9 +718,17 @@ class ActionBlock:
             data.pop(rk, None)
         if "highlight_duration_ms" in data and "highlight_ms" not in data:
             data["highlight_ms"] = data.get("highlight_duration_ms", 2000)
+        # Legacy extra -> top-level for preset fields
+        extra = data.get("extra", {}) if isinstance(data.get("extra"), dict) else {}
+        for key in ("use_preset", "preset_name", "overwrite", "include_prompt", "include_job_id", "suffix", "duration_ms", "load_from_preset"):
+            if key in extra and key not in data:
+                data[key] = extra[key]
         bid = data.get("block_id", "")
         defn = BLOCK_DEFINITIONS.get(bid, {})
         cls._apply_definition_defaults(data, defn)
+        # extra_defaults -> top-level defaults for new attrs
+        for k, v in defn.get("extra_defaults", {}).items():
+            data.setdefault(k, v)
         if not data.get("id"):
             data["id"] = f"{bid.lower()}_{uuid.uuid4().hex[:8]}"
         return cls(**cls._ctor_kwargs(data, defn))
@@ -631,35 +759,61 @@ class ActionBlock:
         return schema
 
 
+def _base_kwargs(block_type: str, custom_id: str, defn: dict) -> dict:
+    return {
+        "id": custom_id or f"{block_type.lower()}_{uuid.uuid4().hex[:8]}",
+        "block_id": block_type,
+        "name": defn.get("name", block_type),
+        "description": defn.get("description", ""),
+        "icon": defn.get("icon", "extension"),
+        "enabled": defn.get("default_enabled", True),
+        "selector": defn.get("default_selector", ""),
+        "label_selector": defn.get("default_label_selector", ""),
+        "match_text": defn.get("default_match_text", ""),
+        "match_mode": defn.get("default_match_mode", "contains"),
+        "click_enabled": defn.get("default_click_enabled", True),
+        "click_selector": defn.get("default_click_selector", ""),
+        "fallback_selector": defn.get("default_fallback_selector", ""),
+        "fallback_text": defn.get("default_fallback_text", ""),
+        "highlight_enabled": defn.get("default_highlight_enabled", True),
+        "color": defn.get("default_color", "#FF0000"),
+        "required": defn.get("required", False),
+        "category": defn.get("category", "action"),
+    }
+
+
+def _timing_kwargs(defn: dict) -> dict:
+    return {
+        "timeout_ms": defn.get("default_timeout_ms", 10000),
+        "highlight_ms": defn.get("default_highlight_ms", 2000),
+        "highlight_duration_ms": defn.get("default_highlight_ms", 2000),
+        "pre_delay_ms": defn.get("default_pre_delay_ms", 200),
+        "confirm_pause_ms": defn.get("default_confirm_pause_ms", 700),
+    }
+
+
+def _preset_kwargs(extra: dict) -> dict:
+    return {
+        "use_preset": extra.get("use_preset", False),
+        "preset_name": extra.get("preset_name", ""),
+        "overwrite": extra.get("overwrite", False),
+        "include_prompt": extra.get("include_prompt", True),
+        "include_job_id": extra.get("include_job_id", True),
+        "suffix": extra.get("suffix", "_AI"),
+        "duration_ms": extra.get("duration_ms", 1000),
+        "load_from_preset": extra.get("load_from_preset", False),
+        "extra": extra,
+    }
+
+
 def create_default_block(block_type: str, custom_id: str = None) -> "ActionBlock":
     defn = BLOCK_DEFINITIONS.get(block_type, {})
     extra = dict(defn.get("extra_defaults", {}))
-    return ActionBlock(
-        id=custom_id or f"{block_type.lower()}_{uuid.uuid4().hex[:8]}",
-        block_id=block_type,
-        name=defn.get("name", block_type),
-        description=defn.get("description", ""),
-        icon=defn.get("icon", "extension"),
-        enabled=defn.get("default_enabled", True),
-        selector=defn.get("default_selector", ""),
-        label_selector=defn.get("default_label_selector", ""),
-        match_text=defn.get("default_match_text", ""),
-        match_mode=defn.get("default_match_mode", "contains"),
-        click_enabled=defn.get("default_click_enabled", True),
-        click_selector=defn.get("default_click_selector", ""),
-        fallback_selector=defn.get("default_fallback_selector", ""),
-        fallback_text=defn.get("default_fallback_text", ""),
-        highlight_enabled=defn.get("default_highlight_enabled", True),
-        color=defn.get("default_color", "#FF0000"),
-        required=defn.get("required", False),
-        category=defn.get("category", "action"),
-        timeout_ms=defn.get("default_timeout_ms", 10000),
-        highlight_ms=defn.get("default_highlight_ms", 2000),
-        highlight_duration_ms=defn.get("default_highlight_ms", 2000),
-        pre_delay_ms=defn.get("default_pre_delay_ms", 200),
-        confirm_pause_ms=defn.get("default_confirm_pause_ms", 700),
-        extra=extra,
-    )
+    kw = {}
+    kw.update(_base_kwargs(block_type, custom_id, defn))
+    kw.update(_timing_kwargs(defn))
+    kw.update(_preset_kwargs(extra))
+    return ActionBlock(**kw)
 
 
 def default_stack() -> List[ActionBlock]:

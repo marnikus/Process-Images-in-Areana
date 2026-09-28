@@ -144,3 +144,24 @@ class OutputMixin:
                         correlation_id=correlation_id, cancel_check=cancel_check,
                         log_cb=self._log, ctrl=self)
         return await mod(self.cdp, spec)
+
+
+class TextOutputMixin:
+    async def capture_text_baseline(self) -> Dict[str, Any]:
+        from .text_output import capture_text_baseline as mod
+        return await mod(self.cdp)
+
+    async def _poll_text_diag(self, old_texts, correlation_id, old_outputs):
+        from .text_output import PollContextText, _poll_text_diag as mod
+        ctx = PollContextText(old_texts=old_texts or [], old_outputs=old_outputs or [],
+                              correlation_id=correlation_id, err_base=getattr(self, "_err_base", ""))
+        return await mod(self.cdp, ctx, self)
+
+    async def wait_for_new_text_output(self, baseline: Dict[str, Any], timeout_ms: int = 180000,
+                                       correlation_id: Optional[str] = None,
+                                       cancel_check=None) -> Tuple[str, Dict[str, Any]]:
+        from .text_output import WaitSpecText, wait_for_new_text_output as mod
+        spec = WaitSpecText(baseline=baseline, timeout_ms=timeout_ms,
+                            correlation_id=correlation_id, cancel_check=cancel_check,
+                            log_cb=self._log, ctrl=self)
+        return await mod(self.cdp, spec)

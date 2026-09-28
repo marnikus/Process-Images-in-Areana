@@ -114,3 +114,31 @@ def parse_ai_output(stem: str, suffix: str = AI_SUFFIX) -> tuple[str, int | None
 
 def is_ai_generated_filename(path: Path, suffix: str = AI_SUFFIX) -> bool:
     return parse_ai_output(Path(path).stem, suffix) is not None
+
+
+def get_description_json_path(source_path: Path, overwrite: bool = False) -> Path:
+    """JSON beside source with same base name: icon.png -> icon.json."""
+    src = Path(source_path)
+    target = src.parent / f"{src.stem}.json"
+    if not target.exists() or overwrite:
+        return target
+    return _find_unique_json_path(src.parent, src.stem)
+
+
+def _find_unique_json_path(parent: Path, stem: str) -> Path:
+    n = 2
+    while True:
+        candidate = parent / f"{stem}_{n}.json"
+        if not candidate.exists():
+            return candidate
+        n += 1
+        if n > 1000:
+            raise RuntimeError("Too many existing JSON files")
+
+
+def atomic_write_json(temp_dir: Path, final_path: Path, data: dict) -> Path:
+    """Atomic JSON write (temp file + replace)."""
+    import json
+
+    payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    return atomic_write_bytes(temp_dir, final_path, payload)

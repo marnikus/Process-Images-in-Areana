@@ -137,3 +137,18 @@ def add_files_menu_item_selectors() -> List[str]:
 def add_files_menu_item_text() -> str:
     """The item's label — preferred when several candidates match."""
     return get_selector("add_files_menu_item").textCondition or ""
+
+
+def assistant_message_selectors() -> List[str]:
+    """Assistant message container selectors for text output detection."""
+    return get_selector("assistant_message").all_selectors()
+
+
+def assistant_text_selectors() -> List[str]:
+    """Assistant text output selectors — markdown content."""
+    return get_selector("assistant_text_output").all_selectors()
+
+
+def text_output_selectors() -> List[str]:
+    """Combined text output selectors for description generation."""
+    return assistant_text_selectors()

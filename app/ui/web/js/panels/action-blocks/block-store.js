@@ -20,6 +20,7 @@ window.ActionBlocksStore = {
   builtinCatalog: [],
   customBlocks: [],
   stackPresets: [],
+  promptPresets: [],
   _lastStackPreset: '',
   jobStatuses: {},
   jobOrder: [],
@@ -30,6 +31,7 @@ window.ActionBlocksStore = {
     return {
       CUSTOM_FIND: { name: 'Find & Click', icon: 'search', color: '#ff2d2d', category: 'action', description: 'Generic visual click' },
       OBSERVE_BASELINE: { name: 'Observe Baseline', icon: 'visibility', color: '#5AA9FF', category: 'observe', required: true },
+      OBSERVE_TEXT_BASELINE: { name: 'Observe Text Baseline', icon: 'visibility', color: '#5AA9FF', category: 'observe', description: 'Text baseline for description' },
       CHECK_SECURITY: { name: 'Check Security Verification Dialog', icon: 'captcha', color: '#FF6B6B', category: 'security', description: 'Detect CAPTCHA pause' },
       HIGHLIGHT_ATTACH: { name: 'Highlight Attach Input', icon: 'highlight', color: '#4ADE80', category: 'visual' },
       ATTACH_IMAGE: { name: 'Attach Image', icon: 'attach_file', color: '#00FF00', category: 'action', required: true },
@@ -40,10 +42,13 @@ window.ActionBlocksStore = {
       HIGHLIGHT_SUBMIT: { name: 'Highlight Submit', icon: 'highlight', color: '#FFAA00', category: 'visual' },
       SUBMIT: { name: 'Submit Once', icon: 'send', color: '#FFAA00', category: 'action', required: true },
       WAIT_OUTPUT: { name: 'Wait New Output', icon: 'hourglass_top', color: '#00c853', category: 'wait', required: true },
+      WAIT_TEXT_OUTPUT: { name: 'Wait Text Output', icon: 'description', color: '#00c853', category: 'wait', description: 'Wait for text description' },
       AWAIT_PROCESSING_IMAGE: { name: 'Wait for Image to Finish Generating', icon: 'await_result', color: '#FFAA00', category: 'process', description: 'Waiting block' },
       DOWNLOAD: { name: 'Download HQ', icon: 'download', color: '#00FFAA', category: 'action', required: true },
       VALIDATE: { name: 'Validate Image', icon: 'verified', color: '#00FFAA', category: 'verify', required: true },
       SAVE: { name: 'Save *_AI.ext', icon: 'save', color: '#4ADE80', category: 'persist', required: true },
+      SAVE_DESCRIPTION_JSON: { name: 'Save Description JSON', icon: 'save', color: '#4ADE80', category: 'persist', description: 'Save text as JSON beside source' },
+      GENERATE_IMAGE_DESCRIPTION: { name: 'Generate Image Description', icon: 'image_search', color: '#00c853', category: 'action', description: 'Combined text wait + JSON save' },
       ADVANCE: { name: 'Advance & Persist', icon: 'check_circle', color: '#4ADE80', category: 'persist', required: true },
       PAUSE: { name: 'Custom Pause', icon: 'pause', color: '#888888', category: 'control' },
       HIGHLIGHT: { name: 'Highlight Only', icon: 'center_focus_strong', color: '#00c853', category: 'visual' },
@@ -52,6 +57,16 @@ window.ActionBlocksStore = {
 
   _blockOrder() {
     return ['HIGHLIGHT_ATTACH', 'OBSERVE_BASELINE', 'CHECK_SECURITY', 'AWAIT_PROCESSING_IMAGE', 'ATTACH_IMAGE', 'VERIFY_ATTACHMENT', 'HIGHLIGHT_PROMPT', 'INSERT_PROMPT', 'VERIFY_PROMPT', 'HIGHLIGHT_SUBMIT', 'SUBMIT', 'WAIT_OUTPUT', 'DOWNLOAD', 'VALIDATE', 'SAVE', 'ADVANCE'];
+  },
+
+  _descriptionOrder() {
+    return ['HIGHLIGHT_ATTACH', 'OBSERVE_TEXT_BASELINE', 'CHECK_SECURITY', 'AWAIT_PROCESSING_IMAGE', 'ATTACH_IMAGE', 'VERIFY_ATTACHMENT', 'HIGHLIGHT_PROMPT', 'INSERT_PROMPT', 'VERIFY_PROMPT', 'HIGHLIGHT_SUBMIT', 'SUBMIT', 'WAIT_TEXT_OUTPUT', 'SAVE_DESCRIPTION_JSON', 'ADVANCE'];
+  },
+
+  getDescriptionBlocks() {
+    const defs = this._blockDefs();
+    const order = this._descriptionOrder();
+    return order.map((bt, idx) => this._makeDefaultBlock(bt, idx, defs));
   },
 
   _baseBlockFields(bt, idx, d) {
@@ -137,7 +152,7 @@ window.ActionBlocksStore = {
       description: b.description || '',
       category: b.category,
       required: !!b.required,
-      allow_duplicate: ['CUSTOM_FIND', 'PAUSE', 'HIGHLIGHT', 'AWAIT_PROCESSING_IMAGE'].includes(b.block_id),
+      allow_duplicate: ['CUSTOM_FIND', 'PAUSE', 'HIGHLIGHT', 'AWAIT_PROCESSING_IMAGE', 'OBSERVE_TEXT_BASELINE', 'WAIT_TEXT_OUTPUT', 'SAVE_DESCRIPTION_JSON', 'GENERATE_IMAGE_DESCRIPTION'].includes(b.block_id),
       defaults: { ...this._selectorDefaults(b), ...this._visualDefaults(b) },
       labels: {},
     };
@@ -175,6 +190,24 @@ window.ActionBlocksStore = {
 
   loadCustom(onLoaded) { this._loadJsonArray('get_custom_blocks', 'customBlocks', onLoaded); },
   loadStackPresets(onLoaded) { this._loadJsonArray('get_stack_presets', 'stackPresets', onLoaded); },
+
+  _adoptPromptPresets(res, onLoaded) {
+    let data = res;
+    try { data = typeof res === 'string' ? JSON.parse(res) : res; } catch (e) { console.warn('prompt presets parse failed', e); return; }
+    if (!Array.isArray(data)) return;
+    this.promptPresets = data;
+    if (typeof onLoaded === 'function') onLoaded(data);
+  },
+
+  loadPromptPresets(onLoaded) {
+    const bridge = window.App && window.App.bridge;
+    if (!bridge || !bridge.list_prompt_presets) return;
+    const adopt = (res) => this._adoptPromptPresets(res, onLoaded);
+    try {
+      const res = bridge.list_prompt_presets(adopt);
+      if (typeof res === 'string') adopt(res);
+    } catch (e) { console.warn('list_prompt_presets failed', e); }
+  },
 
   _looksValid(data) {
     return Array.isArray(data) && data.length > 0 &&

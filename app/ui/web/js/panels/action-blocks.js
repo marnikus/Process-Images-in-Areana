@@ -21,10 +21,42 @@ const ActionBlocksPanel = {
     this._store = window.ActionBlocksStore; this._render = window.ActionBlocksRender; this._views = window.ActionBlocksViews;
     this._config = window.ActionBlocksConfig; this._listeners = window.ActionBlocksListeners; this._ui = window.ActionBlocksUI;
     this._status = window.ActionBlocksStatus; this._io = window.ActionBlocksIO;
-    this.loadBuiltin(); this.loadCustom(); this.loadStackPresets();
+    this.loadBuiltin(); this.loadCustom(); this.loadStackPresets(); this.loadPromptPresets();
     this._store.load(() => this.render());
     this._config.bindFormEvents(() => this.blocks[this.selectedIdx], () => this.save());
     this.bindUI(); this.ensurePauseOverlay(); this.tryBindBridge(); this.attachGlobalHandlers(); this.render();
+    this.injectDescriptionButton();
+  },
+
+  injectDescriptionButton() {
+    try {
+      const toolbar = document.querySelector('.ab-toolbar');
+      if (!toolbar) return;
+      if (document.getElementById('loadDescriptionStackBtn')) return;
+      const btn = document.createElement('button');
+      btn.id = 'loadDescriptionStackBtn';
+      btn.className = 'ab-btn';
+      btn.title = 'Load Generate Image Description stack (image + prompt -> text JSON)';
+      btn.innerHTML = '<span class=\"material-icons\">image_search</span> Description Stack';
+      toolbar.appendChild(btn);
+      if (window.Boot) window.Boot.bindOnce(btn, 'click', () => this.loadDescriptionStack(), 'action-blocks:desc');
+      else btn.addEventListener('click', () => this.loadDescriptionStack());
+    } catch {}
+  },
+
+  loadDescriptionStack() {
+    this._confirm('Load Generate Image Description stack? Current stack will be replaced.', () => {
+      const desc = this._store.getDescriptionBlocks ? this._store.getDescriptionBlocks() : [];
+      if (!desc.length) {
+        LogConsole.log('Description stack not available', 'warn');
+        return;
+      }
+      this.blocks = JSON.parse(JSON.stringify(desc));
+      this.selectedIdx = -1;
+      this.save();
+      this.render();
+      LogConsole.log('Loaded Generate Image Description stack (' + desc.length + ' blocks)', 'success');
+    });
   },
 
   _confirm(text, onYes) {
@@ -86,6 +118,7 @@ const ActionBlocksPanel = {
   loadBuiltin() { this._store.loadBuiltin(() => this.showConfig(this.selectedIdx, true)); },
   loadCustom() { this._store.loadCustom(() => this.renderCustomChips()); },
   loadStackPresets() { this._store.loadStackPresets(() => this.renderStackChips()); },
+  loadPromptPresets() { this._store.loadPromptPresets(() => { this.showConfig(this.selectedIdx, true); }); },
   load() { this._store.load(() => this.render()); this.render(); },
   getDefaultBlocks() { return this._store.getDefaultBlocks(); },
 

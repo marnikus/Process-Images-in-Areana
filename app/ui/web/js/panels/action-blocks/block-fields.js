@@ -26,8 +26,73 @@ window.ActionBlocksFields = {
       { key: 'pre_delay_ms', label: 'Pre Delay (ms)', type: 'number' },
       { key: 'highlight_ms', label: 'Highlight duration (ms)', type: 'number' },
       { key: 'confirm_pause_ms', label: 'Confirm Pause (ms)', type: 'number' },
+      { key: 'use_preset', label: 'Load from preset (checkbox)', type: 'checkbox' },
+      { key: 'load_from_preset', label: 'Load from preset (legacy)', type: 'checkbox' },
+      { key: 'preset_name', label: 'Prompt preset name', type: 'prompt_preset' },
+      { key: 'overwrite', label: 'Overwrite if exists', type: 'checkbox' },
+      { key: 'include_prompt', label: 'Include prompt in JSON', type: 'checkbox' },
+      { key: 'include_job_id', label: 'Include job_id in JSON', type: 'checkbox' },
+      { key: 'suffix', label: 'Suffix (e.g. _AI)', type: 'text' },
+      { key: 'duration_ms', label: 'Duration (ms)', type: 'number' },
       { key: 'enabled', label: 'Enabled', type: 'checkbox' },
     ];
+  },
+
+  _storePresets() {
+    try {
+      const s = window.ActionBlocksStore;
+      if (s && Array.isArray(s.promptPresets) && s.promptPresets.length) return s.promptPresets;
+    } catch {}
+    return null;
+  },
+
+  _arenaPresets() {
+    try {
+      const a = window.ArenaPresetsStore;
+      if (!a || !Array.isArray(a.promptPresets) || !a.promptPresets.length) return null;
+      return a.promptPresets.map(n => typeof n === 'string' ? n : n.name).filter(Boolean);
+    } catch {}
+    return null;
+  },
+
+  _promptPresetOptions() {
+    return this._storePresets() || this._arenaPresets() || [];
+  },
+
+  _presetNameOf(entry) {
+    if (typeof entry === 'string') return entry;
+    return (entry && entry.name) || '';
+  },
+
+  _hasPreset(opts, val) {
+    if (!val) return false;
+    if (opts.includes(val)) return true;
+    return opts.some(x => this._presetNameOf(x) === val);
+  },
+
+  _makeOption(val, label, selected) {
+    const o = document.createElement('option');
+    o.value = val;
+    o.textContent = label;
+    if (selected) o.selected = true;
+    return o;
+  },
+
+  _promptPresetSelect(def, value) {
+    const input = document.createElement('select');
+    input.className = 'bc-input bc-select';
+    const opts = this._promptPresetOptions();
+    input.appendChild(this._makeOption('', opts.length ? '-- select preset --' : '-- no presets saved --', false));
+    opts.forEach((entry) => {
+      const n = this._presetNameOf(entry);
+      if (!n) return;
+      input.appendChild(this._makeOption(n, n, value === n));
+    });
+    if (value && !this._hasPreset(opts, value)) {
+      input.appendChild(this._makeOption(value, value + ' (custom)', true));
+    }
+    input.value = value != null ? String(value) : '';
+    return input;
   },
 
   _extraDef(key, label, value) {
@@ -83,8 +148,11 @@ window.ActionBlocksFields = {
   },
 
   input(def, value) {
-    const node = def.type === 'select' ? this._select(def, value)
-      : def.type === 'checkbox' ? this._checkbox(value) : this._text(def, value);
+    let node;
+    if (def.type === 'select') node = this._select(def, value);
+    else if (def.type === 'prompt_preset') node = this._promptPresetSelect(def, value);
+    else if (def.type === 'checkbox') node = this._checkbox(value);
+    else node = this._text(def, value);
     node.classList.add('bc-field');
     node.dataset.fieldKey = def.key;
     if (def.extra) node.dataset.extra = '1';

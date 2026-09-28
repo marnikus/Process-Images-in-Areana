@@ -64,6 +64,51 @@ window.ActionBlocksConfig = {
     this._fields().orderedDefs(block, labels).forEach((def) => card.appendChild(this._fields().row(def, block)));
     win.appendChild(card);
     form.appendChild(win);
+    this._updatePresetVisibility(block);
+  },
+
+  _isPresetBlock(block) {
+    return !!block && block.block_id === 'INSERT_PROMPT';
+  },
+
+  _getPresetEls(form) {
+    if (!form) return {};
+    return {
+      useEl: form.querySelector('#bcField_use_preset') || form.querySelector('#bcField_load_from_preset'),
+      nameEl: form.querySelector('#bcField_preset_name'),
+    };
+  },
+
+  _isPresetChecked(useEl, block) {
+    if (useEl) return !!useEl.checked;
+    return !!(block && (block.use_preset || block.load_from_preset));
+  },
+
+  _applyPresetRow(nameEl, checked) {
+    const row = nameEl.closest ? nameEl.closest('.bc-row') : null;
+    if (row) row.style.display = checked ? '' : 'none';
+    nameEl.disabled = !checked;
+  },
+
+  _maybePresetHint(form, checked, nameEl) {
+    if (!checked) return;
+    if (this._fields()._promptPresetOptions().length !== 0) return;
+    if (form.querySelector('.bc-preset-hint')) return;
+    const h = this._el('div', 'bc-hint bc-preset-hint', 'No prompt presets yet — save one in Prompt Editor, then reload.');
+    if (nameEl && nameEl.parentNode) nameEl.parentNode.appendChild(h);
+  },
+
+  _updatePresetVisibility(block) {
+    try {
+      if (!this._isPresetBlock(block)) return;
+      const form = this.formEl();
+      if (!form) return;
+      const { useEl, nameEl } = this._getPresetEls(form);
+      if (!nameEl) return;
+      const checked = this._isPresetChecked(useEl, block);
+      this._applyPresetRow(nameEl, checked);
+      this._maybePresetHint(form, checked, nameEl);
+    } catch {}
   },
 
   /** Show `block` (null = empty state); rebuilds only when the block changes or `force`. */
@@ -78,6 +123,10 @@ window.ActionBlocksConfig = {
   _onFieldEvent(e, getBlock, onSave) {
     const input = e.target && e.target.closest ? e.target.closest('.bc-field') : null;
     if (!input) return;
+    const block = getBlock();
+    if (input.id === 'bcField_use_preset' || input.id === 'bcField_load_from_preset') {
+      this._updatePresetVisibility(block);
+    }
     this.scheduleSave(getBlock, onSave);
   },
 
