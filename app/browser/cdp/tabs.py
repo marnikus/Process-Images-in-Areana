@@ -157,3 +157,43 @@ def close_tab_sync(host: str, port: int, tab_id: str, timeout: float = 5.0) -> T
         return e.code == 404, f"HTTP {e.code}"
     except Exception as e:
         return False, f"{type(e).__name__}: {getattr(e, 'reason', e)}"
+
+
+async def _context_of(client: Any, old_id: str) -> Optional[str]:
+    """BrowserContextId of old tab, or None for default context."""
+    try:
+        resp = await client.send("Target.getTargets")
+        infos = resp.get("result", {}).get("targetInfos", []) if isinstance(resp, dict) else []
+        if not infos:
+            infos = resp.get("targetInfos", []) if isinstance(resp, dict) else []
+        for info in infos:
+            if info.get("targetId") == old_id:
+                return info.get("browserContextId")
+    except Exception:
+        return None
+    return None
+
+
+async def open_tab_in_same_context(client: Any, host: str, port: int, url: str, old_id: str) -> Tuple[Optional[TabInfo], str]:
+    """Open new tab in same browser context as old_id (profile-correct, keeps Arena account)."""
+    ctx_id = await _context_of(client, old_id)
+    params = {"url": url}
+    if ctx_id:
+        params["browserContextId"] = ctx_id
+    try:
+        resp = await client.send("Target.createTarget", params)
+        result = resp.get("result", resp) if isinstance(resp, dict) else {}
+        new_id = result.get("targetId", "")
+        if not new_id:
+            return None, f"createTarget no id {str(resp)[:120]}"
+        # Fetch to get ws_url
+        import asyncio as _asyncio
+        tabs, err, _ = await _asyncio.to_thread(fetch_tabs_sync, host, port)
+        if err:
+            return TabInfo(id=new_id, title="", url=url, ws_url=f"ws://{host}:{port}/devtools/page/{new_id}"), ""
+        for tab in tabs:
+            if tab.id == new_id:
+                return tab, ""
+        return TabInfo(id=new_id, title="", url=url, ws_url=f"ws://{host}:{port}/devtools/page/{new_id}"), ""
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"

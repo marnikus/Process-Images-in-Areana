@@ -255,9 +255,9 @@
     "file_lines": 96
   },
   "app/browser/cdp/tabs.py": {
-    "max_func_loc": 17,
+    "max_func_loc": 23,
     "max_class_loc": 6,
-    "func_count": 12,
+    "func_count": 14,
     "funcs": {
       "_is_port_open": 6,
       "_fetch_json_sync": 17,
@@ -270,14 +270,16 @@
       "_merge_by_id": 14,
       "fetch_tabs_sync": 16,
       "open_tab_sync": 15,
-      "close_tab_sync": 10
+      "close_tab_sync": 10,
+      "_context_of": 13,
+      "open_tab_in_same_context": 23
     },
     "max_methods": 0,
     "max_cc": 9,
     "max_cog": 0,
     "max_nest": 4,
-    "max_params": 4,
-    "file_lines": 159
+    "max_params": 5,
+    "file_lines": 199
   },
   "app/browser/cdp/transport.py": {
     "max_func_loc": 24,
@@ -3716,9 +3718,9 @@
     "file_lines": 67
   },
   "app/services/new_tab.py": {
-    "max_func_loc": 14,
-    "max_class_loc": 12,
-    "func_count": 20,
+    "max_func_loc": 17,
+    "max_class_loc": 13,
+    "func_count": 24,
     "funcs": {
       "clean_url": 5,
       "read_setting": 7,
@@ -3727,26 +3729,30 @@
       "handover": 11,
       "_endpoint_from_client": 10,
       "_resolve_endpoint": 10,
-      "_plan": 11,
+      "_plan": 13,
       "_clients_on": 10,
       "_hold_reconciler": 9,
       "_run": 11,
-      "_open_and_prove": 9,
-      "_prove_new_chat": 14,
+      "_open_and_prove": 11,
+      "_try_open_same_context": 17,
+      "_prove_new_chat": 17,
+      "_read_owner_from_client": 9,
+      "_check_owner_preserved": 15,
       "_connect_all": 4,
       "_roll_back": 7,
-      "_move_worker": 13,
+      "_move_worker": 14,
+      "_preserve_owner_after_move": 16,
       "_close_old": 11,
       "_gone": 10,
       "_quietly": 7,
       "_log": 5
     },
     "max_methods": 0,
-    "max_cc": 5,
+    "max_cc": 7,
     "max_cog": 0,
-    "max_nest": 2,
+    "max_nest": 3,
     "max_params": 3,
-    "file_lines": 273
+    "file_lines": 347
   },
   "app/services/recording/__init__.py": {
     "max_func_loc": 0,

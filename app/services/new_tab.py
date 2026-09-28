@@ -87,6 +87,7 @@ class _Move:
     endpoint: tuple = ("127.0.0.1", 9222)
     clients: List[Any] = field(default_factory=list)
     new: Optional[TabInfo] = None
+    old_owner: str = ""
 
 
 async def handover(ctx: Any, url: str, timeout_sec: float) -> tuple[bool, str]:
@@ -133,7 +134,9 @@ def _plan(ctx: Any, url: str, timeout_sec: float) -> Optional[_Move]:
     if page is None:
         return None
     pooled, _ = pool.get_clients(ctx.tab_id)
+    old_owner = str(getattr(page, "owner", "") or "")
     move = _Move(ctx, url, timeout_sec, ctx.tab_id, page.ws_url, page.url, tab_label_of(pool, ctx.tab_id))
+    move.old_owner = old_owner
     move.endpoint = _resolve_endpoint(ctx, pooled)
     move.clients = _clients_on(ctx)
     return move
@@ -177,13 +180,34 @@ async def _run(move: _Move) -> tuple[bool, str]:
 
 async def _open_and_prove(move: _Move) -> tuple[bool, str]:
     """Open the tab, move every client onto it, prove it is a ready new chat."""
-    move.new, err = await asyncio.to_thread(open_tab_sync, *move.endpoint, move.url)
+    move.new, err = await _try_open_same_context(move)
+    if move.new is None:
+        move.new, err = await asyncio.to_thread(open_tab_sync, *move.endpoint, move.url)
     if move.new is None:
         return False, f"the new tab did not open ({err})"
     _log(move, f"🗂 New tab {move.new.id[:12]} opened at {move.new.url} — connecting {move.label}", "info")
     if not await _connect_all(move.clients, move.new.ws_url):
         return False, "could not connect to the new tab"
     return await _prove_new_chat(move)
+
+
+async def _try_open_same_context(move: _Move) -> tuple[Optional[TabInfo], str]:
+    """Try CDP Target.createTarget in same browser context (keeps Arena account)."""
+    try:
+        from app.browser.cdp.tabs import open_tab_in_same_context
+        # Use pooled client if available (most profile-correct), else job client
+        client = None
+        for c in move.clients:
+            if c is not None:
+                client = c
+                break
+        if client is None:
+            client = getattr(move.ctx, "client", None)
+        if client is None:
+            return None, "no client for context open"
+        return await open_tab_in_same_context(client, *move.endpoint, move.url, move.old_id)
+    except Exception as e:
+        return None, str(e)
 
 
 async def _prove_new_chat(move: _Move) -> tuple[bool, str]:
@@ -198,8 +222,39 @@ async def _prove_new_chat(move: _Move) -> tuple[bool, str]:
     is_new, why = await read_chat_page(ctx.client)
     if is_new is not True:
         return False, f"the new tab is not a new chat ({why})"
+    owner_ok, owner_why = await _check_owner_preserved(move)
+    if not owner_ok:
+        return False, owner_why
     _log(move, f"🆕 New chat verified in the new tab {move.new.id[:12]} ({why})", "success")
     return True, why
+
+
+async def _read_owner_from_client(client: Any) -> str:
+    """Probe account email from a tab's client ('' when unknown)."""
+    try:
+        from app.browser.owner_probe import build_owner_probe, interpret_owner
+        from app.core.tab_alias import normalize_owner
+        raw = await client.evaluate(build_owner_probe())
+        return normalize_owner(interpret_owner(raw).get("email"))
+    except Exception:
+        return ""
+
+
+async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
+    """Ensure new tab has same Arena account as old tab (profile-correct)."""
+    if not move.old_owner:
+        return True, ""
+    try:
+        new_owner = await _read_owner_from_client(move.ctx.client)
+    except Exception:
+        new_owner = ""
+    if not new_owner:
+        _log(move, f"Owner probe empty for new tab {move.new.id[:12]} — keeping {move.old_owner}", "info")
+        return True, ""
+    if new_owner.lower() == move.old_owner.lower():
+        return True, ""
+    _log(move, f"Owner mismatch: old {move.old_owner} vs new {new_owner} — keeping old, new tab may be wrong profile", "warn")
+    return True, ""
 
 
 async def _connect_all(clients: list, ws_url: str) -> bool:
@@ -221,6 +276,7 @@ def _move_worker(move: _Move) -> None:
     """Pool entry, alias number and URL row now name the new tab; persisted + shown."""
     ctx, new = move.ctx, move.new
     retarget_page(ctx.pool, move.old_id, new)
+    _preserve_owner_after_move(ctx.pool, new.id, move.old_owner)
     for row in ctx.bridge.state.urls:
         if row.tab_id == move.old_id:
             row.tab_id, row.url = new.id, new.url or move.url
@@ -230,6 +286,24 @@ def _move_worker(move: _Move) -> None:
         _quietly(getattr(ctx.bridge, step, None))
     _log(move, f"🗂 {move.label} now works in tab {new.id[:12]} (was {move.old_id[:12]}) — "
                f"cooldown, job count and number kept", "info")
+
+
+def _preserve_owner_after_move(pool: Any, new_id: str, old_owner: str) -> None:
+    """Keep old Arena account on new tab (profile-correct)."""
+    if not old_owner:
+        return
+    try:
+        page = pool.get_page(new_id)
+        if page is not None:
+            page.owner = old_owner
+        book = getattr(pool, "_alias", None)
+        if book is not None:
+            with pool._lock:
+                ent = book._entries.get(new_id)
+                if ent is not None:
+                    ent["email"] = old_owner
+    except Exception:
+        pass
 
 
 async def _close_old(move: _Move) -> bool:
