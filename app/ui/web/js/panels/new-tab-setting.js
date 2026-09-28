@@ -1,7 +1,7 @@
 /* new-tab-setting.js — Settings → Job Cycle: "Start new chat as new tab" (I-79).
    The option rides the cooldown slots (no new slot): `load()` shows the `new_tab`
-   part of get_cooldown_config, and settings.js's saveCooldown sends `read()` with
-   the cooldown payload. Own module because settings.js is size-frozen (JS ratchet). */
+   part of get_cooldown_config; `save()` (Settings → Save) sends ONLY its two keys, so
+   the URL List bar's pause values are never reset (the server stores what it gets). */
 'use strict';
 const NewTabSetting = {
   init() {
@@ -19,6 +19,19 @@ const NewTabSetting = {
     const url = document.getElementById('newTabUrl');
     if (box) box.checked = !!setting.enabled;
     if (url) url.value = setting.url || '';
+  },
+
+  save() {
+    const call = Boot.needBridge('set_cooldown_config');
+    if (!call) return;
+    const payload = this.read();
+    call(JSON.stringify(payload), (res) => {
+      try {
+        const r = JSON.parse(res);
+        const text = r.ok ? `New chat as new tab: ${payload.new_tab ? 'on' : 'off'}` : 'New-tab option save failed: ' + r.error;
+        if (typeof LogConsole !== 'undefined') LogConsole.log(text, r.ok ? 'success' : 'error');
+      } catch {}
+    });
   },
 
   read() {

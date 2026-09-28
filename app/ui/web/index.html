@@ -540,24 +540,12 @@
         <input id="setHistoryLimit" type="number" min="5" max="500" step="1" placeholder="50">
         <div style="font-size:10px; color:var(--text-muted);">Same setting as the Job History header's "show last" — saving here or there updates both; the log itself keeps the last 500 on disk.</div>
       </div>
-      <!-- Job Cycle & Cooldown — per-tab pause between generations (spec 01-04) -->
+      <!-- Job Cycle — what happens after each job (I-79). The pause / captcha / rate-limit
+           values live ONLY in the URL List bar (2026-09-28 owner: no duplicate controls). -->
       <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin:10px 0; background:var(--bg-card);">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
           <span class="material-icons" style="font-size:16px; color:var(--accent);">timer</span>
-          <b style="font-size:12px;">Job Cycle & Cooldown (per-tab pause)</b>
-        </div>
-        <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:8px;">
-          <input id="cooldownEnabled" type="checkbox" checked> Enable minimum pause between jobs
-        </label>
-        <div class="settings-row">
-          <div class="settings-group">
-            <label>Min cooldown (minutes) — pause after each generation</label>
-            <input id="cooldownMinMinutes" type="number" min="0" max="1440" placeholder="5">
-          </div>
-          <div class="settings-group">
-            <label>Captcha penalty (minutes) — extra per captcha, stacks</label>
-            <input id="cooldownCaptchaMinutes" type="number" min="0" max="1440" placeholder="15">
-          </div>
+          <b style="font-size:12px;">Job Cycle (after each job)</b>
         </div>
         <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin:4px 0 6px;" title="After each job (failed or success) the job's tab is closed and the worker continues in a fresh tab at the URL below — cooldown, job count and number move with it. Chrome tabs only.">
           <input id="newTabEnabled" type="checkbox"> Start new chat as new tab (close the job's tab, continue in a fresh one)
@@ -566,7 +554,7 @@
           <label>New chat URL — opened in the new tab</label>
           <input id="newTabUrl" type="text" placeholder="https://arena.ai/image/direct?model_a=max">
         </div>
-        <div style="font-size:10px; color:var(--text-muted);">After each job the tab auto-clicks New Chat (with "Start new chat as new tab": a fresh tab opens at the URL above, the new chat is verified, the old tab is closed and checked gone), waits for full load, then cools down. Each tab runs its own timer — see Page Pool for live countdowns, reset/edit anytime there.</div>
+        <div style="font-size:10px; color:var(--text-muted);">After each job the tab auto-clicks New Chat (with "Start new chat as new tab": a fresh tab opens at the URL above, the new chat is verified, the old tab is closed and checked gone), waits for full load, then cools down. The pause, captcha and rate-limit penalty are set in the URL List window (⏳ bar) — each tab runs its own timer.</div>
       </div>
       </div>
       <div class="settings-group">

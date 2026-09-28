@@ -25,11 +25,11 @@ from app.core.cooldown import (
     CooldownConfig,
     clamp_seconds,
     cooldown_total,
+    countdown_mark,
     format_remaining,
 )
 
 _POLL_SEC = 2.0
-_LOG_EVERY_SEC = 10.0
 _STUCK_STATUSES = frozenset({PageStatus.BUSY, PageStatus.WAITING_GENERATION,
                               PageStatus.WAITING_CAPTCHA, PageStatus.ERROR})
 
@@ -666,8 +666,8 @@ async def _honour_pause(bridge):
 
 
 async def wait_for_tab_ready(pool, tab_id, bridge) -> bool:
-    """Single-page gate: wait until this tab's pause expires."""
-    last_log = 0.0
+    """Single-page gate: wait until this tab's pause expires (countdown logged per minute)."""
+    last_mark = None
     while True:
         if _is_cancelled(bridge):
             return False
@@ -681,9 +681,9 @@ async def wait_for_tab_ready(pool, tab_id, bridge) -> bool:
             return True
         if page.is_free() or page.remaining_seconds() <= 0:
             return True
-        now_m = time.monotonic()
-        if now_m - last_log >= _LOG_EVERY_SEC:
-            last_log = now_m
+        mark = countdown_mark(page.remaining_seconds())
+        if mark != last_mark:
+            last_mark = mark
             left = format_remaining(page.remaining_seconds())
             _log(bridge, f"⏳ Tab {_label(pool, tab_id)} cooling {left} — next job waits", "info")
         await asyncio.sleep(_POLL_SEC)

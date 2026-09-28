@@ -57,7 +57,9 @@ def read_setting(get_state) -> dict:
 
 
 def save_setting(config: Any, data: dict) -> dict:
-    """Store `new_tab` / `new_tab_url` from the cooldown payload; returns what was stored."""
+    """Store `new_tab` / `new_tab_url` when the payload has them; returns the stored setting."""
+    if "new_tab" not in data:
+        return read_setting(config.get_state)
     stored = {"enabled": bool(data.get("new_tab", False)), "url": clean_url(data.get("new_tab_url"))}
     config.set_state(**{SETTING_KEY: stored["enabled"], URL_KEY: stored["url"]})
     return stored

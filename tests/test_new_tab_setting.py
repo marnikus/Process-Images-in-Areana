@@ -54,9 +54,30 @@ def test_the_cooldown_slots_save_and_load_the_option(cfg):
     assert new_tab.wanted_url(type("B", (), {"config": cfg})()) == "https://arena.ai/image/direct"
 
 
-def test_an_old_payload_without_the_keys_turns_the_option_off(cfg):
+def test_a_bad_url_heals_to_the_default(cfg):
     host = _host(cfg)
-    json.loads(host.set_cooldown_config(json.dumps({"new_tab": True, "new_tab_url": "ftp://x"})))
+    host.set_cooldown_config(json.dumps({"new_tab": True, "new_tab_url": "ftp://x"}))
     assert json.loads(host.get_cooldown_config())["new_tab"]["url"] == new_tab.DEFAULT_URL
-    json.loads(host.set_cooldown_config(json.dumps({"enabled": True})))
-    assert json.loads(host.get_cooldown_config())["new_tab"]["enabled"] is False
+
+
+def test_the_url_list_save_keeps_the_new_tab_option(cfg):
+    """The URL List bar sends only its four values — it must not switch the option off."""
+    host = _host(cfg)
+    host.set_cooldown_config(json.dumps({"new_tab": True, "new_tab_url": "https://arena.ai/image/direct"}))
+    host.set_cooldown_config(json.dumps({"enabled": True, "min_seconds": 120, "captcha_penalty_seconds": 60,
+                                         "rate_limit_penalty_seconds": 600}))
+    loaded = json.loads(host.get_cooldown_config())
+    assert loaded["new_tab"] == {"enabled": True, "url": "https://arena.ai/image/direct"}
+    assert loaded["config"]["min_seconds"] == 120
+
+
+def test_the_settings_save_keeps_the_url_list_pause_values(cfg):
+    """Settings sends only the option — pause, captcha and rate-limit values stay as the URL List set them."""
+    host = _host(cfg)
+    host.set_cooldown_config(json.dumps({"enabled": False, "min_seconds": 120, "captcha_penalty_seconds": 60,
+                                         "rate_limit_penalty_seconds": 600}))
+    reply = json.loads(host.set_cooldown_config(json.dumps({"new_tab": True, "new_tab_url": ""})))
+    assert reply["ok"] and reply["new_tab"] == {"enabled": True, "url": new_tab.DEFAULT_URL}
+    config = reply["config"]
+    assert (config["enabled"], config["min_seconds"], config["captcha_penalty_seconds"],
+            config["rate_limit_penalty_seconds"]) == (False, 120, 60, 600)

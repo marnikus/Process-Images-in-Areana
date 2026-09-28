@@ -196,16 +196,20 @@ async def do_connect_page_pool(bridge, ws_url: str):
         bridge._log(f"Pool connect exception {e} — {traceback.format_exc()[-800:]}", "error")
 
 
+_COOLDOWN_KEYS = (("min_seconds", "cooldown_min_seconds", 300),
+                  ("captcha_penalty_seconds", "cooldown_captcha_penalty_seconds", 900),
+                  ("rate_limit_penalty_seconds", "cooldown_rate_limit_penalty_seconds", 1800))
+
+
 def _save_cooldown(config, data: dict) -> dict:
-    """Clamp and store the four cooldown values of a Settings payload; returns them."""
-    cfg = {"enabled": bool(data.get("enabled", True)),
-           "min_seconds": clamp_seconds(data.get("min_seconds", 300), 300),
-           "captcha_penalty_seconds": clamp_seconds(data.get("captcha_penalty_seconds", 900), 900),
-           "rate_limit_penalty_seconds": clamp_seconds(data.get("rate_limit_penalty_seconds", 1800), 1800)}
-    config.set_state(cooldown_enabled=cfg["enabled"], cooldown_min_seconds=cfg["min_seconds"],
-                     cooldown_captcha_penalty_seconds=cfg["captcha_penalty_seconds"],
-                     cooldown_rate_limit_penalty_seconds=cfg["rate_limit_penalty_seconds"])
-    return cfg
+    """Store only the cooldown values the payload carries (URL List bar vs the Settings
+    option — neither may reset the other's keys); returns the full stored config."""
+    update = {state: clamp_seconds(data[key], default) for key, state, default in _COOLDOWN_KEYS if key in data}
+    if "enabled" in data:
+        update["cooldown_enabled"] = bool(data["enabled"])
+    if update:
+        config.set_state(**update)
+    return config_to_dict(load_config(config.get_state))
 
 
 def _cooldown_line(cfg: dict, tab: dict) -> str:

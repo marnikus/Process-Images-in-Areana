@@ -7,6 +7,7 @@ locking (`app/services/cooldown_service.py`); tabs own the fields
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 
@@ -85,6 +86,16 @@ def cooldown_total(base_seconds: int, pending_penalty: int) -> int:
     base = base_seconds if base_seconds > 0 else 0
     extra = pending_penalty if pending_penalty > 0 else 0
     return base + extra
+
+
+def countdown_mark(seconds: float) -> float:
+    """The countdown milestone `seconds` falls in: whole minutes, then 1:00 and 0:30.
+
+    A waiting job logs its tab's countdown only when the mark changes — once per
+    minute, at most twice in the last minute (owner rule 2026-09-28: no 10 s spam).
+    """
+    left = max(0.0, float(seconds))
+    return 0.5 if left <= 30 else float(math.ceil(left / 60))
 
 
 def format_remaining(seconds: int) -> str:

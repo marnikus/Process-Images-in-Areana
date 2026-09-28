@@ -239,7 +239,7 @@ const WS_LIVE_PANELS = ['UrlList', 'ImageQueue', 'ProgressPanel', 'SettingsPanel
 // Config-driven panels render boot-time pulls — a restore must re-run their
 // loaders or every field they own stays stale until restart (RULE 24).
 const WS_CONFIG_RELOADERS = [
-  ['SettingsPanel', 'loadCooldownConfig'],
+  ['UrlList', 'loadCooldownConfig'], ['NewTabSetting', 'load'],
   ['SettingsPanel', 'loadCDPConfig'],
   ['WatcherPanel', 'loadConfig'],
   ['FirefoxAutoPanel', 'load'],
