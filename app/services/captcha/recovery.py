@@ -7,6 +7,8 @@ press Send again; this policy does exactly that, once, under observation.
 Round 6: the death signature (spinner seen, then lost, nothing arrives) is
 identical with or without captcha, so the trigger keys on spinner loss —
 a slow start (spinner never seen yet) can never fire.
+I-78: a poll the page did not answer (`output_state.unanswered`) is no
+evidence — it never fires, and a trigger's grace restarts at the next answer.
 
 Layer: services — the job runner arms the policy on the ctrl and the wait
 loop consults it through the `resume_gate` attribute (same protocol as
@@ -21,6 +23,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
+
+from app.browser.output_state import unanswered
 
 log = logging.getLogger("arena")
 
@@ -125,6 +129,18 @@ def _note_activity(policy: ResumePolicy, diag: Dict[str, Any], now: float) -> No
         policy.dead_since = now
 
 
+def _restart_windows(policy: ResumePolicy, now: float) -> None:
+    """No answer is no evidence (I-78): a trigger's grace restarts at the next answered poll.
+
+    Owner log 2026-09-28 08:31:32: 20 s of `page_unresponsive` polls matured
+    the dead window — "Generation stalled — resubmitting once" into a socket
+    that answered nothing, and the job failed. Only answered polls count.
+    """
+    policy.dead_since = None
+    if policy.settled_at is not None:
+        policy.settled_at = now
+
+
 def _revive_reason(policy: ResumePolicy, now: float) -> str:
     """Matured trigger label, or '' when nothing is due yet."""
     if policy.gen_error:
@@ -149,17 +165,23 @@ async def _maybe_resume(ctrl: Any, diag: Dict[str, Any]) -> Dict[str, Any]:
     policy = getattr(ctrl, "_resume_policy", None)
     if policy is None or diag.get("ready"):
         return diag
-    now = time.monotonic()
+    reason = _due_reason(policy, diag, time.monotonic())
+    if reason:
+        policy.resubmits += 1
+        _clear_trigger(policy)
+        await _resubmit(ctrl, policy, reason)
+    return diag
+
+
+def _due_reason(policy: ResumePolicy, diag: Dict[str, Any], now: float) -> str:
+    """Note this poll; the resubmit due now ('' = none). An unanswered poll never makes one due."""
+    if unanswered(diag):
+        _restart_windows(policy, now)
+        return ""
     _note_activity(policy, diag, now)
     if policy.resubmits >= policy.max_resubmits or _cancelled(policy):
-        return diag
-    reason = _revive_reason(policy, now)
-    if not reason:
-        return diag
-    policy.resubmits += 1
-    _clear_trigger(policy)
-    await _resubmit(ctrl, policy, reason)
-    return diag
+        return ""
+    return _revive_reason(policy, now)
 
 
 def _clear_trigger(policy: ResumePolicy) -> None:

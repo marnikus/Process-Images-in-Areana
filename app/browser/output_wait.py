@@ -1,5 +1,5 @@
 """Output wait loop — C6/C11 refactor with WaitSpec and small helpers.
-# ideal-size: 250 lines reason=WaitSpec+LoopState polling branches + ready/spinner handling; fallback logic moved to output_wait_fallback.py for cohesion
+# ideal-size: 255 lines reason=WaitSpec+LoopState polling branches + ready/spinner handling + I-78 last look; fallback logic moved to output_wait_fallback.py for cohesion
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from ..core.pause_clock import PauseClock
+from .output_state import unanswered
 from .output_wait_fallback import (
     _handle_timeout_fallback,
     _recheck_after_delay,
@@ -33,6 +34,7 @@ class LoopState:
     last: dict
     spin_visible: bool = False
     start: float = 0.0
+    last_look: bool = False     # I-78: the one extra poll a deadline on an unanswered check gets
 
 
 # Answers the spinner / mismatch handlers already put into words.
@@ -154,6 +156,8 @@ async def _process_ready(diag: dict, check_fn: Callable, log_cb: Callable) -> di
 
 
 async def _process_spinner(diag: dict, log_cb: Callable, was_visible: bool) -> bool:
+    if unanswered(diag):     # I-78: no answer is not "spinner gone" — keep what we knew
+        return was_visible
     reason = diag.get("reason", "")
     spinning = diag.get("spinning", False)
     if spinning and should_continue_after_spinner(reason):
@@ -174,7 +178,7 @@ async def _check_cancelled(cancel_check, state: LoopState) -> dict | None:
 
 async def _check_timeout(state: LoopState, spec: WaitSpec, log_cb: Callable) -> dict | None:
     elapsed = spec.pause.paused_elapsed(state.start) if spec.pause else time.monotonic() - state.start
-    if elapsed <= spec.timeout:
+    if elapsed <= spec.timeout or _takes_last_look(state, log_cb):
         return None
     fb = await _handle_timeout_fallback(state.last, spec.timeout, log_cb)
     if fb:
@@ -184,6 +188,20 @@ async def _check_timeout(state: LoopState, spec: WaitSpec, log_cb: Callable) -> 
         state.last.update(elapsed=elapsed, **evidence)
         return state.last
     return {"ready": False, "reason": "timeout", "last": state.last, "elapsed": elapsed, **evidence}
+
+
+def _takes_last_look(state: LoopState, log_cb: Callable) -> bool:
+    """Deadline on an unanswered check: poll once more before failing (I-78).
+
+    Owner log 2026-09-28: the wait failed on "page_unresponsive" while the
+    image had finished — the next check (re-dialling the silent socket
+    first) would have seen it. One look, never a second.
+    """
+    if state.last_look or not unanswered(state.last):
+        return False
+    state.last_look = True
+    log_cb("🔍 Deadline reached while the page was not answering — one last look before failing")
+    return True
 
 
 async def _handle_ready_branch(diag: dict, check_fn: Callable, log_cb: Callable, spec: WaitSpec):

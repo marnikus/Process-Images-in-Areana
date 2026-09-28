@@ -644,7 +644,7 @@
   },
   "app/browser/output_wait.py": {
     "max_func_loc": 23,
-    "max_class_loc": 4,
+    "max_class_loc": 5,
     "func_count": 17,
     "funcs": {
       "should_continue_after_spinner": 2,

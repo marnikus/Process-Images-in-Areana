@@ -3,6 +3,17 @@
 v4 adds strict JOB-ID verification: associatedJobId must equal expectedJobId.
 """
 
+# I-78: the check got no answer — the page timed out (`page_unresponsive`) or the
+# evaluate returned nothing (`no_result`, e.g. "CDP not connected"). Such a poll
+# says nothing about the spinner or the generation (the Watcher holds on it, I-71).
+_UNANSWERED_REASONS = frozenset({"page_unresponsive", "no_result"})
+
+
+def unanswered(diag) -> bool:
+    """True when this output check got no answer from the page — no evidence either way."""
+    return isinstance(diag, dict) and diag.get("reason") in _UNANSWERED_REASONS
+
+
 def flatten_diagnostics(result: dict) -> dict:
     if not isinstance(result, dict):
         return {"ready": False, "reason": "invalid_result"}
