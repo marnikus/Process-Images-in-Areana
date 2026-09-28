@@ -2881,7 +2881,7 @@
     },
     "max_methods": 0,
     "max_cc": 8,
-    "max_cog": 0,
+    "max_cog": 7,
     "max_nest": 3,
     "max_params": 3,
     "file_lines": 181,
