@@ -174,9 +174,29 @@ class MainWindow(QMainWindow):
 
     def _drop_browser_sockets(self):
         """Close what the app keeps open in a browser — never a reason to fail a close."""
-        if self.cdp_client:
+        client = getattr(self, "cdp_client", None)
+        if not client:
+            return
+        try:
+            import asyncio
+            loop = None
             try:
-                import asyncio
-                asyncio.ensure_future(self.cdp_client.disconnect())
+                loop = asyncio.get_event_loop()
             except Exception:
-                pass
+                loop = None
+            if loop is not None and loop.is_running():
+                task = loop.create_task(client.disconnect())
+                task.add_done_callback(lambda t: None)
+            else:
+                # No running loop at exit – drop refs so no pending task warning
+                try:
+                    client._ws = None
+                    client._connected = False
+                    rt = getattr(client, "_receive_task", None)
+                    if rt:
+                        rt.cancel()
+                    client._receive_task = None
+                except Exception:
+                    pass
+        except Exception:
+            pass

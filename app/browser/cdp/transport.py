@@ -163,25 +163,43 @@ async def _send_payload(transport, cmd_id: int, ws, payload: str) -> None:
         raise
 
 
+def _is_expected_close(exc: BaseException) -> bool:
+    """Normal tab close: browser shuts ws without close frame (no spam)."""
+    try:
+        name = type(exc).__name__
+        txt = str(exc).lower()
+        if "closed" in name.lower() or "close" in name.lower():
+            return True
+        if "no close frame" in txt or "connectionclosed" in txt:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 @on_home_loop
 async def _disconnect(transport) -> None:
     """Close on purpose: fail waiters, stop the receive loop, close the socket."""
     transport._connected = False
-    _fail_pending(transport, "CDP disconnected")   # waiters must not burn timeouts
-    ws, transport._ws = transport._ws, None        # detach first; teardown owns close
-    if transport._receive_task:
-        transport._receive_task.cancel()
+    _fail_pending(transport, "CDP disconnected")
+    ws, transport._ws = transport._ws, None
+    task = transport._receive_task
+    transport._receive_task = None
+    if task:
+        task.cancel()
         try:
-            await transport._receive_task
+            await asyncio.wait_for(task, timeout=0.5)
         except Exception:
             pass
-        transport._receive_task = None
     if ws:
         try:
             await ws.close()
         except Exception:
             pass
-    transport.disconnected.emit()
+    try:
+        transport.disconnected.emit()
+    except Exception:
+        pass
 
 
 def _receive_teardown(transport) -> bool:
@@ -232,19 +250,28 @@ def _set_exception_if_pending(fut, exc: Exception) -> None:
 
 
 def _receive_error(transport, e: Exception) -> None:
-    """Receive-side failure: capped traceback + error signal (module-level to
-    keep `_receive_loop` under the file's 28-LOC floor)."""
+    """Receive-side failure: expected close → INFO, else ERROR (no spam on tab close)."""
+    if _is_expected_close(e):
+        log.info(f"CDP receive closed {transport._current_ws_url[:80]}: {e}")
+        return
     import traceback
     tb = traceback.format_exc()[-800:]
     log.error(f"CDP receive error {transport._current_ws_url[:80]}: {e} — {tb}")
-    transport.error.emit(f"CDP receive error: {e}")
+    try:
+        transport.error.emit(f"CDP receive error: {e}")
+    except Exception:
+        pass
 
 
 def _note_eval_error(transport, kind: str, text: str) -> None:
-    """Remember + log why evaluate() returns None (callers only see None)."""
+    """Remember + log why evaluate() returns None; transport not-connected → DEBUG (quiet)."""
     transport.last_error_kind = kind
     transport.last_error = text[:300]
-    log.warning(f"evaluate {kind} error: {transport.last_error}")
+    low = text.lower()
+    if kind == "transport" and ("not connected" in low or "disconnected" in low or "connection" in low):
+        log.debug(f"evaluate {kind} error: {transport.last_error}")
+    else:
+        log.warning(f"evaluate {kind} error: {transport.last_error}")
 
 
 def _decode_reply(r) -> tuple:

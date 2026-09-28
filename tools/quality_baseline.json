@@ -282,17 +282,18 @@
   "app/browser/cdp/transport.py": {
     "max_func_loc": 24,
     "max_class_loc": 105,
-    "func_count": 26,
+    "func_count": 27,
     "funcs": {
       "_route": 8,
       "_send_payload": 7,
-      "_disconnect": 18,
+      "_is_expected_close": 12,
+      "_disconnect": 22,
       "_receive_teardown": 10,
       "_fail_pending": 11,
       "_fail_on_its_loop": 15,
       "_set_exception_if_pending": 3,
-      "_receive_error": 7,
-      "_note_eval_error": 5,
+      "_receive_error": 12,
+      "_note_eval_error": 9,
       "_decode_reply": 14,
       "_exc_text": 5,
       "_protocol_text": 5,
@@ -315,7 +316,7 @@
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 4,
-    "file_lines": 286
+    "file_lines": 313
   },
   "app/browser/cdp_arena/__init__.py": {
     "max_func_loc": 0,
@@ -4788,8 +4789,8 @@
     "file_lines": 217
   },
   "app/ui/main_window.py": {
-    "max_func_loc": 20,
-    "max_class_loc": 126,
+    "max_func_loc": 28,
+    "max_class_loc": 146,
     "func_count": 14,
     "funcs": {
       "_build_view": 6,
@@ -4805,14 +4806,14 @@
       "_restore_window_geometry": 18,
       "_save_window_geometry": 15,
       "closeEvent": 20,
-      "_drop_browser_sockets": 8
+      "_drop_browser_sockets": 28
     },
     "max_methods": 11,
-    "max_cc": 4,
+    "max_cc": 8,
     "max_cog": 0,
-    "max_nest": 1,
+    "max_nest": 2,
     "max_params": 2,
-    "file_lines": 182
+    "file_lines": 202
   },
   "app/ui/panels/__init__.py": {
     "max_func_loc": 0,
@@ -5806,7 +5807,7 @@
     "max_cc": 6,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 194,
+    "file_lines": 195,
     "func_count": 54,
     "js": true
   },

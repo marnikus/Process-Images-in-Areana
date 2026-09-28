@@ -67,7 +67,8 @@ window.ArenaAppListeners = {
   },
 
   _handleGridLayout(payload) {
-    console.log('grid_layout_changed', payload?.slice?.(0,100));
+    // Quiet: grid changes on every drag, don't spam Python log (was console.log → js: INFO)
+    try { if (typeof console.debug === 'function') console.debug('grid_layout_changed', payload?.slice?.(0,20)); } catch {}
   },
 
   _handleWindowPresetList(json) {
