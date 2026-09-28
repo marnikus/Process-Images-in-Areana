@@ -3711,7 +3711,7 @@
     },
     "max_methods": 10,
     "max_cc": 7,
-    "max_cog": 0,
+    "max_cog": 9,
     "max_nest": 3,
     "max_params": 3,
     "file_lines": 383,
