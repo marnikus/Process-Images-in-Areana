@@ -155,7 +155,7 @@ const SettingsPanel = {
 
   saveCooldown() {
     const { enabled, minM, penM } = this._readCooldownInputs();
-    const payload = {enabled, min_seconds: Math.round(minM*60), captcha_penalty_seconds: Math.round(penM*60)};
+    const payload = {enabled, min_seconds: Math.round(minM*60), captcha_penalty_seconds: Math.round(penM*60), ...window.NewTabSetting?.read()};
     if (App.bridge?.set_cooldown_config) App.bridge.set_cooldown_config(JSON.stringify(payload), (res)=> this._onSaveCooldown(res, enabled, minM, penM));
   },
 

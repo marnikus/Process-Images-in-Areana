@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import json
 import socket
-import urllib.request
 import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 from ..cdp_protocol import (
     TabInfo as _PureTabInfo,
@@ -127,3 +128,32 @@ def fetch_tabs_sync(host: str = "127.0.0.1", port: int = 9222,
     if merged:
         return list(merged.values()), "", tried
     return [], last_err or "No Chrome tabs found", tried
+
+
+def open_tab_sync(host: str, port: int, url: str, timeout: float = 5.0) -> Tuple[Optional[TabInfo], str]:
+    """Open a new tab at `url` (I-79): `PUT /json/new?<percent-encoded url>`.
+
+    Chrome refuses GET (HTTP 405) and decodes the whole query as the URL, so a
+    URL with its own `?a=b&c=d` must be percent-encoded (measured, Chromium 131).
+    """
+    req = urllib.request.Request(f"http://{host}:{port}/json/new?{urllib.parse.quote(url, safe='')}",
+                                 method="PUT", headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            item = json.loads(resp.read().decode("utf-8", errors="ignore"))
+    except Exception as e:
+        return None, f"{type(e).__name__}: {getattr(e, 'reason', e)}"
+    tabs = _parse_tabs([item], preferred_host=host, preferred_port=port)
+    return (tabs[0], "") if tabs else (None, f"unexpected answer: {str(item)[:80]}")
+
+
+def close_tab_sync(host: str, port: int, tab_id: str, timeout: float = 5.0) -> Tuple[bool, str]:
+    """Close a tab: `/json/close/<id>`; 404 = the tab is already gone (= closed)."""
+    try:
+        req = urllib.request.Request(f"http://{host}:{port}/json/close/{tab_id}")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return True, resp.read().decode("utf-8", errors="ignore")[:80]
+    except urllib.error.HTTPError as e:
+        return e.code == 404, f"HTTP {e.code}"
+    except Exception as e:
+        return False, f"{type(e).__name__}: {getattr(e, 'reason', e)}"

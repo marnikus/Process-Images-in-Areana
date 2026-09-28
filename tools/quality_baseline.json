@@ -1647,7 +1647,7 @@
   },
   "app/core/tab_alias.py": {
     "max_func_loc": 21,
-    "max_class_loc": 61,
+    "max_class_loc": 67,
     "func_count": 16,
     "funcs": {
       "normalize_owner": 8,
@@ -1667,7 +1667,7 @@
       "as_dict": 3,
       "__len__": 2
     },
-    "max_methods": 8,
+    "max_methods": 9,
     "max_cc": 8,
     "max_cog": 12,
     "max_nest": 3,

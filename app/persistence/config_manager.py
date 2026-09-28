@@ -30,6 +30,8 @@ DEFAULT_SESSION = {
     "cooldown_enabled": True,
     "cooldown_min_seconds": 300,
     "cooldown_captcha_penalty_seconds": 900,
+    "new_chat_new_tab": False,  # I-79: after a job, continue in a fresh tab (Settings → Job Cycle)
+    "new_chat_new_tab_url": "https://arena.ai/image/direct?model_a=max",
     "firefox_auto": {  # the "Firefox auto with Extension" window (I-63): Ui.Vision framework test
         # The macro reuses the tab the search finds and NEVER opens a page
         # (2026-09-23, owner rule) — so there is no "url" field any more; the

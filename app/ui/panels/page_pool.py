@@ -15,7 +15,7 @@ import re
 
 from app.core.cooldown import clamp_seconds, config_to_dict, format_remaining
 from app.persistence.cooldown_store import save_entries
-from app.services import tab_reset
+from app.services import new_tab, tab_reset
 from app.services.cooldown_service import (
     edit_cooldown,
     load_config,
@@ -196,6 +196,26 @@ async def do_connect_page_pool(bridge, ws_url: str):
         bridge._log(f"Pool connect exception {e} — {traceback.format_exc()[-800:]}", "error")
 
 
+def _save_cooldown(config, data: dict) -> dict:
+    """Clamp and store the four cooldown values of a Settings payload; returns them."""
+    cfg = {"enabled": bool(data.get("enabled", True)),
+           "min_seconds": clamp_seconds(data.get("min_seconds", 300), 300),
+           "captcha_penalty_seconds": clamp_seconds(data.get("captcha_penalty_seconds", 900), 900),
+           "rate_limit_penalty_seconds": clamp_seconds(data.get("rate_limit_penalty_seconds", 1800), 1800)}
+    config.set_state(cooldown_enabled=cfg["enabled"], cooldown_min_seconds=cfg["min_seconds"],
+                     cooldown_captcha_penalty_seconds=cfg["captcha_penalty_seconds"],
+                     cooldown_rate_limit_penalty_seconds=cfg["rate_limit_penalty_seconds"])
+    return cfg
+
+
+def _cooldown_line(cfg: dict, tab: dict) -> str:
+    """The one log line of a cooldown save, incl. the new-tab option (I-79)."""
+    return (f"Cooldown set: enabled={cfg['enabled']} min={cfg['min_seconds'] // 60}m "
+            f"penalty={cfg['captcha_penalty_seconds'] // 60}m per captcha "
+            f"limit={cfg['rate_limit_penalty_seconds'] // 60}m · new chat as new tab: "
+            f"{tab['url'] if tab['enabled'] else 'off'}")
+
+
 class PagePoolMixin:
     """Pooled-tab management and cooldown config/control slots.
 
@@ -271,7 +291,8 @@ class PagePoolMixin:
     def get_cooldown_config(self):
         try:
             cfg = load_config(self.config.get_state)
-            return json.dumps({"ok": True, "config": config_to_dict(cfg)}, ensure_ascii=False)
+            return json.dumps({"ok": True, "config": config_to_dict(cfg),
+                               "new_tab": new_tab.read_setting(self.config.get_state)}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
@@ -279,17 +300,10 @@ class PagePoolMixin:
     def set_cooldown_config(self, cfg_json: str):
         try:
             data = json.loads(cfg_json or "{}")
-            enabled = bool(data.get("enabled", True))
-            min_s = clamp_seconds(data.get("min_seconds", 300), 300)
-            pen_s = clamp_seconds(data.get("captcha_penalty_seconds", 900), 900)
-            rl_s = clamp_seconds(data.get("rate_limit_penalty_seconds", 1800), 1800)
-            self.config.set_state(cooldown_enabled=enabled, cooldown_min_seconds=min_s,
-                                  cooldown_captcha_penalty_seconds=pen_s,
-                                  cooldown_rate_limit_penalty_seconds=rl_s)
-            self._log(f"Cooldown set: enabled={enabled} min={min_s // 60}m penalty={pen_s // 60}m per captcha limit={rl_s // 60}m", "success")
-            return json.dumps({"ok": True, "config": {"enabled": enabled, "min_seconds": min_s,
-                                                      "captcha_penalty_seconds": pen_s,
-                                                      "rate_limit_penalty_seconds": rl_s}}, ensure_ascii=False)
+            cfg = _save_cooldown(self.config, data)
+            tab = new_tab.save_setting(self.config, data)
+            self._log(_cooldown_line(cfg, tab), "success")
+            return json.dumps({"ok": True, "config": cfg, "new_tab": tab}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 

@@ -273,3 +273,27 @@ class PagePool:
     def get_clients(self, tab_id: str):
         with self._lock:
             return self._clients.get(tab_id), self._controllers.get(tab_id)
+
+
+def _rekey(mapping: dict, old_id: str, new_id: str) -> dict:
+    """The same mapping with one key renamed, in the same order (worker order)."""
+    return {(new_id if key == old_id else key): value for key, value in mapping.items()}
+
+
+def retarget_page(pool: PagePool, old_id: str, tab) -> bool:
+    """The worker moves to a new tab (I-79): one PageInfo, now under the new tab id.
+
+    Cooldown, captcha debt, job count, worker and alias numbers stay; the page
+    keeps its place in pool order; its registered client and controller follow.
+    """
+    with pool._lock:
+        page = pool._pages.get(old_id)
+        if page is None:
+            return False
+        page.tab_id, page.ws_url = tab.id, tab.ws_url
+        page.url, page.title = tab.url or page.url, tab.title or page.title
+        pool._pages = _rekey(pool._pages, old_id, tab.id)
+        pool._clients = _rekey(pool._clients, old_id, tab.id)
+        pool._controllers = _rekey(pool._controllers, old_id, tab.id)
+        pool._alias.adopt(tab.id, old_id)
+        return True

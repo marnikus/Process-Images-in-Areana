@@ -179,6 +179,12 @@ class AliasBook:
             known["email"] = owner
         known["seen"] = self._stamp()
 
+    def adopt(self, new_id: str, old_id: str) -> None:
+        """The tab's worker moved to a new tab (I-79): the number and account follow it."""
+        entry = self._entries.pop(old_id, None)
+        if entry is not None:
+            self._entries[new_id] = entry
+
     def as_dict(self) -> Dict[str, Dict[str, Any]]:
         """Persisted shape (fresh copy; callers may keep it)."""
         return {tab_id: dict(entry) for tab_id, entry in self._entries.items()}

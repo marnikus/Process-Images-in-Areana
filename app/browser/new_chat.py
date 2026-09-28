@@ -182,7 +182,7 @@ async def _check_ready(ctx: ResetCtx) -> tuple[bool, str]:
     return False, f"ready={ready} reasons={reasons}"
 
 
-async def _wait_page_loaded(ctx: ResetCtx) -> tuple[bool, str]:
+async def wait_new_chat_ready(ctx: ResetCtx) -> tuple[bool, str]:
     """Poll until document complete + page ready + composer empty."""
     deadline = time.monotonic() + max(1.0, float(ctx.timeout_sec or 30))
     last = "starting"
@@ -214,7 +214,7 @@ async def _click_and_wait(ctx: ResetCtx) -> tuple[bool, str]:
     if not clicked:
         return False, why
     _report(ctx.engine, f"↩ New Chat clicked ({why}), waiting for load", "info")
-    return await _wait_page_loaded(ctx)
+    return await wait_new_chat_ready(ctx)
 
 
 def _finish_reset(ctx: ResetCtx, ok: bool, reason: str) -> tuple[bool, str]:
@@ -233,7 +233,7 @@ async def _open_new_chat(ctx: ResetCtx) -> tuple[bool, str]:
         await ctx.client.send("Page.navigate", {"url": url}, timeout=15)
     except Exception as e:
         return False, f"navigation failed: {e}"
-    return await _wait_page_loaded(ctx)
+    return await wait_new_chat_ready(ctx)
 
 
 async def _new_chat_url(client: Any) -> tuple[str, str]:

@@ -296,9 +296,7 @@ async def _finish_primary_tab(ctx: BatchCtx) -> None:
         pool = _pool_of(ctx.bridge)
         if not (pool and ctx.tab_id):
             return
-        finish_ctx = FinishCtx(pool=pool, bridge=ctx.bridge, tab_id=ctx.tab_id,
-                               ctrl=ctx.ctrl, client=ctx.bridge.cdp)
-        await finish_page_after_job(finish_ctx)
+        await _finish_and_follow(ctx, pool)
         set_tab_image(pool, ctx.tab_id, None)
         ctx.bridge._emit_pool_status()
     except asyncio.CancelledError:
@@ -307,6 +305,14 @@ async def _finish_primary_tab(ctx: BatchCtx) -> None:
     except Exception as e:
         ctx.bridge._log(f"Post-job reset/cooldown skipped: {e} — settling stuck page", "warn")
         _settle_stuck(ctx)
+
+
+async def _finish_and_follow(ctx: BatchCtx, pool) -> None:
+    """Reset + cooldown; the batch follows its worker when it moved to a new tab (I-79)."""
+    finish_ctx = FinishCtx(pool=pool, bridge=ctx.bridge, tab_id=ctx.tab_id,
+                           ctrl=ctx.ctrl, client=ctx.bridge.cdp)
+    await finish_page_after_job(finish_ctx)
+    ctx.tab_id = finish_ctx.tab_id
 
 
 def _settle_stuck(ctx: BatchCtx) -> None:

@@ -559,7 +559,14 @@
             <input id="cooldownCaptchaMinutes" type="number" min="0" max="1440" placeholder="15">
           </div>
         </div>
-        <div style="font-size:10px; color:var(--text-muted);">After each job the tab auto-clicks New Chat, waits for full load, then cools down. Each tab runs its own timer — see Page Pool for live countdowns, reset/edit anytime there.</div>
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin:4px 0 6px;" title="After each job (failed or success) the job's tab is closed and the worker continues in a fresh tab at the URL below — cooldown, job count and number move with it. Chrome tabs only.">
+          <input id="newTabEnabled" type="checkbox"> Start new chat as new tab (close the job's tab, continue in a fresh one)
+        </label>
+        <div class="settings-group">
+          <label>New chat URL — opened in the new tab</label>
+          <input id="newTabUrl" type="text" placeholder="https://arena.ai/image/direct?model_a=max">
+        </div>
+        <div style="font-size:10px; color:var(--text-muted);">After each job the tab auto-clicks New Chat (with "Start new chat as new tab": a fresh tab opens at the URL above, the new chat is verified, the old tab is closed and checked gone), waits for full load, then cools down. Each tab runs its own timer — see Page Pool for live countdowns, reset/edit anytime there.</div>
       </div>
       </div>
       <div class="settings-group">
@@ -899,6 +906,7 @@
 <script src="js/panels/progress.js"></script>
 <script src="js/panels/browser-connection.js"></script>
 <script src="js/panels/settings.js"></script>
+<script src="js/panels/new-tab-setting.js"></script>
 <script src="js/panels/captcha.js"></script>
 <script src="js/panels/captcha-recording-comparison.js"></script>
 <script src="js/panels/captcha-recordings.js"></script>
