@@ -372,3 +372,98 @@ async def test_dead_generation_marker_cleared_by_live_request(monkeypatch):
     assert policy.gen_error  # death proof recorded (no resubmit: zero budget)
     await maybe_resume(ctrl, dead_diag(spinning=True))
     assert policy.gen_error == "" and policy.dead_since is None
+
+
+# ── I-78: a poll without an answer is not evidence of death (owner log 2026-09-28) ──
+# 08:30:58 a frozen poll, 08:31:32 `Generation stalled (spinner lost, no output)`:
+# the page had said nothing for 34 s, so "spinner lost" was never observed.
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_no_answer_poll_never_matures_the_death_window(monkeypatch):
+    ctrl, clock = FakeCtrl(), FakeClock()
+    policy, _ = arm(ctrl, clock, monkeypatch)
+    policy.spinner_seen = True                     # a spinner was seen before the page went quiet
+    frozen = dead_diag(reason="page_unresponsive")
+    for _ in range(5):
+        clock.t += RESUME_GRACE_SEC + 1
+        await maybe_resume(ctrl, frozen)
+    assert ctrl.calls == [] and policy.resubmits == 0
+    assert policy.dead_since is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_real_spinner_loss_after_a_frozen_stretch_still_fires(monkeypatch):
+    """The frozen poll is neutral, not a shield: a spinner that is really gone still revives."""
+    ctrl, clock = FakeCtrl(), FakeClock()
+    policy, _ = arm(ctrl, clock, monkeypatch)
+    policy.spinner_seen = True
+    await maybe_resume(ctrl, dead_diag(reason="page_unresponsive"))
+    await maybe_resume(ctrl, dead_diag())            # the page answered: no spinner, no output
+    clock.t += RESUME_GRACE_SEC + 1
+    await maybe_resume(ctrl, dead_diag())
+    assert ctrl.calls == [("insert", PROMPT), ("submit",)] and policy.resubmits == 1
+
+
+class CdpCtrl(AttachCtrl):
+    """FakeCtrl + a CDP client double so the resubmit's context recovery can be watched."""
+
+    def __init__(self, recover_ok=True, **kw):
+        super().__init__(**kw)
+        self.cdp = object()
+        self.recover_ok = recover_ok
+        self.recovered = 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resubmit_recovers_the_page_context_first(monkeypatch):
+    ctrl, clock = CdpCtrl(), FakeClock()
+
+    async def recover(client, report=None, **kw):
+        ctrl.calls.append(("recover",))
+        if report:
+            report("🔄 page context is back", "info")
+        return ctrl.recover_ok
+    monkeypatch.setattr(recovery_mod.page_recovery, "recover_page_context", recover)
+    _, reports = await fire(ctrl, clock, monkeypatch)
+    assert [c[0] for c in ctrl.calls][:2] == ["recover", "insert"]
+    assert any("page context is back" in m for m, _ in reports)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_raising_context_recovery_still_resubmits(monkeypatch):
+    """Fail-open (RULE 4): the recovery raising must not cancel the resubmit."""
+    ctrl, clock = CdpCtrl(), FakeClock()
+
+    async def boom(*_a, **_kw):
+        ctrl.calls.append(("recover",))
+        raise RuntimeError("the recovery broke")
+
+    monkeypatch.setattr(recovery_mod.page_recovery, "recover_page_context", boom)
+    await fire(ctrl, clock, monkeypatch)
+    assert [c[0] for c in ctrl.calls][:2] == ["recover", "insert"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resubmit_skips_when_the_page_never_comes_back(monkeypatch):
+    ctrl, clock = CdpCtrl(recover_ok=False), FakeClock()
+
+    async def recover(client, report=None, **kw):
+        ctrl.calls.append(("recover",))
+        return False
+    monkeypatch.setattr(recovery_mod.page_recovery, "recover_page_context", recover)
+    _, reports = await fire(ctrl, clock, monkeypatch)
+    assert [c[0] for c in ctrl.calls] == ["recover"]          # no insert/send into a dead page
+    assert any("Resubmit skipped" in m for m, _ in reports)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_ctrl_without_a_client_resubmits_exactly_as_before(monkeypatch):
+    ctrl, clock = AttachCtrl(), FakeClock()                   # no `cdp` attribute at all
+    await fire(ctrl, clock, monkeypatch)
+    assert [c[0] for c in ctrl.calls] == ["insert", "submit_ready"]

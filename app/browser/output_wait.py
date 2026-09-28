@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from .page_recovery import unanswered_diag
 from ..core.pause_clock import PauseClock
 from .output_wait_fallback import (
     _handle_timeout_fallback,
@@ -154,6 +155,8 @@ async def _process_ready(diag: dict, check_fn: Callable, log_cb: Callable) -> di
 
 
 async def _process_spinner(diag: dict, log_cb: Callable, was_visible: bool) -> bool:
+    if unanswered_diag(diag):        # I-78: no answer is not "the spinner is gone"
+        return was_visible
     reason = diag.get("reason", "")
     spinning = diag.get("spinning", False)
     if spinning and should_continue_after_spinner(reason):

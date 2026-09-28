@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
+from app.browser import page_recovery
+
 log = logging.getLogger("arena")
 
 RESUME_GRACE_SEC = 20.0  # 10 dead polls before a resubmit is even considered
@@ -115,6 +117,8 @@ def _note_activity(policy: ResumePolicy, diag: Dict[str, Any], now: float) -> No
     """Live signals stand the triggers down; dead polls start the window."""
     if _note_dead_generation(policy, diag, now):
         return
+    if page_recovery.unanswered_diag(diag):   # I-78: the page said nothing — no evidence either way
+        return
     if diag.get("spinning"):
         policy.spinner_seen = True
     if _live_request(diag):
@@ -158,7 +162,7 @@ async def _maybe_resume(ctrl: Any, diag: Dict[str, Any]) -> Dict[str, Any]:
         return diag
     policy.resubmits += 1
     _clear_trigger(policy)
-    await _resubmit(ctrl, policy, reason)
+    await _resubmit_or_skip(ctrl, policy, reason)
     return diag
 
 
@@ -203,6 +207,36 @@ async def _ensure_attachment(ctrl: Any, policy: ResumePolicy) -> None:
             await _reattach(attach, policy, path)
     except Exception as e:
         _report(policy, f"🔄 Resubmit re-attach failed: {e}", "warn")
+
+
+def _sink(policy: ResumePolicy) -> Callable:
+    """Report through the policy (keeps the recovery call site one line, RULE 18)."""
+    return lambda m, lvl="info": _report(policy, m, lvl)
+
+
+async def _context_back(ctrl: Any, policy: ResumePolicy) -> bool:
+    """One recovery round when the page context was lost just before the resubmit (I-78).
+
+    The owner log 2026-09-28 08:32:06: a re-dial ran under the resubmit, so attach said
+    `Failed to get document root` and prompt/Send said `CDP not connected`. No client
+    (tests, the Firefox lane) → True: the steps run exactly as before.
+    """
+    client = getattr(ctrl, "cdp", None)
+    recover = getattr(page_recovery, "recover_page_context", None)
+    if client is None or recover is None:
+        return True
+    try:
+        return bool(await recover(client, report=_sink(policy), attempts=2))
+    except Exception:
+        return True
+
+
+async def _resubmit_or_skip(ctrl: Any, policy: ResumePolicy, reason: str) -> None:
+    """The resubmit, held back when the page context is still gone (I-78)."""
+    if await _context_back(ctrl, policy):
+        await _resubmit(ctrl, policy, reason)
+        return
+    _report(policy, "🔄 Resubmit skipped — the page did not come back after the loss", "warn")
 
 
 async def _resubmit(ctrl: Any, policy: ResumePolicy, reason: str) -> None:

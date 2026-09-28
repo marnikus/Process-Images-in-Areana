@@ -204,3 +204,51 @@ def test_the_timed_out_book_is_bounded():
         lv.note_timed_out(t, i, "Runtime.evaluate", 5.0)
     assert len(t.timed_out) == lv.LATE_BOOK_MAX and 0 not in t.timed_out
     lv.note_late_reply(t, None)                          # an event has no id: nothing happens
+
+
+# ── I-78: a socket that speaks while we ping it is alive (owner log 2026-09-28) ──
+# 08:31:01 `CDP socket went silent (last message 0 s ago: Runtime.consoleAPICalled …)
+# while the tab still answers — re-dialling it`: a re-dial of a socket that was
+# hearing Chrome, taken while the resubmit was running (08:32:06, three FAILED steps).
+
+class ChattyChrome(FakeChrome):
+    """FakeChrome that can push unsolicited events to every open socket (a busy page)."""
+
+    def __init__(self):
+        super().__init__()
+        self._chatter = None
+
+    async def speak_now(self):
+        """One unsolicited event to every socket — including a wedged one (it still reads)."""
+        for ws in list(self.sockets):
+            try:
+                await ws.send(json.dumps({"method": "Runtime.consoleAPICalled", "params": {}}))
+            except Exception:
+                pass
+
+    def start_chatter(self, period: float):
+        async def loop():
+            while True:
+                await asyncio.sleep(period)
+                await self.speak_now()
+        self._chatter = asyncio.ensure_future(loop())
+        return self._chatter
+
+
+async def test_a_socket_that_speaks_while_we_ping_is_not_redialled(quick, monkeypatch):
+    monkeypatch.setattr(lv, "RECENT_RX_S", 0.5)
+    async with ChattyChrome() as chrome:
+        client, notes = await _client(chrome)
+        await asyncio.sleep(0.6)                         # the connect event is old by now
+        chrome.wedge()
+        _timed_out(client)
+        assert lv.heard_recently(client) is False
+        chatter = chrome.start_chatter(0.15)             # the page talks while we ping it
+        try:
+            assert await lv.revive_silent_socket(client) is True
+        finally:
+            chatter.cancel()
+        assert len(chrome.sockets) == 2                  # ours + the throw-away one, no re-dial
+        assert notes == []
+        chrome.silent.clear()
+        await client.disconnect()

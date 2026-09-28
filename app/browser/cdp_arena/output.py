@@ -4,7 +4,9 @@ RULE18: file 150-300, func ≤20, CC≤10, params≤4 (C6 WaitSpec).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+from functools import partial
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, Tuple, Callable, List
@@ -17,6 +19,12 @@ from ...utils.page_errors import PageErrorAbort, match_dead_generation, match_pa
 from .state import capture_baseline, scan_page_errors
 
 log = logging.getLogger("arena")
+
+# I-78: a timeout on a page that stopped answering is not the end — the page is given
+# this window to come back, then one look, before the wait fails (owner log 2026-09-28).
+RESCUE_WINDOW_S = 20.0
+RESCUE_LOOKS = 3
+RESCUE_LOOK_S = 1.0
 
 
 @dataclass
@@ -159,9 +167,17 @@ async def _map_wait_result(cdp, result, baseline, timeout_ms):
                              "baseline": baseline, "rect": rect}
     if result.get("reason") == "cancelled":
         return "failed", {"error": "Cancelled", "cancelled": True}
-    final_baseline = {} if page_recovery.page_unresponsive(cdp) else await capture_baseline(cdp)
+    final_baseline = {} if page_recovery.page_unresponsive(cdp) else await _baseline_or_empty(cdp)
     return "failed", {"error": _timeout_text(result, timeout_ms),
                       "last_baseline": final_baseline, "last_check": result}
+
+
+async def _baseline_or_empty(cdp) -> Dict[str, Any]:
+    """The report's last baseline; a raising capture must not hide the timeout (RULE 4)."""
+    try:
+        return await capture_baseline(cdp)
+    except Exception:
+        return {}
 
 
 def _timeout_text(result, timeout_ms) -> str:
@@ -205,6 +221,52 @@ async def _prepare_wait(cdp, spec: WaitSpec) -> PollContext:
     return ctx
 
 
+def _log_line(spec: WaitSpec, message: str) -> None:
+    """One wait line (RULE 2); a log without a sink stays quiet."""
+    try:
+        if spec.log_cb:
+            spec.log_cb(message)
+    except Exception:
+        pass
+
+
+async def _rescue_look(spec: WaitSpec, ctx: PollContext, cdp,
+                       left: int = RESCUE_LOOKS) -> Optional[Dict[str, Any]]:
+    """Up to `left` polls at the page that just answered; the ready diag or None (I-78)."""
+    diag = await _rescue_read(spec, ctx, cdp)
+    if diag.get("ready"):
+        _log_line(spec, "🛟 the page answered again — the image that was on it is taken")
+        diag["rescued"] = True
+        return diag
+    if left <= 1:
+        return None
+    await asyncio.sleep(RESCUE_LOOK_S)
+    return await _rescue_look(spec, ctx, cdp, left - 1)
+
+
+async def _rescue_read(spec: WaitSpec, ctx: PollContext, cdp) -> Dict[str, Any]:
+    """One diag read for the rescue; a broken read is "no result" (RULE 4)."""
+    try:
+        return await _poll_diag_or_revive(spec.ctrl, ctx, cdp)
+    except Exception:
+        return {"ready": False, "reason": "no_result"}
+
+
+async def _rescue_after_timeout(cdp, spec: WaitSpec, ctx: PollContext,
+                                result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """I-78: a wait that timed out on a silent page gets a bounded look when it answers.
+
+    The image may be sitting on the page (I-73) — the rescue takes it instead of reporting
+    a timeout and navigating away. It never submits, never settles a captcha and never runs
+    for a page that was answering all along (a plain slow generation keeps its timeout).
+    """
+    if result.get("ready") or not page_recovery.page_unresponsive(cdp):
+        return None
+    if not await page_recovery.await_page_answer(cdp, RESCUE_WINDOW_S):
+        return None
+    return await _rescue_look(spec, ctx, cdp)
+
+
 async def _run_wait(cdp, spec: WaitSpec, ctx: PollContext) -> Tuple[str, Dict[str, Any]]:
     """Poll until the wait's own gates settle (done/abort mapping included)."""
     async def check_fn():
@@ -214,13 +276,17 @@ async def _run_wait(cdp, spec: WaitSpec, ctx: PollContext) -> Tuple[str, Dict[st
         diag = await _poll_diag_or_revive(spec.ctrl, ctx, cdp)
         return await _run_resume_gate(spec.ctrl, diag)
 
-    def _log(msg: str):
-        if spec.log_cb:
-            spec.log_cb(msg)
-
     poll = PollSpec(timeout=spec.timeout_ms / 1000.0, poll_interval=2.0, pause=getattr(spec.ctrl, "pause_clock", None))
-    result = await wait_for_new_output_with_spec(check_fn, _log, spec.cancel_check, poll)
-    return await _map_wait_result(cdp, result, spec.baseline, spec.timeout_ms)
+    log = partial(_log_line, spec)                  # RULE 2: the wait's own sink
+    result = await wait_for_new_output_with_spec(check_fn, log, spec.cancel_check, poll)
+    return await _map_wait_rescue(cdp, spec, ctx, result)
+
+
+async def _map_wait_rescue(cdp, spec: WaitSpec, ctx: PollContext,
+                           result: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    """I-78 rescue look, then the wait's own result mapping (one place, one rule)."""
+    rescued = await _rescue_after_timeout(cdp, spec, ctx, result)
+    return await _map_wait_result(cdp, rescued or result, spec.baseline, spec.timeout_ms)
 
 
 async def wait_for_new_output(cdp, spec: WaitSpec) -> Tuple[str, Dict[str, Any]]:

@@ -25,12 +25,16 @@ page_answers(cdp) / still_frozen  I-71: a 3 s ping instead of another 30 s probe
                                   I-72: a silent socket is re-dialled (cdp/liveness)
 unresponsive_text(cdp)            I-71: 'page not answering (<transport reason>)'
 page_check(cdp, js)               I-73: a page check waits 5 s, not 30 s
+unanswered_diag(diag)             I-78: a poll that got no answer is not a state
+await_page_answer(cdp, budget_s)  I-78: bounded wait for a page that stopped
+                                  answering to answer a ping again
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Awaitable, Callable, Optional
 
 log = logging.getLogger("arena")
@@ -108,7 +112,7 @@ async def _reconnect_if_closed(cdp, report: Reporter) -> None:
 async def _document_answers(cdp) -> bool:
     """One cheap probe: the page has a live document again."""
     try:
-        state = await cdp.evaluate(_READY_JS)
+        state = await page_check(cdp, _READY_JS)     # I-73 budget: 5 s, not the 30 s default
     except Exception:
         return False
     return state in ("interactive", "complete")
@@ -146,6 +150,8 @@ async def recover_page_context(cdp, report: Optional[Reporter] = None,
 # rescues a page whose main thread is stuck — only waiting does; a blocking
 # JavaScript dialog is answered by `cdp.dialogs` (see `cdp/dialogs.py`).
 PING_TIMEOUT_S = 3.0
+AWAIT_ANSWER_S = 20.0    # I-78: how long the rescue waits for a silent page to answer again
+AWAIT_POLL_S = 1.0       # its ping cadence (module constants: tests shorten them)
 _PING = {"expression": "1", "returnByValue": True}
 
 
@@ -173,6 +179,40 @@ async def still_frozen(cdp) -> bool:
         return False
     from .cdp.liveness import revive_silent_socket
     return not await revive_silent_socket(cdp)
+
+
+def unanswered_diag(diag) -> bool:
+    """A poll that got no answer (`page_unresponsive`) is unknown — never read as a state (I-78)."""
+    return str((diag or {}).get("reason") or "") == "page_unresponsive"
+
+
+async def await_page_answer(cdp, budget_s: Optional[float] = None,
+                            poll_s: Optional[float] = None) -> bool:
+    """Wait (bounded) for a page that stopped answering to answer a ping again (I-78).
+
+    A page that timed out once is not gone — it answers again when its main thread
+    frees (I-73), so the caller gets this one window instead of giving up on the image
+    the page may still be showing. A wedged socket gets its re-dial inside the window
+    (I-72). Bounded: an answer, or False when the budget runs out.
+    """
+    deadline = time.monotonic() + max(0.0, AWAIT_ANSWER_S if budget_s is None else budget_s)
+    wait = AWAIT_POLL_S if poll_s is None else poll_s
+    while True:
+        if await page_answers(cdp):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await _ask_again(cdp)
+        await asyncio.sleep(min(wait, max(0.0, deadline - time.monotonic())))
+
+
+async def _ask_again(cdp) -> None:
+    """One bounded re-dial attempt inside the wait (never raises)."""
+    from .cdp.liveness import revive_silent_socket
+    try:
+        await revive_silent_socket(cdp)
+    except Exception:
+        pass
 
 
 def unresponsive_text(cdp) -> str:

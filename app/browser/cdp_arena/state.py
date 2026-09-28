@@ -1,5 +1,9 @@
 """Arena state — readiness, security, generation (C3).
 
+Every probe here is a page *check*: it asks the 5 s check budget (`page_recovery.page_check`,
+I-73) — the 30 s command default belongs to page actions, and a state probe that sits out
+30 s is what made one output poll cost ≥ 30 s (I-78, owner log 2026-09-28).
+
 RULE18: file 150-300, func ≤20, CC≤10.
 """
 from __future__ import annotations
@@ -20,7 +24,7 @@ log = logging.getLogger("arena")
 async def capture_baseline(cdp) -> Dict[str, Any]:
     import time
     js = build_baseline_js()
-    result = await cdp.evaluate(js)
+    result = await page_check(cdp, js)
     if not result:
         return {"output_count": 0, "output_srcs": [], "timestamp": int(time.time() * 1000)}
     return result
@@ -35,14 +39,14 @@ async def scan_page_errors(cdp) -> str:
 
 
 async def is_page_ready(cdp) -> Tuple[bool, List[str]]:
-    result = await cdp.evaluate(JS_PAGE_READY)
+    result = await page_check(cdp, JS_PAGE_READY)
     if not result:
         return False, ["No result"]
     return bool(result.get("ready")), result.get("reasons", [])
 
 
 async def is_security_dialog_visible(cdp) -> bool:
-    result = await cdp.evaluate(JS_SECURITY_DIALOG)
+    result = await page_check(cdp, JS_SECURITY_DIALOG)
     return bool(result)
 
 
@@ -69,7 +73,7 @@ async def _unanswered(cdp) -> Dict[str, Any]:
 async def get_generation_state(cdp, correlation_id: Optional[str] = None) -> Dict[str, Any]:
     js = build_check_js([], correlation_id, [])
     try:
-        result = await cdp.evaluate(js)
+        result = await page_check(cdp, js)
         return result or {}
     except Exception as e:
         return {"error": str(e), "spinning": False}

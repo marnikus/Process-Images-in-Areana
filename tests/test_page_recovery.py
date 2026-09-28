@@ -34,7 +34,7 @@ class FakeCDP:
         self.connect_calls = []
         self.evaluated = []
 
-    async def evaluate(self, js):
+    async def evaluate(self, js, await_promise=True, timeout=30.0):
         self.evaluated.append(js)
         value = self.answers.pop(0) if self.answers else None
         if value is None:
@@ -144,3 +144,14 @@ async def test_recover_without_reporter_and_without_ws_url(monkeypatch):
     cdp = FakeCDP(answers=["interactive"], kind="transport", error="x", connected=False, ws_url="")
     assert await pr.recover_page_context(cdp) is True
     assert cdp.connect_calls == []  # nothing to reconnect to → just wait for the document
+
+
+async def test_document_answers_false_when_the_probe_raises():
+    """A raising readiness probe is "not back yet", never a crash (RULE 4)."""
+    cdp = FakeCDP(answers=[])
+
+    async def boom(*_a, **_kw):
+        raise RuntimeError("the page vanished")
+
+    cdp.evaluate = boom
+    assert await pr._document_answers(cdp) is False

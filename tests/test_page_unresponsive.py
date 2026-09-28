@@ -15,8 +15,9 @@ import pytest
 from app.browser import new_chat as nc
 from app.browser import output_wait as ow
 from app.browser import page_recovery as pr
+from app.browser.cdp import liveness as lv
 from app.browser.cdp_arena import output as out
-from app.browser.cdp_arena.state import is_generating
+from app.browser.cdp_arena.state import get_generation_state, is_generating
 from app.services.watcher import WatcherService
 from app.services.watcher_config import WatcherConfig
 from tests.test_new_chat import FakeCtrl, FakeEngine, make_ctx
@@ -109,6 +110,8 @@ async def test_a_frozen_wait_pings_tells_once_and_times_out_with_the_reason(monk
     async def no_sleep(_s):
         return None
     monkeypatch.setattr(ow.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(out, "RESCUE_WINDOW_S", 0.05)     # I-78: a page that never answers
+    monkeypatch.setattr(pr, "AWAIT_POLL_S", 0.01)         # keeps its honest timeout
     page, said = FrozenPage(), []
     started = time.monotonic()
     status, info = await out.wait_for_new_output(page, out.WaitSpec(timeout_ms=200, log_cb=said.append))
@@ -231,8 +234,217 @@ async def test_is_generating_marks_an_unanswered_probe():
 
 
 async def test_the_watcher_probe_and_the_error_scan_are_page_checks_of_5s():
-    from app.browser.cdp_arena.state import is_generating, scan_page_errors
+    from app.browser.cdp_arena.state import get_generation_state, is_generating, scan_page_errors
     page = FrozenPage()
     await is_generating(page)
     await scan_page_errors(page)
     assert page.eval_timeouts == [5.0, 5.0]           # I-73: was the 30 s command default
+
+
+# ── I-78: an image that is on the page is never lost (owner log 2026-09-28) ──
+# 08:30:58 `🔍 Output check: page_unresponsive …` and `✅ Spinner gone …` in the
+# same second; 08:31:32 the revival fired `Generation stalled (spinner lost, no
+# output)` for a page that had said nothing for 34 s; 08:32:08 the job failed and
+# the reset navigated away from the image.
+
+async def test_a_no_answer_poll_is_not_a_spinner_gone():
+    said = []
+    frozen = {"ready": False, "reason": "page_unresponsive", "detail": FROZEN}
+    assert await ow._process_spinner(frozen, said.append, True) is True   # was False + the line
+    assert said == []
+    # a real "the spinner is gone" answer still says so
+    plain = {"ready": False, "reason": "generating_no_new_yet", "spinning": False}
+    assert await ow._process_spinner(plain, said.append, True) is False
+    assert said == ["✅ Spinner gone, scanning for new image below prompt"]
+
+
+async def test_every_state_probe_on_the_wait_path_asks_the_check_budget():
+    from app.browser.cdp_arena.state import (capture_baseline, get_generation_state,
+                                             is_page_ready, is_security_dialog_visible)
+    page = FrozenPage()
+    await capture_baseline(page)
+    await is_page_ready(page)
+    await is_security_dialog_visible(page)
+    await get_generation_state(page)
+    assert page.eval_timeouts == [5.0, 5.0, 5.0, 5.0]   # I-73 budget, not the 30 s default
+
+
+async def test_the_page_context_recovery_probe_asks_the_check_budget():
+    page = FrozenPage()
+    assert await pr._document_answers(page) is False
+    assert page.eval_timeouts == [5.0]
+
+
+class ComesBack(FrozenPage):
+    """Frozen for the whole wait, then answering (the picture the rescue is for)."""
+
+    READY = {"ready": True, "reason": "new_output_ready", "src": "https://arena.ai/img/9.png",
+             "associatedJobId": "JOB-9", "expectedJobId": "JOB-9", "allNew": 1, "spinning": False}
+
+    def __init__(self, after_s=0.35, ready=None):
+        super().__init__(timed_out=True)
+        self.come_back_at = time.monotonic() + after_s
+        self.ready = ready if ready is not None else dict(self.READY)
+
+    @property
+    def answering(self):
+        return time.monotonic() >= self.come_back_at
+
+    async def evaluate(self, expr, await_promise=True, timeout=30.0):
+        self.calls.append("evaluate")
+        self.eval_timeouts.append(timeout)
+        if self.answering:
+            self.last_error, self.last_error_kind = "", ""
+            return dict(self.ready)
+        self.last_error, self.last_error_kind = TIMED_OUT, "transport"
+        return None
+
+    async def send(self, method, params=None, timeout=30):
+        self.calls.append(f"{method}@{timeout:g}")
+        if method == "Runtime.evaluate" and not self.answering:
+            raise TimeoutError(f"CDP command {method} timed out after {timeout:g}s")
+        return {"result": {"result": {"type": "number", "value": 1}}}
+
+
+async def test_a_timeout_on_a_frozen_page_rescues_the_image_when_it_comes_back(monkeypatch):
+    monkeypatch.setattr(pr, "AWAIT_POLL_S", 0.02)
+    async def no_sleep(_s):
+        return None
+    monkeypatch.setattr(ow.asyncio, "sleep", no_sleep)
+    page, said = ComesBack(after_s=0.35), []
+    status, info = await out.wait_for_new_output(
+        page, out.WaitSpec(timeout_ms=200, log_cb=said.append, correlation_id="JOB-9"))
+    assert status == "completed" and info["new_src"] == ComesBack.READY["src"]
+    assert info["check"].get("rescued") is True
+    assert any("the page answered again" in m for m in said), said
+
+
+async def test_a_page_that_never_answers_keeps_the_honest_timeout(monkeypatch):
+    monkeypatch.setattr(out, "RESCUE_WINDOW_S", 0.05)
+    monkeypatch.setattr(pr, "AWAIT_POLL_S", 0.01)
+    async def no_sleep(_s):
+        return None
+    monkeypatch.setattr(ow.asyncio, "sleep", no_sleep)
+    page, said = FrozenPage(timed_out=True), []
+    status, info = await out.wait_for_new_output(page, out.WaitSpec(timeout_ms=200, log_cb=said.append))
+    assert status == "failed" and info["error"].startswith("Timeout after 200ms — last check: page_unresponsive")
+    assert not [m for m in said if "answered again" in m]
+    assert info.get("last_baseline") == {}
+
+
+async def test_the_rescue_does_not_run_for_a_plain_timeout(monkeypatch):
+    monkeypatch.setattr(out, "RESCUE_WINDOW_S", 0.05)
+    async def no_sleep(_s):
+        return None
+    monkeypatch.setattr(ow.asyncio, "sleep", no_sleep)
+    class Slow(FrozenPage):
+        async def evaluate(self, expr, await_promise=True, timeout=30.0):
+            self.calls.append("evaluate")
+            self.eval_timeouts.append(timeout)
+            return {"ready": False, "reason": "generating_no_new_yet", "spinning": True,
+                    "allNew": 0}
+    page, said = Slow(), []
+    status, info = await out.wait_for_new_output(page, out.WaitSpec(timeout_ms=200, log_cb=said.append))
+    assert status == "failed" and "page_unresponsive" not in info["error"]
+    assert not [m for m in said if "answered again" in m]
+    assert page.calls.count("Runtime.evaluate@3") == 0     # the page was answering: no ping, no rescue
+
+
+class ComesBackLate(ComesBack):
+    """Comes back answering, but its first `looks` checks are still not ready (I-78 retry)."""
+
+    def __init__(self, looks=1, **kw):
+        super().__init__(**kw)
+        self.looks_left = looks
+
+    async def evaluate(self, expr, await_promise=True, timeout=30.0):
+        self.calls.append("evaluate")
+        self.eval_timeouts.append(timeout)
+        if self.answering and self.looks_left > 0:
+            self.looks_left -= 1
+            return {"ready": False, "reason": "generating_no_new_yet", "spinning": False}
+        return await super().evaluate(expr, await_promise, timeout)
+
+
+class AnswersThenBreaks(ComesBack):
+    """Answers pings but its check raises — a broken read is "no result" (RULE 4)."""
+
+    async def evaluate(self, expr, await_promise=True, timeout=30.0):
+        if self.answering:
+            raise RuntimeError("the check broke")
+        return await super().evaluate(expr, await_promise, timeout)
+
+
+def _rescue_quick(monkeypatch):
+    monkeypatch.setattr(pr, "AWAIT_POLL_S", 0.02)
+    monkeypatch.setattr(out, "RESCUE_LOOK_S", 0.01)
+
+
+async def test_the_rescue_keeps_looking_until_the_image_is_readable(monkeypatch):
+    """The page answers but the first look is not ready — the rescue polls again."""
+    _rescue_quick(monkeypatch)
+    page, said = ComesBackLate(looks=1, after_s=0.35), []
+    status, info = await out.wait_for_new_output(
+        page, out.WaitSpec(timeout_ms=200, log_cb=said.append, correlation_id="JOB-9"))
+    assert status == "completed" and info["check"].get("rescued") is True
+    assert said.count("🛟 the page answered again — the image that was on it is taken") == 1
+
+
+async def test_a_rescue_that_never_reads_an_image_gives_up_honestly(monkeypatch):
+    """The page answers every look and none is ready — the honest timeout stands (RULE 4)."""
+    _rescue_quick(monkeypatch)
+    page = ComesBackLate(looks=5, after_s=0.35)
+    status, info = await out.wait_for_new_output(
+        page, out.WaitSpec(timeout_ms=200, correlation_id="JOB-9"))
+    assert status == "failed" and "Timeout after" in info["error"]
+
+
+async def test_a_rescue_read_that_raises_is_no_result(monkeypatch):
+    """A raising check during the rescue is a "no result" look, not a crash (RULE 4)."""
+    _rescue_quick(monkeypatch)
+    status, info = await out.wait_for_new_output(
+        AnswersThenBreaks(after_s=0.35), out.WaitSpec(timeout_ms=200, correlation_id="JOB-9"))
+    assert status == "failed" and "Timeout after" in info["error"]
+
+
+async def test_a_broken_wait_log_sink_never_breaks_the_rescue(monkeypatch):
+    """RULE 2: a log sink that raises must never cost the wait its image."""
+    _rescue_quick(monkeypatch)
+
+    def boom(_msg):
+        raise RuntimeError("the sink broke")
+
+    status, info = await out.wait_for_new_output(
+        ComesBack(after_s=0.35), out.WaitSpec(timeout_ms=200, log_cb=boom, correlation_id="JOB-9"))
+    assert status == "completed" and info["check"].get("rescued") is True
+
+
+async def test_a_raising_re_dial_inside_the_wait_window_is_swallowed(monkeypatch):
+    """A re-dial that raises must not cost the wait its window (RULE 4)."""
+    monkeypatch.setattr(pr, "AWAIT_POLL_S", 0.01)
+    monkeypatch.setattr(out, "RESCUE_LOOK_S", 0.01)
+    calls = []
+
+    async def flaky(_cdp):
+        calls.append(1)
+        if len(calls) > 1:          # the wait's own check may ask once; the window must survive
+            raise RuntimeError("the re-dial broke")
+        return False
+
+    monkeypatch.setattr(lv, "revive_silent_socket", flaky)
+    page = ComesBack(after_s=2.6)   # silent when the wait ends, back inside the rescue window
+    status, info = await out.wait_for_new_output(
+        page, out.WaitSpec(timeout_ms=200, correlation_id="JOB-9"))
+    assert status == "completed" and info["check"].get("rescued") is True
+    assert len(calls) > 1           # the window asked again while the page was still silent
+
+
+async def test_get_generation_state_reports_a_raising_probe():
+    """A raising check is an error record, never a crash (RULE 4)."""
+
+    class Raises(FrozenPage):
+        async def evaluate(self, expr, await_promise=True, timeout=30.0):
+            raise RuntimeError("the check broke")
+
+    state = await get_generation_state(Raises())
+    assert state["spinning"] is False and "the check broke" in state["error"]

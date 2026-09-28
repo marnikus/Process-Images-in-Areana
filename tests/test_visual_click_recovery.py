@@ -41,7 +41,7 @@ class ScriptedCDP:
         self.connect_calls = []
         self.calls = []
 
-    async def evaluate(self, js):
+    async def evaluate(self, js, await_promise=True, timeout=30.0):
         self.calls.append(js)
         value = self.answers.pop(0) if self.answers else None
         if value is None:

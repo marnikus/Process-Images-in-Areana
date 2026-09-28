@@ -75,7 +75,12 @@ async def revive_silent_socket(cdp) -> bool:
     if not await fresh_socket_answers(url):
         _note(cdp, _SILENT_TAB)
         return False
-    return await _answers_again(cdp) or await _redial_reported(cdp, url)
+    if await _answers_again(cdp):
+        return True
+    if heard_recently(cdp):        # I-78: it spoke while we pinged — alive, just busy
+        _note(cdp, _BUSY_PAGE)
+        return True
+    return await _redial_reported(cdp, url)
 
 
 async def _answers_again(cdp) -> bool:
