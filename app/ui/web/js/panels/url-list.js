@@ -49,14 +49,8 @@ const UrlList = {
   reparseTabs() { return this._actions?.reparseTabs(); },
   popupTabs() { return this._actions?.popupTabs(); },
 
-  loadCooldownConfig() {
-    if (this._cooldown) return this._cooldown.load();
-    return this._actions?.loadCooldownConfig();
-  },
-  saveCooldownConfig() {
-    if (this._cooldown) return this._cooldown.save();
-    return this._actions?.saveCooldownConfig();
-  },
+  loadCooldownConfig() { return this._cooldown?.load(); },   // one handler set: url-list/cooldown.js
+  saveCooldownConfig() { return this._cooldown?.save(); },
 
   _delegateMatching(method, ...args) {
     if (this._matching && this._matching[method]) return this._matching[method](...args);

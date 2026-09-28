@@ -1,9 +1,9 @@
-/* new-tab-setting.js — Settings → Job Cycle: "Start new chat as new tab" (I-79).
+/* job-cycle-setting.js — the Settings → Job Cycle box (I-79 "Start new chat as new tab").
    The option rides the cooldown slots (no new slot): `load()` shows the `new_tab`
    part of get_cooldown_config; `save()` (Settings → Save) sends ONLY its two keys, so
    the URL List bar's pause values are never reset (the server stores what it gets). */
 'use strict';
-const NewTabSetting = {
+const JobCycleSetting = {
   init() {
     Boot.onBridgeReady(() => this.load());
   },
@@ -40,4 +40,4 @@ const NewTabSetting = {
     return { new_tab: !!box?.checked, new_tab_url: (url?.value || '').trim() };
   },
 };
-if (typeof window !== 'undefined') window.NewTabSetting = NewTabSetting;
+if (typeof window !== 'undefined') window.JobCycleSetting = JobCycleSetting;

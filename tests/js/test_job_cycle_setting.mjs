@@ -1,7 +1,7 @@
 /**
  * Settings → Job Cycle holds ONLY the I-79 "Start new chat as new tab" option (2026-09-28
  * owner: no duplicate pause / captcha controls — the URL List bar owns those).
- * `NewTabSetting` loads the option from get_cooldown_config's `new_tab` and saves it
+ * `JobCycleSetting` loads the option from get_cooldown_config's `new_tab` and saves it
  * through set_cooldown_config with ONLY its two keys, so it never resets the bar's values.
  */
 import { test } from 'node:test';
@@ -39,8 +39,8 @@ function harness({ reply = null, withModule = true } = {}) {
   vm.createContext(sandbox);
   vm.runInContext(read('js/core/boot.js'), sandbox, { filename: 'boot.js' });
   vm.runInContext(read('js/panels/settings.js'), sandbox, { filename: 'settings.js' });
-  if (withModule) vm.runInContext(read('js/panels/new-tab-setting.js'), sandbox, { filename: 'new-tab-setting.js' });
-  return { S: sandbox.window.SettingsPanel, N: sandbox.window.NewTabSetting, byId, sent, logs };
+  if (withModule) vm.runInContext(read('js/panels/job-cycle-setting.js'), sandbox, { filename: 'job-cycle-setting.js' });
+  return { S: sandbox.window.SettingsPanel, N: sandbox.window.JobCycleSetting, byId, sent, logs };
 }
 
 test('Settings has no duplicate pause / captcha controls — the URL List bar owns them', () => {
@@ -89,11 +89,11 @@ test('Settings Save without the module loaded sends no cooldown payload at all',
 
 test('the module is booted with the panels, loaded after settings.js, reloaded on restore', () => {
   const app = read('js/arena-app.js');
-  assert.match(app, /'NewTabSetting'/);
+  assert.match(app, /'JobCycleSetting'/);
   const html = read('index.html');
-  assert.ok(html.indexOf('js/panels/new-tab-setting.js') > html.indexOf('js/panels/settings.js'));
+  assert.ok(html.indexOf('js/panels/job-cycle-setting.js') > html.indexOf('js/panels/settings.js'));
   const ws = read('js/panels/workspace.js');
   assert.match(ws, /\['UrlList', 'loadCooldownConfig'\]/);
-  assert.match(ws, /\['NewTabSetting', 'load'\]/);
+  assert.match(ws, /\['JobCycleSetting', 'load'\]/);
   assert.equal(/\['SettingsPanel', 'loadCooldownConfig'\]/.test(ws), false);
 });

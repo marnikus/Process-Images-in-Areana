@@ -117,7 +117,7 @@ const SettingsPanel = {
     const { payload, genTo } = this._buildSettingsPayload();
     if (App.bridge?.save_settings) App.bridge.save_settings(JSON.stringify(payload), (res)=> this._onSaveSettings(res, genTo));
     this.saveCDP();
-    window.NewTabSetting?.save();   // the pause values are the URL List bar's (no duplicate)
+    window.JobCycleSetting?.save();   // the pause values are the URL List bar's (no duplicate)
   },
 
   _buildCDPPayload() {
