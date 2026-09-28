@@ -3717,14 +3717,16 @@
   "app/services/new_tab.py": {
     "max_func_loc": 14,
     "max_class_loc": 12,
-    "func_count": 18,
+    "func_count": 20,
     "funcs": {
       "clean_url": 5,
       "read_setting": 7,
       "save_setting": 7,
       "wanted_url": 5,
       "handover": 11,
-      "_plan": 10,
+      "_endpoint_from_client": 10,
+      "_resolve_endpoint": 10,
+      "_plan": 11,
       "_clients_on": 10,
       "_hold_reconciler": 9,
       "_run": 11,
@@ -3743,7 +3745,7 @@
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 3,
-    "file_lines": 248
+    "file_lines": 273
   },
   "app/services/recording/__init__.py": {
     "max_func_loc": 0,

@@ -264,6 +264,27 @@ def test_a_tab_not_in_the_pool_means_no_handover(monkeypatch):
     assert not ok and w.browser.opened == []
 
 
+def test_handover_uses_pooled_client_endpoint_not_bridge_client(monkeypatch):
+    """Regression: new tab must open on same profile as closed tab (pooled client wins)."""
+    w = _world(monkeypatch)
+    job_client, pooled_client, home_client = w.clients
+    job_client._host, job_client._port = "127.0.0.1", 9222
+    home_client._host, home_client._port = "127.0.0.1", 9222
+    pooled_client._host, pooled_client._port = "127.0.0.1", 9334
+    captured: dict = {}
+
+    def capturing_open(host, port, url):
+        captured["host"], captured["port"], captured["url"] = host, port, url
+        return w.browser.open(host, port, url)
+
+    monkeypatch.setattr(new_tab, "open_tab_sync", capturing_open)
+    ok, why = _run(w.ctx)
+    assert ok, why
+    assert captured["port"] == 9334, f"should use pooled 9334, got {captured}"
+    assert captured["host"] == "127.0.0.1"
+    assert w.ctx.tab_id == "NEW1"
+
+
 # ── the post-job seam ───────────────────────────────────────────────────────
 
 def _seam(monkeypatch, *, enabled, handover_result=(True, "moved")):

@@ -102,14 +102,39 @@ async def handover(ctx: Any, url: str, timeout_sec: float) -> tuple[bool, str]:
         ctx.bridge._auto_scan_running = False
 
 
+def _endpoint_from_client(client: Any) -> Optional[tuple]:
+    """(host, port) from a CDP client, or None when missing."""
+    try:
+        h = getattr(client, "_host", None)
+        p = getattr(client, "_port", None)
+        if h and p:
+            return str(h), int(p)
+    except Exception:
+        return None
+    return None
+
+
+def _resolve_endpoint(ctx: Any, pooled: Any) -> tuple:
+    """Endpoint of the closed tab's browser: pooled client wins (profile-correct)."""
+    for cli in (pooled, getattr(ctx, "client", None)):
+        ep = _endpoint_from_client(cli)
+        if ep is not None:
+            return ep
+    try:
+        return str(ctx.pool._host), int(ctx.pool._port)
+    except Exception:
+        return "127.0.0.1", 9222
+
+
 def _plan(ctx: Any, url: str, timeout_sec: float) -> Optional[_Move]:
     """What moves: the pool page of the job's tab, its endpoint and every client on it."""
-    page = ctx.pool.get_page(ctx.tab_id) if ctx.pool is not None else None
+    pool = getattr(ctx, "pool", None)
+    page = pool.get_page(ctx.tab_id) if pool is not None else None
     if page is None:
         return None
-    move = _Move(ctx, url, timeout_sec, ctx.tab_id, page.ws_url, page.url, tab_label_of(ctx.pool, ctx.tab_id))
-    move.endpoint = (str(getattr(ctx.client, "_host", "") or ctx.pool._host),
-                     int(getattr(ctx.client, "_port", 0) or ctx.pool._port))
+    pooled, _ = pool.get_clients(ctx.tab_id)
+    move = _Move(ctx, url, timeout_sec, ctx.tab_id, page.ws_url, page.url, tab_label_of(pool, ctx.tab_id))
+    move.endpoint = _resolve_endpoint(ctx, pooled)
     move.clients = _clients_on(ctx)
     return move
 
