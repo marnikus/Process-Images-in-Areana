@@ -37,3 +37,16 @@ remove from Settings, it exists in the URL list; leave those controls in URL onl
 the option; option-only payload keeps pause/captcha/limit); jsdom
 `test_new_tab_setting.mjs` (no duplicate inputs, Settings Save payload = the option only,
 restore reloaders).
+
+## 4. Round 2 (same day, owner): "too many — 2 messages max: first minute and last minute"
+
+Per-minute lines were still 6 per 5-minute pause and 16 per 15-minute penalty, and the
+live run's "⏳ All tabs cooling" line repeated every 5 min on top. **D4 replaced:**
+`core/cooldown.countdown_phase` = `cooling` / `last minute` (≤ 60 s). Both waiting
+loggers write a line only when the phase changes — the wait's start and its last
+minute, **2 at most** (1 when the wait starts inside the last minute):
+`wait_for_tab_ready`, and the supervisor's all-cooling reason (keyed on the soonest
+tab; its 5-minute reminder is off, the other reasons keep theirs; `_live_reason`
+still holds the plain reason for the run badge, the phase is `_live_phase`).
+The one-off pause-start line at the job's finish (`⏳ Page … cooling 05:00 (total …)`)
+is not a wait line and is unchanged.

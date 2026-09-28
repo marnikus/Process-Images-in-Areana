@@ -25,7 +25,7 @@ from app.core.cooldown import (
     CooldownConfig,
     clamp_seconds,
     cooldown_total,
-    countdown_mark,
+    countdown_phase,
     format_remaining,
 )
 
@@ -666,8 +666,8 @@ async def _honour_pause(bridge):
 
 
 async def wait_for_tab_ready(pool, tab_id, bridge) -> bool:
-    """Single-page gate: wait until this tab's pause expires (countdown logged per minute)."""
-    last_mark = None
+    """Single-page gate: wait until this tab's pause expires (logged at its start + last minute)."""
+    last_phase = None
     while True:
         if _is_cancelled(bridge):
             return False
@@ -681,9 +681,9 @@ async def wait_for_tab_ready(pool, tab_id, bridge) -> bool:
             return True
         if page.is_free() or page.remaining_seconds() <= 0:
             return True
-        mark = countdown_mark(page.remaining_seconds())
-        if mark != last_mark:
-            last_mark = mark
+        phase = countdown_phase(page.remaining_seconds())
+        if phase != last_phase:
+            last_phase = phase
             left = format_remaining(page.remaining_seconds())
             _log(bridge, f"⏳ Tab {_label(pool, tab_id)} cooling {left} — next job waits", "info")
         await asyncio.sleep(_POLL_SEC)

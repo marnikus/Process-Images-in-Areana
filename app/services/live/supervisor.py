@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from app.browser.page_status import PageStatus
 from app.services import auto_connect as ac
 from app.services.batch_orchestrator import pool_summary, resolve_and_claim_tab, run_pass
+from app.core.cooldown import countdown_phase
 from app.services.cooldown_service import is_stuck_status
 from app.services.firefox_job_recovery import recover_firefox_jobs
 
@@ -125,22 +126,39 @@ async def plan_pass(bridge) -> PassPlan:
     return plan
 
 
-def _next_ready(bridge, allowed: set) -> str:
-    """MM:SS until the soonest allowed tab leaves cooldown ('--:--' when unknown)."""
+def _soonest_ready(bridge, allowed: set) -> int | None:
+    """Seconds until the soonest allowed tab leaves cooldown (None when unknown)."""
     try:
         pages = bridge._page_pool.status_snapshot().get("pages", [])
-        secs = min(int(p.get("cooldown_remaining", 0) or 0) for p in pages if p.get("tab_id") in allowed)
+        return min(int(p.get("cooldown_remaining", 0) or 0) for p in pages if p.get("tab_id") in allowed)
     except (AttributeError, ValueError):
-        return "--:--"
-    return f"{secs // 60:02d}:{secs % 60:02d}"
+        return None
+
+
+def _next_ready(bridge, allowed: set) -> str:
+    """MM:SS until the soonest allowed tab leaves cooldown ('--:--' when unknown)."""
+    secs = _soonest_ready(bridge, allowed)
+    return "--:--" if secs is None else f"{secs // 60:02d}:{secs % 60:02d}"
+
+
+def _wait_phase(bridge, plan: PassPlan) -> str:
+    """The cooldown wait's phase: it is announced at its start and once in its last minute."""
+    secs = _soonest_ready(bridge, plan.allowed) if plan.reason == "all cooling" else None
+    return "" if secs is None else countdown_phase(secs)
+
+
+def _reminder_due(bus: LiveBus, reason: str) -> bool:
+    """The 5-minute reminder — not for the cooldown wait, whose two lines are enough."""
+    return reason != "all cooling" and bus.throttle(f"live:{reason}", THROTTLE_MS)
 
 
 async def wait_reason(bridge, plan: PassPlan, bus: LiveBus) -> None:
-    """One throttled line per reason (plus one on every change), then wait for a wake or the poll."""
+    """One line per reason change (+ a 5-min reminder; the cooldown: start + last minute), then wait."""
     template, level = REASON_LINES[plan.reason]
-    changed = getattr(bridge, "_live_reason", None) != plan.reason
-    bridge._live_reason = plan.reason
-    if bus.throttle(f"live:{plan.reason}", THROTTLE_MS) or changed:  # throttle first: it records the window
+    phase = _wait_phase(bridge, plan)
+    changed = (getattr(bridge, "_live_reason", None), getattr(bridge, "_live_phase", "")) != (plan.reason, phase)
+    bridge._live_reason, bridge._live_phase = plan.reason, phase
+    if _reminder_due(bus, plan.reason) or changed:  # reminder first: the throttle records its window
         pool = getattr(bridge, "_page_pool", None)
         bridge._log(template.format(pool=pool_summary(pool), next_ready=_next_ready(bridge, plan.allowed)), level)
     await bus.wait(WAIT_S)
