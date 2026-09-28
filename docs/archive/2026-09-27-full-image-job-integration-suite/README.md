@@ -1,5 +1,12 @@
 # Full Image-Job Integration Suite — PLAN ONLY (no production code yet)
 
+> **⚠ READ [`merge-note.md`](merge-note.md) FIRST (added 2026-09-28).** This plan was researched
+> against commit `02e0240`, which is a stale lineage unrelated to `origin/main`. Main already ships a
+> Firefox/Ui.Vision job pipeline (`app/services/firefox_job*.py`, `app/browser/uivision/` — 19 files),
+> documents invariants up to **I-68** and coverage floors **89.34/86.37**, so **D-12 must be redesigned**,
+> I-55…I-59 renumber to I-69…I-73, and every `file:line` re-verified before any stage lands. The
+> design's *shape* survives; its facts about the current tree do not.
+
 Dated 2026-09-27, written against `02e0240` (S7 receiver flag, I-51). Owner brief: *"design a
 big behavior test where the app runs and simulates the full process — detect the web page →
 create URL → add page to pool → select image and send as job → simulate page states (prompt in
@@ -12,6 +19,7 @@ connection."* RULE 16.6 step 2: research + design in a doc first; RULE 17: dated
 
 | File | Read it for | Size (measured) |
 |---|---|---|
+| [`merge-note.md`](merge-note.md) | **READ FIRST** — the drift between this plan's base (`02e0240`) and `origin/main` (`aec7b86`), measured: unrelated histories, 355 files / 41 199 insertions apart, a real Firefox + Ui.Vision pipeline on main, I-68 already documented, floors 89.34/86.37; what is still true (`tests/e2e/` absent, `pytest.ini` unchanged ⇒ L-9/L-13 hold); the 6-step re-verification round required before S0 | 49 lines |
 | [`evidence.md`](evidence.md) | What the app **actually does today**, every claim with `file:line`: the real 16-step path, the three frozen contracts the fake pages must satisfy (CDP surface, selector registry, in-page payloads), the knobs that already exist (⇒ **zero production change**), the reusable test assets, the environment facts, and the latent defects **L-9…L-15** found while researching | 204 lines |
 | [`design.md`](design.md) | The plan: contract, decisions **D-1…D-22** with rejected alternatives, architecture (`tests/e2e/` package), the three lanes (Chromium native CDP · Firefox through a CDP-shaped adapter · jsdom fallback), the one global test flow, the three owner scenarios with exact assertions, the two-part 300 s contract, evidence format, isolation, invariants **I-55…I-59**, staged delivery **S0…S7**, risks, out of scope, the end-of-plan RULE 16/17/18/19/20 recheck and §14.1 — this round's own citation audit | 639 lines |
 | [`fixtures.md`](fixtures.md) | The **fake pages**: fixture inventory rebuilt from the committed saved page + `DOM_SELECTORS.md`, the element-by-element DOM contract (which app probe each element serves), the 14-state page state machine, the scenario schema and its 20 scenarios, the deterministic fake result image, sanitization rules, server routes, layout/geometry contract, and defects **L-16/L-17** (the committed dump's absolute New Chat `href`; no result-image markers in an empty chat) | 272 lines |
@@ -57,7 +65,7 @@ mitmproxy as primary (machine-wide CA) — it stays the fallback recorder.
 
 ## Status
 
-Plan only — the research round included: no capture has been taken, no tool installed, no code written. `docs/current/SYSTEM_OF_RECORD.md` and `docs/current/AGENT_RULES.md` stay untouched
+Plan only, **and stale-base — see `merge-note.md`** — the research round included: no capture has been taken, no tool installed, no code written. `docs/current/SYSTEM_OF_RECORD.md` and `docs/current/AGENT_RULES.md` stay untouched
 until a stage lands (RULE 17); `docs/README.md` gained one archive row + one `*Last updated*`
 entry on 2026-09-27. Invariant numbers **I-55…** are used because I-52…I-54 are reserved by
 `docs/archive/2026-09-20-dynamic-urls-and-worker-debug/merge-note.md`. No `app/`, `tests/`,
