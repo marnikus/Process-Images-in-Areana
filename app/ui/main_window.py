@@ -1,3 +1,4 @@
+# ideal-size: 332 lines reason=Qt MainWindow with 10 cleanup helpers that always change together (closeEvent + F5 reload + disconnect), splitting would scatter slot<->helper pairs per RULE 18.2
 """MainWindow — QWebEngineView hosting the modern sash-grid UI with geometry persistence."""
 
 from pathlib import Path

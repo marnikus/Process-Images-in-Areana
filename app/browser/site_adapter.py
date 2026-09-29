@@ -7,7 +7,7 @@ probe file (enforced by tests/test_probe_selectors.py).
 Replaceable because webpage structure will change — update this file +
 DOM_SELECTORS.md only. Imports: `selector.py` only (same layer).
 """
-# ideal-size: ~310 lines reason=pure-data registry, one SelectorObject per page element (RULE 18.2)
+# ideal-size: 373 lines reason=pure-data registry, one SelectorObject per page element, always changes together per RULE 18.2
 from .selector import SelectorObject
 from typing import Dict, List
 

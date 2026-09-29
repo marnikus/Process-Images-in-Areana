@@ -1,3 +1,4 @@
+# ideal-size: 475 lines reason=single JS payload for text output probes; splitting string literal would break in-page contract per RULE 16.1.5
 """Text output probes — detect new assistant text for description generation.
 
 Similar to output_probes.py but for text output instead of images.

@@ -1,4 +1,4 @@
-# ideal-size: ~830 lines reason=single converged block-runner owns the block handlers sharing JobCtx; splitting handlers across files would scatter one per-image lifecycle that always changes together (RULE 18.2). AWAIT_PROCESSING_IMAGE lives in services/await_processing.py (B12): it is a different mechanism (indicator poll, never fails), not a variant of the new-output wait.
+# ideal-size: 1173 lines reason=single converged block-runner owns the block handlers sharing JobCtx; splitting handlers across files would scatter one per-image lifecycle that always changes together per RULE 18.2; AWAIT_PROCESSING_IMAGE lives in services/await_processing.py (B12) different mechanism
 """Single job runner — small helpers per RULE 18/16."""
 
 from __future__ import annotations

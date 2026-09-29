@@ -318,7 +318,7 @@
     "max_cog": 0,
     "max_nest": 2,
     "max_params": 4,
-    "file_lines": 313
+    "file_lines": 311
   },
   "app/browser/cdp_arena/__init__.py": {
     "max_func_loc": 0,
@@ -1066,7 +1066,7 @@
     "max_cog": 0,
     "max_nest": 0,
     "max_params": 3,
-    "file_lines": 475
+    "file_lines": 476
   },
   "app/browser/uivision/__init__.py": {
     "max_func_loc": 0,
@@ -1632,7 +1632,7 @@
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 3,
-    "file_lines": 912
+    "file_lines": 911
   },
   "app/core/action_blocks_defaults.py": {
     "max_func_loc": 11,
@@ -3720,62 +3720,172 @@
     "max_params": 3,
     "file_lines": 67
   },
-  "app/services/new_tab.py": {
-    "max_func_loc": 23,
-    "max_class_loc": 17,
-    "func_count": 44,
+  "app/services/new_tab/__init__.py": {
+    "max_func_loc": 0,
+    "max_class_loc": 0,
+    "func_count": 0,
+    "funcs": {},
+    "max_methods": 0,
+    "max_cc": 0,
+    "max_cog": 0,
+    "max_nest": 0,
+    "max_params": 0,
+    "file_lines": 144
+  },
+  "app/services/new_tab/context.py": {
+    "max_func_loc": 21,
+    "max_class_loc": 0,
+    "func_count": 5,
     "funcs": {
-      "clean_url": 5,
-      "read_setting": 7,
-      "save_setting": 7,
-      "wanted_url": 5,
+      "_verify_context_same": 12,
+      "_context_from_targets": 11,
+      "_get_old_context_id": 16,
+      "_get_new_context_id": 13,
+      "_try_open_same_context": 21
+    },
+    "max_methods": 0,
+    "max_cc": 7,
+    "max_cog": 0,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 93
+  },
+  "app/services/new_tab/cookies.py": {
+    "max_func_loc": 18,
+    "max_class_loc": 0,
+    "func_count": 6,
+    "funcs": {
+      "_cookie_base": 10,
+      "_cookie_params": 16,
+      "_set_one_cookie": 9,
+      "_get_cookies_from_move": 18,
+      "_set_cookies_to_move": 16,
+      "_reload_after_cookies": 11
+    },
+    "max_methods": 0,
+    "max_cc": 8,
+    "max_cog": 0,
+    "max_nest": 1,
+    "max_params": 2,
+    "file_lines": 99
+  },
+  "app/services/new_tab/handover.py": {
+    "max_func_loc": 21,
+    "max_class_loc": 0,
+    "func_count": 19,
+    "funcs": {
+      "_patched": 13,
+      "_open_tab_sync": 3,
+      "_close_tab_sync": 3,
+      "_fetch_tabs_sync": 3,
+      "_wait_new_chat_ready": 3,
+      "_read_chat_page": 3,
+      "_get_const": 8,
+      "handover": 11,
+      "_hold_reconciler": 9,
+      "_run": 15,
+      "_open_and_prove": 20,
+      "_prove_new_chat": 18,
+      "_connect_all": 4,
+      "_roll_back": 7,
+      "_move_worker": 21,
+      "_close_old": 11,
+      "_gone": 12,
+      "_quietly": 7,
+      "_log": 5
+    },
+    "max_methods": 0,
+    "max_cc": 9,
+    "max_cog": 0,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 243
+  },
+  "app/services/new_tab/matching.py": {
+    "max_func_loc": 23,
+    "max_class_loc": 0,
+    "func_count": 8,
+    "funcs": {
       "_get_pattern": 9,
       "_matches_pattern": 5,
+      "_endpoint_from_client": 10,
       "_endpoint_matches": 4,
       "_owner_matches": 6,
       "_count_profile_tabs": 18,
       "_count_profile_tabs_by_owner": 23,
-      "handover": 11,
-      "_endpoint_from_client": 10,
+      "_pick_client_for_context": 6
+    },
+    "max_methods": 0,
+    "max_cc": 8,
+    "max_cog": 0,
+    "max_nest": 3,
+    "max_params": 4,
+    "file_lines": 103
+  },
+  "app/services/new_tab/move.py": {
+    "max_func_loc": 21,
+    "max_class_loc": 17,
+    "func_count": 3,
+    "funcs": {
       "_resolve_endpoint": 10,
-      "_plan": 20,
-      "_clients_on": 10,
-      "_hold_reconciler": 9,
-      "_run": 15,
-      "_get_storage_from_move": 19,
-      "_set_storage_to_move": 23,
-      "_open_and_prove": 19,
-      "_reload_after_cookies": 10,
-      "_get_cookies_from_move": 18,
-      "_set_cookies_to_move": 15,
-      "_cookie_base": 14,
-      "_cookie_params": 16,
-      "_set_one_cookie": 9,
-      "_pick_client_for_context": 6,
-      "_verify_context_same": 13,
-      "_try_open_same_context": 20,
-      "_prove_new_chat": 17,
+      "_clients_on": 11,
+      "_plan": 21
+    },
+    "max_methods": 0,
+    "max_cc": 6,
+    "max_cog": 0,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 85
+  },
+  "app/services/new_tab/owner.py": {
+    "max_func_loc": 21,
+    "max_class_loc": 0,
+    "func_count": 3,
+    "funcs": {
       "_read_owner_from_client": 9,
-      "_check_owner_preserved": 19,
-      "_context_from_targets": 11,
-      "_get_old_context_id": 16,
-      "_get_new_context_id": 13,
-      "_connect_all": 4,
-      "_roll_back": 7,
-      "_move_worker": 19,
-      "_preserve_owner_after_move": 16,
-      "_close_old": 11,
-      "_gone": 10,
-      "_quietly": 7,
-      "_log": 5,
+      "_check_owner_preserved": 21,
+      "_preserve_owner_after_move": 16
+    },
+    "max_methods": 0,
+    "max_cc": 7,
+    "max_cog": 0,
+    "max_nest": 3,
+    "max_params": 3,
+    "file_lines": 59
+  },
+  "app/services/new_tab/settings.py": {
+    "max_func_loc": 8,
+    "max_class_loc": 0,
+    "func_count": 4,
+    "funcs": {
+      "clean_url": 5,
+      "read_setting": 7,
+      "save_setting": 8,
+      "wanted_url": 5
+    },
+    "max_methods": 0,
+    "max_cc": 4,
+    "max_cog": 0,
+    "max_nest": 1,
+    "max_params": 2,
+    "file_lines": 44
+  },
+  "app/services/new_tab/storage.py": {
+    "max_func_loc": 22,
+    "max_class_loc": 0,
+    "func_count": 3,
+    "funcs": {
+      "_get_storage_from_move": 20,
+      "_set_storage_to_move": 22,
       "_limit": 2
     },
     "max_methods": 0,
     "max_cc": 9,
     "max_cog": 0,
-    "max_nest": 3,
-    "max_params": 4,
-    "file_lines": 668
+    "max_nest": 1,
+    "max_params": 2,
+    "file_lines": 54
   },
   "app/services/recording/__init__.py": {
     "max_func_loc": 0,
@@ -4934,7 +5044,7 @@
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 3,
-    "file_lines": 332
+    "file_lines": 333
   },
   "app/ui/panels/__init__.py": {
     "max_func_loc": 0,

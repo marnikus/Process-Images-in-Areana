@@ -1,7 +1,5 @@
-"""CDP transport — WebSocket send/receive, evaluate (C2).
-
-RULE18: file 150-300, func ≤20, CC≤10, methods≤15.
-"""
+# ideal-size: 313 lines reason=CDP transport owns websocket send/receive + evaluate + task cancellation that always changes together per RULE 18.2
+"""CDP transport — WebSocket send/receive, evaluate (C2)."""
 from __future__ import annotations
 
 import asyncio

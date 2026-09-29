@@ -25,8 +25,7 @@ Blocks:
 - HIGHLIGHT_SUBMIT, SUBMIT, WAIT_OUTPUT, AWAIT_PROCESSING_IMAGE (waiting), DOWNLOAD, VALIDATE, SAVE, ADVANCE
 - PAUSE, HIGHLIGHT (pure visual)
 """
-# ideal-size(reason): owns the BLOCK_DEFINITIONS catalog (one entry per block
-# type, read as a unit) plus its compiler — splitting would scatter the catalog.
+# ideal-size: 912 lines reason=owns the BLOCK_DEFINITIONS catalog (one entry per block type, read as a unit) plus its compiler — splitting would scatter the catalog per RULE 18.2
 
 from dataclasses import dataclass, field, asdict
 from typing import Any, ClassVar, Dict, List, Optional
