@@ -2,7 +2,7 @@
 import asyncio
 import pytest
 from app.services.watcher_config import WatcherConfig, WatcherState
-from app.services.watcher_pkg.cdp import WatcherCDP
+from app.services.watcher_pkg.cdp import WatcherCDP, WatcherTarget
 from app.services.watcher_pkg.jobs_ctrl import WatcherJobCtrl
 from app.services.watcher_pkg.handlers import WatcherHandlers, HandlerDeps
 from app.services.watcher_pkg.loop import WatcherLoop, LoopDeps
@@ -18,9 +18,9 @@ class FakeCDP:
         return self.captcha
     async def is_generating(self):
         return self.gen, {"details": []}
-    async def show_watcher_overlay(self, msg, kind, timeout_sec):
+    async def show_watcher_overlay(self, msg, kind, timeout_sec, owner_key=""):
         self.overlay_shown.append((msg, kind))
-    async def hide_watcher_overlay(self):
+    async def hide_watcher_overlay(self, owner_key=""):
         self.overlay_hidden += 1
 
 def _make_handlers(cfg, state, probe, job_ctrl, logger, notify):
@@ -114,11 +114,15 @@ async def test_loop_run_handles_exceptions():
     state = WatcherState()
     class BadProbe:
         def get(self): return object()
+        def get_targets(self): return [WatcherTarget("bad", "bad", object())]
         async def check_captcha(self, cdp): raise RuntimeError("probe fail")
         async def check_generation(self, cdp): return False, {}
+        async def hide_overlay(self, cdp, owner_key=""): pass
+    async def notify(): pass
     logs=[]
-    handlers = _make_handlers(cfg, state, BadProbe(), WatcherJobCtrl(cfg, None), lambda m,l: logs.append(m), lambda: None)
-    loop = _make_loop(cfg, state, BadProbe(), handlers, lambda: None, lambda m,l: logs.append(m))
+    probe = BadProbe()
+    handlers = _make_handlers(cfg, state, probe, WatcherJobCtrl(cfg, None), lambda m,l: logs.append(m), notify)
+    loop = _make_loop(cfg, state, probe, handlers, notify, lambda m,l: logs.append(m))
     loop._running=True
     # run a few iterations then cancel
     async def _stop_soon():
@@ -182,6 +186,6 @@ async def test_watcher_service_force_clear_and_check():
     assert "status" in res
     # force clear with failing overlay
     class BadCDP:
-        async def hide_watcher_overlay(self): raise RuntimeError("fail")
+        async def hide_watcher_overlay(self, owner_key=""): raise RuntimeError("fail")
     svc2 = WatcherService(config=cfg, cdp_controller_getter=lambda: BadCDP(), job_runner_getter=lambda: None, logger=lambda m,l="info": None)
     await svc2.force_clear()

@@ -9,6 +9,8 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+from ..dom_highlight import WatcherOverlaySpec
+
 log = logging.getLogger("arena")
 
 
@@ -17,14 +19,6 @@ class HighlightSpec:
     color: str = "#FF0000"
     duration_ms: int = 2000
     caption: str = ""
-
-
-@dataclass
-class WatcherOverlaySpec:
-    message: str = "wait for finish generation"
-    kind: str = "generation"
-    timeout_sec: int = 600
-    sub: str = ""
 
 
 def _parse_rect(raw) -> Optional[dict]:
@@ -92,9 +86,8 @@ async def show_watcher_overlay(cdp, spec: WatcherOverlaySpec = None) -> bool:
     if spec is None:
         spec = WatcherOverlaySpec()
     try:
-        from ..dom_highlight import build_watcher_overlay_js
-        js = build_watcher_overlay_js(message=spec.message, kind=spec.kind,
-                                      timeout_sec=spec.timeout_sec, sub=spec.sub)
+        from ..dom_highlight import build_watcher_overlay_js_from_spec
+        js = build_watcher_overlay_js_from_spec(spec)
         raw = await cdp.evaluate(js)
         if raw:
             try:
@@ -108,10 +101,10 @@ async def show_watcher_overlay(cdp, spec: WatcherOverlaySpec = None) -> bool:
         return False
 
 
-async def hide_watcher_overlay(cdp) -> bool:
+async def hide_watcher_overlay(cdp, owner_key: str = "") -> bool:
     try:
         from ..dom_highlight import build_watcher_clear_js
-        js = build_watcher_clear_js()
+        js = build_watcher_clear_js(owner_key)
         await cdp.evaluate(js)
         return True
     except Exception as e:

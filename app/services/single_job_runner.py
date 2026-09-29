@@ -26,6 +26,7 @@ from app.core.pause_clock import PauseClock
 from app.services.captcha.policy import captcha_in_scope, pause_cap_seconds
 from app.services.job_history import note_captcha_count
 from app.services.run_state import JobAction
+from app.services.overlay_owner import OverlayRequest, job_overlay_owner, show_job_overlay
 
 log = logging.getLogger("arena")
 
@@ -404,7 +405,8 @@ async def _show_gen_overlay(ctx: JobCtx, timeout_ms: int):
     try:
         gen_to = int(ctx.bridge.config.get_state("watcher_generation_timeout_sec", 600))
         eff = max(gen_to, int(timeout_ms / 1000)) if timeout_ms else 600
-        await ctx.ctrl.show_watcher_overlay("wait for finish generation", kind="generation", timeout_sec=eff)
+        await show_job_overlay(ctx, OverlayRequest(
+            "wait for finish generation", "generation", eff))
         _mark_waiting(ctx, "generation")
     except Exception:
         pass
@@ -439,7 +441,7 @@ async def _hide_and_result(ctx: JobCtx, src, data):
 async def _hide_overlay(ctx: JobCtx):
     """Hide overlay."""
     try:
-        await ctx.ctrl.hide_watcher_overlay()
+        await ctx.ctrl.hide_watcher_overlay(owner_key=job_overlay_owner(ctx))
     except Exception:
         pass
 
@@ -850,9 +852,8 @@ async def _show_text_overlay(ctx: JobCtx, timeout_ms: int):
     try:
         gen_to = int(ctx.bridge.config.get_state("watcher_generation_timeout_sec", 600))
         eff = max(gen_to, int(timeout_ms / 1000)) if timeout_ms else 600
-        await ctx.ctrl.show_watcher_overlay(
-            "wait for text description", kind="generation", timeout_sec=eff
-        )
+        await show_job_overlay(ctx, OverlayRequest(
+            "wait for text description", "generation", eff))
         _mark_waiting(ctx, "text_generation")
     except Exception:
         pass

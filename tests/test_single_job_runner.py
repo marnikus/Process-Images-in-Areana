@@ -101,7 +101,7 @@ def instant_sleep(monkeypatch):
 def test_handler_map_covers_all_types():
     from tests.characterization.harness import FULL_STACK
     hmap = sjr._handler_map()
-    assert len(hmap) == 20
+    assert len(hmap) == 24
     for bid in FULL_STACK:
         assert bid in hmap, bid
 

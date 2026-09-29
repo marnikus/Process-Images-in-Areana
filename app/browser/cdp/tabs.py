@@ -4,6 +4,7 @@ RULE18: file 150-300 ideal, func 4-20 LOC, CC≤10, params≤4.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import socket
 import urllib.error
@@ -159,41 +160,72 @@ def close_tab_sync(host: str, port: int, tab_id: str, timeout: float = 5.0) -> T
         return False, f"{type(e).__name__}: {getattr(e, 'reason', e)}"
 
 
-async def _context_of(client: Any, old_id: str) -> Optional[str]:
-    """BrowserContextId of old tab, or None for default context."""
-    try:
-        resp = await client.send("Target.getTargets")
-        infos = resp.get("result", {}).get("targetInfos", []) if isinstance(resp, dict) else []
-        if not infos:
-            infos = resp.get("targetInfos", []) if isinstance(resp, dict) else []
-        for info in infos:
-            if info.get("targetId") == old_id:
-                return info.get("browserContextId")
-    except Exception:
-        return None
-    return None
+def fetch_browser_ws_url_sync(host: str, port: int, timeout: float = 3.0) -> Tuple[str, str]:
+    """Read Chrome's browser-level CDP websocket from `/json/version`."""
+    data, err = _fetch_json_sync(f"http://{host}:{port}/json/version", timeout)
+    if err or not isinstance(data, dict):
+        return "", err or "invalid Chrome version response"
+    ws_url = str(data.get("webSocketDebuggerUrl") or "")
+    if "/devtools/browser/" not in ws_url:
+        return "", "Chrome did not return a browser-level CDP websocket"
+    return _normalize_ws_url(ws_url, host, port), ""
 
 
-async def open_tab_in_same_context(client: Any, host: str, port: int, url: str, old_id: str) -> Tuple[Optional[TabInfo], str]:
-    """Open new tab in same browser context as old_id (profile-correct, keeps Arena account)."""
-    ctx_id = await _context_of(client, old_id)
-    params = {"url": url}
-    if ctx_id:
-        params["browserContextId"] = ctx_id
+async def target_context(client: Any, tab_id: str) -> Tuple[bool, Optional[str]]:
+    """`(found, context_id)`; a found target with no id is the default context."""
     try:
-        resp = await client.send("Target.createTarget", params)
+        resp = await client.send("Target.getTargets", timeout=5)
         result = resp.get("result", resp) if isinstance(resp, dict) else {}
-        new_id = result.get("targetId", "")
-        if not new_id:
-            return None, f"createTarget no id {str(resp)[:120]}"
-        # Fetch to get ws_url
-        import asyncio as _asyncio
-        tabs, err, _ = await _asyncio.to_thread(fetch_tabs_sync, host, port)
-        if err:
-            return TabInfo(id=new_id, title="", url=url, ws_url=f"ws://{host}:{port}/devtools/page/{new_id}"), ""
-        for tab in tabs:
-            if tab.id == new_id:
-                return tab, ""
-        return TabInfo(id=new_id, title="", url=url, ws_url=f"ws://{host}:{port}/devtools/page/{new_id}"), ""
-    except Exception as e:
-        return None, f"{type(e).__name__}: {e}"
+        infos = result.get("targetInfos", []) if isinstance(result, dict) else []
+        for info in infos:
+            if info.get("targetId") == tab_id:
+                context = info.get("browserContextId")
+                return True, str(context) if context else None
+    except Exception:
+        return False, None
+    return False, None
+
+
+async def _created_tab(client: Any, params: dict, url: str, endpoint: tuple[str, int]):
+    host, port = endpoint
+    resp = await client.send("Target.createTarget", params, timeout=5)
+    result = resp.get("result", resp) if isinstance(resp, dict) else {}
+    new_id = str(result.get("targetId") or "") if isinstance(result, dict) else ""
+    if not new_id:
+        return None, f"createTarget returned no target id: {str(resp)[:100]}"
+    tabs, err, _ = await asyncio.to_thread(fetch_tabs_sync, host, port)
+    found = next((tab for tab in tabs if tab.id == new_id), None)
+    if found:
+        return found, ""
+    # The browser target id is authoritative; context proof and a temporary page
+    # connection in the handover transaction verify the candidate before commit.
+    return TabInfo(new_id, "", url, f"ws://{host}:{port}/devtools/page/{new_id}"), ""
+
+
+def _is_source_browser_socket(socket_url: str, host: str, port: int) -> bool:
+    try:
+        socket = urllib.parse.urlsplit(socket_url)
+        endpoint = (socket.hostname, socket.port or (443 if socket.scheme == "wss" else 80))
+        return socket.scheme in ("ws", "wss") and "/devtools/browser/" in socket.path \
+            and endpoint == (host, int(port))
+    except Exception:
+        return False
+
+
+async def open_tab_in_same_context(client: Any, endpoint: tuple[str, int], url: str,
+                                   old_id: str) -> Tuple[Optional[TabInfo], str]:
+    """Create under the source target's context using a browser-level CDP socket."""
+    host, port = endpoint
+    socket_url = str(getattr(client, "_current_ws_url", "") or "")
+    if not _is_source_browser_socket(socket_url, host, port):
+        return None, "Target.createTarget requires the source endpoint's browser-level CDP socket"
+    found, context_id = await target_context(client, old_id)
+    if not found:
+        return None, f"source tab {old_id} context could not be verified"
+    params = {"url": url}
+    if context_id:
+        params["browserContextId"] = context_id
+    try:
+        return await _created_tab(client, params, url, endpoint)
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"

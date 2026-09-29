@@ -15,7 +15,7 @@ from app.core.undo_service import UndoService
 from app.services.live.bus import LiveBus
 from app.ui.panels.queue_scan import push_queue_undo
 from app.ui.panels.watcher_captcha import (
-    get_watcher_cdp_controller, on_watcher_state)
+    get_watcher_targets, on_watcher_state)
 
 
 @dataclass
@@ -144,7 +144,7 @@ def wire_watcher(bridge):
         from app.services.watcher import WatcherService
         watcher = WatcherService(
             config=_watcher_config(bridge),
-            cdp_controller_getter=lambda: get_watcher_cdp_controller(bridge),
+            cdp_controller_getter=lambda: get_watcher_targets(bridge),
             job_runner_getter=lambda: bridge,
             logger=lambda msg, level="info": bridge._log(f"[Watcher] {msg}", level),
         )

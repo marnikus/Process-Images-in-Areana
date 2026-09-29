@@ -166,10 +166,10 @@ class SilentPage:
             return True, {"details": [], "jobs": ["a1"]}
         return False, {"unanswered": True, "error": TIMED_OUT}
 
-    async def show_watcher_overlay(self, msg, kind=None, timeout_sec=None):
+    async def show_watcher_overlay(self, msg, kind=None, timeout_sec=None, owner_key=""):
         return None
 
-    async def hide_watcher_overlay(self):
+    async def hide_watcher_overlay(self, owner_key=""):
         self.hides += 1
 
 
@@ -209,7 +209,7 @@ async def test_a_silent_page_still_lets_the_generation_timeout_end_the_wait():
     svc = _watcher(page, runner, logs)
     await svc.check_once()
     page.answering = False
-    svc.state.waiting_since = time.time() - 181
+    svc._loop._pages._pages["primary"].state.waiting_since = time.time() - 181
     state = await svc.check_once()
     assert state["waiting_kind"] is None and runner.resumed == 1
     assert len([m for _l, m in logs if "Generation timeout" in m]) == 1

@@ -18,17 +18,9 @@ import json
 from app.ui.qt_compat import Slot
 from app.services.run_state import schedule_coro
 from app.ui.panels.watcher_solver import solver_follow
-
-
-def get_watcher_cdp_controller(bridge):
-    """CDP controller for the watcher (None when unconnected/failing)."""
-    try:
-        if not bridge.cdp or not getattr(bridge.cdp, "is_connected", False):
-            return None
-        from app.browser.cdp_arena import CDPArenaController
-        return CDPArenaController(bridge.cdp, log_callback=lambda m: bridge._log(m, "info"))
-    except Exception:
-        return None
+from app.services.watcher_pkg.pool_targets import (
+    get_watcher_cdp_controller, get_watcher_targets,
+)
 
 
 def on_watcher_state(bridge, payload: dict):
@@ -79,7 +71,7 @@ def create_watcher_service(bridge, values: dict):
     from app.services.watcher import WatcherService, WatcherConfig
     watcher = WatcherService(
         config=WatcherConfig(**values),
-        cdp_controller_getter=lambda: get_watcher_cdp_controller(bridge),
+        cdp_controller_getter=lambda: get_watcher_targets(bridge),
         job_runner_getter=lambda: bridge,
         logger=lambda msg, level="info": bridge._log(f"[Watcher] {msg}", level)
     )
@@ -191,9 +183,6 @@ class WatcherCaptchaMixin:
     @Slot(result=str)
     def clear_watcher_overlay(self):
         try:
-            cdp = get_watcher_cdp_controller(self)
-            if cdp:
-                schedule_coro(self, cdp.hide_watcher_overlay())
             if self._watcher:
                 schedule_coro(self, self._watcher.force_clear())
             return json.dumps({"ok": True})

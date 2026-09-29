@@ -54,12 +54,12 @@ IDLE = json.dumps({"processing": False, "indicators": []})
 def overlay_recorder(**kw):
     seen = []
 
-    async def _show(message, kind="generation", timeout_sec=0, sub=""):
-        seen.append(("show", message, kind, timeout_sec))
+    async def _show(message, kind="generation", timeout_sec=0, sub="", owner_key=""):
+        seen.append(("show", message, kind, timeout_sec, owner_key))
         return True
 
-    async def _hide():
-        seen.append(("hide",))
+    async def _hide(owner_key=""):
+        seen.append(("hide", owner_key))
         return True
 
     ctrl = make_ctrl(show_watcher_overlay=_show, hide_watcher_overlay=_hide, **kw)
@@ -113,7 +113,7 @@ async def test_busy_page_waits_until_the_indicator_is_gone(tmp_path, monkeypatch
     assert "Processing finished" in bridge._events[1][2]
     assert len(client.calls) == 3
     assert ctrl.overlay[0][:3] == ("show", ap.OVERLAY_MESSAGE, "generation")
-    assert ctrl.overlay[-1] == ("hide",)
+    assert ctrl.overlay[-1] == ("hide", "job:j1:t1")
     assert any("waiting up to 120000 ms" in m for m, _l in bridge._logs)
 
 

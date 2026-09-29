@@ -276,7 +276,7 @@
     },
     "max_methods": 0,
     "max_cc": 9,
-    "max_cog": 0,
+    "max_cog": 14,
     "max_nest": 4,
     "max_params": 5,
     "file_lines": 199
@@ -394,7 +394,7 @@
     },
     "max_methods": 0,
     "max_cc": 7,
-    "max_cog": 0,
+    "max_cog": 9,
     "max_nest": 1,
     "max_params": 3,
     "file_lines": 119
@@ -449,7 +449,7 @@
     },
     "max_methods": 7,
     "max_cc": 3,
-    "max_cog": 0,
+    "max_cog": 3,
     "max_nest": 1,
     "max_params": 5,
     "file_lines": 167
@@ -671,7 +671,7 @@
     },
     "max_methods": 0,
     "max_cc": 10,
-    "max_cog": 0,
+    "max_cog": 11,
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 320
@@ -2319,7 +2319,7 @@
     },
     "max_methods": 0,
     "max_cc": 6,
-    "max_cog": 0,
+    "max_cog": 8,
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 156
@@ -2502,7 +2502,7 @@
     },
     "max_methods": 4,
     "max_cc": 7,
-    "max_cog": 0,
+    "max_cog": 7,
     "max_nest": 1,
     "max_params": 4,
     "file_lines": 315
@@ -3760,7 +3760,7 @@
     },
     "max_methods": 0,
     "max_cc": 10,
-    "max_cog": 0,
+    "max_cog": 3,
     "max_nest": 3,
     "max_params": 3,
     "file_lines": 539
@@ -4078,7 +4078,7 @@
     },
     "max_methods": 0,
     "max_cc": 8,
-    "max_cog": 0,
+    "max_cog": 7,
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 1173
@@ -4177,7 +4177,7 @@
     },
     "max_methods": 14,
     "max_cc": 7,
-    "max_cog": 0,
+    "max_cog": 7,
     "max_nest": 2,
     "max_params": 5,
     "file_lines": 92
@@ -4191,7 +4191,7 @@
     },
     "max_methods": 1,
     "max_cc": 3,
-    "max_cog": 0,
+    "max_cog": 2,
     "max_nest": 0,
     "max_params": 1,
     "file_lines": 47
@@ -4258,7 +4258,7 @@
     },
     "max_methods": 6,
     "max_cc": 2,
-    "max_cog": 0,
+    "max_cog": 1,
     "max_nest": 0,
     "max_params": 5,
     "file_lines": 36
@@ -4279,7 +4279,7 @@
     },
     "max_methods": 5,
     "max_cc": 8,
-    "max_cog": 0,
+    "max_cog": 7,
     "max_nest": 2,
     "max_params": 5,
     "file_lines": 125
@@ -4296,7 +4296,7 @@
     },
     "max_methods": 4,
     "max_cc": 5,
-    "max_cog": 0,
+    "max_cog": 4,
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 69
@@ -4334,7 +4334,7 @@
     },
     "max_methods": 8,
     "max_cc": 6,
-    "max_cog": 0,
+    "max_cog": 6,
     "max_nest": 2,
     "max_params": 2,
     "file_lines": 122
@@ -4800,7 +4800,7 @@
     },
     "max_methods": 0,
     "max_cc": 4,
-    "max_cog": 0,
+    "max_cog": 3,
     "max_nest": 1,
     "max_params": 3,
     "file_lines": 217
@@ -5378,7 +5378,7 @@
     },
     "max_methods": 10,
     "max_cc": 7,
-    "max_cog": 0,
+    "max_cog": 10,
     "max_nest": 2,
     "max_params": 2,
     "file_lines": 243

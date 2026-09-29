@@ -17,9 +17,9 @@ class FakeCDP:
         return self.captcha
     async def is_generating(self):
         return self.gen, {"details": []}
-    async def show_watcher_overlay(self, msg, kind, timeout_sec):
+    async def show_watcher_overlay(self, msg, kind, timeout_sec, owner_key=""):
         self.overlay_shown.append((msg, kind))
-    async def hide_watcher_overlay(self):
+    async def hide_watcher_overlay(self, owner_key=""):
         self.overlay_hidden += 1
 
 def _make_handlers(cfg, state, probe, job_ctrl, logger, notify):

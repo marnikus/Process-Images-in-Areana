@@ -39,6 +39,7 @@ class WatcherService:
         self._logger = logger
         self._cdp_probe._logger = logger
         self._loop._logger = logger
+        self._loop._pages.set_logger(logger)
         self._handlers._logger = logger
 
     def update_config(self, **kwargs):
@@ -79,14 +80,5 @@ class WatcherService:
         return await self._loop.check_once()
 
     async def force_clear(self):
-        cdp = self._cdp_probe.get()
-        if cdp:
-            try:
-                await cdp.hide_watcher_overlay()
-            except Exception:
-                pass
-        self.state.waiting_since = None
-        self.state.waiting_kind = None
-        self.state.status = "watching"
-        await self._loop.notify()
+        await self._loop._pages.clear()
         self._logger("Watcher overlay cleared manually", "info")

@@ -51,7 +51,7 @@ class FakeCtrl:
         self.overlay_calls.append(k)
         return True
 
-    async def hide_watcher_overlay(self):
+    async def hide_watcher_overlay(self, owner_key=""):
         return True
 
 
@@ -264,7 +264,7 @@ async def test_every_helper_absorbs_failures(monkeypatch, isolated_config_dir):
         async def show_watcher_overlay(self, *a, **k):
             raise RuntimeError("overlay down")
 
-        async def hide_watcher_overlay(self):
+        async def hide_watcher_overlay(self, owner_key=""):
             raise RuntimeError("overlay down")
 
     ctrl = OverlayBoomCtrl(visible_seq=[True, False])

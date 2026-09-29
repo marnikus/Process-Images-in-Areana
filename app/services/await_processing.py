@@ -24,6 +24,7 @@ from typing import Any, Dict, Tuple
 from app.browser.processing_probe import build_processing_probe, interpret_processing
 from app.services.cooldown_service import is_tab_aborted
 from app.services.run_state import JobAction
+from app.services.overlay_owner import OverlayRequest, job_overlay_owner, show_job_overlay
 
 POLL_MS_DEFAULT = 1000
 POLL_MS_MIN = 250
@@ -106,12 +107,12 @@ async def _busy_ui(ctx: Any, on: bool, wait_ms: int) -> None:
     pool = getattr(ctx.bridge, "_page_pool", None)
     try:
         if on:
-            await ctx.ctrl.show_watcher_overlay(OVERLAY_MESSAGE, kind="generation",
-                                                timeout_sec=max(1, wait_ms // 1000))
+            await show_job_overlay(ctx, OverlayRequest(
+                OVERLAY_MESSAGE, "generation", max(1, wait_ms // 1000)))
             if pool:
                 pool.mark_waiting(ctx.tab_id, "generation")
         else:
-            await ctx.ctrl.hide_watcher_overlay()
+            await ctx.ctrl.hide_watcher_overlay(owner_key=job_overlay_owner(ctx))
             if pool:
                 pool.mark_busy(ctx.tab_id, ctx.job_id)
         if pool:

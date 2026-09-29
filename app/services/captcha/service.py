@@ -31,6 +31,7 @@ from typing import Any, Callable, Dict, Optional
 
 from app.browser.captcha_probes import build_detect_js
 from app.core.cooldown import DEFAULT_PENALTY_SECONDS
+from app.services.overlay_owner import OverlayRequest, job_overlay_owner, show_job_overlay
 from app.services.captcha_recording import RecordingManager
 
 from .key_store import CaptchaKeyStore, clamp_timeout
@@ -249,15 +250,15 @@ async def _manual_wait(ctx: CaptchaCtx, signal: CaptchaSignal, reason: str,
     deadline = WaitDeadline(cap)
     _log(ctx, f"🛡️ FLAG CAPTCHA_WAITING — captcha on screen (tab {str(ctx.tab_id)[:12]}, {host_of(signal.page_url)}) — awaiting your solve in Chrome (cap {cap}s)", "error")
     try:
-        await ctx.ctrl.show_watcher_overlay("wait for user. Captcha", kind="captcha",
-                                            timeout_sec=cap, sub=reason)
+        await show_job_overlay(ctx, OverlayRequest(
+            "wait for user. Captcha", "captcha", cap, reason))
     except Exception:
         pass
     from app.services.cooldown_service import wait_captcha_cleared
     solved = await wait_captcha_cleared(ctx.ctrl, deadline.stop_or(ctx.stop), cap,
                                         lambda m, l="info": _log(ctx, m, l))
     try:
-        await ctx.ctrl.hide_watcher_overlay()
+        await ctx.ctrl.hide_watcher_overlay(owner_key=job_overlay_owner(ctx))
     except Exception:
         pass
     out = _wait_outcome(ctx, signal, solved, deadline)

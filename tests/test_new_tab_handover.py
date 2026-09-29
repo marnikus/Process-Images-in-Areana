@@ -19,6 +19,8 @@ from app.browser.page_status import PageInfo
 from app.core.models import UrlRow
 from app.core.tab_alias import AliasBook
 from app.services import new_tab
+from app.services import new_tab_handover as handover_impl
+from app.services import new_tab_identity as identity_impl
 from app.services.cooldown_service import FinishCtx
 
 NEW_URL = "https://arena.ai/image/direct?model_a=max"
@@ -114,61 +116,111 @@ def test_close_tab_sync_404_means_already_closed(monkeypatch, raised, ok):
 # ── the handover ────────────────────────────────────────────────────────────
 
 class FakeBrowser:
-    """The endpoint's tab list; `close_ignored` = the browser refuses to close."""
-
-    def __init__(self, *ids):
+    """Browser-level Target API and candidate ownership for one endpoint."""
+    def __init__(self, *ids, source_context="CTX-MX", candidate_context=None,
+                 source_owner="mxxy@example.com", candidate_owners=None):
         self.ids = list(ids)
-        self.opened, self.closed = [], []
-        self.close_ignored = False
+        self.contexts = {tid: (source_context if tid == "OLD" else "CTX-ANTON") for tid in ids}
+        self.owners = {"OLD": source_owner, "OTHER": "anton@example.com"}
+        self.candidate_context = candidate_context
+        self.candidate_owners = list(candidate_owners or [source_owner])
+        self.opened, self.closed, self.create_params = [], [], []
         self.open_error = ""
+        self.close_ignored = False
 
-    def open(self, host, port, url):
-        if self.open_error:
-            return None, self.open_error
-        tid = f"NEW{len(self.opened) + 1}"
-        self.opened.append(url)
-        self.ids.append(tid)
-        return TabInfo(tid, "", url, f"ws://{host}:{port}/devtools/page/{tid}"), ""
+    def send(self, method, params=None):
+        params = params or {}
+        if method == "Target.getTargets":
+            infos = [{"targetId": tid, **({"browserContextId": ctx} if ctx else {})}
+                     for tid, ctx in self.contexts.items()]
+            return {"result": {"targetInfos": infos}}
+        if method == "Target.createTarget":
+            self.create_params.append(dict(params))
+            if self.open_error:
+                raise RuntimeError(self.open_error)
+            tid = f"NEW{len(self.opened) + 1}"
+            self.opened.append(params["url"])
+            self.ids.append(tid)
+            context = self.candidate_context
+            if context == "source":
+                context = self.contexts.get("OLD")
+            if context is None and "browserContextId" in params:
+                context = params["browserContextId"]
+            self.contexts[tid] = context
+            self.owners[tid] = self.candidate_owners[0] if self.candidate_owners else ""
+            return {"result": {"targetId": tid}}
+        raise AssertionError(f"unexpected CDP command: {method}")
 
     def close(self, host, port, tab_id):
         self.closed.append(tab_id)
         if not self.close_ignored and tab_id in self.ids:
             self.ids.remove(tab_id)
+            self.contexts.pop(tab_id, None)
         return True, ""
 
     def listing(self, host, port, timeout=3.0):
-        return [TabInfo(i, "", "", f"ws://x/{i}") for i in self.ids], "", []
+        return [TabInfo(tid, "", NEW_URL, f"ws://{host}:{port}/devtools/page/{tid}")
+                for tid in self.ids], "", []
 
 
 class FakeClient:
-    def __init__(self, tab_id):
-        self._host, self._port = "127.0.0.1", 9333
-        self._current_tab_id = tab_id
+    browser = None
+
+    def __init__(self, host="127.0.0.1", port=9333):
+        self._host, self._port = host, port
+        self._current_tab_id = ""
+        self._current_ws_url = ""
         self.moves = []
+        self.owner = ""
 
     async def connect(self, ws_url):
+        self._current_ws_url = ws_url
         self.moves.append(ws_url)
-        self._current_tab_id = ws_url.rsplit("/", 1)[-1]
+        if "/devtools/page/" in ws_url:
+            self._current_tab_id = ws_url.rsplit("/", 1)[-1]
         return True
 
+    async def send(self, method, params=None, **kwargs):
+        return self.browser.send(method, params)
 
-def _world(monkeypatch, *, ready=(True, "new chat ready"), is_new=(True, "new chat")):
-    browser = FakeBrowser("OLD", "OTHER")
-    monkeypatch.setattr(new_tab, "open_tab_sync", browser.open)
-    monkeypatch.setattr(new_tab, "close_tab_sync", browser.close)
-    monkeypatch.setattr(new_tab, "fetch_tabs_sync", browser.listing)
-    monkeypatch.setattr(new_tab, "_GONE_POLL_SEC", 0.01)
-    monkeypatch.setattr(new_tab, "_GONE_WAIT_SEC", 0.05)
+    async def evaluate(self, expression):
+        owner = self.owner or self.browser.owners.get(self._current_tab_id, "")
+        if self._current_tab_id.startswith("NEW") and self.browser.candidate_owners:
+            owner = self.browser.candidate_owners.pop(0)
+        return {"email": owner, "via": "fake"}
 
-    async def fake_ready(reset_ctx):
-        return ready
-    async def fake_read(client):
-        return is_new
-    monkeypatch.setattr(new_tab, "wait_new_chat_ready", fake_ready)
-    monkeypatch.setattr(new_tab, "read_chat_page", fake_read)
+    async def disconnect(self):
+        return None
+
+
+def _world(monkeypatch, *, ready=(True, "new chat ready"), is_new=(True, "new chat"),
+           candidate_context=None, candidate_owners=None, source_owner="mxxy@example.com",
+           source_context="CTX-MX"):
+    browser = FakeBrowser("OLD", "OTHER", source_context=source_context,
+                          candidate_context=candidate_context, source_owner=source_owner,
+                          candidate_owners=candidate_owners)
+    monkeypatch.setattr(identity_impl, "fetch_browser_ws_url_sync",
+                        lambda host, port: (f"ws://{host}:{port}/devtools/browser/F", ""))
+    monkeypatch.setattr(handover_impl, "close_tab_sync", browser.close)
+    monkeypatch.setattr(identity_impl, "close_tab_sync", browser.close)
+    monkeypatch.setattr(handover_impl, "fetch_tabs_sync", browser.listing)
+    monkeypatch.setattr(cdp_tabs, "fetch_tabs_sync", browser.listing)
+    monkeypatch.setattr(handover_impl, "GONE_POLL_SEC", 0.01)
+    monkeypatch.setattr(handover_impl, "GONE_WAIT_SEC", 0.05)
+    monkeypatch.setattr(identity_impl, "IDENTITY_WAIT_SEC", 0.08)
+    monkeypatch.setattr(identity_impl, "IDENTITY_POLL_SEC", 0.005)
+    monkeypatch.setattr(identity_impl, "CDPClient", FakeClient)
+    monkeypatch.setattr(identity_impl, "wait_new_chat_ready", lambda ctx: _async_value(ready))
+    monkeypatch.setattr(identity_impl, "read_chat_page", lambda client: _async_value(is_new))
+    FakeClient.browser = browser
+
     pool = _pool_with("OLD", "OTHER")
+    pool.get_page("OLD").ws_url = "ws://127.0.0.1:9333/devtools/page/OLD"
     pool.get_page("OLD").jobs_completed = 3
-    job_client, pool_client, home_client = FakeClient("OLD"), FakeClient("OLD"), FakeClient("OLD")
+    job_client, pool_client, home_client = (FakeClient() for _ in range(3))
+    for client in (job_client, pool_client, home_client):
+        client._current_tab_id = "OLD"
+        client.owner = source_owner
     pool.register_client("OLD", pool_client, object())
     logs, saved = [], []
     rows = [UrlRow(id="r1", url="https://arena.ai/c/1", enabled=True, tab_id="OLD"),
@@ -182,27 +234,46 @@ def _world(monkeypatch, *, ready=(True, "new chat ready"), is_new=(True, "new ch
                            rows=rows, clients=(job_client, pool_client, home_client))
 
 
+async def _async_value(value):
+    return value
+
+
 def _run(ctx, url=NEW_URL):
     return asyncio.run(new_tab.handover(ctx, url, timeout_sec=5))
 
 
-def test_handover_moves_the_worker_to_a_new_tab_and_closes_the_old(monkeypatch):
+def _assert_old_unchanged(w):
+    assert w.ctx.tab_id == "OLD" and w.pool.get_page("OLD") is not None
+    assert w.rows[0].tab_id == "OLD" and w.bridge._auto_scan_running is False
+    for client in w.clients:
+        assert client._current_tab_id == "OLD"
+
+
+def test_handover_moves_only_after_context_new_chat_and_owner_proofs(monkeypatch):
     w = _world(monkeypatch)
     ok, why = _run(w.ctx)
     assert ok, why
     assert w.browser.opened == [NEW_URL] and w.browser.closed == ["OLD"]
-    assert w.browser.ids == ["OTHER", "NEW1"]              # old tab verified gone
-    assert w.ctx.tab_id == "NEW1"
+    assert w.browser.create_params == [{"url": NEW_URL, "browserContextId": "CTX-MX"}]
+    assert w.browser.ids == ["OTHER", "NEW1"] and w.ctx.tab_id == "NEW1"
     moved = w.pool.get_page("NEW1")
-    assert moved.jobs_completed == 3 and w.pool.get_page("OLD") is None
+    assert moved.jobs_completed == 3 and moved.owner == "mxxy@example.com"
     assert (w.rows[0].tab_id, w.rows[0].url, w.rows[0].enabled) == ("NEW1", NEW_URL, True)
     assert w.rows[1].tab_id == "OTHER"
-    for client in w.clients:                               # every holder moved, none left behind
+    for client in w.clients:
         assert client._current_tab_id == "NEW1"
     assert {"arena", "cooldowns"} <= set(w.saved)
-    assert w.bridge._auto_scan_running is False            # the reconciler is free again
-    text = " | ".join(m for _, m in w.logs)
-    assert "opening" in text and "old tab closed" in text.lower()
+    assert any("stable owner=mxxy@example.com" in m for _, m in w.logs)
+    assert not any("Network.getAllCookies" in str(x) or "Network.setCookie" in str(x)
+                   for x in w.browser.create_params)
+
+
+def test_default_context_is_proved_and_create_target_omits_optional_context(monkeypatch):
+    w = _world(monkeypatch, source_context=None, candidate_context=None)
+    ok, why = _run(w.ctx)
+    assert ok, why
+    assert w.browser.create_params == [{"url": NEW_URL}]
+    assert w.ctx.tab_id == "NEW1"
 
 
 def test_same_new_chat_url_still_closes_the_old_tab(monkeypatch):
@@ -211,50 +282,71 @@ def test_same_new_chat_url_still_closes_the_old_tab(monkeypatch):
     w.rows[0].url = NEW_URL
     ok, _ = _run(w.ctx)
     assert ok and w.browser.closed == ["OLD"] and "OLD" not in w.browser.ids
-    assert any("same" in m.lower() for _, m in w.logs)
+
+
+@pytest.mark.parametrize("kwargs,reason", [
+    ({"candidate_context": "CTX-ANTON"}, "context mismatch"),
+    ({"candidate_owners": ["anton@example.com"]}, "owner mismatch"),
+    ({"candidate_owners": [""]}, "not stably proven"),
+    ({"source_owner": ""}, "source Arena account is unknown"),
+])
+def test_unknown_or_mismatched_identity_closes_only_candidate(monkeypatch, kwargs, reason):
+    w = _world(monkeypatch, **kwargs)
+    ok, why = _run(w.ctx)
+    assert not ok and reason.lower() in why.lower()
+    assert w.browser.closed == ([] if "source_owner" in kwargs else ["NEW1"])
+    _assert_old_unchanged(w)
+
+
+def test_unreadable_source_context_fails_before_opening_candidate(monkeypatch):
+    w = _world(monkeypatch)
+    w.browser.contexts.pop("OLD")
+    ok, why = _run(w.ctx)
+    assert not ok and "source target context" in why
+    assert w.browser.opened == [] and w.browser.closed == []
+    _assert_old_unchanged(w)
 
 
 def test_a_new_tab_that_is_not_a_new_chat_rolls_back(monkeypatch):
     w = _world(monkeypatch, is_new=(False, "an old chat"))
     ok, why = _run(w.ctx)
     assert not ok and "an old chat" in why
-    assert w.browser.closed == ["NEW1"]                    # the new tab closed again, the old one kept
-    assert "OLD" in w.browser.ids and w.ctx.tab_id == "OLD"
-    assert w.pool.get_page("OLD") is not None and w.rows[0].tab_id == "OLD"
-    for client in w.clients:
-        assert client._current_tab_id == "OLD"             # every client back home
-    assert w.bridge._auto_scan_running is False
+    assert w.browser.closed == ["NEW1"]
+    _assert_old_unchanged(w)
 
 
 def test_a_new_tab_that_never_gets_ready_rolls_back(monkeypatch):
     w = _world(monkeypatch, ready=(False, "timeout waiting for new chat"))
     ok, why = _run(w.ctx)
-    assert not ok and "timeout" in why and w.ctx.tab_id == "OLD" and w.browser.closed == ["NEW1"]
+    assert not ok and "timeout" in why
+    assert w.browser.closed == ["NEW1"]
+    _assert_old_unchanged(w)
 
 
-def test_a_tab_that_cannot_be_opened_keeps_the_old_one(monkeypatch):
+def test_target_creation_failure_keeps_the_old_one(monkeypatch):
     w = _world(monkeypatch)
-    w.browser.open_error = "HTTP 405"
+    w.browser.open_error = "Target.createTarget refused"
     ok, why = _run(w.ctx)
-    assert not ok and "405" in why and w.browser.closed == [] and w.ctx.tab_id == "OLD"
+    assert not ok and "refused" in why and w.browser.closed == []
+    _assert_old_unchanged(w)
 
 
 def test_an_old_tab_that_stays_open_is_reported_loudly(monkeypatch):
     w = _world(monkeypatch)
     w.browser.close_ignored = True
     ok, _ = _run(w.ctx)
-    assert ok and w.ctx.tab_id == "NEW1"                   # the job moved; only the close failed
-    assert w.browser.closed == ["OLD", "OLD"]              # one retry
-    assert any(level == "error" and "still open" in m for level, m in w.logs)
+    assert ok and w.ctx.tab_id == "NEW1"
+    assert w.browser.closed.count("OLD") == 2
+    assert any(level == "error" and "verification failed" in m for level, m in w.logs)
 
 
 def test_a_running_reconcile_pass_means_no_handover(monkeypatch):
     w = _world(monkeypatch)
     w.bridge._auto_scan_running = True
-    monkeypatch.setattr(new_tab, "_RECONCILE_WAIT_SEC", 0.05)
+    monkeypatch.setattr(handover_impl, "RECONCILE_WAIT_SEC", 0.02)
     ok, why = _run(w.ctx)
     assert not ok and "reconcile" in why and w.browser.opened == []
-    assert w.bridge._auto_scan_running is True             # not ours to release
+    assert w.bridge._auto_scan_running is True
 
 
 def test_a_tab_not_in_the_pool_means_no_handover(monkeypatch):
@@ -264,24 +356,20 @@ def test_a_tab_not_in_the_pool_means_no_handover(monkeypatch):
     assert not ok and w.browser.opened == []
 
 
-def test_handover_uses_pooled_client_endpoint_not_bridge_client(monkeypatch):
-    """Regression: new tab must open on same profile as closed tab (pooled client wins)."""
+def test_handover_uses_validated_source_endpoint_not_primary_connection(monkeypatch):
     w = _world(monkeypatch)
-    job_client, pooled_client, home_client = w.clients
-    job_client._host, job_client._port = "127.0.0.1", 9222
-    home_client._host, home_client._port = "127.0.0.1", 9222
-    pooled_client._host, pooled_client._port = "127.0.0.1", 9334
-    captured: dict = {}
-
-    def capturing_open(host, port, url):
-        captured["host"], captured["port"], captured["url"] = host, port, url
-        return w.browser.open(host, port, url)
-
-    monkeypatch.setattr(new_tab, "open_tab_sync", capturing_open)
+    w.ctx.client._host = w.pool.get_clients("OLD")[0]._host = "127.0.0.1"
+    w.ctx.client._port = w.pool.get_clients("OLD")[0]._port = 9334
+    w.pool.get_page("OLD").ws_url = "ws://localhost:9334/devtools/page/OLD"
+    w.bridge.cdp._port = 9222
+    FakeClient.browser = w.browser
+    # Browser-level websocket discovery and target listing must use the old page endpoint.
+    seen = []
+    monkeypatch.setattr(identity_impl, "fetch_browser_ws_url_sync",
+                        lambda host, port: (seen.append((host, port)) or f"ws://{host}:{port}/devtools/browser/F", ""))
     ok, why = _run(w.ctx)
     assert ok, why
-    assert captured["port"] == 9334, f"should use pooled 9334, got {captured}"
-    assert captured["host"] == "127.0.0.1"
+    assert seen == [("127.0.0.1", 9334)]
     assert w.ctx.tab_id == "NEW1"
 
 

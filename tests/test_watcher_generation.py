@@ -28,10 +28,13 @@ class Page:
     async def is_generating(self):
         return self.gen, {"details": [], "jobs": list(self.jobs)}
 
-    async def show_watcher_overlay(self, msg, kind=None, timeout_sec=None):
+    async def scan_page_errors(self):
+        return ""
+
+    async def show_watcher_overlay(self, msg, kind=None, timeout_sec=None, owner_key=""):
         self.overlays.append(kind)
 
-    async def hide_watcher_overlay(self):
+    async def hide_watcher_overlay(self, owner_key=""):
         self.hides += 1
 
 
@@ -60,7 +63,7 @@ def lines(logs, word):
 
 
 def expire(svc):
-    svc.state.waiting_since = time.time() - 181
+    svc._loop._pages._pages["primary"].state.waiting_since = time.time() - 181
 
 
 @pytest.mark.asyncio
@@ -79,7 +82,7 @@ async def test_after_the_timeout_the_spinner_is_ignored_quietly(env):
 async def test_a_new_job_id_restarts_the_clock_without_a_second_pause(env):
     svc, page, runner, logs = env
     await svc.check_once()
-    svc.state.waiting_since = time.time() - 170
+    svc._loop._pages._pages["primary"].state.waiting_since = time.time() - 170
     page.jobs.append("b2")                                            # the next job's bubble
     state = await svc.check_once()
     assert state["waiting_kind"] == "generation" and state["waiting_duration"] <= 1

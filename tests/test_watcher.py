@@ -70,10 +70,10 @@ class FakeWatcherCDP:
             raise RuntimeError("gen probe broken")
         return self.gen, self.gen_details
 
-    async def show_watcher_overlay(self, msg, kind=None, timeout_sec=None):
+    async def show_watcher_overlay(self, msg, kind=None, timeout_sec=None, owner_key=""):
         self.overlays.append((msg, kind, timeout_sec))
 
-    async def hide_watcher_overlay(self):
+    async def hide_watcher_overlay(self, owner_key=""):
         self.hides += 1
 
 
@@ -123,11 +123,11 @@ async def test_captcha_still_waiting_logs_timeout_when_elapsed():
     logs = []
     svc.set_logger(lambda msg, level="info": logs.append((level, msg)))
     await svc.check_once()
-    svc.state.waiting_since = time.time() - 100  # pretend 100s have passed
+    svc._loop._pages._pages["primary"].state.waiting_since = time.time() - 100  # pretend 100s have passed
     state = await svc.check_once()
-    assert state["status"] == "waiting_captcha" and state["captcha_waits"] == 1  # no double wait
-    assert cdp.overlays and len(cdp.overlays) == 1  # overlay not re-shown
-    assert any("timeout" in msg for level, msg in logs)
+    assert state["status"] == "watching" and state["waiting_kind"] is None
+    assert state["captcha_waits"] == 1 and cdp.hides == 1
+    assert jr.resumed == 1 and any("timeout" in msg for level, msg in logs)
 
 
 @pytest.mark.unit
@@ -167,7 +167,7 @@ async def test_generation_timeout_logged_once_then_stops_waiting():
     logs = []
     svc.set_logger(lambda msg, level="info": logs.append((level, msg)))
     await svc.check_once()
-    svc.state.waiting_since = time.time() - 60
+    svc._loop._pages._pages["primary"].state.waiting_since = time.time() - 60
     state = await svc.check_once()
     assert state["status"] == "watching" and jr.resumed == 1 and cdp.hides == 1
     assert sum("Generation timeout" in msg for level, msg in logs) == 1
@@ -182,8 +182,8 @@ async def test_probe_errors_are_fail_open_and_logged():
     svc.set_logger(lambda msg, level="info": logs.append((level, msg)))
     state = await svc.check_once()
     assert state["status"] == "watching"  # broken probes never block
-    assert state["last_generation_details"] == {"error": "gen probe broken"}
-    assert any("captcha check error" in msg for _, msg in logs)
+    assert state["last_generation_details"] == {"unanswered": True, "error": "gen probe broken"}
+    assert any("captcha check unanswered" in msg for _, msg in logs)
 
 
 @pytest.mark.unit

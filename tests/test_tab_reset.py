@@ -327,7 +327,7 @@ async def test_hiding_the_overlay_is_best_effort(monkeypatch):
         def __init__(self):
             self.calls = 0
 
-        async def hide_watcher_overlay(self):
+        async def hide_watcher_overlay(self, owner_key=""):
             self.calls += 1
             raise RuntimeError("dead socket")
 

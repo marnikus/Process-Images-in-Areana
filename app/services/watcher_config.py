@@ -33,8 +33,7 @@ class WatcherState:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "status": self.status,
-            "last_check": self.last_check,
+            "status": self.status, "last_check": self.last_check,
             "last_check_human": time.strftime("%H:%M:%S", time.localtime(self.last_check)) if self.last_check else "never",
             "checks_count": self.checks_count,
             "generation_waits": self.generation_waits,
@@ -44,4 +43,5 @@ class WatcherState:
             "waiting_duration": int(time.time() - self.waiting_since) if self.waiting_since else 0,
             "last_generation_details": self.last_generation_details,
             "last_captcha_detected": self.last_captcha_detected,
+            "page_states": getattr(self, "page_states", []),
         }

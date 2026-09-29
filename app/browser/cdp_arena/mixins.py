@@ -90,12 +90,13 @@ class HighlightMixin:
                                    kind: str = "generation", timeout_sec: int = 600,
                                    sub: str = "") -> bool:
         from .highlight import WatcherOverlaySpec, show_watcher_overlay as mod
-        spec = WatcherOverlaySpec(message=message, kind=kind, timeout_sec=timeout_sec, sub=sub)
+        spec = message if isinstance(message, WatcherOverlaySpec) else WatcherOverlaySpec(
+            message=message, kind=kind, timeout_sec=timeout_sec, sub=sub)
         return await mod(self.cdp, spec)
 
-    async def hide_watcher_overlay(self) -> bool:
+    async def hide_watcher_overlay(self, owner_key: str = "") -> bool:
         from .highlight import hide_watcher_overlay as mod
-        return await mod(self.cdp)
+        return await mod(self.cdp, owner_key)
 
 
 class StateMixin:

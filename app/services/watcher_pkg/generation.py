@@ -22,6 +22,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+from app.browser.dom_highlight import WatcherOverlaySpec
+
 
 @dataclass
 class Episode:
@@ -104,7 +106,7 @@ class GenerationWatch:
         else:
             self._log(f"⏳ Watcher: {build_generation_msg(details, timeout)}, pausing jobs", "warn")
         if not restart:
-            await self.cdp_probe.show_overlay(cdp, "wait for finish generation", "generation", timeout)
+            await self.cdp_probe.show_overlay(cdp, generation_overlay_spec(timeout, self._deps.overlay_owner_key))
             self.job_ctrl.pause()
         await self._deps.notifier()
 
@@ -117,9 +119,29 @@ class GenerationWatch:
         self._log(f"⏰ Watcher: Generation timeout {elapsed}s limit {self.config.generation_timeout_sec}s "
                   f"— spinner still visible; stopped waiting, jobs resumed (a new generation "
                   f"or the spinner going away re-arms the watcher)", "error")
-        await self.cdp_probe.hide_overlay(cdp)
+        await self.cdp_probe.hide_overlay(cdp, self._deps.overlay_owner_key)
         self.job_ctrl.resume()
         self.state.waiting_since, self.state.waiting_kind = None, None
         self.state.status = "watching"
         self.episode.stale = True
         await self._deps.notifier()
+
+
+def generation_overlay_spec(timeout: int, owner_key: str) -> WatcherOverlaySpec:
+    """Build this page's generation banner with its stable per-tab overlay owner."""
+    return WatcherOverlaySpec(timeout_sec=timeout, owner_key=owner_key)
+
+
+async def end_generation_on_error(watch: GenerationWatch, cdp, error: str) -> bool:
+    """End one page's active generation warning after fresh terminal evidence."""
+    if not error:
+        return False
+    waiting = watch.state.waiting_kind == "generation"
+    watch._log(f"⚠️ Watcher: terminal page error — {error}; clearing this page's warning", "warn")
+    if waiting:
+        await watch.cdp_probe.hide_overlay(cdp, watch._deps.overlay_owner_key)
+        watch.state.waiting_since, watch.state.waiting_kind = None, None
+        watch.state.status = "watching"
+    watch.episode.stale = True
+    await watch._deps.notifier()
+    return True

@@ -6,6 +6,9 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, Any, Callable
 
+from .pages import WatcherPages
+from .targets import normalize_targets
+
 log = logging.getLogger("watcher")
 
 @dataclass
@@ -28,6 +31,7 @@ class WatcherLoop:
         self._running = False
         self._task = None
         self._callbacks = []
+        self._pages = WatcherPages(deps)
 
     def add_callback(self, cb):
         self._callbacks.append(cb)
@@ -54,20 +58,9 @@ class WatcherLoop:
     async def check_once(self) -> Dict[str, Any]:
         self.state.checks_count += 1
         self.state.last_check = time.time()
-        cdp = self.cdp_probe.get()
-        if not cdp:
-            self.state.status = "watching"
-            await self._notify()
-            return self.state.to_dict()
-        is_captcha = await self.cdp_probe.check_captcha(cdp)
-        if await self.handlers.handle_captcha(cdp, is_captcha):
-            return self.state.to_dict()
-        is_gen, gen_details = await self.cdp_probe.check_generation(cdp)
-        if await self.handlers.handle_generation(cdp, is_gen, gen_details):
-            return self.state.to_dict()
-        await self.handlers.handle_clear(cdp, is_captcha, is_gen)
-        self.state.status = "watching"
-        await self._notify()
+        get_probe = getattr(self.cdp_probe, "get", None)
+        raw = get_probe() if get_probe else self.cdp_probe.get_targets()
+        await self._pages.check(normalize_targets(raw))
         return self.state.to_dict()
 
     def start(self):
@@ -119,4 +112,5 @@ class WatcherLoop:
         except asyncio.CancelledError:
             pass
         finally:
+            await self._pages.clear()
             self.state.status = "idle"

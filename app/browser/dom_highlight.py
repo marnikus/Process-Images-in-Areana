@@ -185,6 +185,7 @@ class WatcherOverlaySpec:
     kind: str = "generation"
     timeout_sec: int = 600
     sub: str = ""
+    owner_key: str = "legacy"
 
 
 def build_highlight_js_from_spec(spec: HighlightJsSpec) -> str:
@@ -239,17 +240,10 @@ def _watcher_overlay_css(bg: str, border_color: str) -> str:
     """
 
 
-def _watcher_drag_js() -> str:
-    return """
-    var drag=null;
-    overlay.addEventListener('mousedown', function(e){ try{ var r=overlay.getBoundingClientRect(); drag={x:e.clientX-r.left,y:e.clientY-r.top}; overlay.style.cursor='grabbing'; e.preventDefault(); }catch(err){} });
-    document.addEventListener('mousemove', function(e){ if(!drag||!overlay.isConnected){ drag=null; return; } try{ var nx=Math.max(0,Math.min(window.innerWidth-overlay.offsetWidth,e.clientX-drag.x)); var ny=Math.max(0,Math.min(window.innerHeight-overlay.offsetHeight,e.clientY-drag.y)); overlay.style.transform='none'; overlay.style.left=nx+'px'; overlay.style.top=ny+'px'; window.__arenaWatcherPos={left:nx,top:ny}; }catch(err){} });
-    document.addEventListener('mouseup', function(){ drag=null; try{ overlay.style.cursor='grab'; }catch(err){} });
-"""
-
-
-# quality-override: loc=50 reason=embedded JS overlay literal, allowed by RULE 16.1.5
+# quality-override: loc=50 reason=embedded JavaScript lease renderer is one atomic page payload
+# ideal-size: 50 lines reason=one generated browser payload; JS string splitting breaks atomic overlay owner updates
 def build_watcher_overlay_js_from_spec(spec: WatcherOverlaySpec) -> str:
+    owner_json = json.dumps(str(spec.owner_key or "legacy"))
     msg_json = json.dumps(spec.message or "wait")
     kind_json = json.dumps(spec.kind or "generation")
     timeout_json = json.dumps(int(spec.timeout_sec or 600))
@@ -257,45 +251,44 @@ def build_watcher_overlay_js_from_spec(spec: WatcherOverlaySpec) -> str:
     return f"""
 ;(function(){{
   try {{
-    var ATTR = "{WATCHER_ATTR}";
-    var msg = {msg_json};
-    var kind = {kind_json};
-    var timeoutSec = {timeout_json};
-    var subText = {sub_json};
-    var startTime = Date.now();
-    var olds = document.querySelectorAll('['+ATTR+']');
-    for (var i=0;i<olds.length;i++) if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
-    var isCaptcha = (kind === 'captcha' || msg.toLowerCase().indexOf('captcha') >=0);
-    var bg = isCaptcha ? 'rgba(180, 20, 20, 0.96)' : 'rgba(20, 80, 180, 0.96)';
-    var borderColor = isCaptcha ? '#ff4444' : '#44aaff';
-    var icon = isCaptcha ? '🛡️' : '⏳';
-    var overlay = document.createElement('div');
-    overlay.setAttribute(ATTR, kind);
-    overlay.style.cssText = [{_watcher_overlay_css('rgba(20,80,180,0.96)', '#44aaff')}].join(';');
-    overlay.style.background = bg; overlay.style.borderColor = borderColor;
-    try {{ var sp=window.__arenaWatcherPos; if(sp && typeof sp.left==='number' && typeof sp.top==='number'){{ overlay.style.left=sp.left+'px'; overlay.style.top=sp.top+'px'; overlay.style.transform='none'; }} }}catch(e){{}}
-    {_watcher_style_js()}
-    var headRow=document.createElement('div'); headRow.style.cssText='display:flex; align-items:center; gap:8px;';
-    var iconEl=document.createElement('div'); iconEl.textContent=icon; iconEl.style.cssText='font-size:26px; line-height:1;';
-    var titleEl=document.createElement('div'); titleEl.textContent=msg.toUpperCase(); titleEl.style.cssText='font-size:14px; font-weight:800; line-height:1.25; letter-spacing:0.3px; text-shadow:0 1px 2px rgba(0,0,0,0.5);';
-    headRow.appendChild(iconEl); headRow.appendChild(titleEl);
-    var subEl=document.createElement('div'); subEl.textContent=isCaptcha ? 'Solve captcha manually — watcher is waiting (drag me)' : 'Generation in progress — watcher is waiting (drag me)'; subEl.style.cssText='font-size:11px; opacity:0.9; margin-top:6px; text-align:center; font-weight:500;';
-    var spinnerWrap=document.createElement('div'); spinnerWrap.style.cssText='display:flex; align-items:center; gap:8px; margin-top:8px;';
-    var spinner=document.createElement('div'); spinner.style.cssText='width:18px; height:18px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation: arenaWatcherSpin 0.9s linear infinite;';
-    var spinnerText=document.createElement('div'); spinnerText.textContent='Waiting...'; spinnerText.style.cssText='font-size:11px; font-weight:600; opacity:0.9; animation: arenaWatcherGlow 1.5s ease-in-out infinite;';
-    spinnerWrap.appendChild(spinner); spinnerWrap.appendChild(spinnerText);
-    var timeEl=document.createElement('div'); timeEl.id='arena-watcher-time'; timeEl.style.cssText='font-size:10px; opacity:0.85; margin-top:8px; font-family:monospace; background:rgba(0,0,0,0.25); padding:3px 8px; border-radius:6px;';
-    var timeoutEl=document.createElement('div'); timeoutEl.id='arena-watcher-timeout'; timeoutEl.style.cssText='font-size:10px; opacity:0.75; margin-top:4px; font-family:monospace;';
-    function updateTime(){{ var elapsed=Math.floor((Date.now()-startTime)/1000); var remaining=Math.max(0,timeoutSec-elapsed); var te=document.getElementById('arena-watcher-time'); var to=document.getElementById('arena-watcher-timeout'); if(te) te.textContent='\\u23f1 '+elapsed+'s elapsed — '+new Date().toLocaleTimeString(); if(to) to.textContent='Timeout: '+timeoutSec+'s (win setting) — '+remaining+'s left'; }}
-    overlay.appendChild(headRow); overlay.appendChild(subEl);
-    if (subText) {{ var reasonEl=document.createElement('div'); reasonEl.textContent=subText; reasonEl.style.cssText='font-size:11px; font-weight:700; color:#ffd28a; margin-top:5px; text-align:center;'; overlay.appendChild(reasonEl); }}
-    overlay.appendChild(spinnerWrap); overlay.appendChild(timeEl); overlay.appendChild(timeoutEl);
-    {_watcher_drag_js()}
-    (document.body||document.documentElement).appendChild(overlay);
-    updateTime();
-    var interval=setInterval(function(){{ var te=document.getElementById('arena-watcher-time'); if(!te){{ clearInterval(interval); return; }} updateTime(); }}, 1000);
-    try{{ overlay.setAttribute('data-interval', interval); }}catch(e){{}}
-    return JSON.stringify({{shown:true,kind:kind,message:msg,timeout:timeoutSec}});
+    var ATTR = "{WATCHER_ATTR}", key = {owner_json};
+    var state = window.__arenaWatcherOverlayState || {{leases:Object.create(null), interval:0, drag:null, pos:window.__arenaWatcherPos || null}}; window.__arenaWatcherOverlayState = state;
+    var prior = state.leases[key];
+    state.leases[key] = {{message:{msg_json},kind:{kind_json},timeout:{timeout_json},sub:{sub_json},started:prior ? prior.started : Date.now(),updated:Date.now()}};
+    function removeVisible() {{
+      var old = document.querySelectorAll('['+ATTR+']');
+      for (var i=0;i<old.length;i++) if (old[i].parentNode) old[i].parentNode.removeChild(old[i]);
+    }}
+    function render() {{
+      removeVisible();
+      var keys = Object.keys(state.leases).sort(function(a,b) {{ return state.leases[b].updated-state.leases[a].updated; }});
+      if (!keys.length) {{ if(state.interval) clearInterval(state.interval); state.interval=0; return; }}
+      var activeKey = keys[0], item = state.leases[activeKey];
+      var isCaptcha = item.kind === 'captcha' || item.message.toLowerCase().indexOf('captcha') >= 0;
+      var overlay = document.createElement('div');
+      overlay.setAttribute(ATTR, item.kind); overlay.setAttribute('data-overlay-owner', activeKey);
+      overlay.style.cssText = [{_watcher_overlay_css('rgba(20,80,180,0.96)', '#44aaff')}].join(';');
+      overlay.style.background = isCaptcha ? 'rgba(180,20,20,0.96)' : 'rgba(20,80,180,0.96)';
+      overlay.style.borderColor = isCaptcha ? '#ff4444' : '#44aaff';
+      if(state.pos) {{ overlay.style.left=state.pos.left+'px'; overlay.style.top=state.pos.top+'px'; overlay.style.transform='none'; }}
+      {_watcher_style_js()}
+      var head=document.createElement('div'); head.style.cssText='display:flex;align-items:center;gap:8px;';
+      var icon=document.createElement('div'); icon.textContent=isCaptcha?'🛡️':'⏳'; icon.style.cssText='font-size:26px;line-height:1;';
+      var title=document.createElement('div'); title.textContent=item.message.toUpperCase(); title.style.cssText='font-size:14px;font-weight:800;line-height:1.25;letter-spacing:.3px;text-shadow:0 1px 2px rgba(0,0,0,.5);';
+      head.appendChild(icon); head.appendChild(title);
+      var sub=document.createElement('div'); sub.textContent=item.sub || (isCaptcha?'Solve captcha manually — watcher is waiting (drag me)':'Generation in progress — watcher is waiting (drag me)'); sub.style.cssText='font-size:11px;opacity:.9;margin-top:6px;text-align:center;font-weight:500;';
+      var time=document.createElement('div'); time.id='arena-watcher-time'; time.style.cssText='font-size:10px;opacity:.85;margin-top:8px;font-family:monospace;background:rgba(0,0,0,.25);padding:3px 8px;border-radius:6px;';
+      var limit=document.createElement('div'); limit.id='arena-watcher-timeout'; limit.style.cssText='font-size:10px;opacity:.75;margin-top:4px;font-family:monospace;';
+      overlay.appendChild(head); overlay.appendChild(sub); overlay.appendChild(time); overlay.appendChild(limit);
+      if(item.sub){{var reason=document.createElement('div');reason.textContent=item.sub;reason.style.cssText='font-size:11px;font-weight:700;color:#ffd28a;margin-top:5px;text-align:center;';overlay.insertBefore(reason,time);}}
+      overlay.addEventListener('mousedown',function(e){{try{{var r=overlay.getBoundingClientRect();state.drag={{x:e.clientX-r.left,y:e.clientY-r.top}};overlay.style.cursor='grabbing';e.preventDefault();}}catch(err){{}}}});
+      (document.body||document.documentElement).appendChild(overlay);
+      function update(){{var elapsed=Math.floor((Date.now()-item.started)/1000),remaining=Math.max(0,item.timeout-elapsed);var t=document.getElementById('arena-watcher-time'),l=document.getElementById('arena-watcher-timeout');if(t)t.textContent='⏱ '+elapsed+'s elapsed — '+new Date().toLocaleTimeString();if(l)l.textContent='Timeout: '+item.timeout+'s — '+remaining+'s left';}}
+      update(); if(state.interval)clearInterval(state.interval); state.interval=setInterval(update,1000);
+      if(!state.dragBound){{state.dragBound=true;document.addEventListener('mousemove',function(e){{if(!state.drag)return;var el=document.querySelector('['+ATTR+']');if(!el)return;var x=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,e.clientX-state.drag.x)),y=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,e.clientY-state.drag.y));state.pos={{left:x,top:y}};window.__arenaWatcherPos=state.pos;el.style.transform='none';el.style.left=x+'px';el.style.top=y+'px';}});document.addEventListener('mouseup',function(){{state.drag=null;var el=document.querySelector('['+ATTR+']');if(el)el.style.cursor='grab';}});}}
+    }}
+    state.leases[key].refresh=render; render();
+    return JSON.stringify({{shown:true,kind:{kind_json},message:{msg_json},owner:key,timeout:{timeout_json}}});
   }} catch(e){{ return JSON.stringify({{shown:false,error:String(e && e.message || e)}}); }}
 }})()
 """
@@ -306,15 +299,22 @@ def build_watcher_overlay_js(message: str = "wait for finish generation", kind: 
     return build_watcher_overlay_js_from_spec(spec)
 
 
-def build_watcher_clear_js() -> str:
+def build_watcher_clear_js(owner_key: str = "") -> str:
+    owner_json = json.dumps(str(owner_key or ""))
     return f"""
 ;(function(){{
   try {{
-    var ATTR = "{WATCHER_ATTR}";
-    var olds = document.querySelectorAll('['+ATTR+']');
-    var count = olds.length;
-    for (var i=0;i<olds.length;i++) if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
-    return JSON.stringify({{cleared: count}});
+    var ATTR = "{WATCHER_ATTR}", key = {owner_json};
+    var state = window.__arenaWatcherOverlayState, cleared = 0;
+    if (!state) return JSON.stringify({{cleared:0}});
+    if (key) {{ if (Object.prototype.hasOwnProperty.call(state.leases,key)) {{ delete state.leases[key]; cleared=1; }} }}
+    else {{ cleared=Object.keys(state.leases).length; state.leases=Object.create(null); }}
+    var old=document.querySelectorAll('['+ATTR+']');
+    for(var i=0;i<old.length;i++) if(old[i].parentNode) old[i].parentNode.removeChild(old[i]);
+    var keys=Object.keys(state.leases).sort(function(a,b){{return state.leases[b].updated-state.leases[a].updated;}});
+    if(!keys.length) {{ if(state.interval)clearInterval(state.interval);state.interval=0; }}
+    else {{ var next=state.leases[keys[0]]; if(next.refresh) next.refresh(); }}
+    return JSON.stringify({{cleared:cleared,remaining:Object.keys(state.leases).length}});
   }} catch(e){{ return JSON.stringify({{cleared:0,error:String(e && e.message || e)}}); }}
 }})()
 """
