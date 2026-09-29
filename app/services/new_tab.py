@@ -91,6 +91,7 @@ class _Move:
     old_context: str = ""
     pattern: str = "arena.ai"
     profile_count: int = 0
+    profile_count_owner: int = 0
 
 
 def _get_pattern(bridge: Any) -> str:
@@ -111,8 +112,22 @@ def _matches_pattern(url: str, pattern: str) -> bool:
         return False
 
 
+def _endpoint_matches(client: Any, host: str, port: int) -> bool:
+    """Client endpoint equals host:port."""
+    ep = _endpoint_from_client(client)
+    return ep is not None and ep[0] == host and ep[1] == port
+
+
+def _owner_matches(page: Any, low: str) -> bool:
+    """Page owner equals low (lowercased)."""
+    try:
+        return (getattr(page, "owner", "") or "").lower() == low
+    except Exception:
+        return False
+
+
 def _count_profile_tabs(pool: Any, endpoint: tuple, pattern: str) -> int:
-    """How many pooled tabs from same endpoint match pattern (profile tab count)."""
+    """How many pooled tabs from same endpoint match pattern."""
     try:
         host, port = endpoint
         cnt = 0
@@ -120,10 +135,32 @@ def _count_profile_tabs(pool: Any, endpoint: tuple, pattern: str) -> int:
             for tid, page in pool._pages.items():
                 try:
                     client, _ = pool.get_clients(tid)
-                    ep = _endpoint_from_client(client)
-                    if ep is None:
+                    if not _endpoint_matches(client, host, port):
                         continue
-                    if ep[0] != host or ep[1] != port:
+                    if _matches_pattern(getattr(page, "url", ""), pattern):
+                        cnt += 1
+                except Exception:
+                    continue
+        return cnt
+    except Exception:
+        return 0
+
+
+def _count_profile_tabs_by_owner(pool: Any, endpoint: tuple, pattern: str, owner: str) -> int:  # quality-override: params=4 reason=profile needs host,port,pattern,owner tuple
+    """Tabs on same endpoint matching pattern AND same owner."""
+    if not owner:
+        return 0
+    try:
+        host, port = endpoint
+        low = owner.lower()
+        cnt = 0
+        with pool._lock:
+            for tid, page in pool._pages.items():
+                try:
+                    if not _owner_matches(page, low):
+                        continue
+                    client, _ = pool.get_clients(tid)
+                    if not _endpoint_matches(client, host, port):
                         continue
                     if _matches_pattern(getattr(page, "url", ""), pattern):
                         cnt += 1
@@ -182,11 +219,13 @@ def _plan(ctx: Any, url: str, timeout_sec: float) -> Optional[_Move]:
     endpoint = _resolve_endpoint(ctx, pooled)
     pattern = _get_pattern(ctx.bridge)
     count = _count_profile_tabs(pool, endpoint, pattern)
+    count_owner = _count_profile_tabs_by_owner(pool, endpoint, pattern, old_owner)
     move = _Move(ctx, url, timeout_sec, ctx.tab_id, page.ws_url, page.url, tab_label_of(pool, ctx.tab_id))
     move.old_owner = old_owner
     move.endpoint = endpoint
     move.pattern = pattern
     move.profile_count = count
+    move.profile_count_owner = count_owner
     move.clients = _clients_on(ctx)
     return move
 
@@ -219,7 +258,9 @@ async def _run(move: _Move) -> tuple[bool, str]:
     _log(move, f"🗂 New chat as a new tab: opening {move.url} — {move.label}'s old tab "
                f"{move.old_id[:12]} ({move.old_url}) closes after — "
                f"profile {move.endpoint[0]}:{move.endpoint[1]} owner={move.old_owner or 'unknown'} "
-               f"tabs matching '{move.pattern}' in profile: {move.profile_count}", "info")
+               f"ctx={move.old_context or 'default'} "
+               f"tabs matching '{move.pattern}' in profile: {move.profile_count} "
+               f"(owner {move.old_owner or '?'}: {move.profile_count_owner})", "info")
     ok, why = await _open_and_prove(move)
     if not ok:
         await _roll_back(move, why)
@@ -244,7 +285,20 @@ async def _open_and_prove(move: _Move) -> tuple[bool, str]:
     # Restore session to new tab to keep same Arena account/profile
     if old_cookies:
         await _set_cookies_to_move(move, old_cookies)
+        await _reload_after_cookies(move)
     return await _prove_new_chat(move)
+
+
+async def _reload_after_cookies(move: _Move) -> None:
+    """Reload new tab after cookie restore (best effort)."""
+    try:
+        client = _pick_client_for_context(move)
+        if client is None:
+            return
+        await client.send("Page.reload")
+        await asyncio.sleep(0.6)
+    except Exception:
+        pass
 
 
 async def _get_cookies_from_move(move: _Move) -> list:
@@ -284,18 +338,28 @@ async def _set_cookies_to_move(move: _Move, cookies: list) -> None:
         await _set_one_cookie(client, ck)
 
 
-def _cookie_params(ck: dict) -> Optional[dict]:
-    """CDP Network.setCookie params from a cookie dict, or None when unusable."""
+def _cookie_base(ck: dict) -> Optional[dict]:
+    """Base CDP cookie params or None."""
     try:
         name = ck.get("name", "")
         if not name:
             return None
-        params = {
+        return {
             "name": name,
             "value": ck.get("value", ""),
             "domain": ck.get("domain", ""),
             "path": ck.get("path", "/"),
         }
+    except Exception:
+        return None
+
+
+def _cookie_params(ck: dict) -> Optional[dict]:
+    """CDP Network.setCookie params from a cookie dict, or None when unusable."""
+    params = _cookie_base(ck)
+    if params is None:
+        return None
+    try:
         if ck.get("secure"):
             params["secure"] = True
         if ck.get("httpOnly"):
@@ -332,8 +396,10 @@ async def _verify_context_same(move: _Move, client: Any, new_tab: TabInfo) -> tu
     try:
         from app.browser.cdp.tabs import _context_of
         new_ctx = await _context_of(client, new_tab.id)
-        if move.old_context and new_ctx is not None and str(new_ctx) != move.old_context:
-            return False, f"context mismatch old={move.old_context} new={new_ctx} — wrong profile"
+        old = move.old_context or ""
+        new_s = str(new_ctx) if new_ctx is not None else ""
+        if old and old != new_s:
+            return False, f"context mismatch old={old} new={new_s or 'default'} — wrong profile"
     except Exception:
         pass
     return True, ""
@@ -395,16 +461,34 @@ async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
     """Ensure new tab has same Arena account as old tab (profile-correct)."""
     if not move.old_owner:
         return True, ""
-    try:
-        new_owner = await _read_owner_from_client(move.ctx.client)
-    except Exception:
-        new_owner = ""
+    new_owner = ""
+    for attempt in range(3):
+        try:
+            new_owner = await _read_owner_from_client(move.ctx.client)
+        except Exception:
+            new_owner = ""
+        if new_owner:
+            break
+        await asyncio.sleep(0.5)
     if not new_owner:
-        _log(move, f"Owner probe empty for new tab {move.new.id[:12]} — keeping {move.old_owner}", "info")
+        _log(move, f"Owner probe empty for new tab {move.new.id[:12]} after retries — keeping {move.old_owner}", "info")
         return True, ""
     if new_owner.lower() == move.old_owner.lower():
         return True, ""
     return False, f"Owner mismatch: old {move.old_owner} vs new {new_owner} — wrong profile, rollback"
+
+
+async def _context_from_targets(client: Any, old_id: str) -> str:
+    """BrowserContextId from Target.getTargets for old_id."""
+    try:
+        resp = await client.send("Target.getTargets")
+        infos = resp.get("result", {}).get("targetInfos", []) if isinstance(resp, dict) else []
+        for info in infos:
+            if info.get("targetId") == old_id:
+                return str(info.get("browserContextId") or "")
+    except Exception:
+        pass
+    return ""
 
 
 async def _get_old_context_id(move: _Move) -> str:
@@ -417,16 +501,9 @@ async def _get_old_context_id(move: _Move) -> str:
             ctx_id = await _context_of(cli, move.old_id)
             if ctx_id is not None:
                 return str(ctx_id)
-            # Also try without filter: if _context_of returns None, it may still have context
-            # Try to get any context from client that matches old_id
-            try:
-                resp = await cli.send("Target.getTargets")
-                infos = resp.get("result", {}).get("targetInfos", []) if isinstance(resp, dict) else []
-                for info in infos:
-                    if info.get("targetId") == move.old_id:
-                        return str(info.get("browserContextId") or "")
-            except Exception:
-                pass
+            ctx_id = await _context_from_targets(cli, move.old_id)
+            if ctx_id:
+                return ctx_id
     except Exception:
         pass
     return ""
@@ -475,9 +552,12 @@ def _move_worker(move: _Move) -> None:
     for step in ("_save_arena", "_persist_cooldowns", "_emit_pool_status"):
         _quietly(getattr(ctx.bridge, step, None))
     new_count = _count_profile_tabs(ctx.pool, move.endpoint, move.pattern)
+    new_count_owner = _count_profile_tabs_by_owner(ctx.pool, move.endpoint, move.pattern, move.old_owner)
     _log(move, f"🗂 {move.label} now works in tab {new.id[:12]} (was {move.old_id[:12]}) — "
                f"cooldown, job count and number kept — profile {move.endpoint[0]}:{move.endpoint[1]} "
-               f"tabs matching '{move.pattern}': {move.profile_count} → {new_count}", "info")
+               f"ctx={move.old_context or 'default'} owner={move.old_owner or '?'} "
+               f"tabs matching '{move.pattern}': {move.profile_count} → {new_count} "
+               f"(owner {move.old_owner or '?'}: {move.profile_count_owner} → {new_count_owner})", "info")
 
 
 def _preserve_owner_after_move(pool: Any, new_id: str, old_owner: str) -> None:
