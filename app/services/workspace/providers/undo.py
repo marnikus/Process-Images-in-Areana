@@ -9,10 +9,10 @@ history and is rejected by design.
 from __future__ import annotations
 
 from app.persistence.workspace.errors import WorkspaceError
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, one_file
 
 
-def history_error(doc) -> str | None:
+def undo_history_error(doc) -> str | None:
     if not isinstance(doc, dict):
         return "document is not an object"
     history = doc.get("history")
@@ -38,14 +38,14 @@ class UndoProvider(StateProvider):
     sensitivity = "public"
 
     def live_paths(self, bridge) -> list:
-        return self._one_file(bridge.config.undo.path)
+        return one_file(bridge.config.undo.path)
 
     def capture(self, bridge) -> CaptureResult:
         history, index = bridge.config.undo.get()
         return CaptureResult(ok=True, doc={"history": history, "index": index})
 
     def validate(self, doc) -> str | None:
-        return history_error(doc)
+        return undo_history_error(doc)
 
     def apply(self, bridge, doc) -> ApplyOutcome:
         ok = bridge.config.undo.set(list(doc.get("history", [])), int(doc.get("index", -1)))

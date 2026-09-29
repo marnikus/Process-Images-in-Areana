@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.persistence.json_store import save_json_atomic
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, config_dir, live_capture
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, config_dir, live_capture, one_file
 
 FILE_NAME = "captcha_stats.json"
 
@@ -36,7 +36,7 @@ class CaptchaStatsProvider(StateProvider):
     sensitivity = "public"
 
     def live_paths(self, bridge) -> list:
-        return self._one_file(stats_file(bridge))
+        return one_file(stats_file(bridge))
 
     def capture(self, bridge) -> CaptureResult:
         return live_capture(stats_file(bridge))

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from app.core.models import AppState
 from app.core.persistence import save_state
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, one_file
 
 SCHEMA_VERSION = "1.0.0"
 _LIST_KEYS = ("urls", "images", "jobs")
@@ -79,7 +79,7 @@ class ArenaStateProvider(StateProvider):
     required = True
 
     def live_paths(self, bridge) -> list:
-        return self._one_file(bridge.state_path)
+        return one_file(bridge.state_path)
 
     def capture(self, bridge) -> CaptureResult:
         return CaptureResult(ok=True, doc=bridge.state.to_dict())

@@ -15,7 +15,8 @@ import pytest
 from app.persistence.workspace import fsio
 from app.services.workspace import apply as ws_apply
 from app.services.workspace import recover, restore, save
-from app.services.workspace.provider import CaptureResult
+from app.services.workspace.provider import CaptureResult, one_file
+from app.services.workspace.runs import RestoreRun, SaveRequest, SaveRun
 from app.ui.panels.workspace import clamp_to_screen
 
 pytestmark = pytest.mark.unit
@@ -31,6 +32,24 @@ class _Screen:
     def height(self): return self._h
     def right(self): return self._l + self._w - 1
     def bottom(self): return self._t + self._h - 1
+
+
+def test_run_contexts_declare_their_shared_fields():
+    """N1: run contexts are value objects — the fields helpers share are declared once."""
+    request = SaveRequest(name="n", selected=["undo"])
+    assert request.allow_partial is False and request.base_dir == ""
+    run = SaveRun(bridge="b", request=request, target=Path("/t"), started="s", snapshot_id="ws_1")
+    assert (run.snapshot_id, run.started) == ("ws_1", "s")
+    restore_run = RestoreRun(bridge="b", manifest={}, files={}, failed=set())
+    assert restore_run.failed == set()
+    assert save.SaveRequest is SaveRequest  # the public import surface stays put
+
+
+def test_one_file_lists_only_existing_files(tmp_path):
+    here = tmp_path / "a.json"
+    here.write_text("{}")
+    assert one_file(here) == [here]
+    assert one_file(tmp_path / "gone.json") == [] and one_file(None) == []
 
 
 def test_clamp_to_screen_pulls_an_off_screen_window_back():

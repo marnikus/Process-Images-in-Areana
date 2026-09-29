@@ -20,6 +20,7 @@ from .gates import load_files
 from .meta import live_run_error, log_message
 from .recover import backup_live
 from .registry import get, restore_order
+from .runs import RestoreRun
 from .snapshot_index import record_restore
 
 
@@ -96,7 +97,7 @@ def _policy_row(provider, entry: dict) -> dict:
     cause = (entry.get("capture", {}) or {}).get("excluded_reason", "policy-excluded domain")
     row = {"domain_id": provider.domain_id, "status": "skipped",
            "stage": "apply", "policy": True, "cause": cause}
-    advice = getattr(provider, "restore_advice", "")
+    advice = provider.restore_advice
     if advice:
         row["recommended_action"] = advice
     return row
@@ -170,26 +171,26 @@ def _checked_doc(provider, entry: dict, doc) -> tuple:
     return (None, "", problem) if problem else (doc, note, None)
 
 
-def _restore_one(run: dict, provider, entry: dict, doc) -> dict:
+def _restore_one(run: RestoreRun, provider, entry: dict, doc) -> dict:
     """Gates in order: dependency → schema → migration → semantic → transactional apply."""
-    problem = _dependency_row(provider, run["failed"]) or _version_row(provider, entry)
+    problem = _dependency_row(provider, run.failed) or _version_row(provider, entry)
     if problem:
         return problem
     doc, migrated_note, problem = _checked_doc(provider, entry, doc)
     if problem:
         return problem
-    row = _apply_domain(run["bridge"], provider, doc)
+    row = _apply_domain(run.bridge, provider, doc)
     if migrated_note and row["status"] == "restored":
         row["migrated"] = migrated_note
     return row
 
 
-def _restore_row(run: dict, provider) -> dict:
+def _restore_row(run: RestoreRun, provider) -> dict:
     """One provider's row: policy row, file-gate skip, or the gated restore."""
-    entry = entry_for(run["manifest"], provider.domain_id) or {}
+    entry = entry_for(run.manifest, provider.domain_id) or {}
     if not entry or not entry.get("path"):
         return _policy_row(provider, entry)
-    loaded = run["files"].get(entry["path"])
+    loaded = run.files.get(entry["path"])
     if isinstance(loaded, WorkspaceError):
         error = WorkspaceError(provider.domain_id, loaded.stage, loaded.cause,
                                evidence=(loaded.expected, loaded.actual))
@@ -223,14 +224,14 @@ def restore_workspace(bridge, root, selected=None) -> dict:
     backup, backup_refusal = backup_live(bridge, providers)
     if backup_refusal:
         return {"ok": False, "error": backup_refusal}
-    run = {"bridge": bridge, "manifest": manifest,
-       "files": load_files(root, manifest, providers), "failed": set()}
+    run = RestoreRun(bridge=bridge, manifest=manifest,
+                     files=load_files(root, manifest, providers), failed=set())
     rows = []
     for provider in providers:
         row = _restore_row(run, provider)
         rows.append(row)
         if row["status"] != "restored":
-            run["failed"].add(provider.domain_id)
+            run.failed.add(provider.domain_id)
     report = _finish(bridge, root, rows, backup)
     _log_result(bridge, root, report)
     return {"ok": report["result"] != "failed", **report}

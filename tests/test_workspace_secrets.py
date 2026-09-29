@@ -86,3 +86,17 @@ def test_policy_strings_have_one_home():
     assert get("captcha_keys").restore_advice == policies.KEYS_REAPPLY
     assert ws_save.inclusion_policy() == policies.INCLUSION_POLICY
     assert "captcha_keys" in policies.INCLUSION_POLICY
+
+
+def test_restore_advice_is_part_of_the_provider_contract():
+    """N2: policy-row advice is a declared contract attribute, not a getattr side-channel."""
+    from app.services.workspace import apply as ws_apply
+    from app.services.workspace.provider import StateProvider
+
+    assert hasattr(StateProvider, "restore_advice"), "restore_advice must be on the contract"
+    assert StateProvider.restore_advice == ""
+    row = ws_apply._policy_row(StateProvider(), {"capture": {"excluded_reason": "policy-excluded domain"}})
+    assert "recommended_action" not in row
+    advised = get("captcha_keys")
+    row = ws_apply._policy_row(advised, {"capture": {"excluded_reason": "policy-excluded domain"}})
+    assert row["recommended_action"] == advised.restore_advice

@@ -6,7 +6,10 @@
 exports ONE native `state/session.json`; restore applies only the
 selected domain's keys and commits the file once per domain atomically.
 Invalid grid data is skipped with the current layout retained (RULE 13);
-unknown window ids are a semantic error, never silently healed.
+unknown window ids are a semantic error, never silently healed. Geometry
+clamping is not reconciled here: it runs Qt-side
+(`panels/workspace.clamp_restored_geometry`) and reports only when it
+actually clamped (I-81 — a note must report what happened).
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ from __future__ import annotations
 from app.core.layout_service import canonical_grid_payload
 from app.core.window_catalog import GRID_VERSION, WINDOW_IDS
 from app.persistence.json_store import save_json_atomic
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, one_file
 
 GRID_KEYS = ("grid_layout", "window_states", "window_geometry")
 
@@ -93,7 +96,7 @@ class _SessionDomainProvider(StateProvider):
         return bridge.config.session
 
     def live_paths(self, bridge) -> list:
-        return self._one_file(self._store(bridge).path)
+        return one_file(self._store(bridge).path)
 
     def _keys(self) -> tuple:
         raise NotImplementedError
@@ -195,4 +198,4 @@ class GridWindowProvider(_SessionDomainProvider):
         return value
 
     def reconcile(self, bridge) -> list:
-        return ["geometry may need clamping to this machine's screen"]
+        return []

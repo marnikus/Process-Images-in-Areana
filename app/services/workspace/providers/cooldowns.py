@@ -13,7 +13,7 @@ from pathlib import Path
 from app.persistence.cooldown_store import load_entries, load_stats, normalize_url
 from app.persistence.json_store import save_json_atomic
 from app.services.cooldown_service import restore_cooldown_entry, restore_page_stats
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture, one_file
 
 _SECTIONS = ("version", "entries", "stats", "aliases")
 
@@ -42,7 +42,7 @@ class CooldownsProvider(StateProvider):
     sensitivity = "personal"   # aliases carry account e-mails
 
     def live_paths(self, bridge) -> list:
-        return self._one_file(cooldown_file(bridge))
+        return one_file(cooldown_file(bridge))
 
     def capture(self, bridge) -> CaptureResult:
         return live_capture(cooldown_file(bridge), "no live cooldown file — captured empty")

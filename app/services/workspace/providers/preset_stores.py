@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import copy
 
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, one_file
 
 
 class _StoreProvider(StateProvider):
@@ -24,7 +24,7 @@ class _StoreProvider(StateProvider):
         return getattr(bridge.config, self.store_attr)
 
     def live_paths(self, bridge) -> list:
-        return self._one_file(self._store(bridge).path)
+        return one_file(self._store(bridge).path)
 
     def capture(self, bridge) -> CaptureResult:
         return CaptureResult(ok=True, doc=self._store(bridge).all_data())

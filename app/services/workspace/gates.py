@@ -21,9 +21,7 @@ def load_files(root: Path, manifest: dict, providers: list) -> dict:
     for provider in providers:
         entry = entry_for(manifest, provider.domain_id) or {}
         rel = entry.get("path")
-        if not rel:
-            continue
-        if rel in docs:
+        if not rel or rel in docs:
             continue
         docs[rel] = load_one(root, entry, rel)
     return docs

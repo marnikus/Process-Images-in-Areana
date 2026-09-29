@@ -19,31 +19,42 @@ def config_dir(bridge) -> Path:
     return Path(getattr(bridge.config, "dir", "config"))
 
 
+def _read_live(path) -> tuple:
+    """(doc, cause, missing): one probe — `missing` = no file at all (empty store)."""
+    if not path or not Path(path).exists():
+        return {}, "", True
+    path = Path(path)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, f"live file {path.name} is unreadable: {exc}", False
+    if not isinstance(doc, dict):
+        return None, f"live file {path.name} is not a JSON object", False
+    return doc, "", False
+
+
 def read_live_json(path) -> tuple:
     """(doc, "") for a readable object or a missing file ({}); (None, cause) otherwise.
 
     RULE 4: a live file that exists but is unreadable, corrupt or not an object is
     BROKEN, never "empty" — capturing it as {} would let a later restore wipe the store.
     """
-    if not path or not Path(path).exists():
-        return {}, ""
-    path = Path(path)
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return None, f"live file {path.name} is unreadable: {exc}"
-    if not isinstance(doc, dict):
-        return None, f"live file {path.name} is not a JSON object"
-    return doc, ""
+    doc, cause, _missing = _read_live(path)
+    return doc, cause
 
 
 def live_capture(path, empty_note: str = "") -> "CaptureResult":
     """CaptureResult for a one-file store read with `read_live_json`."""
-    doc, cause = read_live_json(path)
+    doc, cause, missing = _read_live(path)
     if cause:
         return CaptureResult(ok=False, notes=[cause])
-    notes = [empty_note] if empty_note and not (path and Path(path).exists()) else []
+    notes = [empty_note] if empty_note and missing else []
     return CaptureResult(ok=True, doc=doc, notes=notes)
+
+
+def one_file(path) -> list:
+    """`live_paths` helper: [path] when the file exists (a fresh machine lacks some)."""
+    return [Path(path)] if path and Path(path).exists() else []
 
 
 @dataclass
@@ -78,6 +89,7 @@ class StateProvider:
     dependencies: dict = {}   # {domain_id: "strict" | "optional"}
     sensitivity = "public"    # public | personal | secret
     required = False          # save aborts (unless allow_partial) when a required domain fails
+    restore_advice = ""       # user-facing next step on a skipped policy row (policy domains override)
 
     def live_paths(self, bridge) -> list:
         """Files to copy into the recovery backup before this domain applies."""
@@ -101,6 +113,3 @@ class StateProvider:
     def reconcile(self, bridge) -> list:
         """Post-restore derived/live recomputation notes (task rule 7)."""
         return []
-
-    def _one_file(self, path) -> list:
-        return [Path(path)] if path and Path(path).exists() else []

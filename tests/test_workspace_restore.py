@@ -306,6 +306,14 @@ def test_stale_run_state_and_inflight_jobs_reconcile(bridge, snapshot):
     assert "never revived" in notes and "interrupted" in notes
 
 
+def test_grid_restore_notes_report_only_what_happened(bridge, snapshot):
+    """N4/I-77: reconcile notes never speculate — the clamp is reported by the panel,
+    and only when it actually clamped."""
+    reply = restore_workspace(bridge, str(snapshot))
+    assert "grid_window" in reply["restored"]
+    assert all("may need clamping" not in note for note in reply["reconciled"])
+
+
 def test_recovery_backup_holds_previous_live_files(bridge, snapshot):
     bridge.state.prompt["user_prompt"] = "live"
     bridge._save_arena()  # the live state file exists on disk

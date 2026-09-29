@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from app.persistence.json_store import save_json_atomic
 from app.persistence.workspace.errors import WorkspaceError
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture
+from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture, one_file
 from app.services.job_history import JobHistoryStore, _history_file
 
 
-def history_error(doc) -> str | None:
+def job_history_error(doc) -> str | None:
     if not isinstance(doc, dict):
         return "document is not an object"
     if not isinstance(doc.get("entries", []), list):
@@ -35,13 +35,13 @@ class JobHistoryProvider(StateProvider):
     sensitivity = "personal"   # rows carry local file paths
 
     def live_paths(self, bridge) -> list:
-        return self._one_file(_history_file(bridge))
+        return one_file(_history_file(bridge))
 
     def capture(self, bridge) -> CaptureResult:
         return live_capture(_history_file(bridge))
 
     def validate(self, doc) -> str | None:
-        return history_error(doc)
+        return job_history_error(doc)
 
     def apply(self, bridge, doc) -> ApplyOutcome:
         path = _history_file(bridge)

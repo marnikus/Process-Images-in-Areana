@@ -11,7 +11,7 @@ touches previous snapshots. Snapshot identity/env live in `meta.py`.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.persistence.workspace import fsio
@@ -21,28 +21,19 @@ from app.persistence.workspace.manifest import FORMAT_NAME, WORKSPACE_FORMAT, bu
 from . import reports
 from .meta import (app_meta, compat_block, default_base, log_message,
                    snapshot_id_for, utc_now_iso)
+from .provider import CaptureResult
 from .providers.policies import INCLUSION_POLICY
 from .registry import all_providers
+from .runs import SaveRequest, SaveRun  # re-exported: the public request/run surface
 from .snapshot_index import record_snapshot
-
-
-@dataclass
-class SaveRequest:
-    """Parameters of one workspace save (param object — keeps signatures ≤4)."""
-    name: str
-    description: str = ""
-    selected: list = None
-    allow_partial: bool = False
-    base_dir: str = ""
 
 
 @dataclass
 class Capture:
     """Per-domain capture bookkeeping for one save run."""
     provider: object
-    result: object = None
-    error: dict = None
-    entry: dict = field(default_factory=dict)
+    result: CaptureResult | None = None
+    error: dict | None = None
 
 
 def selected_providers(selected) -> list:
@@ -160,45 +151,41 @@ def save_workspace(bridge, request: SaveRequest) -> dict:
     target = (Path(request.base_dir) if request.base_dir
               else default_base(bridge)) / fsio.snapshot_dir_name(
                   request.name, time.gmtime())
+    run = SaveRun(bridge=bridge, request=request, target=target, started=started,
+                  snapshot_id=snapshot_id_for(started, request.name))
     captures = capture_all(bridge, providers)
-    failed = [c for c in captures if c.error]
-    if failed and not request.allow_partial:
-        return _abort_result(request, captures, started)
-    return _publish_save({"bridge": bridge, "request": request, "target": target,
-                          "started": started}, captures)  # `run` context, see _publish_save
+    if [c for c in captures if c.error] and not request.allow_partial:
+        return _abort_result(run, captures)
+    return _publish_save(run, captures)
 
 
-def _abort_result(request: SaveRequest, captures: list, started: str) -> dict:
+def _abort_result(run: SaveRun, captures: list) -> dict:
     """A selected domain failed without allow_partial → refuse; no temp was created."""
     names = [c.provider.domain_id for c in captures if c.error]
     return {"ok": False, "result": reports.SAVE_RESULT_FAILED,
             "error": "domain(s) failed to capture: " + ", ".join(names)
                      + " — fix the cause or allow a partial snapshot",
             "errors": [c.error for c in captures if c.error],
-            "snapshot_id": snapshot_id_for(started, request.name)}
+            "snapshot_id": run.snapshot_id}
 
 
-def _stage(run: dict, captures: list, temp: Path) -> dict:
+def _stage(run: SaveRun, captures: list, temp: Path) -> dict:
     """Write state files + env into the temp folder, manifest LAST; return the report."""
-    run["file_entries"] = _write_state_files(temp, captures)
-    _write_env(temp, run["bridge"])
-    started = run["started"]
-    timing = {"snapshot_id": snapshot_id_for(started, run["request"].name),
-              "started_utc": started, "finished_utc": utc_now_iso()}
+    file_entries = _write_state_files(temp, captures)
+    _write_env(temp, run.bridge)
     report = reports.save_report(
-        timing=timing, domains=_report_rows(captures),
+        timing={"snapshot_id": run.snapshot_id, "started_utc": run.started,
+                "finished_utc": utc_now_iso()},
+        domains=_report_rows(captures),
         errors=[c.error for c in captures if c.error], published=True)
-    manifest = _snapshot_manifest(run, captures, report)
+    manifest = _snapshot_manifest(run, captures, file_entries)
     fsio.write_bytes(temp, "manifest.json", canonical_bytes(manifest))
     return report
 
 
-def _publish_save(run: dict, captures: list) -> dict:
-    """Build the temp folder, write the manifest last, publish, then report.
-
-    `run` bundles bridge/request/target/started for one save execution.
-    """
-    bridge, target = run["bridge"], run["target"]
+def _publish_save(run: SaveRun, captures: list) -> dict:
+    """Build the temp folder, write the manifest last, publish, then report."""
+    bridge, target = run.bridge, run.target
     temp = fsio.new_temp_dir(target)
     try:
         report = _stage(run, captures, temp)
@@ -211,16 +198,16 @@ def _publish_save(run: dict, captures: list) -> dict:
     return {"ok": True, **report, "path": str(target), **({"report_note": note} if note else {})}
 
 
-def _snapshot_manifest(run: dict, captures: list, report: dict) -> dict:
-    """The manifest for this publish (built AFTER the report owns the snapshot id)."""
-    request = run["request"]
-    header = {"snapshot_id": report["snapshot_id"], "name": request.name,
-              "description": request.description, "created_utc": run["started"],
+def _snapshot_manifest(run: SaveRun, captures: list, file_entries: dict) -> dict:
+    """The manifest for this publish (report and manifest share `run.snapshot_id`)."""
+    request = run.request
+    header = {"snapshot_id": run.snapshot_id, "name": request.name,
+              "description": request.description, "created_utc": run.started,
               "snapshot_kind": "partial" if any(c.error for c in captures)
                                else "full"}
-    return build_manifest(header=header, app_meta=app_meta(run["bridge"]),
+    return build_manifest(header=header, app_meta=app_meta(run.bridge),
                           compat=compat_block(),
-                          domains=domain_entries(captures, run["file_entries"]))
+                          domains=domain_entries(captures, file_entries))
 
 
 def _publish_failed(target: Path, temp: Path, exc: Exception) -> dict:
