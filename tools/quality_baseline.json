@@ -3720,7 +3720,7 @@
   "app/services/new_tab.py": {
     "max_func_loc": 23,
     "max_class_loc": 16,
-    "func_count": 31,
+    "func_count": 35,
     "funcs": {
       "clean_url": 5,
       "read_setting": 7,
@@ -3736,7 +3736,11 @@
       "_clients_on": 10,
       "_hold_reconciler": 9,
       "_run": 13,
-      "_open_and_prove": 11,
+      "_open_and_prove": 16,
+      "_get_cookies_from_move": 18,
+      "_set_cookies_to_move": 15,
+      "_cookie_params": 22,
+      "_set_one_cookie": 9,
       "_pick_client_for_context": 6,
       "_verify_context_same": 10,
       "_try_open_same_context": 20,
@@ -3759,7 +3763,7 @@
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 3,
-    "file_lines": 462
+    "file_lines": 539
   },
   "app/services/recording/__init__.py": {
     "max_func_loc": 0,

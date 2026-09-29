@@ -231,6 +231,8 @@ async def _run(move: _Move) -> tuple[bool, str]:
 
 async def _open_and_prove(move: _Move) -> tuple[bool, str]:
     """Open the tab, move every client onto it, prove it is a ready new chat."""
+    # Capture old session (cookies) before moving clients away from old tab
+    old_cookies = await _get_cookies_from_move(move)
     move.new, err = await _try_open_same_context(move)
     if move.new is None:
         move.new, err = await asyncio.to_thread(open_tab_sync, *move.endpoint, move.url)
@@ -239,7 +241,82 @@ async def _open_and_prove(move: _Move) -> tuple[bool, str]:
     _log(move, f"🗂 New tab {move.new.id[:12]} opened at {move.new.url} — connecting {move.label}", "info")
     if not await _connect_all(move.clients, move.new.ws_url):
         return False, "could not connect to the new tab"
+    # Restore session to new tab to keep same Arena account/profile
+    if old_cookies:
+        await _set_cookies_to_move(move, old_cookies)
     return await _prove_new_chat(move)
+
+
+async def _get_cookies_from_move(move: _Move) -> list:
+    """Get cookies from old tab's client (best effort, keeps account)."""
+    try:
+        client = _pick_client_for_context(move)
+        if client is None:
+            return []
+        # Enable Network to get cookies
+        try:
+            await client.send("Network.enable")
+        except Exception:
+            pass
+        resp = await client.send("Network.getAllCookies")
+        cookies = []
+        if isinstance(resp, dict):
+            cookies = resp.get("result", {}).get("cookies", []) or resp.get("cookies", []) or []
+        return cookies if isinstance(cookies, list) else []
+    except Exception:
+        return []
+
+
+async def _set_cookies_to_move(move: _Move, cookies: list) -> None:
+    """Set cookies into new tab (best effort)."""
+    if not cookies:
+        return
+    client = _pick_client_for_context(move)
+    if client is None:
+        client = getattr(move.ctx, "client", None)
+    if client is None:
+        return
+    try:
+        await client.send("Network.enable")
+    except Exception:
+        pass
+    for ck in cookies[:50]:
+        await _set_one_cookie(client, ck)
+
+
+def _cookie_params(ck: dict) -> Optional[dict]:
+    """CDP Network.setCookie params from a cookie dict, or None when unusable."""
+    try:
+        name = ck.get("name", "")
+        if not name:
+            return None
+        params = {
+            "name": name,
+            "value": ck.get("value", ""),
+            "domain": ck.get("domain", ""),
+            "path": ck.get("path", "/"),
+        }
+        if ck.get("secure"):
+            params["secure"] = True
+        if ck.get("httpOnly"):
+            params["httpOnly"] = True
+        ss = ck.get("sameSite")
+        if ss in ("Strict", "Lax", "None"):
+            params["sameSite"] = ss
+        return params
+    except Exception:
+        return None
+
+
+async def _set_one_cookie(client: Any, ck: dict) -> None:
+    """Set one cookie (quiet on failure)."""
+    try:
+        params = _cookie_params(ck)
+        if params is None:
+            return
+        await client.send("Network.setCookie", params)
+    except Exception:
+        pass
 
 
 def _pick_client_for_context(move: _Move) -> Any:
