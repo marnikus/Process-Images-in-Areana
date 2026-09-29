@@ -175,41 +175,40 @@ class MainWindow(QMainWindow):
     def _drop_browser_sockets(self):
         """Close what the app keeps open in a browser — never a reason to fail a close."""
         try:
-            import asyncio
-            loop = None
-            try:
-                loop = asyncio.get_event_loop()
-            except Exception:
-                loop = None
             pool = getattr(getattr(self, "bridge", None), "_page_pool", None)
+            bg_loop = getattr(getattr(self, "bridge", None), "_bg_loop", None)
             if pool is not None:
-                _drop_pool_sockets(pool, loop)
+                _drop_pool_sockets(pool, bg_loop)
             client = getattr(self, "cdp_client", None)
             if client:
-                _drop_main_client(client, loop)
+                _drop_main_client(client, bg_loop)
         except Exception:
             pass
 
 
-def _drop_main_client(client, loop):
-    """Disconnect main CDP client (best effort)."""
+def _drop_main_client(client, bg_loop):
+    """Disconnect main CDP client — sync, no pending tasks."""
     try:
-        if loop is not None and loop.is_running():
-            task = loop.create_task(client.disconnect())
-            task.add_done_callback(lambda t: None)
+        if bg_loop is not None and bg_loop.is_running():
+            try:
+                import asyncio
+                fut = asyncio.run_coroutine_threadsafe(client.disconnect(), bg_loop)
+                fut.result(timeout=1.0)
+            except Exception:
+                _sync_drop_client(client)
         else:
             _sync_drop_client(client)
     except Exception:
-        pass
+        _sync_drop_client(client)
 
 
-def _drop_pool_sockets(pool, loop):
-    """Reload (F5) and disconnect all pooled tabs — clean on app close."""
+def _drop_pool_sockets(pool, bg_loop):
+    """Reload (F5) and disconnect all pooled tabs — clean on app close, no pending tasks."""
     try:
         tab_ids = list(getattr(pool, "_pages", {}).keys())
         for tid in tab_ids:
             try:
-                _drop_one_pooled_tab(pool, tid, loop)
+                _drop_one_pooled_tab(pool, tid, bg_loop)
             except Exception:
                 continue
         try:
@@ -222,27 +221,33 @@ def _drop_pool_sockets(pool, loop):
         pass
 
 
-def _drop_one_pooled_tab(pool, tab_id, loop):
-    """One pooled tab: schedule async cleanup or sync drop."""
+def _drop_one_pooled_tab(pool, tab_id, bg_loop):
+    """One pooled tab: reload + disconnect, blocking with timeout."""
     try:
         client, ctrl = pool.get_clients(tab_id)
-        if loop is not None and loop.is_running():
-            _schedule_pool_tab_cleanup(pool, tab_id, loop)
+        if client is None:
+            return
+        if bg_loop is not None and bg_loop.is_running():
+            _run_pool_tab_cleanup_sync(pool, tab_id, bg_loop)
         else:
             _sync_drop_client(client)
     except Exception:
         pass
 
 
-def _schedule_pool_tab_cleanup(pool, tab_id, loop):  # quality-override: params=3 reason=pool,tab_id,loop needed for cleanup scheduling
-    """Schedule badge clear, overlay hide, reload (F5) and disconnect for one tab."""
+def _run_pool_tab_cleanup_sync(pool, tab_id, bg_loop):  # quality-override: params=3 reason=pool,tab_id,bg_loop needed for sync cleanup
+    """Run _clean_pool_tab on bg_loop and wait (no pending task warning)."""
     try:
         import asyncio
         client, ctrl = pool.get_clients(tab_id)
         if client is None:
             return
-        task = loop.create_task(_clean_pool_tab(client, ctrl, tab_id))
-        task.add_done_callback(lambda t: None)
+        coro = _clean_pool_tab(client, ctrl, tab_id)
+        fut = asyncio.run_coroutine_threadsafe(coro, bg_loop)
+        try:
+            fut.result(timeout=1.5)
+        except Exception:
+            _sync_drop_client(client)
     except Exception:
         try:
             client, _ = pool.get_clients(tab_id)

@@ -4818,15 +4818,15 @@
   },
   "app/ui/main_window.py": {
     "max_func_loc": 20,
-    "max_class_loc": 135,
+    "max_class_loc": 130,
     "func_count": 24,
     "funcs": {
       "_build_view": 6,
       "_is_valid_geometry": 10,
-      "_drop_main_client": 10,
+      "_drop_main_client": 14,
       "_drop_pool_sockets": 17,
-      "_drop_one_pooled_tab": 10,
-      "_schedule_pool_tab_cleanup": 15,
+      "_drop_one_pooled_tab": 12,
+      "_run_pool_tab_cleanup_sync": 19,
       "_clean_pool_tab": 8,
       "_clear_badge_async": 7,
       "_hide_overlay_async": 13,
@@ -4844,14 +4844,14 @@
       "_restore_window_geometry": 18,
       "_save_window_geometry": 15,
       "closeEvent": 20,
-      "_drop_browser_sockets": 17
+      "_drop_browser_sockets": 12
     },
     "max_methods": 11,
     "max_cc": 5,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 3,
-    "file_lines": 327
+    "file_lines": 332
   },
   "app/ui/panels/__init__.py": {
     "max_func_loc": 0,
