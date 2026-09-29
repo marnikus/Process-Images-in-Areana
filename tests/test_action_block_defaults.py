@@ -152,14 +152,26 @@ FROZEN_LITERALS = {
         'input[type="file"][accept*="image"]',
         'input[type="file"]',
     },
-    "app/services/single_job_runner.py": set(),    # B9: literal swapped for send_presence_selector()
+    "app/services/single_job_runner": set(),    # B9: literal swapped for send_presence_selector() – now package
 }
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("rel", sorted(FROZEN_LITERALS))
 def test_no_new_selector_literals_outside_site_adapter(rel):
-    src = (REPO / rel).read_text(encoding="utf-8")
+    p = REPO / rel
+    if p.is_dir():
+        src = "\n".join(f.read_text(encoding="utf-8") for f in p.rglob("*.py"))
+    else:
+        # legacy file path may have been split into package – try package fallback
+        if not p.exists():
+            pkg = REPO / rel.replace(".py", "")
+            if pkg.is_dir():
+                src = "\n".join(f.read_text(encoding="utf-8") for f in pkg.rglob("*.py"))
+            else:
+                src = ""
+        else:
+            src = p.read_text(encoding="utf-8")
     hits = set()
     for m in _SELECTOR_LITERAL.finditer(src):
         literal = src[m.start():]

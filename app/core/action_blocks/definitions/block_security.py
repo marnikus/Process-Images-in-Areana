@@ -1,0 +1,5 @@
+from __future__ import annotations
+
+BLOCK_SECURITY_DEFS = {
+    'CHECK_SECURITY': {'name': 'Check Security Verification Dialog', 'description': 'Detect CAPTCHA / security verification, pause for manual solve (never bypass). Visualize pause state in webpage corner — unmistakable.', 'icon': 'captcha', 'default_enabled': True, 'default_selector': 'div[role="dialog"][data-state="open"], iframe[title*="reCAPTCHA"], div:has-text("Security Verification"), div:has-text("captcha"), [data-testid="security-dialog"]', 'default_match_text': 'Security Verification', 'default_color': '#FF6B6B', 'default_timeout_ms': 5000, 'default_pre_delay_ms': 200, 'default_highlight_ms': 2000, 'default_confirm_pause_ms': 0, 'default_highlight_enabled': True, 'required': False, 'category': 'security', 'labels': {'selector': 'Security dialog selector (CSS) — detects captcha, shows ON PAUSE badge', 'match_text': 'Text that indicates security dialog', 'highlight_enabled': 'Visual confirmation + pause corner overlay', 'highlight_ms': 'Highlight duration (ms)'}},
+}

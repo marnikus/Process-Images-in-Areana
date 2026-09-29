@@ -1,11 +1,4 @@
-"""Probe selector lists — generated from site_adapter (RULE 21 single source).
-
-Every JS probe payload in cdp_arena.py / output_probes.py / new_chat.py
-receives its selectors from here; no selector literal may appear in a
-probe file (enforced by tests/test_probe_selectors.py). Imports:
-site_adapter only (same layer).
-"""
-
+"""Probe selector lists — generated from site_adapter (RULE 21 single source)."""
 from __future__ import annotations
 
 import json
@@ -15,140 +8,86 @@ from .site_adapter import CONVERSATION_PATH_PREFIX, NEW_CHAT_PATH, get_readiness
 
 
 def account_email_probe() -> Dict[str, str]:
-    """Logged-in account row: sidebar scope + candidate text selectors (D-5)."""
     sel = get_selector("account_email")
     return {"scope": sel.scope or "", "selectors": sel.all_selectors()}
 
-
 def textarea_selectors() -> List[str]:
-    """Composer textarea list for find/insert probes — primary first."""
     return get_selector("prompt_textarea").all_selectors()
 
-
 def textarea_primary() -> str:
-    """Primary composer selector for verify/highlight/page-loaded probes."""
     return get_selector("prompt_textarea").primary
 
-
 def send_click_selectors() -> List[str]:
-    """Send-button click list — enabled-first."""
     return get_selector("send_button").all_selectors()
 
-
 def send_click_primary() -> str:
-    """Enabled-first send selector — visual click / highlight fallback."""
     return get_selector("send_button").primary
 
-
 def send_presence_selector() -> str:
-    """Un-narrowed send selector — state scans and highlights see disabled too."""
     return get_selector("send_button").presence()
 
-
 def attachment_preview_selectors() -> List[str]:
-    """Attachment preview list for the verify-attachment probe."""
     return get_selector("attachment_preview_image").all_selectors()
 
-
 def output_image_selectors() -> List[str]:
-    """Output image list — identical to the live output_probes v4 list."""
     return get_selector("output_image").all_selectors()
 
-
 def user_message_selector() -> str:
-    """The user's own chat message (prompt + uploaded reference) as one `closest()` list (I-70)."""
     return ", ".join(get_selector("user_message").all_selectors())
 
-
 def spinner_selector() -> str:
-    """Processing spinner selector for generating-state scans."""
     return get_selector("processing_spinner").primary
 
-
-# A visible `processing_spinner` counts only inside a response header row
-# (`model_label` scope — the selector's own evidence: spinner beside "Response A").
-# The sidebar puts the same `div.animate-spin` beside every chat still generating,
-# so any other spinner is never this page's job (I-66, I-69).
 def generating_spinners_js() -> str:
-    """JS `() => Element[]` — the ONE "this page is generating" rule (output, processing, Watcher)."""
     sel, scope = json.dumps(spinner_selector()), json.dumps(model_label_probe()["scope"])
     return (f"(() => Array.from(document.querySelectorAll({sel}))"
             f".filter((s) => s.offsetParent !== null && !!s.closest({scope})))")
 
-
 def readiness_checks() -> List[Dict[str, str]]:
-    """Composite readiness checks [{name, sel}] from site_adapter requirements."""
     return [
         {"name": key.split("_")[0], "sel": get_selector(key).presence()}
         for key in get_readiness_requirements()
     ]
 
-
 def security_dialog_check() -> Dict[str, str]:
-    """Open-dialog selector + text marker for the readiness gate."""
     dialog = get_selector("security_dialog")
     return {"sel": dialog.primary, "text": dialog.textCondition}
 
-
 def model_label_probe() -> Dict[str, str]:
-    """Model-row scope + label selector for the Response A/B spinner label."""
     label = get_selector("model_label")
     return {"scope": label.scope, "label": label.primary}
 
-
 def new_chat_selectors() -> List[str]:
-    """New Chat click-candidate selectors — semantic href first."""
     return get_selector("new_chat_button").all_selectors()
 
-
 def new_chat_path() -> str:
-    """The New Chat page path (the link's href) — the reset's direct-open target (I-69)."""
     return NEW_CHAT_PATH
 
-
 def conversation_path_prefix() -> str:
-    """Path prefix of a started conversation — never a job's starting page (I-74)."""
     return CONVERSATION_PATH_PREFIX
-
 
 _STORAGE_HOSTS = ("cloudflarestorage", "messages-prod")
 
-
 def chat_output_selectors() -> List[str]:
-    """Output-image selectors that name Arena's image storage (a promo card is never one)."""
     return [sel for sel in output_image_selectors() if any(h in sel for h in _STORAGE_HOSTS)]
 
-
 def new_chat_primary() -> str:
-    """The New Chat link — the Firefox reset XClick target (RULE 21)."""
     return get_selector("new_chat_button").primary
 
-
 def add_files_primary() -> str:
-    """The composer's “Add files” button — the Firefox upload XClick target (RULE 21)."""
     return get_selector("add_files_button").primary
 
-
 def add_files_menu_item_selectors() -> List[str]:
-    """The “Add files” item of the popup the + button opens (it opens the OS dialog)."""
     return get_selector("add_files_menu_item").all_selectors()
 
-
 def add_files_menu_item_text() -> str:
-    """The item's label — preferred when several candidates match."""
     return get_selector("add_files_menu_item").textCondition or ""
 
-
 def assistant_message_selectors() -> List[str]:
-    """Assistant message container selectors for text output detection."""
     return get_selector("assistant_message").all_selectors()
 
-
 def assistant_text_selectors() -> List[str]:
-    """Assistant text output selectors — markdown content."""
     return get_selector("assistant_text_output").all_selectors()
 
-
 def text_output_selectors() -> List[str]:
-    """Combined text output selectors for description generation."""
     return assistant_text_selectors()

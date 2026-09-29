@@ -1,0 +1,51 @@
+from __future__ import annotations
+from ..selector import SelectorObject
+from .constants import NEW_CHAT_PATH, CONVERSATION_PATH_PREFIX
+
+SELECTORS_SECURITY = {
+    "security_dialog": SelectorObject(
+        name='security_dialog',
+        primary='div[role="dialog"][data-state="open"]',
+        fallbacks=[],
+        scope=None,
+        mustBeVisible=True,
+        mustBeEnabled=False,
+        expectedCount=0,
+        textCondition='Security Verification',
+        textConditionType='contains',
+        presenceSelector=None,
+        verification='if visible, set USER_ACTION_REQUIRED, pause, show page to user',
+        evidence='spec H',
+        lastVerified='2026-09-15',
+    ),
+    "recaptcha_iframe": SelectorObject(
+        name='recaptcha_iframe',
+        primary='iframe[title="reCAPTCHA"]',
+        fallbacks=['iframe[src*="google.com/recaptcha/"]', 'iframe[src*="/recaptcha/enterprise/anchor"]', '#recaptcha-v2-container'],
+        scope=None,
+        mustBeVisible=True,
+        mustBeEnabled=False,
+        expectedCount=0,
+        textCondition=None,
+        textConditionType='equals',
+        presenceSelector=None,
+        verification='if visible, pause for manual completion',
+        evidence='Directly Chat...html contains grecaptcha badge',
+        lastVerified='2026-09-15',
+    ),
+    "composer_form": SelectorObject(
+        name='composer_form',
+        primary='form:has(textarea[name="message"])',
+        fallbacks=['form.flex.w-full.flex-col'],
+        scope=None,
+        mustBeVisible=True,
+        mustBeEnabled=False,
+        expectedCount=1,
+        textCondition=None,
+        textConditionType='equals',
+        presenceSelector=None,
+        verification='contains file input, textarea, send button',
+        evidence='Directly Chat...html',
+        lastVerified='2026-09-15',
+    ),
+}

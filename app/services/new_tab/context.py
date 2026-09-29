@@ -81,7 +81,7 @@ async def _try_open_same_context(move: Any) -> tuple[Optional[TabInfo], str]:
             move.old_context = await _get_old_context_id(move)
         except Exception:
             move.old_context = ""
-        new_tab, err = await open_tab_in_same_context(client, *move.endpoint,
+        new_tab, err = await open_tab_in_same_context(client, move.endpoint,
                                                        move.url, move.old_id)
         if new_tab is None:
             return None, err
