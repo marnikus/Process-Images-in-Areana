@@ -15,7 +15,7 @@ import re
 
 from app.core.cooldown import clamp_seconds, config_to_dict, format_remaining
 from app.persistence.cooldown_store import save_entries
-from app.services import new_tab, tab_reset
+from app.services import new_tab_setting, tab_reset
 from app.services.cooldown_service import (
     edit_cooldown,
     load_config,
@@ -296,7 +296,7 @@ class PagePoolMixin:
         try:
             cfg = load_config(self.config.get_state)
             return json.dumps({"ok": True, "config": config_to_dict(cfg),
-                               "new_tab": new_tab.read_setting(self.config.get_state)}, ensure_ascii=False)
+                               "new_tab": new_tab_setting.read_setting(self.config.get_state)}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
@@ -305,7 +305,7 @@ class PagePoolMixin:
         try:
             data = json.loads(cfg_json or "{}")
             cfg = _save_cooldown(self.config, data)
-            tab = new_tab.save_setting(self.config, data)
+            tab = new_tab_setting.save_setting(self.config, data)
             self._log(_cooldown_line(cfg, tab), "success")
             reply = json.dumps({"ok": True, "config": cfg, "new_tab": tab}, ensure_ascii=False)
             self.cooldown_config_updated.emit(reply)   # URL List bar + Settings switch re-render

@@ -1,20 +1,22 @@
-"""Start new chat as new tab (I-79) — after a job the worker moves to a fresh tab.
+"""Start new chat as new tab (I-79 v5) — the job tab's own browser profile decides.
 
-Owner request 2026-09-28: with the Settings option on, a finished job's tab (failed
-or success) is replaced: a new tab opens at the new-chat URL, the new chat is
-verified, the old tab is closed and the close verified, and the next job runs in
-the new tab. Same URL on both sides is no exception — the old tab still closes.
+Owner request 2026-09-28; profile-truth rewrite 2026-09-29 (owner report #2: with two Chrome
+profiles running, the second profile's new tab opened in the first profile and the first profile's
+tab was closed instead). The setting itself lives in `new_tab_setting.py`.
 
-The worker keeps its identity (cooldown, captcha debt, job count, worker and
-alias numbers): the pool entry, alias entry and URL row move to the new tab id,
-and every CDP client on the old tab is re-`connect`-ed to the new one BEFORE the
-old tab closes, so nothing chases a closed tab. Any failure before the move puts
-everything back (clients home, new tab closed) and the caller runs the ordinary
-in-place New Chat. The URL reconciler is held for the whole handover (its own
-`_auto_scan_running` flag) so no pass sees a half-moved worker.
+With the option on, a finished job's tab (failed or success) is replaced: a new tab opens at the
+new-chat URL **inside the job tab's own browser profile**, the new chat is verified, the old tab is
+closed and the close is proven against that browser's own target list. Same URL on both sides is no
+exception — the old tab still closes.
 
-Chrome (CDP) tabs only: Firefox tabs are driven by macros that never open pages.
-Design: docs/archive/2026-09-28-new-chat-new-tab/design.md
+The profile is established, never guessed: the endpoint is the job tab's own socket (`ws_url`), the
+expected context is the browser-level `Target.getTargets` of that endpoint, and the opener is the
+only one that can reach it (`new_tab_open`, R1–R3). Another context → tab closed again → in-place.
+
+The worker keeps its identity (cooldown, job count, alias and worker numbers, URL row): the I-79
+move; any failure before it puts everything back (clients home, new tab closed). The URL reconciler
+is held for the whole handover. Chrome (CDP) tabs only (Firefox macros never open pages). Design:
+docs/archive/2026-09-29-new-chat-new-tab-profile-truth/design.md
 """
 from __future__ import annotations
 
@@ -22,76 +24,37 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
-from urllib.parse import urlparse
 
-from app.browser.cdp.tabs import TabInfo, close_tab_sync, fetch_tabs_sync, open_tab_sync
+from app.browser.cdp import browser_targets as bt
+from app.browser.cdp.tabs import TabInfo
 from app.browser.chat_page import read_chat_page
 from app.browser.new_chat import ResetCtx, wait_new_chat_ready
 from app.browser.page_pool import retarget_page, tab_label_of
 from app.services.live.url_policy import mark_receivers
+from app.services.new_tab_open import OpenSpec, open_in_profile
 
-SETTING_KEY = "new_chat_new_tab"
-URL_KEY = "new_chat_new_tab_url"
-DEFAULT_URL = "https://arena.ai/image/direct?model_a=max"
 _RECONCILE_WAIT_SEC = 10.0
-_GONE_WAIT_SEC = 5.0
-_GONE_POLL_SEC = 0.2
+_OWNER_TRIES = 2
+_OWNER_RETRY_SEC = 0.5
 
-
-# ── the setting (session keys, saved/loaded with the cooldown config) ──────
-
-def clean_url(raw: Any) -> str:
-    """An http(s) URL with a host, else the default new-chat URL."""
-    url = str(raw or "").strip()
-    parts = urlparse(url)
-    return url if parts.scheme in ("http", "https") and parts.netloc else DEFAULT_URL
-
-
-def read_setting(get_state) -> dict:
-    """`{"enabled", "url"}` from the session; unreadable values heal to the defaults."""
-    try:
-        return {"enabled": bool(get_state(SETTING_KEY, False)),
-                "url": clean_url(get_state(URL_KEY, DEFAULT_URL))}
-    except Exception:
-        return {"enabled": False, "url": DEFAULT_URL}
-
-
-def save_setting(config: Any, data: dict) -> dict:
-    """Store `new_tab` / `new_tab_url` when the payload has them; returns the stored setting."""
-    if "new_tab" not in data:
-        return read_setting(config.get_state)
-    stored = {"enabled": bool(data.get("new_tab", False)), "url": clean_url(data.get("new_tab_url"))}
-    config.set_state(**{SETTING_KEY: stored["enabled"], URL_KEY: stored["url"]})
-    return stored
-
-
-def wanted_url(bridge: Any) -> str:
-    """The new-chat URL when the option is on, '' when it is off."""
-    config = getattr(bridge, "config", None)
-    setting = read_setting(config.get_state) if config is not None else {"enabled": False}
-    return setting["url"] if setting["enabled"] else ""
-
-
-# ── the handover ────────────────────────────────────────────────────────────
 
 @dataclass
 class _Move:
-    """One handover: the finish context, where it goes, and what it came from."""
+    """One handover: the finish context, the job tab's own endpoint and what it came from."""
     ctx: Any
     url: str
     timeout_sec: float
+    endpoint: tuple
     old_id: str = ""
     old_ws: str = ""
     old_url: str = ""
     label: str = ""
-    endpoint: tuple = ("127.0.0.1", 9222)
-    clients: List[Any] = field(default_factory=list)
-    new: Optional[TabInfo] = None
-    old_owner: str = ""
-    old_context: str = ""
+    owner: str = ""
     pattern: str = "arena.ai"
-    profile_count: int = 0
-    profile_count_owner: int = 0
+    context_id: str = ""
+    clients: List[Any] = field(default_factory=list)
+    new_id: str = ""
+    new_ws: str = ""
 
 
 def _get_pattern(bridge: Any) -> str:
@@ -105,141 +68,59 @@ def _get_pattern(bridge: Any) -> str:
     return "arena.ai"
 
 
-def _matches_pattern(url: str, pattern: str) -> bool:
-    try:
-        return pattern.lower() in (url or "").lower()
-    except Exception:
-        return False
+def _unique(clients: list) -> list:
+    """Same client object listed twice (job's, pool's, home's) connects once."""
+    unique: list = []
+    for client in clients:
+        if client is not None and all(client is not seen for seen in unique):
+            unique.append(client)
+    return unique
 
 
-def _endpoint_matches(client: Any, host: str, port: int) -> bool:
-    """Client endpoint equals host:port."""
-    ep = _endpoint_from_client(client)
-    return ep is not None and ep[0] == host and ep[1] == port
+def _clients_on(ctx: Any, pooled: Any) -> list:
+    """Every distinct client object on the old tab: the job's, the pool's, the home one."""
+    home = getattr(ctx.bridge, "cdp", None)
+    live_home = home if getattr(home, "_current_tab_id", None) == ctx.tab_id else None
+    return _unique([ctx.client, pooled, live_home])
 
 
-def _owner_matches(page: Any, low: str) -> bool:
-    """Page owner equals low (lowercased)."""
-    try:
-        return (getattr(page, "owner", "") or "").lower() == low
-    except Exception:
-        return False
+def _popup_client(move: _Move) -> Any:
+    """The client whose socket sits on the job tab — the page opener must run there (R3b)."""
+    for client in move.clients:
+        if getattr(client, "_current_tab_id", None) == move.old_id:
+            return client
+    return None
 
 
-def _count_profile_tabs(pool: Any, endpoint: tuple, pattern: str) -> int:
-    """How many pooled tabs from same endpoint match pattern."""
-    try:
-        host, port = endpoint
-        cnt = 0
-        with pool._lock:
-            for tid, page in pool._pages.items():
-                try:
-                    client, _ = pool.get_clients(tid)
-                    if not _endpoint_matches(client, host, port):
-                        continue
-                    if _matches_pattern(getattr(page, "url", ""), pattern):
-                        cnt += 1
-                except Exception:
-                    continue
-        return cnt
-    except Exception:
-        return 0
-
-
-def _count_profile_tabs_by_owner(pool: Any, endpoint: tuple, pattern: str, owner: str) -> int:  # quality-override: params=4 reason=profile needs host,port,pattern,owner tuple
-    """Tabs on same endpoint matching pattern AND same owner."""
-    if not owner:
-        return 0
-    try:
-        host, port = endpoint
-        low = owner.lower()
-        cnt = 0
-        with pool._lock:
-            for tid, page in pool._pages.items():
-                try:
-                    if not _owner_matches(page, low):
-                        continue
-                    client, _ = pool.get_clients(tid)
-                    if not _endpoint_matches(client, host, port):
-                        continue
-                    if _matches_pattern(getattr(page, "url", ""), pattern):
-                        cnt += 1
-                except Exception:
-                    continue
-        return cnt
-    except Exception:
-        return 0
+def _plan(ctx: Any, url: str, timeout_sec: float) -> tuple[Optional[_Move], str]:
+    """What moves: the pool page of the job's tab, its own socket's endpoint, every client."""
+    pool = getattr(ctx, "pool", None)
+    page = pool.get_page(ctx.tab_id) if pool is not None else None
+    if page is None:
+        return None, "the job's tab is not in the pool"
+    endpoint = bt.endpoint_of_ws(getattr(page, "ws_url", ""))
+    if endpoint is None:
+        return None, f"the job tab {ctx.tab_id[:12]} has no readable socket (ws_url)"
+    pooled, _ctrl = pool.get_clients(ctx.tab_id)
+    move = _Move(ctx=ctx, url=url, timeout_sec=timeout_sec, endpoint=endpoint,
+                 old_id=ctx.tab_id, old_ws=page.ws_url, old_url=page.url,
+                 label=tab_label_of(pool, ctx.tab_id), pattern=_get_pattern(ctx.bridge),
+                 owner=str(getattr(page, "owner", "") or ""))
+    move.clients = _clients_on(ctx, pooled)
+    return move, ""
 
 
 async def handover(ctx: Any, url: str, timeout_sec: float) -> tuple[bool, str]:
     """Move the finished job's worker to a new tab at `url`; (False, why) = nothing changed."""
-    move = _plan(ctx, url, timeout_sec)
+    move, why = _plan(ctx, url, timeout_sec)
     if move is None:
-        return False, "the job's tab is not in the pool"
+        return False, why
     if not await _hold_reconciler(ctx.bridge):
         return False, "a URL reconcile pass is still running"
     try:
-        return await _run(move)
+        return await _with_browser(move)
     finally:
         ctx.bridge._auto_scan_running = False
-
-
-def _endpoint_from_client(client: Any) -> Optional[tuple]:
-    """(host, port) from a CDP client, or None when missing."""
-    try:
-        h = getattr(client, "_host", None)
-        p = getattr(client, "_port", None)
-        if h and p:
-            return str(h), int(p)
-    except Exception:
-        return None
-    return None
-
-
-def _resolve_endpoint(ctx: Any, pooled: Any) -> tuple:
-    """Endpoint of the closed tab's browser: pooled client wins (profile-correct)."""
-    for cli in (pooled, getattr(ctx, "client", None)):
-        ep = _endpoint_from_client(cli)
-        if ep is not None:
-            return ep
-    try:
-        return str(ctx.pool._host), int(ctx.pool._port)
-    except Exception:
-        return "127.0.0.1", 9222
-
-
-def _plan(ctx: Any, url: str, timeout_sec: float) -> Optional[_Move]:
-    """What moves: the pool page of the job's tab, its endpoint and every client on it."""
-    pool = getattr(ctx, "pool", None)
-    page = pool.get_page(ctx.tab_id) if pool is not None else None
-    if page is None:
-        return None
-    pooled, _ = pool.get_clients(ctx.tab_id)
-    old_owner = str(getattr(page, "owner", "") or "")
-    endpoint = _resolve_endpoint(ctx, pooled)
-    pattern = _get_pattern(ctx.bridge)
-    count = _count_profile_tabs(pool, endpoint, pattern)
-    count_owner = _count_profile_tabs_by_owner(pool, endpoint, pattern, old_owner)
-    move = _Move(ctx, url, timeout_sec, ctx.tab_id, page.ws_url, page.url, tab_label_of(pool, ctx.tab_id))
-    move.old_owner = old_owner
-    move.endpoint = endpoint
-    move.pattern = pattern
-    move.profile_count = count
-    move.profile_count_owner = count_owner
-    move.clients = _clients_on(ctx)
-    return move
-
-
-def _clients_on(ctx: Any) -> list:
-    """Every distinct client object on the old tab: the job's, the pool's, the home one."""
-    pooled, _ctrl = ctx.pool.get_clients(ctx.tab_id)
-    home = getattr(ctx.bridge, "cdp", None)
-    found = [ctx.client, pooled, home if getattr(home, "_current_tab_id", None) == ctx.tab_id else None]
-    unique: list = []
-    for client in found:
-        if client is not None and all(client is not seen for seen in unique):
-            unique.append(client)
-    return unique
 
 
 async def _hold_reconciler(bridge: Any) -> bool:
@@ -253,227 +134,72 @@ async def _hold_reconciler(bridge: Any) -> bool:
     return True
 
 
-async def _run(move: _Move) -> tuple[bool, str]:
-    """Open + prove → move the worker → close the old tab; a failed proof rolls back."""
-    _log(move, f"🗂 New chat as a new tab: opening {move.url} — {move.label}'s old tab "
-               f"{move.old_id[:12]} ({move.old_url}) closes after — "
-               f"profile {move.endpoint[0]}:{move.endpoint[1]} owner={move.old_owner or 'unknown'} "
-               f"ctx={move.old_context or 'default'} "
-               f"tabs matching '{move.pattern}' in profile: {move.profile_count} "
-               f"(owner {move.old_owner or '?'}: {move.profile_count_owner})", "info")
-    ok, why = await _open_and_prove(move)
+async def _with_browser(move: _Move) -> tuple[bool, str]:
+    """One browser-level connection to the job tab's own endpoint, opened and closed here (R2)."""
+    browser, err = await bt.dial(*move.endpoint, timeout_sec=min(move.timeout_sec, 5.0))
+    if browser is None:
+        return False, f"the job's browser is not reachable ({err})"
+    try:
+        return await _run(move, browser)
+    finally:
+        await browser.aclose()
+
+
+async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
+    """Read the profile truth → open in it → prove a new chat → move the worker → close old."""
+    target_infos, err = await browser.targets()
+    if err:
+        return False, f"the job's browser did not answer Target.getTargets ({err})"
+    context = bt.context_of(target_infos, move.old_id)
+    if context is None:
+        return False, f"the job tab {move.old_id[:12]} is not in its own browser's target list"
+    move.context_id = context
+    _log_profile(move, target_infos)
+    opened = await open_in_profile(browser, _popup_client(move),
+                                   OpenSpec(move.url, context, move.timeout_sec))
+    if not opened.tab_id:
+        return await _refuse(move, browser, opened.reason)
+    move.new_id, move.new_ws = opened.tab_id, _page_ws(move, opened.tab_id)
+    if not await _connect_all(move.clients, move.new_ws):
+        return await _refuse(move, browser, "could not connect to the new tab")
+    ok, why = await _prove_new_chat(move)
     if not ok:
-        await _roll_back(move, why)
-        return False, why
+        return await _refuse(move, browser, why)
     _move_worker(move)
-    await _close_old(move)
-    return True, f"new chat ready in the new tab {move.new.id[:12]}"
+    await _close_old(move, browser)
+    return True, f"new chat ready in the new tab {move.new_id[:12]}"
 
 
-async def _get_storage_from_move(move: _Move) -> dict:
-    """Local+sessionStorage from old tab (best effort)."""
-    try:
-        client = _pick_client_for_context(move)
-        if client is None:
-            return {}
-        js = """(() => { try { const g=(s)=>{ const o={}; for(let i=0;i<s.length;i++){ const k=s.key(i); o[k]=s.getItem(k); } return o; }; return JSON.stringify({local:g(localStorage), session:g(sessionStorage)}); } catch(e){ return "{}"; } })()"""
-        resp = await client.send("Runtime.evaluate", {"expression": js, "returnByValue": True})
-        val = ""
-        if isinstance(resp, dict):
-            r = resp.get("result", {}).get("result", {}) if "result" in resp else resp
-            val = r.get("value", "") if isinstance(r, dict) else ""
-        if not val:
-            return {}
-        import json as _json
-        data = _json.loads(val) if isinstance(val, str) else {}
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+async def _refuse(move: _Move, browser: Any, why: str) -> tuple[bool, str]:
+    """Roll back and report; the caller then runs the ordinary in-place New Chat."""
+    if move.new_id:
+        await _connect_all(move.clients, move.old_ws)
+        await browser.close(move.new_id)
+    _log(move, f"⚠ New chat as a new tab failed: {why} — {move.label} stays in its tab "
+               f"(in-place New Chat instead)", "warn")
+    return False, why
 
 
-async def _set_storage_to_move(move: _Move, data: dict) -> None:
-    """Set local+sessionStorage into new tab (best effort)."""
-    if not data:
-        return
-    try:
-        client = _pick_client_for_context(move)
-        if client is None:
-            client = getattr(move.ctx, "client", None)
-        if client is None:
-            return
-        import json as _json
-        # Limit keys to avoid huge payload
-        def _limit(d):
-            return dict(list(d.items())[:50]) if isinstance(d, dict) else {}
-        payload = {
-            "local": _limit(data.get("local", {})),
-            "session": _limit(data.get("session", {})),
-        }
-        js_data = _json.dumps(payload)
-        js = f"""((d) => {{ try {{ for(const [k,v] of Object.entries(d.local||{{}})){{ localStorage.setItem(k,v); }} for(const [k,v] of Object.entries(d.session||{{}})){{ sessionStorage.setItem(k,v); }} return true; }} catch(e){{ return false; }} }})({js_data})"""
-        await client.send("Runtime.evaluate", {"expression": js})
-    except Exception:
-        pass
+def _page_ws(move: _Move, target_id: str) -> str:
+    """The job tab's own page socket for the new target (same host:port it belongs to)."""
+    return f"ws://{move.endpoint[0]}:{move.endpoint[1]}/devtools/page/{target_id}"
 
 
-async def _open_and_prove(move: _Move) -> tuple[bool, str]:
-    """Open the tab, move every client onto it, prove it is a ready new chat."""
-    old_cookies = await _get_cookies_from_move(move)
-    old_storage = await _get_storage_from_move(move)
-    move.new, err = await _try_open_same_context(move)
-    if move.new is None:
-        move.new, err = await asyncio.to_thread(open_tab_sync, *move.endpoint, move.url)
-    if move.new is None:
-        return False, f"the new tab did not open ({err})"
-    _log(move, f"🗂 New tab {move.new.id[:12]} opened at {move.new.url} — connecting {move.label} ctx={move.old_context or 'default'}", "info")
-    if not await _connect_all(move.clients, move.new.ws_url):
-        return False, "could not connect to the new tab"
-    if old_cookies:
-        await _set_cookies_to_move(move, old_cookies)
-    if old_storage:
-        await _set_storage_to_move(move, old_storage)
-    if old_cookies or old_storage:
-        await _reload_after_cookies(move)
-    return await _prove_new_chat(move)
+def _log_profile(move: _Move, target_infos: list) -> None:
+    """What the browser proved: endpoint, context, owner and the same-profile counts (R5)."""
+    same = len(bt.matching_targets(target_infos, move.pattern, move.context_id))
+    total = len(bt.matching_targets(target_infos, move.pattern))
+    _log(move, f"🗂 New chat as a new tab: opening {move.url} — {move.label}'s old tab "
+               f"{move.old_id[:12]} ({move.old_url}) closes after — profile {move.endpoint[0]}:"
+               f"{move.endpoint[1]} ctx={move.context_id or 'default'} "
+               f"owner={move.owner or 'unknown'} — tabs matching '{move.pattern}': "
+               f"this profile: {same} | all contexts: {total}", "info")
 
 
-async def _reload_after_cookies(move: _Move) -> None:
-    """Reload new tab after session restore (best effort)."""
-    try:
-        client = _pick_client_for_context(move)
-        if client is None:
-            return
-        await client.send("Page.reload")
-        await asyncio.sleep(0.8)
-    except Exception:
-        pass
-
-
-async def _get_cookies_from_move(move: _Move) -> list:
-    """Get cookies from old tab's client (best effort, keeps account)."""
-    try:
-        client = _pick_client_for_context(move)
-        if client is None:
-            return []
-        # Enable Network to get cookies
-        try:
-            await client.send("Network.enable")
-        except Exception:
-            pass
-        resp = await client.send("Network.getAllCookies")
-        cookies = []
-        if isinstance(resp, dict):
-            cookies = resp.get("result", {}).get("cookies", []) or resp.get("cookies", []) or []
-        return cookies if isinstance(cookies, list) else []
-    except Exception:
-        return []
-
-
-async def _set_cookies_to_move(move: _Move, cookies: list) -> None:
-    """Set cookies into new tab (best effort)."""
-    if not cookies:
-        return
-    client = _pick_client_for_context(move)
-    if client is None:
-        client = getattr(move.ctx, "client", None)
-    if client is None:
-        return
-    try:
-        await client.send("Network.enable")
-    except Exception:
-        pass
-    for ck in cookies[:50]:
-        await _set_one_cookie(client, ck)
-
-
-def _cookie_base(ck: dict) -> Optional[dict]:
-    """Base CDP cookie params or None."""
-    try:
-        name = ck.get("name", "")
-        if not name:
-            return None
-        return {
-            "name": name,
-            "value": ck.get("value", ""),
-            "domain": ck.get("domain", ""),
-            "path": ck.get("path", "/"),
-        }
-    except Exception:
-        return None
-
-
-def _cookie_params(ck: dict) -> Optional[dict]:
-    """CDP Network.setCookie params from a cookie dict, or None when unusable."""
-    params = _cookie_base(ck)
-    if params is None:
-        return None
-    try:
-        if ck.get("secure"):
-            params["secure"] = True
-        if ck.get("httpOnly"):
-            params["httpOnly"] = True
-        ss = ck.get("sameSite")
-        if ss in ("Strict", "Lax", "None"):
-            params["sameSite"] = ss
-        return params
-    except Exception:
-        return None
-
-
-async def _set_one_cookie(client: Any, ck: dict) -> None:
-    """Set one cookie (quiet on failure)."""
-    try:
-        params = _cookie_params(ck)
-        if params is None:
-            return
-        await client.send("Network.setCookie", params)
-    except Exception:
-        pass
-
-
-def _pick_client_for_context(move: _Move) -> Any:
-    """First available client for Target.createTarget (profile-correct)."""
-    for c in move.clients:
-        if c is not None:
-            return c
-    return getattr(move.ctx, "client", None)
-
-
-async def _verify_context_same(move: _Move, client: Any, new_tab: TabInfo) -> tuple[bool, str]:
-    """Check new tab context matches old (same Chrome profile)."""
-    try:
-        from app.browser.cdp.tabs import _context_of
-        new_ctx = await _context_of(client, new_tab.id)
-        old = move.old_context or ""
-        new_s = str(new_ctx) if new_ctx is not None else ""
-        # Only fail when both contexts known and different; empty means default or unknown
-        if old and new_s and old != new_s:
-            return False, f"context mismatch old={old} new={new_s} — wrong profile"
-    except Exception:
-        pass
-    return True, ""
-
-
-async def _try_open_same_context(move: _Move) -> tuple[Optional[TabInfo], str]:
-    """Try CDP Target.createTarget in same browser context (keeps Arena account)."""
-    try:
-        from app.browser.cdp.tabs import open_tab_in_same_context
-        client = _pick_client_for_context(move)
-        if client is None:
-            return None, "no client for context open"
-        try:
-            move.old_context = await _get_old_context_id(move)
-        except Exception:
-            move.old_context = ""
-        new_tab, err = await open_tab_in_same_context(client, *move.endpoint, move.url, move.old_id)
-        if new_tab is None:
-            return None, err
-        ok, why = await _verify_context_same(move, client, new_tab)
-        if not ok:
-            return None, why
-        return new_tab, ""
-    except Exception as e:
-        return None, str(e)
+async def _connect_all(clients: list, ws_url: str) -> bool:
+    """Re-point every client object (holders follow without being told)."""
+    results = [await client.connect(ws_url) for client in clients]
+    return all(results)
 
 
 async def _prove_new_chat(move: _Move) -> tuple[bool, str]:
@@ -491,7 +217,7 @@ async def _prove_new_chat(move: _Move) -> tuple[bool, str]:
     owner_ok, owner_why = await _check_owner_preserved(move)
     if not owner_ok:
         return False, owner_why
-    _log(move, f"🆕 New chat verified in the new tab {move.new.id[:12]} ({why})", "success")
+    _log(move, f"🆕 New chat verified in the new tab {move.new_id[:12]} ({why})", "success")
     return True, why
 
 
@@ -507,149 +233,53 @@ async def _read_owner_from_client(client: Any) -> str:
 
 
 async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
-    """Ensure new tab has same Arena account as old tab (profile-correct)."""
-    if not move.old_owner:
+    """Secondary guard: the new tab must not be signed in as somebody else (label ≠ profile)."""
+    if not move.owner:
         return True, ""
     new_owner = ""
-    for attempt in range(3):
-        try:
-            new_owner = await _read_owner_from_client(move.ctx.client)
-        except Exception:
-            new_owner = ""
+    for _attempt in range(_OWNER_TRIES):
+        new_owner = await _read_owner_from_client(move.ctx.client)
         if new_owner:
             break
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(_OWNER_RETRY_SEC)
     if not new_owner:
-        _log(move, f"Owner probe empty for new tab {move.new.id[:12]} after retries — keeping {move.old_owner}", "info")
+        _log(move, f"Owner probe empty for the new tab {move.new_id[:12]} — keeping "
+                   f"{move.owner} (the browser already proved the profile)", "info")
         return True, ""
-    if new_owner.lower() == move.old_owner.lower():
+    if new_owner == move.owner.lower():
         return True, ""
-    return False, f"Owner mismatch: old {move.old_owner} vs new {new_owner} — wrong profile, rollback"
-
-
-async def _context_from_targets(client: Any, old_id: str) -> str:
-    """BrowserContextId from Target.getTargets for old_id."""
-    try:
-        resp = await client.send("Target.getTargets")
-        infos = resp.get("result", {}).get("targetInfos", []) if isinstance(resp, dict) else []
-        for info in infos:
-            if info.get("targetId") == old_id:
-                return str(info.get("browserContextId") or "")
-    except Exception:
-        pass
-    return ""
-
-
-async def _get_old_context_id(move: _Move) -> str:
-    """BrowserContextId of old tab ('' for default)."""
-    try:
-        from app.browser.cdp.tabs import _context_of
-        for cli in move.clients:
-            if cli is None:
-                continue
-            ctx_id = await _context_of(cli, move.old_id)
-            if ctx_id is not None:
-                return str(ctx_id)
-            ctx_id = await _context_from_targets(cli, move.old_id)
-            if ctx_id:
-                return ctx_id
-    except Exception:
-        pass
-    return ""
-
-
-async def _get_new_context_id(move: _Move) -> str:
-    """BrowserContextId of new tab."""
-    try:
-        from app.browser.cdp.tabs import _context_of
-        for cli in move.clients:
-            if cli is None:
-                continue
-            ctx_id = await _context_of(cli, move.new.id)
-            if ctx_id is not None:
-                return str(ctx_id)
-    except Exception:
-        pass
-    return ""
-
-
-async def _connect_all(clients: list, ws_url: str) -> bool:
-    """Re-point every client object (holders follow without being told)."""
-    results = [await client.connect(ws_url) for client in clients]
-    return all(results)
-
-
-async def _roll_back(move: _Move, why: str) -> None:
-    """Nothing changes: every client back on the old tab, the new tab closed again."""
-    if move.new is not None:
-        await _connect_all(move.clients, move.old_ws)
-        await asyncio.to_thread(close_tab_sync, *move.endpoint, move.new.id)
-    _log(move, f"⚠ New chat as a new tab failed: {why} — {move.label} stays in its tab "
-               f"(in-place New Chat instead)", "warn")
+    return False, f"Owner mismatch: old {move.owner} vs new {new_owner} — wrong profile, rollback"
 
 
 def _move_worker(move: _Move) -> None:
     """Pool entry, alias number and URL row now name the new tab; persisted + shown."""
-    ctx, new = move.ctx, move.new
-    retarget_page(ctx.pool, move.old_id, new)
-    _preserve_owner_after_move(ctx.pool, new.id, move.old_owner)
+    ctx, new_id = move.ctx, move.new_id
+    retarget_page(ctx.pool, move.old_id, TabInfo(id=new_id, title="", url=move.url, ws_url=move.new_ws))
     for row in ctx.bridge.state.urls:
         if row.tab_id == move.old_id:
-            row.tab_id, row.url = new.id, new.url or move.url
-    ctx.tab_id = new.id
+            row.tab_id, row.url = new_id, move.url
+    ctx.tab_id = new_id
     mark_receivers(ctx.bridge.state.urls, ctx.pool)
     for step in ("_save_arena", "_persist_cooldowns", "_emit_pool_status"):
         _quietly(getattr(ctx.bridge, step, None))
-    new_count = _count_profile_tabs(ctx.pool, move.endpoint, move.pattern)
-    new_count_owner = _count_profile_tabs_by_owner(ctx.pool, move.endpoint, move.pattern, move.old_owner)
-    _log(move, f"🗂 {move.label} now works in tab {new.id[:12]} (was {move.old_id[:12]}) — "
+    _log(move, f"🗂 {move.label} now works in tab {new_id[:12]} (was {move.old_id[:12]}) — "
                f"cooldown, job count and number kept — profile {move.endpoint[0]}:{move.endpoint[1]} "
-               f"ctx={move.old_context or 'default'} owner={move.old_owner or '?'} "
-               f"tabs matching '{move.pattern}': {move.profile_count} → {new_count} "
-               f"(owner {move.old_owner or '?'}: {move.profile_count_owner} → {new_count_owner})", "info")
+               f"ctx={move.context_id or 'default'} owner={move.owner or '?'}", "info")
 
 
-def _preserve_owner_after_move(pool: Any, new_id: str, old_owner: str) -> None:
-    """Keep old Arena account on new tab (profile-correct)."""
-    if not old_owner:
-        return
-    try:
-        page = pool.get_page(new_id)
-        if page is not None:
-            page.owner = old_owner
-        book = getattr(pool, "_alias", None)
-        if book is not None:
-            with pool._lock:
-                ent = book._entries.get(new_id)
-                if ent is not None:
-                    ent["email"] = old_owner
-    except Exception:
-        pass
-
-
-async def _close_old(move: _Move) -> bool:
-    """Close the old tab (also on the same URL) and prove it left the list; one retry."""
+async def _close_old(move: _Move, browser: Any) -> bool:
+    """Close the old tab (also on the same URL) and prove it left the list; one retry (R4)."""
     same = " — it showed the same new-chat URL; one tab per worker" if move.old_url == move.url else ""
     for _attempt in (1, 2):
-        await asyncio.to_thread(close_tab_sync, *move.endpoint, move.old_id)
-        if await _gone(move):
+        await browser.close(move.old_id)
+        target_infos, err = await browser.targets()
+        if err == "" and bt.target_of(target_infos, move.old_id) is None:
             _log(move, f"🗂 Old tab closed and verified gone ({move.old_id[:12]}){same}", "success")
             return True
     _log(move, f"🗂 Old tab {move.old_id[:12]} is still open after two closes — close it by hand, "
                f"or it comes back as a new URL row", "error")
     return False
 
-
-async def _gone(move: _Move) -> bool:
-    """Poll the endpoint's tab list until the old id is absent (≤ 5 s)."""
-    deadline = time.monotonic() + _GONE_WAIT_SEC
-    while True:
-        tabs, err, _tried = await asyncio.to_thread(fetch_tabs_sync, *move.endpoint)
-        if not err and all(tab.id != move.old_id for tab in tabs):
-            return True
-        if time.monotonic() >= deadline:
-            return False
-        await asyncio.sleep(_GONE_POLL_SEC)
 
 
 def _quietly(step: Any) -> None:
