@@ -242,21 +242,44 @@ async def _open_and_prove(move: _Move) -> tuple[bool, str]:
     return await _prove_new_chat(move)
 
 
+def _pick_client_for_context(move: _Move) -> Any:
+    """First available client for Target.createTarget (profile-correct)."""
+    for c in move.clients:
+        if c is not None:
+            return c
+    return getattr(move.ctx, "client", None)
+
+
+async def _verify_context_same(move: _Move, client: Any, new_tab: TabInfo) -> tuple[bool, str]:
+    """Check new tab context matches old (same Chrome profile)."""
+    try:
+        from app.browser.cdp.tabs import _context_of
+        new_ctx = await _context_of(client, new_tab.id)
+        if move.old_context and new_ctx is not None and str(new_ctx) != move.old_context:
+            return False, f"context mismatch old={move.old_context} new={new_ctx} — wrong profile"
+    except Exception:
+        pass
+    return True, ""
+
+
 async def _try_open_same_context(move: _Move) -> tuple[Optional[TabInfo], str]:
     """Try CDP Target.createTarget in same browser context (keeps Arena account)."""
     try:
         from app.browser.cdp.tabs import open_tab_in_same_context
-        # Use pooled client if available (most profile-correct), else job client
-        client = None
-        for c in move.clients:
-            if c is not None:
-                client = c
-                break
-        if client is None:
-            client = getattr(move.ctx, "client", None)
+        client = _pick_client_for_context(move)
         if client is None:
             return None, "no client for context open"
-        return await open_tab_in_same_context(client, *move.endpoint, move.url, move.old_id)
+        try:
+            move.old_context = await _get_old_context_id(move)
+        except Exception:
+            move.old_context = ""
+        new_tab, err = await open_tab_in_same_context(client, *move.endpoint, move.url, move.old_id)
+        if new_tab is None:
+            return None, err
+        ok, why = await _verify_context_same(move, client, new_tab)
+        if not ok:
+            return None, why
+        return new_tab, ""
     except Exception as e:
         return None, str(e)
 
@@ -304,8 +327,47 @@ async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
         return True, ""
     if new_owner.lower() == move.old_owner.lower():
         return True, ""
-    _log(move, f"Owner mismatch: old {move.old_owner} vs new {new_owner} — keeping old, new tab may be wrong profile", "warn")
-    return True, ""
+    return False, f"Owner mismatch: old {move.old_owner} vs new {new_owner} — wrong profile, rollback"
+
+
+async def _get_old_context_id(move: _Move) -> str:
+    """BrowserContextId of old tab ('' for default)."""
+    try:
+        from app.browser.cdp.tabs import _context_of
+        for cli in move.clients:
+            if cli is None:
+                continue
+            ctx_id = await _context_of(cli, move.old_id)
+            if ctx_id is not None:
+                return str(ctx_id)
+            # Also try without filter: if _context_of returns None, it may still have context
+            # Try to get any context from client that matches old_id
+            try:
+                resp = await cli.send("Target.getTargets")
+                infos = resp.get("result", {}).get("targetInfos", []) if isinstance(resp, dict) else []
+                for info in infos:
+                    if info.get("targetId") == move.old_id:
+                        return str(info.get("browserContextId") or "")
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return ""
+
+
+async def _get_new_context_id(move: _Move) -> str:
+    """BrowserContextId of new tab."""
+    try:
+        from app.browser.cdp.tabs import _context_of
+        for cli in move.clients:
+            if cli is None:
+                continue
+            ctx_id = await _context_of(cli, move.new.id)
+            if ctx_id is not None:
+                return str(ctx_id)
+    except Exception:
+        pass
+    return ""
 
 
 async def _connect_all(clients: list, ws_url: str) -> bool:

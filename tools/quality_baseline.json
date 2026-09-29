@@ -3718,9 +3718,9 @@
     "file_lines": 67
   },
   "app/services/new_tab.py": {
-    "max_func_loc": 21,
+    "max_func_loc": 23,
     "max_class_loc": 16,
-    "func_count": 27,
+    "func_count": 31,
     "funcs": {
       "clean_url": 5,
       "read_setting": 7,
@@ -3737,10 +3737,14 @@
       "_hold_reconciler": 9,
       "_run": 13,
       "_open_and_prove": 11,
-      "_try_open_same_context": 17,
+      "_pick_client_for_context": 6,
+      "_verify_context_same": 10,
+      "_try_open_same_context": 20,
       "_prove_new_chat": 17,
       "_read_owner_from_client": 9,
-      "_check_owner_preserved": 15,
+      "_check_owner_preserved": 14,
+      "_get_old_context_id": 23,
+      "_get_new_context_id": 13,
       "_connect_all": 4,
       "_roll_back": 7,
       "_move_worker": 16,
@@ -3751,11 +3755,11 @@
       "_log": 5
     },
     "max_methods": 0,
-    "max_cc": 9,
+    "max_cc": 10,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 3,
-    "file_lines": 400
+    "file_lines": 462
   },
   "app/services/recording/__init__.py": {
     "max_func_loc": 0,
