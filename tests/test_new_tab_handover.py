@@ -597,3 +597,37 @@ def test_a_cancelled_run_keeps_the_fast_in_place_reset(monkeypatch):
     monkeypatch.setattr(cs, "_is_cancelled", lambda bridge: True)
     asyncio.run(cs._best_effort_reset(ctx, 5))
     assert calls == [("in-place", "")]
+
+
+# ── the finished job is never broken by our own side effects ────────────────
+
+def test_a_log_sink_that_raises_never_breaks_the_finished_job(monkeypatch):
+    """The handover reports through the bridge; a dead log sink must not fail the job."""
+    w = _world(monkeypatch)
+
+    def boom(_message, _level="info"):
+        raise RuntimeError("log sink gone")
+    w.bridge._log = boom
+    ok, why = _run(w)
+    assert ok, why and w.ctx.tab_id != "OLD" and w.browser.closed == ["OLD"]
+
+
+def test_a_save_that_raises_never_breaks_the_finished_job(monkeypatch):
+    """`_save_arena`/`_persist_cooldowns` are the bridge's to fail; the move stays done."""
+    w = _world(monkeypatch)
+
+    def boom():
+        raise RuntimeError("disk full")
+    w.bridge._save_arena = boom
+    w.bridge._persist_cooldowns = boom
+    ok, why = _run(w)
+    assert ok, why
+    assert w.rows[0].tab_id == w.ctx.tab_id and w.pool.get_page(w.ctx.tab_id) is not None
+
+
+def test_a_bridge_without_the_pool_hook_still_moves_the_worker(monkeypatch):
+    """The three saves are best-effort: a bridge that lacks one never fails the move."""
+    w = _world(monkeypatch)
+    del w.bridge._emit_pool_status
+    ok, why = _run(w)
+    assert ok, why and w.rows[0].tab_id == w.ctx.tab_id and w.pool.get_page(w.ctx.tab_id) is not None

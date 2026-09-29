@@ -138,3 +138,20 @@ def test_the_refusal_names_the_wrong_profile_first(monkeypatch):
     opened = asyncio.run(o.open_in_profile(b, object(), SPEC))
     assert opened.reason.startswith("the new tab landed in another profile")
     assert opened.wrong_profile is True
+
+
+def test_a_list_that_dies_while_waiting_for_the_popup_is_a_reason(monkeypatch):
+    """The browser answered before the popup and stops answering while we wait for its tab."""
+    b = FakeBrowser()
+    b.create_result = ("", "refused")
+    calls = {"n": 0}
+    real = b.targets
+
+    async def flaky():
+        calls["n"] += 1
+        return await real() if calls["n"] == 1 else ([], "Target.getTargets: socket gone")
+    monkeypatch.setattr(b, "targets", flaky)
+    monkeypatch.setattr(o, "_POLL_SEC", 0.01)
+    _popup(monkeypatch, b, tab_id="", ok=True)
+    opened = asyncio.run(o.open_in_profile(b, object(), SPEC))
+    assert opened.tab_id == "" and "socket gone" in opened.reason and not opened.wrong_profile

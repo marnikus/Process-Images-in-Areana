@@ -170,12 +170,15 @@ Evidence (2026-09-29, `.venv`):
   honouring or ignoring the context, the page opener, a refusing browser, a blocked popup, a silent
   target list, a close that is ignored) then pins R1–R5.
 * GREEN — `tests/test_browser_targets.py` (24), `tests/test_page_popup.py` (8),
-  `tests/test_new_tab_open.py` (10), `tests/test_new_tab_handover.py` (33), `tests/test_new_tab_setting.py`
+  `tests/test_new_tab_open.py` (11), `tests/test_new_tab_handover.py` (36), `tests/test_new_tab_setting.py`
   (13), plus the JS payload lane with the popup builder registered.
-* Full suite: 2997 passed, 13 skipped, 3 failures that are also red on the base commit
-  (`test_quality_gate.test_40loc_js_function_fails`, `test_single_job_runner.test_handler_map_covers_all_types`,
+* Full suite: 3008 passed, 6 skipped, 3 failures that are also red on the base commit — re-checked in a
+  `2d35536` worktree (`test_quality_gate.test_40loc_js_function_fails`,
+  `test_single_job_runner.test_handler_map_covers_all_types`,
   `test_ui_wiring.test_closing_the_window_drops_the_cdp_socket_inside_a_guard`).
-* Coverage: total 89.9 % line / 86.0 % branch; new files 98–100 % line.
+* Coverage: total 89.95 % line / 86.05 % branch; all five new/changed modules (`browser_targets`,
+  `page_popup`, `new_tab`, `new_tab_open`, `new_tab_setting`) at 100 % line and branch — the guards that
+  swallow a failing log sink, a failing save and a target list that dies mid-wait are pinned by tests.
 * `python tools/verify_quality.py --changed-files <the eight changed app files>` → 0 fails, 0 warns.
 
 Honest limit: this sandbox has no Chrome binary, so the A1/A2 run itself could not be reproduced
