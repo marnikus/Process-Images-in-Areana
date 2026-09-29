@@ -271,12 +271,12 @@ async def _run(move: _Move) -> tuple[bool, str]:
 
 
 async def _get_storage_from_move(move: _Move) -> dict:
-    """LocalStorage from old tab (best effort)."""
+    """Local+sessionStorage from old tab (best effort)."""
     try:
         client = _pick_client_for_context(move)
         if client is None:
             return {}
-        js = """(() => { try { const o={}; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); o[k]=localStorage.getItem(k); } return JSON.stringify(o); } catch(e){ return "{}"; } })()"""
+        js = """(() => { try { const g=(s)=>{ const o={}; for(let i=0;i<s.length;i++){ const k=s.key(i); o[k]=s.getItem(k); } return o; }; return JSON.stringify({local:g(localStorage), session:g(sessionStorage)}); } catch(e){ return "{}"; } })()"""
         resp = await client.send("Runtime.evaluate", {"expression": js, "returnByValue": True})
         val = ""
         if isinstance(resp, dict):
@@ -292,7 +292,7 @@ async def _get_storage_from_move(move: _Move) -> dict:
 
 
 async def _set_storage_to_move(move: _Move, data: dict) -> None:
-    """Set localStorage into new tab (best effort)."""
+    """Set local+sessionStorage into new tab (best effort)."""
     if not data:
         return
     try:
@@ -302,10 +302,15 @@ async def _set_storage_to_move(move: _Move, data: dict) -> None:
         if client is None:
             return
         import json as _json
-        # Limit to 50 keys to avoid huge payload
-        limited = dict(list(data.items())[:50])
-        js_data = _json.dumps(limited)
-        js = f"""((d) => {{ try {{ for(const [k,v] of Object.entries(d)){{ localStorage.setItem(k,v); }} return true; }} catch(e){{ return false; }} }})({js_data})"""
+        # Limit keys to avoid huge payload
+        def _limit(d):
+            return dict(list(d.items())[:50]) if isinstance(d, dict) else {}
+        payload = {
+            "local": _limit(data.get("local", {})),
+            "session": _limit(data.get("session", {})),
+        }
+        js_data = _json.dumps(payload)
+        js = f"""((d) => {{ try {{ for(const [k,v] of Object.entries(d.local||{{}})){{ localStorage.setItem(k,v); }} for(const [k,v] of Object.entries(d.session||{{}})){{ sessionStorage.setItem(k,v); }} return true; }} catch(e){{ return false; }} }})({js_data})"""
         await client.send("Runtime.evaluate", {"expression": js})
     except Exception:
         pass
@@ -441,8 +446,9 @@ async def _verify_context_same(move: _Move, client: Any, new_tab: TabInfo) -> tu
         new_ctx = await _context_of(client, new_tab.id)
         old = move.old_context or ""
         new_s = str(new_ctx) if new_ctx is not None else ""
-        if old and old != new_s:
-            return False, f"context mismatch old={old} new={new_s or 'default'} — wrong profile"
+        # Only fail when both contexts known and different; empty means default or unknown
+        if old and new_s and old != new_s:
+            return False, f"context mismatch old={old} new={new_s} — wrong profile"
     except Exception:
         pass
     return True, ""

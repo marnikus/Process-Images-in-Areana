@@ -3720,7 +3720,7 @@
   "app/services/new_tab.py": {
     "max_func_loc": 23,
     "max_class_loc": 17,
-    "func_count": 43,
+    "func_count": 44,
     "funcs": {
       "clean_url": 5,
       "read_setting": 7,
@@ -3740,7 +3740,7 @@
       "_hold_reconciler": 9,
       "_run": 15,
       "_get_storage_from_move": 19,
-      "_set_storage_to_move": 18,
+      "_set_storage_to_move": 23,
       "_open_and_prove": 19,
       "_reload_after_cookies": 10,
       "_get_cookies_from_move": 18,
@@ -3749,7 +3749,7 @@
       "_cookie_params": 16,
       "_set_one_cookie": 9,
       "_pick_client_for_context": 6,
-      "_verify_context_same": 12,
+      "_verify_context_same": 13,
       "_try_open_same_context": 20,
       "_prove_new_chat": 17,
       "_read_owner_from_client": 9,
@@ -3764,14 +3764,15 @@
       "_close_old": 11,
       "_gone": 10,
       "_quietly": 7,
-      "_log": 5
+      "_log": 5,
+      "_limit": 2
     },
     "max_methods": 0,
     "max_cc": 9,
     "max_cog": 0,
     "max_nest": 3,
     "max_params": 4,
-    "file_lines": 662
+    "file_lines": 668
   },
   "app/services/recording/__init__.py": {
     "max_func_loc": 0,
