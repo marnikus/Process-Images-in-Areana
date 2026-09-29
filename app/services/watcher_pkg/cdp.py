@@ -23,6 +23,15 @@ class WatcherCDP:
         except Exception as e:
             return False, {"error": str(e)}
 
+    async def check_page_error(self, cdp) -> bool:
+        """Page error like 'Something went wrong' or 'Trace ID' present."""
+        try:
+            err = await cdp.scan_page_errors()
+            low = (err or "").lower()
+            return "something went wrong" in low or "trace id" in low
+        except Exception:
+            return False
+
     async def show_overlay(self, cdp, msg, kind, timeout):
         try:
             await cdp.show_watcher_overlay(msg, kind=kind, timeout_sec=timeout)

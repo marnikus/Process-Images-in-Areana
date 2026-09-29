@@ -53,6 +53,22 @@ class WatcherHandlers:
         """Start / restart (new JOB-ID) / end (timeout, once) — `generation.GenerationWatch`."""
         return await self._generation.handle(cdp, is_gen, details)
 
+    async def handle_page_error(self, cdp) -> bool:
+        """Page error 'Something went wrong' clears generation wait (consistent)."""
+        if self.state.waiting_kind != "generation":
+            return False
+        self._logger("✅ Watcher: page error detected (Something went wrong / Trace ID) — clearing generation wait, resuming", "warn")
+        try:
+            await self.cdp_probe.hide_overlay(cdp)
+        except Exception:
+            pass
+        self.job_ctrl.resume()
+        self.state.waiting_since = None
+        self.state.waiting_kind = None
+        self.state.status = "watching"
+        await self._notify()
+        return True
+
     async def handle_clear(self, cdp, is_captcha: bool, is_gen: bool):
         from ..watcher_overlay import should_clear_overlay, build_clear_msg
         if not should_clear_overlay(self.state.waiting_kind, is_captcha, is_gen):

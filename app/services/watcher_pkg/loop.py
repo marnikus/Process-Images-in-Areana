@@ -62,6 +62,9 @@ class WatcherLoop:
         is_captcha = await self.cdp_probe.check_captcha(cdp)
         if await self.handlers.handle_captcha(cdp, is_captcha):
             return self.state.to_dict()
+        if await self.cdp_probe.check_page_error(cdp):
+            if await self.handlers.handle_page_error(cdp):
+                return self.state.to_dict()
         is_gen, gen_details = await self.cdp_probe.check_generation(cdp)
         if await self.handlers.handle_generation(cdp, is_gen, gen_details):
             return self.state.to_dict()
