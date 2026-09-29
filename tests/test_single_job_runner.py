@@ -101,7 +101,10 @@ def instant_sleep(monkeypatch):
 def test_handler_map_covers_all_types():
     from tests.characterization.harness import FULL_STACK
     hmap = sjr._handler_map()
-    assert len(hmap) == 20
+    # 20 + the four handlers the text-output / image-description blocks added
+    # (OBSERVE_TEXT_BASELINE, WAIT_TEXT_OUTPUT, GENERATE_IMAGE_DESCRIPTION,
+    # SAVE_DESCRIPTION_JSON) — the pin grows only with a named block family.
+    assert len(hmap) == 24
     for bid in FULL_STACK:
         assert bid in hmap, bid
 

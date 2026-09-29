@@ -227,8 +227,10 @@ def test_closing_the_window_drops_the_cdp_socket_inside_a_guard():
 
     `QMainWindow` cannot be imported in this sandbox (no libGL, as everywhere else in
     this file), so the wiring is pinned by AST: `closeEvent` must route through
-    `_drop_browser_sockets`, and that helper must disconnect the CDP client inside a
-    guard. The deleted Firefox DevTools session (I-62) must not come back here.
+    `_drop_browser_sockets`, which dispatches to the guarded drop helpers
+    (`_drop_main_client` / `_drop_pool_sockets`, 2d35536); the main client is
+    disconnected by name inside a guard there. The deleted Firefox DevTools
+    session (I-62) must not come back here.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
     methods = _class_methods(tree, "MainWindow")
@@ -236,11 +238,17 @@ def test_closing_the_window_drops_the_cdp_socket_inside_a_guard():
     assert "_drop_browser_sockets" in _called_names(methods["closeEvent"]), \
         "closing the window must drop the browser sockets"
     body = methods["_drop_browser_sockets"]
-    assert "disconnect" in _called_names(body), "the CDP client is disconnected by name"
+    assert {"_drop_pool_sockets", "_drop_main_client"} <= _called_names(body), \
+        "close dispatches to the guarded drop helpers"
     assert not any("rdp" in name for name in _imported_names(body)), \
         "the Firefox debugger approach is deleted (I-62)"
     assert any(isinstance(item, ast.Try) for item in ast.walk(body)), \
         "a browser that stopped answering must not break the close"
+    funcs = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    drop = funcs["_drop_main_client"]
+    assert "disconnect" in _called_names(drop), "the CDP client is disconnected by name"
+    assert any(isinstance(item, ast.Try) for item in ast.walk(drop)), \
+        "a failed disconnect must not break the close"
 
 
 @pytest.mark.unit
