@@ -1260,6 +1260,26 @@ server runs (no pref drives it; hiding it would mean patching Firefox's UI, whic
 Allow dialog must be answered once per connection unless the pref is in the running profile, and the app never
 starts, restarts or kills a browser.
 
+## Addendum 2026-09-29 — Global Saving System audit #3 + TDD refactor (I-81)
+
+Snapshot after `docs/archive/2026-09-29-workspace-audit-3/audit.md` (R1–R8, structural except
+one report-truth line; RED-first `test_restore_advice_is_part_of_the_provider_contract` +
+`test_grid_restore_notes_report_only_what_happened`).
+
+| Gate | Command | Result |
+|---|---|---|
+| Python tests | `QT_QPA_PLATFORM=offscreen python -m coverage run --branch --source=app -m pytest tests -q` | **2,950 passed · 13 skipped · 0 fail** (workspace suites 154→158; three stale pins repaired — `test_live_debug_panel.mjs` listeners.js freeze 193→194, `test_handler_map_covers_all_types` 20→24 handlers, `test_ui_wiring` disconnect moved into `_drop_main_client` — all red at base `2d35536`) |
+| JS tests | `npm run test:js` | **481 pass · 0 fail · 4 skipped** |
+| Size/complexity | `radon cc` + cognitive | workspace scope: 27 modules / 2,459 LOC / 200 funcs; worst LOC 22 (`build_manifest`, has reason) / CC 10 (`safe_rel_path`) / cog 8 — unchanged; `workspace.js` 368→280 + `workspace-live-sync.js` 101 (RULE 18.2 split) |
+| Changed-file ratchet | `verify_quality.py --changed-files <touched set> --allow-legacy --coverage-ratchet` | **0 fails** after correcting the stale `max_cog 0` entries of the 22 workspace files (measured unchanged at the pre-change commit — the documented CODE_VERIFICATION process); the two `ratchet-coverage` lines are the sandbox floor drift below |
+| Coverage | `coverage json` | **88.00 % line / 83.92 % branch** (workspace modules 80–100 %); stashed base tree in this sandbox measures **87.92 / 83.90** — the round is net-UP; the stored floor (89.34 / 86.37) is unreachable in this sandbox (same venv/libGL family as the 2026-09-21 environment facts) |
+| vulture @90 / JS lane | on workspace scope | 0 findings / `workspace-live-sync.js` + `workspace.js` clean |
+
+RULE 16.7 + RULE 18 recheck (the round's mandate): no fail line touched; every new symbol has a
+fail-if-deleted test; ratchet-forced moves were real concept extractions (`runs.py` run contexts,
+module-level `one_file`), not metric gaming; `docs/current/` no longer holds any >200-line
+workspace doc (design archived as implemented, 147-line as-built successor).
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).
