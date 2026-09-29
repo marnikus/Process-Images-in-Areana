@@ -55,6 +55,15 @@ def safe_rel_path(rel) -> str:
     return cleaned
 
 
+def is_safe_path(rel: str) -> tuple[bool, str]:
+    """Check if rel is safe and return (is_safe, normalized).
+
+    Single home for safe-path rule (S8 fix) — both preview and gates use this.
+    """
+    normalized = safe_rel_path(rel)
+    return (bool(normalized), normalized)
+
+
 def file_sha(path: Path) -> str:
     """Checksum of an on-disk file (streamed; small JSON files)."""
     digest = hashlib.sha256()

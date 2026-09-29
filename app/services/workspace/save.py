@@ -37,6 +37,16 @@ class SaveRequest:
 
 
 @dataclass
+class SaveRunContext:
+    """Typed context for one save execution — replaces untyped dict (S1)."""
+    bridge: object
+    request: SaveRequest
+    target: Path
+    started_utc: str
+    file_entries: dict = field(default_factory=dict)
+
+
+@dataclass
 class Capture:
     """Per-domain capture bookkeeping for one save run."""
     provider: object
@@ -164,8 +174,9 @@ def save_workspace(bridge, request: SaveRequest) -> dict:
     failed = [c for c in captures if c.error]
     if failed and not request.allow_partial:
         return _abort_result(request, captures, started)
-    return _publish_save({"bridge": bridge, "request": request, "target": target,
-                          "started": started}, captures)  # `run` context, see _publish_save
+    ctx = SaveRunContext(bridge=bridge, request=request, target=target,
+                         started_utc=started)
+    return _publish_save(ctx, captures)
 
 
 def _abort_result(request: SaveRequest, captures: list, started: str) -> dict:
@@ -178,49 +189,43 @@ def _abort_result(request: SaveRequest, captures: list, started: str) -> dict:
             "snapshot_id": snapshot_id_for(started, request.name)}
 
 
-def _stage(run: dict, captures: list, temp: Path) -> dict:
+def _stage(ctx: SaveRunContext, captures: list, temp: Path) -> dict:
     """Write state files + env into the temp folder, manifest LAST; return the report."""
-    run["file_entries"] = _write_state_files(temp, captures)
-    _write_env(temp, run["bridge"])
-    started = run["started"]
-    timing = {"snapshot_id": snapshot_id_for(started, run["request"].name),
-              "started_utc": started, "finished_utc": utc_now_iso()}
+    ctx.file_entries = _write_state_files(temp, captures)
+    _write_env(temp, ctx.bridge)
+    timing = {"snapshot_id": snapshot_id_for(ctx.started_utc, ctx.request.name),
+              "started_utc": ctx.started_utc, "finished_utc": utc_now_iso()}
     report = reports.save_report(
         timing=timing, domains=_report_rows(captures),
         errors=[c.error for c in captures if c.error], published=True)
-    manifest = _snapshot_manifest(run, captures, report)
+    manifest = _snapshot_manifest(ctx, captures, report)
     fsio.write_bytes(temp, "manifest.json", canonical_bytes(manifest))
     return report
 
 
-def _publish_save(run: dict, captures: list) -> dict:
-    """Build the temp folder, write the manifest last, publish, then report.
-
-    `run` bundles bridge/request/target/started for one save execution.
-    """
-    bridge, target = run["bridge"], run["target"]
-    temp = fsio.new_temp_dir(target)
+def _publish_save(ctx: SaveRunContext, captures: list) -> dict:
+    """Build the temp folder, write the manifest last, publish, then report."""
+    temp = fsio.new_temp_dir(ctx.target)
     try:
-        report = _stage(run, captures, temp)
-        fsio.publish(temp, target)
+        report = _stage(ctx, captures, temp)
+        fsio.publish(temp, ctx.target)
     except OSError as exc:  # FileExistsError is an OSError
-        return _publish_failed(target, temp, exc)
-    record_snapshot(bridge, str(target))
-    note = fsio.write_report(target, "reports/save-report.json", canonical_bytes(report))
-    log_message(bridge, f"💾 Workspace saved: {target.name} — {report['result']}", "success")
-    return {"ok": True, **report, "path": str(target), **({"report_note": note} if note else {})}
+        return _publish_failed(ctx.target, temp, exc)
+    record_snapshot(ctx.bridge, str(ctx.target))
+    note = fsio.write_report(ctx.target, "reports/save-report.json", canonical_bytes(report))
+    log_message(ctx.bridge, f"💾 Workspace saved: {ctx.target.name} — {report['result']}", "success")
+    return {"ok": True, **report, "path": str(ctx.target), **({"report_note": note} if note else {})}
 
 
-def _snapshot_manifest(run: dict, captures: list, report: dict) -> dict:
+def _snapshot_manifest(ctx: SaveRunContext, captures: list, report: dict) -> dict:
     """The manifest for this publish (built AFTER the report owns the snapshot id)."""
-    request = run["request"]
-    header = {"snapshot_id": report["snapshot_id"], "name": request.name,
-              "description": request.description, "created_utc": run["started"],
+    header = {"snapshot_id": report["snapshot_id"], "name": ctx.request.name,
+              "description": ctx.request.description, "created_utc": ctx.started_utc,
               "snapshot_kind": "partial" if any(c.error for c in captures)
                                else "full"}
-    return build_manifest(header=header, app_meta=app_meta(run["bridge"]),
+    return build_manifest(header=header, app_meta=app_meta(ctx.bridge),
                           compat=compat_block(),
-                          domains=domain_entries(captures, run["file_entries"]))
+                          domains=domain_entries(captures, ctx.file_entries))
 
 
 def _publish_failed(target: Path, temp: Path, exc: Exception) -> dict:

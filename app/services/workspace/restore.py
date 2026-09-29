@@ -1,101 +1,28 @@
-"""Workspace restore — the manifest-only PREVIEW (read-only; design §C.6).
+"""Workspace restore — backward compat alias for preview (S12).
 
-Before any mutation the user sees exactly what a restore would do: per-domain
-status (ok / size_mismatch / missing / excluded / not_in_manifest) from the
-manifest, plus path-remap notes. The mutating side — selection, strict-dependency
-expansion, recovery backup, file gates, transactions, reconcile, report — lives
-in `apply.py`. No Qt.
+The preview logic now lives in `preview.py` (clearer name: preview vs mutating
+restore). This module re-exports for backward compatibility — existing imports
+`from app.services.workspace.restore import preview_restore` keep working.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
+from .preview import (
+    _file_status,
+    _folder_root,
+    _inside,
+    _preview_row,
+    _remap_notes,
+    _row_head,
+    preview_restore,
+)
 
-from app.persistence.workspace.integrity import safe_rel_path
-from app.persistence.workspace.manifest import entry_for, read_manifest
-from . import reports
-from .registry import restore_order
-
-
-def _inside(root: Path, rel: str) -> Path | None:
-    """The file for a manifest path, or None when the path is unsafe (same rule as restore)."""
-    safe = safe_rel_path(rel)
-    return root / safe if safe and safe == rel else None
-
-
-def _row_head(entry: dict, domain_id: str) -> dict:
-    """The identity columns every preview row carries, whatever its status."""
-    return {"domain_id": domain_id, "display_name": entry.get("display_name", domain_id),
-            "required": entry.get("required", False),
-            "sensitivity": entry.get("sensitivity", "public"),
-            "dependencies": entry.get("dependencies", {})}
-
-
-def _file_status(row: dict, entry: dict, path: Path) -> dict:
-    """ok / size_mismatch for a domain file that exists on disk."""
-    actual = path.stat().st_size
-    row.update(file=entry["path"], bytes=entry.get("bytes"),
-               schema_version=entry.get("schema_version"))
-    if actual != entry.get("bytes"):
-        row.update(status="size_mismatch", note=f"on disk {actual} bytes")
-    else:
-        row.update(status="ok")
-    return row
-
-
-def _preview_row(root: Path, manifest: dict, domain_id: str) -> dict:
-    entry = entry_for(manifest, domain_id) or {}
-    row = _row_head(entry, domain_id)
-    if not entry:
-        row.update(status="not_in_manifest", note="domain unknown to this snapshot")
-        return row
-    if entry.get("capture", {}).get("excluded") or not entry.get("path"):
-        row.update(status="excluded", note=entry.get("capture", {}).get(
-            "excluded_reason", "policy-excluded"))
-        return row
-    path = _inside(root, entry["path"])
-    if path is None:
-        row.update(status="unsafe_path", file=entry["path"],
-                   note="path escapes the snapshot folder — restore will refuse it")
-        return row
-    if not path.exists():
-        row.update(status="missing", file=entry["path"])
-        return row
-    return _file_status(row, entry, path)
-
-
-def preview_restore(root) -> dict:
-    """Manifest-only preview before any mutation (task RESTORE 1)."""
-    root = Path(root)
-    manifest, err = read_manifest(root)
-    if err:
-        return {"ok": False, "error": err}
-    domains = [_preview_row(root, manifest, d)
-               for d in restore_order(set(manifest.get("domains", {})))]
-    return {"ok": True, **reports.preview_report(
-        root=str(root), manifest=manifest, domains=domains,
-        remap=_remap_notes(root, manifest))}
-
-
-def _folder_root(doc) -> str:
-    """The saved queue folder root, "" when the doc has none (any shape tolerated)."""
-    folder = doc.get("folder") if isinstance(doc, dict) else None
-    return folder.get("root_path", "") if isinstance(folder, dict) else ""
-
-
-def _remap_notes(root: Path, manifest: dict) -> list:
-    """Path-based resources that need user attention on this machine."""
-    notes = []
-    entry = entry_for(manifest, "arena_state") or {}
-    path = _inside(root, entry["path"]) if entry.get("path") else None
-    if path:
-        try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
-            folder_root = _folder_root(doc)
-            if folder_root and not Path(folder_root).exists():
-                notes.append(f"folder root not found on this machine: {folder_root} — "
-                             "restore, then re-pick the folder (queue rows keep their statuses)")
-        except (OSError, ValueError):
-            pass
-    return notes
+__all__ = [
+    "preview_restore",
+    "_inside",
+    "_row_head",
+    "_file_status",
+    "_preview_row",
+    "_folder_root",
+    "_remap_notes",
+]

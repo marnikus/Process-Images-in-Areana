@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from app.persistence.workspace.errors import WorkspaceError
-from app.persistence.workspace.integrity import file_sha, safe_rel_path
+from app.persistence.workspace.integrity import file_sha, is_safe_path, safe_rel_path
 from app.persistence.workspace.manifest import entry_for
 
 
@@ -38,8 +38,8 @@ def load_one(root: Path, entry: dict, rel: str):
 
 
 def _gated(root: Path, entry: dict, rel: str):
-    safe = safe_rel_path(rel)
-    if not safe or rel != safe:
+    is_safe, safe = is_safe_path(rel)
+    if not is_safe:
         return WorkspaceError(entry_owner(entry), "unsafe_path", f"unsafe path: {rel!r}")
     path = root / safe
     if not path.exists():

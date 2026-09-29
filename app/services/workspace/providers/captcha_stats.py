@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.persistence.json_store import save_json_atomic
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, config_dir, live_capture
+from pathlib import Path
+
+from app.services.workspace.provider import config_dir
+from app.services.workspace.providers._base import JsonFileProvider
 
 FILE_NAME = "captcha_stats.json"
 
@@ -26,7 +28,7 @@ def stats_error(doc) -> str | None:
     return None
 
 
-class CaptchaStatsProvider(StateProvider):
+class CaptchaStatsProvider(JsonFileProvider):
     """Captcha encounter/solve counters, per-site stats, last balance/error."""
 
     domain_id = "captcha_stats"
@@ -35,18 +37,11 @@ class CaptchaStatsProvider(StateProvider):
     schema_version = "1"
     sensitivity = "public"
 
-    def live_paths(self, bridge) -> list:
-        return self._one_file(stats_file(bridge))
-
-    def capture(self, bridge) -> CaptureResult:
-        return live_capture(stats_file(bridge))
+    def file_path(self, bridge) -> Path:
+        return stats_file(bridge)
 
     def validate(self, doc) -> str | None:
         return stats_error(doc)
-
-    def apply(self, bridge, doc) -> ApplyOutcome:
-        save_json_atomic(stats_file(bridge), doc)
-        return ApplyOutcome(ok=True)
 
     def reconcile(self, bridge) -> list:
         return ["captcha balance marked stale — refresh it in the Captcha window"]

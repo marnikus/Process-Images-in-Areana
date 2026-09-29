@@ -13,7 +13,7 @@ import json
 
 from app.services import job_history
 from app.services.workspace import apply as ws_apply
-from app.services.workspace import restore as ws_restore
+from app.services.workspace import preview as ws_restore
 from app.services.workspace import save as ws_save
 from app.services.workspace import snapshot_index as ws_index
 from app.services.workspace.meta import default_base, log_message
@@ -32,6 +32,11 @@ def _options(raw: str) -> dict:
 
 
 def _state_payload(bridge) -> dict:
+    # Explicit prune before read — recent() itself is pure (S4 fix)
+    try:
+        ws_index.prune_missing(bridge)
+    except Exception:
+        pass
     return {
         "default_dir": str(default_base(bridge)),
         "recent": ws_index.recent_snapshots(bridge),

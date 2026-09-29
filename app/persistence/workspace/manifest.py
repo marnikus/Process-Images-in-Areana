@@ -8,11 +8,27 @@ its manifest entry, never by filename guessing. Imports: stdlib only.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 FORMAT_NAME = "arena-workspace"
 WORKSPACE_FORMAT = 1
 MIN_WORKSPACE_FORMAT = 1
+
+
+@dataclass(frozen=True)
+class ManifestRead:
+    """Typed result of reading a manifest — replaces (manifest, error) tuple (S2)."""
+    manifest: dict | None
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None and self.manifest is not None
+
+    def __iter__(self):
+        # Backward compat: allow unpacking as (manifest, error)
+        return iter((self.manifest, self.error))
 
 
 # ideal-size: 22 lines reason=one dict literal = the manifest.json wire format (design §D); splitting hides the schema
@@ -59,21 +75,28 @@ def check_format(manifest: dict) -> str | None:
     return None
 
 
-def parse_manifest(raw) -> tuple[dict | None, str | None]:
-    """Validate one parsed manifest; (manifest, None) or (None, reason)."""
+def parse_manifest(raw) -> ManifestRead:
+    """Validate one parsed manifest; ManifestRead with manifest or error."""
     err = check_format(raw) if isinstance(raw, dict) else "manifest is not a JSON object"
-    return (None, err) if err else (raw, None)
+    if err:
+        return ManifestRead(manifest=None, error=err)
+    return ManifestRead(manifest=raw, error=None)
 
 
-def read_manifest(root: Path) -> tuple[dict | None, str | None]:
-    """Read + validate `<root>/manifest.json` (the only entry point for a folder)."""
+def read_manifest(root: Path) -> ManifestRead:
+    """Read + validate `<root>/manifest.json` (the only entry point for a folder).
+
+    Returns ManifestRead (manifest or error). Iterable as (manifest, error) for compat.
+    """
     path = Path(root) / "manifest.json"
     if not path.exists():
-        return None, "manifest.json missing — this folder is not a committed workspace snapshot"
+        return ManifestRead(
+            manifest=None,
+            error="manifest.json missing — this folder is not a committed workspace snapshot")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        return None, f"manifest.json unreadable: {exc}"
+        return ManifestRead(manifest=None, error=f"manifest.json unreadable: {exc}")
     return parse_manifest(raw)
 
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import shutil
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.persistence.workspace.integrity import canonical_bytes
@@ -21,10 +22,28 @@ RECOVERY_DIR = "workspace_recovery"
 RECOVERY_KEEP = 10
 
 
+@dataclass(frozen=True)
+class BackupResult:
+    """Result of a recovery backup — typed replacement for (path, refusal) tuple (S2)."""
+    path: str
+    refusal: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return not self.refusal
+
+    def __iter__(self):
+        # Backward compat: allow unpacking as (path, refusal)
+        return iter((self.path, self.refusal))
+
+
 def _recovery_dir(bridge) -> Path:
-    """A fresh folder per restore; a same-second collision gets -02, -03 … (still sorts)."""
+    """A fresh folder per restore; a same-second collision gets -02, -03 … (still sorts).
+
+    Uses UTC for sorting consistency (S10 fix) — was local time before.
+    """
     base = config_dir(bridge) / RECOVERY_DIR
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     candidate, n = base / stamp, 1
     while candidate.exists():
         n += 1
@@ -68,35 +87,51 @@ def _fill_backup(backup: Path, files: dict) -> None:
         {"created_utc": utc_now_iso(), "files": copied, "absent": absent}))
 
 
-def backup_live(bridge, providers: list) -> tuple:
-    """(backup path, "") or ("", refusal) — copy every affected live file (task RESTORE 4).
+class RecoveryService:
+    """Encapsulates recovery backup creation + pruning (S10, S2).
 
-    A live file that does not exist yet (fresh machine) is recorded under
-    `absent`; any copy/write failure removes the incomplete folder and refuses.
+    The old module-level functions delegate to this class for backward compat.
     """
-    files = _affected_files(bridge, providers)
-    if not files:
-        return "", ""
-    backup = None
-    try:
-        backup = _recovery_dir(bridge)
-        _fill_backup(backup, files)
-    except OSError as exc:
-        if backup:
-            shutil.rmtree(str(backup), ignore_errors=True)
-        return "", (f"recovery backup failed ({exc}) — nothing was changed; "
-                    "free the locked file or folder and retry")
-    prune_recovery(bridge)
-    return str(backup), ""
+
+    def __init__(self, bridge):
+        self._bridge = bridge
+
+    def backup(self, providers: list) -> BackupResult:
+        files = _affected_files(self._bridge, providers)
+        if not files:
+            return BackupResult(path="", refusal="")
+        backup = None
+        try:
+            backup = _recovery_dir(self._bridge)
+            _fill_backup(backup, files)
+        except OSError as exc:
+            if backup:
+                shutil.rmtree(str(backup), ignore_errors=True)
+            return BackupResult(path="", refusal=(
+                f"recovery backup failed ({exc}) — nothing was changed; "
+                "free the locked file or folder and retry"))
+        self.prune()
+        return BackupResult(path=str(backup), refusal="")
+
+    def prune(self) -> None:
+        base = config_dir(self._bridge) / RECOVERY_DIR
+        dirs = sorted(d for d in base.iterdir() if d.is_dir()) if base.exists() else []
+        stale = dirs[:-RECOVERY_KEEP]
+        for folder in stale:
+            shutil.rmtree(str(folder), ignore_errors=True)
+        if stale:
+            log_message(self._bridge,
+                        f"🧹 Workspace recovery: pruned {len(stale)} old backup(s) "
+                        f"(keeping the last {RECOVERY_KEEP})")
+
+
+# ---- module-level wrappers for backward compat ----
+
+def backup_live(bridge, providers: list) -> BackupResult:
+    """Backup every affected live file — returns BackupResult (path or refusal)."""
+    return RecoveryService(bridge).backup(providers)
 
 
 def prune_recovery(bridge) -> None:
     """Keep the last RECOVERY_KEEP recovery snapshots (oldest removed, logged once)."""
-    base = config_dir(bridge) / RECOVERY_DIR
-    dirs = sorted(d for d in base.iterdir() if d.is_dir()) if base.exists() else []
-    stale = dirs[:-RECOVERY_KEEP]
-    for folder in stale:
-        shutil.rmtree(str(folder), ignore_errors=True)
-    if stale:
-        log_message(bridge, f"🧹 Workspace recovery: pruned {len(stale)} old backup(s) "
-                            f"(keeping the last {RECOVERY_KEEP})")
+    RecoveryService(bridge).prune()

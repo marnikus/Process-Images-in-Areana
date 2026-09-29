@@ -13,7 +13,8 @@ from pathlib import Path
 from app.persistence.cooldown_store import load_entries, load_stats, normalize_url
 from app.persistence.json_store import save_json_atomic
 from app.services.cooldown_service import restore_cooldown_entry, restore_page_stats
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture
+from app.services.workspace.provider import ApplyOutcome
+from app.services.workspace.providers._base import JsonFileProvider
 
 _SECTIONS = ("version", "entries", "stats", "aliases")
 
@@ -32,7 +33,7 @@ def sections_error(doc) -> str | None:
     return None
 
 
-class CooldownsProvider(StateProvider):
+class CooldownsProvider(JsonFileProvider):
     """Wall-clock cooldown timers + job counters + readable tab aliases."""
 
     domain_id = "cooldowns"
@@ -40,12 +41,10 @@ class CooldownsProvider(StateProvider):
     native_rel_path = "state/cooldowns.json"
     schema_version = "1"
     sensitivity = "personal"   # aliases carry account e-mails
+    empty_note = "no live cooldown file — captured empty"
 
-    def live_paths(self, bridge) -> list:
-        return self._one_file(cooldown_file(bridge))
-
-    def capture(self, bridge) -> CaptureResult:
-        return live_capture(cooldown_file(bridge), "no live cooldown file — captured empty")
+    def file_path(self, bridge) -> Path:
+        return cooldown_file(bridge)
 
     def validate(self, doc) -> str | None:
         return sections_error(doc)

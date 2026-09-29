@@ -8,10 +8,13 @@ monotonic promise — a restored log never reuses job numbers (I-61).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.persistence.json_store import save_json_atomic
 from app.persistence.workspace.errors import WorkspaceError
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture
 from app.services.job_history import JobHistoryStore, _history_file
+from app.services.workspace.provider import ApplyOutcome
+from app.services.workspace.providers._base import JsonFileProvider
 
 
 def history_error(doc) -> str | None:
@@ -25,7 +28,7 @@ def history_error(doc) -> str | None:
     return None
 
 
-class JobHistoryProvider(StateProvider):
+class JobHistoryProvider(JsonFileProvider):
     """One append-only row per finished job (display history, never the queue — RULE 14)."""
 
     domain_id = "job_history"
@@ -34,11 +37,8 @@ class JobHistoryProvider(StateProvider):
     schema_version = "1"
     sensitivity = "personal"   # rows carry local file paths
 
-    def live_paths(self, bridge) -> list:
-        return self._one_file(_history_file(bridge))
-
-    def capture(self, bridge) -> CaptureResult:
-        return live_capture(_history_file(bridge))
+    def file_path(self, bridge) -> Path:
+        return _history_file(bridge)
 
     def validate(self, doc) -> str | None:
         return history_error(doc)
