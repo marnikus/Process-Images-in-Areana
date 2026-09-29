@@ -270,33 +270,76 @@ async def _run(move: _Move) -> tuple[bool, str]:
     return True, f"new chat ready in the new tab {move.new.id[:12]}"
 
 
+async def _get_storage_from_move(move: _Move) -> dict:
+    """LocalStorage from old tab (best effort)."""
+    try:
+        client = _pick_client_for_context(move)
+        if client is None:
+            return {}
+        js = """(() => { try { const o={}; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); o[k]=localStorage.getItem(k); } return JSON.stringify(o); } catch(e){ return "{}"; } })()"""
+        resp = await client.send("Runtime.evaluate", {"expression": js, "returnByValue": True})
+        val = ""
+        if isinstance(resp, dict):
+            r = resp.get("result", {}).get("result", {}) if "result" in resp else resp
+            val = r.get("value", "") if isinstance(r, dict) else ""
+        if not val:
+            return {}
+        import json as _json
+        data = _json.loads(val) if isinstance(val, str) else {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+async def _set_storage_to_move(move: _Move, data: dict) -> None:
+    """Set localStorage into new tab (best effort)."""
+    if not data:
+        return
+    try:
+        client = _pick_client_for_context(move)
+        if client is None:
+            client = getattr(move.ctx, "client", None)
+        if client is None:
+            return
+        import json as _json
+        # Limit to 50 keys to avoid huge payload
+        limited = dict(list(data.items())[:50])
+        js_data = _json.dumps(limited)
+        js = f"""((d) => {{ try {{ for(const [k,v] of Object.entries(d)){{ localStorage.setItem(k,v); }} return true; }} catch(e){{ return false; }} }})({js_data})"""
+        await client.send("Runtime.evaluate", {"expression": js})
+    except Exception:
+        pass
+
+
 async def _open_and_prove(move: _Move) -> tuple[bool, str]:
     """Open the tab, move every client onto it, prove it is a ready new chat."""
-    # Capture old session (cookies) before moving clients away from old tab
     old_cookies = await _get_cookies_from_move(move)
+    old_storage = await _get_storage_from_move(move)
     move.new, err = await _try_open_same_context(move)
     if move.new is None:
         move.new, err = await asyncio.to_thread(open_tab_sync, *move.endpoint, move.url)
     if move.new is None:
         return False, f"the new tab did not open ({err})"
-    _log(move, f"🗂 New tab {move.new.id[:12]} opened at {move.new.url} — connecting {move.label}", "info")
+    _log(move, f"🗂 New tab {move.new.id[:12]} opened at {move.new.url} — connecting {move.label} ctx={move.old_context or 'default'}", "info")
     if not await _connect_all(move.clients, move.new.ws_url):
         return False, "could not connect to the new tab"
-    # Restore session to new tab to keep same Arena account/profile
     if old_cookies:
         await _set_cookies_to_move(move, old_cookies)
+    if old_storage:
+        await _set_storage_to_move(move, old_storage)
+    if old_cookies or old_storage:
         await _reload_after_cookies(move)
     return await _prove_new_chat(move)
 
 
 async def _reload_after_cookies(move: _Move) -> None:
-    """Reload new tab after cookie restore (best effort)."""
+    """Reload new tab after session restore (best effort)."""
     try:
         client = _pick_client_for_context(move)
         if client is None:
             return
         await client.send("Page.reload")
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(0.8)
     except Exception:
         pass
 
