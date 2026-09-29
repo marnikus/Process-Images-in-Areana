@@ -515,9 +515,9 @@
     "file_lines": 225
   },
   "app/browser/cdp_arena/mixins.py": {
-    "max_func_loc": 7,
+    "max_func_loc": 8,
     "max_class_loc": 22,
-    "func_count": 28,
+    "func_count": 31,
     "funcs": {
       "__init__": 3,
       "set_log_callback": 2,
@@ -545,15 +545,15 @@
       "_poll_output_diag": 4,
       "wait_for_new_output": 4,
       "capture_text_baseline": 3,
-      "_poll_text_diag": 4,
-      "wait_for_new_text_output": 4
+      "_poll_text_diag": 5,
+      "wait_for_new_text_output": 8
     },
     "max_methods": 7,
     "max_cc": 3,
     "max_cog": 0,
     "max_nest": 1,
     "max_params": 5,
-    "file_lines": 118
+    "file_lines": 139
   },
   "app/browser/cdp_arena/output.py": {
     "max_func_loc": 16,
@@ -709,6 +709,39 @@
     "max_nest": 2,
     "max_params": 4,
     "file_lines": 100
+  },
+  "app/browser/cdp_arena/text_output.py": {
+    "max_func_loc": 19,
+    "max_class_loc": 7,
+    "func_count": 20,
+    "funcs": {
+      "_run_resume_gate": 8,
+      "_scan_safely": 7,
+      "_poll_text_diag": 9,
+      "_read_check": 6,
+      "_no_result_diag": 6,
+      "_frozen_diag": 6,
+      "_security_gate": 11,
+      "_settle_timed": 5,
+      "_map_wait_result": 18,
+      "_timeout_text": 3,
+      "_last_check": 7,
+      "_spinner_note": 3,
+      "_build_poll_context": 16,
+      "_prepare_wait": 7,
+      "_run_wait": 19,
+      "_poll_text_diag_or_revive": 8,
+      "capture_text_baseline": 8,
+      "wait_for_new_text_output": 9,
+      "check_fn": 6,
+      "_log": 3
+    },
+    "max_methods": 0,
+    "max_cc": 7,
+    "max_cog": 0,
+    "max_nest": 2,
+    "max_params": 4,
+    "file_lines": 233
   },
   "app/browser/cdp_arena.py": {
     "max_func_loc": 0,
@@ -1338,6 +1371,21 @@
     "max_nest": 0,
     "max_params": 0,
     "file_lines": 9
+  },
+  "app/browser/text_output_probes.py": {
+    "max_func_loc": 2,
+    "max_class_loc": 0,
+    "func_count": 2,
+    "funcs": {
+      "build_baseline_text_js": 2,
+      "build_check_text_js": 2
+    },
+    "max_methods": 0,
+    "max_cc": 2,
+    "max_cog": 0,
+    "max_nest": 0,
+    "max_params": 3,
+    "file_lines": 476
   },
   "app/browser/uivision/__init__.py": {
     "max_func_loc": 0,
@@ -4354,6 +4402,38 @@
     "max_nest": 1,
     "max_params": 3,
     "file_lines": 19
+  },
+  "app/services/new_tab/handover.py": {
+    "max_func_loc": 21,
+    "max_class_loc": 0,
+    "func_count": 19,
+    "funcs": {
+      "_patched": 13,
+      "_open_tab_sync": 3,
+      "_close_tab_sync": 3,
+      "_fetch_tabs_sync": 3,
+      "_wait_new_chat_ready": 3,
+      "_read_chat_page": 3,
+      "_get_const": 8,
+      "handover": 11,
+      "_hold_reconciler": 9,
+      "_run": 15,
+      "_open_and_prove": 20,
+      "_prove_new_chat": 18,
+      "_connect_all": 4,
+      "_roll_back": 7,
+      "_move_worker": 21,
+      "_close_old": 11,
+      "_gone": 12,
+      "_quietly": 7,
+      "_log": 5
+    },
+    "max_methods": 0,
+    "max_cc": 9,
+    "max_cog": 0,
+    "max_nest": 2,
+    "max_params": 3,
+    "file_lines": 243
   },
   "app/services/new_tab/matching.py": {
     "max_func_loc": 23,
