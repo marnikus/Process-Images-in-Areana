@@ -174,9 +174,6 @@ class MainWindow(QMainWindow):
 
     def _drop_browser_sockets(self):
         """Close what the app keeps open in a browser — never a reason to fail a close."""
-        client = getattr(self, "cdp_client", None)
-        if not client:
-            return
         try:
             import asyncio
             loop = None
@@ -184,19 +181,147 @@ class MainWindow(QMainWindow):
                 loop = asyncio.get_event_loop()
             except Exception:
                 loop = None
-            if loop is not None and loop.is_running():
-                task = loop.create_task(client.disconnect())
-                task.add_done_callback(lambda t: None)
-            else:
-                # No running loop at exit – drop refs so no pending task warning
-                try:
-                    client._ws = None
-                    client._connected = False
-                    rt = getattr(client, "_receive_task", None)
-                    if rt:
-                        rt.cancel()
-                    client._receive_task = None
-                except Exception:
-                    pass
+            pool = getattr(getattr(self, "bridge", None), "_page_pool", None)
+            if pool is not None:
+                _drop_pool_sockets(pool, loop)
+            client = getattr(self, "cdp_client", None)
+            if client:
+                _drop_main_client(client, loop)
         except Exception:
             pass
+
+
+def _drop_main_client(client, loop):
+    """Disconnect main CDP client (best effort)."""
+    try:
+        if loop is not None and loop.is_running():
+            task = loop.create_task(client.disconnect())
+            task.add_done_callback(lambda t: None)
+        else:
+            _sync_drop_client(client)
+    except Exception:
+        pass
+
+
+def _drop_pool_sockets(pool, loop):
+    """Reload (F5) and disconnect all pooled tabs — clean on app close."""
+    try:
+        tab_ids = list(getattr(pool, "_pages", {}).keys())
+        for tid in tab_ids:
+            try:
+                _drop_one_pooled_tab(pool, tid, loop)
+            except Exception:
+                continue
+        try:
+            pool._pages.clear()
+            pool._clients.clear()
+            pool._controllers.clear()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _drop_one_pooled_tab(pool, tab_id, loop):
+    """One pooled tab: schedule async cleanup or sync drop."""
+    try:
+        client, ctrl = pool.get_clients(tab_id)
+        if loop is not None and loop.is_running():
+            _schedule_pool_tab_cleanup(pool, tab_id, loop)
+        else:
+            _sync_drop_client(client)
+    except Exception:
+        pass
+
+
+def _schedule_pool_tab_cleanup(pool, tab_id, loop):  # quality-override: params=3 reason=pool,tab_id,loop needed for cleanup scheduling
+    """Schedule badge clear, overlay hide, reload (F5) and disconnect for one tab."""
+    try:
+        import asyncio
+        client, ctrl = pool.get_clients(tab_id)
+        if client is None:
+            return
+        task = loop.create_task(_clean_pool_tab(client, ctrl, tab_id))
+        task.add_done_callback(lambda t: None)
+    except Exception:
+        try:
+            client, _ = pool.get_clients(tab_id)
+            _sync_drop_client(client)
+        except Exception:
+            pass
+
+
+async def _clean_pool_tab(client, ctrl, tab_id):
+    """Clean one tab: badge, overlay, reload, disconnect."""
+    try:
+        await _clear_badge_async(client, tab_id)
+        await _hide_overlay_async(client, ctrl)
+        await _reload_tab_async(client)
+    finally:
+        await _disconnect_client_async(client)
+
+
+async def _clear_badge_async(client, tab_id):
+    """Remove worker badge from tab."""
+    try:
+        from app.services.live.worker_badges import clear_badge
+        await clear_badge(client, tab_id)
+    except Exception:
+        pass
+
+
+async def _hide_overlay_async(client, ctrl):
+    """Hide watcher overlay."""
+    try:
+        if ctrl and hasattr(ctrl, "hide_watcher_overlay"):
+            await ctrl.hide_watcher_overlay()
+    except Exception:
+        pass
+    try:
+        await client.send("Runtime.evaluate", {
+            "expression": "document.getElementById('arena-watcher-overlay')?.remove(); document.getElementById('arena-watcher-style-v2')?.remove(); true"
+        })
+    except Exception:
+        pass
+
+
+async def _reload_tab_async(client):
+    """Reload tab (F5) to clean state."""
+    try:
+        await client.send("Page.reload")
+    except Exception:
+        try:
+            await client.evaluate("window.location.reload(); true")
+        except Exception:
+            pass
+    try:
+        import asyncio
+        await asyncio.sleep(0.2)
+    except Exception:
+        pass
+
+
+async def _disconnect_client_async(client):
+    """Disconnect client."""
+    try:
+        await client.disconnect()
+    except Exception:
+        _sync_drop_client(client)
+
+
+def _sync_drop_client(client):
+    """Sync drop when no running loop."""
+    if not client:
+        return
+    try:
+        client._ws = None
+        client._connected = False
+        rt = getattr(client, "_receive_task", None)
+        if rt:
+            try:
+                rt.cancel()
+            except Exception:
+                pass
+        client._receive_task = None
+    except Exception:
+        pass
