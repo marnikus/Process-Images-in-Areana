@@ -88,6 +88,50 @@ class _Move:
     clients: List[Any] = field(default_factory=list)
     new: Optional[TabInfo] = None
     old_owner: str = ""
+    old_context: str = ""
+    pattern: str = "arena.ai"
+    profile_count: int = 0
+
+
+def _get_pattern(bridge: Any) -> str:
+    """URL pattern that decides which tabs suit pool (default arena.ai)."""
+    try:
+        cfg = getattr(bridge, "config", None)
+        if cfg is not None:
+            return str(cfg.get_state("url_pattern", "arena.ai") or "arena.ai")
+    except Exception:
+        pass
+    return "arena.ai"
+
+
+def _matches_pattern(url: str, pattern: str) -> bool:
+    try:
+        return pattern.lower() in (url or "").lower()
+    except Exception:
+        return False
+
+
+def _count_profile_tabs(pool: Any, endpoint: tuple, pattern: str) -> int:
+    """How many pooled tabs from same endpoint match pattern (profile tab count)."""
+    try:
+        host, port = endpoint
+        cnt = 0
+        with pool._lock:
+            for tid, page in pool._pages.items():
+                try:
+                    client, _ = pool.get_clients(tid)
+                    ep = _endpoint_from_client(client)
+                    if ep is None:
+                        continue
+                    if ep[0] != host or ep[1] != port:
+                        continue
+                    if _matches_pattern(getattr(page, "url", ""), pattern):
+                        cnt += 1
+                except Exception:
+                    continue
+        return cnt
+    except Exception:
+        return 0
 
 
 async def handover(ctx: Any, url: str, timeout_sec: float) -> tuple[bool, str]:
@@ -135,9 +179,14 @@ def _plan(ctx: Any, url: str, timeout_sec: float) -> Optional[_Move]:
         return None
     pooled, _ = pool.get_clients(ctx.tab_id)
     old_owner = str(getattr(page, "owner", "") or "")
+    endpoint = _resolve_endpoint(ctx, pooled)
+    pattern = _get_pattern(ctx.bridge)
+    count = _count_profile_tabs(pool, endpoint, pattern)
     move = _Move(ctx, url, timeout_sec, ctx.tab_id, page.ws_url, page.url, tab_label_of(pool, ctx.tab_id))
     move.old_owner = old_owner
-    move.endpoint = _resolve_endpoint(ctx, pooled)
+    move.endpoint = endpoint
+    move.pattern = pattern
+    move.profile_count = count
     move.clients = _clients_on(ctx)
     return move
 
@@ -168,7 +217,9 @@ async def _hold_reconciler(bridge: Any) -> bool:
 async def _run(move: _Move) -> tuple[bool, str]:
     """Open + prove → move the worker → close the old tab; a failed proof rolls back."""
     _log(move, f"🗂 New chat as a new tab: opening {move.url} — {move.label}'s old tab "
-               f"{move.old_id[:12]} ({move.old_url}) closes after", "info")
+               f"{move.old_id[:12]} ({move.old_url}) closes after — "
+               f"profile {move.endpoint[0]}:{move.endpoint[1]} owner={move.old_owner or 'unknown'} "
+               f"tabs matching '{move.pattern}' in profile: {move.profile_count}", "info")
     ok, why = await _open_and_prove(move)
     if not ok:
         await _roll_back(move, why)
@@ -284,8 +335,10 @@ def _move_worker(move: _Move) -> None:
     mark_receivers(ctx.bridge.state.urls, ctx.pool)
     for step in ("_save_arena", "_persist_cooldowns", "_emit_pool_status"):
         _quietly(getattr(ctx.bridge, step, None))
+    new_count = _count_profile_tabs(ctx.pool, move.endpoint, move.pattern)
     _log(move, f"🗂 {move.label} now works in tab {new.id[:12]} (was {move.old_id[:12]}) — "
-               f"cooldown, job count and number kept", "info")
+               f"cooldown, job count and number kept — profile {move.endpoint[0]}:{move.endpoint[1]} "
+               f"tabs matching '{move.pattern}': {move.profile_count} → {new_count}", "info")
 
 
 def _preserve_owner_after_move(pool: Any, new_id: str, old_owner: str) -> None:
