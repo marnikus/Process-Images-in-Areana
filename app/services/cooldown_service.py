@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.browser.new_chat import ResetCtx, reset_to_new_chat
-from app.services import new_tab
+from app.services import new_tab, new_tab_setting
 from app.browser.page_status import PageInfo, PageStatus, now_iso
 from app.services.job_count import register_job_done, restore_page_stats  # noqa: F401 (re-export)
 from app.core.cooldown import (
@@ -762,7 +762,7 @@ async def _best_effort_reset(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, 
 
 async def _try_new_tab(ctx: FinishCtx, timeout_sec: float) -> tuple[bool, str]:
     """I-79: the Settings option moves the worker to a new tab; (False, why) = reset in place."""
-    url = new_tab.wanted_url(ctx.bridge)
+    url = new_tab_setting.wanted_url(ctx.bridge)
     if not url or _is_cancelled(ctx.bridge):
         return False, "new-tab option off (or run cancelled)"
     return await new_tab.handover(ctx, url, timeout_sec)

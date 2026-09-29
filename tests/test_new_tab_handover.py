@@ -1,52 +1,510 @@
-"""I-79 — "Start new chat as new tab": the worker moves to a fresh tab, the old tab closes.
+"""I-79 — "Start new chat as new tab": the fresh tab lives in the job tab's own profile.
 
-Real PagePool, real AliasBook, real UrlRows; the browser (tab list, open, close) and
-the CDP clients are fakes. Design: docs/archive/2026-09-28-new-chat-new-tab/design.md.
+The fake world models what the handover must believe: **one browser per endpoint**, every tab with
+its own browser context, and the ways a tab really appears in it — `Target.createTarget` honouring
+a context, the same call silently landing in the default profile (the reported A2 bug), and the
+page's own `window.open` (profile-locked). Real PagePool, real AliasBook, real UrlRows, real JS
+payload for the page opener; the browser and the CDP socket are fakes. Design:
+docs/archive/2026-09-29-new-chat-new-tab-profile-truth/design.md.
 """
 from __future__ import annotations
 
 import asyncio
-import io
-import urllib.error
+import json
+import re
 from types import SimpleNamespace
 
 import pytest
 
-from app.browser.cdp import tabs as cdp_tabs
+from app.browser.cdp import browser_targets as bt
 from app.browser.cdp.tabs import TabInfo
 from app.browser.page_pool import PagePool, retarget_page
 from app.browser.page_status import PageInfo
 from app.core.models import UrlRow
 from app.core.tab_alias import AliasBook
-from app.services import new_tab
+from app.services import new_tab, new_tab_setting
 from app.services.cooldown_service import FinishCtx
 
+pytestmark = pytest.mark.unit
+
 NEW_URL = "https://arena.ai/image/direct?model_a=max"
+DEFAULT_CTX = ""            # Chrome's default profile: TargetInfo carries no browserContextId
+PROFILE_2 = "CTX-P2"
+_POPUP_URL_RE = re.compile(r'const url = ("(?:[^"\\]|\\.)*")')
 
 
-# ── browser pieces ──────────────────────────────────────────────────────────
+# ── the browser ─────────────────────────────────────────────────────────────
 
-def test_alias_book_adopt_moves_the_number_and_owner_to_the_new_tab():
-    book = AliasBook()
-    no = book.no_for("OLD")
-    book.remember("OLD", "user@example.com")
-    book.adopt("NEW", "OLD")
-    assert book.no_for("NEW") == no and book.owner_for("NEW") == "user@example.com"
-    assert "OLD" not in book.as_dict()
+class FakeBrowser:
+    """One Chrome at one endpoint: its targets, their profile contexts and what it allows."""
+
+    def __init__(self, host="127.0.0.1", port=9333):
+        self.host, self.port = host, port
+        self.tabs: dict[str, dict] = {}
+        self.owners: dict[str, str] = {}      # context id → the account signed in there
+        self.tab_owners: dict[str, str] = {}  # per-tab override (a lying page)
+        self.seq = 0
+        self.silent = False          # Target.getTargets answers nothing: the profile is unprovable
+        self.refuse_ctx = False      # a regular profile: createTarget{browserContextId} is refused
+        self.reuse_default = False   # createTarget lands in the default profile regardless (A2)
+        self.popup_allowed = True
+        self.close_ignored = False
+        self.wrong_owner_after_open = False
+        self.calls: list[tuple] = []
+        self.opened: list[str] = []
+        self.closed: list[str] = []
+
+    def add(self, tab_id, url="https://arena.ai/c/1", ctx=DEFAULT_CTX, opener="", owner=""):
+        row = {"targetId": tab_id, "type": "page", "title": "", "url": url, "attached": False}
+        if ctx:
+            row["browserContextId"] = ctx
+        if opener:
+            row["openerId"] = opener
+        self.tabs[tab_id] = row
+        if owner:
+            self.tab_owners[tab_id] = owner      # a label this tab already shows
+        return tab_id
+
+    def infos(self) -> list[dict]:
+        return [dict(row) for row in self.tabs.values()]
+
+    def ctx_of(self, tab_id: str) -> str:
+        return self.tabs[tab_id].get("browserContextId", DEFAULT_CTX)
+
+    def owner_of(self, tab_id: str) -> str:
+        if tab_id in self.tab_owners:
+            return self.tab_owners[tab_id]
+        return self.owners.get(self.ctx_of(tab_id), "")
+
+    def _new_id(self, prefix="NEW"):
+        self.seq += 1
+        return f"{prefix}{self.seq}"
+
+    def create(self, url, ctx):
+        self.calls.append(("create", url, ctx))
+        if ctx and self.refuse_ctx:
+            return "", f"Failed to find browser context with id {ctx}"
+        landed = DEFAULT_CTX if (self.reuse_default or not ctx) else ctx
+        return self.add(self._new_id(), url, landed), ""
+
+    def popup(self, opener_id, url):
+        self.calls.append(("popup", opener_id, url))
+        if opener_id not in self.tabs:
+            return "", "the page is gone"
+        if not self.popup_allowed:
+            return "", "window.open returned null (popup blocked)"
+        tid = self.add(self._new_id("POP"), url, self.ctx_of(opener_id), opener=opener_id)
+        if self.wrong_owner_after_open:
+            self.tab_owners[tid] = "other@example.com"
+        return tid, ""
+
+    def close(self, tab_id):
+        self.calls.append(("close", tab_id))
+        if not self.close_ignored:
+            self.tabs.pop(tab_id, None)
+            self.closed.append(tab_id)
+        return True, ""
+
+    def listing(self, host, port, timeout=3.0):
+        pages = [t for t in self.tabs.values() if t["type"] == "page"]
+        return ([TabInfo(t["targetId"], t.get("title", ""), t["url"],
+                         f"ws://{host}:{port}/devtools/page/{t['targetId']}") for t in pages],
+                "", [f"http://{host}:{port}/json/list"])
 
 
-def test_alias_book_adopt_of_an_unknown_tab_changes_nothing():
-    book = AliasBook()
-    book.adopt("NEW", "NOPE")
-    assert len(book) == 0
+class FakeProbe:
+    """`BrowserTargets`' contract over one `FakeBrowser` (the `dial` seam's result)."""
+
+    def __init__(self, browser):
+        self.browser, self.closed = browser, False
+
+    async def targets(self):
+        if self.browser.silent:
+            return [], "the browser did not answer Target.getTargets"
+        return self.browser.infos(), ""
+
+    async def create(self, url, context_id):
+        return self.browser.create(url, context_id)
+
+    async def close(self, tab_id):
+        return self.browser.close(tab_id)
+
+    async def aclose(self):
+        self.closed = True
 
 
-def _pool_with(*tab_ids):
+class FakePageClient:
+    """A CDP client on one tab: `connect` follows the move, `evaluate`/`send` answer the page probes."""
+
+    def __init__(self, browser, tab_id, owner_visible=True, host=None, port=None):
+        self._host = host or browser.host
+        self._port = port or browser.port
+        self.browser, self.owner_visible = browser, owner_visible
+        self._current_tab_id = tab_id
+        self.moves: list[str] = []
+
+    async def connect(self, ws_url):
+        self.moves.append(ws_url)
+        self._current_tab_id = ws_url.rsplit("/", 1)[-1]
+        return True
+
+    def _answer(self) -> str:
+        return self.browser.owner_of(self._current_tab_id) if self.owner_visible else ""
+
+    async def evaluate(self, expression, await_promise=True, timeout=30.0):
+        return {"email": self._answer()}
+
+    async def send(self, method, params=None, timeout=30):
+        expr = (params or {}).get("expression", "")
+        if "window.open" in expr:                       # the real popup payload, page-side
+            url = json.loads(_POPUP_URL_RE.search(expr).group(1))
+            tid, err = self.browser.popup(self._current_tab_id, url)
+            value = {"ok": True} if tid else {"ok": False, "error": err}
+            return {"id": 1, "result": {"result": {"type": "object", "value": value}}}
+        return {"id": 1, "result": {"result": {"type": "object", "value": {"email": self._answer()}}}}
+
+
+# ── the world ───────────────────────────────────────────────────────────────
+
+def _pool_with(*tab_ids, host="127.0.0.1", port=9333):
     pool = PagePool(alias_book=AliasBook())
     for tid in tab_ids:
-        pool.add_page(PageInfo(tab_id=tid, ws_url=f"ws://h:9/devtools/page/{tid}", url="https://arena.ai/c/1"))
+        pool.add_page(PageInfo(tab_id=tid, ws_url=f"ws://{host}:{port}/devtools/page/{tid}",
+                               url="https://arena.ai/c/1"))
     return pool
 
+
+async def _always_ready(reset_ctx):
+    return True, "new chat ready"
+
+
+async def _always_new(client):
+    return True, "new chat"
+
+
+def _world(monkeypatch, *, old_ctx=DEFAULT_CTX, other_ctx=DEFAULT_CTX, host="127.0.0.1", port=9333,
+           old_owner="anton@example.com", other_owner="mxxy@example.com", owner_visible=True):
+    """The pool, the bridge and the job tab (OLD) + a second tab (OTHER) at one endpoint."""
+    browser = FakeBrowser(host, port)
+    browser.add("OLD", "https://arena.ai/c/1", old_ctx, owner=old_owner)
+    browser.add("OTHER", "https://arena.ai/c/2", other_ctx, owner=other_owner)
+    browser.owners = {old_ctx: old_owner}     # a tab opened into the job's profile keeps its account
+    world = SimpleNamespace(browser=browser, dialed=[], probes=[], logs=[], saved=[])
+    world.owner_visible = owner_visible
+
+    async def fake_dial(h, p, timeout_sec=5.0):
+        world.dialed.append((h, p))
+        if (h, p) != (host, port):
+            return None, f"no browser at {h}:{p}"
+        probe = FakeProbe(browser)
+        world.probes.append(probe)
+        return probe, ""
+
+    async def fake_ready(reset_ctx):
+        return True, "new chat ready"
+
+    async def fake_read(client):
+        return True, "new chat"
+
+    monkeypatch.setattr(bt, "dial", fake_dial)
+    monkeypatch.setattr(new_tab, "wait_new_chat_ready", fake_ready)
+    monkeypatch.setattr(new_tab, "read_chat_page", fake_read)
+    pool = _pool_with("OLD", "OTHER", host=host, port=port)
+    pool.get_page("OLD").jobs_completed = 3
+    pool.get_page("OLD").owner = old_owner        # the pool's label the handover must keep
+    job_client = FakePageClient(browser, "OLD", owner_visible=owner_visible)
+    pooled_client = FakePageClient(browser, "OLD", owner_visible=owner_visible)
+    home_client = FakePageClient(browser, "OLD", owner_visible=owner_visible)
+    pool.register_client("OLD", pooled_client, object())
+    rows = [UrlRow(id="r1", url="https://arena.ai/c/1", enabled=True, tab_id="OLD"),
+            UrlRow(id="r2", url="https://arena.ai/c/2", enabled=True, tab_id="OTHER")]
+    bridge = SimpleNamespace(
+        state=SimpleNamespace(urls=rows), _auto_scan_running=False, cdp=home_client,
+        _cancel_requested=False,
+        _log=lambda m, l="info": world.logs.append((l, m)),
+        _save_arena=lambda: world.saved.append("arena"),
+        _persist_cooldowns=lambda: world.saved.append("cooldowns"),
+        _emit_pool_status=lambda: None)
+    world.pool, world.rows, world.bridge = pool, rows, bridge
+    world.clients = SimpleNamespace(job=job_client, pooled=pooled_client, home=home_client)
+    world.ctx = FinishCtx(pool=pool, bridge=bridge, tab_id="OLD", ctrl=object(), client=job_client)
+    return world
+
+
+def _run(world, url=NEW_URL):
+    return asyncio.run(new_tab.handover(world.ctx, url, timeout_sec=5))
+
+
+def _mutations(world) -> list[tuple]:
+    """Everything that changed the browser's tab set."""
+    return [c for c in world.browser.calls if c[0] in ("create", "popup", "close")]
+
+
+def _text(world) -> str:
+    return " | ".join(m for _, m in world.logs)
+
+
+# ── the tab's own profile is the truth (v5) ─────────────────────────────────
+
+def test_the_new_tab_opens_in_the_job_tabs_own_profile(monkeypatch):
+    """A regular Chrome profile refuses CDP creation — the job tab's own page opens the tab."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.refuse_ctx = True
+    ok, why = _run(w)
+    assert ok, why
+    new_id = w.ctx.tab_id
+    assert new_id != "OLD" and w.browser.ctx_of(new_id) == PROFILE_2
+    assert w.browser.tabs["OTHER"]["targetId"] == "OTHER"        # the other profile untouched
+    assert "OLD" not in w.browser.tabs                            # the old tab of that profile closed
+    assert w.pool.get_page("OLD") is None and w.pool.get_page(new_id).jobs_completed == 3
+    assert (w.rows[0].tab_id, w.rows[0].url, w.rows[0].enabled) == (new_id, NEW_URL, True)
+    assert w.rows[1].tab_id == "OTHER"
+    assert w.pool.get_page(new_id).ws_url == f"ws://127.0.0.1:9333/devtools/page/{new_id}"
+    for client in (w.clients.job, w.clients.pooled, w.clients.home):   # every holder moved
+        assert client._current_tab_id == new_id
+    assert w.dialed == [("127.0.0.1", 9333)] and w.probes[0].closed is True
+    assert w.bridge._auto_scan_running is False
+
+
+def test_the_cdp_creation_is_tried_first_in_the_job_tabs_context(monkeypatch):
+    """A context Chrome can create into (an OTR/devtools context) needs no page involvement."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    ok, why = _run(w)
+    assert ok, why
+    assert [c for c in w.browser.calls if c[0] == "create"] == [("create", NEW_URL, PROFILE_2)]
+    assert [c for c in w.browser.calls if c[0] == "popup"] == []
+    assert w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2
+
+
+def test_a_wrong_profile_tab_is_closed_again_and_the_handover_refused(monkeypatch):
+    """The reported A2: the browser ignores the context and opens in the default profile."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.reuse_default = True
+    w.browser.popup_allowed = False
+    ok, why = _run(w)
+    assert not ok and "profile" in why.lower()
+    assert w.ctx.tab_id == "OLD" and "OLD" in w.browser.tabs
+    assert w.pool.get_page("OLD") is not None and w.rows[0].tab_id == "OLD"
+    foreign = [t for t in w.browser.tabs if w.browser.ctx_of(t) != PROFILE_2]
+    assert foreign == ["OTHER"]                       # the wrong-profile tab was closed again
+    assert [c for c in w.browser.calls if c[0] == "close"] == [("close", "NEW1")]
+    assert w.clients.job._current_tab_id == "OLD"     # no client was left on the foreign tab
+
+
+def test_an_unanswered_target_list_is_no_handover(monkeypatch):
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.silent = True
+    ok, why = _run(w)
+    assert not ok and "Target.getTargets" in why
+    assert _mutations(w) == [] and w.ctx.tab_id == "OLD"
+
+
+def test_a_job_tab_that_is_not_in_its_own_browser_is_no_handover(monkeypatch):
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.tabs.pop("OLD")
+    ok, why = _run(w)
+    assert not ok and "browser" in why.lower()
+    assert _mutations(w) == [] and w.ctx.tab_id == "OLD"
+
+
+def test_a_blocked_popup_refuses_the_handover_instead_of_opening_elsewhere(monkeypatch):
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.browser.popup_allowed = False
+    ok, why = _run(w)
+    assert not ok and "popup" in why.lower()
+    assert w.browser.tabs["OLD"]["targetId"] == "OLD" and w.ctx.tab_id == "OLD"
+    assert w.rows[0].tab_id == "OLD" and w.pool.get_page("OLD").jobs_completed == 3
+
+
+def test_the_endpoint_is_the_job_tabs_own_socket_not_the_clients(monkeypatch):
+    """The global and job clients may sit on another profile's endpoint — they decide nothing."""
+    w = _world(monkeypatch, port=9334)
+    for client in (w.clients.job, w.clients.home, w.ctx.client):
+        client._host, client._port = "127.0.0.1", 9222
+    ok, why = _run(w)
+    assert ok, why
+    assert w.dialed == [("127.0.0.1", 9334)]
+    assert w.browser.ctx_of(w.ctx.tab_id) == DEFAULT_CTX
+
+
+def test_the_popup_runs_on_a_client_that_sits_on_the_job_tab(monkeypatch):
+    """A drifted global client must not be the page that opens the tab (its profile would win)."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.clients.job._current_tab_id = "OTHER"       # the job's own client points elsewhere
+    ok, why = _run(w)
+    assert ok, why
+    assert w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2
+    assert w.pool.get_page(w.ctx.tab_id) is not None
+
+
+def test_no_client_on_the_job_tab_and_a_refusing_browser_refuses(monkeypatch):
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    for client in (w.clients.job, w.clients.pooled, w.clients.home):
+        client._current_tab_id = "OTHER"
+    ok, why = _run(w)
+    assert not ok and "job tab" in why
+    assert w.ctx.tab_id == "OLD" and w.browser.closed == [] and "OLD" in w.browser.tabs
+
+
+def test_a_tab_whose_socket_is_unreadable_is_no_handover(monkeypatch):
+    w = _world(monkeypatch)
+    w.pool.get_page("OLD").ws_url = ""
+    ok, why = _run(w)
+    assert not ok and "socket" in why.lower()
+    assert w.dialed == [] and _mutations(w) == []
+
+
+def test_the_profile_counts_in_the_log_come_from_the_browser_truth(monkeypatch):
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.add("P2B", "https://arena.ai/c/3", PROFILE_2)
+    ok, _ = _run(w)
+    assert ok
+    text = _text(w)
+    assert "this profile: 2" in text and "all contexts: 3" in text
+    assert PROFILE_2 in text
+
+
+# ── I-79 kept: proof, close, rollback ──────────────────────────────────────
+
+def test_a_new_tab_that_is_not_a_new_chat_rolls_back(monkeypatch):
+    w = _world(monkeypatch)
+    async def not_new(client):
+        return False, "an old chat"
+    monkeypatch.setattr(new_tab, "read_chat_page", not_new)
+    ok, why = _run(w)
+    assert not ok and "an old chat" in why
+    assert w.ctx.tab_id == "OLD" and "OLD" in w.browser.tabs
+    assert w.pool.get_page("OLD") is not None and w.rows[0].tab_id == "OLD"
+    assert [c for c in w.browser.calls if c[0] == "close"] == [("close", "NEW1")]  # closed again
+    for client in (w.clients.job, w.clients.pooled, w.clients.home):
+        assert client._current_tab_id == "OLD"                                      # all home
+    assert w.bridge._auto_scan_running is False
+
+
+def test_a_new_tab_that_never_gets_ready_rolls_back(monkeypatch):
+    w = _world(monkeypatch)
+    async def never(reset_ctx):
+        return False, "timeout waiting for new chat"
+    monkeypatch.setattr(new_tab, "wait_new_chat_ready", never)
+    ok, why = _run(w)
+    assert not ok and "timeout" in why and w.ctx.tab_id == "OLD"
+    assert [c for c in w.browser.calls if c[0] == "close"] == [("close", "NEW1")]
+
+
+def test_an_owner_mismatch_rolls_back(monkeypatch):
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.browser.wrong_owner_after_open = True
+    ok, why = _run(w)
+    assert not ok and "wrong profile" in why
+    assert w.ctx.tab_id == "OLD" and w.rows[0].tab_id == "OLD"
+    assert "OLD" in w.browser.tabs
+
+
+def test_an_empty_owner_answer_does_not_block_a_proven_profile(monkeypatch):
+    w = _world(monkeypatch, old_ctx=PROFILE_2, owner_visible=False)
+    w.browser.refuse_ctx = True
+    ok, why = _run(w)
+    assert ok, why
+    assert w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2
+    assert "owner" in _text(w).lower()                 # it says the account stayed unknown
+
+
+def test_the_same_new_chat_url_still_closes_the_old_tab(monkeypatch):
+    w = _world(monkeypatch)
+    w.pool.get_page("OLD").url = NEW_URL
+    w.rows[0].url = NEW_URL
+    ok, _ = _run(w)
+    assert ok and [c for c in w.browser.calls if c[0] == "close"] == [("close", "OLD")]
+    assert "OLD" not in w.browser.tabs and any("same" in m.lower() for _, m in w.logs)
+
+
+def test_an_old_tab_that_stays_open_is_reported_loudly(monkeypatch):
+    w = _world(monkeypatch)
+    w.browser.close_ignored = True
+    ok, _ = _run(w)
+    assert ok and w.ctx.tab_id != "OLD"                       # the job moved; only the close failed
+    assert [c for c in w.browser.calls if c[0] == "close"] == [("close", "OLD"), ("close", "OLD")]
+    assert any(level == "error" and "still open" in m for level, m in w.logs)
+
+
+def test_a_browser_that_cannot_be_dialled_refuses(monkeypatch):
+    w = _world(monkeypatch)
+    monkeypatch.setattr(bt, "dial", lambda h, p, timeout_sec=5.0: _none_dial(h, p))
+    ok, why = _run(w)
+    assert not ok and "not reachable" in why
+    assert _mutations(w) == [] and w.ctx.tab_id == "OLD"
+
+
+async def _none_dial(host, port):
+    return None, f"no browser at {host}:{port}"
+
+
+def test_a_client_that_cannot_follow_the_move_rolls_back(monkeypatch):
+    w = _world(monkeypatch)
+
+    async def refuse(ws_url):
+        return False
+    w.clients.home.connect = refuse
+    ok, why = _run(w)
+    assert not ok and "connect" in why
+    assert "OLD" in w.browser.tabs and w.browser.closed == ["NEW1"]
+    assert w.rows[0].tab_id == "OLD" and w.pool.get_page("OLD") is not None
+    assert w.bridge._auto_scan_running is False
+
+
+def test_an_unreadable_pattern_falls_back_to_arena(monkeypatch):
+    w = _world(monkeypatch)
+
+    def boom(*_a, **_k):
+        raise RuntimeError("no config")
+    w.bridge.config = SimpleNamespace(get_state=boom)
+    ok, why = _run(w)
+    assert ok, why
+    assert "arena.ai" in _text(w)
+
+
+def test_a_raising_owner_probe_does_not_block_a_proven_profile(monkeypatch):
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+
+    async def boom(expression, await_promise=True, timeout=30.0):
+        raise RuntimeError("evaluate failed")
+    for client in (w.clients.job, w.clients.pooled, w.clients.home):
+        client.evaluate = boom
+    ok, why = _run(w)
+    assert ok, why and w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2
+
+
+def test_a_tab_without_an_owner_label_skips_the_owner_probe(monkeypatch):
+    w = _world(monkeypatch)
+    w.pool.get_page("OLD").owner = ""
+    ok, why = _run(w)
+    assert ok, why
+    assert "owner=unknown" in _text(w)
+    assert w.browser.ctx_of(w.ctx.tab_id) == DEFAULT_CTX
+
+
+def test_a_running_reconcile_pass_means_no_handover(monkeypatch):
+    w = _world(monkeypatch)
+    w.bridge._auto_scan_running = True
+    monkeypatch.setattr(new_tab, "_RECONCILE_WAIT_SEC", 0.05)
+    ok, why = _run(w)
+    assert not ok and "reconcile" in why and w.dialed == []
+    assert w.bridge._auto_scan_running is True                # not ours to release
+
+
+def test_a_tab_not_in_the_pool_means_no_handover(monkeypatch):
+    w = _world(monkeypatch)
+    w.ctx.tab_id = "GONE"
+    ok, _ = _run(w)
+    assert not ok and w.dialed == []
+
+
+# ── the worker move (unchanged I-79 behaviour) ──────────────────────────────
 
 def test_retarget_page_keeps_the_worker_under_the_new_key_in_pool_order():
     pool = _pool_with("A", "OLD", "B")
@@ -69,220 +527,19 @@ def test_retarget_page_of_a_tab_not_in_the_pool_is_false():
     assert retarget_page(_pool_with("A"), "OLD", TabInfo("NEW", "", NEW_URL, "ws://x")) is False
 
 
-class _Resp(io.BytesIO):
-    status = 200
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-
-def test_open_tab_sync_puts_the_percent_encoded_url(monkeypatch):
-    seen = {}
-
-    def fake_urlopen(req, timeout=0):
-        seen["method"], seen["url"] = req.get_method(), req.full_url
-        return _Resp(b'{"id":"N1","title":"","url":"%s","type":"page",'
-                     b'"webSocketDebuggerUrl":"ws://127.0.0.1:9/devtools/page/N1"}' % NEW_URL.encode())
-    monkeypatch.setattr(cdp_tabs.urllib.request, "urlopen", fake_urlopen)
-    tab, err = cdp_tabs.open_tab_sync("127.0.0.1", 9, NEW_URL)
-    assert err == "" and tab.id == "N1" and tab.url == NEW_URL
-    assert seen["method"] == "PUT"
-    assert seen["url"] == "http://127.0.0.1:9/json/new?https%3A%2F%2Farena.ai%2Fimage%2Fdirect%3Fmodel_a%3Dmax"
+def test_alias_book_adopt_moves_the_number_and_owner_to_the_new_tab():
+    book = AliasBook()
+    no = book.no_for("OLD")
+    book.remember("OLD", "user@example.com")
+    book.adopt("NEW", "OLD")
+    assert book.no_for("NEW") == no and book.owner_for("NEW") == "user@example.com"
+    assert "OLD" not in book.as_dict()
 
 
-def test_open_tab_sync_failure_is_a_reason_not_a_raise(monkeypatch):
-    def boom(req, timeout=0):
-        raise urllib.error.URLError("refused")
-    monkeypatch.setattr(cdp_tabs.urllib.request, "urlopen", boom)
-    tab, err = cdp_tabs.open_tab_sync("127.0.0.1", 9, NEW_URL)
-    assert tab is None and "refused" in err
-
-
-@pytest.mark.parametrize("raised, ok", [(None, True), (404, True), (500, False)])
-def test_close_tab_sync_404_means_already_closed(monkeypatch, raised, ok):
-    def fake_urlopen(req, timeout=0):
-        if raised:
-            raise urllib.error.HTTPError(req.full_url, raised, "x", {}, None)
-        return _Resp(b"Target is closing")
-    monkeypatch.setattr(cdp_tabs.urllib.request, "urlopen", fake_urlopen)
-    assert cdp_tabs.close_tab_sync("127.0.0.1", 9, "OLD")[0] is ok
-
-
-# ── the handover ────────────────────────────────────────────────────────────
-
-class FakeBrowser:
-    """The endpoint's tab list; `close_ignored` = the browser refuses to close."""
-
-    def __init__(self, *ids):
-        self.ids = list(ids)
-        self.opened, self.closed = [], []
-        self.close_ignored = False
-        self.open_error = ""
-
-    def open(self, host, port, url):
-        if self.open_error:
-            return None, self.open_error
-        tid = f"NEW{len(self.opened) + 1}"
-        self.opened.append(url)
-        self.ids.append(tid)
-        return TabInfo(tid, "", url, f"ws://{host}:{port}/devtools/page/{tid}"), ""
-
-    def close(self, host, port, tab_id):
-        self.closed.append(tab_id)
-        if not self.close_ignored and tab_id in self.ids:
-            self.ids.remove(tab_id)
-        return True, ""
-
-    def listing(self, host, port, timeout=3.0):
-        return [TabInfo(i, "", "", f"ws://x/{i}") for i in self.ids], "", []
-
-
-class FakeClient:
-    def __init__(self, tab_id):
-        self._host, self._port = "127.0.0.1", 9333
-        self._current_tab_id = tab_id
-        self.moves = []
-
-    async def connect(self, ws_url):
-        self.moves.append(ws_url)
-        self._current_tab_id = ws_url.rsplit("/", 1)[-1]
-        return True
-
-
-def _world(monkeypatch, *, ready=(True, "new chat ready"), is_new=(True, "new chat")):
-    browser = FakeBrowser("OLD", "OTHER")
-    monkeypatch.setattr(new_tab, "open_tab_sync", browser.open)
-    monkeypatch.setattr(new_tab, "close_tab_sync", browser.close)
-    monkeypatch.setattr(new_tab, "fetch_tabs_sync", browser.listing)
-    monkeypatch.setattr(new_tab, "_GONE_POLL_SEC", 0.01)
-    monkeypatch.setattr(new_tab, "_GONE_WAIT_SEC", 0.05)
-
-    async def fake_ready(reset_ctx):
-        return ready
-    async def fake_read(client):
-        return is_new
-    monkeypatch.setattr(new_tab, "wait_new_chat_ready", fake_ready)
-    monkeypatch.setattr(new_tab, "read_chat_page", fake_read)
-    pool = _pool_with("OLD", "OTHER")
-    pool.get_page("OLD").jobs_completed = 3
-    job_client, pool_client, home_client = FakeClient("OLD"), FakeClient("OLD"), FakeClient("OLD")
-    pool.register_client("OLD", pool_client, object())
-    logs, saved = [], []
-    rows = [UrlRow(id="r1", url="https://arena.ai/c/1", enabled=True, tab_id="OLD"),
-            UrlRow(id="r2", url="https://arena.ai/c/2", enabled=True, tab_id="OTHER")]
-    bridge = SimpleNamespace(
-        state=SimpleNamespace(urls=rows), _auto_scan_running=False, cdp=home_client,
-        _log=lambda m, l="info": logs.append((l, m)), _save_arena=lambda: saved.append("arena"),
-        _persist_cooldowns=lambda: saved.append("cooldowns"), _emit_pool_status=lambda: None)
-    ctx = FinishCtx(pool=pool, bridge=bridge, tab_id="OLD", ctrl=object(), client=job_client)
-    return SimpleNamespace(browser=browser, pool=pool, bridge=bridge, ctx=ctx, logs=logs, saved=saved,
-                           rows=rows, clients=(job_client, pool_client, home_client))
-
-
-def _run(ctx, url=NEW_URL):
-    return asyncio.run(new_tab.handover(ctx, url, timeout_sec=5))
-
-
-def test_handover_moves_the_worker_to_a_new_tab_and_closes_the_old(monkeypatch):
-    w = _world(monkeypatch)
-    ok, why = _run(w.ctx)
-    assert ok, why
-    assert w.browser.opened == [NEW_URL] and w.browser.closed == ["OLD"]
-    assert w.browser.ids == ["OTHER", "NEW1"]              # old tab verified gone
-    assert w.ctx.tab_id == "NEW1"
-    moved = w.pool.get_page("NEW1")
-    assert moved.jobs_completed == 3 and w.pool.get_page("OLD") is None
-    assert (w.rows[0].tab_id, w.rows[0].url, w.rows[0].enabled) == ("NEW1", NEW_URL, True)
-    assert w.rows[1].tab_id == "OTHER"
-    for client in w.clients:                               # every holder moved, none left behind
-        assert client._current_tab_id == "NEW1"
-    assert {"arena", "cooldowns"} <= set(w.saved)
-    assert w.bridge._auto_scan_running is False            # the reconciler is free again
-    text = " | ".join(m for _, m in w.logs)
-    assert "opening" in text and "old tab closed" in text.lower()
-
-
-def test_same_new_chat_url_still_closes_the_old_tab(monkeypatch):
-    w = _world(monkeypatch)
-    w.pool.get_page("OLD").url = NEW_URL
-    w.rows[0].url = NEW_URL
-    ok, _ = _run(w.ctx)
-    assert ok and w.browser.closed == ["OLD"] and "OLD" not in w.browser.ids
-    assert any("same" in m.lower() for _, m in w.logs)
-
-
-def test_a_new_tab_that_is_not_a_new_chat_rolls_back(monkeypatch):
-    w = _world(monkeypatch, is_new=(False, "an old chat"))
-    ok, why = _run(w.ctx)
-    assert not ok and "an old chat" in why
-    assert w.browser.closed == ["NEW1"]                    # the new tab closed again, the old one kept
-    assert "OLD" in w.browser.ids and w.ctx.tab_id == "OLD"
-    assert w.pool.get_page("OLD") is not None and w.rows[0].tab_id == "OLD"
-    for client in w.clients:
-        assert client._current_tab_id == "OLD"             # every client back home
-    assert w.bridge._auto_scan_running is False
-
-
-def test_a_new_tab_that_never_gets_ready_rolls_back(monkeypatch):
-    w = _world(monkeypatch, ready=(False, "timeout waiting for new chat"))
-    ok, why = _run(w.ctx)
-    assert not ok and "timeout" in why and w.ctx.tab_id == "OLD" and w.browser.closed == ["NEW1"]
-
-
-def test_a_tab_that_cannot_be_opened_keeps_the_old_one(monkeypatch):
-    w = _world(monkeypatch)
-    w.browser.open_error = "HTTP 405"
-    ok, why = _run(w.ctx)
-    assert not ok and "405" in why and w.browser.closed == [] and w.ctx.tab_id == "OLD"
-
-
-def test_an_old_tab_that_stays_open_is_reported_loudly(monkeypatch):
-    w = _world(monkeypatch)
-    w.browser.close_ignored = True
-    ok, _ = _run(w.ctx)
-    assert ok and w.ctx.tab_id == "NEW1"                   # the job moved; only the close failed
-    assert w.browser.closed == ["OLD", "OLD"]              # one retry
-    assert any(level == "error" and "still open" in m for level, m in w.logs)
-
-
-def test_a_running_reconcile_pass_means_no_handover(monkeypatch):
-    w = _world(monkeypatch)
-    w.bridge._auto_scan_running = True
-    monkeypatch.setattr(new_tab, "_RECONCILE_WAIT_SEC", 0.05)
-    ok, why = _run(w.ctx)
-    assert not ok and "reconcile" in why and w.browser.opened == []
-    assert w.bridge._auto_scan_running is True             # not ours to release
-
-
-def test_a_tab_not_in_the_pool_means_no_handover(monkeypatch):
-    w = _world(monkeypatch)
-    w.ctx.tab_id = "GONE"
-    ok, _ = _run(w.ctx)
-    assert not ok and w.browser.opened == []
-
-
-def test_handover_uses_pooled_client_endpoint_not_bridge_client(monkeypatch):
-    """Regression: new tab must open on same profile as closed tab (pooled client wins)."""
-    w = _world(monkeypatch)
-    job_client, pooled_client, home_client = w.clients
-    job_client._host, job_client._port = "127.0.0.1", 9222
-    home_client._host, home_client._port = "127.0.0.1", 9222
-    pooled_client._host, pooled_client._port = "127.0.0.1", 9334
-    captured: dict = {}
-
-    def capturing_open(host, port, url):
-        captured["host"], captured["port"], captured["url"] = host, port, url
-        return w.browser.open(host, port, url)
-
-    monkeypatch.setattr(new_tab, "open_tab_sync", capturing_open)
-    ok, why = _run(w.ctx)
-    assert ok, why
-    assert captured["port"] == 9334, f"should use pooled 9334, got {captured}"
-    assert captured["host"] == "127.0.0.1"
-    assert w.ctx.tab_id == "NEW1"
+def test_alias_book_adopt_of_an_unknown_tab_changes_nothing():
+    book = AliasBook()
+    book.adopt("NEW", "NOPE")
+    assert len(book) == 0
 
 
 # ── the post-job seam ───────────────────────────────────────────────────────
@@ -294,12 +551,13 @@ def _seam(monkeypatch, *, enabled, handover_result=(True, "moved")):
     async def fake_handover(ctx, url, timeout_sec):
         calls.append(("handover", url))
         return handover_result
+
     async def fake_reset(reset_ctx):
         calls.append(("in-place", ""))
         return True, "new chat ready"
     monkeypatch.setattr(new_tab, "handover", fake_handover)
     monkeypatch.setattr(cs, "reset_to_new_chat", fake_reset)
-    state = {new_tab.SETTING_KEY: enabled, new_tab.URL_KEY: NEW_URL}
+    state = {new_tab_setting.SETTING_KEY: enabled, new_tab_setting.URL_KEY: NEW_URL}
     bridge = SimpleNamespace(config=SimpleNamespace(get_state=lambda k, d=None: state.get(k, d)),
                              _cancel_requested=False, _log=lambda *a, **k: None)
     ctx = FinishCtx(pool=None, bridge=bridge, tab_id="OLD", ctrl=object(), client=object())
@@ -318,8 +576,8 @@ def test_setting_on_uses_the_new_tab(monkeypatch):
     assert calls == [("handover", NEW_URL)]
 
 
-def test_a_failed_handover_falls_back_to_the_in_place_new_chat(monkeypatch):
-    cs, ctx, calls = _seam(monkeypatch, enabled=True, handover_result=(False, "not a new chat"))
+def test_a_refused_handover_falls_back_to_the_in_place_new_chat(monkeypatch):
+    cs, ctx, calls = _seam(monkeypatch, enabled=True, handover_result=(False, "another profile"))
     assert asyncio.run(cs._best_effort_reset(ctx, 5))[0]
     assert calls == [("handover", NEW_URL), ("in-place", "")]
 
@@ -339,3 +597,37 @@ def test_a_cancelled_run_keeps_the_fast_in_place_reset(monkeypatch):
     monkeypatch.setattr(cs, "_is_cancelled", lambda bridge: True)
     asyncio.run(cs._best_effort_reset(ctx, 5))
     assert calls == [("in-place", "")]
+
+
+# ── the finished job is never broken by our own side effects ────────────────
+
+def test_a_log_sink_that_raises_never_breaks_the_finished_job(monkeypatch):
+    """The handover reports through the bridge; a dead log sink must not fail the job."""
+    w = _world(monkeypatch)
+
+    def boom(_message, _level="info"):
+        raise RuntimeError("log sink gone")
+    w.bridge._log = boom
+    ok, why = _run(w)
+    assert ok, why and w.ctx.tab_id != "OLD" and w.browser.closed == ["OLD"]
+
+
+def test_a_save_that_raises_never_breaks_the_finished_job(monkeypatch):
+    """`_save_arena`/`_persist_cooldowns` are the bridge's to fail; the move stays done."""
+    w = _world(monkeypatch)
+
+    def boom():
+        raise RuntimeError("disk full")
+    w.bridge._save_arena = boom
+    w.bridge._persist_cooldowns = boom
+    ok, why = _run(w)
+    assert ok, why
+    assert w.rows[0].tab_id == w.ctx.tab_id and w.pool.get_page(w.ctx.tab_id) is not None
+
+
+def test_a_bridge_without_the_pool_hook_still_moves_the_worker(monkeypatch):
+    """The three saves are best-effort: a bridge that lacks one never fails the move."""
+    w = _world(monkeypatch)
+    del w.bridge._emit_pool_status
+    ok, why = _run(w)
+    assert ok, why and w.rows[0].tab_id == w.ctx.tab_id and w.pool.get_page(w.ctx.tab_id) is not None

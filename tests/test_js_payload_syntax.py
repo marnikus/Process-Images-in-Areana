@@ -27,6 +27,7 @@ from app.browser import captcha_probes
 from app.browser import dom_highlight as dh
 from app.browser import new_chat
 from app.browser import output_probes
+from app.browser import page_popup
 from app.browser import text_output_probes
 from app.browser import processing_probe
 from app.browser import recording_probes
@@ -77,6 +78,8 @@ def payloads() -> dict:
     out["watcher_clear"] = dh.build_watcher_clear_js()
     out["worker_badge"] = worker_badge.build_worker_badge_js(worker_badge.WorkerBadgeSpec(worker_no=3, tab_id="AB'C\"D"))
     out["worker_badge_clear"] = worker_badge.build_worker_badge_clear_js()
+    out["page_popup.open_tab"] = page_popup.build_open_tab_js(
+        "https://arena.ai/image/direct?model_a=max&q=\"x\"")
     out["new_chat.page_loaded"] = new_chat.build_page_loaded_js()
     out["new_chat.composer_empty"] = new_chat.build_composer_empty_js()
     out["output.baseline"] = output_probes.build_baseline_js()
@@ -159,6 +162,7 @@ _BUILDERS_COVERED = {
          "build_highlight_js_from_spec", "build_clear_js", "build_highlight_rect_js_from_spec",
          "build_watcher_overlay_js", "build_watcher_overlay_js_from_spec", "build_watcher_clear_js"},
     new_chat: {"build_page_loaded_js", "build_composer_empty_js"},
+    page_popup: {"build_open_tab_js"},
     output_probes: {"build_baseline_js", "build_check_js"},
     text_output_probes: {"build_baseline_text_js", "build_check_text_js"},
     processing_probe: {"build_processing_probe"},
