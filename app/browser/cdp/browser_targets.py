@@ -35,6 +35,11 @@ def endpoint_of_ws(ws_url: str | None) -> tuple[str, int] | None:
     return (found.group(1), int(found.group(2))) if found else None
 
 
+def page_ws(host: str, port: int, target_id: str) -> str:
+    """The page socket of one target on this endpoint — the exact string `endpoint_of_ws` inverts."""
+    return f"ws://{host}:{port}/devtools/page/{target_id}"
+
+
 def context_of(target_infos: list[dict], target_id: str) -> str | None:
     """The browser context of one page; `""` = the default profile, `None` = not listed.
 

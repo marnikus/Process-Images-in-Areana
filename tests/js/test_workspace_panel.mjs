@@ -317,7 +317,19 @@ describe('workspace window (live refresh after restore)', () => {
   });
 });
 
-describe('workspace window (a crashed slot is a failure, audit #2 U1)', () => {
+describe('workspace window (a crashed slot is a failure, audit #2 U1 + #3 N1)', () => {
+  test('an empty or failed state reply says so — never a silent no-op', async () => {
+    // QWebChannel answers '' when get_workspace_state raises; before audit #3
+    // the window returned silently and kept its stale/empty recent list.
+    const crashed = bootPage({ replies: { get_workspace_state: () => '' } });
+    await tick(); await tick();
+    assert.equal(crashed.anyEl('wsStatus').textContent, 'state unavailable');
+    const refused = bootPage({ replies: {
+      get_workspace_state: { ok: false, error: 'workspace state crashed: TypeError' } } });
+    await tick(); await tick();
+    assert.equal(refused.anyEl('wsStatus').textContent, 'state unavailable');
+  });
+
   test('an empty restore reply shows "restore failed", never "restored"', async () => {
     // QWebChannel answers '' when the Python slot raises
     const page = boot({ restore_workspace: () => '' });
@@ -328,5 +340,19 @@ describe('workspace window (a crashed slot is a failure, audit #2 U1)', () => {
     assert.equal(page.anyEl('wsStatus').textContent, 'restore failed');
     assert.ok(page.anyEl('wsResult').innerHTML.includes('Restore failed'), 'failure shown');
     assert.ok(!page.anyEl('wsResult').innerHTML.includes('undefined'), 'no "Result: undefined"');
+  });
+
+  test('restore shows the live-refresh notes under their own key (audit #3 R6)', async () => {
+    // `reconciled` is the durable report (what restore-report.json holds);
+    // the panel's live pushes travel in `refresh` and must still be visible.
+    const page = boot({ restore_workspace: () => JSON.stringify({
+      ...RESTORED, reconciled: ['durable note'],
+      refresh: ['live state re-pushed (queue, urls, settings inputs)'] }) });
+    page.anyEl('wsLoadLastBtn').dispatch('click', {});
+    await tick(); await tick();
+    page.anyEl('wsRestoreAllBtn').dispatch('click', {});
+    await tick(); await tick();
+    assert.ok(page.anyEl('wsResult').innerHTML.includes('live refresh: live state re-pushed'),
+              'panel-side notes are shown');
   });
 });

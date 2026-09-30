@@ -4,10 +4,9 @@
  * Part 1 (mount): winWorkspace is registered in every registry (Python catalog,
  * constants.js, store.js winElIds, _PANEL_INITS) — never an L-5 orphan.
  * Part 2 (flow): Save Workspace… / Save As… / Browse… / Load last / preview with
- * per-domain checklist → Restore All or Restore Selected → result with
- * Restored / Skipped / Migrated counts, per-file warnings (stage + cause +
- * recommended action), Open-folder and Copy-details affordances. All bridge
- * traffic goes through one `_call` helper; every failure is shown, never silent.
+ * per-domain checklist → Restore All or Restore Selected → result with Restored /
+ * Skipped / Migrated counts, per-file warnings (stage + cause + recommended action),
+ * Open-folder and Copy-details affordances; every failure is shown, never silent.
  *
  * Flat top-level functions (no module IIFE): every function stays inside the
  * RULE 16 hard limits (≤30 LOC, CC ≤10) on its own.
@@ -55,8 +54,9 @@ function _call(name, ...args) {
 
 function wsRefresh() {
   _call('get_workspace_state').then((raw) => {
-    if (!raw) return;
     const state = wsParse(raw);
+    // '' reply = raised slot; ok:false = crash caught: a state, not a no-op (N1)
+    if (!raw || state.ok === false) return wsStatusText('state unavailable');
     wsRenderRecent(state.recent || [], state.last_snapshot || '');
   });
 }
@@ -147,7 +147,7 @@ function wsLoadPreview(root, onReady) {
   _call('preview_workspace', root).then((raw) => {
     const reply = wsParse(raw);
     if (!reply.ok) {
-      wsStatusText('not a snapshot');
+      wsStatusText('preview failed');
       wsRenderResult({ title: 'Cannot restore', rows: [reply.error || 'unknown'] });
       return;
     }
@@ -191,6 +191,7 @@ function wsRestoredRows(reply) {
     `Restored: ${(reply.restored || []).join(', ') || '—'}`];
   for (const item of reply.migrated || []) rows.push(`migrated: ${item.domain_id} — ${item.note}`);
   for (const skip of reply.skipped || []) rows.push(wsSkipRow(skip));
+  for (const note of reply.refresh || []) rows.push(`live refresh: ${note}`);
   if (reply.backup) rows.push(`recovery backup: ${reply.backup}`);
   return rows;
 }
@@ -236,8 +237,7 @@ function wsRunRestore(root, selected) {
 const WS_LIVE_PANELS = ['UrlList', 'ImageQueue', 'ProgressPanel', 'SettingsPanel',
   'PromptEditor', 'FolderPicker'];
 
-// Config-driven panels render boot-time pulls — a restore must re-run their
-// loaders or every field they own stays stale until restart (RULE 24).
+// Config-driven panels render boot-time pulls — a restore must re-run their loaders (RULE 24).
 const WS_CONFIG_RELOADERS = [
   ['UrlList', 'loadCooldownConfig'], ['JobCycleSetting', 'load'],
   ['SettingsPanel', 'loadCDPConfig'],

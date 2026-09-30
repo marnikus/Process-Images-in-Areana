@@ -12,16 +12,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.persistence.workspace.integrity import safe_rel_path
+from app.persistence.workspace.integrity import resolve_inside
 from app.persistence.workspace.manifest import entry_for, read_manifest
 from . import reports
 from .registry import restore_order
-
-
-def _inside(root: Path, rel: str) -> Path | None:
-    """The file for a manifest path, or None when the path is unsafe (same rule as restore)."""
-    safe = safe_rel_path(rel)
-    return root / safe if safe and safe == rel else None
 
 
 def _row_head(entry: dict, domain_id: str) -> dict:
@@ -54,7 +48,7 @@ def _preview_row(root: Path, manifest: dict, domain_id: str) -> dict:
         row.update(status="excluded", note=entry.get("capture", {}).get(
             "excluded_reason", "policy-excluded"))
         return row
-    path = _inside(root, entry["path"])
+    path = resolve_inside(root, entry["path"])
     if path is None:
         row.update(status="unsafe_path", file=entry["path"],
                    note="path escapes the snapshot folder — restore will refuse it")
@@ -88,7 +82,7 @@ def _remap_notes(root: Path, manifest: dict) -> list:
     """Path-based resources that need user attention on this machine."""
     notes = []
     entry = entry_for(manifest, "arena_state") or {}
-    path = _inside(root, entry["path"]) if entry.get("path") else None
+    path = resolve_inside(root, entry["path"]) if entry.get("path") else None
     if path:
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))

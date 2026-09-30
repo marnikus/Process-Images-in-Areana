@@ -33,6 +33,7 @@ def _options(raw: str) -> dict:
 
 def _state_payload(bridge) -> dict:
     return {
+        "ok": True,
         "default_dir": str(default_base(bridge)),
         "recent": ws_index.recent_snapshots(bridge),
         "last_snapshot": ws_index.last_snapshot(bridge),
@@ -51,21 +52,36 @@ def _do_save(bridge, opts: dict) -> dict:
     return ws_save.save_workspace(bridge, request)
 
 
+def _live_notes(bridge, restored: list) -> list:
+    """UI-only notes (grid clamp + live pushes) — never part of the durable report."""
+    notes: list = []
+    if "grid_window" in restored:
+        notes.extend(filter(None, [clamp_restored_geometry(bridge)]))
+    notes.extend(_post_restore_refresh(bridge, restored))
+    return notes
+
+
 def _do_restore(bridge, root: str, opts: dict) -> dict:
     """Restore, then clamp + live-refresh whatever WAS restored — even in a failed run
-    (a damaged domain fails the run, yet the restored ones must reach the UI, RULE 24)."""
+    (a damaged domain fails the run, yet the restored ones must reach the UI, RULE 24).
+
+    The live notes travel in their own `refresh` key: `reconciled` is durable
+    report data, and the reply must stay equal to restore-report.json (N3).
+    """
     result = ws_apply.restore_workspace(bridge, root, selected=opts.get("selected"))
-    restored = result.get("restored") or []
-    if restored:
-        notes = result.setdefault("reconciled", [])
-        if "grid_window" in restored:
-            notes.extend(filter(None, [clamp_restored_geometry(bridge)]))
-        notes.extend(_post_restore_refresh(bridge, restored))
+    notes = _live_notes(bridge, result.get("restored") or [])
+    if notes:
+        result["refresh"] = notes
     return result
 
 
-def _answer(bridge, action: str, work) -> str:
-    """A mutating slot's JSON reply — never an exception (QWebChannel would answer '')."""
+def _reply(bridge, action: str, work) -> str:
+    """EVERY JSON slot's reply — never an exception (QWebChannel would answer '').
+
+    A raised slot reaches the window as an empty string, which the page can only
+    read as "no data" — audit #2 U1 fixed the two mutating slots, audit #3 N1 the
+    read-only ones: state/preview/browse answer `{"ok": false, "error": …}` too.
+    """
     try:
         result = work()
     except Exception as exc:
@@ -158,23 +174,23 @@ class WorkspaceMixin:
 
     @Slot(result=str)
     def get_workspace_state(self):
-        return json.dumps(_state_payload(self), ensure_ascii=False)
+        return _reply(self, "state", lambda: _state_payload(self))
 
     @Slot(str, result=str)
     def save_workspace(self, options_json: str):
-        return _answer(self, "save", lambda: _do_save(self, _options(options_json)))
+        return _reply(self, "save", lambda: _do_save(self, _options(options_json)))
 
     @Slot(str, result=str)
     def preview_workspace(self, root: str):
-        return json.dumps(ws_restore.preview_restore(root), ensure_ascii=False)
+        return _reply(self, "preview", lambda: ws_restore.preview_restore(root))
 
     @Slot(str, str, result=str)
     def restore_workspace(self, root: str, options_json: str):
-        return _answer(self, "restore", lambda: _do_restore(self, root, _options(options_json)))
+        return _reply(self, "restore", lambda: _do_restore(self, root, _options(options_json)))
 
     @Slot(str, result=str)
     def browse_workspace_folder(self, mode: str):
-        return json.dumps(_dialog_folder(mode), ensure_ascii=False)
+        return _reply(self, "browse", lambda: _dialog_folder(mode))
 
     @Slot(str, result=bool)
     def open_workspace_path(self, path: str):

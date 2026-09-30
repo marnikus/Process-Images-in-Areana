@@ -344,25 +344,25 @@ class _FakeProvider:
 
 
 def test_expand_strict_follows_a_transitive_chain(monkeypatch):
-    from app.services.workspace import apply as ws_apply
+    from app.services.workspace import selection
     chain = {"a": _FakeProvider("a", {"b": "strict"}),
              "b": _FakeProvider("b", {"c": "strict"}),
              "c": _FakeProvider("c")}
-    monkeypatch.setattr(ws_apply, "get", chain.get)
+    monkeypatch.setattr(selection, "get", chain.get)
     monkeypatch.setattr("app.services.workspace.registry.RESTORE_ORDER", ("c", "b", "a"))
-    providers = ws_apply.expand_strict([chain["a"]])
+    providers = selection.expand_strict([chain["a"]])
     assert [p.domain_id for p in providers] == ["c", "b", "a"]  # registry order
 
 
 def test_expand_strict_keeps_registered_providers_outside_the_order_tuple(monkeypatch):
     # D3: a provider that IS registered but missing from RESTORE_ORDER must still
     # ride along — save tolerates order drift, restore must not silently drop it.
-    from app.services.workspace import apply as ws_apply
+    from app.services.workspace import selection
     late = _FakeProvider("late")
     chain = {"a": _FakeProvider("a", {"late": "strict"}), "late": late}
-    monkeypatch.setattr(ws_apply, "get", chain.get)
+    monkeypatch.setattr(selection, "get", chain.get)
     monkeypatch.setattr("app.services.workspace.registry.RESTORE_ORDER", ("a",))
-    providers = ws_apply.expand_strict([chain["a"]])
+    providers = selection.expand_strict([chain["a"]])
     assert [p.domain_id for p in providers] == ["a", "late"]  # unknown-order ids after known
 
 
@@ -412,3 +412,36 @@ def test_live_run_error_reads_only_the_live_flag():
     assert live_run_error(SimpleNamespace()) is None            # no flag yet = idle
     assert live_run_error(SimpleNamespace(_run_state="idle")) is None
     assert "paused" in live_run_error(SimpleNamespace(_run_state="paused"))
+
+
+# ── audit #3 R7/N5: a snapshot from a newer build loses no domain silently ────
+
+def test_unregistered_manifest_domain_is_a_skipped_row(bridge, snapshot):
+    """N5: `selection_providers` dropped any manifest id it had no provider for —
+    the domain vanished from report, restore and window with no explanation."""
+    root = Path(snapshot)
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    manifest["domains"]["future_thing"] = {
+        "display_name": "Future Thing", "path": "state/future.json",
+        "bytes": 9, "schema_version": 1, "capture": {}}
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (root / "state" / "future.json").write_text('{"a": 1}\n', encoding="utf-8")
+
+    reply = restore_workspace(bridge, root)
+    rows = {row["domain_id"]: row for row in reply["skipped"]}
+    assert "future_thing" in rows, "an unregistered manifest domain is never dropped"
+    assert rows["future_thing"]["stage"] == "schema"
+    assert "future_thing" in rows["future_thing"]["cause"]
+    assert reply["ok"] is True and reply["result"] == "success_with_warnings"
+
+
+def test_a_restore_limited_to_unsupported_domains_names_them(bridge, snapshot):
+    """Nothing to restore and no explanation would be N5 again, one level up."""
+    root = Path(snapshot)
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    manifest["domains"]["future_thing"] = {"path": "state/future.json", "capture": {}}
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    reply = restore_workspace(bridge, root, selected=["future_thing"])
+    assert reply["ok"] is False
+    assert "unsupported by this build: future_thing" in reply["error"]

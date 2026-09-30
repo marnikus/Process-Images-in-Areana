@@ -19,54 +19,27 @@ from . import reports
 from .gates import load_files
 from .meta import live_run_error, log_message
 from .recover import backup_live
-from .registry import get, restore_order
+from .registry import get
+from .selection import expand_strict, manifest_selection
 from .snapshot_index import record_restore
 
 
-def _selected_ids(manifest: dict, selected) -> list:
-    """Manifest ids for this restore.
-
-    Default (selected=None) restores every domain that owns a file; the
-    policy domains (secret keys, recordings) appear in the preview and the
-    manifest with their exclusion reason, and join only when explicitly
-    selected — then they answer with their policy row, never a silent skip.
-    """
-    ids = list(manifest.get("domains", {}).keys())
-    if selected is None:
-        return [i for i in ids if (entry_for(manifest, i) or {}).get("path")]
-    wanted = set(selected)
-    return [i for i in ids if i in wanted]
-
-
-def selection_providers(manifest: dict, selected) -> tuple:
-    """Providers for this restore + unknown-id rows (manifest is the only registry)."""
-    unknown = [s for s in (selected or []) if s not in manifest.get("domains", {})]
-    ordered = restore_order(set(_selected_ids(manifest, selected)))
-    providers = [get(i) for i in ordered]
-    return [p for p in providers if p], unknown
-
-
-def _strict_deps(provider) -> list:
-    """Registered, resolvable strict dependencies of one provider."""
-    return [dep for dep, kind in (provider.dependencies or {}).items()
-            if kind == "strict" and get(dep)]
-
-
-def expand_strict(providers: list) -> list:
-    """Strict dependencies ride along automatically (task RESTORE 3) — transitively."""
-    chosen = {p.domain_id for p in providers}
-    pending = list(providers)
-    while pending:
-        for dep in _strict_deps(pending.pop()):
-            if dep not in chosen:
-                chosen.add(dep)
-                pending.append(get(dep))
-    ordered_ids = restore_order(set(chosen))
-    return [p for p in (get(i) for i in ordered_ids) if p]
+def _empty_selection(orphans: list) -> str:
+    """Refusal for a selection nothing can restore — names unsupported domains (N5)."""
+    names = f" (unsupported by this build: {', '.join(orphans)})" if orphans else ""
+    return f"no restorable domains selected{names}"
 
 
 def _skip_row(provider, error: WorkspaceError) -> dict:
     return {"domain_id": provider.domain_id, "status": "skipped", **error.to_dict()}
+
+
+def _orphan_row(domain_id: str) -> dict:
+    """A manifest domain this build has no provider for (N5) — a row, not a silence."""
+    error = WorkspaceError(domain_id, "schema",
+                           f"'{domain_id}' is not supported by this build — "
+                           "this snapshot was saved by a newer version")
+    return {"status": "skipped", **error.to_dict()}
 
 
 def _guarded(provider, stage: str, call, *args) -> tuple:
@@ -198,26 +171,38 @@ def _restore_row(run: dict, provider) -> dict:
 
 
 def _preflight(bridge, root: Path, selected) -> tuple:
-    """(manifest, providers, None) or (None, None, refusal) — nothing touched yet."""
+    """(manifest, providers, orphan ids, None) or (None, None, None, refusal)."""
     busy = live_run_error(bridge)
     if busy:
-        return None, None, busy
+        return None, None, [], busy
     manifest, err = read_manifest(root)
     if err:
-        return None, None, err
-    providers, unknown = selection_providers(manifest, selected)
+        return None, None, [], err
+    providers, unknown, orphans = manifest_selection(manifest, selected)
     if unknown:
-        return None, None, f"unknown domain(s): {', '.join(unknown)}"
+        return None, None, [], f"unknown domain(s): {', '.join(unknown)}"
     providers = expand_strict(providers)
     if not providers:
-        return None, None, "no restorable domains selected"
-    return manifest, providers, None
+        return None, None, [], _empty_selection(orphans)
+    return manifest, providers, orphans, None
+
+
+def _run_domains(run: dict, providers: list, orphans: list) -> list:
+    """One row per provider, then one per orphan (N5) — the run's whole outcome list."""
+    rows = []
+    for provider in providers:
+        row = _restore_row(run, provider)
+        rows.append(row)
+        if row["status"] != "restored":
+            run["failed"].add(provider.domain_id)
+    rows.extend(_orphan_row(domain_id) for domain_id in orphans)
+    return rows
 
 
 def restore_workspace(bridge, root, selected=None) -> dict:
     """Selected/all domains, dependency order, per-domain transaction (task RESTORE 2–10)."""
     root = Path(root)
-    manifest, providers, refusal = _preflight(bridge, root, selected)
+    manifest, providers, orphans, refusal = _preflight(bridge, root, selected)
     if refusal:
         return {"ok": False, "error": refusal}
     backup, backup_refusal = backup_live(bridge, providers)
@@ -225,13 +210,7 @@ def restore_workspace(bridge, root, selected=None) -> dict:
         return {"ok": False, "error": backup_refusal}
     run = {"bridge": bridge, "manifest": manifest,
        "files": load_files(root, manifest, providers), "failed": set()}
-    rows = []
-    for provider in providers:
-        row = _restore_row(run, provider)
-        rows.append(row)
-        if row["status"] != "restored":
-            run["failed"].add(provider.domain_id)
-    report = _finish(bridge, root, rows, backup)
+    report = _finish(bridge, root, _run_domains(run, providers, orphans), backup)
     _log_result(bridge, root, report)
     return {"ok": report["result"] != "failed", **report}
 

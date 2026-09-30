@@ -136,3 +136,132 @@ def test_last_snapshot_drops_when_folder_removed(bridge):
     shutil.rmtree(reply["path"])
     assert ws_index.last_snapshot(bridge) == ""
     assert reply["path"] not in ws_index.recent_snapshots(bridge)
+
+
+# ── audit #3 R2: one environment read, one clock per save ────────────────────
+
+def test_app_meta_runs_once_per_save(bridge, monkeypatch):
+    """app_meta shells out to git — a save must read the environment once."""
+    calls = {"n": 0}
+    original = ws_save.app_meta
+
+    def counting(b):
+        calls["n"] += 1
+        return original(b)
+
+    monkeypatch.setattr(ws_save, "app_meta", counting)
+    assert _save(bridge, name="once")["ok"]
+    assert calls["n"] == 1, "env (git subprocess) read more than once per save"
+
+
+def test_folder_stamp_and_snapshot_id_share_one_clock(bridge, monkeypatch):
+    """The folder name and the snapshot id must come from ONE clock read."""
+    import time as _time
+    real_gmtime, ticks = _time.gmtime, {"i": 0}
+
+    def stepping_gmtime(secs=None):
+        struct = real_gmtime(secs)
+        ticks["i"] += 1
+        return real_gmtime(_time.mktime(struct) + ticks["i"])
+
+    monkeypatch.setattr(_time, "gmtime", stepping_gmtime)
+    reply = _save(bridge, name="clock")
+    stamp = reply["snapshot_id"].split("_")[1].replace("T", "-").removesuffix("Z")
+    assert Path(reply["path"]).name == f"clock_{stamp}", (
+        "folder name and snapshot id disagree — two clock reads in one save")
+
+
+# ── audit #3 R3: a failed save is never silent (restore parity) ──────────────
+
+def _capture_logs(bridge, monkeypatch):
+    logs = []
+    monkeypatch.setattr(bridge, "_log", lambda message, level="info": logs.append((level, message)))
+    return logs
+
+
+def test_aborted_save_logs_its_cause(bridge, monkeypatch, tmp_path):
+    logs = _capture_logs(bridge, monkeypatch)
+    (tmp_path / "job_history.json").write_text("{broken", encoding="utf-8")
+    reply = _save(bridge, name="abort")
+    assert reply["ok"] is False and reply["result"] == "failed"
+    assert [level for level, _ in logs] == ["error"], logs
+    assert "job_history" in logs[0][1], "the log names the domain that failed"
+
+
+def test_publish_failure_logs_its_cause(bridge, monkeypatch):
+    logs = _capture_logs(bridge, monkeypatch)
+
+    def boom(temp, target):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(fsio, "publish", boom)
+    reply = _save(bridge, name="pubfail")
+    assert reply["ok"] is False
+    assert [level for level, _ in logs] == ["error"], logs
+    assert "disk full" in logs[0][1]
+
+
+def test_partial_save_logs_a_warning_not_a_success(bridge, monkeypatch, tmp_path):
+    logs = _capture_logs(bridge, monkeypatch)
+    (tmp_path / "job_history.json").write_text("{broken", encoding="utf-8")
+    reply = _save(bridge, name="partial", allow_partial=True)
+    assert reply["ok"] and reply["result"] == "partial"
+    assert [level for level, _ in logs] == ["warn"], logs
+
+
+# ── audit #3 R4: the index is a live JSON file like any other (RULE 4) ───────
+
+def _index_path(bridge):
+    from app.services.workspace.meta import META_FILE
+    from app.services.workspace.provider import config_dir
+    return config_dir(bridge) / META_FILE
+
+
+def test_corrupt_index_is_reported_and_rebuilt(bridge, monkeypatch):
+    logs = _capture_logs(bridge, monkeypatch)
+    _index_path(bridge).write_text("{not json", encoding="utf-8")
+    state = json.loads(bridge.get_workspace_state())
+    assert state["recent"] == [] and state["last_snapshot"] == ""
+    assert [level for level, _ in logs] == ["warn"], "a broken index is not empty" \
+        " — it is reported (RULE 4), not silently discarded"
+    reply = _save(bridge, name="rebuilt")
+    assert reply["ok"]
+    index = json.loads(_index_path(bridge).read_text(encoding="utf-8"))
+    assert index["recent"] == [reply["path"]], "the index is usable again"
+
+
+def test_garbage_index_entries_never_break_the_state_slot(bridge, monkeypatch):
+    _capture_logs(bridge, monkeypatch)
+    _index_path(bridge).write_text(json.dumps({
+        "recent": ["/gone", 5, None, {"a": 1}, ""],
+        "last_snapshot": "not-an-object",
+        "last_restore": 42,
+    }), encoding="utf-8")
+    state = json.loads(bridge.get_workspace_state())
+    assert state["recent"] == [], "non-string entries are dropped, never iterated"
+    assert state["last_snapshot"] == "" and state["last_restore"] == {}
+
+
+def test_valid_index_still_reads_unchanged(bridge):
+    reply = _save(bridge, name="valid")
+    state = json.loads(bridge.get_workspace_state())
+    assert state["recent"] == [reply["path"]]
+    assert state["last_snapshot"] == reply["path"]
+
+
+# ── audit #3 R8b/N6: save and restore share one selection rule ────────────────
+
+def test_save_reports_unknown_selected_ids(bridge, monkeypatch):
+    """N6: save dropped unknown ids silently while restore refused them outright."""
+    logs = _capture_logs(bridge, monkeypatch)
+    reply = _save(bridge, name="unknown", selected=["arena_state", "future_thing"])
+    assert reply["ok"] is True and reply["unknown_domains"] == ["future_thing"]
+    assert any(level == "warn" and "future_thing" in message for level, message in logs)
+
+
+def test_save_refuses_a_selection_of_only_unknown_ids(bridge, monkeypatch):
+    logs = _capture_logs(bridge, monkeypatch)
+    reply = _save(bridge, name="none", selected=["future_thing"])
+    assert reply["ok"] is False and reply["unknown_domains"] == ["future_thing"]
+    assert "future_thing" in reply["error"]
+    assert any(level == "warn" and "future_thing" in message for level, message in logs)

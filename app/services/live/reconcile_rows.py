@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from app.persistence import config_manager as cm
 from app.services import auto_connect as ac
 from app.services.live import url_policy as up
 from app.services.live.listing import held_keys
@@ -20,8 +21,10 @@ from app.services.run_state import pooled_ids
 if TYPE_CHECKING:
     from app.services.live.reconcile import _Pass
 
-PATTERN_KEY = "url_pattern"
-DEFAULT_PATTERN = "arena.ai"
+# The setting's key and default live with the session defaults (config_manager); the names here are
+# what the reconciler and the panel import (audit #4 N3).
+PATTERN_KEY = cm.URL_PATTERN_KEY
+DEFAULT_PATTERN = cm.URL_PATTERN_DEFAULT
 
 
 def claim_rows(urls: list, claims) -> int:

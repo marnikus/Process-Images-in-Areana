@@ -23,13 +23,16 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Protocol
 
 from app.browser.cdp import browser_targets as bt
 from app.browser.cdp.tabs import TabInfo
 from app.browser.chat_page import read_chat_page
 from app.browser.new_chat import ResetCtx, wait_new_chat_ready
 from app.browser.page_pool import retarget_page, tab_label_of
+from app.core.tab_alias import normalize_owner
+from app.persistence.config_manager import URL_PATTERN_DEFAULT, URL_PATTERN_KEY
+from app.services.live.tab_owner import read_owner
 from app.services.live.url_policy import mark_receivers
 from app.services.new_tab_open import OpenSpec, open_in_profile
 
@@ -38,10 +41,26 @@ _OWNER_TRIES = 2
 _OWNER_RETRY_SEC = 0.5
 
 
+class HandoverCtx(Protocol):
+    """What a handover needs from its caller — `cooldown_service.FinishCtx` provides it.
+
+    Declared here (not imported) so `new_tab` stays importable from `cooldown_service`, which
+    imports this module: the seam is documented and type-checkable without a cycle. `tab_id` is
+    the one field the pipeline writes (the worker moves to the new tab).
+    """
+
+    bridge: Any
+    pool: Any
+    tab_id: str
+    client: Any
+    ctrl: Any
+
+
 @dataclass
 class _Move:
     """One handover: the finish context, the job tab's own endpoint and what it came from."""
-    ctx: Any
+
+    ctx: HandoverCtx
     url: str
     timeout_sec: float
     endpoint: tuple
@@ -50,7 +69,7 @@ class _Move:
     old_url: str = ""
     label: str = ""
     owner: str = ""
-    pattern: str = "arena.ai"
+    pattern: str = ""                                 # always set by _plan, default in reconcile_rows
     context_id: str = ""
     clients: List[Any] = field(default_factory=list)
     new_id: str = ""
@@ -58,14 +77,15 @@ class _Move:
 
 
 def _get_pattern(bridge: Any) -> str:
-    """URL pattern that decides which tabs suit pool (default arena.ai)."""
+    """URL pattern that decides which tabs suit pool (one key, one default: `reconcile_rows`)."""
     try:
         cfg = getattr(bridge, "config", None)
         if cfg is not None:
-            return str(cfg.get_state("url_pattern", "arena.ai") or "arena.ai")
+            value = cfg.get_state(URL_PATTERN_KEY, URL_PATTERN_DEFAULT)
+            return str(value or URL_PATTERN_DEFAULT)
     except Exception:
         pass
-    return "arena.ai"
+    return URL_PATTERN_DEFAULT
 
 
 def _unique(clients: list) -> list:
@@ -77,7 +97,7 @@ def _unique(clients: list) -> list:
     return unique
 
 
-def _clients_on(ctx: Any, pooled: Any) -> list:
+def _clients_on(ctx: HandoverCtx, pooled: Any) -> list:
     """Every distinct client object on the old tab: the job's, the pool's, the home one."""
     home = getattr(ctx.bridge, "cdp", None)
     live_home = home if getattr(home, "_current_tab_id", None) == ctx.tab_id else None
@@ -92,7 +112,7 @@ def _popup_client(move: _Move) -> Any:
     return None
 
 
-def _plan(ctx: Any, url: str, timeout_sec: float) -> tuple[Optional[_Move], str]:
+def _plan(ctx: HandoverCtx, url: str, timeout_sec: float) -> tuple[Optional[_Move], str]:
     """What moves: the pool page of the job's tab, its own socket's endpoint, every client."""
     pool = getattr(ctx, "pool", None)
     page = pool.get_page(ctx.tab_id) if pool is not None else None
@@ -105,12 +125,12 @@ def _plan(ctx: Any, url: str, timeout_sec: float) -> tuple[Optional[_Move], str]
     move = _Move(ctx=ctx, url=url, timeout_sec=timeout_sec, endpoint=endpoint,
                  old_id=ctx.tab_id, old_ws=page.ws_url, old_url=page.url,
                  label=tab_label_of(pool, ctx.tab_id), pattern=_get_pattern(ctx.bridge),
-                 owner=str(getattr(page, "owner", "") or ""))
+                 owner=normalize_owner(getattr(page, "owner", "")))
     move.clients = _clients_on(ctx, pooled)
     return move, ""
 
 
-async def handover(ctx: Any, url: str, timeout_sec: float) -> tuple[bool, str]:
+async def handover(ctx: HandoverCtx, url: str, timeout_sec: float) -> tuple[bool, str]:
     """Move the finished job's worker to a new tab at `url`; (False, why) = nothing changed."""
     move, why = _plan(ctx, url, timeout_sec)
     if move is None:
@@ -147,19 +167,15 @@ async def _with_browser(move: _Move) -> tuple[bool, str]:
 
 async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
     """Read the profile truth → open in it → prove a new chat → move the worker → close old."""
-    target_infos, err = await browser.targets()
-    if err:
-        return False, f"the job's browser did not answer Target.getTargets ({err})"
-    context = bt.context_of(target_infos, move.old_id)
-    if context is None:
-        return False, f"the job tab {move.old_id[:12]} is not in its own browser's target list"
-    move.context_id = context
-    _log_profile(move, target_infos)
+    context, why = await _profile_truth(move, browser)
+    if why:
+        return False, why
     opened = await open_in_profile(browser, _popup_client(move),
                                    OpenSpec(move.url, context, move.timeout_sec))
     if not opened.tab_id:
         return await _refuse(move, browser, opened.reason)
-    move.new_id, move.new_ws = opened.tab_id, _page_ws(move, opened.tab_id)
+    move.new_id = opened.tab_id
+    move.new_ws = bt.page_ws(*move.endpoint, opened.tab_id)   # same endpoint its old tab lives on
     if not await _connect_all(move.clients, move.new_ws):
         return await _refuse(move, browser, "could not connect to the new tab")
     ok, why = await _prove_new_chat(move)
@@ -170,6 +186,23 @@ async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
     return True, f"new chat ready in the new tab {move.new_id[:12]}"
 
 
+async def _profile_truth(move: _Move, browser: Any) -> tuple[str, str]:
+    """The job tab's own profile, as its browser lists it: `(context, why)`.
+
+    `("", "")` is a real answer — the default profile carries no `browserContextId`; a non-empty
+    `why` means the profile could not be established and nothing may be opened.
+    """
+    target_infos, err = await browser.targets()
+    if err:
+        return "", f"the job's browser did not answer Target.getTargets ({err})"
+    context = bt.context_of(target_infos, move.old_id)
+    if context is None:
+        return "", f"the job tab {move.old_id[:12]} is not in its own browser's target list"
+    move.context_id = context
+    _log_profile(move, target_infos)
+    return context, ""
+
+
 async def _refuse(move: _Move, browser: Any, why: str) -> tuple[bool, str]:
     """Roll back and report; the caller then runs the ordinary in-place New Chat."""
     if move.new_id:
@@ -178,11 +211,6 @@ async def _refuse(move: _Move, browser: Any, why: str) -> tuple[bool, str]:
     _log(move, f"⚠ New chat as a new tab failed: {why} — {move.label} stays in its tab "
                f"(in-place New Chat instead)", "warn")
     return False, why
-
-
-def _page_ws(move: _Move, target_id: str) -> str:
-    """The job tab's own page socket for the new target (same host:port it belongs to)."""
-    return f"ws://{move.endpoint[0]}:{move.endpoint[1]}/devtools/page/{target_id}"
 
 
 def _log_profile(move: _Move, target_infos: list) -> None:
@@ -221,34 +249,32 @@ async def _prove_new_chat(move: _Move) -> tuple[bool, str]:
     return True, why
 
 
-async def _read_owner_from_client(client: Any) -> str:
-    """Probe account email from a tab's client ('' when unknown)."""
-    try:
-        from app.browser.owner_probe import build_owner_probe, interpret_owner
-        from app.core.tab_alias import normalize_owner
-        raw = await client.evaluate(build_owner_probe())
-        return normalize_owner(interpret_owner(raw).get("email"))
-    except Exception:
-        return ""
-
-
 async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
-    """Secondary guard: the new tab must not be signed in as somebody else (label ≠ profile)."""
+    """Secondary guard: the new tab must not be signed in as somebody else (label ≠ profile).
+
+    Both sides are `normalize_owner` output — the label was normalized in `_plan`, the probe
+    answer by `read_owner` — so this compares one rule's results, never two spellings.
+    """
     if not move.owner:
         return True, ""
-    new_owner = ""
-    for _attempt in range(_OWNER_TRIES):
-        new_owner = await _read_owner_from_client(move.ctx.client)
-        if new_owner:
-            break
-        await asyncio.sleep(_OWNER_RETRY_SEC)
+    new_owner = await _probe_new_owner(move)
     if not new_owner:
         _log(move, f"Owner probe empty for the new tab {move.new_id[:12]} — keeping "
                    f"{move.owner} (the browser already proved the profile)", "info")
         return True, ""
-    if new_owner == move.owner.lower():
+    if new_owner == move.owner:                           # both sides: normalize_owner output
         return True, ""
     return False, f"Owner mismatch: old {move.owner} vs new {new_owner} — wrong profile, rollback"
+
+
+async def _probe_new_owner(move: _Move) -> str:
+    """The new tab's account ('' when the page cannot say) — one retry: the tab may still load."""
+    for _attempt in range(_OWNER_TRIES):
+        owner = await read_owner(move.ctx.client)
+        if owner:
+            return owner
+        await asyncio.sleep(_OWNER_RETRY_SEC)
+    return ""
 
 
 def _move_worker(move: _Move) -> None:
