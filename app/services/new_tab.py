@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Protocol
 
 from app.browser.cdp import browser_targets as bt
 from app.browser.cdp.tabs import TabInfo
@@ -41,10 +41,26 @@ _OWNER_TRIES = 2
 _OWNER_RETRY_SEC = 0.5
 
 
+class HandoverCtx(Protocol):
+    """What a handover needs from its caller — `cooldown_service.FinishCtx` provides it.
+
+    Declared here (not imported) so `new_tab` stays importable from `cooldown_service`, which
+    imports this module: the seam is documented and type-checkable without a cycle. `tab_id` is
+    the one field the pipeline writes (the worker moves to the new tab).
+    """
+
+    bridge: Any
+    pool: Any
+    tab_id: str
+    client: Any
+    ctrl: Any
+
+
 @dataclass
 class _Move:
     """One handover: the finish context, the job tab's own endpoint and what it came from."""
-    ctx: Any
+
+    ctx: HandoverCtx
     url: str
     timeout_sec: float
     endpoint: tuple
@@ -81,7 +97,7 @@ def _unique(clients: list) -> list:
     return unique
 
 
-def _clients_on(ctx: Any, pooled: Any) -> list:
+def _clients_on(ctx: HandoverCtx, pooled: Any) -> list:
     """Every distinct client object on the old tab: the job's, the pool's, the home one."""
     home = getattr(ctx.bridge, "cdp", None)
     live_home = home if getattr(home, "_current_tab_id", None) == ctx.tab_id else None
@@ -96,7 +112,7 @@ def _popup_client(move: _Move) -> Any:
     return None
 
 
-def _plan(ctx: Any, url: str, timeout_sec: float) -> tuple[Optional[_Move], str]:
+def _plan(ctx: HandoverCtx, url: str, timeout_sec: float) -> tuple[Optional[_Move], str]:
     """What moves: the pool page of the job's tab, its own socket's endpoint, every client."""
     pool = getattr(ctx, "pool", None)
     page = pool.get_page(ctx.tab_id) if pool is not None else None
@@ -114,7 +130,7 @@ def _plan(ctx: Any, url: str, timeout_sec: float) -> tuple[Optional[_Move], str]
     return move, ""
 
 
-async def handover(ctx: Any, url: str, timeout_sec: float) -> tuple[bool, str]:
+async def handover(ctx: HandoverCtx, url: str, timeout_sec: float) -> tuple[bool, str]:
     """Move the finished job's worker to a new tab at `url`; (False, why) = nothing changed."""
     move, why = _plan(ctx, url, timeout_sec)
     if move is None:
