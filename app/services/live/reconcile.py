@@ -1,3 +1,8 @@
+# ideal-size: 357 lines reason=one pass, read top to bottom. The sweep rules are the
+# contract: a manual pass rebuilds while an auto pass never sweeps on an empty or failed
+# fetch, a busy tab defers, and an unchecked row's tab leaves the pool (D-2/D-3/D-4). Those
+# rules are only checkable in one place — `reconcile_once` below, next to the sweep they
+# order — and the file was already over the 300 ideal at 97f4ed3 (320). audit #4 N4.
 """The Python-owned URL reconciler (S6, D-4 / D-10 / I-50).
 
 URL rows follow Chrome in EVERY run state at a user-set cadence

@@ -1,4 +1,4 @@
-# ideal-size: 316 lines reason=the whole mutating handover, and the order it runs in is
+# ideal-size: 322 lines reason=the whole mutating handover, and the order it runs in is
 # the contract the owner reads in the log: plan -> hold the reconciler -> dial the job
 # tab's own browser -> open -> prove -> move the worker -> close the old tab. Every helper
 # is one step of that order and none of them changes anything (a lost tab, a stranded

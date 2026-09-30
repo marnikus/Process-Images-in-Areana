@@ -1343,7 +1343,7 @@ feature that shares the same commit range. Audit and plan:
 |---|---|---|
 | Focused Python | `pytest tests/test_new_tab_*.py tests/test_browser_targets.py tests/test_page_popup.py tests/test_live_reconcile.py tests/test_reparse_from_scratch.py -q` | **130 passed** (was 126; +3 characterization, +1 N2, +1 N3 guard, +1 N1) |
 | New-tab JS | `node --test tests/js/test_job_cycle_setting.mjs` | **12 passed** — was **11/12**: the audit #3 panel split had broken this file's last test and `npm run test:js` never saw it (below) |
-| Size / complexity | `radon cc -s` over the 5 modules | max CC **8 → 8**, max function LOC **23 → 22**, max nesting 2, 47 → 49 functions, 724 → ~735 lines; both new functions in RULE 18.1's band (`release` 20, `install_drain` 7) |
+| Size / complexity | `radon cc -s` over the 6 modules | max CC **8 → 8**, max function LOC **23 → 22** (`_run`, which keeps an `ideal-size:` reason), max nesting 2, 47 → 48 functions; both files over RULE 18.2's 300 ideal carry a named `ideal-size:` reason (`new_tab.py` 322, `reconcile.py` 357 — the latter already 320 at `97f4ed3`); both new functions in RULE 18.1's band (`release` 20, `install_drain` 7) |
 | Changed-file ratchet | `python tools/verify_quality.py --changed-files <new_tab, reconcile, config_manager, new_tab_setting>` | **✅ PASSED — 0 fails** |
 | Vulture | `vulture <5 modules> <5 test files> --min-confidence 80` | **0** in production |
 | Coverage, the 5 modules | `coverage run --branch --source=app -m pytest tests` | **100 % line / 100 % branch**, unchanged — the new paths are covered, not merely executed |
