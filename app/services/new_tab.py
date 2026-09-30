@@ -149,6 +149,11 @@ async def _with_browser(move: _Move) -> tuple[bool, str]:
         await browser.aclose()
 
 
+# ideal-size: 22 lines reason=one decision path. Read the profile truth, open in
+# it, prove a new chat, move the worker, close the old tab — in that order, with
+# each step's refusal leaving through the same place. Splitting it to satisfy the
+# 4-20 ideal would put the contract the owner reads in the log across two files
+# (RULE 18.5 — a named constraint, not convenience; audit #4 N4).
 async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
     """Read the profile truth → open in it → prove a new chat → move the worker → close old."""
     target_infos, err = await browser.targets()
@@ -306,6 +311,14 @@ def _quietly(step: Any) -> None:
 
 
 def _log(move: _Move, message: str, level: str) -> None:
+    """A broken log sink must never fail a finished job — the handover's one rule.
+
+    The swallow is total and by construction: this function wraps EVERY line the
+    feature logs, so a sink that raises cannot be reported anywhere else. That is
+    the accepted trade (test
+    `a_log_sink_that_raises_never_breaks_the_finished_job`), recorded at audit #4
+    N5 so the next reader sees the decision instead of rediscovering the gap.
+    """
     try:
         move.ctx.bridge._log(message, level)
     except Exception:
