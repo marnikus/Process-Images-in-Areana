@@ -631,3 +631,43 @@ def test_a_bridge_without_the_pool_hook_still_moves_the_worker(monkeypatch):
     del w.bridge._emit_pool_status
     ok, why = _run(w)
     assert ok, why and w.rows[0].tab_id == w.ctx.tab_id and w.pool.get_page(w.ctx.tab_id) is not None
+
+
+# ── characterization: the reconciler hold (audit #4 step 1) ──────────────────
+# The three behaviours the N1 fix must not change: the handover WAITS for a
+# running pass, it REFUSES when the wait runs out, and it RELEASES the flag on
+# every exit — success, refusal and failure alike. Today these are asserted in
+# three separate tests; this file is about the release, which is the half the
+# N1 fix touches.
+
+def test_the_handover_refuses_when_a_pass_is_still_running_after_ten_seconds(monkeypatch):
+    """The ≤ 10 s wait is a refusal, not a steal: the running pass keeps the flag."""
+    w = _world(monkeypatch)
+    w.bridge._auto_scan_running = True
+    monkeypatch.setattr(new_tab, "_RECONCILE_WAIT_SEC", 0.05)
+    ok, why = _run(w)
+    assert ok is False and "reconcile" in why
+    assert w.bridge._auto_scan_running is True        # not ours to release
+    assert w.ctx.tab_id == "OLD" and w.rows[0].tab_id == "OLD"
+    assert w.dialed == []                             # nothing was opened
+
+
+def test_the_handover_releases_the_flag_when_its_own_work_fails(monkeypatch):
+    """A failed handover must not leave the reconciler blocked for the next 15 s scan."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True                      # (a) Target.createTarget refuses
+    for client in (w.clients.job, w.clients.pooled, w.clients.home):
+        client._current_tab_id = "OTHER"             # (b) no client sits on the job tab
+    ok, _why = _run(w)
+    assert ok is False
+    assert w.bridge._auto_scan_running is False
+    assert w.ctx.tab_id == "OLD"
+
+
+def test_the_handover_releases_the_flag_when_the_open_succeeds(monkeypatch):
+    """The success exit is the same exit: flag free, worker moved, old tab closed."""
+    w = _world(monkeypatch)
+    ok, why = _run(w)
+    assert ok, why
+    assert w.bridge._auto_scan_running is False
+    assert w.ctx.tab_id != "OLD"
