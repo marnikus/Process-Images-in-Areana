@@ -80,3 +80,38 @@ def test_geometry_clamp_helper_is_best_effort(bridge):
     geometry = bridge.config.get_state("window_geometry")
     assert geometry["width"] <= 10000  # headless: no screen service → numbers kept
     assert note in ("", "window geometry clamped to this screen")
+
+
+# ── audit #3 R5/N1: ALL slots answer — a crash is never an empty reply ───────
+
+def _raise(exc):
+    def boom(*_a, **_kw):
+        raise exc
+    return boom
+
+
+@pytest.mark.parametrize("slot,args,target", [
+    ("get_workspace_state", (), "_state_payload"),
+    ("preview_workspace", ("/somewhere",), "ws_restore.preview_restore"),
+    ("browse_workspace_folder", ("restore-source",), "_dialog_folder"),
+])
+def test_read_slots_answer_an_error_instead_of_raising(bridge, monkeypatch,
+                                                       slot, args, target):
+    """A raised slot answers '' over QWebChannel: the window then shows nothing
+    (state) or a wrong reason (preview). Every JSON slot must answer ok:false."""
+    from app.ui.panels import workspace as panel
+    lines = []
+    monkeypatch.setattr(bridge, "_log", lambda m, l="info": lines.append((l, m)))
+    if "." in target:
+        module, name = target.split(".")
+        monkeypatch.setattr(getattr(panel, module), name, _raise(OSError("boom")))
+    else:
+        monkeypatch.setattr(panel, target, _raise(OSError("boom")))
+    reply = json.loads(getattr(bridge, slot)(*args))
+    assert reply["ok"] is False and "OSError: boom" in reply["error"]
+    assert any(level == "error" and "boom" in message for level, message in lines)
+
+
+def test_state_payload_marks_success_so_the_window_can_tell(bridge):
+    """`ok` is what lets the JS distinguish a real payload from a crash reply."""
+    assert _json(bridge.get_workspace_state())["ok"] is True

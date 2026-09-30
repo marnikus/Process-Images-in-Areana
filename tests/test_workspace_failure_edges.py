@@ -307,4 +307,4 @@ def test_damaged_restore_still_refreshes_the_restored_panels(bridge, snapshot, m
     reply = json.loads(bridge.restore_workspace(str(snapshot), "{}"))
     assert reply["ok"] is False and "job_history" in reply["restored"]
     assert spy.payloads, "restored job history must reach the UI even when the run failed"
-    assert "job history re-pushed" in reply["reconciled"]
+    assert "job history re-pushed" in reply["refresh"]

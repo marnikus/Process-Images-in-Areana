@@ -5,6 +5,9 @@ from pathlib import Path
 
 from .json_store import load_json as _load_json, save_json_atomic as _atomic_write
 
+URL_PATTERN_KEY = "url_pattern"
+URL_PATTERN_DEFAULT = "arena.ai"  # one pattern for every browser
+
 DEFAULT_SESSION = {
     "grid_layout": None,
     "window_states": {"closed": [], "minimized": []},
@@ -18,7 +21,7 @@ DEFAULT_SESSION = {
     "cdp_extra_args": "",
     "active_browser": "chrome",  # which browser the automation connects to and the panel edits
     "cdp_browsers": {},  # per-browser {user_data_dir, extra_args, enabled} overrides
-    "url_pattern": "arena.ai",  # one pattern for every browser
+    URL_PATTERN_KEY: URL_PATTERN_DEFAULT,
     "url_reconcile_interval_ms": 5000,  # S6: Python URL reconciler cadence (clamped 500…60000)
     "action_blocks": None,  # will be default stack if None
     "action_blocks_version": 1,

@@ -251,3 +251,10 @@ def test_aclose_disconnects_and_never_raises(monkeypatch):
     monkeypatch.setattr(bt, "CDPClient", lambda host, port: _FakeClient(boom=True))
     dead, err = asyncio.run(bt.dial("h", 1))
     assert dead is None and err
+
+
+def test_page_ws_is_the_reverse_of_endpoint_of_ws():
+    """The page socket is formatted where it is parsed, and the pair round-trips (audit #4 N4)."""
+    ws = bt.page_ws("127.0.0.1", 9333, "ABC123")
+    assert ws == "ws://127.0.0.1:9333/devtools/page/ABC123"
+    assert bt.endpoint_of_ws(ws) == ("127.0.0.1", 9333)
