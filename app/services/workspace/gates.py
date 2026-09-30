@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from app.persistence.workspace.errors import WorkspaceError
-from app.persistence.workspace.integrity import file_sha, safe_rel_path
+from app.persistence.workspace.integrity import file_sha, resolve_inside
 from app.persistence.workspace.manifest import entry_for
 
 
@@ -38,12 +38,11 @@ def load_one(root: Path, entry: dict, rel: str):
 
 
 def _gated(root: Path, entry: dict, rel: str):
-    safe = safe_rel_path(rel)
-    if not safe or rel != safe:
+    path = resolve_inside(root, rel)
+    if path is None:
         return WorkspaceError(entry_owner(entry), "unsafe_path", f"unsafe path: {rel!r}")
-    path = root / safe
     if not path.exists():
-        return WorkspaceError(entry_owner(entry), "missing", f"file missing: {safe}")
+        return WorkspaceError(entry_owner(entry), "missing", f"file missing: {rel}")
     if entry.get("bytes") is not None and path.stat().st_size != entry["bytes"]:
         return WorkspaceError(entry_owner(entry), "checksum",
                               f"size mismatch ({path.stat().st_size} ≠ {entry['bytes']})",

@@ -55,6 +55,18 @@ def safe_rel_path(rel) -> str:
     return cleaned
 
 
+def resolve_inside(root, rel) -> Path | None:
+    """The file a manifest path names inside the snapshot, or None when unsafe.
+
+    The ONE path rule (audit #3 D1): the preview and the restore file gates both
+    resolve through here, so they can never drift apart again.
+    """
+    safe = safe_rel_path(rel)
+    if not safe or safe != rel:
+        return None
+    return Path(root) / safe
+
+
 def file_sha(path: Path) -> str:
     """Checksum of an on-disk file (streamed; small JSON files)."""
     digest = hashlib.sha256()
