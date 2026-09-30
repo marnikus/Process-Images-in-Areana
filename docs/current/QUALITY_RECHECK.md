@@ -24,6 +24,17 @@ Bugfix round on top of the snapshot above (`docs/archive/2026-09-21-reparse-rejo
 | JS lane | same tool with the two changed `.js` files | no finding for `page-pool/render.js` / `url-list/render.js`; the one JS fail (`panels/captcha.js max_cc 12 > 10`) is identical on the base tree (pre-existing) |
 | Environment facts | — | the `max_cog 0→N` ratchet lines are the stale-baseline noise documented above (cog recorded as 0 repo-wide; identical on the untouched HEAD commit); `bash tools/pre_push_check.sh` additionally reports two `ratchet-coverage` drops (`app/browser/cdp/transport.py` 90.5→84.3 %, `app/ui/qt_compat.py` 60.7→39.3 %) — measured on the **stashed base tree in this sandbox** with identical values, i.e. the venv now has `websockets`/`PySide6-Essentials` where the baseline was recorded without them (the same family as the documented `libGL` floors), not a finding from this round; the bare `from PySide6 import QtWidgets` import still needs `libGL.so.1` |
 
+**RULE 18.2 exceptions in this feature, each with its `ideal-size:` reason in the file:** the
+workspace JS panel (6 frozen Qt slots whose bodies delegate to the service layer) and
+`app/services/workspace/apply.py` (312 lines, over the 300 ideal). `apply.py` grew 276 -> 312 in this
+round with the H3 live-sync collection; RULE 16 sets no file-LOC fail line, so it is recorded rather
+than reduced, because the per-domain transaction order it holds — dependency -> schema -> migration ->
+semantic -> apply, each rolling back to the pre-apply capture — is a published contract (design
+§C.6/§F, SoR I-77/I-81, audit #3 §4) that a reader must be able to check on one screen; moving a
+stage into its own module to satisfy the line would make the contract checkable only by chasing
+imports. Splitting the read-only selection/expansion block out instead was considered and rejected as
+a speculative interface with exactly one caller.
+
 **Baseline decision: `tools/quality_baseline.json` is NOT re-recorded** — nothing needed to grow
 (every new symbol passes the absolute limits with room), so re-recording would only bake the current
 coverage drift into the floors. The stale per-symbol entry `reset_stuck_page: 11` under

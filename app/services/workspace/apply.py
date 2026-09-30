@@ -1,3 +1,10 @@
+# ideal-size: 312 lines reason=one frozen decision path. The per-domain
+# transaction's order — dependency -> schema -> migration -> semantic ->
+# apply, each with its rollback to the pre-apply capture — is a published
+# contract (design §C.6/§F, SoR I-77/I-81, audit #3 §4): a reader must be
+# able to check that ordering, and what each stage may write, on one screen.
+# Moving a stage out to satisfy the line would make the contract checkable
+# only by chasing imports (RULE 18.5 — named constraint, not convenience).
 """Workspace restore — the whole MUTATING side (design §C.6/§F).
 
 Selection + strict-dependency expansion, recovery backup of live files,
