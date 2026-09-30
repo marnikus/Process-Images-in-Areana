@@ -234,3 +234,9 @@ only where the audited code depends on them, and none of these three is on the h
 Not changed on purpose (documented in §2 "kept"): the two `FakeBrowser` fixtures, `_Move`'s 13 fields, the
 `_current_tab_id` readers and the `devtools/page/` strings outside this feature (legacy, listed), and
 `run_state.py`'s hand-built `MM:SS`.
+
+## 12. Inventory
+
+[`refactored-files.md`](refactored-files.md) — every file this branch touched, with total and code line counts,
+per-file `+/-` for each pass, the shrunken-file list and the commit chain. It covers audit #3 and audit #4 together,
+since both live in the one pull request.
