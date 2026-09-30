@@ -24,6 +24,16 @@ Bugfix round on top of the snapshot above (`docs/archive/2026-09-21-reparse-rejo
 | JS lane | same tool with the two changed `.js` files | no finding for `page-pool/render.js` / `url-list/render.js`; the one JS fail (`panels/captcha.js max_cc 12 > 10`) is identical on the base tree (pre-existing) |
 | Environment facts | — | the `max_cog 0→N` ratchet lines are the stale-baseline noise documented above (cog recorded as 0 repo-wide; identical on the untouched HEAD commit); `bash tools/pre_push_check.sh` additionally reports two `ratchet-coverage` drops (`app/browser/cdp/transport.py` 90.5→84.3 %, `app/ui/qt_compat.py` 60.7→39.3 %) — measured on the **stashed base tree in this sandbox** with identical values, i.e. the venv now has `websockets`/`PySide6-Essentials` where the baseline was recorded without them (the same family as the documented `libGL` floors), not a finding from this round; the bare `from PySide6 import QtWidgets` import still needs `libGL.so.1` |
 
+**A flake the focused lane could not find, and how it was found:** the H1 positive control
+`test_a_second_save_in_a_different_second_is_unaffected` compared the new folder name to a UTC stamp
+read *after* `save_workspace` returned, so a second ticking inside the save broke it. It reproduced
+in **1 of 2 full-suite runs** and in **0 of ~50 focused runs** — the focused suite finishes in 1.5 s
+and the save almost never straddles a second there. The lesson is the one the CODE_VERIFICATION lane
+already carries: a suite that is fast enough to hide a race proves nothing about it, so the
+before/after comparison has to be made on the same lane the failure actually appears on. Fixed by
+reading the clock on both sides of the save and asserting the absence of the `-02` suffix, which is
+the property the test is about.
+
 **RULE 18.2 exceptions in this feature, each with its `ideal-size:` reason in the file:** the
 workspace JS panel (6 frozen Qt slots whose bodies delegate to the service layer) and
 `app/services/workspace/apply.py` (312 lines, over the 300 ideal). `apply.py` grew 276 -> 312 in this
