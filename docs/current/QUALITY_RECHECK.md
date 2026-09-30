@@ -1264,3 +1264,53 @@ starts, restarts or kills a browser.
 
 * `captcha_recording/` + Records window kept (F-1).
 * `captcha/stats.py` `auto_*` counters no longer incremented (F-2).
+
+
+## Addendum 2026-09-30 — the stranded-Reparse fix ported onto the audit #4 branch (I-68a)
+
+Two branches had refactored the same range independently:
+`arena/01a0ef64` (audit #3 + #4, the broader pass) and `arena/01a0ef65` (audit #3 + #4,
+the more surgical one). They overlapped on exactly one finding — the duplicated owner
+probe, which both fixed the same way — and each left the other's unique defects open.
+A merge attempt produced **16 conflicted files**, so they are competing refactors of the
+same code, not a stack. This entry records taking `01a0ef65` as the base and porting
+`01a0ef64`'s one user-visible fix onto it. Comparison: [`BRANCH_COMPARISON.md`](../../BRANCH_COMPARISON.md).
+
+| Gate | Command | Result |
+|---|---|---|
+| Import cycles | `pytest tests/test_import_cycles.py -q` | **162 passed** — every `app.services` / `app.browser` module imports FIRST in a fresh interpreter (the N7 lesson below) |
+| Focused Python | `pytest tests/test_new_tab_handover.py tests/test_import_cycles.py tests/test_live_reconcile.py tests/test_reparse_from_scratch.py -q` | **229 passed** (was 101 + 0 on the base: the handover suite plus the new cycle guard) |
+| Full Python | `QT_QPA_PLATFORM=offscreen pytest tests -q` | **3 210 passed · 5 skipped · 6 failed** — the same six environment-only failures that fail on the untouched base commit (no PySide6/`libGL`, the IPv4-only connect message, the acorn-less JS gate). No new failure |
+| Canonical JS lane | `npm run test:js` | **481 pass · 2 fail** — the same two `live_debug` subtests that fail on `main` |
+| New-tab JS | `node --test tests/js/test_job_cycle_setting.mjs` | **12 passed** |
+| Size / complexity | `radon cc -s` + `tools/verify_quality.py --changed-files <the 3 ported files>` | **0 new findings.** The one fail on `reconcile.py` (`max_cc` 7→8) reproduces identically on the base commit, which never touched that file — stale-baseline noise, not this port |
+| Coverage, the ported area | `coverage run --branch --source=app -m pytest tests` | `pass_hold.py` **97 % line / 100 % branch**, `new_tab.py` **100 % / 100 %**, `reconcile.py` **99 %** |
+| Dead code | `vulture --min-confidence 80` | 69 before, 69 after |
+
+**The defect (I-68a / audit #4 N1).** A manual Reparse that met a running new-tab handover was
+queued and logged *"runs right after the current pass"*, then stranded: `_reparse_queued` is read
+only at the end of a `reconcile_once` pass, and the handover released `_auto_scan_running` with a
+bare `= False` without reading it. Reproduced on the real `reconcile_once` + the real
+`_hold_reconciler`, and the RED was re-verified on this tree by reverting only the one-line
+release and watching `test_a_reparse_queued_during_a_handover_runs_when_the_handover_ends` fail
+with *"the queued Reparse must run the moment the handover ends"*.
+
+**Why the leaf, and not the direct import.** B1 first fixed this by importing `live.reconcile`
+from `new_tab.py`. `cooldown_service` imports `new_tab`, so the import closed
+`cooldown_service → new_tab → live.reconcile → reconcile_rows → run_state → cooldown_service`,
+`import app.services.cooldown_service` raised `ImportError` outright, and **22 test modules
+failed at collection**. Every focused suite had passed throughout, because pytest never imported
+the tree starting from `cooldown_service`. The port therefore takes the *later* form:
+`pass_hold.py` is a stdlib-only leaf that owns the flag and the queue and takes the pass to run as
+an injected callable, so it never imports the reconciler. `_hold_reconciler` also acquires through
+the leaf (`is_held` / `take`), so acquire and release are one rule rather than two spellings.
+
+**What was deliberately NOT ported.** B1's workspace pass (the `providers/` split, the 4-file JS
+panel split) and its N2/N3 fixes — the audit #4 branch already covers the owner-probe duplication
+and is the smaller, cleaner diff, and B1's workspace pass grew `apply.py` past the 300-line ideal
+and recorded a RULE 18.2 exception where the base branch shrank it. The two audit documents from
+the losing branch were dropped rather than merged, to keep one audit per range.
+
+**Baseline decision: `tools/quality_baseline.json` is NOT re-recorded** — nothing needed to grow
+past an absolute limit, so re-recording would only bake this sandbox's coverage drift into the
+floors.
