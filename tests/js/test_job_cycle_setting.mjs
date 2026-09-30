@@ -161,8 +161,16 @@ test('the module is booted with the panels, loaded after settings.js, reloaded o
   assert.match(app, /'JobCycleSetting'/);
   const html = read('index.html');
   assert.ok(html.indexOf('js/panels/job-cycle-setting.js') > html.indexOf('js/panels/settings.js'));
-  const ws = read('js/panels/workspace.js');
+  // The RULE 24 refresh table moved out of the 368-line `panels/workspace.js`
+  // into the slice that owns the flow when it was split (audit #3 L9), so the
+  // mount no longer holds these names. Assert them where they live now, and keep
+  // the negative case: the restored job cycle must NOT be pushed into the
+  // Settings panel (that is the I-80 single-home fix).
+  const ws = read('js/panels/workspace/flow.js');
   assert.match(ws, /\['UrlList', 'loadCooldownConfig'\]/);
   assert.match(ws, /\['JobCycleSetting', 'load'\]/);
   assert.equal(/\['SettingsPanel', 'loadCooldownConfig'\]/.test(ws), false);
+  // the mount still wires the slices, so the table is reachable at all
+  const mount = read('js/panels/workspace.js');
+  assert.match(mount, /workspace\/flow\.js/);
 });

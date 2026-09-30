@@ -24,6 +24,21 @@ Bugfix round on top of the snapshot above (`docs/archive/2026-09-21-reparse-rejo
 | JS lane | same tool with the two changed `.js` files | no finding for `page-pool/render.js` / `url-list/render.js`; the one JS fail (`panels/captcha.js max_cc 12 > 10`) is identical on the base tree (pre-existing) |
 | Environment facts | — | the `max_cog 0→N` ratchet lines are the stale-baseline noise documented above (cog recorded as 0 repo-wide; identical on the untouched HEAD commit); `bash tools/pre_push_check.sh` additionally reports two `ratchet-coverage` drops (`app/browser/cdp/transport.py` 90.5→84.3 %, `app/ui/qt_compat.py` 60.7→39.3 %) — measured on the **stashed base tree in this sandbox** with identical values, i.e. the venv now has `websockets`/`PySide6-Essentials` where the baseline was recorded without them (the same family as the documented `libGL` floors), not a finding from this round; the bare `from PySide6 import QtWidgets` import still needs `libGL.so.1` |
 
+**Correction to the 2026-09-29 addendum above: the canonical JS lane was not measuring the whole lane.**
+`npm run test:js` names 54 test files; `tests/js/` holds 55. The one it did not name was
+`test_job_cycle_setting.mjs` — the jsdom test for the I-79 new-tab setting. So when the audit #3 panel
+split moved the RULE 24 refresh table out of `panels/workspace.js` into `panels/workspace/flow.js`, the
+assertion on it broke, and "371 passed · 17 failed — identical 17 before and after" was measured on a
+lane that could not fail. `node --test tests/js/*.mjs` on the same tree showed it: **12/12 at
+`97f4ed3`, 11/12 after the split.**
+
+Both are fixed: the test now reads the slice that owns the table (and additionally asserts the mount
+still wires that slice, so it cannot pass on a file the page never loads), and `test:js` names the
+file. Re-measured on the same command, base `97f4ed3` vs. this tree, diffing the failing *names*: **17
+vs 17, identical sets, nothing introduced and nothing fixed.** The lesson is the one this file keeps
+earning — a before/after comparison is only as good as the lane it runs on, and a hand-maintained file
+list is a lane that silently shrinks.
+
 **A flake the focused lane could not find, and how it was found:** the H1 positive control
 `test_a_second_save_in_a_different_second_is_unaffected` compared the new folder name to a UTC stamp
 read *after* `save_workspace` returned, so a second ticking inside the save broke it. It reproduced
@@ -1317,6 +1332,43 @@ Dishonest reductions rejected (RULE 16.6): letting a failed non-required domain 
 (the user-visible "Save failed" for a store the feature never promised to be required), ticking the
 preview checklist `ok` for a domain the restore will skip, keeping the `published` report branch alive
 because a test read it, and splitting `restore_workspace` only to make the size number look better.
+
+## Addendum 2026-09-30 — I-79 new-tab handover: audit #4 + TDD refactor
+
+Scope: `8410cb9` (I-79) and the nine `fix(new_tab)` commits through `b0b81fc`, NOT the text-output
+feature that shares the same commit range. Audit and plan:
+[`archive/2026-09-30-new-tab-handover/audit.md`](archive/2026-09-30-new-tab-handover/audit.md).
+
+| Gate | Command | Result |
+|---|---|---|
+| Focused Python | `pytest tests/test_new_tab_*.py tests/test_browser_targets.py tests/test_page_popup.py tests/test_live_reconcile.py tests/test_reparse_from_scratch.py -q` | **130 passed** (was 126; +3 characterization, +1 N2, +1 N3 guard, +1 N1) |
+| New-tab JS | `node --test tests/js/test_job_cycle_setting.mjs` | **12 passed** — was **11/12**: the audit #3 panel split had broken this file's last test and `npm run test:js` never saw it (below) |
+| Size / complexity | `radon cc -s` over the 5 modules | max CC **8 → 8**, max function LOC **23 → 22**, max nesting 2, 47 → 49 functions, 724 → ~735 lines; both new functions in RULE 18.1's band (`release` 20, `install_drain` 7) |
+| Changed-file ratchet | `python tools/verify_quality.py --changed-files <new_tab, reconcile, config_manager, new_tab_setting>` | **✅ PASSED — 0 fails** |
+| Vulture | `vulture <5 modules> <5 test files> --min-confidence 80` | **0** in production |
+| Coverage, the 5 modules | `coverage run --branch --source=app -m pytest tests` | **100 % line / 100 % branch**, unchanged — the new paths are covered, not merely executed |
+
+**Confirmed defect fixed (N1).** A manual Reparse that met a running new-tab handover was queued and
+logged *"runs right after the current pass"*, then stranded: `_reparse_queued` is read only at the end
+of a `reconcile_once` pass, and the handover released the flag with a bare `= False` without reading
+it. Reproduced on the real `reconcile_once` + the real `_hold_reconciler` before the fix, and the
+RED was re-verified afterwards by reverting only the one-line call. `reconcile.release(bridge)` is
+now the single "a pass ended" — it clears the flag and fires the queue, and `reconcile_once`'s own
+tail goes through it, so the two holders cannot drift apart again.
+
+**A proposal the audit got wrong, corrected in the code (N3).** "One owner for the default URL" was
+implemented as `config_manager` importing `new_tab_setting.DEFAULT_URL`, and that is the only
+`app/persistence/` → `app/services/` import in the whole layer — inverting the direction everything
+else follows to remove one string literal. Reverted: `new_tab_setting` is a stdlib-only leaf on
+purpose, and persistence may not import up into services, so neither side can take the constant. The
+pair stays duplicated and becomes **guarded** by a test that fails the moment they drift.
+
+**Two measured-and-kept decisions (N4, N5).** `_run` keeps an `ideal-size:` reason (the order the
+owner's log describes, scattered by a split) and `_log` documents that its swallow is total by
+construction. Neither was changed; both are recorded so the next audit does not re-open them.
+
+**Baseline decision: `tools/quality_baseline.json` is NOT re-recorded** — nothing needed to grow past
+an absolute limit.
 
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
