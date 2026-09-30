@@ -21,7 +21,7 @@ docs/archive/2026-09-30-new-tab-opener-proof/design.md + v7 merge
 docs/archive/2026-09-30-opener-fallback-merge/design.md (R7b: the popup's honest
 fallback is the job tab's own socket).
 
-ideal-size: ~336 lines reason=one handover pipeline (plan → profile read → open →
+ideal-size: ~341 lines reason=one handover pipeline (plan → profile read → open →
 prove → move → close) the reader must follow in order; splitting it would put
 the steps into two files that always change together. RULE 18.2.
 """

@@ -128,8 +128,7 @@ async def _wait_new_tab(browser, before: set, timeout_sec: float,
         if mine:
             return sorted(mine)[0], "", 0
         if time.monotonic() >= deadline:
-            strangers = _strangers(target_infos, fresh, opener_id)
-            return "", _no_tab_reason(len(fresh), bool(opener_id)), strangers
+            return "", _no_tab_reason(len(fresh), bool(opener_id)), _strangers(target_infos, fresh, opener_id)
         await asyncio.sleep(_POLL_SEC)
 
 
