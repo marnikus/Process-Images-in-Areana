@@ -14,21 +14,18 @@ RESTORE_WARNINGS = "success_with_warnings"
 RESTORE_FAILED = "failed"
 
 
-def save_report(*, timing: dict, domains: list, errors: list,
-                published: bool) -> dict:
+def save_report(*, timing: dict, domains: list, errors: list) -> dict:
     """The save outcome written into `reports/save-report.json`.
 
-    `timing` carries snapshot_id/started_utc/finished_utc (one identity bundle).
+    A report only ever exists for a PUBLISHED snapshot: `manifest.json` is the
+    commit marker, and a publish that fails returns before any report is built
+    (`save._publish_failed` names the partial folder instead). So there is no
+    "not published" outcome here — a saved snapshot is `success` or `partial`.
     """
     required = {d["domain_id"] for d in domains if d.get("required")}
     failed_required = [e for e in errors if e.get("domain_id") in required]
-    if not published:
-        result = SAVE_RESULT_FAILED
-    elif errors:
-        result = SAVE_RESULT_PARTIAL
-    else:
-        result = SAVE_RESULT_OK
-    return {**timing, "result": result, "published": published,
+    result = SAVE_RESULT_PARTIAL if errors else SAVE_RESULT_OK
+    return {**timing, "result": result,
             "domains": domains, "errors": errors, "failed_required": failed_required}
 
 

@@ -96,9 +96,8 @@ def _policy_row(provider, entry: dict) -> dict:
     cause = (entry.get("capture", {}) or {}).get("excluded_reason", "policy-excluded domain")
     row = {"domain_id": provider.domain_id, "status": "skipped",
            "stage": "apply", "policy": True, "cause": cause}
-    advice = getattr(provider, "restore_advice", "")
-    if advice:
-        row["recommended_action"] = advice
+    if provider.restore_advice:
+        row["recommended_action"] = provider.restore_advice
     return row
 
 
@@ -123,11 +122,31 @@ def _rollback(bridge, provider, previous, exc: Exception) -> dict:
             "rolled_back": can_roll_back, **error.to_dict()}
 
 
+def _state_lock(bridge):
+    """The queue funnel's lock — the restore's snapshot boundary.
+
+    Same seam as `save.capture_all` and for the same reason: the import is
+    deferred because `live.feed` pulls the whole live stack. It is an RLock,
+    so a provider that writes through the queue inside its `apply` cannot
+    deadlock against the transaction holding it.
+    """
+    from app.services.live.feed import state_lock
+    return state_lock(bridge)
+
+
 def _apply_domain(bridge, provider, doc) -> dict:
     """The per-domain transaction: commit, or roll back to the pre-apply capture.
 
     No readable pre-apply capture → no rollback point → the domain is not applied.
+    Held under the queue lock, exactly like the save-side capture pass, so the
+    undo point and the write it guards cannot be split by a background writer.
     """
+    with _state_lock(bridge):
+        return _locked_apply(bridge, provider, doc)
+
+
+def _locked_apply(bridge, provider, doc) -> dict:
+    """The transaction body, already inside the snapshot boundary lock."""
     previous, problem = _guarded(provider, "apply", provider.capture, bridge)
     if problem:
         problem["cause"] = f"pre-apply values unreadable — not applied: {problem['cause']}"
@@ -214,8 +233,14 @@ def _preflight(bridge, root: Path, selected) -> tuple:
     return manifest, providers, None
 
 
-def restore_workspace(bridge, root, selected=None) -> dict:
-    """Selected/all domains, dependency order, per-domain transaction (task RESTORE 2–10)."""
+def restore_workspace(bridge, root, selected=None, live_sync=None) -> dict:
+    """Selected/all domains, dependency order, per-domain transaction (task RESTORE 2–10).
+
+    `live_sync(bridge, restored_ids) -> notes` is the panel's own post-restore
+    step (Qt-side clamp + the RULE 24 live pushes). It is called INSIDE the
+    report, so `reports/restore-report.json` describes the whole run — the
+    service must not know what the UI does, only where its notes belong.
+    """
     root = Path(root)
     manifest, providers, refusal = _preflight(bridge, root, selected)
     if refusal:
@@ -223,15 +248,16 @@ def restore_workspace(bridge, root, selected=None) -> dict:
     backup, backup_refusal = backup_live(bridge, providers)
     if backup_refusal:
         return {"ok": False, "error": backup_refusal}
-    run = {"bridge": bridge, "manifest": manifest,
-       "files": load_files(root, manifest, providers), "failed": set()}
+    run = {"bridge": bridge, "manifest": manifest, "root": root, "backup": backup,
+           "live_sync": live_sync, "files": load_files(root, manifest, providers),
+           "failed": set()}
     rows = []
     for provider in providers:
         row = _restore_row(run, provider)
         rows.append(row)
         if row["status"] != "restored":
             run["failed"].add(provider.domain_id)
-    report = _finish(bridge, root, rows, backup)
+    report = _finish(run, rows)
     _log_result(bridge, root, report)
     return {"ok": report["result"] != "failed", **report}
 
@@ -246,17 +272,27 @@ def _log_result(bridge, root: Path, report: dict) -> None:
                 _RESULT_LEVEL.get(report["result"], "error"))
 
 
-def _finish(bridge, root: Path, rows: list, backup: str) -> dict:
-    """Reconcile restored domains, then write the restore-report into the folder."""
+def _live_notes(bridge, restored_ids: list, live_sync) -> list:
+    """The panel's post-restore notes, collected before the report is written."""
+    return list(live_sync(bridge, list(restored_ids))) if live_sync else []
+
+
+def _finish(run: dict, rows: list) -> dict:
+    """Reconcile restored domains, then write the restore-report into the folder.
+
+    `run` is this restore's context (bridge/root/backup/live_sync/failed).
+    """
+    bridge, root = run["bridge"], run["root"]
     restored_ids = [r["domain_id"] for r in rows if r["status"] == "restored"]
     migrated = [{"domain_id": r["domain_id"], "note": r["migrated"]}
                 for r in rows if r.get("migrated")]
+    reconciled = _reconcile_all(bridge, restored_ids)
+    reconciled.extend(_live_notes(bridge, restored_ids, run["live_sync"]))
     outcomes = {"restored": restored_ids,
                 "skipped": [r for r in rows if r["status"] != "restored"],
-                "migrated": migrated,
-                "reconciled": _reconcile_all(bridge, restored_ids)}
+                "migrated": migrated, "reconciled": reconciled}
     report = reports.restore_report(workspace=str(root), outcomes=outcomes,
-                                    backup=backup)
+                                    backup=run["backup"])
     note = fsio.write_report(root, "reports/restore-report.json", canonical_bytes(report))
     if note:
         report["report_note"] = note

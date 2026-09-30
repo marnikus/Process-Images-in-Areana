@@ -62,6 +62,27 @@ class ApplyOutcome:
     notes: list = field(default_factory=list)
 
 
+def object_doc(doc) -> str | None:
+    """`'document is not an object'` for anything that is not a JSON object.
+
+    The one shape check every domain's `validate` starts with (RULE 16.4 — it
+    was re-derived in five providers).
+    """
+    return None if isinstance(doc, dict) else "document is not an object"
+
+
+def members(doc: dict, **shapes) -> str | None:
+    """`key must be a <type>` for the first key that is present with a wrong type.
+
+    Absent keys are tolerated (a snapshot written by an older build simply has
+    fewer keys); only a PRESENT key of the wrong type is an error.
+    """
+    for key, expected in shapes.items():
+        if key in doc and not isinstance(doc[key], expected):
+            return f"'{key}' must be a {expected.__name__}"
+    return None
+
+
 class StateProvider:
     """Base contract; subclasses override what their domain owns.
 
@@ -77,7 +98,13 @@ class StateProvider:
     supported_migrations: tuple = ("1",)
     dependencies: dict = {}   # {domain_id: "strict" | "optional"}
     sensitivity = "public"    # public | personal | secret
-    required = False          # save aborts (unless allow_partial) when a required domain fails
+    # True = the snapshot is unusable without this domain, so a capture failure
+    # refuses the save (unless the user allows a partial snapshot). False = a
+    # failure degrades the save to `partial`, is listed in the report and the
+    # log, and marks the domain excluded so a later restore skips it. See
+    # `save._blocking` — this flag is read there and in `reports.save_report`.
+    required = False
+    restore_advice = ""       # what the user should do about an excluded domain
 
     def live_paths(self, bridge) -> list:
         """Files to copy into the recovery backup before this domain applies."""

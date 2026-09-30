@@ -13,7 +13,8 @@ from pathlib import Path
 from app.persistence.cooldown_store import load_entries, load_stats, normalize_url
 from app.persistence.json_store import save_json_atomic
 from app.services.cooldown_service import restore_cooldown_entry, restore_page_stats
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture
+from app.services.workspace.provider import (ApplyOutcome, CaptureResult, StateProvider,
+                                         live_capture, members, object_doc)
 
 _SECTIONS = ("version", "entries", "stats", "aliases")
 
@@ -24,12 +25,9 @@ def cooldown_file(bridge) -> Path:
 
 
 def sections_error(doc) -> str | None:
-    if not isinstance(doc, dict):
-        return "document is not an object"
-    for key in ("entries", "stats", "aliases"):
-        if key in doc and not isinstance(doc[key], dict):
-            return f"'{key}' must be an object"
-    return None
+    if (shape := object_doc(doc)):
+        return shape
+    return members(doc, entries=dict, stats=dict, aliases=dict)
 
 
 class CooldownsProvider(StateProvider):
@@ -66,14 +64,13 @@ class CooldownsProvider(StateProvider):
         pool = getattr(bridge, "_page_pool", None)
         if pool is None:
             return []
-        entries, stats = load_entries(cooldown_file(bridge)), load_stats(cooldown_file(bridge))
-        timers = self._reapply_timers(pool, entries)
-        counters = self._reapply_stats(pool, stats)
-        notes = []
-        if timers or counters:
-            notes.append(f"cooldowns: re-applied {timers} timer(s), {counters} counter(s) "
-                         "into the live pool")
-        return notes
+        path = cooldown_file(bridge)
+        timers = self._reapply_timers(pool, load_entries(path))
+        counters = self._reapply_stats(pool, load_stats(path))
+        if not (timers or counters):
+            return []
+        return [f"cooldowns: re-applied {timers} timer(s), {counters} counter(s) "
+                "into the live pool"]
 
     def _reapply_timers(self, pool, entries: dict) -> int:
         applied = 0

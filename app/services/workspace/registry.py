@@ -1,9 +1,10 @@
 """The ONE workspace provider table (RULE 10 — no second list).
 
-`RESTORE_ORDER` is the topological restore order (design §B.2: persisted
-domains are mutually independent in v1; strict edges, when a future domain
-adds one, skip dependents through the shared machinery). Instantiation is
-module-level: providers are stateless.
+`PROVIDER_CLASSES` is the single registration list and the single source of
+the restore order: a provider that is not in it does not exist, and
+`tests/test_workspace_architecture.py` fails if a `StateProvider` subclass is
+written anywhere under `providers/` without being added here. Instances are
+module-level and stateless — the classes are instantiated once, below.
 """
 
 from __future__ import annotations
@@ -18,18 +19,21 @@ from .providers.session import GridWindowProvider, SessionSettingsProvider
 from .providers.undo import UndoProvider
 from .provider import StateProvider
 
-RESTORE_ORDER = (
-    "captcha_keys", "captcha_recordings", "captcha_stats", "cooldowns",
-    "arena_state", "session_settings", "grid_window", "undo",
-    "window_presets", "arena_presets", "job_history",
+# The one list. Order matters: it is the topological restore order (design
+# §B.2 — persisted domains are mutually independent in v1; strict edges, when a
+# future domain adds one, skip dependents through the shared machinery).
+PROVIDER_CLASSES: tuple = (
+    CaptchaKeysProvider, RecordingsProvider, CaptchaStatsProvider,
+    CooldownsProvider, ArenaStateProvider, SessionSettingsProvider,
+    GridWindowProvider, UndoProvider, WindowPresetsProvider,
+    ArenaPresetsProvider, JobHistoryProvider,
 )
 
+RESTORE_ORDER = tuple(cls.domain_id for cls in PROVIDER_CLASSES)
+
 _TABLE: dict = {}
-for _cls in (CaptchaKeysProvider, RecordingsProvider, CaptchaStatsProvider,
-             CooldownsProvider, ArenaStateProvider, SessionSettingsProvider,
-             GridWindowProvider, UndoProvider, WindowPresetsProvider,
-             ArenaPresetsProvider, JobHistoryProvider):
-    _provider = _cls()
+for _cls in PROVIDER_CLASSES:
+    _provider: StateProvider = _cls()
     _TABLE[_provider.domain_id] = _provider
 
 

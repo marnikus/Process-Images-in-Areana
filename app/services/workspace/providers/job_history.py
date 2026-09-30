@@ -10,16 +10,21 @@ from __future__ import annotations
 
 from app.persistence.json_store import save_json_atomic
 from app.persistence.workspace.errors import WorkspaceError
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture
+from app.services.workspace.provider import (ApplyOutcome, CaptureResult, StateProvider,
+                                         live_capture, members, object_doc)
 from app.services.job_history import JobHistoryStore, _history_file
 
 
 def history_error(doc) -> str | None:
-    if not isinstance(doc, dict):
-        return "document is not an object"
-    if not isinstance(doc.get("entries", []), list):
-        return "'entries' must be a list"
-    number = doc.get("next_job_no", 1)
+    if (shape := object_doc(doc)):
+        return shape
+    if (shape := members(doc, entries=list)):
+        return shape
+    return _next_job_error(doc.get("next_job_no", 1))
+
+
+def _next_job_error(number) -> str | None:
+    """`next_job_no` keeps the monotonic promise (I-61) — never a bool, never < 1."""
     if isinstance(number, bool) or not isinstance(number, int) or number < 1:
         return "'next_job_no' must be a positive int"
     return None

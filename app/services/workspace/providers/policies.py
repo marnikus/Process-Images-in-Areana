@@ -16,16 +16,10 @@ KEYS_EXCLUDED = "secret: redacted presence metadata only — raw keys never leav
 RECORDINGS_EXCLUDED = ("default-excluded: page-derived captcha evidence; an opt-in copy is a "
                        "documented future capability (design §D.3)")
 KEYS_REAPPLY = "Re-enter the API key in the Captcha window (keys are never restored from a workspace)."
+RECORDINGS_ADVICE = "Recordings are excluded from workspace snapshots by policy."
 
-# The one restore advice per policy domain (apply._policy_row consumes this).
-RESTORE_ADVICE = {"captcha_keys": KEYS_REAPPLY}
-
-# Short exclusion codes for metadata/app-environment.json (design §D.3) —
-# save consumes this verbatim; the wording lives here, nowhere else.
-INCLUSION_POLICY = {"logs": "excluded:runtime", "source_images": "excluded:filesystem-truth",
-                    "outputs_AI": "excluded:filesystem-truth",
-                    "captcha_recordings": "excluded:default-opt-in",
-                    "captcha_keys": "excluded:secret-redacted-presence-only"}
+# Each policy domain carries its own restore advice as `restore_advice`
+# (the `StateProvider` contract slot `apply._policy_row` reads).
 
 
 def _masked_presence(bridge) -> dict:
@@ -65,7 +59,7 @@ class RecordingsProvider(StateProvider):
     native_rel_path = ""
     schema_version = "1"
     sensitivity = "personal"
-    restore_advice = "Recordings are excluded from workspace snapshots by policy."
+    restore_advice = RECORDINGS_ADVICE
 
     def capture(self, bridge) -> CaptureResult:
         return CaptureResult(ok=True, doc={"root": "config/captcha_recordings/"}, excluded=True,

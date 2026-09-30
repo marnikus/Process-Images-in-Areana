@@ -21,6 +21,139 @@ from app.persistence.workspace.manifest import (build_manifest, check_format,
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture()
+def bridge(tmp_path):
+    from app.persistence.config_manager import ConfigManager
+    from app.ui.bridge import Bridge
+    return Bridge(config_manager=ConfigManager(config_dir=str(tmp_path)),
+                  state_path=tmp_path / "app_state.json")
+
+
+# ---- L7: a remap note that could not be produced says so ------------------
+
+def test_an_unreadable_queue_doc_becomes_a_remap_note(tmp_path):
+    """L7: `restore._remap_notes` swallowed (OSError, ValueError) with `pass`, so
+    'the folder root moved' and 'we could not read the file' looked identical.
+    An unreadable doc is now a note; an empty one still means 'no remap'."""
+    import json as _json
+    from app.persistence.workspace.integrity import canonical_bytes
+    from app.services.workspace import restore as ws_restore
+    from app.persistence.workspace.manifest import build_manifest
+    root = tmp_path / "snap"
+    (root / "state").mkdir(parents=True)
+    for content, expected in ((b"{not json", "could not be read"),
+                              (canonical_bytes({"queue": []}), None)):
+        (root / "state/app_state.json").write_bytes(content)
+        manifest = build_manifest(header={"snapshot_id": "s", "name": "s"},
+                                  app_meta={}, compat={},
+                                  domains={"arena_state": {"path": "state/app_state.json"}})
+        (root / "manifest.json").write_bytes(canonical_bytes(manifest))
+        notes = ws_restore._remap_notes(root, manifest)
+        if expected:
+            assert notes and expected in notes[0], notes
+        else:
+            assert notes == []
+
+
+# ---- L4: reading the recent list must not write the index -----------------
+
+def test_reading_the_recent_snapshots_list_does_not_write(tmp_path, monkeypatch):
+    """L4: `snapshot_index.recent_snapshots` is a READER, but it rewrote
+    `workspace_meta.json` whenever it pruned a vanished path — an I/O side
+    effect in a getter, on a path read from a JSON file. Pruning now happens
+    only when the index is written."""
+    from app.services.workspace import snapshot_index
+    from app.persistence.json_store import save_json_atomic
+    meta = snapshot_index.META_FILE
+    save_json_atomic(tmp_path / meta, {"recent": [str(tmp_path / "gone")],
+                                       "last_snapshot": {"path": "x"}})
+    writes = []
+    monkeypatch.setattr(snapshot_index, "_write_meta",
+                        lambda b, m: writes.append(m))
+    assert snapshot_index.recent_snapshots(_FakeBridge(tmp_path)) == []
+    assert writes == [], "a reader must not write"
+
+
+class _FakeBridge:
+    def __init__(self, config_dir):
+        self.config = type("C", (), {"dir": config_dir})()
+
+
+# ---- L6: one read per key in the watcher reconcile -----------------------
+
+def test_the_watcher_reconcile_reads_each_key_once(bridge, monkeypatch):
+    """L6: the dict comprehension called `bridge.config.get_state(key)` twice per
+    key — once for the value, once for the `is not None` test."""
+    from app.services.workspace.providers.session import SessionSettingsProvider
+    calls = []
+    real = bridge.config.get_state
+    monkeypatch.setattr(bridge.config, "get_state",
+                        lambda key, default=None: (calls.append(key), real(key, default))[1])
+    watcher = type("W", (), {"update_config": lambda _self, **kw: None})()
+    monkeypatch.setattr(bridge, "_watcher", watcher, raising=False)
+    SessionSettingsProvider().reconcile(bridge)
+    assert len(calls) == len(set(calls)), f"a key was read twice: {calls}"
+
+
+# ---- L8: meta owns the inclusion policy, with no re-wrap -----------------
+
+def test_the_inclusion_policy_lives_only_in_meta():
+    """L8: `save.inclusion_policy()` was a one-line re-wrap of a dict that
+    `save` imported from a provider module. The one home is now `meta`, and
+    it hands back a copy, never the module dict itself."""
+    import app.services.workspace as pkg
+    from app.services.workspace import meta as ws_meta
+    from app.services.workspace.providers import policies
+    assert not hasattr(policies, "INCLUSION_POLICY")
+    owners = [name for name in dir(pkg.save) if name == "INCLUSION_POLICY"]
+    assert owners == []
+    policy = ws_meta.inclusion_policy()
+    policy["logs"] = "mutated"
+    assert ws_meta.INCLUSION_POLICY["logs"] != "mutated"
+    assert ws_meta.inclusion_policy() == ws_meta.INCLUSION_POLICY
+
+
+# ---- L10: one shape validator, five call sites (audit #3) ------------------
+
+def test_object_doc_rejects_a_non_object():
+    from app.services.workspace.provider import object_doc
+    assert object_doc("not a dict") == "document is not an object"
+    assert object_doc({"a": 1}) is None
+
+
+def test_members_check_types_for_present_and_missing_keys():
+    from app.services.workspace.provider import members
+    assert members({}, a=list) is None                       # absent = tolerated
+    assert members({"a": []}, a=list) is None
+    assert members({"a": {}}, a=list) == "'a' must be a list"
+    assert members({"a": {}}, a=dict) is None
+    assert members({"a": "x", "b": 1}, a=list, b=dict) == "'a' must be a list"
+
+
+def test_every_single_file_provider_uses_the_shared_shape_validator():
+    """The five one-file providers re-derived the same isinstance ladder; they
+    now call `object_doc` / `members` from the provider contract."""
+    from app.services.workspace.provider import object_doc
+    from app.services.workspace.providers import (captcha_stats, cooldowns,
+                                                  job_history, preset_stores, undo)
+    assert captcha_stats.stats_error("nope") == object_doc("nope")
+    assert cooldowns.sections_error("nope") == object_doc("nope")
+    assert undo.history_error("nope") == object_doc("nope")
+    assert job_history.history_error("nope") == object_doc("nope")
+    assert preset_stores.WindowPresetsProvider().validate("nope") == object_doc("nope")
+
+
+# ---- L3: one named truncation limit per field (audit #3) -------------------
+
+def test_the_two_truncation_limits_are_named_not_magic():
+    from app.persistence.workspace import errors
+    assert errors.CAUSE_LIMIT == 400 and errors.EVIDENCE_LIMIT == 120
+    long = "x" * 900
+    assert errors.WorkspaceError("d", "apply", long).cause == "x" * 400
+    assert errors.WorkspaceError("d", "checksum", "c", (long, long)).to_dict()["expected"] \
+        == "x" * 120
+
+
 # ---- errors ----
 
 def test_workspace_error_rejects_unknown_stage():

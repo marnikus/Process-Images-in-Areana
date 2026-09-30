@@ -161,11 +161,11 @@ def test_backup_folder_failure_refuses(bridge, snapshot, monkeypatch):
 def test_same_second_restores_keep_separate_backups(bridge, snapshot, monkeypatch):
     """P8: the second backup overwrote the first — the only pre-restore copy."""
     from app.services.workspace import recover
-    monkeypatch.setattr(recover.time, "strftime", lambda fmt, *a: "20260928-120000")
+    monkeypatch.setattr(recover.time, "strftime", lambda *_a, **_k: "20260928-120000")
     first = restore_workspace(bridge, snapshot)["backup"]
     second = restore_workspace(bridge, snapshot)["backup"]
     assert first != second and Path(first).is_dir() and Path(second).is_dir()
-    assert sorted([first, second]) == [first, second]      # prune order stays chronological
+    assert sorted([first, second]) == [first, second]   # prune order stays chronological
 
 
 def test_prune_logs_what_it_removed(bridge, snapshot, monkeypatch):
@@ -259,15 +259,24 @@ def _live_file(bridge, domain_id: str) -> Path:
 
 @pytest.mark.parametrize("domain_id", ["job_history", "captcha_stats", "cooldowns"])
 @pytest.mark.parametrize("content", ['{"entries": [{"x": 1}]', "[1, 2]"])
-def test_corrupt_live_file_refuses_the_save(bridge, domain_id, content):
-    """P5: a truncated job_history.json was saved as `{}` — a later restore wipes history."""
+def test_corrupt_live_file_is_never_saved_as_empty(bridge, domain_id, content):
+    """P5: a truncated job_history.json was saved as `{}` — a later restore wipes
+    history. RULE 4: broken is not empty, and it is never written to a snapshot.
+
+    I-81: these three domains are NOT required, so the save no longer refuses
+    outright — it degrades to `partial`, names the file and its cause in the
+    log, and marks the domain excluded in the manifest so a later restore skips
+    it instead of applying `{}`."""
     path = _live_file(bridge, domain_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
     reply = ws_save.save_workspace(bridge, SaveRequest(name="c"))
-    assert reply["ok"] is False and domain_id in reply["error"]
+    assert reply["ok"] is True and reply["result"] == "partial"
     cause = next(e["cause"] for e in reply["errors"] if e["domain_id"] == domain_id)
     assert path.name in cause
+    manifest = json.loads((Path(reply["path"]) / "manifest.json").read_text())
+    assert manifest["domains"][domain_id]["capture"]["ok"] is False
+    assert manifest["domains"][domain_id]["capture"]["excluded"] is True
 
 
 @pytest.mark.parametrize("domain_id", ["job_history", "captcha_stats", "cooldowns"])

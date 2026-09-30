@@ -54,20 +54,35 @@ def _do_save(bridge, opts: dict) -> dict:
 def _do_restore(bridge, root: str, opts: dict) -> dict:
     """Restore, then clamp + live-refresh whatever WAS restored — even in a failed run
     (a damaged domain fails the run, yet the restored ones must reach the UI, RULE 24)."""
-    result = ws_apply.restore_workspace(bridge, root, selected=opts.get("selected"))
-    restored = result.get("restored") or []
-    if restored:
-        notes = result.setdefault("reconciled", [])
-        if "grid_window" in restored:
-            notes.extend(filter(None, [clamp_restored_geometry(bridge)]))
-        notes.extend(_post_restore_refresh(bridge, restored))
-    return result
+    return ws_apply.restore_workspace(bridge, root, selected=opts.get("selected"),
+                                      live_sync=_live_sync)
 
 
-def _answer(bridge, action: str, work) -> str:
-    """A mutating slot's JSON reply — never an exception (QWebChannel would answer '')."""
+def _live_sync(bridge, restored: list) -> list:
+    """The panel's post-restore notes: clamp, then push every LIVE consumer.
+
+    Runs INSIDE the restore report (the service calls it before writing
+    `reports/restore-report.json`), so the durable record of the run includes
+    the RULE 24 pushes and any push that failed — previously those notes
+    existed only in the UI reply.
+    """
+    notes = []
+    if "grid_window" in restored:
+        notes.extend(filter(None, [clamp_restored_geometry(bridge)]))
+    notes.extend(_post_restore_refresh(bridge, restored))
+    return notes
+
+
+def _answer(bridge, action: str, work, *args) -> str:
+    """Every JSON slot's reply — never an exception.
+
+    QWebChannel answers `''` when a slot raises, and the panel's `wsParse` turns
+    that into `{"ok": false, "error": "bad reply"}` — a misleading message for
+    what is really an internal crash. All six slots go through this guard, so a
+    crash names its action and reaches the app log.
+    """
     try:
-        result = work()
+        result = work(*args)
     except Exception as exc:
         error = f"workspace {action} crashed: {type(exc).__name__}: {exc}"
         log_message(bridge, f"❌ {error}", "error")
@@ -154,11 +169,15 @@ def clamp_restored_geometry(bridge) -> str:
 
 
 class WorkspaceMixin:
-    """Global Saving System slots: save / preview / restore / browse / reveal."""
+    """Global Saving System slots: state / save / preview / restore / browse / reveal.
+
+    All six JSON slots go through `_answer`, so none of them can answer `''`
+    (QWebChannel's silent-drop reply that the panel would read as 'bad reply').
+    """
 
     @Slot(result=str)
     def get_workspace_state(self):
-        return json.dumps(_state_payload(self), ensure_ascii=False)
+        return _answer(self, "state", lambda: _state_payload(self))
 
     @Slot(str, result=str)
     def save_workspace(self, options_json: str):
@@ -166,7 +185,7 @@ class WorkspaceMixin:
 
     @Slot(str, result=str)
     def preview_workspace(self, root: str):
-        return json.dumps(ws_restore.preview_restore(root), ensure_ascii=False)
+        return _answer(self, "preview", lambda: ws_restore.preview_restore(root))
 
     @Slot(str, str, result=str)
     def restore_workspace(self, root: str, options_json: str):
@@ -174,7 +193,7 @@ class WorkspaceMixin:
 
     @Slot(str, result=str)
     def browse_workspace_folder(self, mode: str):
-        return json.dumps(_dialog_folder(mode), ensure_ascii=False)
+        return _answer(self, "browse", _dialog_folder, mode)
 
     @Slot(str, result=bool)
     def open_workspace_path(self, path: str):

@@ -152,6 +152,36 @@ describe('workspace window (flow)', () => {
               'recommended action shown');
   });
 
+  test('a domain the restore will refuse is NOT ticked and says why (I-81)', async () => {
+    const page = boot({
+      preview_workspace: (root) => JSON.stringify({
+        ...PREVIEW, root, name: 'gated',
+        domains: [
+          { domain_id: 'arena_state', display_name: 'Queue', status: 'ok' },
+          { domain_id: 'captcha_stats', display_name: 'Captcha Stats', status: 'invalid',
+            note: "'per_site' must be an object" },
+          { domain_id: 'undo', display_name: 'Undo', status: 'unsupported_schema',
+            note: "saved schema '99' is not supported by this build" },
+          { domain_id: 'cooldowns', display_name: 'Cooldowns', status: 'parse',
+            note: 'invalid JSON' },
+        ],
+      }),
+    });
+    page.anyEl('wsLoadLastBtn').dispatch('click', {});
+    await tick(); await tick();
+    const html = page.anyEl('wsPreview').innerHTML;
+    // the note is HTML-escaped, so assert on the parts that survive it
+    assert.ok(html.includes('per_site') && html.includes('must be an object'),
+              'the semantic cause is shown');
+    assert.ok(html.includes('not supported by this build'), 'the schema cause is shown');
+    assert.ok(html.includes('invalid JSON'), 'the parse cause is shown');
+    const ticked = (id) => html.includes(`data-domain="${id}" checked`);
+    assert.ok(ticked('arena_state'), 'a healthy domain stays ticked');
+    for (const id of ['captcha_stats', 'undo', 'cooldowns']) {
+      assert.ok(!ticked(id), `${id} must not be pre-ticked — the restore will skip it`);
+    }
+  });
+
   test('Restore Selected… sends only the checked domains', async () => {
     const page = boot();
     page.anyEl('wsLoadLastBtn').dispatch('click', {});

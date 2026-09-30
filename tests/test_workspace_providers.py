@@ -108,7 +108,7 @@ def test_undo_apply_restores_the_timeline(bridge):
 def test_undo_apply_failure_is_a_workspace_error(bridge, monkeypatch):
     from app.persistence.workspace.errors import WorkspaceError
     provider = registry.get("undo")
-    monkeypatch.setattr(bridge.config.undo, "set", lambda h, i: False)
+    monkeypatch.setattr(bridge.config.undo, "set", lambda history, index: False)
     with pytest.raises(WorkspaceError) as exc:
         provider.apply(bridge, {"history": [], "index": -1})
     assert exc.value.stage == "apply"
@@ -173,8 +173,7 @@ def test_policy_providers_refuse_apply(bridge):
 # ---- secret policy ----
 
 def test_captcha_keys_capture_carries_masked_presence_only(bridge, tmp_path):
-    CaptchaKeyStore(str(tmp_path)).save(
-        CaptchaKeyStore.load.__func__ if False else _settings_with_key())
+    CaptchaKeyStore(str(tmp_path)).save(_settings_with_key())
     capture = registry.get("captcha_keys").capture(bridge)
     assert capture.excluded and "RULE 20" in capture.excluded_reason
     raw = json.dumps(capture.doc)

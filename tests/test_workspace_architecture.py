@@ -49,6 +49,19 @@ def test_providers_do_not_import_the_services():
                 and not module.endswith(".apply"), f"{path.name} imports {module}"
 
 
+def test_services_never_import_a_provider_except_the_registry():
+    """M4: a service used to import `providers.policies` for one metadata
+    constant. `registry` is the only legitimate door into `providers/` — the
+    manifest and the provider table are the one registry (RULE 10)."""
+    for path in (ROOT / "app" / "services" / "workspace").rglob("*.py"):
+        if "providers" in path.parts or path.stem == "registry":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for module in _imports(tree):
+            assert ".providers" not in module and not module.endswith("providers"), \
+                f"{path.name} imports {module} — use registry/meta instead"
+
+
 def test_registry_table_matches_restore_order():
     from app.services.workspace.registry import RESTORE_ORDER, all_providers
     assert [p.domain_id for p in all_providers()] == list(RESTORE_ORDER)
@@ -75,3 +88,32 @@ def test_restore_order_helper_puts_registry_first_then_unknowns():
     sample = [RESTORE_ORDER[-1], "not_a_domain", RESTORE_ORDER[0]]
     assert restore_order(set(sample)) == [RESTORE_ORDER[0], RESTORE_ORDER[-1], "not_a_domain"]
     assert restore_order(set()) == []
+
+
+def test_every_provider_class_in_the_package_is_registered():
+    """M1: `PROVIDER_CLASSES` is the ONE registration list. A provider written
+    but not added to it used to vanish silently — `registry.get()` returned None
+    and no test failed, so the domain never saved or restored."""
+    from app.services.workspace.provider import StateProvider
+    from app.services.workspace.registry import PROVIDER_CLASSES, get
+    declared = {cls.domain_id for cls in PROVIDER_CLASSES}
+    defined = set()
+    for path in (ROOT / "app" / "services" / "workspace" / "providers").rglob("*.py"):
+        for name, obj in vars(__import__(
+                f"app.services.workspace.providers.{path.stem}", fromlist=["x"])).items():
+            if isinstance(obj, type) and issubclass(obj, StateProvider) \
+                    and obj is not StateProvider and getattr(obj, "domain_id", ""):
+                defined.add(obj.domain_id)
+    assert defined, "sanity — the package defines provider classes"
+    assert defined <= declared, f"unregistered providers: {sorted(defined - declared)}"
+    for domain_id in declared:
+        assert get(domain_id) is not None, domain_id
+
+
+def test_restore_order_is_the_registration_list_not_a_second_one():
+    """M1: the order is DERIVED from `PROVIDER_CLASSES`; it is not a second
+    hand-maintained list that can drift from the table."""
+    from app.services.workspace.registry import (PROVIDER_CLASSES, RESTORE_ORDER,
+                                                 all_providers)
+    assert list(RESTORE_ORDER) == [cls.domain_id for cls in PROVIDER_CLASSES]
+    assert [p.domain_id for p in all_providers()] == list(RESTORE_ORDER)

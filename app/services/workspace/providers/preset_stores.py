@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import copy
 
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import (ApplyOutcome, CaptureResult, StateProvider,
+                                         members, object_doc)
 
 
 class _StoreProvider(StateProvider):
@@ -30,13 +31,13 @@ class _StoreProvider(StateProvider):
         return CaptureResult(ok=True, doc=self._store(bridge).all_data())
 
     def validate(self, doc) -> str | None:
-        if not isinstance(doc, dict):
-            return "document is not an object"
-        section = doc.get(self.section)
-        expected = list if self.section == "url_presets" else dict
-        if not isinstance(section, expected):
-            return f"'{self.section}' must be a {expected.__name__}"
-        return None
+        if (shape := object_doc(doc)):
+            return shape
+        return members(doc, **{self.section: self._section_type()})
+
+    def _section_type(self) -> type:
+        """`url_presets` is a list of rows; every other section is a mapping."""
+        return list if self.section == "url_presets" else dict
 
     def apply(self, bridge, doc) -> ApplyOutcome:
         self._store(bridge).replace_all(copy.deepcopy(doc))

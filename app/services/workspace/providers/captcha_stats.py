@@ -9,7 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.persistence.json_store import save_json_atomic
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, config_dir, live_capture
+from app.services.workspace.provider import (ApplyOutcome, CaptureResult, StateProvider,
+                                         config_dir, live_capture, members, object_doc)
 
 FILE_NAME = "captcha_stats.json"
 
@@ -19,11 +20,9 @@ def stats_file(bridge) -> Path:
 
 
 def stats_error(doc) -> str | None:
-    if not isinstance(doc, dict):
-        return "document is not an object"
-    if "per_site" in doc and not isinstance(doc["per_site"], dict):
-        return "'per_site' must be an object"
-    return None
+    if (shape := object_doc(doc)):
+        return shape
+    return members(doc, per_site=dict)
 
 
 class CaptchaStatsProvider(StateProvider):

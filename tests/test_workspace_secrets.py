@@ -79,10 +79,13 @@ def test_save_report_is_deterministic_for_unchanged_state(bridge_with_key):
 
 
 def test_policy_strings_have_one_home():
-    """F3: advice + inclusion codes live in providers/policies.py only."""
-    from app.services.workspace import save as ws_save
+    """F3 + M4: the restore advice lives on each policy provider; the inclusion
+    codes live in `meta` (the snapshot-metadata home), never in a provider
+    module that a service would have to import."""
+    from app.services.workspace import meta as ws_meta
     from app.services.workspace.providers import policies
     from app.services.workspace.registry import get
     assert get("captcha_keys").restore_advice == policies.KEYS_REAPPLY
-    assert ws_save.inclusion_policy() == policies.INCLUSION_POLICY
-    assert "captcha_keys" in policies.INCLUSION_POLICY
+    assert ws_meta.inclusion_policy() == ws_meta.INCLUSION_POLICY
+    assert "captcha_keys" in ws_meta.INCLUSION_POLICY
+    assert not hasattr(policies, "INCLUSION_POLICY")

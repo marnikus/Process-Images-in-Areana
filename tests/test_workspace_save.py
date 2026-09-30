@@ -44,7 +44,7 @@ def _manifest_of(reply):
 
 def test_full_save_publishes_a_valid_workspace(bridge):
     reply = _save(bridge, name="my setup")
-    assert reply["ok"] and reply["result"] == "success" and reply["published"]
+    assert reply["ok"] and reply["result"] == "success" and reply["path"]
     root = Path(reply["path"])
     manifest, err = read_manifest(root)
     assert err is None and manifest["snapshot_kind"] == "full"
@@ -82,23 +82,41 @@ def test_required_domain_failure_aborts_and_keeps_previous(bridge, monkeypatch):
     reply = _save(bridge, name="broken")
     after = sorted(d.name for d in default_base(bridge).iterdir())
     assert reply["ok"] is False and "failed to capture" in reply["error"]
-    assert "arena_state" in reply["error"]
+    assert "arena_state" in reply["error"] and "boom" in reply["error"]  # says why
     assert before == after  # nothing published, no temp left, previous untouched
     _, err = read_manifest(Path(first["path"]))
     assert err is None
 
 
-def test_partial_snapshot_requires_explicit_confirmation(bridge, monkeypatch):
+def test_a_non_required_domain_failure_needs_no_confirmation(bridge, monkeypatch):
+    """I-81: `required` is honoured. `job_history` is not required, so its
+    capture failing degrades the save to `partial` and is reported — the user
+    does not have to tick "allow partial" to checkpoint their queue."""
     monkeypatch.setattr(get("job_history"), "capture",
-                        lambda bridge: CaptureResult(ok=False))
+                        lambda bridge: CaptureResult(ok=False, notes=["unreadable"]))
+    reply = _save(bridge, name="r1")
+    assert reply["ok"] and reply["result"] == "partial"
+    assert [e["domain_id"] for e in reply["errors"]] == ["job_history"]
+    assert reply["failed_required"] == []
+    manifest = _manifest_of(reply)
+    assert manifest["snapshot_kind"] == "partial"
+    assert manifest["domains"]["job_history"]["capture"]["excluded"] is True
+    assert manifest["domains"]["arena_state"]["capture"]["ok"] is True
+
+
+def test_a_required_domain_failure_still_needs_explicit_confirmation(bridge, monkeypatch):
+    """The positive control: `arena_state` IS required, so it refuses unless the
+    user explicitly allows a partial snapshot."""
+    monkeypatch.setattr(get("arena_state"), "validate", lambda doc: "boom")
     refused = _save(bridge, name="r1")
     allowed = _save(bridge, name="r2", allow_partial=True)
     assert refused["ok"] is False and "allow a partial snapshot" in refused["error"]
-    assert "job_history" in refused["error"]  # ANY failed selected domain needs confirmation
+    assert "arena_state" in refused["error"]
     assert allowed["ok"] and allowed["result"] == "partial"
+    assert [e["domain_id"] for e in allowed["failed_required"]] == ["arena_state"]
     manifest = _manifest_of(allowed)
     assert manifest["snapshot_kind"] == "partial"
-    assert manifest["domains"]["job_history"]["capture"]["excluded"] is True
+    assert manifest["domains"]["arena_state"]["capture"]["excluded"] is True
 
 
 def test_publish_failure_retains_failed_folder_and_never_claims_success(

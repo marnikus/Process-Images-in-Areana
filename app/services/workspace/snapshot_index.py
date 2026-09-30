@@ -33,7 +33,7 @@ def _write_meta(bridge, meta: dict) -> None:
 
 def record_snapshot(bridge, path: str) -> None:
     meta = _read_meta(bridge)
-    recent = [p for p in meta.get("recent", []) if p != path]
+    recent = [p for p in _existing(meta.get("recent", [])) if p != path]
     recent.insert(0, path)
     meta["recent"] = recent[:RECENT_CAP]
     meta["last_snapshot"] = {"path": path, "utc": utc_now_iso()}
@@ -46,14 +46,19 @@ def record_restore(bridge, root: str, result: str) -> None:
     _write_meta(bridge, meta)
 
 
+def _existing(paths: list) -> list:
+    """The paths that are still on disk — a vanished folder is never shown."""
+    return [p for p in paths if Path(p).exists()]
+
+
 def recent_snapshots(bridge, limit: int = RECENT_CAP) -> list:
-    """Existing recent snapshots (missing ones pruned from the list, never shown)."""
-    meta = _read_meta(bridge)
-    kept = [p for p in meta.get("recent", []) if Path(p).exists()]
-    if len(kept) != len(meta.get("recent", [])):
-        meta["recent"] = kept
-        _write_meta(bridge, meta)
-    return kept[:max(1, int(limit))]
+    """Existing recent snapshots, newest first.
+
+    Read-only: a folder the user deleted outside the app is filtered out of the
+    answer but the index is NOT rewritten from a getter (the next save owns
+    that write). Opening the window therefore never touches the disk.
+    """
+    return _existing(_read_meta(bridge).get("recent", []))[:max(1, int(limit))]
 
 
 def last_snapshot(bridge) -> str:

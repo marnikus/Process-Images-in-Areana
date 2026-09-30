@@ -9,17 +9,17 @@ history and is rejected by design.
 from __future__ import annotations
 
 from app.persistence.workspace.errors import WorkspaceError
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import (ApplyOutcome, CaptureResult, StateProvider,
+                                         members, object_doc)
 
 
 def history_error(doc) -> str | None:
-    if not isinstance(doc, dict):
-        return "document is not an object"
-    history = doc.get("history")
-    if not isinstance(history, list):
-        return "'history' must be a list"
-    if any(not isinstance(entry, dict) or not isinstance(entry.get("kind"), str)
-           for entry in history):
+    if (shape := object_doc(doc)):
+        return shape
+    if (shape := members(doc, history=list)):
+        return shape
+    if any(not isinstance(e, dict) or not isinstance(e.get("kind"), str)
+           for e in doc.get("history", [])):
         return "history entries must be objects with a 'kind'"
     index = doc.get("index")
     if isinstance(index, bool) or not isinstance(index, int):

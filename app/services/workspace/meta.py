@@ -2,8 +2,9 @@
 
 The one home for everything that describes a snapshot rather than moving
 state: config paths, UTC stamps, snapshot ids, the redacted app-env block,
-the compat block, the bridge log helper and the live-run read (I-67). No capture/apply logic lives
-here (that is save.py / apply.py). No Qt, no app.ui imports.
+the compat block, the inclusion policy, the bridge log helper and the
+live-run read (I-67). No capture/apply logic lives here (that is
+save.py / apply.py). No Qt, no app.ui imports.
 """
 
 from __future__ import annotations
@@ -22,9 +23,21 @@ META_FILE = "workspace_meta.json"
 DEFAULT_DIR_NAME = "workspaces"
 RECENT_CAP = 10          # recent-snapshot list length
 
+# Short exclusion codes for metadata/app-environment.json (design §D.3). This
+# module is the one home: `save.py` never imports a provider module for them.
+INCLUSION_POLICY = {"logs": "excluded:runtime", "source_images": "excluded:filesystem-truth",
+                    "outputs_AI": "excluded:filesystem-truth",
+                    "captcha_recordings": "excluded:default-opt-in",
+                    "captcha_keys": "excluded:secret-redacted-presence-only"}
+
 
 def default_base(bridge) -> Path:
     return config_dir(bridge) / DEFAULT_DIR_NAME
+
+
+def inclusion_policy() -> dict:
+    """The documented per-resource inclusion policy — a copy, never the module dict."""
+    return dict(INCLUSION_POLICY)
 
 
 def utc_now_iso() -> str:

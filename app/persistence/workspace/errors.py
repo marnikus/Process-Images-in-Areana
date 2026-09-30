@@ -13,6 +13,9 @@ STAGES = (
     "migration", "dependency", "capture", "apply", "reconcile", "rollback",
 )
 
+CAUSE_LIMIT = 400      # the technical cause, truncated once
+EVIDENCE_LIMIT = 120   # one expected/actual value, truncated once
+
 _RECOMMENDED = {
     "missing": "Restore this file from the snapshot, or skip this domain.",
     "unsafe_path": "Paths outside the workspace folder are refused.",
@@ -29,7 +32,7 @@ _RECOMMENDED = {
 }
 
 
-def _short(value, limit: int = 120) -> str:
+def _short(value, limit: int = EVIDENCE_LIMIT) -> str:
     text = value if isinstance(value, str) else repr(value)
     return text[:limit]
 
@@ -44,7 +47,7 @@ class WorkspaceError(Exception):
             raise ValueError(f"unknown stage: {stage}")
         self.domain_id = domain_id
         self.stage = stage
-        self.cause = str(cause)[:400]
+        self.cause = str(cause)[:CAUSE_LIMIT]
         self.expected = evidence[0] if evidence else None
         self.actual = evidence[1] if evidence else None
         super().__init__(f"[{domain_id}] {stage}: {self.cause}")

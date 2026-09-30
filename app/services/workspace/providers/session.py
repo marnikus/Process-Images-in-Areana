@@ -14,7 +14,8 @@ from __future__ import annotations
 from app.core.layout_service import canonical_grid_payload
 from app.core.window_catalog import GRID_VERSION, WINDOW_IDS
 from app.persistence.json_store import save_json_atomic
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import (ApplyOutcome, CaptureResult, StateProvider,
+                                         object_doc)
 
 GRID_KEYS = ("grid_layout", "window_states", "window_geometry")
 
@@ -103,9 +104,7 @@ class _SessionDomainProvider(StateProvider):
         return CaptureResult(ok=True, doc={key: doc.get(key) for key in self._keys()})
 
     def validate(self, doc) -> str | None:
-        if not isinstance(doc, dict):
-            return "document is not an object"
-        return None
+        return object_doc(doc)
 
     def _prepared(self, key: str, value):
         return value
@@ -119,6 +118,20 @@ class _SessionDomainProvider(StateProvider):
         save_json_atomic(store.path, merged)
         store.load()
         return ApplyOutcome(ok=True)
+
+
+def _watcher_updates(bridge) -> dict:
+    """{live watcher key: restored value} for the keys that have a value.
+
+    One `get_state` read per key: the value is read once and kept, instead of
+    being read again just to test it for `None`.
+    """
+    updates = {}
+    for key, live in SessionSettingsProvider._WATCHER_KEYS:
+        value = bridge.config.get_state(key)
+        if value is not None:
+            updates[live] = value
+    return updates
 
 
 class SessionSettingsProvider(_SessionDomainProvider):
@@ -144,9 +157,7 @@ class SessionSettingsProvider(_SessionDomainProvider):
         watcher = getattr(bridge, "_watcher", None)
         if watcher is None or not hasattr(watcher, "update_config"):
             return []
-        updates = {live: bridge.config.get_state(key)
-                   for key, live in self._WATCHER_KEYS
-                   if bridge.config.get_state(key) is not None}
+        updates = _watcher_updates(bridge)
         if not updates:
             return []
         watcher.update_config(**updates)

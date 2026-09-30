@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from app.core.models import AppState
 from app.core.persistence import save_state
-from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider
+from app.services.workspace.provider import (ApplyOutcome, CaptureResult, StateProvider,
+                                         members, object_doc)
 
 SCHEMA_VERSION = "1.0.0"
 _LIST_KEYS = ("urls", "images", "jobs")
@@ -31,13 +32,16 @@ def _list_error(doc: dict, key: str) -> str | None:
 
 def _shape_error(doc) -> str | None:
     """List/dict member shapes (checked before identity invariants)."""
+    shape = members(doc, **{key: list for key in _LIST_KEYS},
+                    **{key: dict for key in _DICT_KEYS})
+    return shape if not shape else _row_shape_error(doc)
+
+
+def _row_shape_error(doc) -> str | None:
+    """Every list member must be an object — the rows `AppState.from_dict` reads."""
     for key in _LIST_KEYS:
-        err = _list_error(doc, key)
-        if err:
+        if err := _list_error(doc, key):
             return err
-    for key in _DICT_KEYS:
-        if not isinstance(doc.get(key), dict):
-            return f"'{key}' must be an object"
     return None
 
 
@@ -54,10 +58,9 @@ def _images_error(doc) -> str | None:
 
 def semantic_error(doc) -> str | None:
     """The arena_state invariants (checked before anything is applied)."""
-    if not isinstance(doc, dict):
-        return "document is not an object"
-    shape_problem = _shape_error(doc) or _images_error(doc)
-    return shape_problem
+    if (shape := object_doc(doc)):
+        return shape
+    return _shape_error(doc) or _images_error(doc)
 
 
 def swap_state(state, candidate: AppState) -> None:
