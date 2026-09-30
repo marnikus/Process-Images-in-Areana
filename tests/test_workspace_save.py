@@ -5,6 +5,7 @@ interrupted-save semantics, meta/quick-load. Real FS on tmp_path only.
 
 import json
 import shutil
+import time
 from pathlib import Path
 
 import pytest
@@ -265,3 +266,43 @@ def test_save_refuses_a_selection_of_only_unknown_ids(bridge, monkeypatch):
     assert reply["ok"] is False and reply["unknown_domains"] == ["future_thing"]
     assert "future_thing" in reply["error"]
     assert any(level == "warn" and "future_thing" in message for level, message in logs)
+
+
+# ── audit #3 H1 (ported from branch A): two saves with one name in one second ──
+
+def test_two_saves_in_one_second_both_publish(bridge, monkeypatch):
+    """The snapshot folder is second-resolution, so two saves with one name in
+    the same second collided and the second was refused with 'publish failed:
+    target already exists' — a legitimate action reported as a failure.
+    `recover._recovery_dir` already disambiguates ITS folder (`-02`, `-03`);
+    the snapshot folder now uses the same rule, so both saves land in their own
+    folder and stay chronologically ordered.
+    """
+    frozen = time.struct_time((2026, 1, 1, 0, 0, 0, 0, 1, 0))
+    monkeypatch.setattr(ws_save.time, "gmtime", lambda *_a, **_k: frozen)
+    first = _save(bridge, name="dup")
+    second = _save(bridge, name="dup")
+    assert first["ok"] and second["ok"], (first, second)
+    assert first["result"] == second["result"] == "success"
+    assert first["path"] != second["path"]
+    assert Path(second["path"]).name == "dup_20260101-000000-02"
+    assert sorted([first["path"], second["path"]]) == [first["path"], second["path"]]
+    for reply in (first, second):
+        assert _manifest_of(reply)["name"] == "dup"
+
+
+def test_a_second_save_in_a_different_second_is_unaffected(bridge):
+    """The positive control: a normal save still gets the plain second-resolution
+    folder name — the disambiguation only fires on a real collision.
+
+    The clock is read on both sides of the save rather than after it: on a
+    loaded machine the second can tick inside `save_workspace`, and the property
+    under test is "plain stamp, no `-02` suffix", not "the same second as the
+    assertion".
+    """
+    before = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    first = _save(bridge, name="solo")
+    after = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    name = Path(first["path"]).name
+    assert name in (f"solo_{before}", f"solo_{after}")
+    assert not name.endswith(("-02", "-03"))
