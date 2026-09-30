@@ -19,7 +19,13 @@ create opener is not fired for a context `Target.getBrowserContexts` says Chrome
 into (a regular profile would only flash a default-profile tab). Design:
 docs/archive/2026-09-30-new-tab-opener-proof/design.md
 
-RULE 18: file 150-300 ideal, func 4-20 LOC, params ≤4. Imports: cdp.browser_targets + page_popup.
+v7 merge (branch arena/01a0f1cf's R7b): the popup needs a socket that really sits on the job tab.
+When no registered client does, or its popup names another opener (the socket lied), the handover
+dials the job tab's own `ws_url` — the one socket R1 already trusts — and retries once from there.
+Merge design: docs/archive/2026-09-30-opener-fallback-merge/design.md
+
+RULE 18: file 150-300 ideal, func 4-20 LOC, params ≤4. Imports: cdp.browser_targets +
+cdp.client + page_popup.
 """
 from __future__ import annotations
 
@@ -28,6 +34,7 @@ import time
 from dataclasses import dataclass
 
 from app.browser.cdp import browser_targets as bt
+from app.browser.cdp.client import CDPClient
 from app.browser.page_popup import open_tab_via_page
 
 _POLL_SEC = 0.2
@@ -39,13 +46,15 @@ class OpenSpec:
     """What to open, in which context, how long to wait — and which tab is doing the opening.
 
     `opener_id` is the job tab's own target id: the fresh tab counts only when the browser's
-    `TargetInfo.openerId` names it (v6 R1). An empty opener keeps the context-only rule for
-    callers that cannot name their tab.
+    `TargetInfo.openerId` names it (v6 R1). `page_ws` is the job tab's own socket — the popup's
+    honest fallback when no registered client sits on the tab (R7b). Empty values keep the
+    context-only, no-dial rules for callers that cannot name them.
     """
     url: str
     context_id: str = ""
     timeout_sec: float = 5.0
     opener_id: str = ""
+    page_ws: str = ""
 
 
 @dataclass
@@ -54,6 +63,7 @@ class Opened:
     tab_id: str = ""
     reason: str = ""
     wrong_profile: bool = False
+    wrong_opener: bool = False    # a fresh tab named another opener — the R7b retry trigger
 
 
 def _ids(target_infos: list[dict]) -> set:
@@ -85,6 +95,13 @@ def _ours(target_infos: list[dict], fresh: set, opener_id: str) -> set:
     return fresh & named
 
 
+def _strangers(target_infos: list[dict], fresh: set, opener_id: str) -> int:
+    """Fresh tabs ANOTHER page already claimed — the evidence that the socket lied (R7b)."""
+    return sum(1 for info in target_infos
+               if str(info.get("targetId")) in fresh
+               and info.get("openerId") not in (None, "", opener_id))
+
+
 def _no_tab_reason(fresh_count: int, opener_expected: bool) -> str:
     """Why nothing was adopted — honest about the strangers when our own tab never came."""
     if opener_expected and fresh_count:
@@ -94,23 +111,25 @@ def _no_tab_reason(fresh_count: int, opener_expected: bool) -> str:
 
 
 async def _wait_new_tab(browser, before: set, timeout_sec: float,
-                        opener_id: str = "") -> tuple[str, str]:
+                        opener_id: str = "") -> tuple[str, str, int]:
     """Poll this browser's list until a page target that was not there before appears.
 
     With an opener id only a fresh tab the browser names as our page's counts (v6 R1) — a
-    stranger's tab is never adopted; without one, the context proof is the only judge.
+    stranger's tab is never adopted; without one, the context proof is the only judge. The
+    third answer counts strangers (fresh tabs another page claimed): the R7b retry evidence.
     """
     deadline = time.monotonic() + max(timeout_sec, _POLL_SEC)
     while True:
         target_infos, err = await browser.targets()
         if err:
-            return "", err
+            return "", err, 0
         fresh = _ids(target_infos) - before
         mine = _ours(target_infos, fresh, opener_id) if opener_id else fresh
         if mine:
-            return sorted(mine)[0], ""
+            return sorted(mine)[0], "", 0
         if time.monotonic() >= deadline:
-            return "", _no_tab_reason(len(fresh), bool(opener_id))
+            strangers = _strangers(target_infos, fresh, opener_id)
+            return "", _no_tab_reason(len(fresh), bool(opener_id)), strangers
         await asyncio.sleep(_POLL_SEC)
 
 
@@ -144,24 +163,79 @@ async def _create_opener(browser, spec: OpenSpec) -> Opened:
     return Opened(reason=why, wrong_profile=(kind == "wrong-context"))
 
 
-async def _page_opener(browser, page_client, spec: OpenSpec) -> Opened:
-    """(b) the job tab's own page — the only opener that reaches a regular profile."""
-    if page_client is None:
+async def _attempt_popup(browser, client, spec: OpenSpec) -> Opened:
+    """One page-opener attempt: evaluate on `client`, then judge its fresh tab (v6 R1)."""
+    if client is None:
         return Opened(reason="no client is connected to the job tab")
     target_infos, err = await browser.targets()
     if err:
         return Opened(reason=err)
-    ok, why = await open_tab_via_page(page_client, spec.url, spec.timeout_sec)
+    ok, why = await open_tab_via_page(client, spec.url, spec.timeout_sec)
     if not ok:
         return Opened(reason=why)
-    tab_id, why = await _wait_new_tab(browser, _ids(target_infos), spec.timeout_sec, spec.opener_id)
+    tab_id, why, strangers = await _wait_new_tab(browser, _ids(target_infos),
+                                                 spec.timeout_sec, spec.opener_id)
     if not tab_id:
-        return Opened(reason=why)
+        return Opened(reason=why, wrong_opener=bool(strangers))
     kind, why = await _proven(browser, tab_id, spec.context_id)
     if not kind:
         return Opened(tab_id=tab_id)
-    await browser.close(tab_id)
+    await browser.close(tab_id)                       # an unprovable tab never stays behind
     return Opened(reason=why, wrong_profile=(kind == "wrong-context"))
+
+
+async def _dial_page(ws_url: str):
+    """A fresh connection to the job tab's own page — the opener needs a socket there (R7b).
+
+    The handover already trusts this socket (it dialled the browser from it, R1); when no
+    registered client sits on the job tab, this is the same truth, one page connection on.
+    """
+    endpoint = bt.endpoint_of_ws(ws_url or "")
+    if endpoint is None:
+        return None
+    client = CDPClient(*endpoint)
+    try:
+        connected = await client.connect(ws_url)
+    except Exception:
+        return None
+    return client if connected else None
+
+
+def _worth_dialling(opened: Opened, page_client, spec: OpenSpec) -> bool:
+    """Retry from the job tab's own socket: none sat there, or the one used lied (R7b)."""
+    if not spec.page_ws:
+        return False
+    return page_client is None or opened.wrong_opener
+
+
+async def _quiet_disconnect(client) -> None:
+    """The dialled socket is the handover's own; closing it may never break the answer."""
+    try:
+        await client.disconnect()
+    except Exception:
+        pass
+
+
+async def _page_opener(browser, page_client, spec: OpenSpec) -> Opened:
+    """(b) the job tab's own page — the only opener that reaches a regular profile.
+
+    First the client that already sits there; when it is missing, or its popup names another
+    opener (the socket lied), the honest fallback is the job tab's own socket (R7b), one retry.
+    """
+    tried = await _attempt_popup(browser, page_client, spec)
+    if tried.tab_id or not _worth_dialling(tried, page_client, spec):
+        return tried
+    client = await _dial_page(spec.page_ws)
+    if client is None:
+        return Opened(reason=f"{tried.reason}; the job tab's socket could not be reached")
+    try:
+        retried = await _attempt_popup(browser, client, spec)
+    finally:
+        await _quiet_disconnect(client)
+    if retried.tab_id:
+        return retried
+    return Opened(reason=f"{tried.reason}; retried from the job tab's socket: {retried.reason}",
+                  wrong_profile=retried.wrong_profile, wrong_opener=retried.wrong_opener)
 
 
 def _refusal(created: Opened, paged: Opened) -> str:
@@ -183,4 +257,5 @@ async def open_in_profile(browser, page_client, spec: OpenSpec) -> Opened:
     if paged.tab_id:
         return paged
     return Opened(reason=_refusal(created, paged),
-                  wrong_profile=created.wrong_profile or paged.wrong_profile)
+                  wrong_profile=created.wrong_profile or paged.wrong_profile,
+                  wrong_opener=created.wrong_opener or paged.wrong_opener)

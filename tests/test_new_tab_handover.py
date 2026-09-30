@@ -448,6 +448,19 @@ def test_a_blocked_popup_from_a_seated_client_is_final(monkeypatch):
     assert w.dial_pages == []                       # the seated client's answer is trusted
 
 
+def test_a_retry_from_the_socket_that_also_fails_names_both_attempts(monkeypatch):
+    """RULE 2 honesty: the refusal carries the seated attempt's and the socket attempt's reasons."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.browser.popup_allowed = False
+    monkeypatch.setattr(new_tab_open, "_dial_page", _fake_dial_page(w))
+    for client in (w.clients.job, w.clients.pooled, w.clients.home):
+        client._current_tab_id = "OTHER"
+    ok, why = _run(w, timeout_sec=0.3)
+    assert not ok and "no client" in why and "popup blocked" in why
+    assert w.ctx.tab_id == "OLD" and w.browser.closed == []
+
+
 def test_a_tab_whose_socket_is_unreadable_is_no_handover(monkeypatch):
     w = _world(monkeypatch)
     w.pool.get_page("OLD").ws_url = ""

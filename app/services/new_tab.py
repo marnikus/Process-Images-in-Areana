@@ -16,7 +16,14 @@ only one that can reach it (`new_tab_open`, R1–R3). Another context → tab cl
 The worker keeps its identity (cooldown, job count, alias and worker numbers, URL row): the I-79
 move; any failure before it puts everything back (clients home, new tab closed). The URL reconciler
 is held for the whole handover. Chrome (CDP) tabs only (Firefox macros never open pages). Design:
-docs/archive/2026-09-29-new-chat-new-tab-profile-truth/design.md
+docs/archive/2026-09-29-new-chat-new-tab-profile-truth/design.md + v6
+docs/archive/2026-09-30-new-tab-opener-proof/design.md + v7 merge
+docs/archive/2026-09-30-opener-fallback-merge/design.md (R7b: the popup's honest
+fallback is the job tab's own socket).
+
+ideal-size: ~336 lines reason=one handover pipeline (plan → profile read → open →
+prove → move → close) the reader must follow in order; splitting it would put
+the steps into two files that always change together. RULE 18.2.
 """
 from __future__ import annotations
 
@@ -181,7 +188,7 @@ async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
         return False, why
     opened = await open_in_profile(browser, _popup_client(move),
                                    OpenSpec(move.url, context, move.timeout_sec,
-                                            opener_id=move.old_id))
+                                            opener_id=move.old_id, page_ws=move.old_ws))
     if not opened.tab_id:
         return await _refuse(move, browser, opened.reason)
     move.new_id = opened.tab_id
