@@ -224,6 +224,13 @@ jsdom `test_job_cycle_setting.mjs` 12/12.
 | full suite | 2 969 passed / 6 env-fail | 3 044 passed / same 6 env-fail |
 | gate on the touched files | 0 fail | 0 fail; no recorded maximum grows |
 
+RULE 18 re-check of the wider area (the 8 modules §1 maps) after the work: **no function over 30 LOC, no function
+with >4 params, and the only three functions still over the 20-LOC ideal are pre-existing and untouched** —
+`page_pool._snapshot_entry` (23), `page_pool.add_page` (21), `supervisor.run_live` (21); `git log -S"def …"` puts them
+at I-62 / multi-page dispatch / I-47, i.e. before the audited range, and the gate passes on every changed file
+(`--changed-files`, 0 fail). Rationale for leaving them: §3's keep-list policy — out-of-range bodies are refactored
+only where the audited code depends on them, and none of these three is on the handover path.
+
 Not changed on purpose (documented in §2 "kept"): the two `FakeBrowser` fixtures, `_Move`'s 13 fields, the
 `_current_tab_id` readers and the `devtools/page/` strings outside this feature (legacy, listed), and
 `run_state.py`'s hand-built `MM:SS`.
