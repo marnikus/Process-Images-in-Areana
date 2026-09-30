@@ -89,17 +89,52 @@ def test_required_domain_failure_aborts_and_keeps_previous(bridge, monkeypatch):
     assert err is None
 
 
-def test_partial_snapshot_requires_explicit_confirmation(bridge, monkeypatch):
+def test_a_non_required_domain_failure_needs_no_confirmation(bridge, monkeypatch):
+    """audit #3 H4 (ported from branch A): `required` is honoured.
+
+    `job_history` is NOT required, so its capture failing degrades the save to
+    `partial` and is reported — the user does not have to tick "allow partial"
+    to checkpoint a queue because a corrupt captcha_stats file exists.
+    """
+    assert get("job_history").required is False
     monkeypatch.setattr(get("job_history"), "capture",
-                        lambda bridge: CaptureResult(ok=False))
+                        lambda bridge: CaptureResult(ok=False, notes=["unreadable"]))
+    reply = _save(bridge, name="r1")
+    assert reply["ok"] and reply["result"] == "partial", reply
+    assert [e["domain_id"] for e in reply["errors"]] == ["job_history"]
+    assert reply["failed_required"] == []          # nothing required failed
+    manifest = _manifest_of(reply)
+    assert manifest["snapshot_kind"] == "partial"
+    assert manifest["domains"]["job_history"]["capture"]["excluded"] is True
+    assert manifest["domains"]["arena_state"]["capture"]["ok"] is True
+
+
+def test_a_required_domain_failure_still_needs_explicit_confirmation(bridge, monkeypatch):
+    """The positive control: a REQUIRED domain failing still refuses the save
+    unless the user explicitly allows a partial snapshot.
+    """
+    assert get("arena_state").required is True
+    monkeypatch.setattr(get("arena_state"), "validate", lambda doc: "boom")
     refused = _save(bridge, name="r1")
     allowed = _save(bridge, name="r2", allow_partial=True)
     assert refused["ok"] is False and "allow a partial snapshot" in refused["error"]
-    assert "job_history" in refused["error"]  # ANY failed selected domain needs confirmation
+    assert "arena_state" in refused["error"]
     assert allowed["ok"] and allowed["result"] == "partial"
+    assert [e["domain_id"] for e in allowed["failed_required"]] == ["arena_state"]
     manifest = _manifest_of(allowed)
     assert manifest["snapshot_kind"] == "partial"
-    assert manifest["domains"]["job_history"]["capture"]["excluded"] is True
+    assert manifest["domains"]["arena_state"]["capture"]["excluded"] is True
+
+
+def test_a_required_failure_names_the_real_cause_in_the_log(bridge, monkeypatch):
+    """RULE 2: the refusal line says WHY, not only that it was refused."""
+    lines = []
+    monkeypatch.setattr(ws_save, "log_message",
+                        lambda b, m, lv="info": lines.append((m, lv)))
+    monkeypatch.setattr(get("arena_state"), "validate", lambda doc: "boom")
+    _save(bridge, name="req")
+    assert len(lines) == 1 and lines[0][1] == "error"
+    assert "arena_state" in lines[0][0] and "boom" in lines[0][0]
 
 
 def test_publish_failure_retains_failed_folder_and_never_claims_success(
