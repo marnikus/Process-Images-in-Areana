@@ -178,4 +178,52 @@ involved anywhere in this plan.
 
 ## 10. Execution log
 
-_(appended during implementation — commit per step, gate output, measured after-values.)_
+All work on `arena/01a0ef65-process-images-in-areana`, rebased onto the range tip `97f4ed37` (so the reviewed code is
+the code that was changed), then one commit per step — RED test first for every behaviour-visible step:
+
+| Step | Commit | What landed | RED test that proved it |
+|---|---|---|---|
+| P1 | `ca43184` | `live/tab_owner.read_owner` public (one home); `new_tab._read_owner_from_client` deleted, lazy imports gone | `test_the_owner_probe_goes_through_the_shared_reader` |
+| P2 | `ca43184` | `_plan` normalizes the pool label (`normalize_owner`); the guard compares equal strings, no `.lower()` | `test_an_owner_label_that_is_not_an_email_never_rolls_back` (3 cases) |
+| P3 | `ca43184` (+ `9df026d` follow-up) | pattern key + default from one home, `_Move`'s dummy default gone | `test_the_pattern_fallback_comes_from_the_one_home` |
+| P4 | `9df026d` | `browser_targets.page_ws` (the string `endpoint_of_ws` inverts); `new_tab._page_ws` deleted | `test_page_ws_is_the_reverse_of_endpoint_of_ws` |
+| P5 | `9df026d` | `supervisor._next_ready` uses `format_remaining` — `75:00` → `1:15:00` | `test_next_ready_uses_the_one_countdown_formatter` |
+| P6 | `3944d3b` | `HandoverCtx` Protocol + annotations (typing only) | none (no runtime change; the suites are the guard) |
+| P7 | `73893eb` | `_run` → `_profile_truth`; `_check_owner_preserved` → `_probe_new_owner`; the suite's `_world` split | none (pure extraction) |
+| P8 | _(this commit)_ | SoR I-79/I-80 rows, README map + last-updated, this log + after-values | none (docs) |
+
+Two findings that the implementation surfaced and the audit did not predict:
+
+* **P3 first landed a cycle.** Importing `reconcile_rows` at module level in `new_tab` closed a loop
+  (`new_tab` → `reconcile_rows` → `run_state` → `cooldown_service`, which imports `new_tab`); the whole suite stayed
+  green because of import order, and only `pytest tests/test_live_supervisor.py` alone failed to collect. Fixed in
+  `9df026d`: the key + default now live in the leaf that owns the session defaults
+  (`config_manager.URL_PATTERN_KEY` / `URL_PATTERN_DEFAULT`), `reconcile_rows` aliases them, and the four affected
+  modules were each imported first in their own process to prove the loop is gone.
+* **P7 needed the log's order kept.** `_profile_truth` must record `move.context_id` before `_log_profile` runs —
+  the profile counts in the log are computed from it; the first extraction moved the assignment after the log and
+  `test_the_profile_counts_in_the_log_come_from_the_browser_truth` caught it.
+
+Gate on the 25 changed files (`verify_quality.py --changed-files … --allow-legacy`): **0 fail** (the one warn is
+`coverage.json [missing]`); full suite 3 044 passed with the same 6 environment-only failures as the base commit;
+jsdom `test_job_cycle_setting.mjs` 12/12.
+
+## 11. Measured after-values (same commands as §9)
+
+| Metric | Before (`97f4ed37`) | After |
+|---|---|---|
+| functions > 20 LOC (production, in-scope) | 1 (`_run` 23) | **0** (longest 19) |
+| functions > 30 LOC (whole area incl. tests) | 1 (`_world` 47) | **0** (longest 33) |
+| params > 4 | 4 | 3 (test helpers, keyword-only) |
+| radon, five new modules | A (3.63), no block ≥ C | A (3.57), no block ≥ C |
+| rules with two homes (N1–N6) | 6 | **0** |
+| `format_remaining` duplicates | 2 (`supervisor`, legacy `run_state`) | 1 (`supervisor` fixed; `run_state` listed as legacy) |
+| coverage of the five new modules (area suites) | 100 % line / 100 % branch | 100 % / 100 % |
+| `core/cooldown.py` / `supervisor.py` (area suites) | 78.6 / 93.6 % line | 82.9 / 93.6 % line |
+| area tests (8 suites) | 132 | 142 (+10: the RED tests + the one-home pins) |
+| full suite | 2 969 passed / 6 env-fail | 3 044 passed / same 6 env-fail |
+| gate on the touched files | 0 fail | 0 fail; no recorded maximum grows |
+
+Not changed on purpose (documented in §2 "kept"): the two `FakeBrowser` fixtures, `_Move`'s 13 fields, the
+`_current_tab_id` readers and the `devtools/page/` strings outside this feature (legacy, listed), and
+`run_state.py`'s hand-built `MM:SS`.
