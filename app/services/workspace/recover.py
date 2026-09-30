@@ -13,6 +13,7 @@ import shutil
 import time
 from pathlib import Path
 
+from app.persistence.workspace import fsio
 from app.persistence.workspace.integrity import canonical_bytes
 from .meta import config_dir, log_message, utc_now_iso
 
@@ -24,11 +25,7 @@ RECOVERY_KEEP = 10
 def _recovery_dir(bridge) -> Path:
     """A fresh folder per restore; a same-second collision gets -02, -03 … (still sorts)."""
     base = config_dir(bridge) / RECOVERY_DIR
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    candidate, n = base / stamp, 1
-    while candidate.exists():
-        n += 1
-        candidate = base / f"{stamp}-{n:02d}"
+    candidate = fsio.unique_dir(base, time.strftime("%Y%m%d-%H%M%S"))
     candidate.mkdir(parents=True)
     return candidate
 

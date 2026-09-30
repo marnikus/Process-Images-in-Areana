@@ -163,12 +163,14 @@ def _run_context(bridge, request: SaveRequest, now) -> dict:
     """One save execution's context: bridge, request, target folder, clock, env.
 
     The same `now` stamps the folder and the snapshot id, and `app_meta` — a
-    `git` subprocess — is read once per save (audit #3 R2).
+    `git` subprocess — is read once per save (audit #3 R2). The folder goes
+    through `fsio.unique_dir`, so a second save inside the same second gets its
+    own `-02` folder instead of being refused as a collision (audit #3 H1).
     """
     base = Path(request.base_dir) if request.base_dir else default_base(bridge)
     return {"bridge": bridge, "request": request, "started": utc_iso(now),
             "app_meta": app_meta(bridge),
-            "target": base / fsio.snapshot_dir_name(request.name, now)}
+            "target": fsio.unique_dir(base, fsio.snapshot_dir_name(request.name, now))}
 
 
 def save_workspace(bridge, request: SaveRequest) -> dict:
