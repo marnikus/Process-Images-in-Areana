@@ -717,3 +717,113 @@ def test_a_label_that_is_the_email_in_another_case_still_matches(monkeypatch):
     w.pool.get_page("OLD").owner = "ANTON@example.com"
     ok, why = _run(w)
     assert ok, why and w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2
+
+
+# ── N1: a Reparse queued during a handover must still run ────────────────────
+
+def _now(_bridge, coro):
+    """`schedule_coro` replacement that starts the coroutine in THIS loop, so the
+    drain the production wiring installs is observable without a bg thread.
+    """
+    return asyncio.get_running_loop().create_task(coro)
+
+
+def test_a_reparse_queued_during_a_handover_runs_when_the_handover_ends(monkeypatch):
+    """I-68(a): `reconcile_once` QUEUES a manual pass that meets a running one and
+    "runs it the moment that pass ends". The new-tab handover is the second holder
+    of that flag and its release never looked at the queue — so a Reparse click
+    during a handover was stranded until some unrelated later pass.
+
+    The handover is paused at a known point (its new-chat readiness probe) so the
+    click provably lands while the flag is held. Nothing triggers the drain: the
+    handover ending must be enough.
+
+    The drain is installed by the real `start_reconciler`, not by hand — branch A
+    wired it with a call its own test did not reproduce, and the wiring it shipped
+    crashed on this path (the report's §5). The loop task it also schedules is
+    cancelled at once: the loop's own behaviour is pinned in
+    `tests/test_live_reconcile.py` and `tests/test_reconcile_resilience.py`.
+    """
+    from app.services.live import reconcile
+    ran = []
+    reached = asyncio.Event()
+    resume = asyncio.Event()
+
+    async def counting_pass(p):
+        p.deps.log("a real pass ran", "info")     # a real pass talks to its deps
+        ran.append(p.source)
+        return reconcile.Report()
+
+    async def pause_at_the_proof(_reset_ctx):
+        reached.set()
+        await resume.wait()
+        return True, "new chat ready"
+
+    w = _world(monkeypatch)
+    monkeypatch.setattr(reconcile, "_pass", counting_pass)
+    monkeypatch.setattr(reconcile, "schedule_coro", _now)
+    monkeypatch.setattr(new_tab, "wait_new_chat_ready", pause_at_the_proof)
+    deps = SimpleNamespace(log=lambda m, l="info": w.logs.append((l, m)), stats=lambda: None)
+
+    async def both():
+        assert reconcile.start_reconciler(w.bridge, deps) is True
+        w.bridge._url_reconciler.cancel()
+        try:
+            await w.bridge._url_reconciler
+        except asyncio.CancelledError:
+            pass
+        task = asyncio.create_task(new_tab.handover(w.ctx, NEW_URL, timeout_sec=5))
+        await reached.wait()                        # the handover now owns the flag
+        report = await reconcile.reconcile_once(w.bridge, deps, "manual")
+        assert ran == [], "nothing may run while the handover holds the flag"
+        resume.set()
+        ok, why = await task
+        await asyncio.sleep(0.05)                   # the promise is "the moment", not "later"
+        return report, ok, why
+
+    report, ok, why = asyncio.run(both())
+    assert ok, why
+    assert report.error == "busy"                   # it could not run while held — correct
+    assert ran == ["manual"], "the queued Reparse must run the moment the handover ends"
+    assert w.bridge._reparse_queued is False
+    assert w.bridge._auto_scan_running is False
+
+
+def test_the_drain_runs_a_real_pass_not_a_placeholder(monkeypatch):
+    """The drain `start_reconciler` installs must run a pass with the reconciler's
+    own deps. Branch A wired `install_drain` with a lambda where a `LiveDeps` was
+    expected (a module-level redefinition shadowed the import), so the drained
+    pass died with AttributeError: 'function' object has no attribute 'log' on the
+    background loop and the Reparse was lost (report §5).
+
+    This goes through `pass_hold.release` — the call the handover's `finally`
+    makes — so the wiring under test is the one production runs.
+    """
+    from app.services.live import pass_hold, reconcile
+    ran = []
+
+    async def counting_pass(p):
+        p.deps.log("a real pass ran", "info")     # a real pass talks to its deps
+        ran.append(p.source)
+        return reconcile.Report()
+
+    w = _world(monkeypatch)
+    monkeypatch.setattr(reconcile, "_pass", counting_pass)
+    monkeypatch.setattr(reconcile, "schedule_coro", _now)
+    deps = SimpleNamespace(log=lambda m, l="info": w.logs.append((l, m)), stats=lambda: None)
+
+    async def drained():
+        assert reconcile.start_reconciler(w.bridge, deps) is True
+        w.bridge._url_reconciler.cancel()
+        try:
+            await w.bridge._url_reconciler
+        except asyncio.CancelledError:
+            pass
+        w.bridge._auto_scan_running = True      # a holder (the handover) owns the flag
+        w.bridge._reparse_queued = True         # and a Reparse met it
+        pass_hold.release(w.bridge)             # exactly what the handover's finally does
+        await asyncio.sleep(0.05)
+
+    asyncio.run(drained())
+    assert ran == ["manual"], "the drained pass got the real deps and really ran"
+    assert w.bridge._reparse_queued is False and w.bridge._auto_scan_running is False
