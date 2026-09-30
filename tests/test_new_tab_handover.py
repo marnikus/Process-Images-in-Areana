@@ -47,6 +47,8 @@ class FakeBrowser:
         self.silent = False          # Target.getTargets answers nothing: the profile is unprovable
         self.refuse_ctx = False      # a regular profile: createTarget{browserContextId} is refused
         self.reuse_default = False   # createTarget lands in the default profile regardless (A2)
+        self.creatable_contexts = None   # Target.getBrowserContexts; None = browser cannot answer
+        self.stray_on_popup = ""     # a foreign fresh tab that appears together with our popup
         self.popup_allowed = True
         self.close_ignored = False
         self.wrong_owner_after_open = False
@@ -93,6 +95,8 @@ class FakeBrowser:
             return "", "the page is gone"
         if not self.popup_allowed:
             return "", "window.open returned null (popup blocked)"
+        if self.stray_on_popup:
+            self.add(self.stray_on_popup, url, DEFAULT_CTX)   # another surface's tab, sorts first
         tid = self.add(self._new_id("POP"), url, self.ctx_of(opener_id), opener=opener_id)
         if self.wrong_owner_after_open:
             self.tab_owners[tid] = "other@example.com"
@@ -122,6 +126,11 @@ class FakeProbe:
         if self.browser.silent:
             return [], "the browser did not answer Target.getTargets"
         return self.browser.infos(), ""
+
+    async def get_browser_contexts(self):
+        if self.browser.creatable_contexts is None:
+            return set(), "the browser did not answer Target.getBrowserContexts"
+        return set(self.browser.creatable_contexts), ""
 
     async def create(self, url, context_id):
         return self.browser.create(url, context_id)
@@ -381,6 +390,36 @@ def test_the_profile_counts_in_the_log_come_from_the_browser_truth(monkeypatch):
     text = _text(w)
     assert "this profile: 2" in text and "all contexts: 3" in text
     assert PROFILE_2 in text
+
+
+# ── v6: the opener knows its place (owner report 2026-09-30, "bug appear again") ──────────
+
+def test_a_regular_profile_handover_never_flashes_a_tab_into_the_default_profile(monkeypatch):
+    """The owner's Chrome accepts the create but lands it in the default profile — never fire it.
+
+    `Target.getBrowserContexts` says the job profile is not creatable, so the page opener is the
+    first and only route: no default-profile tab is ever opened (and closed) in profile 1's window.
+    """
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.creatable_contexts = set()      # the browser answers: nothing is creatable
+    w.browser.reuse_default = True            # ...and a fired create would silently land default
+    ok, why = _run(w)
+    assert ok, why
+    assert [c for c in w.browser.calls if c[0] == "create"] == []
+    assert w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2        # the worker is in its own profile
+    assert w.browser.closed == ["OLD"]                        # only the old tab was ever closed
+
+
+def test_a_stray_tab_in_the_popup_diff_is_left_alone(monkeypatch):
+    """A foreign fresh tab that sorts before ours is never adopted and never closed (v6 R1)."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.browser.stray_on_popup = "A-STRAY"      # appears with our popup, opener is somebody else
+    ok, why = _run(w)
+    assert ok, why
+    assert w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2
+    assert "A-STRAY" in w.browser.tabs
+    assert w.browser.closed == ["OLD"]
 
 
 # ── I-79 kept: proof, close, rollback ──────────────────────────────────────

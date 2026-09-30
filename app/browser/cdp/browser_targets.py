@@ -136,6 +136,23 @@ class BrowserTargets:
         target_id = payload.get("targetId") if err == "" else None
         return (str(target_id), "") if target_id else ("", err or "Target.createTarget answered no id")
 
+    async def get_browser_contexts(self) -> tuple[set, str]:
+        """The context ids `Target.createTarget` can honour here; `(set(), why)` when it will not say.
+
+        The one judge for whether the create opener may fire at all (v6 R2): a regular Chrome
+        profile is not in the set — its tabs may only open tabs of their own kind, through their
+        own page. An unanswerable browser keeps the create-first order (`new_tab_open`).
+        """
+        try:
+            payload, err = _reply(await self.client.send("Target.getBrowserContexts"),
+                                  "Target.getBrowserContexts")
+        except Exception as exc:                          # socket gone mid-handover
+            return set(), str(exc)
+        ids = payload.get("browserContextIds") if err == "" else None
+        if not isinstance(ids, list):
+            return set(), err or "Target.getBrowserContexts answered no context ids"
+        return {str(i) for i in ids if isinstance(i, str)}, ""
+
     async def close(self, target_id: str) -> tuple[bool, str]:
         """`Target.closeTarget`; the caller still proves the absence with a fresh target list (P4)."""
         try:

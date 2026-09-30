@@ -13,6 +13,12 @@ another context is closed again immediately and the opener reports why (`wrong_p
 neither opener is provable the handover is refused — the caller then runs the in-place New Chat in
 the job's own tab, which cannot touch another profile.
 
+v6 (owner report 2026-09-30): the page opener's fresh tab is adopted only when the browser names
+the job tab as its `openerId` — a stranger's tab is never adopted and never closed — and the
+create opener is not fired for a context `Target.getBrowserContexts` says Chrome cannot create
+into (a regular profile would only flash a default-profile tab). Design:
+docs/archive/2026-09-30-new-tab-opener-proof/design.md
+
 RULE 18: file 150-300 ideal, func 4-20 LOC, params ≤4. Imports: cdp.browser_targets + page_popup.
 """
 from __future__ import annotations
@@ -30,10 +36,16 @@ _PAGE = "page"
 
 @dataclass
 class OpenSpec:
-    """What to open, in which context, and how long to wait for it to appear."""
+    """What to open, in which context, how long to wait — and which tab is doing the opening.
+
+    `opener_id` is the job tab's own target id: the fresh tab counts only when the browser's
+    `TargetInfo.openerId` names it (v6 R1). An empty opener keeps the context-only rule for
+    callers that cannot name their tab.
+    """
     url: str
     context_id: str = ""
     timeout_sec: float = 5.0
+    opener_id: str = ""
 
 
 @dataclass
@@ -66,23 +78,62 @@ async def _proven(browser, tab_id: str, context_id: str) -> tuple[str, str]:
     return "", ""
 
 
-async def _wait_new_tab(browser, before: set, timeout_sec: float) -> tuple[str, str]:
-    """Poll this browser's list until a page target that was not there before appears."""
+def _ours(target_infos: list[dict], fresh: set, opener_id: str) -> set:
+    """The fresh tabs the browser itself says THIS page opened (`TargetInfo.openerId`, v6 R1)."""
+    named = {str(i.get("targetId")) for i in target_infos
+             if i.get("type", _PAGE) == _PAGE and i.get("openerId") == opener_id}
+    return fresh & named
+
+
+def _no_tab_reason(fresh_count: int, opener_expected: bool) -> str:
+    """Why nothing was adopted — honest about the strangers when our own tab never came."""
+    if opener_expected and fresh_count:
+        return (f"{fresh_count} new tab(s) appeared, none named this tab as its opener "
+                f"— the page opened no tab of its own")
+    return "the page opened no tab (nothing new in the target list)"
+
+
+async def _wait_new_tab(browser, before: set, timeout_sec: float,
+                        opener_id: str = "") -> tuple[str, str]:
+    """Poll this browser's list until a page target that was not there before appears.
+
+    With an opener id only a fresh tab the browser names as our page's counts (v6 R1) — a
+    stranger's tab is never adopted; without one, the context proof is the only judge.
+    """
     deadline = time.monotonic() + max(timeout_sec, _POLL_SEC)
     while True:
         target_infos, err = await browser.targets()
         if err:
             return "", err
         fresh = _ids(target_infos) - before
-        if fresh:
-            return sorted(fresh)[0], ""
+        mine = _ours(target_infos, fresh, opener_id) if opener_id else fresh
+        if mine:
+            return sorted(mine)[0], ""
         if time.monotonic() >= deadline:
-            return "", "the page opened no tab (nothing new in the target list)"
+            return "", _no_tab_reason(len(fresh), bool(opener_id))
         await asyncio.sleep(_POLL_SEC)
 
 
+async def _not_creatable(browser, context_id: str) -> tuple[bool, str]:
+    """v6 R2: True when the browser itself says `Target.createTarget` cannot honour the context.
+
+    The default context needs no id (create always lands it), and an unanswerable list keeps
+    today's create-first order — only a stated absence skips the attempt.
+    """
+    if not context_id:
+        return False, ""
+    creatable, err = await browser.get_browser_contexts()
+    if err or context_id in creatable:
+        return False, ""
+    return True, ("the job tab's profile is not a context Chrome creates into — "
+                  "the tab's own page must open it")
+
+
 async def _create_opener(browser, spec: OpenSpec) -> Opened:
-    """(a) browser-level `Target.createTarget` in the job tab's context."""
+    """(a) browser-level `Target.createTarget` in the job tab's context — skipped when not creatable."""
+    skip, why = await _not_creatable(browser, spec.context_id)
+    if skip:
+        return Opened(reason=why)
     tab_id, err = await browser.create(spec.url, spec.context_id)
     if not tab_id:
         return Opened(reason=err)
@@ -103,7 +154,7 @@ async def _page_opener(browser, page_client, spec: OpenSpec) -> Opened:
     ok, why = await open_tab_via_page(page_client, spec.url, spec.timeout_sec)
     if not ok:
         return Opened(reason=why)
-    tab_id, why = await _wait_new_tab(browser, _ids(target_infos), spec.timeout_sec)
+    tab_id, why = await _wait_new_tab(browser, _ids(target_infos), spec.timeout_sec, spec.opener_id)
     if not tab_id:
         return Opened(reason=why)
     kind, why = await _proven(browser, tab_id, spec.context_id)

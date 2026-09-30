@@ -180,7 +180,8 @@ async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
     if why:
         return False, why
     opened = await open_in_profile(browser, _popup_client(move),
-                                   OpenSpec(move.url, context, move.timeout_sec))
+                                   OpenSpec(move.url, context, move.timeout_sec,
+                                            opener_id=move.old_id))
     if not opened.tab_id:
         return await _refuse(move, browser, opened.reason)
     move.new_id = opened.tab_id

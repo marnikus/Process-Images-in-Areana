@@ -166,6 +166,32 @@ def test_close_reports_success_and_a_failure(monkeypatch):
     assert ok is False and "socket gone" in err
 
 
+def test_browser_contexts_reads_the_creatable_set_or_reports_a_reason(monkeypatch):
+    """v6 R2: which contexts `Target.createTarget` can honour — the skip-create judge."""
+    client = _FakeClient([{"id": 1, "result": {"browserContextIds": ["CTX-A", "CTX-B"]}},
+                          {"id": 2, "error": {"message": "Target domain not available"}},
+                          {"id": 3, "result": {}}])
+    monkeypatch.setattr(bt, "_browser_ws_url", lambda h, p: "ws://h:1/devtools/browser/U")
+    monkeypatch.setattr(bt, "CDPClient", lambda host, port: client)
+    probe, _ = asyncio.run(bt.dial("h", 1))
+    ids, err = asyncio.run(probe.get_browser_contexts())
+    assert (ids, err) == ({"CTX-A", "CTX-B"}, "")
+    assert client.sent[0][0] == "Target.getBrowserContexts"
+    ids, err = asyncio.run(probe.get_browser_contexts())
+    assert ids == set() and "not available" in err
+    ids, err = asyncio.run(probe.get_browser_contexts())     # answered no array
+    assert ids == set() and err
+
+
+def test_browser_contexts_on_a_dead_socket_is_a_reason_not_a_raise(monkeypatch):
+    client = _FakeClient([RuntimeError("socket gone mid-call")])
+    monkeypatch.setattr(bt, "_browser_ws_url", lambda h, p: "ws://h:1/devtools/browser/U")
+    monkeypatch.setattr(bt, "CDPClient", lambda host, port: client)
+    probe, _ = asyncio.run(bt.dial("h", 1))
+    ids, err = asyncio.run(probe.get_browser_contexts())
+    assert ids == set() and "socket gone" in err
+
+
 def test_browser_ws_url_reads_the_version_endpoint(monkeypatch):
     from app.browser.cdp import tabs as tabs_mod
     monkeypatch.setattr(tabs_mod, "_fetch_json_sync",

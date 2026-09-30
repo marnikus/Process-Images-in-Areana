@@ -24,18 +24,25 @@ class FakeBrowser:
 
     def __init__(self):
         self.tabs: dict[str, str] = {}      # id → context the browser really put it in
+        self.openers: dict[str, str] = {}   # id → the tab whose page opened it (TargetInfo.openerId)
         self.targets_err = ""
         self.create_result: tuple = ("NEW", "")
         self.create_ctx = CTX
+        self.ctx_answer: tuple = ({CTX}, "")   # `Target.getBrowserContexts` — (creatable ids, err)
         self.closed: list = []
         self.list_created = True
 
     def _infos(self) -> list:
         return [{"targetId": tid, "type": "page", "url": "https://arena.ai/x",
-                 **({"browserContextId": ctx} if ctx else {})} for tid, ctx in self.tabs.items()]
+                 **({"browserContextId": ctx} if ctx else {}),
+                 **({"openerId": self.openers[tid]} if tid in self.openers else {})}
+                for tid, ctx in self.tabs.items()]
 
     async def targets(self):
         return ([], self.targets_err) if self.targets_err else (self._infos(), "")
+
+    async def get_browser_contexts(self):
+        return self.ctx_answer
 
     async def create(self, url, context_id):
         tab_id, err = self.create_result
@@ -45,15 +52,18 @@ class FakeBrowser:
 
     async def close(self, tab_id):
         self.tabs.pop(tab_id, None)
+        self.openers.pop(tab_id, None)
         self.closed.append(tab_id)
         return True, ""
 
 
-def _popup(monkeypatch, browser, tab_id="POP", ctx=CTX, ok=True, why=""):
+def _popup(monkeypatch, browser, tab_id="POP", ctx=CTX, ok=True, why="", opener=""):
     """Replace the real page opener with a scripted one that may add a tab to the browser."""
     async def fake(client, url, timeout):
         if tab_id:
             browser.tabs[tab_id] = ctx
+            if opener:
+                browser.openers[tab_id] = opener
         return ok, why
     monkeypatch.setattr(o, "open_tab_via_page", fake)
 
@@ -155,3 +165,93 @@ def test_a_list_that_dies_while_waiting_for_the_popup_is_a_reason(monkeypatch):
     _popup(monkeypatch, b, tab_id="", ok=True)
     opened = asyncio.run(o.open_in_profile(b, object(), SPEC))
     assert opened.tab_id == "" and "socket gone" in opened.reason and not opened.wrong_profile
+
+
+# ── v6: the fresh tab must be OURS by opener identity, and create must know its place ───
+# Owner report 2026-09-30 ("bug appear again"): design docs/archive/2026-09-30-new-tab-opener-proof/design.md
+
+def _ours_spec(opener="OLD"):
+    return o.OpenSpec(SPEC.url, CTX, 1.0, opener_id=opener)
+
+
+def test_the_popup_tab_is_identified_by_its_opener_never_by_sort_order(monkeypatch):
+    """Two fresh tabs appear (another worker's sorts first): adopt only the one OUR page opened."""
+    b = FakeBrowser()
+    b.create_result = ("", "refused")
+
+    async def two_tabs(client, url, timeout):
+        b.tabs["A-STRAY"], b.openers["A-STRAY"] = CTX, "OTHER-TAB"   # sorts first, not ours
+        b.tabs["POP"], b.openers["POP"] = CTX, "OLD"                 # our page's own tab
+        return True, ""
+    monkeypatch.setattr(o, "open_tab_via_page", two_tabs)
+    opened = asyncio.run(o.open_in_profile(b, object(), _ours_spec()))
+    assert opened.tab_id == "POP"
+    assert "A-STRAY" in b.tabs and b.closed == []     # the stranger stays for its own handover
+
+
+def test_a_stranger_fresh_tab_is_never_adopted_and_never_closed(monkeypatch):
+    """Only a foreign-opener tab appears: refusal — and it is left for whoever opened it."""
+    b = FakeBrowser()
+    b.create_result = ("", "refused")
+    _popup(monkeypatch, b, tab_id="A-STRAY", ctx=CTX, opener="OTHER-TAB")
+    monkeypatch.setattr(o, "_POLL_SEC", 0.01)
+    opened = asyncio.run(o.open_in_profile(b, object(), o.OpenSpec(SPEC.url, CTX, 0.1, opener_id="OLD")))
+    assert opened.tab_id == "" and not opened.wrong_profile
+    assert "A-STRAY" in b.tabs and b.closed == []
+    assert "opener" in opened.reason.lower()
+
+
+def test_create_is_skipped_when_the_browser_says_the_context_is_not_creatable(monkeypatch):
+    """A regular profile: firing create only flashes a tab into the default profile — never fire it."""
+    b = FakeBrowser()
+    b.ctx_answer = (set(), "")            # Chrome can create into no listed context
+    b.create_ctx = "OTHER-CTX"            # the default-landing shape would show right here
+    b.create_result = ("NEW", "")
+    calls: list = []
+
+    async def record_create(url, ctx):
+        calls.append((url, ctx))
+        return "NEW", ""
+    b.create = record_create
+    _popup(monkeypatch, b, opener="OLD")
+    opened = asyncio.run(o.open_in_profile(b, object(), _ours_spec()))
+    assert opened.tab_id == "POP"
+    assert calls == [] and b.closed == []          # no create fired, nothing to roll back
+
+
+def test_a_creatable_context_still_uses_the_create_target(monkeypatch):
+    """A context Chrome honours (DevTools-created) keeps the cheaper opener — no page involved."""
+    b = FakeBrowser()                              # ctx_answer lists CTX as creatable
+
+    async def no_popup(client, url, timeout):
+        raise AssertionError("the page opener must not run when create works")
+    monkeypatch.setattr(o, "open_tab_via_page", no_popup)
+    opened = asyncio.run(o.open_in_profile(b, object(), _ours_spec()))
+    assert opened.tab_id == "NEW" and b.closed == []
+
+
+def test_the_default_context_still_creates_without_an_id(monkeypatch):
+    """The default profile needs no context id, so an empty creatable list does not block it."""
+    b = FakeBrowser()
+    b.ctx_answer = (set(), "")
+    b.create_ctx = ""                              # the tab lands in the default context
+    opened = asyncio.run(o.open_in_profile(b, object(), o.OpenSpec(SPEC.url, "", 1.0)))
+    assert opened.tab_id == "NEW" and not opened.wrong_profile
+
+
+def test_an_unanswerable_context_list_keeps_the_create_attempt():
+    """When the browser cannot answer the creatable set, today's create-first order stands."""
+    b = FakeBrowser()
+    b.ctx_answer = (set(), "socket gone")
+    opened = asyncio.run(o.open_in_profile(b, object(), _ours_spec()))
+    assert opened.tab_id == "NEW" and not opened.wrong_profile
+
+
+def test_the_refusal_names_the_page_route_when_create_was_skipped(monkeypatch):
+    """RULE 2: the log must say the job tab's own page was the only route — and why it failed."""
+    b = FakeBrowser()
+    b.ctx_answer = (set(), "")
+    _popup(monkeypatch, b, tab_id="", ok=False, why="window.open returned null (popup blocked)")
+    opened = asyncio.run(o.open_in_profile(b, object(), _ours_spec()))
+    assert opened.tab_id == "" and opened.wrong_profile is False
+    assert "page" in opened.reason and "popup blocked" in opened.reason
