@@ -3,7 +3,7 @@
 Scope: every file the Global Saving System added (`git diff --stat f5cb06e c65f71f^2`, 59 files),
 plus its integration seams (`json_store`, `preset_store`/`config_manager` `all_data`/`replace_all`,
 `window_catalog`, `bridge`, `ui/panels/__init__`). Legacy code outside those seams is out of scope.
-Previous audit: `docs/current/WORKSPACE_REFACTOR_AUDIT.md` (structure/size pass, 2026-09-25).
+Previous audit: `docs/archive/2026-09-25-workspace-refactor-1/audit.md` (structure/size pass, 2026-09-25).
 This pass focuses on **correctness at the failure edges**: transactions, corruption, rollback,
 partial restore, schema ownership and doc truth. Every High/Medium finding below was **reproduced
 against the real code** by a throwaway probe (P1–P10, §2), not inferred from reading.

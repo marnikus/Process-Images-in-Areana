@@ -1,6 +1,14 @@
 # Workspace Save/Restore — Refactor Audit & Plan (2026-09-25)
 
-> Follow-up (2026-09-28): failure-edge audit #2 + TDD refactor — `docs/archive/2026-09-28-workspace-refactor-2/audit.md` (SoR I-77).
+> **Archived** per RULE 17: this is the record of what was believed and planned on 2026-09-25, not a
+> description of the code. The current truth is
+> [`../../current/GLOBAL_WORKSPACE_SAVE_DESIGN.md`](../../current/GLOBAL_WORKSPACE_SAVE_DESIGN.md) (§P
+> records the latest pass) and SoR invariant **I-77**/**I-81**.
+> Follow-ups: failure-edge audit #2 + TDD refactor —
+> `docs/archive/2026-09-28-workspace-refactor-2/audit.md` (SoR I-77); structure/truth audit #3 +
+> TDD refactor — `docs/archive/2026-09-29-workspace-refactor-3/audit.md` (SoR I-81).
+> Every finding F1–N4 and S1–S3 below was executed in the steps it describes; the code map in §1
+> (`coordinator.py`, the old `restore.py`/`apply.py` split, the 185-line panel) no longer exists.
 
 Scope: ONLY the new global save/restore feature (commit range `6eb15e2..4a49f99`):
 `app/persistence/workspace/**`, `app/services/workspace/**`, `app/ui/panels/workspace.py`,

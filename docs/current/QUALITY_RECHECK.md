@@ -1260,6 +1260,43 @@ server runs (no pref drives it; hiding it would mean patching Firefox's UI, whic
 Allow dialog must be answered once per connection unless the pref is in the running profile, and the app never
 starts, restarts or kills a browser.
 
+## Addendum 2026-09-29 — Global Saving System: structure, truth and responsibility audit #3 (I-81)
+
+Refactor round on the global save/restore feature
+([`archive/2026-09-29-workspace-refactor-3/audit.md`](archive/2026-09-29-workspace-refactor-3/audit.md)):
+five defects reproduced before any change, nine closed, 16 ordered steps, each in its own
+revertable commit. No on-disk format and no public API changed — additions only.
+
+| Gate | Command | Result |
+|---|---|---|
+| Focused Python | `pytest tests/test_workspace_*.py -q` | **193 passed** (baseline at `97f4ed3`: 154; +24 characterization, +3 architecture, +6 core, +1 save, +1 failure-edge rename, +4 preview-status) |
+| Full Python | `QT_QPA_PLATFORM=offscreen pytest tests -q` | **3 040 passed · 13 skipped · 3 failed** — the same three pre-existing failures as at `97f4ed3` (`test_quality_gate.py::test_40loc_js_function_fails`, `test_single_job_runner.py::test_handler_map_covers_all_types`, `test_ui_wiring.py::test_closing_the_window_drops_the_cdp_socket_inside_a_guard`); 3 053 collected in both runs, the 7 extra skips being the documented environment-gated lane (this sandbox's fresh venv has no `websockets` / `PySide6-Essentials`) |
+| Workspace JS | `node --test tests/js/test_workspace_panel.mjs tests/js/test_workspace_panel_sizes.mjs` | **22 passed** (baseline 18; +1 preview-gate contract, +3 RULE 18.2 size/responsibility tests) |
+| Panel boot | `node --test tests/js/test_boot_all_panels.mjs` | **4 passed** — the four workspace slices load in `index.html` before the mount |
+| Canonical JS lane | `npm run test:js` | **371 passed · 17 failed** — identical 17 before and after (`test_captcha_recording`, `test_captcha_saved_page`, `test_cdp_store`, `test_chat_page_probe`, `test_firefox_identify`, `test_firefox_job_scripts`, `test_log_tools`, `test_output_ready_first`, `test_output_spinner_scope`, `test_processing_probe`, `test_sash_split`, `test_ui_helpers`, `test_ui_helpers_esm`, `test_watcher_generation_probe`, the two `live_debug` subtests, the `url-list receiver icon` subtest); none touches `panels/workspace*` |
+| Size / complexity | `radon cc -s` over `app/persistence/workspace`, `app/services/workspace`, `app/ui/panels/workspace.py` | max CC **10 → 10** (`safe_rel_path`, untouched), CC ≥ 7 **14 → 12**; 26 modules, 199 → 219 functions, 2 415 → 2 640 lines |
+| JS panel size | `wc -l` | `panels/workspace.js` **368 → 56** (thin mount) plus `panels/workspace/bridge.js` 40, `render.js` 138, `flow.js` 192 — every slice inside the RULE 18 file ideal, the last over-300 file in this feature closed |
+| Dead code | `vulture --min-confidence 80` | **0** findings, before and after (`RESTORE_ADVICE` and the dead `published` branch are gone) |
+| Changed-file ratchet | `python tools/verify_quality.py --changed-files <the 26 modules + the 4 JS slices>` | **✅ PASSED — 0 fails**; the single warn is the missing `coverage.json` |
+| Vulture (feature + tests) | `vulture app/… tests/test_workspace_*.py --min-confidence 80` | 0 |
+
+**One metric moved the wrong way and is kept, not hidden:** `apply.restore_workspace` is now the
+largest function in the feature at **27 LOC** (baseline `build_manifest` 22). It grew because the
+restore must collect the panel's clamp and RULE 24 live-sync notes *before* the report is built —
+that ordering is the H3 fix (I-81: the on-disk report equals the UI reply). 27 is under the RULE 16
+fail line of 30 but over the "prefer ≤20" line, so the number is recorded here rather than reduced by
+splitting a function whose whole job is to report one run. RULE 18's ideal of 4–20 LOC is met by
+every other function in the feature.
+
+**Baseline decision: `tools/quality_baseline.json` is NOT re-recorded** — no workspace file needed to
+grow past an absolute limit, so re-recording would only bake this round's coverage drift into the
+floors (the same reasoning as the 2026-09-21 rounds above).
+
+Dishonest reductions rejected (RULE 16.6): letting a failed non-required domain refuse the whole save
+(the user-visible "Save failed" for a store the feature never promised to be required), ticking the
+preview checklist `ok` for a domain the restore will skip, keeping the `published` report branch alive
+because a test read it, and splitting `restore_workspace` only to make the size number look better.
+
 ## Known debt carried (tracked in `docs/archive/2026-10-02-captcha-watcher-isolation/design.md` §7)
 
 * `captcha_recording/` + Records window kept (F-1).

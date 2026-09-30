@@ -1,6 +1,6 @@
-# Global Workspace Save — Design (implemented; merged onto the Firefox/Watcher line 2026-09-27, §N; failure edges hardened 2026-09-28, §O)
+# Global Workspace Save — Design (implemented; merged onto the Firefox/Watcher line 2026-09-27, §N; failure edges hardened 2026-09-28, §O; audited and re-factored 2026-09-29, §P)
 
-**Status:** design gate — no production code written. On approval this file drives implementation phases W1…W10 (§11); after the feature lands it is archived to `docs/archive/<date>-global-workspace-save/` and its durable rows move into `SYSTEM_OF_RECORD.md` (RULE 17).
+**Status: IMPLEMENTED.** All ten phases W0…W10 (§I) landed; the table there is the record of what was done, not a plan. Two later passes hardened and reorganised it: failure edges (§O, SoR I-77, audit of 2026-09-28) and the structure/truth audit + refactor of 2026-09-29 (§P, SoR I-81) — audits and plans at `docs/archive/2026-09-25-workspace-refactor-1/audit.md`, `docs/archive/2026-09-28-workspace-refactor-2/audit.md` and `docs/archive/2026-09-29-workspace-refactor-3/audit.md`.
 **Size note:** this doc intentionally exceeds the RULE 18.4 context-file ideal (60–200 lines) because the task mandates one self-contained gate deliverable with embedded inventory/maps/risks. Every table below is evidence-backed from the files cited in §A.
 
 ---
@@ -146,7 +146,7 @@ app/services/workspace/
     providers/                 # one small file per domain (§B table), each ≤300 LOC
 
 (2026-09-25 refactor: the planned coordinator.py/reconcile.py pair became
-meta/save/restore/apply — the audit in WORKSPACE_REFACTOR_AUDIT.md §4; boundaries
+meta/save/restore/apply — the audit in `docs/archive/2026-09-25-workspace-refactor-1/audit.md` §4; boundaries
 otherwise exactly as designed. Provider modules import nothing from services.)
 app/ui/panels/workspace.py     # 19th window mixin: slots only (thin)
 app/ui/web/js/panels/workspace.js     # one file (368 lines)
@@ -383,8 +383,20 @@ UI            Coordinator                         Providers                     
 | Capture raises / live file corrupt (saving) | `capture` | domain excluded from the snapshot (still reported) | — (save continues) | save refusal lists failed domains; partial save allowed by explicit flag |
 | Grid invalid (any of the above inside session.json) | any | grid keys skipped; session_settings keys still applied; **current layout retained** | — | restored | "layout not restored — invalid grid (reason). Apply default layout?" (explicit opt-in, never silent) |
 | Unknown file in `state/` | — | not applied | — | — | "unknown file — no domain owns it" (never inferred by filename) |
+| A non-required domain's live file is corrupt (saving) | `capture` | domain **excluded** from the snapshot; the save is published `partial`, not refused (I-81); never written as `{}` | — | save continues | one warn-level save line naming the domain, plus the cause in `reports/save-report.json` and the manifest's `capture` block; the manifest records it `excluded`, so a later restore skips that domain |
+| A required domain's live file is corrupt (saving) | `capture` | save **refused**, nothing published, previous snapshots untouched | — | — | one error-level line naming each domain **and its cause**, plus the full `errors` list unless the user allows a partial snapshot |
+| Two saves in the same second with one name | — | both publish; the second gets its own `-02` folder | — | — | nothing — a legitimate action is never reported as a failure (I-81, `fsio.unique_dir`) |
 
 Default substitution never happens implicitly; "restore defaults for X" is a separate user-approved action.
+
+**The preview runs the same gates (I-81).** `restore.preview_restore` is manifest-driven, but it
+calls `gates.load_files` (safe path → size → sha-256 → parse) and each provider's `validate` and
+`supported_migrations` before ticking a row. A row is pre-ticked only when its status is `ok` or
+`size_mismatch`; every other status carries the reason. Preview statuses are `ok`, `size_mismatch`,
+`invalid`, `unsupported_schema`, `parse`, `checksum`, `missing`, `unsafe_path`, `excluded`,
+`not_in_manifest`. Before I-81 the preview checked only the path and the byte count, so it ticked
+`ok` for domains the restore then skipped with `semantic` or `schema` — the checklist promised a
+restore that did not happen.
 
 ---
 
@@ -516,6 +528,12 @@ Anything added in the future that renders a persisted value MUST be added to
 these refresh points (RULE 24). "Load" links in the recent-snapshots list go
 through the same preview → Restore All/Selected flow as Browse…
 
+Since I-81 the Python `_REFRESH_TABLE` domain ids are asserted against
+`registry.RESTORE_ORDER` by `tests/test_workspace_architecture.py`, so a renamed
+domain fails a test instead of silently losing its live push. The table stays
+split across Python and JS on purpose (audit #2's U2): unifying them would need a
+bridge round-trip per restored domain and buys no observable difference.
+
 ---
 
 ## N. Integration with the Firefox/Watcher line (merge 2026-09-27)
@@ -542,3 +560,32 @@ instead of saving `{}` (RULE 4); (7) the save/restore slots always answer (`ok: 
 the post-restore refresh follows what was restored even in a failed run, and the JS treats any
 non-`ok` reply as a failure. Structure: the dead `plan()` hook and three unused helpers were removed,
 and the snapshot index left `save.py` for `snapshot_index.py`.
+
+---
+
+## P. Truth and structure pass (audit #3, 2026-09-29, SoR I-81)
+
+Audit + ordered plan + metrics: `docs/archive/2026-09-29-workspace-refactor-3/audit.md`. The whole
+feature was re-read at `97f4ed3`; fourteen probes (P1–P14) were run against the real code, and every
+High/Medium finding became a red test before its fix. Nine defects closed:
+
+| id | Was | Now |
+|---|---|---|
+| H1 | two saves in one second with one name: the 2nd was refused (`target already exists`) | `fsio.unique_dir` gives the 2nd its own `-02` folder; `recover._recovery_dir` reuses the same rule |
+| H2 | all three save-failure paths returned an error and logged **nothing** | `save._refused` writes one error-level line naming the cause |
+| H3 | `reports/restore-report.json` was written before the panel's clamp + RULE 24 notes, so the file and the UI reply described different runs (a failed push was persisted nowhere) | `restore_workspace(..., live_sync=)` collects the panel's notes **before** the report is built |
+| H4 | `StateProvider.required` was inert — any capture failure refused the save | `save._blocking` refuses only for a **required** domain; a non-required failure publishes a `partial` snapshot, logged, reported and marked `excluded` in the manifest |
+| H5 | the preview ticked `ok` for domains the restore then skipped (`semantic` / `schema`) | the preview runs the restore's own gates; `invalid` / `unsupported_schema` / the file-gate stages are **additive** statuses |
+
+Structure closed in the same pass: one provider table (`registry.PROVIDER_CLASSES` derives
+`RESTORE_ORDER`; an unregistered provider now fails a test), `restore_advice` on the contract
+instead of a `getattr`, the dead `published` branch in the save report gone, the inclusion policy and
+the snapshot identity in `meta` (`save` no longer imports a provider module; one `git rev-parse` per
+save instead of two), one crash guard for all six JSON slots, one shape validator (`object_doc` /
+`members`) for the eight domains, the restore transaction under the same snapshot-boundary lock the
+save capture uses, and `panels/workspace.js` split by responsibility into `bridge.js` / `render.js` /
+`flow.js` (RULE 18.2).
+
+Nothing about the on-disk format changed. Additions only: three preview statuses, the
+`reconciled` notes in the restore report, and the `partial` outcome for a non-required capture
+failure.

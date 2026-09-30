@@ -45,4 +45,4 @@ The app persists ~10 independent JSON stores (see design §A.1), all atomic per 
 
 ## Outcome (2026-09-25)
 
-Superseded in form only by the W9 refactor (WORKSPACE_REFACTOR_AUDIT.md): module boundaries moved (coordinator → meta/save/restore/apply/recover), every decision here — single orchestration path, workspace_format versioning, partial-restore semantics, stage vocabulary — is unchanged, except the one documented report change: capture failures now report stage `capture` (design §F).
+Superseded in form only by the W9 refactor (`docs/archive/2026-09-25-workspace-refactor-1/audit.md`): module boundaries moved (coordinator → meta/save/restore/apply/recover), every decision here — single orchestration path, workspace_format versioning, partial-restore semantics, stage vocabulary — is unchanged, except the one documented report change: capture failures now report stage `capture` (design §F).
