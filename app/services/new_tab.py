@@ -166,8 +166,18 @@ async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
     if not ok:
         return await _refuse(move, browser, why)
     _move_worker(move)
-    await _close_old(move, browser)
-    return True, f"new chat ready in the new tab {move.new_id[:12]}"
+    return _done(move, await _close_old(move, browser))
+
+
+def _done(move: _Move, old_closed: bool) -> tuple[bool, str]:
+    """The handover's own answer. The worker moved either way, so this is `True`
+    even when the old tab would not close — but then the answer says so (N2):
+    `handover`'s "(False, why) = nothing changed" must stay the only way to say
+    nothing changed."""
+    ready = f"new chat ready in the new tab {move.new_id[:12]}"
+    if old_closed:
+        return True, ready
+    return True, f"{ready}, but the old tab {move.old_id[:12]} is still open — close it by hand"
 
 
 async def _refuse(move: _Move, browser: Any, why: str) -> tuple[bool, str]:

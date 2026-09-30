@@ -671,3 +671,23 @@ def test_the_handover_releases_the_flag_when_the_open_succeeds(monkeypatch):
     assert ok, why
     assert w.bridge._auto_scan_running is False
     assert w.ctx.tab_id != "OLD"
+
+
+def test_the_success_line_says_so_when_the_old_tab_would_not_close(monkeypatch):
+    """Audit #4 N2. `_close_old` proved the tab is still open and logged an
+    error, but `_run` discarded the bool and answered "new chat ready" — the
+    reason string claimed a move that was only half finished. The worker DID
+    move, so the answer stays `ok`; it must carry the leftover tab."""
+    w = _world(monkeypatch)
+    real_close = w.browser.close
+
+    async def close_that_lies(target_id):
+        await real_close(target_id)                 # really closes it...
+        w.browser.tabs[target_id] = {"targetId": target_id, "type": "page", "url": NEW_URL,
+                                     "browserContextId": PROFILE_2}   # ...then puts it back
+
+    w.browser.close = close_that_lies
+    ok, why = _run(w)
+    assert ok, "the worker did move — the handover itself succeeded"
+    assert "still open" in why, f"the answer hides a tab that is still there: {why!r}"
+    assert "still open" in _text(w).lower()          # the error log already said so
