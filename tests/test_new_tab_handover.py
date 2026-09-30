@@ -691,3 +691,60 @@ def test_the_success_line_says_so_when_the_old_tab_would_not_close(monkeypatch):
     assert ok, "the worker did move — the handover itself succeeded"
     assert "still open" in why, f"the answer hides a tab that is still there: {why!r}"
     assert "still open" in _text(w).lower()          # the error log already said so
+
+
+# ── N1: a Reparse queued during a handover must still run (audit #4) ────────
+
+def test_a_reparse_queued_during_a_handover_runs_when_the_handover_ends(monkeypatch):
+    """I-68(a): `reconcile_once` QUEUES a manual pass that meets a running one
+    and "runs it the moment that pass ends". The new-tab handover is a holder
+    of that same flag and its release never looked at the queue — so a Reparse
+    click during a handover was stranded until some unrelated later pass.
+
+    The handover is paused at a known point (its new-chat readiness probe) so the
+    click provably lands while the flag is held. Nothing triggers the drain: the
+    handover ending must be enough.
+    """
+    from app.services.live import reconcile
+    ran = []
+    reached = asyncio.Event()
+    resume = asyncio.Event()
+
+    async def counting_pass(*_a, **_k):
+        ran.append("pass")
+        return reconcile.Report()
+
+    async def pause_at_the_proof(_reset_ctx):
+        reached.set()
+        await resume.wait()
+        return True, "new chat ready"
+
+    w = _world(monkeypatch)
+    w.bridge._reparse_queued = False
+    monkeypatch.setattr(reconcile, "_pass", counting_pass)
+    monkeypatch.setattr(reconcile, "schedule_coro", _now)
+    monkeypatch.setattr(new_tab, "wait_new_chat_ready", pause_at_the_proof)
+    deps = SimpleNamespace(log=lambda m, l="info": w.logs.append((l, m)), stats=lambda: None)
+
+    async def both():
+        reconcile.install_drain(w.bridge, deps)     # exactly what start_reconciler does
+        task = asyncio.create_task(new_tab.handover(w.ctx, NEW_URL, timeout_sec=5))
+        await reached.wait()                        # the handover now owns the flag
+        report = await reconcile.reconcile_once(w.bridge, deps, "manual")
+        assert ran == [], "nothing may run while the handover holds the flag"
+        resume.set()
+        ok, why = await task
+        await asyncio.sleep(0.05)                   # the promise is "the moment", not "later"
+        return report, ok, why
+
+    report, ok, why = asyncio.run(both())
+    assert ok, why
+    assert report.error == "busy"                   # it could not run while held — correct
+    assert ran == ["pass"], "the queued Reparse must run the moment the handover ends"
+    assert w.bridge._reparse_queued is False
+
+
+def _now(_bridge, coro):
+    """`schedule_coro` replacement that runs the coroutine in THIS loop, so the
+    drain the test installs is observable without a background thread."""
+    return asyncio.get_event_loop().create_task(coro)

@@ -30,6 +30,7 @@ from app.browser.cdp.tabs import TabInfo
 from app.browser.chat_page import read_chat_page
 from app.browser.new_chat import ResetCtx, wait_new_chat_ready
 from app.browser.page_pool import retarget_page, tab_label_of
+from app.services.live import reconcile
 from app.services.live.url_policy import mark_receivers
 from app.services.new_tab_open import OpenSpec, open_in_profile
 
@@ -120,7 +121,10 @@ async def handover(ctx: Any, url: str, timeout_sec: float) -> tuple[bool, str]:
     try:
         return await _with_browser(move)
     finally:
-        ctx.bridge._auto_scan_running = False
+        # through reconcile.release(), NOT a bare `= False`: the handover holds a
+        # flag it does not own, and the holder that ends a pass must also drain
+        # the Reparse queue it may have stranded (I-68a, audit #4 N1).
+        reconcile.release(ctx.bridge)
 
 
 async def _hold_reconciler(bridge: Any) -> bool:

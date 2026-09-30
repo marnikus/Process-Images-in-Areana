@@ -105,8 +105,18 @@ def start_reconciler(bridge, deps: LiveDeps) -> bool:
     task = getattr(bridge, "_url_reconciler", None)
     if task is not None and not getattr(task, "done", lambda: True)():
         return False
+    install_drain(bridge, deps)
     bridge._url_reconciler = schedule_coro(bridge, reconcile_loop(bridge, deps))
     return True
+
+
+def install_drain(bridge, deps: LiveDeps) -> None:
+    """Leave `release()` a way to run the queued Reparse — so any OTHER holder of
+    the flag (the I-79 handover) can end a pass the same way this one does,
+    queue included (N1). Named, not inline, so the wiring is testable without a
+    background loop."""
+    bridge._reparse_drain = lambda: schedule_coro(
+        bridge, reconcile_once(bridge, deps, "manual"))
 
 
 async def reconcile_loop(bridge, deps: LiveDeps) -> None:
@@ -240,6 +250,28 @@ def _summary(p: _Pass) -> None:
                f"{r.joined} joined, {r.revived} revived, {r.stale} stale", "info")
 
 
+def release(bridge) -> None:
+    """The ONE place a holder of `_auto_scan_running` gives it up (audit #4 N1).
+
+    Until the I-79 handover this was only `reconcile_once`. The handover held the
+    same flag and released it without reading `_reparse_queued`, so a Reparse click
+    that met a handover was queued, logged "runs right after the current pass", and
+    stranded — the queue is read only at the end of a `reconcile_once` pass.
+
+    Draining needs `LiveDeps`, which only the UI-land `live_deps(bridge)` builds, so
+    `install_drain` leaves one here. With no loop running the flag is still released
+    and the queue waits for the next pass, as it did before.
+    """
+    bridge._auto_scan_running = False
+    if not getattr(bridge, "_reparse_queued", False):
+        return
+    drain = getattr(bridge, "_reparse_drain", None)
+    if drain is None:
+        return
+    bridge._reparse_queued = False
+    drain()
+
+
 async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
     """One pass (loop, `auto_connect_scan` slot, Reparse); overlapping passes are skipped.
 
@@ -253,7 +285,7 @@ async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
     try:
         report = await _pass(_Pass(bridge, deps, source, _stats(bridge)))
     finally:
-        bridge._auto_scan_running = False
+        release(bridge)
     if getattr(bridge, "_reparse_queued", False):
         bridge._reparse_queued = False
         return await reconcile_once(bridge, deps, "manual")
