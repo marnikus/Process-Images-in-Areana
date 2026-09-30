@@ -23,6 +23,7 @@ from app.browser.page_status import PageInfo
 from app.core.models import UrlRow
 from app.core.tab_alias import AliasBook
 from app.services import new_tab, new_tab_setting
+from app.services.live import reconcile_rows
 from app.services.cooldown_service import FinishCtx
 
 pytestmark = pytest.mark.unit
@@ -467,6 +468,32 @@ def test_an_unreadable_pattern_falls_back_to_arena(monkeypatch):
     assert "arena.ai" in _text(w)
 
 
+def test_the_pattern_fallback_comes_from_the_one_home(monkeypatch):
+    """The default is `reconcile_rows.DEFAULT_PATTERN`, not a literal in this module (audit #4 N3)."""
+    w = _world(monkeypatch)
+    monkeypatch.setattr(reconcile_rows, "DEFAULT_PATTERN", "example.test")
+
+    def boom(*_a, **_k):
+        raise RuntimeError("no config")
+    w.bridge.config = SimpleNamespace(get_state=boom)
+    ok, why = _run(w)
+    assert ok, why
+    assert "tabs matching 'example.test'" in _text(w)
+
+
+def test_the_pattern_key_is_the_shared_one(monkeypatch):
+    """`_get_pattern` reads `reconcile_rows.PATTERN_KEY` — one key name for the same setting."""
+    w = _world(monkeypatch)
+    seen: list = []
+
+    def get_state(key, default=None):
+        seen.append(key)
+        return "arena.ai"
+    w.bridge.config = SimpleNamespace(get_state=get_state)
+    ok, _why = _run(w)
+    assert ok and reconcile_rows.PATTERN_KEY in seen
+
+
 def test_a_raising_owner_probe_does_not_block_a_proven_profile(monkeypatch):
     w = _world(monkeypatch, old_ctx=PROFILE_2)
     w.browser.refuse_ctx = True
@@ -631,3 +658,39 @@ def test_a_bridge_without_the_pool_hook_still_moves_the_worker(monkeypatch):
     del w.bridge._emit_pool_status
     ok, why = _run(w)
     assert ok, why and w.rows[0].tab_id == w.ctx.tab_id and w.pool.get_page(w.ctx.tab_id) is not None
+
+
+# ── the owner read has one home (audit #4 N1/N2) ────────────────────────────
+
+def test_the_owner_probe_goes_through_the_shared_reader(monkeypatch):
+    """The handover asks the one owner reader (`tab_owner.read_owner`), not its own probe."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    seen: list = []
+
+    async def other_owner(client, tab_id=""):
+        seen.append(client)
+        return "somebody-else@example.com"
+    monkeypatch.setattr(new_tab, "read_owner", other_owner, raising=False)
+    ok, why = _run(w)
+    assert seen, "the handover never called the shared owner reader"
+    assert not ok and "wrong profile" in why and w.ctx.tab_id == "OLD"
+
+
+@pytest.mark.parametrize("label", ["aka_1234", "  ", "not-an-email"])
+def test_an_owner_label_that_is_not_an_email_never_rolls_back(monkeypatch, label):
+    """A pool label that is no email at all is 'unknown', never a mismatch (normalize_owner)."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.pool.get_page("OLD").owner = label
+    ok, why = _run(w)
+    assert ok, why and w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2
+
+
+def test_a_label_that_is_the_email_in_another_case_still_matches(monkeypatch):
+    """`Owner@Example.com` and the probe's lowercase email are the same account (normalize_owner)."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.pool.get_page("OLD").owner = "ANTON@example.com"
+    ok, why = _run(w)
+    assert ok, why and w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2

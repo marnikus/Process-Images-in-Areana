@@ -30,6 +30,9 @@ from app.browser.cdp.tabs import TabInfo
 from app.browser.chat_page import read_chat_page
 from app.browser.new_chat import ResetCtx, wait_new_chat_ready
 from app.browser.page_pool import retarget_page, tab_label_of
+from app.core.tab_alias import normalize_owner
+from app.services.live import reconcile_rows
+from app.services.live.tab_owner import read_owner
 from app.services.live.url_policy import mark_receivers
 from app.services.new_tab_open import OpenSpec, open_in_profile
 
@@ -50,7 +53,7 @@ class _Move:
     old_url: str = ""
     label: str = ""
     owner: str = ""
-    pattern: str = "arena.ai"
+    pattern: str = ""                                 # always set by _plan, default in reconcile_rows
     context_id: str = ""
     clients: List[Any] = field(default_factory=list)
     new_id: str = ""
@@ -58,14 +61,15 @@ class _Move:
 
 
 def _get_pattern(bridge: Any) -> str:
-    """URL pattern that decides which tabs suit pool (default arena.ai)."""
+    """URL pattern that decides which tabs suit pool (one key, one default: `reconcile_rows`)."""
     try:
         cfg = getattr(bridge, "config", None)
         if cfg is not None:
-            return str(cfg.get_state("url_pattern", "arena.ai") or "arena.ai")
+            value = cfg.get_state(reconcile_rows.PATTERN_KEY, reconcile_rows.DEFAULT_PATTERN)
+            return str(value or reconcile_rows.DEFAULT_PATTERN)
     except Exception:
         pass
-    return "arena.ai"
+    return reconcile_rows.DEFAULT_PATTERN
 
 
 def _unique(clients: list) -> list:
@@ -105,7 +109,7 @@ def _plan(ctx: Any, url: str, timeout_sec: float) -> tuple[Optional[_Move], str]
     move = _Move(ctx=ctx, url=url, timeout_sec=timeout_sec, endpoint=endpoint,
                  old_id=ctx.tab_id, old_ws=page.ws_url, old_url=page.url,
                  label=tab_label_of(pool, ctx.tab_id), pattern=_get_pattern(ctx.bridge),
-                 owner=str(getattr(page, "owner", "") or ""))
+                 owner=normalize_owner(getattr(page, "owner", "")))
     move.clients = _clients_on(ctx, pooled)
     return move, ""
 
@@ -221,24 +225,17 @@ async def _prove_new_chat(move: _Move) -> tuple[bool, str]:
     return True, why
 
 
-async def _read_owner_from_client(client: Any) -> str:
-    """Probe account email from a tab's client ('' when unknown)."""
-    try:
-        from app.browser.owner_probe import build_owner_probe, interpret_owner
-        from app.core.tab_alias import normalize_owner
-        raw = await client.evaluate(build_owner_probe())
-        return normalize_owner(interpret_owner(raw).get("email"))
-    except Exception:
-        return ""
-
-
 async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
-    """Secondary guard: the new tab must not be signed in as somebody else (label ≠ profile)."""
+    """Secondary guard: the new tab must not be signed in as somebody else (label ≠ profile).
+
+    Both sides are `normalize_owner` output — the label was normalized in `_plan`, the probe
+    answer by `read_owner` — so this compares one rule's results, never two spellings.
+    """
     if not move.owner:
         return True, ""
     new_owner = ""
     for _attempt in range(_OWNER_TRIES):
-        new_owner = await _read_owner_from_client(move.ctx.client)
+        new_owner = await read_owner(move.ctx.client)
         if new_owner:
             break
         await asyncio.sleep(_OWNER_RETRY_SEC)
@@ -246,7 +243,7 @@ async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
         _log(move, f"Owner probe empty for the new tab {move.new_id[:12]} — keeping "
                    f"{move.owner} (the browser already proved the profile)", "info")
         return True, ""
-    if new_owner == move.owner.lower():
+    if new_owner == move.owner:                           # both sides: normalize_owner output
         return True, ""
     return False, f"Owner mismatch: old {move.owner} vs new {new_owner} — wrong profile, rollback"
 
