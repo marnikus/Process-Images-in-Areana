@@ -1,4 +1,4 @@
-# ideal-size: 312 lines reason=one frozen decision path. The per-domain
+# ideal-size: 319 lines reason=one frozen decision path. The per-domain
 # transaction's order — dependency -> schema -> migration -> semantic ->
 # apply, each with its rollback to the pre-apply capture — is a published
 # contract (design §C.6/§F, SoR I-77/I-81, audit #3 §4): a reader must be

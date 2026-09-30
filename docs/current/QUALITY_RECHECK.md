@@ -36,7 +36,7 @@ the property the test is about.
 
 **RULE 18.2 exceptions in this feature, each with its `ideal-size:` reason in the file:** the
 workspace JS panel (6 frozen Qt slots whose bodies delegate to the service layer) and
-`app/services/workspace/apply.py` (312 lines, over the 300 ideal). `apply.py` grew 276 -> 312 in this
+`app/services/workspace/apply.py` (319 lines, over the 300 ideal). `apply.py` grew 276 -> 312 in this
 round with the H3 live-sync collection; RULE 16 sets no file-LOC fail line, so it is recorded rather
 than reduced, because the per-domain transaction order it holds — dependency -> schema -> migration ->
 semantic -> apply, each rolling back to the pre-apply capture — is a published contract (design
