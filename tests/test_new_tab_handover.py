@@ -182,6 +182,27 @@ async def _always_new(client):
     return True, "new chat"
 
 
+async def _ready(reset_ctx):
+    """The reset's readiness check always passes in the fake world."""
+    return True, "new chat ready"
+
+
+async def _is_new_chat(client):
+    return True, "new chat"
+
+
+def _fake_dial(world, browser, host, port):
+    """A dial that knows exactly one endpoint — any other address is unreachable."""
+    async def dial(h, p, timeout_sec=5.0):
+        world.dialed.append((h, p))
+        if (h, p) != (host, port):
+            return None, f"no browser at {h}:{p}"
+        probe = FakeProbe(browser)
+        world.probes.append(probe)
+        return probe, ""
+    return dial
+
+
 def _world(monkeypatch, *, old_ctx=DEFAULT_CTX, other_ctx=DEFAULT_CTX, host="127.0.0.1", port=9333,
            old_owner="anton@example.com", other_owner="mxxy@example.com", owner_visible=True):
     """The pool, the bridge and the job tab (OLD) + a second tab (OTHER) at one endpoint."""
@@ -191,44 +212,39 @@ def _world(monkeypatch, *, old_ctx=DEFAULT_CTX, other_ctx=DEFAULT_CTX, host="127
     browser.owners = {old_ctx: old_owner}     # a tab opened into the job's profile keeps its account
     world = SimpleNamespace(browser=browser, dialed=[], probes=[], logs=[], saved=[])
     world.owner_visible = owner_visible
+    monkeypatch.setattr(bt, "dial", _fake_dial(world, browser, host, port))
+    monkeypatch.setattr(new_tab, "wait_new_chat_ready", _ready)
+    monkeypatch.setattr(new_tab, "read_chat_page", _is_new_chat)
+    pool = _world_pool(browser, host=host, port=port, old_owner=old_owner, owner_visible=owner_visible)
+    rows = [UrlRow(id="r1", url="https://arena.ai/c/1", enabled=True, tab_id="OLD"),
+            UrlRow(id="r2", url="https://arena.ai/c/2", enabled=True, tab_id="OTHER")]
+    bridge = _world_bridge(world, rows, pool.get_clients("OLD")[0])
+    world.pool, world.rows, world.bridge = pool, rows, bridge
+    world.clients = SimpleNamespace(job=bridge.cdp, pooled=pool.get_clients("OLD")[0], home=bridge.cdp)
+    world.ctx = FinishCtx(pool=pool, bridge=bridge, tab_id="OLD", ctrl=object(), client=bridge.cdp)
+    return world
 
-    async def fake_dial(h, p, timeout_sec=5.0):
-        world.dialed.append((h, p))
-        if (h, p) != (host, port):
-            return None, f"no browser at {h}:{p}"
-        probe = FakeProbe(browser)
-        world.probes.append(probe)
-        return probe, ""
 
-    async def fake_ready(reset_ctx):
-        return True, "new chat ready"
-
-    async def fake_read(client):
-        return True, "new chat"
-
-    monkeypatch.setattr(bt, "dial", fake_dial)
-    monkeypatch.setattr(new_tab, "wait_new_chat_ready", fake_ready)
-    monkeypatch.setattr(new_tab, "read_chat_page", fake_read)
+def _world_pool(browser, *, host, port, old_owner, owner_visible):
+    """The real PagePool with the job tab (client registered) and a second tab."""
     pool = _pool_with("OLD", "OTHER", host=host, port=port)
     pool.get_page("OLD").jobs_completed = 3
     pool.get_page("OLD").owner = old_owner        # the pool's label the handover must keep
     job_client = FakePageClient(browser, "OLD", owner_visible=owner_visible)
-    pooled_client = FakePageClient(browser, "OLD", owner_visible=owner_visible)
-    home_client = FakePageClient(browser, "OLD", owner_visible=owner_visible)
-    pool.register_client("OLD", pooled_client, object())
-    rows = [UrlRow(id="r1", url="https://arena.ai/c/1", enabled=True, tab_id="OLD"),
-            UrlRow(id="r2", url="https://arena.ai/c/2", enabled=True, tab_id="OTHER")]
-    bridge = SimpleNamespace(
-        state=SimpleNamespace(urls=rows), _auto_scan_running=False, cdp=home_client,
+    pool.register_client("OLD", FakePageClient(browser, "OLD", owner_visible=owner_visible), object())
+    browser.job_client = job_client               # the ctx's own client (same tab)
+    return pool
+
+
+def _world_bridge(world, rows, pooled_client):
+    """A bridge with the pool hooks the handover calls, logging into `world`."""
+    return SimpleNamespace(
+        state=SimpleNamespace(urls=rows), _auto_scan_running=False, cdp=world.browser.job_client,
         _cancel_requested=False,
         _log=lambda m, l="info": world.logs.append((l, m)),
         _save_arena=lambda: world.saved.append("arena"),
         _persist_cooldowns=lambda: world.saved.append("cooldowns"),
         _emit_pool_status=lambda: None)
-    world.pool, world.rows, world.bridge = pool, rows, bridge
-    world.clients = SimpleNamespace(job=job_client, pooled=pooled_client, home=home_client)
-    world.ctx = FinishCtx(pool=pool, bridge=bridge, tab_id="OLD", ctrl=object(), client=job_client)
-    return world
 
 
 def _run(world, url=NEW_URL):
@@ -467,6 +483,40 @@ def test_an_unreadable_pattern_falls_back_to_arena(monkeypatch):
     assert "arena.ai" in _text(w)
 
 
+def test_the_pattern_fallback_comes_from_the_one_home(monkeypatch):
+    """The default is `reconcile_rows.DEFAULT_PATTERN`, not a literal in this module (audit #4 N3)."""
+    w = _world(monkeypatch)
+    monkeypatch.setattr(new_tab, "URL_PATTERN_DEFAULT", "example.test")
+
+    def boom(*_a, **_k):
+        raise RuntimeError("no config")
+    w.bridge.config = SimpleNamespace(get_state=boom)
+    ok, why = _run(w)
+    assert ok, why
+    assert "tabs matching 'example.test'" in _text(w)
+
+
+def test_the_pattern_default_has_one_home():
+    """The key, its default and the session entry are the same object (audit #4 N3)."""
+    from app.persistence import config_manager as cm
+    from app.services.live import reconcile_rows
+    assert (reconcile_rows.DEFAULT_PATTERN == cm.URL_PATTERN_DEFAULT
+            == cm.DEFAULT_SESSION[cm.URL_PATTERN_KEY] == "arena.ai")
+
+
+def test_the_pattern_key_is_the_shared_one(monkeypatch):
+    """`_get_pattern` reads the shared key name — the same one the session default uses."""
+    w = _world(monkeypatch)
+    seen: list = []
+
+    def get_state(key, default=None):
+        seen.append(key)
+        return "arena.ai"
+    w.bridge.config = SimpleNamespace(get_state=get_state)
+    ok, _why = _run(w)
+    assert ok and new_tab.URL_PATTERN_KEY in seen
+
+
 def test_a_raising_owner_probe_does_not_block_a_proven_profile(monkeypatch):
     w = _world(monkeypatch, old_ctx=PROFILE_2)
     w.browser.refuse_ctx = True
@@ -631,3 +681,149 @@ def test_a_bridge_without_the_pool_hook_still_moves_the_worker(monkeypatch):
     del w.bridge._emit_pool_status
     ok, why = _run(w)
     assert ok, why and w.rows[0].tab_id == w.ctx.tab_id and w.pool.get_page(w.ctx.tab_id) is not None
+
+
+# ── the owner read has one home (audit #4 N1/N2) ────────────────────────────
+
+def test_the_owner_probe_goes_through_the_shared_reader(monkeypatch):
+    """The handover asks the one owner reader (`tab_owner.read_owner`), not its own probe."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    seen: list = []
+
+    async def other_owner(client, tab_id=""):
+        seen.append(client)
+        return "somebody-else@example.com"
+    monkeypatch.setattr(new_tab, "read_owner", other_owner, raising=False)
+    ok, why = _run(w)
+    assert seen, "the handover never called the shared owner reader"
+    assert not ok and "wrong profile" in why and w.ctx.tab_id == "OLD"
+
+
+@pytest.mark.parametrize("label", ["aka_1234", "  ", "not-an-email"])
+def test_an_owner_label_that_is_not_an_email_never_rolls_back(monkeypatch, label):
+    """A pool label that is no email at all is 'unknown', never a mismatch (normalize_owner)."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.pool.get_page("OLD").owner = label
+    ok, why = _run(w)
+    assert ok, why and w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2
+
+
+def test_a_label_that_is_the_email_in_another_case_still_matches(monkeypatch):
+    """`Owner@Example.com` and the probe's lowercase email are the same account (normalize_owner)."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.pool.get_page("OLD").owner = "ANTON@example.com"
+    ok, why = _run(w)
+    assert ok, why and w.browser.ctx_of(w.ctx.tab_id) == PROFILE_2
+
+
+# ── N1: a Reparse queued during a handover must still run ────────────────────
+
+def _now(_bridge, coro):
+    """`schedule_coro` replacement that starts the coroutine in THIS loop, so the
+    drain the production wiring installs is observable without a bg thread.
+    """
+    return asyncio.get_running_loop().create_task(coro)
+
+
+def test_a_reparse_queued_during_a_handover_runs_when_the_handover_ends(monkeypatch):
+    """I-68(a): `reconcile_once` QUEUES a manual pass that meets a running one and
+    "runs it the moment that pass ends". The new-tab handover is the second holder
+    of that flag and its release never looked at the queue — so a Reparse click
+    during a handover was stranded until some unrelated later pass.
+
+    The handover is paused at a known point (its new-chat readiness probe) so the
+    click provably lands while the flag is held. Nothing triggers the drain: the
+    handover ending must be enough.
+
+    The drain is installed by the real `start_reconciler`, not by hand — branch A
+    wired it with a call its own test did not reproduce, and the wiring it shipped
+    crashed on this path (the report's §5). The loop task it also schedules is
+    cancelled at once: the loop's own behaviour is pinned in
+    `tests/test_live_reconcile.py` and `tests/test_reconcile_resilience.py`.
+    """
+    from app.services.live import reconcile
+    ran = []
+    reached = asyncio.Event()
+    resume = asyncio.Event()
+
+    async def counting_pass(p):
+        p.deps.log("a real pass ran", "info")     # a real pass talks to its deps
+        ran.append(p.source)
+        return reconcile.Report()
+
+    async def pause_at_the_proof(_reset_ctx):
+        reached.set()
+        await resume.wait()
+        return True, "new chat ready"
+
+    w = _world(monkeypatch)
+    monkeypatch.setattr(reconcile, "_pass", counting_pass)
+    monkeypatch.setattr(reconcile, "schedule_coro", _now)
+    monkeypatch.setattr(new_tab, "wait_new_chat_ready", pause_at_the_proof)
+    deps = SimpleNamespace(log=lambda m, l="info": w.logs.append((l, m)), stats=lambda: None)
+
+    async def both():
+        assert reconcile.start_reconciler(w.bridge, deps) is True
+        w.bridge._url_reconciler.cancel()
+        try:
+            await w.bridge._url_reconciler
+        except asyncio.CancelledError:
+            pass
+        task = asyncio.create_task(new_tab.handover(w.ctx, NEW_URL, timeout_sec=5))
+        await reached.wait()                        # the handover now owns the flag
+        report = await reconcile.reconcile_once(w.bridge, deps, "manual")
+        assert ran == [], "nothing may run while the handover holds the flag"
+        resume.set()
+        ok, why = await task
+        await asyncio.sleep(0.05)                   # the promise is "the moment", not "later"
+        return report, ok, why
+
+    report, ok, why = asyncio.run(both())
+    assert ok, why
+    assert report.error == "busy"                   # it could not run while held — correct
+    assert ran == ["manual"], "the queued Reparse must run the moment the handover ends"
+    assert w.bridge._reparse_queued is False
+    assert w.bridge._auto_scan_running is False
+
+
+def test_the_drain_runs_a_real_pass_not_a_placeholder(monkeypatch):
+    """The drain `start_reconciler` installs must run a pass with the reconciler's
+    own deps. Branch A wired `install_drain` with a lambda where a `LiveDeps` was
+    expected (a module-level redefinition shadowed the import), so the drained
+    pass died with AttributeError: 'function' object has no attribute 'log' on the
+    background loop and the Reparse was lost (report §5).
+
+    This goes through `pass_hold.release` — the call the handover's `finally`
+    makes — so the wiring under test is the one production runs.
+    """
+    from app.services.live import pass_hold, reconcile
+    ran = []
+
+    async def counting_pass(p):
+        p.deps.log("a real pass ran", "info")     # a real pass talks to its deps
+        ran.append(p.source)
+        return reconcile.Report()
+
+    w = _world(monkeypatch)
+    monkeypatch.setattr(reconcile, "_pass", counting_pass)
+    monkeypatch.setattr(reconcile, "schedule_coro", _now)
+    deps = SimpleNamespace(log=lambda m, l="info": w.logs.append((l, m)), stats=lambda: None)
+
+    async def drained():
+        assert reconcile.start_reconciler(w.bridge, deps) is True
+        w.bridge._url_reconciler.cancel()
+        try:
+            await w.bridge._url_reconciler
+        except asyncio.CancelledError:
+            pass
+        w.bridge._auto_scan_running = True      # a holder (the handover) owns the flag
+        w.bridge._reparse_queued = True         # and a Reparse met it
+        pass_hold.release(w.bridge)             # exactly what the handover's finally does
+        await asyncio.sleep(0.05)
+
+    asyncio.run(drained())
+    assert ran == ["manual"], "the drained pass got the real deps and really ran"
+    assert w.bridge._reparse_queued is False and w.bridge._auto_scan_running is False

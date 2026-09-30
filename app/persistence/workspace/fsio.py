@@ -36,6 +36,21 @@ def snapshot_dir_name(name: str, utc_struct) -> str:
     return f"{sanitize_name(name)}_{stamp}"
 
 
+def unique_dir(base: Path, name: str) -> Path:
+    """A folder of that name, or the first free `-02`, `-03` … variant of it.
+
+    One second is the resolution of every snapshot and backup stamp, so two
+    saves (or two restores) inside one second would otherwise collide. The
+    suffix still sorts chronologically, which is what the recovery prune and
+    the recent-snapshots list rely on. Never returns an existing folder.
+    """
+    candidate, n = base / name, 1
+    while candidate.exists():
+        n += 1
+        candidate = base / f"{name}-{n:02d}"
+    return candidate
+
+
 def new_temp_dir(target: Path) -> Path:
     """Sibling temp folder — never build inside the final folder (design §C.5)."""
     target = Path(target)

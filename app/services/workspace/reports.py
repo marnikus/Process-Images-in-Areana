@@ -54,7 +54,7 @@ def restore_report(*, workspace: str, outcomes: dict, backup: str) -> dict:
 
 
 def preview_report(*, root: str, manifest: dict, domains: list, remap: list) -> dict:
-    """Manifest-only preview — shown before any mutation (task RESTORE 1)."""
+    """The per-domain checklist shown before any mutation (task RESTORE 1)."""
     return {
         "root": str(root),
         "snapshot_id": manifest.get("snapshot_id"),

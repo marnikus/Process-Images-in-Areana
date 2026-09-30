@@ -56,6 +56,10 @@ def _restamp(snapshot: Path, rel: str) -> None:
     (snapshot / "manifest.json").write_text(json.dumps(manifest))
 
 
+def _preview_row_of(preview, domain_id):
+    return next(d for d in preview["domains"] if d["domain_id"] == domain_id)
+
+
 def _skip_of(reply, domain_id):
     for row in reply["skipped"]:
         if row["domain_id"] == domain_id:
@@ -85,6 +89,56 @@ def test_preview_flags_size_mismatch_and_missing(bridge, snapshot):
     statuses = {d["domain_id"]: d["status"] for d in preview["domains"]}
     assert statuses["undo"] == "size_mismatch"
     assert statuses["job_history"] == "missing"
+
+
+def test_preview_marks_a_semantically_invalid_domain(bridge, snapshot):
+    """audit #3 H5 (ported from branch A): the per-domain checklist is the screen
+    the user trusts most, and it promised a restore that the semantic gate then
+    refused. The preview must run the SAME gate the restore runs and say so in
+    the row — status `invalid`, with the cause.
+    """
+    rel = "state/captcha_stats.json"
+    (snapshot / rel).write_text('{"per_site": "not-an-object"}')
+    _restamp(snapshot, rel)
+    row = _preview_row_of(ws_restore.preview_restore(snapshot), "captcha_stats")
+    assert row["status"] == "invalid"
+    assert "per_site" in row["note"]
+    # the restore that follows really does skip it, at the same stage
+    reply = restore_workspace(bridge, snapshot)
+    assert _skip_of(reply, "captcha_stats")["stage"] == "semantic"
+
+
+def test_preview_marks_an_unsupported_schema(bridge, snapshot):
+    """`entry.schema_version` was shown in the row but never compared against
+    `provider.supported_migrations`, so "saved by another build" also ticked
+    as `ok`.
+    """
+    manifest = json.loads((snapshot / "manifest.json").read_text())
+    manifest["domains"]["undo"]["schema_version"] = "99"
+    (snapshot / "manifest.json").write_text(json.dumps(manifest))
+    row = _preview_row_of(ws_restore.preview_restore(snapshot), "undo")
+    assert row["status"] == "unsupported_schema" and "99" in row["note"]
+    reply = restore_workspace(bridge, snapshot)
+    assert _skip_of(reply, "undo")["stage"] == "schema"
+
+
+def test_preview_marks_an_unreadable_file_before_the_size_gate(bridge, snapshot):
+    """A file the restore cannot parse is a `parse` row, so the preview says so
+    instead of only reporting a byte count that happens to match.
+    """
+    rel = "state/undo.json"
+    (snapshot / rel).write_text("{not json")
+    _restamp(snapshot, rel)
+    row = _preview_row_of(ws_restore.preview_restore(snapshot), "undo")
+    assert row["status"] == "parse" and "JSON" in row["note"]
+
+
+def test_a_healthy_snapshot_previews_all_ok(bridge, snapshot):
+    """The positive control: every file-backed domain still ticks `ok`."""
+    preview = ws_restore.preview_restore(snapshot)
+    status = {d["domain_id"]: d["status"] for d in preview["domains"]}
+    assert status["arena_state"] == "ok" and status["captcha_stats"] == "ok"
+    assert status["undo"] == "ok" and status["job_history"] == "ok"
 
 
 def test_preview_refuses_a_foreign_folder(bridge, tmp_path):
@@ -344,25 +398,25 @@ class _FakeProvider:
 
 
 def test_expand_strict_follows_a_transitive_chain(monkeypatch):
-    from app.services.workspace import apply as ws_apply
+    from app.services.workspace import selection
     chain = {"a": _FakeProvider("a", {"b": "strict"}),
              "b": _FakeProvider("b", {"c": "strict"}),
              "c": _FakeProvider("c")}
-    monkeypatch.setattr(ws_apply, "get", chain.get)
+    monkeypatch.setattr(selection, "get", chain.get)
     monkeypatch.setattr("app.services.workspace.registry.RESTORE_ORDER", ("c", "b", "a"))
-    providers = ws_apply.expand_strict([chain["a"]])
+    providers = selection.expand_strict([chain["a"]])
     assert [p.domain_id for p in providers] == ["c", "b", "a"]  # registry order
 
 
 def test_expand_strict_keeps_registered_providers_outside_the_order_tuple(monkeypatch):
     # D3: a provider that IS registered but missing from RESTORE_ORDER must still
     # ride along — save tolerates order drift, restore must not silently drop it.
-    from app.services.workspace import apply as ws_apply
+    from app.services.workspace import selection
     late = _FakeProvider("late")
     chain = {"a": _FakeProvider("a", {"late": "strict"}), "late": late}
-    monkeypatch.setattr(ws_apply, "get", chain.get)
+    monkeypatch.setattr(selection, "get", chain.get)
     monkeypatch.setattr("app.services.workspace.registry.RESTORE_ORDER", ("a",))
-    providers = ws_apply.expand_strict([chain["a"]])
+    providers = selection.expand_strict([chain["a"]])
     assert [p.domain_id for p in providers] == ["a", "late"]  # unknown-order ids after known
 
 
@@ -412,3 +466,36 @@ def test_live_run_error_reads_only_the_live_flag():
     assert live_run_error(SimpleNamespace()) is None            # no flag yet = idle
     assert live_run_error(SimpleNamespace(_run_state="idle")) is None
     assert "paused" in live_run_error(SimpleNamespace(_run_state="paused"))
+
+
+# ── audit #3 R7/N5: a snapshot from a newer build loses no domain silently ────
+
+def test_unregistered_manifest_domain_is_a_skipped_row(bridge, snapshot):
+    """N5: `selection_providers` dropped any manifest id it had no provider for —
+    the domain vanished from report, restore and window with no explanation."""
+    root = Path(snapshot)
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    manifest["domains"]["future_thing"] = {
+        "display_name": "Future Thing", "path": "state/future.json",
+        "bytes": 9, "schema_version": 1, "capture": {}}
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (root / "state" / "future.json").write_text('{"a": 1}\n', encoding="utf-8")
+
+    reply = restore_workspace(bridge, root)
+    rows = {row["domain_id"]: row for row in reply["skipped"]}
+    assert "future_thing" in rows, "an unregistered manifest domain is never dropped"
+    assert rows["future_thing"]["stage"] == "schema"
+    assert "future_thing" in rows["future_thing"]["cause"]
+    assert reply["ok"] is True and reply["result"] == "success_with_warnings"
+
+
+def test_a_restore_limited_to_unsupported_domains_names_them(bridge, snapshot):
+    """Nothing to restore and no explanation would be N5 again, one level up."""
+    root = Path(snapshot)
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    manifest["domains"]["future_thing"] = {"path": "state/future.json", "capture": {}}
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    reply = restore_workspace(bridge, root, selected=["future_thing"])
+    assert reply["ok"] is False
+    assert "unsupported by this build: future_thing" in reply["error"]

@@ -1,10 +1,12 @@
-"""Workspace restore — the manifest-only PREVIEW (read-only; design §C.6).
+"""Workspace restore — the PREVIEW (read-only; design §C.6).
 
 Before any mutation the user sees exactly what a restore would do: per-domain
-status (ok / size_mismatch / missing / excluded / not_in_manifest) from the
-manifest, plus path-remap notes. The mutating side — selection, strict-dependency
-expansion, recovery backup, file gates, transactions, reconcile, report — lives
-in `apply.py`. No Qt.
+status, plus path-remap notes. The statuses come from the manifest, the
+restore's own file gates (`gates.load_files`) and each provider's `validate` /
+`supported_migrations` — the same gates the mutating side runs, so a row says
+`ok` only when the restore would really restore that domain. The mutating
+side — selection, strict-dependency expansion, recovery backup, transactions,
+reconcile, report — lives in `apply.py`. No Qt.
 """
 
 from __future__ import annotations
@@ -12,16 +14,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.persistence.workspace.integrity import safe_rel_path
+from app.persistence.workspace.errors import WorkspaceError
+from app.persistence.workspace.integrity import resolve_inside
 from app.persistence.workspace.manifest import entry_for, read_manifest
 from . import reports
-from .registry import restore_order
-
-
-def _inside(root: Path, rel: str) -> Path | None:
-    """The file for a manifest path, or None when the path is unsafe (same rule as restore)."""
-    safe = safe_rel_path(rel)
-    return root / safe if safe and safe == rel else None
+from .gates import load_files
+from .registry import get, restore_order
 
 
 def _row_head(entry: dict, domain_id: str) -> dict:
@@ -44,17 +42,45 @@ def _file_status(row: dict, entry: dict, path: Path) -> dict:
     return row
 
 
-def _preview_row(root: Path, manifest: dict, domain_id: str) -> dict:
-    entry = entry_for(manifest, domain_id) or {}
-    row = _row_head(entry, domain_id)
+def _manifest_status(row: dict, entry: dict) -> bool:
+    """The two statuses the manifest alone decides; True when the row is final."""
     if not entry:
         row.update(status="not_in_manifest", note="domain unknown to this snapshot")
-        return row
+        return True
     if entry.get("capture", {}).get("excluded") or not entry.get("path"):
         row.update(status="excluded", note=entry.get("capture", {}).get(
             "excluded_reason", "policy-excluded"))
+        return True
+    return False
+
+
+def _restore_gates(row: dict, loaded, version, domain_id: str) -> None:
+    """Carry the RESTORE's own gates into a row the file gates passed.
+
+    The checklist must not promise a restore the restore then refuses, so it
+    asks the schema gate and `provider.validate` — the same two the mutating
+    side asks. A domain this build has no provider for keeps the file gates'
+    answer: `apply` reports it as a skip of its own.
+    """
+    if isinstance(loaded, WorkspaceError):
+        row.update(status=loaded.stage, note=loaded.cause)
+        return
+    provider = get(domain_id)
+    if provider is None or loaded is None:
+        return
+    if version not in provider.supported_migrations:
+        row.update(status="unsupported_schema",
+                   note=f"saved schema {version!r} is not supported by this build")
+    elif problem := provider.validate(loaded):
+        row.update(status="invalid", note=problem)
+
+
+def _preview_row(root: Path, manifest: dict, domain_id: str, docs: dict) -> dict:
+    entry = entry_for(manifest, domain_id) or {}
+    row = _row_head(entry, domain_id)
+    if _manifest_status(row, entry):
         return row
-    path = _inside(root, entry["path"])
+    path = resolve_inside(root, entry["path"])
     if path is None:
         row.update(status="unsafe_path", file=entry["path"],
                    note="path escapes the snapshot folder — restore will refuse it")
@@ -62,17 +88,26 @@ def _preview_row(root: Path, manifest: dict, domain_id: str) -> dict:
     if not path.exists():
         row.update(status="missing", file=entry["path"])
         return row
-    return _file_status(row, entry, path)
+    row = _file_status(row, entry, path)
+    if row["status"] == "ok":
+        _restore_gates(row, docs.get(entry["path"]), entry.get("schema_version"), domain_id)
+    return row
 
 
 def preview_restore(root) -> dict:
-    """Manifest-only preview before any mutation (task RESTORE 1)."""
+    """The per-domain checklist shown before any mutation (task RESTORE 1).
+
+    Manifest-driven, but it runs the restore's own file gates
+    (`gates.load_files`) and each provider's `validate` — so a row says `ok`
+    only when the restore would really restore that domain.
+    """
     root = Path(root)
     manifest, err = read_manifest(root)
     if err:
         return {"ok": False, "error": err}
-    domains = [_preview_row(root, manifest, d)
-               for d in restore_order(set(manifest.get("domains", {})))]
+    order = restore_order(set(manifest.get("domains", {})))
+    docs = load_files(root, manifest, [p for p in (get(d) for d in order) if p])
+    domains = [_preview_row(root, manifest, d, docs) for d in order]
     return {"ok": True, **reports.preview_report(
         root=str(root), manifest=manifest, domains=domains,
         remap=_remap_notes(root, manifest))}
@@ -88,7 +123,7 @@ def _remap_notes(root: Path, manifest: dict) -> list:
     """Path-based resources that need user attention on this machine."""
     notes = []
     entry = entry_for(manifest, "arena_state") or {}
-    path = _inside(root, entry["path"]) if entry.get("path") else None
+    path = resolve_inside(root, entry["path"]) if entry.get("path") else None
     if path:
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))

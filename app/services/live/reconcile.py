@@ -36,6 +36,8 @@ from app.services.live.bus import live_bus
 from app.services.live.debug_view import interval_ms
 from app.services.live.feed import clear_row_assignments
 from app.services.live.listing import held_keys
+from app.services.live.pass_hold import (clear_queued, install_drain, is_held,
+                                         is_queued, mark_queued, release, take)
 from app.services.live.reconcile_rows import DEFAULT_PATTERN, sync_rows
 from app.services.live.tab_owner import resolve_owners
 from app.services.live.worker_badges import assert_badges
@@ -101,10 +103,16 @@ def pass_count(bridge) -> int:
 
 
 def start_reconciler(bridge, deps: LiveDeps) -> bool:
-    """Schedule the loop once on the bg loop; False when it already runs."""
+    """Schedule the loop once on the bg loop; False when it already runs.
+
+    It also leaves `pass_hold.release` a way to run a queued Reparse, so any
+    OTHER holder of the flag — the I-79 new-tab handover — ends a pass the
+    same way this one does, queue included (N1).
+    """
     task = getattr(bridge, "_url_reconciler", None)
     if task is not None and not getattr(task, "done", lambda: True)():
         return False
+    install_drain(bridge, lambda: reconcile_once(bridge, deps, "manual"))
     bridge._url_reconciler = schedule_coro(bridge, reconcile_loop(bridge, deps))
     return True
 
@@ -246,25 +254,24 @@ async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
     A Reparse click that meets a running pass is QUEUED and runs the moment
     that pass ends — a user's Reparse is never dropped (2026-09-27, I-68).
     """
-    if getattr(bridge, "_auto_scan_running", False):
+    if is_held(bridge):
         _queue_if_manual(bridge, deps, source)
         return Report(error="busy")
-    bridge._auto_scan_running = True
+    take(bridge)
     try:
         report = await _pass(_Pass(bridge, deps, source, _stats(bridge)))
     finally:
-        bridge._auto_scan_running = False
-    if getattr(bridge, "_reparse_queued", False):
-        bridge._reparse_queued = False
+        release(bridge)
+    if is_queued(bridge):        # no drain installed — run it here instead
+        clear_queued(bridge)
         return await reconcile_once(bridge, deps, "manual")
     return report
 
 
 def _queue_if_manual(bridge, deps: LiveDeps, source: str) -> None:
     """Remember a Reparse that arrived mid-pass (logged once per queue)."""
-    if source != "manual" or getattr(bridge, "_reparse_queued", False):
+    if source != "manual" or not mark_queued(bridge):
         return
-    bridge._reparse_queued = True
     deps.log("🔄 Reparse queued — runs right after the current pass", "info")
 
 

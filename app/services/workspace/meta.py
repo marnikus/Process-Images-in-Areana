@@ -27,8 +27,14 @@ def default_base(bridge) -> Path:
     return config_dir(bridge) / DEFAULT_DIR_NAME
 
 
+def utc_iso(utc_struct=None) -> str:
+    """The workspace's one UTC stamp, from one `gmtime()` read (or now)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", utc_struct or time.gmtime())
+
+
 def utc_now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    """Current UTC stamp — a save reads the clock ONCE and passes it around."""
+    return utc_iso()
 
 
 def snapshot_id_for(created_utc: str, name: str) -> str:
