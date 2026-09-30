@@ -1305,6 +1305,7 @@ revertable commit. No on-disk format and no public API changed — additions onl
 
 | Gate | Command | Result |
 |---|---|---|
+| Import cycles | `pytest tests/test_import_cycles.py -q` | **161 passed** — every `app.services` / `app.browser` module imports first in a fresh interpreter (N7) |
 | Focused Python | `pytest tests/test_workspace_*.py -q` | **193 passed** (baseline at `97f4ed3`: 154; +24 characterization, +3 architecture, +6 core, +1 save, +1 failure-edge rename, +4 preview-status) |
 | Full Python | `QT_QPA_PLATFORM=offscreen pytest tests -q` | **3 040 passed · 13 skipped · 3 failed** — the same three pre-existing failures as at `97f4ed3` (`test_quality_gate.py::test_40loc_js_function_fails`, `test_single_job_runner.py::test_handler_map_covers_all_types`, `test_ui_wiring.py::test_closing_the_window_drops_the_cdp_socket_inside_a_guard`); 3 053 collected in both runs, the 7 extra skips being the documented environment-gated lane (this sandbox's fresh venv has no `websockets` / `PySide6-Essentials`) |
 | Workspace JS | `node --test tests/js/test_workspace_panel.mjs tests/js/test_workspace_panel_sizes.mjs` | **22 passed** (baseline 18; +1 preview-gate contract, +3 RULE 18.2 size/responsibility tests) |
@@ -1341,6 +1342,7 @@ feature that shares the same commit range. Audit and plan:
 
 | Gate | Command | Result |
 |---|---|---|
+| Import cycles | `pytest tests/test_import_cycles.py -q` | **161 passed** — every `app.services` / `app.browser` module imports first in a fresh interpreter (N7) |
 | Focused Python | `pytest tests/test_new_tab_*.py tests/test_browser_targets.py tests/test_page_popup.py tests/test_live_reconcile.py tests/test_reparse_from_scratch.py -q` | **130 passed** (was 126; +3 characterization, +1 N2, +1 N3 guard, +1 N1) |
 | New-tab JS | `node --test tests/js/test_job_cycle_setting.mjs` | **12 passed** — was **11/12**: the audit #3 panel split had broken this file's last test and `npm run test:js` never saw it (below) |
 | Size / complexity | `radon cc -s` over the 6 modules | max CC **8 → 8**, max function LOC **23 → 22** (`_run`, which keeps an `ideal-size:` reason), max nesting 2, 47 → 48 functions; both files over RULE 18.2's 300 ideal carry a named `ideal-size:` reason (`new_tab.py` 322, `reconcile.py` 357 — the latter already 320 at `97f4ed3`); both new functions in RULE 18.1's band (`release` 20, `install_drain` 7) |

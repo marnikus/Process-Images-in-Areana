@@ -12,8 +12,8 @@ modules** across the full suite (94 behavioural tests: 36 + 11 + 24 + 8 + 13 Pyt
 The docstrings carry their own provenance (R1–R5, P1–P4, design §4). It is not the mess the
 nine-fix-commit count suggests.
 
-So this audit is deliberately short. **Two behavioural defects were found and reproduced** — N1 before the work started, N6 during the
-refactor, and N6 is the more dangerous of the two because it fails *silently*. The remaining four
+So this audit is deliberately short. **Three behavioural defects were found and reproduced** — N1 before the work started, N6 during the
+refactor, and N7 *caused by* N1's own fix, caught only by the full suite, and N6 is the more dangerous of the two because it fails *silently*. The remaining four
 findings are small and are reported as such rather than inflated into work. Six steps, of which four are
 behaviour-preserving, one is the N1 fix, and one (N6) was added when the RULE 18 recheck disagreed with
 the first pass.
@@ -181,6 +181,36 @@ documented best-effort probe, and wrote it up under N5 as an accepted swallow. I
 was a duplicate with a failure mode attached, and it only surfaced when the RULE 18 recheck asked why
 the file was over 300.
 
+
+### N7 — the N1 fix closed an import cycle; only the full suite could see it
+**Severity: high. Risk: a module that could not be imported at all. Found by the full suite,
+after the focused suites, the quality gate and the whole commit series had all passed.**
+
+The N1 fix made the handover end a pass through the reconciler, and it did so by importing
+`live.reconcile` from `new_tab.py`. `cooldown_service` imports `new_tab`, so:
+
+```text
+cooldown_service -> new_tab -> live.reconcile -> reconcile_rows -> run_state -> cooldown_service
+```
+
+`import app.services.cooldown_service` then raised `ImportError: cannot import name
+'ensure_pool_page' from partially initialized module`, and **22 test modules failed at
+collection**. Every focused suite passed throughout, because pytest's import order never
+started from `cooldown_service`; the failure only appears when the whole tree is collected.
+
+**Fixed** by moving the flag and the queue into `app/services/live/pass_hold.py` — a stdlib-only
+leaf that owns `take` / `release` / `install_drain` and takes the pass to run as an injected
+callable, so the leaf never imports the reconciler. `reconcile.py` and `new_tab.py` both go
+through it, which also means the two holders of the flag can no longer drift apart.
+
+**Pinned** by a new `tests/test_import_cycles.py`: every one of the **161** modules in
+`app.services` and `app.browser` must import first, in a fresh interpreter, with nothing already
+in `sys.modules`. 161 passed.
+
+This is the third time in two rounds that a lane reported a clean result the tree did not have —
+after the workspace refactor's clock race (focused lane, not the full one) and the canonical JS
+lane silently skipping a file. The pattern is the finding: **a focused suite proves the paths it
+touches, and says nothing about import order.**
 
 ### Checked and found clean (not findings)
 * **Double acquire on `_auto_scan_running`** — impossible; both check-then-sites are await-free (N1).

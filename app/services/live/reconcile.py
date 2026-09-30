@@ -41,6 +41,8 @@ from app.services.live.bus import live_bus
 from app.services.live.debug_view import interval_ms
 from app.services.live.feed import clear_row_assignments
 from app.services.live.listing import held_keys
+from app.services.live.pass_hold import (clear_queued, install_drain, is_held,
+                                         is_queued, mark_queued, release, take)
 from app.services.live.reconcile_rows import DEFAULT_PATTERN, sync_rows
 from app.services.live.tab_owner import resolve_owners
 from app.services.live.worker_badges import assert_badges
@@ -110,7 +112,7 @@ def start_reconciler(bridge, deps: LiveDeps) -> bool:
     task = getattr(bridge, "_url_reconciler", None)
     if task is not None and not getattr(task, "done", lambda: True)():
         return False
-    install_drain(bridge, deps)
+    install_drain(bridge, lambda: reconcile_once(bridge, deps, "manual"))
     bridge._url_reconciler = schedule_coro(bridge, reconcile_loop(bridge, deps))
     return True
 
@@ -255,53 +257,30 @@ def _summary(p: _Pass) -> None:
                f"{r.joined} joined, {r.revived} revived, {r.stale} stale", "info")
 
 
-def release(bridge) -> None:
-    """The ONE place a holder of `_auto_scan_running` gives it up (audit #4 N1).
-
-    Until the I-79 handover this was only `reconcile_once`. The handover held the
-    same flag and released it without reading `_reparse_queued`, so a Reparse click
-    that met a handover was queued, logged "runs right after the current pass", and
-    stranded — the queue is read only at the end of a `reconcile_once` pass.
-
-    Draining needs `LiveDeps`, which only the UI-land `live_deps(bridge)` builds, so
-    `install_drain` leaves one here. With no loop running the flag is still released
-    and the queue waits for the next pass, as it did before.
-    """
-    bridge._auto_scan_running = False
-    if not getattr(bridge, "_reparse_queued", False):
-        return
-    drain = getattr(bridge, "_reparse_drain", None)
-    if drain is None:
-        return
-    bridge._reparse_queued = False
-    drain()
-
-
 async def reconcile_once(bridge, deps: LiveDeps, source: str) -> Report:
     """One pass (loop, `auto_connect_scan` slot, Reparse); overlapping passes are skipped.
 
     A Reparse click that meets a running pass is QUEUED and runs the moment
     that pass ends — a user's Reparse is never dropped (2026-09-27, I-68).
     """
-    if getattr(bridge, "_auto_scan_running", False):
+    if is_held(bridge):
         _queue_if_manual(bridge, deps, source)
         return Report(error="busy")
-    bridge._auto_scan_running = True
+    take(bridge)
     try:
         report = await _pass(_Pass(bridge, deps, source, _stats(bridge)))
     finally:
         release(bridge)
-    if getattr(bridge, "_reparse_queued", False):
-        bridge._reparse_queued = False
+    if is_queued(bridge):
+        clear_queued(bridge)
         return await reconcile_once(bridge, deps, "manual")
     return report
 
 
 def _queue_if_manual(bridge, deps: LiveDeps, source: str) -> None:
     """Remember a Reparse that arrived mid-pass (logged once per queue)."""
-    if source != "manual" or getattr(bridge, "_reparse_queued", False):
+    if source != "manual" or not mark_queued(bridge):
         return
-    bridge._reparse_queued = True
     deps.log("🔄 Reparse queued — runs right after the current pass", "info")
 
 
