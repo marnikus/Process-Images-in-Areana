@@ -29,7 +29,7 @@ async def resolve_owners(pool: Any) -> int:
         return 0
     found = 0
     for tab_id, page, client in connected_clients(pool):
-        email = await _read_owner(client, tab_id)
+        email = await read_owner(client, tab_id)
         if not email:
             continue
         found += 1
@@ -38,8 +38,15 @@ async def resolve_owners(pool: Any) -> int:
     return found
 
 
-async def _read_owner(client: Any, tab_id: str) -> str:
-    """One probe call → normalized email ('' when silent, broken or not an address)."""
+async def read_owner(client: Any, tab_id: str = "") -> str:
+    """One probe call → normalized email ('' when silent, broken or not an address).
+
+    Public because the I-79 handover asks the same question about the NEW tab
+    (audit #4 N6): it used a lazy import of `owner_probe` inside a bare
+    `except Exception`, so a renamed or missing module turned the owner's
+    secondary guard into a silent no-op instead of a load-time error. One probe,
+    one home, imported at module level like every other dependency here.
+    """
     try:
         reply = await client.evaluate(build_owner_probe())
     except Exception as exc:  # cosmetic: never break a join or a pass
@@ -63,4 +70,4 @@ def store_owner(pool: Any, tab_id: str, page: Any, email: str) -> None:
         pass
 
 
-__all__ = ["resolve_owners", "store_owner", "client_of"]
+__all__ = ["resolve_owners", "store_owner", "client_of", "read_owner"]

@@ -748,3 +748,18 @@ def _now(_bridge, coro):
     """`schedule_coro` replacement that runs the coroutine in THIS loop, so the
     drain the test installs is observable without a background thread."""
     return asyncio.get_event_loop().create_task(coro)
+
+
+def test_the_owner_probe_is_one_function_the_handover_and_the_pool_both_use():
+    """Audit #4 N6. The handover re-implemented the owner probe with a lazy
+    import inside a bare `except Exception`, so a renamed or missing
+    `owner_probe` turned the owner's secondary guard into a silent no-op — the
+    handover would proceed with no owner check at all, quietly. `tab_owner`
+    already owned that probe with a module-level import; the handover now asks
+    it, so the guard can only ever be as dead as a normal import error."""
+    import inspect
+    from app.services.live import tab_owner
+    src = inspect.getsource(new_tab)
+    assert "owner_probe" not in src, "the handover must not import the probe itself"
+    assert "read_owner" in src and hasattr(tab_owner, "read_owner")
+    assert "owner_probe" in inspect.getsource(tab_owner)     # imported at module level there

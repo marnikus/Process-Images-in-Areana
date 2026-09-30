@@ -1,3 +1,9 @@
+# ideal-size: 316 lines reason=the whole mutating handover, and the order it runs in is
+# the contract the owner reads in the log: plan -> hold the reconciler -> dial the job
+# tab's own browser -> open -> prove -> move the worker -> close the old tab. Every helper
+# is one step of that order and none of them changes anything (a lost tab, a stranded
+# client, a wrong profile) - so splitting by size would put the rollback paths in a
+# different file from the steps they undo. audit #4 N4.
 """Start new chat as new tab (I-79 v5) — the job tab's own browser profile decides.
 
 Owner request 2026-09-28; profile-truth rewrite 2026-09-29 (owner report #2: with two Chrome
@@ -30,7 +36,7 @@ from app.browser.cdp.tabs import TabInfo
 from app.browser.chat_page import read_chat_page
 from app.browser.new_chat import ResetCtx, wait_new_chat_ready
 from app.browser.page_pool import retarget_page, tab_label_of
-from app.services.live import reconcile
+from app.services.live import reconcile, tab_owner
 from app.services.live.url_policy import mark_receivers
 from app.services.new_tab_open import OpenSpec, open_in_profile
 
@@ -240,15 +246,6 @@ async def _prove_new_chat(move: _Move) -> tuple[bool, str]:
     return True, why
 
 
-async def _read_owner_from_client(client: Any) -> str:
-    """Probe account email from a tab's client ('' when unknown)."""
-    try:
-        from app.browser.owner_probe import build_owner_probe, interpret_owner
-        from app.core.tab_alias import normalize_owner
-        raw = await client.evaluate(build_owner_probe())
-        return normalize_owner(interpret_owner(raw).get("email"))
-    except Exception:
-        return ""
 
 
 async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
@@ -257,7 +254,7 @@ async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
         return True, ""
     new_owner = ""
     for _attempt in range(_OWNER_TRIES):
-        new_owner = await _read_owner_from_client(move.ctx.client)
+        new_owner = await tab_owner.read_owner(move.ctx.client, move.new_id)
         if new_owner:
             break
         await asyncio.sleep(_OWNER_RETRY_SEC)
