@@ -255,3 +255,56 @@ def test_the_refusal_names_the_page_route_when_create_was_skipped(monkeypatch):
     opened = asyncio.run(o.open_in_profile(b, object(), _ours_spec()))
     assert opened.tab_id == "" and opened.wrong_profile is False
     assert "page" in opened.reason and "popup blocked" in opened.reason
+
+
+# ── v7 merge (branch 1's R7b): the job tab's own socket is the honest popup fallback ──────
+# Merge of arena/01a0f1cf's R7b onto the v6 opener rules — design:
+# docs/archive/2026-09-30-opener-fallback-merge/design.md
+
+def test_a_popup_that_names_another_opener_marks_the_wrong_opener(monkeypatch):
+    """R7b's trigger: a fresh tab claimed by ANOTHER page is the drifted-socket evidence."""
+    b = FakeBrowser()
+    b.create_result = ("", "refused")
+    _popup(monkeypatch, b, tab_id="A-STRAY", ctx=CTX, opener="OTHER-TAB")
+    monkeypatch.setattr(o, "_POLL_SEC", 0.01)
+    opened = asyncio.run(o.open_in_profile(b, object(), o.OpenSpec(SPEC.url, CTX, 0.1, opener_id="OLD")))
+    assert opened.tab_id == "" and opened.wrong_opener is True
+    assert "A-STRAY" in b.tabs and b.closed == []
+
+
+def test_a_blocked_popup_is_not_wrong_opener_evidence(monkeypatch):
+    """A blocked popup opened nothing — there is no stranger to prove the socket lied."""
+    b = FakeBrowser()
+    b.create_result = ("", "refused")
+    _popup(monkeypatch, b, tab_id="", ok=False, why="window.open returned null (popup blocked)")
+    opened = asyncio.run(o.open_in_profile(b, object(), _ours_spec()))
+    assert opened.tab_id == "" and opened.wrong_opener is False
+
+
+def test_dialing_a_socket_that_answers_nothing_is_no_client(monkeypatch):
+    """R7b's seam is real: an unreadable or refusing socket yields no client, never a raise."""
+    assert asyncio.run(o._dial_page("")) is None
+
+    class SilentClient:
+        def __init__(self, *args):
+            pass
+
+        async def connect(self, ws_url):
+            return False                      # the page socket refuses the connection
+
+    monkeypatch.setattr(o, "CDPClient", SilentClient)
+    assert asyncio.run(o._dial_page("ws://127.0.0.1:9/devtools/page/OLD")) is None
+
+
+def test_a_socket_client_that_raises_is_no_client(monkeypatch):
+    """R7b: a connect that explodes yields no client — the refusal, never an exception."""
+
+    class RaisingClient:
+        def __init__(self, *args):
+            pass
+
+        async def connect(self, ws_url):
+            raise RuntimeError("websocket exploded")
+
+    monkeypatch.setattr(o, "CDPClient", RaisingClient)
+    assert asyncio.run(o._dial_page("ws://127.0.0.1:9/devtools/page/OLD")) is None

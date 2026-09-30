@@ -22,7 +22,7 @@ from app.browser.page_pool import PagePool, retarget_page
 from app.browser.page_status import PageInfo
 from app.core.models import UrlRow
 from app.core.tab_alias import AliasBook
-from app.services import new_tab, new_tab_setting
+from app.services import new_tab, new_tab_open, new_tab_setting
 from app.services.cooldown_service import FinishCtx
 
 pytestmark = pytest.mark.unit
@@ -150,6 +150,7 @@ class FakePageClient:
         self._port = port or browser.port
         self.browser, self.owner_visible = browser, owner_visible
         self._current_tab_id = tab_id
+        self.popup_as = ""                          # socket override: open as if on another tab
         self.moves: list[str] = []
 
     async def connect(self, ws_url):
@@ -167,7 +168,7 @@ class FakePageClient:
         expr = (params or {}).get("expression", "")
         if "window.open" in expr:                       # the real popup payload, page-side
             url = json.loads(_POPUP_URL_RE.search(expr).group(1))
-            tid, err = self.browser.popup(self._current_tab_id, url)
+            tid, err = self.browser.popup(self.popup_as or self._current_tab_id, url)
             value = {"ok": True} if tid else {"ok": False, "error": err}
             return {"id": 1, "result": {"result": {"type": "object", "value": value}}}
         return {"id": 1, "result": {"result": {"type": "object", "value": {"email": self._answer()}}}}
@@ -209,6 +210,23 @@ def _fake_dial(world, browser, host, port):
         probe = FakeProbe(browser)
         world.probes.append(probe)
         return probe, ""
+    return dial
+
+
+async def _no_dial(ws_url):
+    """The page-socket dial is impossible in this test: nothing answers on the other end."""
+    return None
+
+
+def _fake_dial_page(w):
+    """The R7b seam: a fresh client on the job tab's own socket, recorded for assertions."""
+    w.dial_pages = []
+
+    async def dial(ws_url):
+        w.dial_pages.append(ws_url)
+        if not ws_url.endswith("/OLD"):
+            return None
+        return FakePageClient(w.browser, "OLD")
     return dial
 
 
@@ -256,8 +274,8 @@ def _world_bridge(world, rows, pooled_client):
         _emit_pool_status=lambda: None)
 
 
-def _run(world, url=NEW_URL):
-    return asyncio.run(new_tab.handover(world.ctx, url, timeout_sec=5))
+def _run(world, url=NEW_URL, timeout_sec=5):
+    return asyncio.run(new_tab.handover(world.ctx, url, timeout_sec=timeout_sec))
 
 
 def _mutations(world) -> list[tuple]:
@@ -364,14 +382,70 @@ def test_the_popup_runs_on_a_client_that_sits_on_the_job_tab(monkeypatch):
     assert w.pool.get_page(w.ctx.tab_id) is not None
 
 
-def test_no_client_on_the_job_tab_and_a_refusing_browser_refuses(monkeypatch):
+def test_no_client_on_the_job_tab_and_an_unreachable_socket_refuses(monkeypatch):
+    """No client AND the job tab's own socket unreachable: the honest in-place fallback."""
     w = _world(monkeypatch, old_ctx=PROFILE_2)
     w.browser.refuse_ctx = True
+    monkeypatch.setattr(new_tab_open, "_dial_page", _no_dial)
     for client in (w.clients.job, w.clients.pooled, w.clients.home):
         client._current_tab_id = "OTHER"
     ok, why = _run(w)
     assert not ok and "job tab" in why
     assert w.ctx.tab_id == "OLD" and w.browser.closed == [] and "OLD" in w.browser.tabs
+
+
+def test_no_client_on_the_job_tab_is_dialed_from_its_own_socket(monkeypatch):
+    """R7b (branch 1): the one socket the handover already trusts is the job tab's own (R1).
+
+    Zero registered clients on the job tab must no longer mean 'click New Chat in place'
+    — that is the report's 3-profile coin flip.
+    """
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.refuse_ctx = True
+    monkeypatch.setattr(new_tab_open, "_dial_page", _fake_dial_page(w))
+    for client in (w.clients.job, w.clients.pooled, w.clients.home):
+        client._current_tab_id = "OTHER"
+    ok, why = _run(w)
+    assert ok, why
+    new_id = w.ctx.tab_id
+    assert new_id != "OLD" and w.browser.ctx_of(new_id) == PROFILE_2
+    assert w.browser.tabs[new_id].get("openerId") == "OLD"
+    assert w.dial_pages == ["ws://127.0.0.1:9333/devtools/page/OLD"]
+    assert "OLD" not in w.browser.tabs and w.rows[0].tab_id == new_id
+
+
+def test_a_fresh_tab_opened_by_another_tab_is_retried_from_the_jobs_own_socket(monkeypatch):
+    """R7b: provenance beats everything; a lying client is answered by an honest dial.
+
+    The job's client claims the job tab but its socket opens the popup on another tab — the
+    fresh tab names that other opener, so it is refused (and left alone), the handover retries
+    from the job tab's own `ws_url`, and only the tab the job tab itself opened wins.
+    """
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.refuse_ctx = True
+    w.clients.job.popup_as = "OTHER"                # socket disagrees with the tab it claims
+    monkeypatch.setattr(new_tab_open, "_dial_page", _fake_dial_page(w))
+    ok, why = _run(w, timeout_sec=0.3)
+    assert ok, why
+    new_id = w.ctx.tab_id
+    assert w.browser.ctx_of(new_id) == PROFILE_2
+    assert w.browser.tabs[new_id].get("openerId") == "OLD"
+    assert w.dial_pages and w.dial_pages[0].endswith("/OLD")
+    foreign = [t for t, r in w.browser.tabs.items() if r.get("openerId") == "OTHER"]
+    assert foreign and not set(foreign) & set(w.browser.closed)    # a foreign tab is left alone
+    assert "OLD" not in w.browser.tabs
+
+
+def test_a_blocked_popup_from_a_seated_client_is_final(monkeypatch):
+    """R7b's bound: the retry answers a lying socket, not a refusing page — one attempt only."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2)
+    w.browser.refuse_ctx = True
+    w.browser.popup_allowed = False
+    monkeypatch.setattr(new_tab_open, "_dial_page", _fake_dial_page(w))
+    ok, why = _run(w, timeout_sec=0.3)
+    assert not ok and "popup" in why.lower()
+    assert w.ctx.tab_id == "OLD" and w.browser.closed == []
+    assert w.dial_pages == []                       # the seated client's answer is trusted
 
 
 def test_a_tab_whose_socket_is_unreadable_is_no_handover(monkeypatch):
