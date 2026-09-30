@@ -22,7 +22,7 @@ from app.browser.page_pool import PagePool, retarget_page
 from app.browser.page_status import PageInfo
 from app.core.models import UrlRow
 from app.core.tab_alias import AliasBook
-from app.services import new_tab, new_tab_setting
+from app.services import new_tab, new_tab_open, new_tab_setting
 from app.services.cooldown_service import FinishCtx
 
 pytestmark = pytest.mark.unit
@@ -47,6 +47,7 @@ class FakeBrowser:
         self.silent = False          # Target.getTargets answers nothing: the profile is unprovable
         self.refuse_ctx = False      # a regular profile: createTarget{browserContextId} is refused
         self.reuse_default = False   # createTarget lands in the default profile regardless (A2)
+        self.hide_contexts = False   # the listing never carries browserContextId (round 3 RC-1)
         self.popup_allowed = True
         self.close_ignored = False
         self.wrong_owner_after_open = False
@@ -66,7 +67,11 @@ class FakeBrowser:
         return tab_id
 
     def infos(self) -> list[dict]:
-        return [dict(row) for row in self.tabs.values()]
+        rows = [dict(row) for row in self.tabs.values()]
+        if self.hide_contexts:                      # the browser still knows its tabs' profiles;
+            for row in rows:                        # the listing just never says (RC-1)
+                row.pop("browserContextId", None)
+        return rows
 
     def ctx_of(self, tab_id: str) -> str:
         return self.tabs[tab_id].get("browserContextId", DEFAULT_CTX)
@@ -141,6 +146,7 @@ class FakePageClient:
         self._port = port or browser.port
         self.browser, self.owner_visible = browser, owner_visible
         self._current_tab_id = tab_id
+        self.popup_as = ""                         # socket override: open as if on another tab
         self.moves: list[str] = []
 
     async def connect(self, ws_url):
@@ -158,7 +164,7 @@ class FakePageClient:
         expr = (params or {}).get("expression", "")
         if "window.open" in expr:                       # the real popup payload, page-side
             url = json.loads(_POPUP_URL_RE.search(expr).group(1))
-            tid, err = self.browser.popup(self._current_tab_id, url)
+            tid, err = self.browser.popup(self.popup_as or self._current_tab_id, url)
             value = {"ok": True} if tid else {"ok": False, "error": err}
             return {"id": 1, "result": {"result": {"type": "object", "value": value}}}
         return {"id": 1, "result": {"result": {"type": "object", "value": {"email": self._answer()}}}}
@@ -200,6 +206,23 @@ def _fake_dial(world, browser, host, port):
         probe = FakeProbe(browser)
         world.probes.append(probe)
         return probe, ""
+    return dial
+
+
+async def _no_dial(ws_url):
+    """The page-socket dial is impossible in this test: nothing answers on the other end."""
+    return None
+
+
+def _fake_dial_page(w):
+    """The R7b seam: a fresh client on the job tab's own socket, recorded for assertions."""
+    w.dial_pages = []
+
+    async def dial(ws_url):
+        w.dial_pages.append(ws_url)
+        if not ws_url.endswith("/OLD"):
+            return None
+        return FakePageClient(w.browser, "OLD")
     return dial
 
 
@@ -247,8 +270,8 @@ def _world_bridge(world, rows, pooled_client):
         _emit_pool_status=lambda: None)
 
 
-def _run(world, url=NEW_URL):
-    return asyncio.run(new_tab.handover(world.ctx, url, timeout_sec=5))
+def _run(world, url=NEW_URL, timeout_sec=5):
+    return asyncio.run(new_tab.handover(world.ctx, url, timeout_sec=timeout_sec))
 
 
 def _mutations(world) -> list[tuple]:
@@ -358,11 +381,90 @@ def test_the_popup_runs_on_a_client_that_sits_on_the_job_tab(monkeypatch):
 def test_no_client_on_the_job_tab_and_a_refusing_browser_refuses(monkeypatch):
     w = _world(monkeypatch, old_ctx=PROFILE_2)
     w.browser.refuse_ctx = True
+    monkeypatch.setattr(new_tab_open, "_dial_page", _no_dial)
     for client in (w.clients.job, w.clients.pooled, w.clients.home):
         client._current_tab_id = "OTHER"
     ok, why = _run(w)
     assert not ok and "job tab" in why
     assert w.ctx.tab_id == "OLD" and w.browser.closed == [] and "OLD" in w.browser.tabs
+
+
+# ── round 3: the proof may never certify its own counterexample (R6/R7) ──────
+
+def test_a_job_tab_whose_profile_is_never_disclosed_proves_itself_by_its_own_silence(monkeypatch):
+    """The reported A2: nothing in the listing says 'profile 2', so 'default' gets assumed.
+
+    The job tab really lives in profile 2; the browser just never says so. The CDP creator
+    then lands a tab in the default profile and `"" == ""` certifies it (RC-1). The fix must
+    let only the job tab's own page open the tab — provenance carries the proof instead.
+    """
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.hide_contexts = True
+    ok, why = _run(w)
+    assert ok, why
+    new_id = w.ctx.tab_id
+    assert new_id != "OLD"
+    assert w.browser.ctx_of(new_id) == PROFILE_2    # RED: the fresh tab sits in the default profile
+    assert [c for c in w.browser.calls if c[0] == "create"] == []   # RED: the creator was believed
+    assert w.browser.tabs["OTHER"]["targetId"] == "OTHER"          # the other profile untouched
+    assert "OLD" not in w.browser.tabs
+    assert w.pool.get_page("OLD") is None and w.pool.get_page(new_id).jobs_completed == 3
+    assert w.rows[0].tab_id == new_id
+
+
+def test_an_undisclosed_profile_with_a_blocked_popup_refuses_instead_of_creating(monkeypatch):
+    """RC-1 when the page opener cannot help: unknown stays unknown, nothing moves (RULE 9)."""
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.hide_contexts = True
+    w.browser.popup_allowed = False
+    ok, why = _run(w)
+    assert not ok and "popup" in why.lower()
+    assert [c for c in w.browser.calls if c[0] == "create"] == []  # RED: creator ran anyway
+    assert w.ctx.tab_id == "OLD" and "OLD" in w.browser.tabs
+    assert w.rows[0].tab_id == "OLD" and w.pool.get_page("OLD") is not None
+    assert w.browser.closed == []
+
+
+def test_a_fresh_tab_opened_by_another_tab_is_retried_from_the_jobs_own_socket(monkeypatch):
+    """R7 + R7b: provenance beats everything; a drifting client is answered by an honest dial.
+
+    The job's client claims the job tab but its socket opens the popup on another tab — the
+    fresh tab names that other opener, so it is refused (and left alone), the handover retries
+    from the job tab's own `ws_url`, and only that tab wins.
+    """
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.refuse_ctx = True
+    w.clients.job.popup_as = "OTHER"                # socket disagrees with the tab it claims
+    monkeypatch.setattr(new_tab_open, "_dial_page", _fake_dial_page(w))
+    ok, why = _run(w, timeout_sec=0.3)
+    assert ok, why
+    new_id = w.ctx.tab_id
+    assert w.browser.ctx_of(new_id) == PROFILE_2
+    assert w.browser.tabs[new_id].get("openerId") == "OLD"
+    assert w.dial_pages and w.dial_pages[0].endswith("/OLD")
+    foreign = [t for t, r in w.browser.tabs.items() if r.get("openerId") == "OTHER"]
+    assert foreign and not set(foreign) & set(w.browser.closed)    # a foreign tab is left alone
+    assert "OLD" not in w.browser.tabs
+
+
+def test_no_client_on_the_job_tab_is_dialed_from_its_own_socket(monkeypatch):
+    """R7b: the one socket the handover already trusts is the job tab's own (`ws_url`, R1).
+
+    Zero registered clients on the job tab must no longer mean 'click New Chat in place'
+    — that is the report's 3-profile coin flip.
+    """
+    w = _world(monkeypatch, old_ctx=PROFILE_2, other_ctx=DEFAULT_CTX)
+    w.browser.refuse_ctx = True
+    monkeypatch.setattr(new_tab_open, "_dial_page", _fake_dial_page(w))
+    for client in (w.clients.job, w.clients.pooled, w.clients.home):
+        client._current_tab_id = "OTHER"
+    ok, why = _run(w)
+    assert ok, why
+    new_id = w.ctx.tab_id
+    assert new_id != "OLD" and w.browser.ctx_of(new_id) == PROFILE_2
+    assert w.browser.tabs[new_id].get("openerId") == "OLD"
+    assert w.dial_pages == ["ws://127.0.0.1:9333/devtools/page/OLD"]
+    assert "OLD" not in w.browser.tabs and w.rows[0].tab_id == new_id
 
 
 def test_a_tab_whose_socket_is_unreadable_is_no_handover(monkeypatch):
@@ -394,7 +496,7 @@ def test_a_new_tab_that_is_not_a_new_chat_rolls_back(monkeypatch):
     assert not ok and "an old chat" in why
     assert w.ctx.tab_id == "OLD" and "OLD" in w.browser.tabs
     assert w.pool.get_page("OLD") is not None and w.rows[0].tab_id == "OLD"
-    assert [c for c in w.browser.calls if c[0] == "close"] == [("close", "NEW1")]  # closed again
+    assert [c for c in w.browser.calls if c[0] == "close"] == [("close", "POP1")]  # the page opener's tab closes again (R6: an undisclosed profile never runs the creator)
     for client in (w.clients.job, w.clients.pooled, w.clients.home):
         assert client._current_tab_id == "OLD"                                      # all home
     assert w.bridge._auto_scan_running is False
@@ -407,7 +509,7 @@ def test_a_new_tab_that_never_gets_ready_rolls_back(monkeypatch):
     monkeypatch.setattr(new_tab, "wait_new_chat_ready", never)
     ok, why = _run(w)
     assert not ok and "timeout" in why and w.ctx.tab_id == "OLD"
-    assert [c for c in w.browser.calls if c[0] == "close"] == [("close", "NEW1")]
+    assert [c for c in w.browser.calls if c[0] == "close"] == [("close", "POP1")]  # the page opener's tab closes again (R6: an undisclosed profile never runs the creator)
 
 
 def test_an_owner_mismatch_rolls_back(monkeypatch):
@@ -467,7 +569,7 @@ def test_a_client_that_cannot_follow_the_move_rolls_back(monkeypatch):
     w.clients.home.connect = refuse
     ok, why = _run(w)
     assert not ok and "connect" in why
-    assert "OLD" in w.browser.tabs and w.browser.closed == ["NEW1"]
+    assert "OLD" in w.browser.tabs and w.browser.closed == ["POP1"]  # the page opener's tab closes again (R6: an undisclosed profile never runs the creator)
     assert w.rows[0].tab_id == "OLD" and w.pool.get_page("OLD") is not None
     assert w.bridge._auto_scan_running is False
 

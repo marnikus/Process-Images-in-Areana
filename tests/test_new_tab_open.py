@@ -24,6 +24,8 @@ class FakeBrowser:
 
     def __init__(self):
         self.tabs: dict[str, str] = {}      # id → context the browser really put it in
+        self.openers: dict[str, str] = {}   # id → the tab whose page opened it (openerId)
+        self.created: list = []             # every create attempt, disclosed profile or not
         self.targets_err = ""
         self.create_result: tuple = ("NEW", "")
         self.create_ctx = CTX
@@ -31,13 +33,20 @@ class FakeBrowser:
         self.list_created = True
 
     def _infos(self) -> list:
-        return [{"targetId": tid, "type": "page", "url": "https://arena.ai/x",
-                 **({"browserContextId": ctx} if ctx else {})} for tid, ctx in self.tabs.items()]
+        rows = []
+        for tid, ctx in self.tabs.items():
+            row = {"targetId": tid, "type": "page", "url": "https://arena.ai/x",
+                   **({"browserContextId": ctx} if ctx else {})}
+            if self.openers.get(tid):
+                row["openerId"] = self.openers[tid]
+            rows.append(row)
+        return rows
 
     async def targets(self):
         return ([], self.targets_err) if self.targets_err else (self._infos(), "")
 
     async def create(self, url, context_id):
+        self.created.append(context_id)
         tab_id, err = self.create_result
         if tab_id and self.list_created:
             self.tabs[tab_id] = self.create_ctx
@@ -49,11 +58,13 @@ class FakeBrowser:
         return True, ""
 
 
-def _popup(monkeypatch, browser, tab_id="POP", ctx=CTX, ok=True, why=""):
+def _popup(monkeypatch, browser, tab_id="POP", ctx=CTX, ok=True, why="", opener=""):
     """Replace the real page opener with a scripted one that may add a tab to the browser."""
     async def fake(client, url, timeout):
         if tab_id:
             browser.tabs[tab_id] = ctx
+            if opener:
+                browser.openers[tab_id] = opener
         return ok, why
     monkeypatch.setattr(o, "open_tab_via_page", fake)
 
@@ -128,6 +139,75 @@ def test_no_client_on_the_job_tab_means_no_page_opener():
     b.create_result = ("", "refused")
     opened = asyncio.run(o.open_in_profile(b, None, SPEC))
     assert opened.tab_id == "" and "job tab" in opened.reason
+
+
+# ── round 3: R6 (the creator needs a disclosed profile) + R7 (provenance) ───
+
+def test_the_cdp_creator_never_runs_when_the_job_tabs_profile_is_undisclosed(monkeypatch):
+    """R6: a context-less create lands in the default profile and `"" == ""` would 'prove' it."""
+    b = FakeBrowser()
+    b.create_ctx = ""                       # where Chrome puts a create without a context
+    _popup(monkeypatch, b, ctx="", opener="OLD")
+    spec = o.OpenSpec(url="https://arena.ai/image/direct", context_id="", timeout_sec=1.0,
+                      opener_id="OLD")
+    opened = asyncio.run(o.open_in_profile(b, object(), spec))
+    assert opened.tab_id == "POP"
+    assert b.created == []                  # RED today: the creator ran and was believed
+
+
+def test_a_popup_tab_that_names_another_opener_is_refused_and_left_alone(monkeypatch):
+    """R7: provenance beats a matching context — the tab another page opened is not ours."""
+    b = FakeBrowser()
+    b.create_result = ("", "refused")
+    _popup(monkeypatch, b, ctx=CTX, opener="OTHER")
+    spec = o.OpenSpec(url="https://arena.ai/image/direct", context_id=CTX, timeout_sec=1.0,
+                      opener_id="OLD")
+    opened = asyncio.run(o.open_in_profile(b, object(), spec))
+    assert opened.tab_id == ""
+    assert "another tab" in opened.reason
+    assert b.closed == []                   # RED today: accepted via context equality
+
+
+def test_dialing_a_socket_that_answers_nothing_is_no_client(monkeypatch):
+    """R7b's seam is real: an unreadable or refusing socket yields no client, never a raise."""
+    assert asyncio.run(o._dial_page("")) is None
+
+    class SilentClient:
+        def __init__(self, *args):
+            pass
+
+        async def connect(self, ws_url):
+            return False                      # the page socket refuses the connection
+
+    monkeypatch.setattr(o, "CDPClient", SilentClient)
+    assert asyncio.run(o._dial_page("ws://127.0.0.1:9/devtools/page/OLD")) is None
+
+
+def test_a_socket_client_that_raises_is_no_client(monkeypatch):
+    """R7b: a connect that explodes yields no client — the refusal, never an exception."""
+
+    class RaisingClient:
+        def __init__(self, *args):
+            pass
+
+        async def connect(self, ws_url):
+            raise RuntimeError("websocket exploded")
+
+    monkeypatch.setattr(o, "CDPClient", RaisingClient)
+    assert asyncio.run(o._dial_page("ws://127.0.0.1:9/devtools/page/OLD")) is None
+
+
+def test_a_popup_tab_with_no_reported_opener_and_no_disclosed_profile_is_unprovable(monkeypatch):
+    """RC-1's last wall: neither provenance nor context says anything, so nothing may count."""
+    b = FakeBrowser()
+    b.create_result = ("", "refused")
+    _popup(monkeypatch, b, ctx="")               # no openerId, no disclosed profile anywhere
+    spec = o.OpenSpec(url="https://arena.ai/image/direct", context_id="", timeout_sec=0.05,
+                      opener_id="OLD")
+    opened = asyncio.run(o.open_in_profile(b, object(), spec))
+    assert opened.tab_id == ""
+    assert "profile unknown" in opened.reason
+    assert b.closed == ["POP"]                   # ours by timing; closed, worker never moves
 
 
 def test_the_refusal_names_the_wrong_profile_first(monkeypatch):
