@@ -167,14 +167,9 @@ async def _with_browser(move: _Move) -> tuple[bool, str]:
 
 async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
     """Read the profile truth → open in it → prove a new chat → move the worker → close old."""
-    target_infos, err = await browser.targets()
-    if err:
-        return False, f"the job's browser did not answer Target.getTargets ({err})"
-    context = bt.context_of(target_infos, move.old_id)
-    if context is None:
-        return False, f"the job tab {move.old_id[:12]} is not in its own browser's target list"
-    move.context_id = context
-    _log_profile(move, target_infos)
+    context, why = await _profile_truth(move, browser)
+    if why:
+        return False, why
     opened = await open_in_profile(browser, _popup_client(move),
                                    OpenSpec(move.url, context, move.timeout_sec))
     if not opened.tab_id:
@@ -189,6 +184,23 @@ async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
     _move_worker(move)
     await _close_old(move, browser)
     return True, f"new chat ready in the new tab {move.new_id[:12]}"
+
+
+async def _profile_truth(move: _Move, browser: Any) -> tuple[str, str]:
+    """The job tab's own profile, as its browser lists it: `(context, why)`.
+
+    `("", "")` is a real answer — the default profile carries no `browserContextId`; a non-empty
+    `why` means the profile could not be established and nothing may be opened.
+    """
+    target_infos, err = await browser.targets()
+    if err:
+        return "", f"the job's browser did not answer Target.getTargets ({err})"
+    context = bt.context_of(target_infos, move.old_id)
+    if context is None:
+        return "", f"the job tab {move.old_id[:12]} is not in its own browser's target list"
+    move.context_id = context
+    _log_profile(move, target_infos)
+    return context, ""
 
 
 async def _refuse(move: _Move, browser: Any, why: str) -> tuple[bool, str]:
@@ -245,12 +257,7 @@ async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
     """
     if not move.owner:
         return True, ""
-    new_owner = ""
-    for _attempt in range(_OWNER_TRIES):
-        new_owner = await read_owner(move.ctx.client)
-        if new_owner:
-            break
-        await asyncio.sleep(_OWNER_RETRY_SEC)
+    new_owner = await _probe_new_owner(move)
     if not new_owner:
         _log(move, f"Owner probe empty for the new tab {move.new_id[:12]} — keeping "
                    f"{move.owner} (the browser already proved the profile)", "info")
@@ -258,6 +265,16 @@ async def _check_owner_preserved(move: _Move) -> tuple[bool, str]:
     if new_owner == move.owner:                           # both sides: normalize_owner output
         return True, ""
     return False, f"Owner mismatch: old {move.owner} vs new {new_owner} — wrong profile, rollback"
+
+
+async def _probe_new_owner(move: _Move) -> str:
+    """The new tab's account ('' when the page cannot say) — one retry: the tab may still load."""
+    for _attempt in range(_OWNER_TRIES):
+        owner = await read_owner(move.ctx.client)
+        if owner:
+            return owner
+        await asyncio.sleep(_OWNER_RETRY_SEC)
+    return ""
 
 
 def _move_worker(move: _Move) -> None:

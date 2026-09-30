@@ -182,6 +182,27 @@ async def _always_new(client):
     return True, "new chat"
 
 
+async def _ready(reset_ctx):
+    """The reset's readiness check always passes in the fake world."""
+    return True, "new chat ready"
+
+
+async def _is_new_chat(client):
+    return True, "new chat"
+
+
+def _fake_dial(world, browser, host, port):
+    """A dial that knows exactly one endpoint — any other address is unreachable."""
+    async def dial(h, p, timeout_sec=5.0):
+        world.dialed.append((h, p))
+        if (h, p) != (host, port):
+            return None, f"no browser at {h}:{p}"
+        probe = FakeProbe(browser)
+        world.probes.append(probe)
+        return probe, ""
+    return dial
+
+
 def _world(monkeypatch, *, old_ctx=DEFAULT_CTX, other_ctx=DEFAULT_CTX, host="127.0.0.1", port=9333,
            old_owner="anton@example.com", other_owner="mxxy@example.com", owner_visible=True):
     """The pool, the bridge and the job tab (OLD) + a second tab (OTHER) at one endpoint."""
@@ -191,44 +212,39 @@ def _world(monkeypatch, *, old_ctx=DEFAULT_CTX, other_ctx=DEFAULT_CTX, host="127
     browser.owners = {old_ctx: old_owner}     # a tab opened into the job's profile keeps its account
     world = SimpleNamespace(browser=browser, dialed=[], probes=[], logs=[], saved=[])
     world.owner_visible = owner_visible
+    monkeypatch.setattr(bt, "dial", _fake_dial(world, browser, host, port))
+    monkeypatch.setattr(new_tab, "wait_new_chat_ready", _ready)
+    monkeypatch.setattr(new_tab, "read_chat_page", _is_new_chat)
+    pool = _world_pool(browser, host=host, port=port, old_owner=old_owner, owner_visible=owner_visible)
+    rows = [UrlRow(id="r1", url="https://arena.ai/c/1", enabled=True, tab_id="OLD"),
+            UrlRow(id="r2", url="https://arena.ai/c/2", enabled=True, tab_id="OTHER")]
+    bridge = _world_bridge(world, rows, pool.get_clients("OLD")[0])
+    world.pool, world.rows, world.bridge = pool, rows, bridge
+    world.clients = SimpleNamespace(job=bridge.cdp, pooled=pool.get_clients("OLD")[0], home=bridge.cdp)
+    world.ctx = FinishCtx(pool=pool, bridge=bridge, tab_id="OLD", ctrl=object(), client=bridge.cdp)
+    return world
 
-    async def fake_dial(h, p, timeout_sec=5.0):
-        world.dialed.append((h, p))
-        if (h, p) != (host, port):
-            return None, f"no browser at {h}:{p}"
-        probe = FakeProbe(browser)
-        world.probes.append(probe)
-        return probe, ""
 
-    async def fake_ready(reset_ctx):
-        return True, "new chat ready"
-
-    async def fake_read(client):
-        return True, "new chat"
-
-    monkeypatch.setattr(bt, "dial", fake_dial)
-    monkeypatch.setattr(new_tab, "wait_new_chat_ready", fake_ready)
-    monkeypatch.setattr(new_tab, "read_chat_page", fake_read)
+def _world_pool(browser, *, host, port, old_owner, owner_visible):
+    """The real PagePool with the job tab (client registered) and a second tab."""
     pool = _pool_with("OLD", "OTHER", host=host, port=port)
     pool.get_page("OLD").jobs_completed = 3
     pool.get_page("OLD").owner = old_owner        # the pool's label the handover must keep
     job_client = FakePageClient(browser, "OLD", owner_visible=owner_visible)
-    pooled_client = FakePageClient(browser, "OLD", owner_visible=owner_visible)
-    home_client = FakePageClient(browser, "OLD", owner_visible=owner_visible)
-    pool.register_client("OLD", pooled_client, object())
-    rows = [UrlRow(id="r1", url="https://arena.ai/c/1", enabled=True, tab_id="OLD"),
-            UrlRow(id="r2", url="https://arena.ai/c/2", enabled=True, tab_id="OTHER")]
-    bridge = SimpleNamespace(
-        state=SimpleNamespace(urls=rows), _auto_scan_running=False, cdp=home_client,
+    pool.register_client("OLD", FakePageClient(browser, "OLD", owner_visible=owner_visible), object())
+    browser.job_client = job_client               # the ctx's own client (same tab)
+    return pool
+
+
+def _world_bridge(world, rows, pooled_client):
+    """A bridge with the pool hooks the handover calls, logging into `world`."""
+    return SimpleNamespace(
+        state=SimpleNamespace(urls=rows), _auto_scan_running=False, cdp=world.browser.job_client,
         _cancel_requested=False,
         _log=lambda m, l="info": world.logs.append((l, m)),
         _save_arena=lambda: world.saved.append("arena"),
         _persist_cooldowns=lambda: world.saved.append("cooldowns"),
         _emit_pool_status=lambda: None)
-    world.pool, world.rows, world.bridge = pool, rows, bridge
-    world.clients = SimpleNamespace(job=job_client, pooled=pooled_client, home=home_client)
-    world.ctx = FinishCtx(pool=pool, bridge=bridge, tab_id="OLD", ctrl=object(), client=job_client)
-    return world
 
 
 def _run(world, url=NEW_URL):
