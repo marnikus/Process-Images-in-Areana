@@ -82,9 +82,19 @@ def test_two_saves_in_one_second_both_publish(bridge, monkeypatch):
 
 def test_a_second_save_in_a_different_second_is_unaffected(bridge):
     """The positive control: normal saves still get the plain second-resolution
-    folder name — the disambiguation only fires on a real collision."""
+    folder name — the disambiguation only fires on a real collision.
+
+    The clock is read on both sides of the save rather than after it: on a
+    loaded machine the second can tick inside `save_workspace`, and the
+    property under test is "plain stamp, no `-02` suffix", not "the same
+    second as the assertion".
+    """
+    before = _utc_stamp()
     first = ws_save.save_workspace(bridge, SaveRequest(name="solo"))
-    assert Path(first["path"]).name == f"solo_{_utc_stamp()}"
+    after = _utc_stamp()
+    name = Path(first["path"]).name
+    assert name in (f"solo_{before}", f"solo_{after}")
+    assert not name.endswith(("-02", "-03"))
 
 
 # ---- H2: a refused save is silent -----------------------------------------
