@@ -42,45 +42,43 @@ def _file_status(row: dict, entry: dict, path: Path) -> dict:
     return row
 
 
-def _gate_note(row: dict, provider, doc, entry: dict) -> None:
-    """Mark the row with the status the RESTORE would produce, when it would refuse.
+def _manifest_status(row: dict, entry: dict) -> bool:
+    """The two statuses the manifest alone decides; True when the row is final."""
+    if not entry:
+        row.update(status="not_in_manifest", note="domain unknown to this snapshot")
+        return True
+    if entry.get("capture", {}).get("excluded") or not entry.get("path"):
+        row.update(status="excluded", note=entry.get("capture", {}).get(
+            "excluded_reason", "policy-excluded"))
+        return True
+    return False
 
-    The checklist is the screen the user trusts most, so it must not promise a
-    restore the restore then refuses. It asks the same gates the restore asks
-    — the schema gate (`supported_migrations`) and `provider.validate` — and
-    adds only the statuses below. Existing statuses are unchanged.
+
+def _restore_gates(row: dict, loaded, version, domain_id: str) -> None:
+    """Carry the RESTORE's own gates into a row the file gates passed.
+
+    The checklist must not promise a restore the restore then refuses, so it
+    asks the schema gate and `provider.validate` — the same two the mutating
+    side asks. A domain this build has no provider for keeps the file gates'
+    answer: `apply` reports it as a skip of its own.
     """
-    if (version := entry.get("schema_version")) not in provider.supported_migrations:
-        row.update(status="unsupported_schema",
-                   note=f"saved schema {version!r} is not supported by this build")
-    elif problem := provider.validate(doc):
-        row.update(status="invalid", note=problem)
-
-
-def _gate_loaded(row: dict, loaded, entry: dict, domain_id: str) -> None:
-    """The file gates already ran in `load_files` — carry their refusal across.
-
-    A domain this build has no provider for is left at the file gates' answer:
-    there is no `validate` to ask, and `apply` reports it as a skip of its own.
-    """
-    provider = get(domain_id)
-    if provider is None:
-        return
     if isinstance(loaded, WorkspaceError):
         row.update(status=loaded.stage, note=loaded.cause)
-    elif loaded is not None:
-        _gate_note(row, provider, loaded, entry)
+        return
+    provider = get(domain_id)
+    if provider is None or loaded is None:
+        return
+    if version not in provider.supported_migrations:
+        row.update(status="unsupported_schema",
+                   note=f"saved schema {version!r} is not supported by this build")
+    elif problem := provider.validate(loaded):
+        row.update(status="invalid", note=problem)
 
 
 def _preview_row(root: Path, manifest: dict, domain_id: str, docs: dict) -> dict:
     entry = entry_for(manifest, domain_id) or {}
     row = _row_head(entry, domain_id)
-    if not entry:
-        row.update(status="not_in_manifest", note="domain unknown to this snapshot")
-        return row
-    if entry.get("capture", {}).get("excluded") or not entry.get("path"):
-        row.update(status="excluded", note=entry.get("capture", {}).get(
-            "excluded_reason", "policy-excluded"))
+    if _manifest_status(row, entry):
         return row
     path = resolve_inside(root, entry["path"])
     if path is None:
@@ -92,7 +90,7 @@ def _preview_row(root: Path, manifest: dict, domain_id: str, docs: dict) -> dict
         return row
     row = _file_status(row, entry, path)
     if row["status"] == "ok":
-        _gate_loaded(row, docs.get(entry["path"]), entry, domain_id)
+        _restore_gates(row, docs.get(entry["path"]), entry.get("schema_version"), domain_id)
     return row
 
 
