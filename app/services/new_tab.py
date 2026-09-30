@@ -32,6 +32,7 @@ from app.browser.new_chat import ResetCtx, wait_new_chat_ready
 from app.browser.page_pool import retarget_page, tab_label_of
 from app.core.tab_alias import normalize_owner
 from app.persistence.config_manager import URL_PATTERN_DEFAULT, URL_PATTERN_KEY
+from app.services.live import pass_hold
 from app.services.live.tab_owner import read_owner
 from app.services.live.url_policy import mark_receivers
 from app.services.new_tab_open import OpenSpec, open_in_profile
@@ -140,17 +141,20 @@ async def handover(ctx: HandoverCtx, url: str, timeout_sec: float) -> tuple[bool
     try:
         return await _with_browser(move)
     finally:
-        ctx.bridge._auto_scan_running = False
+        # through pass_hold.release(), NOT a bare `= False`: the handover holds a
+        # flag it does not own, and the holder that ends a pass must also drain
+        # the Reparse queue it may have stranded (I-68a, audit #4 N1).
+        pass_hold.release(ctx.bridge)
 
 
 async def _hold_reconciler(bridge: Any) -> bool:
     """Wait ≤ 10 s for a running reconcile pass, then take its flag (one loop: no race)."""
     deadline = time.monotonic() + _RECONCILE_WAIT_SEC
-    while getattr(bridge, "_auto_scan_running", False):
+    while pass_hold.is_held(bridge):
         if time.monotonic() >= deadline:
             return False
         await asyncio.sleep(0.05)
-    bridge._auto_scan_running = True
+    pass_hold.take(bridge)
     return True
 
 
