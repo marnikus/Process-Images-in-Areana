@@ -1,4 +1,4 @@
-# ideal-size: 357 lines reason=one pass, read top to bottom. The sweep rules are the
+# ideal-size: 336 lines reason=one pass, read top to bottom. The sweep rules are the
 # contract: a manual pass rebuilds while an auto pass never sweeps on an empty or failed
 # fetch, a busy tab defers, and an unchecked row's tab leaves the pool (D-2/D-3/D-4). Those
 # rules are only checkable in one place — `reconcile_once` below, next to the sweep they
