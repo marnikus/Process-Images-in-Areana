@@ -81,3 +81,12 @@ def test_the_settings_save_keeps_the_url_list_pause_values(cfg):
     config = reply["config"]
     assert (config["enabled"], config["min_seconds"], config["captcha_penalty_seconds"],
             config["rate_limit_penalty_seconds"]) == (False, 120, 60, 600)
+
+
+def test_the_seeded_default_and_the_healing_default_are_one_url():
+    """Audit #4 N3. The literal lived in two files: `config_manager` seeds the
+    config file, `new_tab_setting` heals a bad value. Changing one made the
+    other win silently, depending on which read path ran. The persistence
+    layer must take the leaf's constant, not repeat it."""
+    from app.persistence import config_manager
+    assert config_manager.DEFAULT_SESSION[new_tab_setting.URL_KEY] == new_tab_setting.DEFAULT_URL

@@ -13,6 +13,10 @@ from urllib.parse import urlparse
 
 SETTING_KEY = "new_chat_new_tab"
 URL_KEY = "new_chat_new_tab_url"
+# The other half of the guarded pair: `config_manager.DEFAULT_SESSION` seeds the
+# same value for a fresh session. Neither side may import the other — this module
+# is a stdlib-only leaf, and persistence must not reach up into services — so a
+# test keeps them equal instead (audit #4 N3).
 DEFAULT_URL = "https://arena.ai/image/direct?model_a=max"
 
 

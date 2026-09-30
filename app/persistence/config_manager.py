@@ -31,6 +31,12 @@ DEFAULT_SESSION = {
     "cooldown_min_seconds": 300,
     "cooldown_captcha_penalty_seconds": 900,
     "new_chat_new_tab": False,  # I-79: after a job, continue in a fresh tab (Settings → Job Cycle)
+    # I-79. The same literal is `new_tab_setting.DEFAULT_URL`, which heals a
+    # bad stored value. `new_tab_setting` is a stdlib-only leaf on purpose (the
+    # Settings panel must not drag the config layer in), so persistence may not
+    # import it either — the pair is GUARDED by
+    # tests/test_new_tab_setting.py::test_the_seeded_default_and_the_healing_
+    # default_are_one_url, which fails the moment the two drift (audit #4 N3).
     "new_chat_new_tab_url": "https://arena.ai/image/direct?model_a=max",
     "firefox_auto": {  # the "Firefox auto with Extension" window (I-63): Ui.Vision framework test
         # The macro reuses the tab the search finds and NEVER opens a page
