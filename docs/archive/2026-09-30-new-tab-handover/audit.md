@@ -12,9 +12,11 @@ modules** across the full suite (94 behavioural tests: 36 + 11 + 24 + 8 + 13 Pyt
 The docstrings carry their own provenance (R1–R5, P1–P4, design §4). It is not the mess the
 nine-fix-commit count suggests.
 
-So this audit is deliberately short. **One real behavioural defect was found and reproduced**
-(N1). The remaining four findings are small and are reported as such rather than inflated into
-work. The refactor plan is 6 steps, 4 of which are behaviour-preserving and 1 of which is the N1 fix.
+So this audit is deliberately short. **Two behavioural defects were found and reproduced** — N1 before the work started, N6 during the
+refactor, and N6 is the more dangerous of the two because it fails *silently*. The remaining four
+findings are small and are reported as such rather than inflated into work. Six steps, of which four are
+behaviour-preserving, one is the N1 fix, and one (N6) was added when the RULE 18 recheck disagreed with
+the first pass.
 
 ---
 
@@ -146,6 +148,40 @@ a finished job. Correct, and it is the same trade the workspace audit found miss
 direction (RULE 2 unsatisfied). The difference is that here the swallow is inside the reporter, so
 there is nowhere left to report. Left alone, noted.
 
+### N6 — the owner guard could silently become a no-op  *(found during the refactor, not in the first pass)*
+**Severity: medium. Risk: a verification that disappears without a word.**
+
+`_read_owner_from_client` asked the same question `live/tab_owner.py` already owned, with a
+**lazy import inside a bare `except`**:
+
+```python
+try:
+    from app.browser.owner_probe import build_owner_probe, interpret_owner
+    from app.core.tab_alias import normalize_owner
+    raw = await client.evaluate(build_owner_probe())
+    return normalize_owner(interpret_owner(raw).get("email"))
+except Exception:
+    return ""
+```
+
+If that module were renamed, or its import ever failed, the owner's secondary guard would answer `""`
+— which `_check_owner_preserved` treats as *"the probe was quiet, the profile is already proven, carry
+on"*. The handover would move the worker having verified **nothing**, and no log line would say so. The
+lazy import is what makes this possible: it guarantees an ImportError can never reach module load, where
+it would be loud. `tab_owner.read_owner` does the same probe with a module-level import and a logged
+degradation.
+
+**Fixed** in the refactor: the handover now calls `tab_owner.read_owner`, so the probe exists once and
+the guard can only ever be as dead as an ordinary import error. A test asserts the handover does not
+name `owner_probe` at all, goes through `read_owner`, and that `tab_owner` keeps the module-level
+import — so neither copy can come back quietly.
+
+This one is worth naming as an audit miss: the first pass read `_read_owner_from_client`, saw a
+documented best-effort probe, and wrote it up under N5 as an accepted swallow. It was not accepted — it
+was a duplicate with a failure mode attached, and it only surfaced when the RULE 18 recheck asked why
+the file was over 300.
+
+
 ### Checked and found clean (not findings)
 * **Double acquire on `_auto_scan_running`** — impossible; both check-then-sites are await-free (N1).
 * **`_Move` is 15 mutable fields** — a handover record, private, mutated only by the handover; splitting
@@ -186,7 +222,8 @@ function, not an interface), extracting `_run`'s steps into a strategy, and givi
 | 2 | S | **Remove the dead return (N2).** `_close_old` keeps its log; its return becomes the `why` the caller appends to the success line, so the reason string can no longer over-claim. No behaviour change to any log. | +2 (the old tab closing / not closing still say the same) | `git revert` |
 | 3 | S | **One default URL (N3).** `config_manager` imports `new_tab_setting.DEFAULT_URL` — the leaf is stdlib-only, so the direction is legal. Value unchanged. | +1 (the seeded default equals the healing default) | `git revert` |
 | 4 | B | **N1 — the release drains the queue.** `pass_ended(bridge, deps)` in `reconcile.py` clears the flag and drains `_reparse_queued`; `new_tab`'s `finally` calls it. **RED first:** a test that queues a Reparse during a handover and asserts the pass runs. | 96 → 98 | `git revert` — the queue still self-heals on the next scan, so the revert is a delay, not a loss |
-| 5 | S | **RULE 18.4 note for `_run` (N4)** and the N5 note, both as `ideal-size:` / docstring markers so the next reader sees the decision. | 98 (unchanged) | `git revert` |
+| 5 | S | **RULE 18.2 notes (N4, N5)**: `_run` keeps an `ideal-size:` reason, `_log` documents that its swallow is total by construction. | 98 (unchanged) | `git revert` |
+| 5b | B | **N6, added after step 5**: the RULE 18 recheck asked why `new_tab.py` crossed 300 lines, and the answer was a duplicate owner probe whose lazy import made the guard a silent no-op. The handover now calls `tab_owner.read_owner`. | +1 | `git revert` |
 | 6 | docs | **I-68 amendment + the audit trail** (§6). | — | `git revert` |
 
 Steps 1–3 and 5 are provably behaviour-preserving and land first. Step 4 is the only behaviour
