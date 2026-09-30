@@ -259,15 +259,26 @@ def _live_file(bridge, domain_id: str) -> Path:
 
 @pytest.mark.parametrize("domain_id", ["job_history", "captcha_stats", "cooldowns"])
 @pytest.mark.parametrize("content", ['{"entries": [{"x": 1}]', "[1, 2]"])
-def test_corrupt_live_file_refuses_the_save(bridge, domain_id, content):
-    """P5: a truncated job_history.json was saved as `{}` — a later restore wipes history."""
+def test_corrupt_live_file_is_never_saved_as_empty(bridge, domain_id, content):
+    """P5: a truncated job_history.json was saved as `{}` — a later restore wipes
+    history. RULE 4: broken is not empty, and it is never written to a snapshot.
+
+    I-81/H4: these three domains are NOT required, so the save no longer refuses
+    outright — it degrades to `partial`, names the file and its cause, and marks
+    the domain excluded in the manifest so a later restore skips it instead of
+    applying `{}`. `test_a_required_domain_failure_still_needs_explicit_
+    confirmation` keeps the refusing half pinned.
+    """
     path = _live_file(bridge, domain_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
     reply = ws_save.save_workspace(bridge, SaveRequest(name="c"))
-    assert reply["ok"] is False and domain_id in reply["error"]
+    assert reply["ok"] is True and reply["result"] == "partial"
     cause = next(e["cause"] for e in reply["errors"] if e["domain_id"] == domain_id)
     assert path.name in cause
+    manifest = json.loads((Path(reply["path"]) / "manifest.json").read_text())
+    assert manifest["domains"][domain_id]["capture"]["ok"] is False
+    assert manifest["domains"][domain_id]["capture"]["excluded"] is True
 
 
 @pytest.mark.parametrize("domain_id", ["job_history", "captcha_stats", "cooldowns"])

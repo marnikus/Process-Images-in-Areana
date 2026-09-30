@@ -216,12 +216,18 @@ def _capture_logs(bridge, monkeypatch):
 
 
 def test_aborted_save_logs_its_cause(bridge, monkeypatch, tmp_path):
+    """A REQUIRED domain failing refuses the save and logs one error line.
+
+    `arena_state` is required, so this is the path that still aborts — a
+    non-required failure now degrades to `partial` (H4) and logs at warn, and
+    `test_a_non_required_domain_failure_needs_no_confirmation` pins that half.
+    """
     logs = _capture_logs(bridge, monkeypatch)
-    (tmp_path / "job_history.json").write_text("{broken", encoding="utf-8")
+    monkeypatch.setattr(get("arena_state"), "validate", lambda doc: "boom")
     reply = _save(bridge, name="abort")
     assert reply["ok"] is False and reply["result"] == "failed"
     assert [level for level, _ in logs] == ["error"], logs
-    assert "job_history" in logs[0][1], "the log names the domain that failed"
+    assert "arena_state" in logs[0][1], "the log names the domain that failed"
 
 
 def test_publish_failure_logs_its_cause(bridge, monkeypatch):

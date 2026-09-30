@@ -181,10 +181,28 @@ def save_workspace(bridge, request: SaveRequest) -> dict:
         return _no_domains_reply(unknown)
     run = _run_context(bridge, request, time.gmtime())
     captures = capture_all(bridge, providers)
-    failed = [c for c in captures if c.error]
-    if failed and not request.allow_partial:
+    if _blocking(captures) and not request.allow_partial:
         return _with_unknown(_abort_result(run, captures), unknown)
     return _with_unknown(_publish_save(run, captures), unknown)
+
+
+def _blocking(captures: list) -> list:
+    """The failed captures that make a save unusable: the REQUIRED ones.
+
+    A non-required domain that fails (a corrupt captcha_stats file, a missing
+    cooldown file) degrades the snapshot to `partial` and is listed in the
+    report and the log at warn — it does not block a checkpoint the user asked
+    for. A required one (arena_state, session_settings — the queue, the URLs,
+    the prompt and the settings) would leave the snapshot without the state
+    the restore exists to recover, so the save refuses unless `allow_partial`
+    (audit #3 H4).
+    """
+    return [c for c in captures if c.error and c.provider.required]
+
+
+def _causes(captures: list) -> str:
+    """`domain (cause)` for each — a refusal must say WHY, not only WHO (RULE 2)."""
+    return ", ".join(f"{c.provider.domain_id} ({c.error['cause']})" for c in captures)
 
 
 _SAVE_LEVEL = {"success": "success", "partial": "warn", "failed": "error"}
@@ -202,12 +220,16 @@ def _log_failure(bridge, cause: str) -> None:
 
 
 def _abort_result(run: dict, captures: list) -> dict:
-    """A selected domain failed without allow_partial → refuse; no temp was created."""
-    names = [c.provider.domain_id for c in captures if c.error]
-    cause = ", ".join(names)
-    _log_failure(run["bridge"], f"domain(s) failed to capture: {cause}")
+    """A REQUIRED domain failed without allow_partial → refuse; no temp was created.
+
+    The message names the blocking domains only — the reason for the refusal —
+    while `errors` still carries every domain that failed, so a non-required
+    failure is visible even when a required one is what refused the save.
+    """
+    cause = _causes(_blocking(captures))
+    _log_failure(run["bridge"], f"required domain(s) failed to capture: {cause}")
     return {"ok": False, "result": reports.SAVE_RESULT_FAILED,
-            "error": f"domain(s) failed to capture: {cause} — fix the cause or allow a partial snapshot",
+            "error": f"required domain(s) failed to capture: {cause} — fix the cause or allow a partial snapshot",
             "errors": [c.error for c in captures if c.error],
             "snapshot_id": snapshot_id_for(run["started"], run["request"].name)}
 
