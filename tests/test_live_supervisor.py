@@ -14,6 +14,7 @@ import json
 import re
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -248,3 +249,16 @@ async def test_goldens_are_byte_identical_under_the_supervisor(tmp_path, monkeyp
     trace = collect_trace(env, patched.clicks)
     check_golden("no_tab", trace)
     assert trace["run_state"] == "idle" and trace["events"] == []
+
+
+def _cooling_bridge(seconds: int):
+    """A bridge whose only allowed tab is cooling for `seconds`."""
+    return SimpleNamespace(_page_pool=SimpleNamespace(status_snapshot=lambda: {
+        "pages": [{"tab_id": "T1", "cooldown_remaining": seconds}]}))
+
+
+def test_next_ready_uses_the_one_countdown_formatter():
+    """`--:--` unknown, MM:SS short, H:MM:SS past an hour — one formatter (audit #4 N6)."""
+    assert sv._next_ready(_cooling_bridge(0), {"T1"}) == "00:00"
+    assert sv._next_ready(_cooling_bridge(4500), {"T1"}) == "1:15:00"     # was "75:00"
+    assert sv._next_ready(SimpleNamespace(_page_pool=None), {"T1"}) == "--:--"

@@ -23,7 +23,6 @@ from app.browser.page_status import PageInfo
 from app.core.models import UrlRow
 from app.core.tab_alias import AliasBook
 from app.services import new_tab, new_tab_setting
-from app.services.live import reconcile_rows
 from app.services.cooldown_service import FinishCtx
 
 pytestmark = pytest.mark.unit
@@ -471,7 +470,7 @@ def test_an_unreadable_pattern_falls_back_to_arena(monkeypatch):
 def test_the_pattern_fallback_comes_from_the_one_home(monkeypatch):
     """The default is `reconcile_rows.DEFAULT_PATTERN`, not a literal in this module (audit #4 N3)."""
     w = _world(monkeypatch)
-    monkeypatch.setattr(reconcile_rows, "DEFAULT_PATTERN", "example.test")
+    monkeypatch.setattr(new_tab, "URL_PATTERN_DEFAULT", "example.test")
 
     def boom(*_a, **_k):
         raise RuntimeError("no config")
@@ -481,8 +480,16 @@ def test_the_pattern_fallback_comes_from_the_one_home(monkeypatch):
     assert "tabs matching 'example.test'" in _text(w)
 
 
+def test_the_pattern_default_has_one_home():
+    """The key, its default and the session entry are the same object (audit #4 N3)."""
+    from app.persistence import config_manager as cm
+    from app.services.live import reconcile_rows
+    assert (reconcile_rows.DEFAULT_PATTERN == cm.URL_PATTERN_DEFAULT
+            == cm.DEFAULT_SESSION[cm.URL_PATTERN_KEY] == "arena.ai")
+
+
 def test_the_pattern_key_is_the_shared_one(monkeypatch):
-    """`_get_pattern` reads `reconcile_rows.PATTERN_KEY` — one key name for the same setting."""
+    """`_get_pattern` reads the shared key name — the same one the session default uses."""
     w = _world(monkeypatch)
     seen: list = []
 
@@ -491,7 +498,7 @@ def test_the_pattern_key_is_the_shared_one(monkeypatch):
         return "arena.ai"
     w.bridge.config = SimpleNamespace(get_state=get_state)
     ok, _why = _run(w)
-    assert ok and reconcile_rows.PATTERN_KEY in seen
+    assert ok and new_tab.URL_PATTERN_KEY in seen
 
 
 def test_a_raising_owner_probe_does_not_block_a_proven_profile(monkeypatch):

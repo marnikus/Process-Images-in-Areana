@@ -31,7 +31,7 @@ from app.browser.chat_page import read_chat_page
 from app.browser.new_chat import ResetCtx, wait_new_chat_ready
 from app.browser.page_pool import retarget_page, tab_label_of
 from app.core.tab_alias import normalize_owner
-from app.services.live import reconcile_rows
+from app.persistence.config_manager import URL_PATTERN_DEFAULT, URL_PATTERN_KEY
 from app.services.live.tab_owner import read_owner
 from app.services.live.url_policy import mark_receivers
 from app.services.new_tab_open import OpenSpec, open_in_profile
@@ -65,11 +65,11 @@ def _get_pattern(bridge: Any) -> str:
     try:
         cfg = getattr(bridge, "config", None)
         if cfg is not None:
-            value = cfg.get_state(reconcile_rows.PATTERN_KEY, reconcile_rows.DEFAULT_PATTERN)
-            return str(value or reconcile_rows.DEFAULT_PATTERN)
+            value = cfg.get_state(URL_PATTERN_KEY, URL_PATTERN_DEFAULT)
+            return str(value or URL_PATTERN_DEFAULT)
     except Exception:
         pass
-    return reconcile_rows.DEFAULT_PATTERN
+    return URL_PATTERN_DEFAULT
 
 
 def _unique(clients: list) -> list:
@@ -163,7 +163,8 @@ async def _run(move: _Move, browser: Any) -> tuple[bool, str]:
                                    OpenSpec(move.url, context, move.timeout_sec))
     if not opened.tab_id:
         return await _refuse(move, browser, opened.reason)
-    move.new_id, move.new_ws = opened.tab_id, _page_ws(move, opened.tab_id)
+    move.new_id = opened.tab_id
+    move.new_ws = bt.page_ws(*move.endpoint, opened.tab_id)   # same endpoint its old tab lives on
     if not await _connect_all(move.clients, move.new_ws):
         return await _refuse(move, browser, "could not connect to the new tab")
     ok, why = await _prove_new_chat(move)
@@ -182,11 +183,6 @@ async def _refuse(move: _Move, browser: Any, why: str) -> tuple[bool, str]:
     _log(move, f"⚠ New chat as a new tab failed: {why} — {move.label} stays in its tab "
                f"(in-place New Chat instead)", "warn")
     return False, why
-
-
-def _page_ws(move: _Move, target_id: str) -> str:
-    """The job tab's own page socket for the new target (same host:port it belongs to)."""
-    return f"ws://{move.endpoint[0]}:{move.endpoint[1]}/devtools/page/{target_id}"
 
 
 def _log_profile(move: _Move, target_infos: list) -> None:

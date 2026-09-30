@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from app.browser.page_status import PageStatus
 from app.services import auto_connect as ac
 from app.services.batch_orchestrator import pool_summary, resolve_and_claim_tab, run_pass
-from app.core.cooldown import CountdownNotes
+from app.core.cooldown import CountdownNotes, format_remaining
 from app.services.cooldown_service import is_stuck_status
 from app.services.firefox_job_recovery import recover_firefox_jobs
 
@@ -136,9 +136,13 @@ def _soonest_ready(bridge, allowed: set) -> int | None:
 
 
 def _next_ready(bridge, allowed: set) -> str:
-    """MM:SS until the soonest allowed tab leaves cooldown ('--:--' when unknown)."""
+    """Until the soonest allowed tab leaves cooldown ('--:--' when unknown).
+
+    The text is `format_remaining`'s (one formatter, audit #4 N6): MM:SS, and H:MM:SS past an
+    hour — a hand-rolled `// 60` printed `75:00` for a 1 h 15 min pause.
+    """
     secs = _soonest_ready(bridge, allowed)
-    return "--:--" if secs is None else f"{secs // 60:02d}:{secs % 60:02d}"
+    return "--:--" if secs is None else format_remaining(secs)
 
 
 def _cooling_line_due(bridge, plan: PassPlan, fresh: bool) -> bool:
