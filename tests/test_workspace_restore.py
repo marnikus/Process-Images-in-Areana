@@ -56,6 +56,10 @@ def _restamp(snapshot: Path, rel: str) -> None:
     (snapshot / "manifest.json").write_text(json.dumps(manifest))
 
 
+def _preview_row_of(preview, domain_id):
+    return next(d for d in preview["domains"] if d["domain_id"] == domain_id)
+
+
 def _skip_of(reply, domain_id):
     for row in reply["skipped"]:
         if row["domain_id"] == domain_id:
@@ -85,6 +89,56 @@ def test_preview_flags_size_mismatch_and_missing(bridge, snapshot):
     statuses = {d["domain_id"]: d["status"] for d in preview["domains"]}
     assert statuses["undo"] == "size_mismatch"
     assert statuses["job_history"] == "missing"
+
+
+def test_preview_marks_a_semantically_invalid_domain(bridge, snapshot):
+    """audit #3 H5 (ported from branch A): the per-domain checklist is the screen
+    the user trusts most, and it promised a restore that the semantic gate then
+    refused. The preview must run the SAME gate the restore runs and say so in
+    the row — status `invalid`, with the cause.
+    """
+    rel = "state/captcha_stats.json"
+    (snapshot / rel).write_text('{"per_site": "not-an-object"}')
+    _restamp(snapshot, rel)
+    row = _preview_row_of(ws_restore.preview_restore(snapshot), "captcha_stats")
+    assert row["status"] == "invalid"
+    assert "per_site" in row["note"]
+    # the restore that follows really does skip it, at the same stage
+    reply = restore_workspace(bridge, snapshot)
+    assert _skip_of(reply, "captcha_stats")["stage"] == "semantic"
+
+
+def test_preview_marks_an_unsupported_schema(bridge, snapshot):
+    """`entry.schema_version` was shown in the row but never compared against
+    `provider.supported_migrations`, so "saved by another build" also ticked
+    as `ok`.
+    """
+    manifest = json.loads((snapshot / "manifest.json").read_text())
+    manifest["domains"]["undo"]["schema_version"] = "99"
+    (snapshot / "manifest.json").write_text(json.dumps(manifest))
+    row = _preview_row_of(ws_restore.preview_restore(snapshot), "undo")
+    assert row["status"] == "unsupported_schema" and "99" in row["note"]
+    reply = restore_workspace(bridge, snapshot)
+    assert _skip_of(reply, "undo")["stage"] == "schema"
+
+
+def test_preview_marks_an_unreadable_file_before_the_size_gate(bridge, snapshot):
+    """A file the restore cannot parse is a `parse` row, so the preview says so
+    instead of only reporting a byte count that happens to match.
+    """
+    rel = "state/undo.json"
+    (snapshot / rel).write_text("{not json")
+    _restamp(snapshot, rel)
+    row = _preview_row_of(ws_restore.preview_restore(snapshot), "undo")
+    assert row["status"] == "parse" and "JSON" in row["note"]
+
+
+def test_a_healthy_snapshot_previews_all_ok(bridge, snapshot):
+    """The positive control: every file-backed domain still ticks `ok`."""
+    preview = ws_restore.preview_restore(snapshot)
+    status = {d["domain_id"]: d["status"] for d in preview["domains"]}
+    assert status["arena_state"] == "ok" and status["captcha_stats"] == "ok"
+    assert status["undo"] == "ok" and status["job_history"] == "ok"
 
 
 def test_preview_refuses_a_foreign_folder(bridge, tmp_path):
