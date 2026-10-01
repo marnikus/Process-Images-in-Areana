@@ -1,6 +1,16 @@
 /* image-queue/render.js — row render, ≤200 LOC CC≤10 */
 'use strict';
 window.ImageQueueRender = {
+  _tbodyWarned: false,   // the missing-table report went out once (never per push)
+
+  _warnMissingTable() {
+    if (this._tbodyWarned) return;
+    this._tbodyWarned = true;
+    const msg = 'Image Queue window is not in the page (#queueTableBody missing) — rows cannot be shown';
+    console.error(`[ImageQueueRender] ${msg}`);
+    LogConsole.log(`⚠ ${msg}`, 'error');
+  },
+
   _store() { return window.ImageQueueStore; },
   _thumbs() { return window.ImageQueueThumbs; },
 
@@ -34,12 +44,9 @@ window.ImageQueueRender = {
     return `<td><input type="checkbox" ${img.selected ? 'checked' : ''} data-img-id="${img.id}"></td><td>${this.thumbHtml(img)}</td><td>${this.pathCell(img)}</td><td><span class="status-badge s-${img.status}">${s.esc(img.status)}</span></td><td style="font-size:10px;">${s.esc(img.assigned_url || '')}</td><td style="font-size:10px;">${img.attempts || 0}</td><td>${this.outCell(img)}</td><td style="font-size:10px; color:var(--red); max-width:120px; overflow:hidden; text-overflow:ellipsis;" title="${s.esc(img.error || '')}">${s.esc((img.error||'').slice(0,60))}</td><td><button class="btn-small" title="Preview" data-action="preview" data-img-id="${img.id}">👁</button><button class="btn-small" title="Retry" data-action="retry" data-img-id="${img.id}">↻</button><button class="btn-small" title="Reset" data-action="reset" data-img-id="${img.id}">Reset</button></td>`;
   },
 
-  render(images) {
-    const s = this._store();
-    if (images) s.images = images;
+  _fillRows(filtered) {
     const tbody = document.getElementById('queueTableBody');
-    if (!tbody) return;
-    const filtered = s.filtered();
+    if (!tbody) return;                    // caller already reported the missing table
     tbody.innerHTML = '';
     filtered.forEach(img => {
       const tr = document.createElement('tr');
@@ -47,6 +54,19 @@ window.ImageQueueRender = {
       tr.innerHTML = this.rowHtml(img);
       tbody.appendChild(tr);
     });
+  },
+
+  render(images) {
+    const s = this._store();
+    if (!s) return;                        // store missing: the facade's report already named it
+    if (images) s.images = images;
+    const tbody = document.getElementById('queueTableBody');
+    if (!tbody) {
+      this._warnMissingTable();
+      return;
+    }
+    const filtered = s.filtered();
+    this._fillRows(filtered);
     const countEl = document.getElementById('queueCount');
     if (countEl) countEl.textContent = `${filtered.length}/${s.images.length} images`;
     this._thumbs().fetchAll(filtered);

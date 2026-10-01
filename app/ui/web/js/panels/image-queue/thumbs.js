@@ -30,8 +30,13 @@ window.ImageQueueThumbs = {
     } catch {}
   },
 
+  _requestable(imgId) {
+    if (imgId && this._store()) return true;
+    return false;                              // store missing: the facade's report already named it
+  },
+
   request(imgId, imgEl) {
-    if (!imgId) return;
+    if (!this._requestable(imgId)) return;
     if (this._fromCache(imgId, imgEl)) return;
     const b = window.App && window.App.bridge;
     if (!b || !b.get_image_thumbnail) return;
@@ -42,7 +47,7 @@ window.ImageQueueThumbs = {
 
   fetchAll(images) {
     const b = window.App && window.App.bridge;
-    if (!b || !b.get_image_thumbnail) return;
+    if (!b || !b.get_image_thumbnail || !this._store()) return;
     const list = (images || []).slice(0, 80);
     const cache = this._store().thumbCache;
     list.forEach((img, idx) => {
@@ -55,6 +60,7 @@ window.ImageQueueThumbs = {
   },
 
   onReady(imgId, payloadJson) {
+    if (!this._store()) return;                // store missing: the facade's report already named it
     try {
       const r = typeof payloadJson === 'string' ? JSON.parse(payloadJson) : payloadJson;
       if (!r.ok || !r.data_url) return;

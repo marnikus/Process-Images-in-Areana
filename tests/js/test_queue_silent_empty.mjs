@@ -39,17 +39,19 @@ function bootQueuePage() {
 const rowCount = (page) => page.anyEl('queueTableBody').children.length;
 const linesAbout = (page, needle) => page.logs.filter((l) => l.includes(needle));
 
-/* The merged-build damage in one line: the facade booted without its modules
-   (its init() cache stayed empty) and the file never registered on window. */
-const breakStore = (page) => page.run('window.ImageQueue._store = null; delete window.ImageQueueStore;');
+/* The merged-build damage in one line: the facade booted without the module —
+   nothing to cache, and the file never registered on window. */
+const breakStore = (page) => page.run('window.ImageQueue._cache = {}; delete window.ImageQueueStore;');
 
 describe('the Image Queue lane never fails silently (folder-picker-displays-nothing bug)', () => {
   test('a missing queue module is reported by name — never a raw TypeError', () => {
     const page = bootQueuePage();
+    const before = rowCount(page);                         // what boot rendered stays visible
     breakStore(page);
     page.emit('arena_state_updated', stateJson(IMAGES));
     page.flushTimers();
-    assert.equal(rowCount(page), 0);                       // no store → no rows, honestly
+    // the broken push touches nothing: the boot-rendered rows stay, none is added
+    assert.equal(rowCount(page), before, 'a broken lane never wipes or adds rows');
     const about = linesAbout(page, 'ImageQueueStore');
     assert.equal(about.length, 1, `one report, got: ${JSON.stringify(page.logs)}`);
     assert.ok(about[0].includes('image-queue/store.js'), `the report names the file: ${about[0]}`);
@@ -69,11 +71,13 @@ describe('the Image Queue lane never fails silently (folder-picker-displays-noth
 
   test('a module that appears later renders on the next push — no restart (RULE 24)', () => {
     const page = bootQueuePage();
+    const before = rowCount(page);
+    page.run('window.__realStore = window.ImageQueueStore');   // the file the repair re-delivers
     breakStore(page);
     page.emit('arena_state_updated', stateJson(IMAGES));
     page.flushTimers();
-    assert.equal(rowCount(page), 0);
-    page.run('window.ImageQueueStore = ImageQueueStore');   // the repaired/late-loaded file
+    assert.equal(rowCount(page), before, 'the broken push left the table untouched');
+    page.run('window.ImageQueueStore = window.__realStore');   // the repaired/late-loaded file
     page.emit('arena_state_updated', stateJson(IMAGES));
     page.flushTimers();
     assert.equal(rowCount(page), 3);

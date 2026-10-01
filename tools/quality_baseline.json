@@ -6178,8 +6178,8 @@
     "max_cc": 9,
     "max_nest": 2,
     "max_params": 4,
-    "file_lines": 184,
-    "func_count": 51,
+    "file_lines": 213,
+    "func_count": 53,
     "js": true
   },
   "app/ui/web/js/panels/image-queue/actions.js": {
@@ -6196,8 +6196,8 @@
     "max_cc": 8,
     "max_nest": 2,
     "max_params": 1,
-    "file_lines": 78,
-    "func_count": 10,
+    "file_lines": 98,
+    "func_count": 12,
     "js": true
   },
   "app/ui/web/js/panels/image-queue/store.js": {
@@ -6214,8 +6214,8 @@
     "max_cc": 7,
     "max_nest": 1,
     "max_params": 3,
-    "file_lines": 66,
-    "func_count": 11,
+    "file_lines": 72,
+    "func_count": 12,
     "js": true
   },
   "app/ui/web/js/panels/job-cycle-setting.js": {
