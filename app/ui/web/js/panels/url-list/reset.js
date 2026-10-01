@@ -1,16 +1,8 @@
-/* url-list/reset.js — the row's working state + the Stop / Clear-time actions.
+/* url-list/reset.js — row working state, Stop, and per-row cooldown reset.
 
-   2026-09-21 (D-7): the STATUS pill printed `UrlRow.status` — the CDP *validation*
-   status, whose default is `unchecked` — so a row never showed what its tab was
-   doing, `jobLineForTab` only knew `current_image` (a busy tab that lost its image
-   showed no line and a disabled Stop button), and Clear time answered
-   `{"ok": false, "error": "job still running on this tab"}` with no visible
-   feedback. State and the actions that return a row to a known state are one
-   story, so both live here — in a NEW module: the six frozen url-list files must
-   not grow (RULE 18 / the JS ratchet).
-
-   Python owns every decision; this module only derives the label from the pool
-   page the row already receives (`D-7`) and reports the reply honestly. */
+   2026-09-21 (D-7): derive the status/job line from the row's pool page so busy
+   tabs remain visible and stoppable. Python owns reset decisions; this module
+   calls the canonical row-reset slot and reports its reply. */
 'use strict';
 const UrlListReset = {
   FLASH_MS: 1200,
@@ -70,7 +62,7 @@ const UrlListReset = {
 
   _label(tab) { return window.TabLabel ? window.TabLabel.of(tab) : tab; },
   _fmt(s) { return window.PagePoolPanel ? window.PagePoolPanel.fmt(s) : `${s}s`; },
-  _parse(res) { try { return JSON.parse(res); } catch { return null; } },
+  _parse(res) { try { return typeof res === 'string' ? JSON.parse(res) : res; } catch { return null; } },
 
   /* ---- Stop: abort a live job, or repair a tab no run owns (D-3) ---- */
 
@@ -96,21 +88,27 @@ const UrlListReset = {
   clearTime(urlId, row) {
     const tab = this._tabOf(urlId);
     if (!tab) { LogConsole.log('Clear time: row has no linked tab yet', 'warn'); return; }
-    const b = this._bridge();
-    if (b && b.reset_page_cooldown) b.reset_page_cooldown(tab, (res) => this._onClear(tab, urlId, row, res));
+    const b = this._bridge(), target = row || this._rowOf(urlId);
+    if (!b || typeof b.reset_page_cooldown !== 'function') {
+      LogConsole.log('Clear time: bridge unavailable', 'error');
+      return;
+    }
+    window.UrlListInlineEdit?.showClearedTime(target);
+    try { b.reset_page_cooldown(tab, (res) => this._onClear(tab, urlId, target, res)); }
+    catch (error) { this._onClear(tab, urlId, target, { ok: false, error: String(error) }); }
   },
 
   _onClear(tab, urlId, row, res) {
     const r = this._parse(res);
-    if (!r || !r.ok) { LogConsole.log('Clear time: ' + ((r && r.error) || 'failed'), 'error'); return; }
-    const was = this._fmt(r.was || 0);
-    if (r.busy) {
-      LogConsole.log(`⏳ Clear time: tab ${this._label(tab)} still busy — ${was} removed, the job keeps its page`, 'warn');
+    if (!r?.ok) {
+      LogConsole.log('Clear time: ' + (r?.error || 'failed'), 'error');
+      window.PagePoolPanel?.refresh?.();
       return;
     }
-    const tail = r.job_cleared ? ' (stale job cleared)' : '';
-    LogConsole.log(`♻️ Clear time: tab ${this._label(tab)} ready now — ${was} removed${tail}`, 'success');
-    this.flashCleared(row || this._rowOf(urlId));
+    const target = row || this._rowOf(urlId), was = this._fmt(r.was ?? 0);
+    if (r.busy) return LogConsole.log(`⏳ Clear time: tab ${this._label(tab)} still busy — ${was} removed, the job keeps its page`, 'warn');
+    LogConsole.log(`♻️ Clear time: tab ${this._label(tab)} ready now — ${was} removed${r.job_cleared ? ' (stale job cleared)' : ''}`, 'success');
+    this.flashCleared(target);
   },
 
   /** Green blink on the cool cell: the user asked for a visible confirmation. */
@@ -128,14 +126,10 @@ const UrlListReset = {
     return [...tbody.querySelectorAll('tr')].find(tr => String(tr.dataset.urlId) === String(urlId)) || null;
   },
 
-  /** The row's ♻️ button: cool-reset is Clear time, cool-edit edits the pause. */
-  coolAction(action, btn) {
+  /** The row's ♻️ button: clear only this tab's active cooldown. */
+  coolAction(btn) {
     const tabId = btn && btn.dataset ? btn.dataset.tabId : null;
     if (!tabId) { LogConsole.log('⚠ Tab not in pool — Connect it, then add to pool first', 'warn'); return; }
-    if (action !== 'cool-reset') {
-      if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.editCooldown(tabId);
-      return;
-    }
     this.clearTime(btn.dataset.urlId, btn.closest ? btn.closest('tr') : null);
   },
 };

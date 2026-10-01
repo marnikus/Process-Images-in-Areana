@@ -19,6 +19,7 @@ const read = (rel) => fs.readFileSync(path.join(PANELS, rel), 'utf-8');
 
 const MODULES = ['page-pool/render.js', 'page-pool/store.js', 'page-pool/cells.js',
   'url-list/render.js', 'url-list/matching.js', 'url-list/cells.js',
+  'url-list/inline-edit.js', 'url-list/reset-all.js',
   'live-debug/render.js', 'live-debug/store.js'];
 
 /** The pool table row for one page, rendered by the real module. */
@@ -53,9 +54,10 @@ describe('the counter is a number in every view', () => {
     assert.match(row, /<td title="Jobs completed">0<\/td>/);
   });
 
-  test('the URL-list Jobs cell is the same plain number', () => {
-    const text = read('url-list/render.js');
-    assert.match(text, /title="Jobs completed"/);
+  test('the URL-list Jobs value is the focusable inline editor', () => {
+    const text = read('url-list/inline-edit.js');
+    assert.match(text, /class="url-inline-value url-inline-jobs"/);
+    assert.match(text, /aria-label="Jobs for/);
     assert.ok(!/lowest|fewest|balance/i.test(text), 'no routing promise in the URL list');
   });
 

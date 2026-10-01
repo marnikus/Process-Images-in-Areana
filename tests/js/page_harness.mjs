@@ -23,7 +23,8 @@ export const WEB = path.resolve(__dirname, '../../app/ui/web');
 
 El.prototype.setAttribute ||= function (k, v) { (this._attrs ||= {})[k] = String(v); };
 El.prototype.getAttribute ||= function (k) { return (this._attrs || {})[k] ?? null; };
-El.prototype.focus ||= () => {};
+El.prototype.focus ||= function () { this.focused = true; };
+El.prototype.select ||= function () { this.selected = true; };
 
 export function pageScripts() {
   const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf8');
@@ -88,7 +89,8 @@ export function bootPage({ replies = {}, prepare = null, rawBridgeProps = {} } =
       readyState: 'loading', body: new El('body'), documentElement: new El('html'), head: new El('head'),
       getElementById: anyEl, querySelector: () => null, querySelectorAll: () => [],
       createElement: (t) => new El(t), createTextNode: (t) => ({ textContent: t }),
-      addEventListener: (t, f) => { (docListeners[t] ||= []).push(f); }, removeEventListener() {}, dispatchEvent() {},
+      addEventListener: (t, f) => { (docListeners[t] ||= []).push(f); }, removeEventListener() {},
+      dispatchEvent: (event) => (docListeners[event.type] || []).slice().forEach((f) => f(event)),
     },
     qt: { webChannelTransport: {} },
   };

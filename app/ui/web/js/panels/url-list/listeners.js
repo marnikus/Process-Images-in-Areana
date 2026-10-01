@@ -1,11 +1,11 @@
-/* url-list/listeners.js — ALL DOM listeners of the URL window, bound once.
+/* url-list/listeners.js — URL List row/bar DOM listeners, bound once.
 
    Bug (2026-10-02): the facade bound urlAddBtn/urlInput/… itself while the
    actions module was also reachable, so a second init() (state restore)
-   double-fired "Add" (→ "URL already exists" toast) and the table body got
-   stacked click handlers. Now the facade delegates here and every binding
-   goes through Boot.bindOnce. Element ids: urlAddBtn, urlInput,
-   urlTableBody, urlReparseBtn, urlPopupBtn, urlCooldownSaveBtn. */
+   double-fired "Add" (→ "URL already exists" toast) and stacked table handlers.
+   The facade delegates here; inline-edit and reset-all bind their own delegated
+   controls here too. Element ids: urlAddBtn, urlInput, urlTableBody,
+   urlReparseBtn, urlPopupBtn, urlCooldownSaveBtn. */
 'use strict';
 
 window.UrlListListeners = {
@@ -20,16 +20,15 @@ window.UrlListListeners = {
 
   /** Returns true when the mandatory elements exist (facade skips otherwise). */
   bind(facade) {
-    const addBtn = document.getElementById('urlAddBtn');
-    const input = document.getElementById('urlInput');
-    const tableBody = document.getElementById('urlTableBody');
-    if (!addBtn || !input || !tableBody) return false;
+    if (!['urlAddBtn', 'urlInput', 'urlTableBody'].every(id => document.getElementById(id))) return false;
     this._bind('urlAddBtn', 'click', () => facade.addUrl());
     this._bind('urlInput', 'keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); facade.addUrl(); } });
-    this._bind('urlReparseBtn', 'click', () => facade.reparseTabs());
+    this._bind('urlReparseBtn', 'click', facade.reparseTabs.bind(facade));
     this._bind('urlPopupBtn', 'click', () => facade.popupTabs());
     this._bind('urlCooldownSaveBtn', 'click', () => facade.saveCooldownConfig());
     this._bind('urlTableBody', 'click', (e) => this.onTableClick(facade, e));
+    window.UrlListResetAll?.bindToolbar(facade);
+    window.UrlListInlineEdit?.bind(facade);
     return true;
   },
 
@@ -55,6 +54,6 @@ window.UrlListListeners = {
       'stop-job': () => facade.stopJob(urlId),
     };
     if (map[action]) { map[action](); return; }
-    if (action === 'cool-reset' || action === 'cool-edit') facade.coolAction(action, btn);
+    if (action === 'cool-reset') facade.coolAction(btn);
   },
 };

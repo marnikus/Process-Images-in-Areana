@@ -23,6 +23,7 @@ from .json_store import load_json as _load_json, save_json_atomic as _atomic_wri
 _VERSION = 1
 _MAX_ENTRIES = 25
 MAX_ALIASES = 200
+_WORKER_STATS_PREFIX = "\x00worker:"
 
 
 def _is_idle_expired(entry: dict, now: float) -> bool:
@@ -134,14 +135,14 @@ def _saved_jobs(val: Any) -> int:
 
 
 def load_stats(path) -> dict:
-    """Job counters by normalized URL; malformed values dropped."""
+    """Legacy URL maxima plus exact per-worker counters; malformed values dropped."""
     raw = _load_json(Path(path), {})
     stats = raw.get("stats", {}) if isinstance(raw, dict) else {}
     if not isinstance(stats, dict):
         return {}
     clean: dict[str, dict] = {}
     for url, val in stats.items():
-        key = normalize_url(url)
+        key = _stats_key(url)
         if not key or not isinstance(val, dict):
             continue
         count = val.get("jobs_completed", 0)
@@ -197,12 +198,16 @@ def _merge_page_alias(aliases: dict, page: dict) -> None:
 
 
 def _merge_page_stats(stats: dict, page: dict) -> None:
-    """Fold one page's job counter in; stored count never decreases."""
-    key = normalize_url(page.get("url", ""))
+    """Fold a monotone URL fallback and an exact worker counter into stats."""
     done = page.get("jobs_completed", 0)
-    if not key or isinstance(done, bool) or not isinstance(done, int):
+    if isinstance(done, bool) or not isinstance(done, int) or done < 0:
         return
-    stats[key] = {"jobs_completed": max(_saved_jobs(stats.get(key)), done)}
+    worker_key = worker_stats_key(page.get("tab_id", ""))
+    if worker_key:
+        stats[worker_key] = {"jobs_completed": done}
+    key = normalize_url(page.get("url", ""))
+    if key:
+        stats[key] = {"jobs_completed": max(_saved_jobs(stats.get(key)), done)}
 
 
 def save_pool_snapshot(path, pool) -> None:
@@ -228,6 +233,18 @@ def normalize_url(url: Any) -> str:
     if not isinstance(url, str):
         return ""
     return url.strip().lower().rstrip("/")
+
+
+def worker_stats_key(tab_id: Any) -> str:
+    """Reserved stats-map key for one exact worker counter."""
+    return f"{_WORKER_STATS_PREFIX}{tab_id}" if isinstance(tab_id, str) and tab_id else ""
+
+
+def _stats_key(raw: Any) -> str:
+    """Keep reserved worker ids exact; normalize all legacy URL keys."""
+    if isinstance(raw, str) and raw.startswith(_WORKER_STATS_PREFIX):
+        return raw if len(raw) > len(_WORKER_STATS_PREFIX) else ""
+    return normalize_url(raw)
 
 
 def _owned_by_other(entry: dict, tab_id: str, known) -> bool:

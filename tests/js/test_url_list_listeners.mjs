@@ -86,7 +86,7 @@ describe('UrlListListeners.onTableClick', () => {
     L.onTableClick(f, evOn(cool));
     assert.deepEqual(f.calls, [
       ['toggleUrl', 'u1'], ['toggleUrl', 'u2'], ['removeUrl', 'u2'],   // 'test'/'edit': removed 2026-09-27, routed nowhere
-      ['connectUrl', 'u2'], ['stopJob', 'u2'], ['coolAction', 'cool-reset', cool],
+      ['connectUrl', 'u2'], ['stopJob', 'u2'], ['coolAction', cool],
     ]);
   });
 

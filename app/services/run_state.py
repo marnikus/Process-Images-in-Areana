@@ -335,7 +335,7 @@ def pooled_ids(pool) -> set:
 
 
 def _restore_job_counter(bridge, tab_id: str, page_url: str) -> None:
-    """Re-apply one tab's saved job counter (never moves backwards)."""
+    """Restore the exact worker correction, falling back to the legacy URL maximum."""
     try:
         stats = load_stats(cooldowns_path(bridge))
         restore_page_stats(bridge._page_pool, tab_id, normalize_url(page_url), stats)

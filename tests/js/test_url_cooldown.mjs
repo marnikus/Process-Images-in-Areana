@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const baseDir = path.resolve(__dirname, '../../app/ui/web/js/panels/url-list');
-const files = ['store.js','render.js','matching.js','cooldown.js','actions.js','../url-list.js'];
+const files = ['store.js','../../core/tab-label.js','inline-edit.js','render.js','matching.js','cooldown.js','actions.js','../url-list.js'];
 const panelPath = path.resolve(__dirname, '../../app/ui/web/js/panels/url-list.js');
 
 function loadAllCode() {
@@ -93,7 +93,7 @@ describe('assignPoolPages greedy 1:1', () => {
 describe('_fillJobsCell', () => {
   const fakeRow = () => {
     const cell = {};
-    return { cell, tr: { querySelector: (sel) => sel === '.url-jobs-cell' ? cell : null } };
+    return { cell, tr: { dataset: { urlId: 'u1' }, querySelector: (sel) => sel === '.url-jobs-cell' ? cell : null } };
   };
 
   test('renders the matched tab counter', () => {

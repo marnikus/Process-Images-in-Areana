@@ -136,6 +136,13 @@ export class El {
   dispatch(type, ev) {
     (this._listeners[type] || []).slice().forEach((fn) => fn(ev));
   }
+  dispatchBubbling(type, ev = {}) {
+    const event = ev;
+    event.type ||= type;
+    event.target ||= this;
+    for (let node = this; node; node = node.parent) node.dispatch(type, event);
+    return event;
+  }
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
   querySelectorAll(sel) { return queryAll(this, sel); }
   closest(sel) {

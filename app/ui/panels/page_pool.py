@@ -1,13 +1,13 @@
-"""Page pool panel — pooled tabs, cooldown config, per-tab cooldown control.
+"""Page pool panel — pooled tabs, cooldown config, and inline worker controls.
 
-Owns the 9 pool slots (R6): thin slots delegate to module funcs. Cooldown
-persistence/restore runs through app/services/run_state (contract §2):
-`Bridge._persist_cooldowns` delegates there, and the bridge-local
-restore/cooldowns-path/pooled-ids twins were deleted after the flip
-(proven equivalent, same log lines). Browser imports stay lazy inside
-`do_connect_page_pool` (fault tolerance + panels never import browser
-at top level). Imports go panels -> services/core only.
-ideal-size: ~320 lines — the 9 frozen pool slots' module helpers live together (R6).
+Nine established pool slots stay grouped here; the two URL List inline
+control slots are inherited from `PagePoolInlineControlsMixin`, keeping the
+original mixin's method surface within its quality baseline. Slot bodies
+remain thin and delegate to services. Cooldown persistence/restore runs
+through app/services/run_state (contract §2). Browser imports stay lazy inside
+`do_connect_page_pool` (fault tolerance + panels never import browser at top
+level). Imports go panels -> services/core only.
+ideal-size: ~330 lines — the cohesive pool lifecycle helpers and slots share the pool contract (R6).
 """
 
 import json
@@ -15,12 +15,8 @@ import re
 
 from app.core.cooldown import clamp_seconds, config_to_dict, format_remaining
 from app.persistence.cooldown_store import save_entries
-from app.services import new_tab_setting, tab_reset
-from app.services.cooldown_service import (
-    edit_cooldown,
-    load_config,
-    refresh_expired,
-)
+from app.services import cooldown_reset, new_tab_setting, pool_status, tab_reset, worker_stats
+from app.services.cooldown_service import edit_cooldown, load_config
 from app.services.live.bus import live_bus
 from app.services.live.tab_owner import resolve_owners
 from app.services.live.worker_badges import assert_badges, clear_badge
@@ -220,30 +216,29 @@ def _cooldown_line(cfg: dict, tab: dict) -> str:
             f"{tab['url'] if tab['enabled'] else 'off'}")
 
 
-class PagePoolMixin:
+class PagePoolInlineControlsMixin:
+    """URL List-only reset and display-counter slots, separate from pool lifecycle."""
+
+    @Slot(result=str)
+    def reset_all_cooldowns(self):
+        return json.dumps(cooldown_reset.reset_all_cooldowns(self), ensure_ascii=False)
+
+    @Slot(str, str, result=str)
+    def set_page_job_count(self, tab_id: str, count_text: str):
+        result = worker_stats.edit_page_job_count(self, tab_id, count_text)
+        return json.dumps(result, ensure_ascii=False)
+
+
+class PagePoolMixin(PagePoolInlineControlsMixin):
     """Pooled-tab management and cooldown config/control slots.
 
-    ideal-size: 9 frozen JS slots; validate/wire helpers already live at
-    module level — remaining per-slot bodies cannot move without
-    scattering slot+helper pairs (R10.10).
+    The nine established pool slots retain their direct method surface;
+    inline-only actions are inherited from the focused controls mixin.
     """
 
     @Slot(result=str)
     def get_page_pool_status(self):
-        try:
-            if not self._page_pool:
-                return json.dumps({"total": 0, "steady": 0, "busy": 0, "cooling": 0, "free": 0, "pages": []})
-            try:
-                for _tid in refresh_expired(self._page_pool):
-                    self._log(f"✅ Page {_tid[:12]} cooldown expired — STEADY ready", "success")
-            except Exception:
-                pass
-            snap = self._page_pool.status_snapshot()
-            self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
-            self._persist_cooldowns()
-            return json.dumps(snap, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+        return pool_status.get_page_pool_status(self)
 
     @Slot(result=str)
     def clear_page_pool(self):

@@ -20,6 +20,7 @@ REPRESENTATIVE_SLOTS = (
     "start_run", "pause_run", "stop_after_current", "cancel_current",
     "get_tabs", "connect_tab", "auto_connect_scan", "get_arena_state",
     "save_settings", "undo", "redo", "get_action_blocks",
+    "reset_all_cooldowns", "set_page_job_count",
 )
 
 

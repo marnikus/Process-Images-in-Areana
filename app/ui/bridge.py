@@ -18,6 +18,7 @@ from app.persistence.config_manager import ConfigManager
 from app.ui.panels import blocks_stack, layout_state
 from app.ui.panels.watcher_captcha import captcha_service
 from app.services.run_state import persist_cooldowns
+from app.services.pool_status import publish_pool_status
 from app.ui.bridge_context import (
     build_context, init_run_state, init_tracking_state,
     log_build_version, wire_cdp)
@@ -103,14 +104,7 @@ class Bridge(QObject, LayoutStateMixin, BlocksLibraryMixin, BlocksStackMixin, Un
         log_build_version(self)
 
     def _emit_pool_status(self):
-        try:
-            if not self._page_pool:
-                return
-            snap = self._page_pool.status_snapshot()
-            self.page_pool_updated.emit(json.dumps(snap, ensure_ascii=False))
-            self._persist_cooldowns()
-        except Exception:
-            pass
+        return publish_pool_status(self)
 
 
     def _persist_cooldowns(self):

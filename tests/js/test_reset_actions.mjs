@@ -51,7 +51,7 @@ function harness({ log = [] } = {}) {
   sandbox.window = sandbox;
   sandbox.App = { bridge, state: { urls: [] } };
   vm.createContext(sandbox);
-  for (const f of ['store.js', 'matching.js', 'reset.js']) {
+  for (const f of ['store.js', 'matching.js', 'inline-edit.js', 'reset.js']) {
     vm.runInContext(read(f), sandbox, { filename: f });
   }
   return { R: sandbox.window.UrlListReset, sandbox, byId, slots, log, timers, bridge };
@@ -206,6 +206,54 @@ describe('UrlListReset.stopJob / clearTime (the actions)', () => {
     assert.match(log.at(-1).m, /04:31/);
   });
 
+  test('row reset displays 00:00 immediately while preserving a live pending-debt label', () => {
+    const { R, sandbox, slots } = harness();
+    store_urls(sandbox, [{ id: 'u1', tab_id: 't1' }]);
+    slots.replies.reset_page_cooldown = { ok: true, was: 30, busy: true, job_cleared: false };
+    const tr = row('u1', 't1');
+    const button = new El('button');
+    button.className = 'url-inline-value url-inline-cooldown';
+    const clock = new El('span');
+    clock.className = 'url-cooldown-clock';
+    clock.textContent = '00:30';
+    button.appendChild(clock);
+    const total = new El('span');
+    total.className = 'url-cooldown-total';
+    total.textContent = ' / 05:00';
+    button.appendChild(total);
+    const cell = tr.querySelector('.url-cool-cell');
+    cell.appendChild(button);
+    const debt = new El('span');
+    debt.textContent = '+01:20 debt';
+    cell.appendChild(debt);
+
+    R.clearTime('u1', tr);
+
+    assert.equal(clock.textContent, '00:00');
+    assert.equal(debt.textContent, '+01:20 debt');
+    assert.equal(clock.dataset.coolLeft, '0');
+    assert.equal(total.textContent, '', 'the live timer total disappears immediately');
+  });
+
+  test('row reset paints 00:00 before the asynchronous persistence reply', () => {
+    const { R, sandbox } = harness();
+    store_urls(sandbox, [{ id: 'u1', tab_id: 't1' }]);
+    const tr = row('u1', 't1'), button = new El('button'), clock = new El('span');
+    button.className = 'url-inline-value url-inline-cooldown';
+    clock.className = 'url-cooldown-clock';
+    clock.textContent = '00:30';
+    button.appendChild(clock);
+    tr.querySelector('.url-cool-cell').appendChild(button);
+    let reply;
+    sandbox.App.bridge = { reset_page_cooldown: (_tab, callback) => { reply = callback; } };
+
+    R.clearTime('u1', tr);
+
+    assert.equal(clock.textContent, '00:00', 'the row updates before Python replies');
+    reply(JSON.stringify({ ok: true, was: 30, busy: false, job_cleared: false }));
+    assert.equal(clock.textContent, '00:00');
+  });
+
   test('clearTime never flashes or claims ready while a job still runs', () => {
     const { R, sandbox, slots, log } = harness();
     store_urls(sandbox, [{ id: 'u1', tab_id: 't1' }]);
@@ -230,27 +278,25 @@ describe('UrlListReset.stopJob / clearTime (the actions)', () => {
     assert.ok(tr.querySelector('.url-cool-cell').classList.contains('url-cool-cleared'));
   });
 
-  test('coolAction routes cool-reset through clearTime and cool-edit to the pool panel', () => {
+  test('coolAction routes the retained row reset through the canonical clear-time slot', () => {
     const { R, sandbox, slots } = harness();
     store_urls(sandbox, [{ id: 'u1', tab_id: 't1' }]);
     slots.replies.reset_page_cooldown = { ok: true, was: 0, busy: false };
-    const edited = [];
-    sandbox.PagePoolPanel.editCooldown = (t) => edited.push(t);
     const btn = new El('button');
     btn.dataset = { action: 'cool-reset', urlId: 'u1', tabId: 't1' };
     const tr = row('u1', 't1');
     tr.appendChild(btn);
-    R.coolAction('cool-reset', btn);
+    R.coolAction(btn);
     assert.equal(slots.calls[0].slot, 'reset_page_cooldown');
-    R.coolAction('cool-edit', btn);
-    assert.deepEqual(edited, ['t1']);
+    assert.doesNotMatch(read('render.js'), /data-action="cool-edit"/);
+    assert.doesNotMatch(read('reset.js'), /cool-edit|editCooldown/);
   });
 
   test('a tab-less row is refused by coolAction, exactly like before', () => {
     const { R, log } = harness();
     const btn = new El('button');
     btn.dataset = { action: 'cool-reset', urlId: 'u1' };
-    R.coolAction('cool-reset', btn);
+    R.coolAction(btn);
     assert.match(log.at(-1).m, /Tab not in pool/);
   });
 });

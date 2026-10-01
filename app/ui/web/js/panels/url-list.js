@@ -1,6 +1,6 @@
-/* url-list.js — facade C14 ≤200 LOC, delegates to store/render/matching/actions/cooldown/listeners.
-   2026-10-02: DOM listeners live in url-list/listeners.js (bound once via Boot.bindOnce);
-   the facade never calls addEventListener itself. */
+/* url-list.js — facade C14 ≤200 LOC, delegates to URL List modules.
+   Row listeners live in listeners.js; the inline editor and reset toolbar own
+   their small delegated bindings, each guarded by a one-time binder. */
 'use strict';
 
 const UrlList = {
@@ -45,7 +45,7 @@ const UrlList = {
   toggleUrl(id) { return this._actions?.toggleUrl(id); },
   connectUrl(id) { return this._actions?.connectUrl(id); },
   stopJob(id) { return this._actions?.stopJob(id); },
-  coolAction(a,b) { return this._actions?.coolAction(a,b); },
+  coolAction(button) { return this._actions?.coolAction(button); },
   reparseTabs() { return this._actions?.reparseTabs(); },
   popupTabs() { return this._actions?.popupTabs(); },
 
@@ -69,6 +69,7 @@ const UrlList = {
       this.poolPages = (snap && snap.pages) || [];
       if (this._store) this._store.poolPages = this.poolPages;
     } catch { this.poolPages = []; }
+    if (window.UrlListResetAll) window.UrlListResetAll.onPoolUpdate(payload);
     this.updateJobLines();
   },
 
@@ -96,8 +97,7 @@ const UrlList = {
       else page = this.matchUnclaimedPage(tr.dataset.url || '', pages, claimed);
       this._fillTabCell(tr, page);
       if (this._reset) this._reset.fillStatusCell(tr, page);  // D-7 working state
-      this._fillCoolCell(tr, page);
-      this._fillJobsCell(tr, page);
+      this._render?.fillSnapshotCells(tr, page);
     });
   },
 
@@ -121,7 +121,7 @@ const UrlList = {
 
   _fillTabCell(tr, page) { return this._cells?.fillTabCell(tr, page); },
   _fillCoolCell(tr, page) { return this._cells?.fillCoolCell(tr, page); },
-  _fillJobsCell(tr, page) { return this._render?.fillJobsCell(tr, page); },
+  _fillJobsCell(tr, page) { return window.UrlListInlineEdit?.fillJobsCell(tr, page); },
 };
 
 // Global-name contract (see boot.js): publish the lexical const for window[name] lookups.

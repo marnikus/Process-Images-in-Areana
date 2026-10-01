@@ -22,13 +22,13 @@ from typing import Any
 
 from app.browser.new_chat import ResetCtx, reset_to_new_chat
 from app.browser.page_status import PageStatus
+from app.services.cooldown_reset import clear_cooldown_fields
 from app.core.cooldown import format_remaining
 from app.services.cooldown_service import (
     clear_tab_abort,
     force_reset_page,
     load_config,
     request_tab_abort,
-    reset_cooldown,
     start_cooldown,
 )
 from app.services.run_state import batch_active, schedule_coro, tab_label_of
@@ -339,7 +339,7 @@ def _drop_timer(bridge: Any, tab_id: str) -> None:
         with pool._lock:
             page = pool._pages.get(tab_id)
             if page is not None:
-                page.clear_timer()
+                clear_cooldown_fields(page, preserve_pending=True)
     except Exception:
         pass
 
@@ -347,7 +347,8 @@ def _drop_timer(bridge: Any, tab_id: str) -> None:
 def _repair(pool: Any, tab_id: str, page) -> bool:
     """Free a really idle tab; a stale job goes with it (fixes F-1)."""
     if not _needs_reset(page):
-        reset_cooldown(pool, tab_id)
+        with pool._lock:
+            clear_cooldown_fields(page, settle=True)
         return False
     _forget_job(pool, tab_id)
     force_reset_page(pool, tab_id)

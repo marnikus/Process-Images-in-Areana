@@ -53,6 +53,36 @@
   border-radius: 4px;
   transition: background .15s ease-in;
 }
+.url-inline-value {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0 2px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  cursor: text;
+}
+.url-inline-cooldown, .url-inline-jobs { min-width: 8ch; }
+.url-inline-value:hover { border-color: var(--border); background: var(--bg-input); }
+.url-inline-value:focus-visible { outline: 2px solid var(--accent, #4dabf7); outline-offset: 1px; }
+.url-inline-input {
+  box-sizing: border-box;
+  border: 1px solid var(--accent, #4dabf7);
+  border-radius: 3px;
+  padding: 0 2px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.url-inline-input--cooldown { width: 8ch; }
+.url-inline-input--jobs { width: 8ch; }
+#urlResetAllCooldownsBtn:not(:disabled):hover { border-color: var(--accent, #4dabf7); color: var(--text-primary); }
+#urlResetAllCooldownsBtn:focus-visible { outline: 2px solid var(--accent, #4dabf7); outline-offset: 2px; }
+#urlResetAllCooldownsBtn:disabled { cursor: not-allowed; opacity: .55; }
 
 /* Folder Picker */
 .folder-path {

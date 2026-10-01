@@ -162,7 +162,7 @@ def test_stats_merge_keeps_absent_and_entries_intact(tmp_path):
     pool.get_page("a").jobs_completed = 1
     store.save_pool_snapshot(path, pool)
     stats = store.load_stats(path)
-    assert set(stats) == {store.normalize_url("https://arena.ai/new")}
+    assert set(stats) == {store.normalize_url("https://arena.ai/new"), store.worker_stats_key("a")}
     # entries section unaffected by stats-only pages
     assert store.load_entries(path) == {}
 

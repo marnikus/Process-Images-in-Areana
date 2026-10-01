@@ -36,12 +36,8 @@ const UrlListCells = {
     else { delete btn.dataset.tabId; btn.disabled = true; btn.style.opacity = '0.4'; }
   },
 
-  _clockHtml(page) {
-    const left = page.cooldown_remaining || 0;
-    const total = page.cooldown_total || 0;
-    const of = (left > 0 && total > 0) ? ` / ${this._fmt(total)}` : '';
-    const title = this._store().esc(page.cooldown_reason || (left > 0 ? 'cooling' : 'no active timer'));
-    return `<span data-cool-tab="${this._store().esc(page.tab_id)}" data-cool-left="${left}" data-cool-at="${Date.now()}" title="${title}">${this._fmt(left)}${of}</span>`;
+  _clockHtml(page, urlId) {
+    return window.UrlListInlineEdit.cooldownHtml(page, urlId, this._fmt.bind(this));
   },
 
   _busyHtml(page, left) {
@@ -57,34 +53,19 @@ const UrlListCells = {
     const cell = tr.querySelector('.url-cool-cell');
     if (!cell) return;
     const resetBtn = tr.querySelector('button[data-action="cool-reset"]');
-    const editBtn = tr.querySelector('button[data-action="cool-edit"]');
     if (!page) {
       cell.innerHTML = '<span style="color:var(--text-muted);" title="Tab not in pool">—</span>';
       this._setTabBtn(resetBtn, null);
-      this._setTabBtn(editBtn, null);
       return;
     }
     this._setTabBtn(resetBtn, page.tab_id);
-    this._setTabBtn(editBtn, page.tab_id);
-    const left = page.cooldown_remaining || 0;
-    const pending = page.pending_penalty || 0;
-    cell.innerHTML = this._busyHtml(page, left) + this._clockHtml(page)
+    const left = page.cooldown_remaining || 0, pending = page.pending_penalty || 0;
+    cell.innerHTML = this._busyHtml(page, left) + this._clockHtml(page, tr.dataset.urlId)
       + (pending > 0 ? this._debtHtml(pending) : '') + this._badge(page);
   },
 
-  /* Element-anchored tick: each clock carries its own `data-cool-at`, and 00:00
-     is a hard floor — the value only ever counts down. */
-  tick(root) {
-    if (!root || !root.querySelectorAll) return;
-    root.querySelectorAll('.url-cool-cell [data-cool-left]').forEach(el => {
-      const base = parseInt(el.getAttribute('data-cool-left') || '0', 10);
-      const at = parseInt(el.getAttribute('data-cool-at') || '0', 10);
-      const left = Math.max(0, base - Math.floor((Date.now() - at) / 1000));
-      const txt = el.textContent;
-      el.textContent = left <= 0 ? this._fmt(0)
-        : this._fmt(left) + (txt.includes('/') ? ' ' + txt.slice(txt.indexOf('/')) : '');
-    });
-  },
+  /* Clock edits and ticks share the inline button's anchored time values. */
+  tick(root) { return window.UrlListInlineEdit.tick(root, this._fmt.bind(this)); },
 };
 
 // Global-name contract (see boot.js): publish the lexical const for window[name] lookups.

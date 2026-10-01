@@ -59,7 +59,7 @@ function urlRowStub() {
   };
   add('td', 'url-tab-cell');
   add('td', 'url-cool-cell');
-  for (const action of ['cool-reset', 'cool-edit']) {
+  for (const action of ['cool-reset']) {
     const btn = add('button', 'btn-small');
     btn.dataset.action = action;
   }

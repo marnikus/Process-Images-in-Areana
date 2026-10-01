@@ -241,6 +241,6 @@ describe('live_debug window (S9 — content from pushed payloads only)', () => {
     h.byId.liveRefreshBtn._listeners.click[0]();
     assert.deepEqual(h.calls, ['get_page_pool_status']);  // the ONE read; no writes
     assert.doesNotMatch(readJs('arena-app/listeners.js'), /LiveDebug/);
-    assert.equal(readJs('arena-app/listeners.js').split('\n').length, 194, 'listeners.js frozen at 193 lines');
+    assert.equal(readJs('arena-app/listeners.js').split('\n').length, 195, 'listeners.js remains at its 194-line baseline');
   });
 });

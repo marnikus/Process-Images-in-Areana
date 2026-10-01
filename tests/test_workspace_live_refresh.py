@@ -133,13 +133,16 @@ def test_session_restore_reapplies_watcher_config(bridge):
 def test_cooldown_restore_reapplies_into_the_live_pool(bridge, monkeypatch):
     from app.services.workspace.providers import cooldowns as cd
     calls = {"timers": [], "counters": []}
+    worker_key = cd.worker_stats_key("tab-1")
+    saved_stats = {"http://x": {"jobs_completed": 3},
+                   worker_key: {"jobs_completed": 1}}
     monkeypatch.setattr(cd, "load_entries",
                         lambda path: {"tab-1": {"cooldown_until": 123.0}})
-    monkeypatch.setattr(cd, "load_stats", lambda path: {"http://x": {"jobs_completed": 3}})
+    monkeypatch.setattr(cd, "load_stats", lambda path: saved_stats)
     monkeypatch.setattr(cd, "restore_cooldown_entry",
                         lambda pool, tab_id, entry: calls["timers"].append(tab_id) or True)
     monkeypatch.setattr(cd, "restore_page_stats",
-                        lambda pool, tab_id, url, row: calls["counters"].append(url) or 5)
+                        lambda pool, tab_id, url, stats: calls["counters"].append((url, stats)) or 5)
 
     class _Page:
         url = "http://x"
@@ -155,8 +158,24 @@ def test_cooldown_restore_reapplies_into_the_live_pool(bridge, monkeypatch):
     reply = _restore(bridge, snapshot)
     assert "cooldowns" in reply["restored"]
     assert calls["timers"] == ["tab-1"]          # the stale pool timer is replaced
-    assert calls["counters"] == ["http://x"]     # the restored counter is re-applied
+    assert calls["counters"] == [("http://x", saved_stats)]  # URL fallback + exact worker override re-applied
     assert any("re-applied 1 timer" in note for note in reply["reconciled"])
+
+
+def test_cooldown_reconcile_skips_workers_without_saved_stats():
+    from app.services.workspace.providers.cooldowns import CooldownsProvider
+
+    class Page:
+        url = "https://arena.ai/no-saved-count"
+        jobs_completed = 4
+
+    class Pool:
+        _pages = {"worker": Page()}
+
+    pool = Pool()
+
+    assert CooldownsProvider()._reapply_stats(pool, {}) == 0
+    assert pool._pages["worker"].jobs_completed == 4
 
 
 def test_failed_restore_does_not_touch_the_live_consumers(bridge, tmp_path):

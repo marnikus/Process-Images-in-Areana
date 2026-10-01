@@ -226,9 +226,9 @@ def test_closing_the_window_drops_the_cdp_socket_inside_a_guard():
     """The client disconnect is what close owes the browser — and it must never fail the close.
 
     `QMainWindow` cannot be imported in this sandbox (no libGL, as everywhere else in
-    this file), so the wiring is pinned by AST: `closeEvent` must route through
-    `_drop_browser_sockets`, and that helper must disconnect the CDP client inside a
-    guard. The deleted Firefox DevTools session (I-62) must not come back here.
+    this file), so the wiring is pinned by AST: `closeEvent` routes through
+    `_drop_browser_sockets`, which delegates to the guarded client cleanup helper.
+    The deleted Firefox DevTools session (I-62) must not come back here.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
     methods = _class_methods(tree, "MainWindow")
@@ -236,11 +236,20 @@ def test_closing_the_window_drops_the_cdp_socket_inside_a_guard():
     assert "_drop_browser_sockets" in _called_names(methods["closeEvent"]), \
         "closing the window must drop the browser sockets"
     body = methods["_drop_browser_sockets"]
-    assert "disconnect" in _called_names(body), "the CDP client is disconnected by name"
+    called = _called_names(body)
+    assert "_drop_pool_sockets" in called and "_drop_main_client" in called, \
+        "close must release pooled tabs and the main CDP client"
+    helpers = {node.name: node for node in tree.body
+               if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    assert "_drop_main_client" in helpers
+    cleanup = helpers["_drop_main_client"]
+    assert "disconnect" in _called_names(cleanup), "the CDP client is disconnected by name"
     assert not any("rdp" in name for name in _imported_names(body)), \
         "the Firefox debugger approach is deleted (I-62)"
     assert any(isinstance(item, ast.Try) for item in ast.walk(body)), \
         "a browser that stopped answering must not break the close"
+    assert any(isinstance(item, ast.Try) for item in ast.walk(cleanup)), \
+        "a browser that stopped answering must not break client cleanup"
 
 
 @pytest.mark.unit

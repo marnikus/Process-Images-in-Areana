@@ -1,4 +1,4 @@
-"""cooldowns provider — `config/cooldowns.json` (timers, per-URL job stats, aliases).
+"""cooldowns provider — `config/cooldowns.json` (timers, URL/worker job stats, aliases).
 
 The native file is the source of truth (written atomically on every pool
 push); capture reads it, apply rewrites it through the same atomic writer.
@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.persistence.cooldown_store import load_entries, load_stats, normalize_url
+from app.persistence.cooldown_store import (
+    load_entries, load_stats, normalize_url, worker_stats_key,
+)
 from app.persistence.json_store import save_json_atomic
 from app.services.cooldown_service import restore_cooldown_entry, restore_page_stats
 from app.services.workspace.provider import ApplyOutcome, CaptureResult, StateProvider, live_capture
@@ -88,11 +90,10 @@ class CooldownsProvider(StateProvider):
         applied = 0
         for tab_id, page in list(getattr(pool, "_pages", {}).items()):
             url = normalize_url(getattr(page, "url", "") or "")
-            row = stats.get(url)
-            if not row:
+            if not stats.get(worker_stats_key(tab_id), stats.get(url)):
                 continue
             try:
-                applied += 1 if restore_page_stats(pool, tab_id, url, row) >= 0 else 0
+                applied += 1 if restore_page_stats(pool, tab_id, url, stats) >= 0 else 0
             except Exception:
                 continue
         return applied
