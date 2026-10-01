@@ -230,20 +230,17 @@ describe('UrlListReset.stopJob / clearTime (the actions)', () => {
     assert.ok(tr.querySelector('.url-cool-cell').classList.contains('url-cool-cleared'));
   });
 
-  test('coolAction routes cool-reset through clearTime and cool-edit to the pool panel', () => {
+  test('coolAction routes cool-reset through clearTime and ignores any legacy edit path', () => {
     const { R, sandbox, slots } = harness();
     store_urls(sandbox, [{ id: 'u1', tab_id: 't1' }]);
     slots.replies.reset_page_cooldown = { ok: true, was: 0, busy: false };
-    const edited = [];
-    sandbox.PagePoolPanel.editCooldown = (t) => edited.push(t);
     const btn = new El('button');
     btn.dataset = { action: 'cool-reset', urlId: 'u1', tabId: 't1' };
     const tr = row('u1', 't1');
     tr.appendChild(btn);
-    R.coolAction('cool-reset', btn);
+    assert.equal(R.coolAction('cool-reset', btn), true);
     assert.equal(slots.calls[0].slot, 'reset_page_cooldown');
-    R.coolAction('cool-edit', btn);
-    assert.deepEqual(edited, ['t1']);
+    assert.equal(R.coolAction('cool-edit', btn), false);
   });
 
   test('a tab-less row is refused by coolAction, exactly like before', () => {

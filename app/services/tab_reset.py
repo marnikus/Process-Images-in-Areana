@@ -31,6 +31,7 @@ from app.services.cooldown_service import (
     reset_cooldown,
     start_cooldown,
 )
+from app.services.live.bus import live_bus
 from app.services.run_state import batch_active, schedule_coro, tab_label_of
 
 STOP_REASON = "stopped by user"
@@ -58,10 +59,18 @@ def _emit(bridge: Any) -> None:
         pass
 
 
-def _persist(bridge: Any) -> None:
+def _persist(bridge: Any) -> bool:
     """Persist the pause so a restart cannot restore the cleared one (D-3)."""
     try:
-        bridge._persist_cooldowns()
+        return bridge._persist_cooldowns() is not False
+    except Exception:
+        return False
+
+
+def _wake(bridge: Any, reason: str) -> None:
+    """A live run waiting on cooldown sees a manual reset at once."""
+    try:
+        live_bus(bridge).wake(reason)
     except Exception:
         pass
 
@@ -303,31 +312,85 @@ async def _park_affected(bridge: Any, pool: Any, seconds: int) -> int:
 
 def clear_time(bridge: Any, tab_id: str) -> dict:
     """Clear time: the pause goes and the row is ready now — and it says so (D-5)."""
+    result = _clear_result(bridge, tab_id)
+    if not result.get("ok"):
+        return result
+    _log(bridge, _clear_log_line(result), "warn" if result.get("busy") else "success")
+    _emit(bridge)
+    _persist(bridge)
+    _wake(bridge, "cooldown reset")
+    return _public_clear_reply(result)
+
+
+def clear_many(bridge: Any, tab_ids: list[str]) -> dict:
+    """Bulk clear-time path for the URL List button: one emit, one persist, one wake."""
+    results = [_clear_result(bridge, tab_id) for tab_id in _unique(tab_ids)]
+    changed = [r for r in results if r.get("ok") and r.get("changed")]
+    if changed:
+        _emit(bridge)
+        persisted = _persist(bridge)
+        _wake(bridge, "cooldown reset all")
+    else:
+        persisted = True
+    return {"ok": persisted and all(r.get("ok") for r in results),
+            "persisted": persisted, "results": results,
+            "reset_count": len(changed)}
+
+
+def _clear_result(bridge: Any, tab_id: str) -> dict:
+    """Pure clear-time outcome for one tab; caller decides log/emit/persist volume."""
     pool = _pool(bridge)
     if pool is None:
         return _refuse("pool not initialized")
     page = pool.get_page(tab_id)
     if page is None:
         return _refuse("unknown tab")
-    label = tab_label_of(pool, tab_id)
-    was = _remaining(pool, tab_id)
+    base = {"ok": True, "tab_id": tab_id, "label": tab_label_of(pool, tab_id),
+            "was": _remaining(pool, tab_id)}
     if _live_run(bridge) and _image_of(page):
-        return _clear_under_job(bridge, tab_id, label, was)
-    cleared = _repair(pool, tab_id, page)
-    _log(bridge, _clear_line(label, was, cleared), "success")
-    _emit(bridge)
-    _persist(bridge)
-    return {"ok": True, "was": was, "busy": False, "job_cleared": cleared}
+        _drop_timer(bridge, tab_id)
+        return _busy_clear_result(base)
+    return _idle_clear_result(pool, page, base)
 
 
-def _clear_under_job(bridge: Any, tab_id: str, label: str, was: int) -> dict:
-    """A live job keeps its page — only the countdown is zeroed, and we say so."""
-    _drop_timer(bridge, tab_id)
-    _log(bridge, f"⏳ Clear time: {label} still running — {format_remaining(was)} removed, "
-                 f"the job keeps its page", "warn")
-    _emit(bridge)
-    _persist(bridge)
-    return {"ok": True, "was": was, "busy": True, "job_cleared": False}
+def _busy_clear_result(base: dict) -> dict:
+    """A live job kept its page; only the timer disappeared."""
+    return {**base, "busy": True, "job_cleared": False, "changed": base["was"] > 0}
+
+
+def _idle_clear_result(pool: Any, page: Any, base: dict) -> dict:
+    """No live job owns the page: clear timer/debt, and stale job fields when needed."""
+    had_pending = max(0, int(getattr(page, "pending_penalty", 0) or 0)) > 0
+    return {**base, "busy": False,
+            "job_cleared": _repair(pool, base["tab_id"], page),
+            "changed": base["was"] > 0 or had_pending}
+
+
+def _public_clear_reply(result: dict) -> dict:
+    """Public JSON shape of one clear-time reply."""
+    return {"ok": True, "was": result.get("was", 0), "busy": bool(result.get("busy")),
+            "job_cleared": bool(result.get("job_cleared"))}
+
+
+def _clear_log_line(result: dict) -> str:
+    """The one operator-facing line after Clear time (RULE 2)."""
+    label = result.get("label", "")
+    was = int(result.get("was", 0) or 0)
+    if result.get("busy"):
+        return (f"⏳ Clear time: {label} still running — {format_remaining(was)} removed, "
+                f"the job keeps its page")
+    return _clear_line(label, was, bool(result.get("job_cleared")))
+
+
+def _unique(tab_ids: list[str]) -> list[str]:
+    """Stable de-duplication: a row list may mention the same tab only once."""
+    seen, out = set(), []
+    for tab_id in tab_ids:
+        if not tab_id or tab_id in seen:
+            continue
+        seen.add(tab_id)
+        out.append(tab_id)
+    return out
 
 
 def _drop_timer(bridge: Any, tab_id: str) -> None:

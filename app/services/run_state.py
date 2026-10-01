@@ -311,19 +311,21 @@ def cooldowns_path(bridge) -> str:
     return "config/cooldowns.json"
 
 
-def persist_cooldowns(bridge) -> None:
+def persist_cooldowns(bridge) -> bool:
     """Autosave wall-clock timers + job counters across restarts."""
     try:
         if not getattr(bridge, "_page_pool", None):
-            return
+            return True
         save_pool_snapshot(cooldowns_path(bridge), bridge._page_pool)
         if not getattr(bridge, "_persist_ok", True):
             bridge._persist_ok = True
             bridge._log("✅ Cooldown autosave recovered", "success")
+        return True
     except Exception as e:
         if getattr(bridge, "_persist_ok", True):
             bridge._persist_ok = False
             bridge._log(f"⚠ Cooldown autosave failing ({e}) — timers will NOT survive restart", "warn")
+        return False
 
 
 def pooled_ids(pool) -> set:

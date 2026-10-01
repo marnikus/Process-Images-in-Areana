@@ -73,6 +73,7 @@
         <span title="Extra wait when the site shows a rate-limit / limit-reached banner (0 = off)">⛔ +<input id="urlCooldownRateLimit" type="number" min="0" max="1440" placeholder="30" style="width:52px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">m/limit</span>
         <label style="display:flex; align-items:center; gap:3px;"><input id="urlCooldownEnabled" type="checkbox" checked> on</label>
         <button id="urlCooldownSaveBtn" class="btn-small">Save</button>
+        <button id="urlResetAllCooldownsBtn" class="btn-small" title="Reset every URL row's cooldown to 00:00 in one operation; active timers clear now, and a live job keeps its page">♻️ Reset all cooldowns</button>
         <span title="How often Python re-reads open Chrome tabs and updates this table (500–60000 ms; applies without restart — also in the Settings panel)">🔁 every <input id="urlIntervalMs" type="number" min="500" max="60000" step="100" placeholder="5000" style="width:60px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; padding:3px 6px; color:var(--text-primary); font-size:11px;">ms</span>
         <button id="urlIntervalSaveBtn" class="btn-small" title="Save the reconcile interval">Save</button>
       </div>
@@ -877,11 +878,14 @@
 <script src="js/log-console.js"></script>
 <script src="js/log-tools.js"></script>
 <script src="js/panels/url-list/store.js"></script>
+<script src="js/panels/url-list/inline-edit.js"></script>
 <script src="js/panels/url-list/render.js"></script>
 <script src="js/panels/url-list/cells.js"></script>
 <script src="js/panels/url-list/matching.js"></script>
 <script src="js/panels/url-list/cooldown.js"></script>
 <script src="js/panels/url-list/reset.js"></script>
+<script src="js/panels/url-list/bulk-reset.js"></script>
+<script src="js/panels/url-list/crud-actions.js"></script>
 <script src="js/panels/url-list/actions.js"></script>
 <script src="js/panels/url-list/listeners.js"></script>
 <script src="js/panels/url-list/interval.js"></script>

@@ -1,10 +1,9 @@
 /**
- * Job count is display-only in the web page (2026-09-21).
+ * Job count is a number everywhere; the URL list now makes that number inline-editable.
  *
- * The counter the pool table, the URL list and the Live Debug window show is a
- * number — no view may promise that the number decides where the next job goes,
- * because that routing concept (I-28 load balancing) is gone: the pool and the
- * URL-list link now pick by pool order only.
+ * No view may promise that the count decides where the next job goes, because
+ * that routing concept (I-28 load balancing) is gone: the pool and the URL-list
+ * link now pick by pool order only.
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,7 +17,7 @@ const PANELS = path.resolve(__dirname, '../../app/ui/web/js/panels');
 const read = (rel) => fs.readFileSync(path.join(PANELS, rel), 'utf-8');
 
 const MODULES = ['page-pool/render.js', 'page-pool/store.js', 'page-pool/cells.js',
-  'url-list/render.js', 'url-list/matching.js', 'url-list/cells.js',
+  'url-list/render.js', 'url-list/matching.js', 'url-list/cells.js', 'url-list/inline-edit.js',
   'live-debug/render.js', 'live-debug/store.js'];
 
 /** The pool table row for one page, rendered by the real module. */
@@ -53,9 +52,9 @@ describe('the counter is a number in every view', () => {
     assert.match(row, /<td title="Jobs completed">0<\/td>/);
   });
 
-  test('the URL-list Jobs cell is the same plain number', () => {
-    const text = read('url-list/render.js');
-    assert.match(text, /title="Jobs completed"/);
+  test('the URL-list Jobs cell keeps the same number but exposes inline edit affordances', () => {
+    const text = read('url-list/render.js') + read('url-list/inline-edit.js');
+    assert.match(text, /Edit jobs completed/);
     assert.ok(!/lowest|fewest|balance/i.test(text), 'no routing promise in the URL list');
   });
 

@@ -32,13 +32,9 @@ const UrlList = {
     setInterval(() => this.refreshCooldownCells(), 1000);
   },
 
-  _handleTableClick(e) { return this._listeners?.onTableClick(this, e); },
-
   restore(state) { if (!state || !state.urls) return; this.render(state.urls); },
   render(urls) { if (this._render) this._render.render(urls); },
   esc(s) { return this._store ? this._store.esc(s) : String(s||''); },
-  _snapshotUrls() { return this._store ? this._store.snapshotUrls() : []; },
-  _extractUrl(q) { return this._store ? this._store.extractUrl(q) : q; },
 
   addUrl() { return this._actions?.addUrl(); },
   removeUrl(id) { return this._actions?.removeUrl(id); },
@@ -46,6 +42,8 @@ const UrlList = {
   connectUrl(id) { return this._actions?.connectUrl(id); },
   stopJob(id) { return this._actions?.stopJob(id); },
   coolAction(a,b) { return this._actions?.coolAction(a,b); },
+  startInlineEdit(btn) { return this._actions?.startInlineEdit(btn); },
+  resetAllCooldowns() { return this._actions?.resetAllCooldowns(); },
   reparseTabs() { return this._actions?.reparseTabs(); },
   popupTabs() { return this._actions?.popupTabs(); },
 
@@ -70,6 +68,7 @@ const UrlList = {
       if (this._store) this._store.poolPages = this.poolPages;
     } catch { this.poolPages = []; }
     this.updateJobLines();
+    this._actions?.updateResetAllButton(this.poolPages);
   },
 
   updateJobLines() {

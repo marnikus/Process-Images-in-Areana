@@ -21,20 +21,20 @@ function load(withBoot = true) {
   vm.createContext(sandbox);
   if (withBoot) vm.runInContext(fs.readFileSync(path.join(JS, 'core/boot.js'), 'utf-8'), sandbox, { filename: 'boot.js' });
   vm.runInContext(fs.readFileSync(path.join(JS, 'panels/url-list/listeners.js'), 'utf-8'), sandbox, { filename: 'listeners.js' });
-  return { L: sandbox.window.UrlListListeners, byId };
+  return { L: sandbox.window.UrlListListeners, byId, sandbox };
 }
 
 function facadeSpy() {
   const calls = [];
   const rec = (name) => (...a) => calls.push([name, ...a]);
   return { calls, addUrl: rec('addUrl'), reparseTabs: rec('reparseTabs'), popupTabs: rec('popupTabs'),
-           saveCooldownConfig: rec('saveCooldownConfig'), toggleUrl: rec('toggleUrl'),
-           removeUrl: rec('removeUrl'), connectUrl: rec('connectUrl'),
-           stopJob: rec('stopJob'), coolAction: rec('coolAction') };
+           saveCooldownConfig: rec('saveCooldownConfig'), resetAllCooldowns: rec('resetAllCooldowns'),
+           toggleUrl: rec('toggleUrl'), removeUrl: rec('removeUrl'), connectUrl: rec('connectUrl'),
+           stopJob: rec('stopJob'), coolAction: rec('coolAction'), startInlineEdit: rec('startInlineEdit') };
 }
 
 function mountControls(byId) {
-  ['urlAddBtn', 'urlReparseBtn', 'urlPopupBtn', 'urlCooldownSaveBtn'].forEach((id) => { byId[id] = new El('button'); });
+  ['urlAddBtn', 'urlReparseBtn', 'urlPopupBtn', 'urlCooldownSaveBtn', 'urlResetAllCooldownsBtn'].forEach((id) => { byId[id] = new El('button'); });
   byId.urlInput = new El('input');
   byId.urlTableBody = new El('tbody');
 }
@@ -57,7 +57,8 @@ describe('UrlListListeners.bind', () => {
     byId.urlReparseBtn.dispatch('click', {});
     byId.urlPopupBtn.dispatch('click', {});
     byId.urlCooldownSaveBtn.dispatch('click', {});
-    assert.deepEqual(f.calls.map((c) => c[0]), ['addUrl', 'addUrl', 'reparseTabs', 'popupTabs', 'saveCooldownConfig']);
+    byId.urlResetAllCooldownsBtn.dispatch('click', {});
+    assert.deepEqual(f.calls.map((c) => c[0]), ['addUrl', 'addUrl', 'reparseTabs', 'popupTabs', 'saveCooldownConfig', 'resetAllCooldowns']);
   });
 
   test('without Boot it still binds (plain addEventListener fallback)', () => {
@@ -66,14 +67,15 @@ describe('UrlListListeners.bind', () => {
     const f = facadeSpy();
     assert.equal(L.bind(f), true);
     byId.urlAddBtn.dispatch('click', {});
-    assert.deepEqual(f.calls, [['addUrl']]);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0][0], 'addUrl');
   });
 });
 
 describe('UrlListListeners.onTableClick', () => {
   const evOn = (el) => ({ target: el });
 
-  test('checkbox toggle and every row button action route to the facade', () => {
+  test('checkbox, row buttons and inline value clicks route to the facade', () => {
     const { L } = load();
     const f = facadeSpy();
     const chk = new El('input'); chk.type = 'checkbox'; chk.dataset = { action: 'toggle', urlId: 'u1' };
@@ -84,10 +86,23 @@ describe('UrlListListeners.onTableClick', () => {
     }
     const cool = new El('button'); cool.dataset = { action: 'cool-reset', urlId: 'u3', tabId: 't' };
     L.onTableClick(f, evOn(cool));
+    const inline = new El('button'); inline.dataset = { inlineField: 'cooldown', urlId: 'u4', tabId: 't4' };
+    L.onTableClick(f, evOn(inline));
     assert.deepEqual(f.calls, [
-      ['toggleUrl', 'u1'], ['toggleUrl', 'u2'], ['removeUrl', 'u2'],   // 'test'/'edit': removed 2026-09-27, routed nowhere
+      ['toggleUrl', 'u1'], ['toggleUrl', 'u2'], ['removeUrl', 'u2'],
       ['connectUrl', 'u2'], ['stopJob', 'u2'], ['coolAction', 'cool-reset', cool],
+      ['startInlineEdit', inline],
     ]);
+  });
+
+  test('inline Enter/Space keys are handed to the shared inline editor', () => {
+    const { L, sandbox } = load();
+    const calls = [];
+    sandbox.window.UrlListInlineEdit = { onButtonKey: (e, btn) => calls.push([e.key, btn]) };
+    const inline = new El('button'); inline.dataset = { inlineField: 'jobs', urlId: 'u5' };
+    L.onTableKeydown(facadeSpy(), { key: 'Enter', target: inline, preventDefault() {} });
+    L.onTableKeydown(facadeSpy(), { key: ' ', target: inline, preventDefault() {} });
+    assert.deepEqual(calls, [['Enter', inline], [' ', inline]]);
   });
 
   test('clicks outside buttons/checkboxes and buttons without ids are ignored', () => {

@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const baseDir = path.resolve(__dirname, '../../app/ui/web/js/panels/url-list');
-const files = ['store.js','render.js','matching.js','cooldown.js','actions.js','../url-list.js'];
+const files = ['store.js','inline-edit.js','render.js','matching.js','cooldown.js','crud-actions.js','actions.js','../url-list.js'];
 const panelPath = path.resolve(__dirname, '../../app/ui/web/js/panels/url-list.js');
 
 function loadAllCode() {

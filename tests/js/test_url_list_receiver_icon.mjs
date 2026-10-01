@@ -74,7 +74,7 @@ describe('url-list receiver icon', () => {
      (re-run the tool in the commit that grows it again). */
   test('render.js did not grow (net-zero guard, D-24a)', () => {
     const src = read('render.js');
-    assert.equal(src.split('\n').length, 46);  // tools/js_metrics.js fileLines (the ratchet's number)
+    assert.equal(src.split('\n').length, 39);  // tools/js_metrics.js fileLines after the inline-edit split
     const metrics = JSON.parse(execFileSync('node', [TOOL, DIR, '--json'], { encoding: 'utf-8' }));
     const funcs = metrics.filter((e) => e.file && e.file.endsWith('url-list/render.js') && !e.isFile).length;
     assert.equal(funcs, 7);  // the ratchet's own counter (tools/js_metrics.js)

@@ -128,15 +128,13 @@ const UrlListReset = {
     return [...tbody.querySelectorAll('tr')].find(tr => String(tr.dataset.urlId) === String(urlId)) || null;
   },
 
-  /** The row's ♻️ button: cool-reset is Clear time, cool-edit edits the pause. */
+  /** The row's ♻️ button: Clear time only — cooldown editing is inline in the cell. */
   coolAction(action, btn) {
     const tabId = btn && btn.dataset ? btn.dataset.tabId : null;
     if (!tabId) { LogConsole.log('⚠ Tab not in pool — Connect it, then add to pool first', 'warn'); return; }
-    if (action !== 'cool-reset') {
-      if (typeof PagePoolPanel !== 'undefined') PagePoolPanel.editCooldown(tabId);
-      return;
-    }
+    if (action !== 'cool-reset') return false;
     this.clearTime(btn.dataset.urlId, btn.closest ? btn.closest('tr') : null);
+    return true;
   },
 };
 

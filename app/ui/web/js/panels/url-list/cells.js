@@ -1,91 +1,61 @@
-/* url-list/cells.js — the URL row's Tab + Cooldown cells, ≤120 LOC, CC≤10.
-   Extracted from render.js (2026-09-21, D-4/D-7) so the row-template file keeps
-   its frozen size and the countdown rule lives in one place: a live timer wins
-   over every status label, a debt is named a debt, a ready row reads 00:00. */
+/* url-list/cells.js — URL row Tab + Cooldown cells. */
 'use strict';
 const UrlListCells = {
   _store() { return window.UrlListStore; },
   _fmt(s) { return window.PagePoolPanel ? window.PagePoolPanel.fmt(s) : `${s}s`; },
-
-  _badge(page) {
-    return (page.captcha_count || 0) > 0
-      ? ` <span title="Captcha detections">🛡x${page.captcha_count}</span>` : '';
-  },
-
-  _isBusy(page) {
-    return page.status === 'busy' || page.status === 'waiting_generation'
-      || page.status === 'waiting_captcha';
-  },
-
+  _badge(page) { return (page.captcha_count || 0) > 0 ? ` <span title="Captcha detections">🛡x${page.captcha_count}</span>` : ''; },
+  _isBusy(page) { return page.status === 'busy' || page.status === 'waiting_generation' || page.status === 'waiting_captcha'; },
   _tabLabel(page) { return window.TabLabel.of(page.tab_id, page); },
-
   fillTabCell(tr, page) {
     const cell = tr.querySelector('.url-tab-cell');
     if (!cell) return;
-    if (!page) {
-      cell.innerHTML = '<span style="color:var(--text-muted);" title="Tab not in pool">—</span>';
-      return;
-    }
-    const esc = this._store().esc.bind(this._store()), no = Number(page.worker_no) > 0 ? `<b class="worker-no">#${Number(page.worker_no)}</b> ` : '';  // Page Pool's #N
+    if (!page) return void (cell.innerHTML = '<span style="color:var(--text-muted);" title="Tab not in pool">—</span>');
+    const esc = this._store().esc.bind(this._store()), no = Number(page.worker_no) > 0 ? `<b class="worker-no">#${Number(page.worker_no)}</b> ` : '';
     cell.innerHTML = `<span title="${esc(page.tab_id)}">${no}${page.browser === 'firefox' ? '🦊 ' : '🌐 '}${esc(this._tabLabel(page))}</span>`;
   },
-
   _setTabBtn(btn, tabId) {
     if (!btn) return;
     if (tabId) { btn.dataset.tabId = tabId; btn.disabled = false; btn.style.opacity = ''; }
     else { delete btn.dataset.tabId; btn.disabled = true; btn.style.opacity = '0.4'; }
   },
-
-  _clockHtml(page) {
-    const left = page.cooldown_remaining || 0;
-    const total = page.cooldown_total || 0;
-    const of = (left > 0 && total > 0) ? ` / ${this._fmt(total)}` : '';
-    const title = this._store().esc(page.cooldown_reason || (left > 0 ? 'cooling' : 'no active timer'));
-    return `<span data-cool-tab="${this._store().esc(page.tab_id)}" data-cool-left="${left}" data-cool-at="${Date.now()}" title="${title}">${this._fmt(left)}${of}</span>`;
+  _clockMeta(page, left) {
+    const title = page.cooldown_reason || (left > 0 ? 'cooling' : 'no active timer');
+    const named = window.TabLabel ? window.TabLabel.of(page.tab_id, page) : '';
+    return { label: named || 'this row', title, tabId: page.tab_id ? page.tab_id : '' };
   },
-
-  _busyHtml(page, left) {
-    if (left > 0 || !this._isBusy(page)) return '';
-    return '<span style="color:#4dabf7;" title="Job running">🔵 busy</span> ';
+  _clockHtml(tr, page) {
+    let left = Number(page.cooldown_remaining), total = Number(page.cooldown_total);
+    if (!Number.isFinite(left)) left = 0;
+    if (!Number.isFinite(total)) total = 0;
+    const txt = this._fmt(left), meta = this._clockMeta(page, left);
+    const spec = { field: 'cooldown', value: txt, text: txt, width: Math.max(5, txt.length), urlId: tr.dataset.urlId || '', tabId: meta.tabId, inputLabel: `Edit cooldown for ${meta.label}`, buttonLabel: 'Edit cooldown', buttonTitle: meta.title };
+    const html = window.UrlListInlineEdit.buttonHtml(spec).replace('<button ', `<button data-cool-tab="${this._store().esc(page.tab_id)}" data-cool-left="${left}" data-cool-at="${Date.now()}" `);
+    if (left <= 0 || total <= 0) return html;
+    return html + ` <span class="url-cool-total">/ ${this._fmt(total)}</span>`;
   },
-
-  _debtHtml(pending) {
-    return ` <span title="Stacked penalty — starts cooling when this job ends">+${this._fmt(pending)} debt</span>`;
-  },
-
+  _busyHtml(page, left) { return left > 0 || !this._isBusy(page) ? '' : '<span style="color:#4dabf7;" title="Job running">🔵 busy</span> '; },
   fillCoolCell(tr, page) {
     const cell = tr.querySelector('.url-cool-cell');
     if (!cell) return;
     const resetBtn = tr.querySelector('button[data-action="cool-reset"]');
-    const editBtn = tr.querySelector('button[data-action="cool-edit"]');
     if (!page) {
       cell.innerHTML = '<span style="color:var(--text-muted);" title="Tab not in pool">—</span>';
-      this._setTabBtn(resetBtn, null);
-      this._setTabBtn(editBtn, null);
-      return;
+      return void this._setTabBtn(resetBtn, null);
     }
     this._setTabBtn(resetBtn, page.tab_id);
-    this._setTabBtn(editBtn, page.tab_id);
-    const left = page.cooldown_remaining || 0;
-    const pending = page.pending_penalty || 0;
-    cell.innerHTML = this._busyHtml(page, left) + this._clockHtml(page)
-      + (pending > 0 ? this._debtHtml(pending) : '') + this._badge(page);
+    if (window.UrlListInlineEdit?.isEditing('cooldown', tr.dataset.urlId)) return;
+    const left = Number(page.cooldown_remaining) || 0, pending = Number(page.pending_penalty) || 0;
+    const debt = pending > 0 ? ` <span title="Stacked penalty — starts cooling when this job ends">+${this._fmt(pending)} debt</span>` : '';
+    cell.innerHTML = this._busyHtml(page, left) + this._clockHtml(tr, page) + debt + this._badge(page);
   },
-
-  /* Element-anchored tick: each clock carries its own `data-cool-at`, and 00:00
-     is a hard floor — the value only ever counts down. */
   tick(root) {
     if (!root || !root.querySelectorAll) return;
     root.querySelectorAll('.url-cool-cell [data-cool-left]').forEach(el => {
-      const base = parseInt(el.getAttribute('data-cool-left') || '0', 10);
-      const at = parseInt(el.getAttribute('data-cool-at') || '0', 10);
-      const left = Math.max(0, base - Math.floor((Date.now() - at) / 1000));
-      const txt = el.textContent;
-      el.textContent = left <= 0 ? this._fmt(0)
-        : this._fmt(left) + (txt.includes('/') ? ' ' + txt.slice(txt.indexOf('/')) : '');
+      const base = parseInt(el.getAttribute('data-cool-left') || '0', 10), at = parseInt(el.getAttribute('data-cool-at') || '0', 10);
+      const left = Math.max(0, base - Math.floor((Date.now() - at) / 1000)), txt = el.textContent;
+      if (left <= 0) { el.textContent = this._fmt(0); return; }
+      el.textContent = this._fmt(left) + (txt.includes('/') ? ' ' + txt.slice(txt.indexOf('/')) : '');
     });
   },
 };
-
-// Global-name contract (see boot.js): publish the lexical const for window[name] lookups.
 if (typeof window !== 'undefined') window.UrlListCells = UrlListCells;

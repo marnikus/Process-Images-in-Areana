@@ -5,7 +5,9 @@ compat re-exports used by `tests/test_url_selection.py`) plus the 7 slots
 (Test/Edit row actions removed 2026-09-27 — rows follow open tabs, I-68).
 Imports go panels -> services/core only. Every slot returns a JSON string
 (QWebChannel callbacks never fire for `None`), and every row mutation goes
-through `commit_urls` (persist + emit + undo) — 2026-10-02 bugfix.
+through `commit_urls` (persist + emit + undo) — 2026-10-02 bugfix. Inline
+JOBS/reset-all slots live on a second mixin so this core row/preset surface
+keeps its size budget (RULE 18 / RULE 16 ratchet).
 """
 
 import json
@@ -15,6 +17,7 @@ from app.services.live.url_policy import (add_rows, dedupe_rows, defer_line, exi
                                            mark_receivers, pool_exits)
 from app.services.auto_connect import claim_unlinked_from_pool, enabled_tab_ids
 from app.services.run_state import schedule_coro
+from app.services.url_row_controls import reset_all_cooldowns, set_job_count
 from app.ui.panels.page_pool import leave_pool, rejoin_checked_rows
 from app.ui.qt_compat import Slot
 from app.ui.services import arena_serialize, undo_entries
@@ -159,7 +162,7 @@ def _find_url(urls, url_id: str):
 
 
 class UrlQueueMixin:
-    """URL rows and URL preset slots — every slot returns JSON (never None)."""
+    """URL rows + URL preset slots — every slot returns JSON (never None)."""
 
     def _commit_urls(self) -> None:
         commit_urls(self)
@@ -242,3 +245,19 @@ class UrlQueueMixin:
         self.config.set_state(last_url_preset=url)
         self._log(f"🔖 Bookmark remembered: {url}", "info")
         return json.dumps({"ok": True})
+
+
+class UrlQueueInlineEditMixin:
+    """Inline JOBS edit + Reset-all slots kept apart from the core row/preset mixin."""
+
+    @Slot(str, result=str)
+    def set_url_job_count(self, payload: str):
+        try:
+            data = json.loads(payload or "{}")
+        except Exception:
+            data = {}
+        return json.dumps(set_job_count(self, str(data.get("url_id", "")), data.get("count")), ensure_ascii=False)
+
+    @Slot(result=str)
+    def reset_all_url_cooldowns(self):
+        return json.dumps(reset_all_cooldowns(self), ensure_ascii=False)

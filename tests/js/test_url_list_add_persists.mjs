@@ -55,6 +55,7 @@ function harness() {
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(read('arena-history.js'), sandbox, { filename: 'arena-history.js' });
+  vm.runInContext(read('panels/url-list/crud-actions.js'), sandbox, { filename: 'crud-actions.js' });
   vm.runInContext(read('panels/url-list/actions.js'), sandbox, { filename: 'actions.js' });
   // The client's copy of the state — still the PRE-add list (debounced apply pending).
   const stale = () => [...server.urls.filter((u) => u.id !== 'url_new').map((u) => ({ ...u }))];
@@ -102,7 +103,7 @@ describe('URL add / edit never pushes a stale row snapshot back to Python (B7)',
     assert.equal(typeof h.A._applyEdit, 'undefined');
     assert.ok(!/\b(test_url|edit_url)\b/.test(read('panels/url-list/actions.js')));
     assert.ok(!/data-action="(test|edit)"/.test(read('panels/url-list/render.js')), 'row template has no Test/Edit button');
-    assert.ok(/data-action="cool-edit"/.test(read('panels/url-list/render.js')), 'the cooldown ✎ stays');
+    assert.ok(!/data-action="cool-edit"/.test(read('panels/url-list/render.js')), 'the cooldown ✎ button is gone');
   });
 
   test('regression replay: the old push-back WOULD have dropped the row (documents the mechanism)', () => {

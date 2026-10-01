@@ -53,6 +53,49 @@
   border-radius: 4px;
   transition: background .15s ease-in;
 }
+.url-inline-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: var(--url-inline-width, 4ch);
+  font-variant-numeric: tabular-nums;
+}
+.url-inline-btn,
+.url-inline-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.url-inline-btn {
+  padding: 0;
+  margin: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.url-inline-btn:hover {
+  background: rgba(255,255,255,.05);
+}
+.url-inline-btn:focus-visible,
+.url-inline-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.url-inline-input {
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+.url-cool-total {
+  color: var(--text-muted);
+}
 
 /* Folder Picker */
 .folder-path {

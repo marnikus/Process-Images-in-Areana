@@ -17,6 +17,7 @@ PANELS = UI / "panels"
 REQUIRED_SLOTS = (
     "start_run", "pause_run", "resume_run", "stop_after_current",
     "cancel_current", "reset_page_cooldown", "set_page_cooldown",
+    "set_url_job_count", "reset_all_url_cooldowns",
     "auto_connect_scan", "popup_url_tabs", "get_tabs", "connect_tab",
     "add_url", "remove_url", "ensure_primary_connected", "stop_tab_job",
     "drop_ai_suffix", "keep_only_ai_files",
@@ -201,6 +202,7 @@ FROZEN_SLOTS = frozenset({
     'remove_url_preset',
     'reset_action_blocks',
     'reset_all',
+    'reset_all_url_cooldowns',
     'reset_grid_layout',
     'reset_image',
     'reset_page_cooldown',
@@ -227,6 +229,7 @@ FROZEN_SLOTS = frozenset({
     'set_image_selected',
     'set_last_url_preset',
     'set_page_cooldown',
+    'set_url_job_count',
     'set_prompt',
     'set_theme',
     'set_watcher_config',
@@ -275,7 +278,7 @@ EXPECTED_PACKING = {
     'recording_sessions': 8,
     'run_control': 10,
     'undo_history': 10,
-    'url_queue': 7,
+    'url_queue': 9,
     'watcher_captcha': 10,
     'watcher_solver': 7,
     'job_history': 2,
@@ -320,7 +323,8 @@ def test_panel_packing():
     # +2 job_history slots +5 firefox_auto slots (I-63, 2026-09-22; +show_firefox_profiles 2026-09-24)
     # +6 workspace slots (Global Saving System, 2026-09-25)
     # -2 url_queue edit_url/test_url (URL row Test/Edit removed, 2026-09-27)
-    assert sum(counts.values()) == 146
+    # +2 url_queue inline-edit/reset-all slots (2026-10-01)
+    assert sum(counts.values()) == 148
 
 
 @pytest.mark.unit

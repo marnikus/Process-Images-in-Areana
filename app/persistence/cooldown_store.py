@@ -152,6 +152,19 @@ def load_stats(path) -> dict:
     return clean
 
 
+def save_job_count(path, url: Any, count: Any) -> bool:
+    """Exact write for an operator-edited Jobs value; returns False on bad input."""
+    key = normalize_url(url)
+    if not key:
+        return False
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        return False
+    stats = load_stats(path)
+    stats[key] = {"jobs_completed": count}
+    _write_doc(path, load_entries(path), stats)
+    return True
+
+
 def _persistable(until: float, pending: int, moment: float) -> bool:
     """A live timer or a stacked debt is worth keeping — status is a label (D-1)."""
     return until > moment or pending > 0
