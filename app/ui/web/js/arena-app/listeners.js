@@ -6,8 +6,8 @@
 window.ArenaAppListeners = {
   _arenaStateTimer: null,
   _pendingArenaState: null,
-  // Panels re-rendered from every live `arena_state_updated` push, in order.
-  LIVE_STATE_PANELS: ['UrlList', 'ImageQueue', 'ProgressPanel'],
+  // Re-rendered from every live `arena_state_updated` push; panels the owner types into stay out (FolderPicker guards its own box).
+  LIVE_STATE_PANELS: ['UrlList', 'FolderPicker', 'ImageQueue', 'ProgressPanel'],
   _applyErrors: new Set(),
 
   _handleArenaLog(msg, level) {
@@ -191,4 +191,3 @@ window.ArenaAppListeners = {
   },
 };
 
-if (typeof window !== 'undefined') window.ArenaAppListeners = window.ArenaAppListeners;

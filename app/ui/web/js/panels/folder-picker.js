@@ -2,7 +2,9 @@
    2026-10-02 bugfix: listeners bound once (Boot.bindOnce), a missing bridge
    slot is reported instead of silently returning, the New-Batch confirm uses
    the in-app Dialog (native confirm() is unavailable in QtWebEngine).
-   ids: folderPickBtn, folderScanBtn, folderScanNewBtn, folderPathInput, folderPathDisplay. */
+   "folder picker display nothing" fix: the panel renders from the live arena_state
+   push too — docs/archive/2026-10-01-folder-picker-live-state/design.md.
+   ids: folderPickBtn, folderScanBtn, folderScanNewBtn, folderPathInput, folderPathDisplay, folderStats. */
 'use strict';
 
 const FolderPicker = {
@@ -24,20 +26,18 @@ const FolderPicker = {
     return b && b[name] ? b[name].bind(b) : null;
   },
 
-  _setDisplay(path) {
+  /* ONE writer for the folder root. The read-only line always follows the state; the
+     editable box follows too unless it is the active element (never eat keystrokes). */
+  _showPath(path) {
     const el = document.getElementById('folderPathDisplay');
     if (el) el.textContent = path || 'No folder selected';
     const inp = document.getElementById('folderPathInput');
-    if (inp && path) inp.value = path;
+    if (inp && path && document.activeElement !== inp) inp.value = path;
   },
 
   restore(state) {
-    if (!state) return;
-    if (!state.folder) return;
-    const el = document.getElementById('folderPathDisplay');
-    if (el) el.textContent = state.folder.root_path || 'No folder selected';
-    const inp = document.getElementById('folderPathInput');
-    if (inp && state.folder.root_path) inp.value = state.folder.root_path;
+    if (!state || !state.folder) return;
+    this._showPath(state.folder.root_path || '');
     const stats = document.getElementById('folderStats');
     if (stats && state.images) this._renderStats(stats, state.images);
   },
@@ -52,7 +52,7 @@ const FolderPicker = {
     try {
       const r = JSON.parse(res);
       if (r.ok) {
-        this._setDisplay(r.path);
+        this._showPath(r.path);
         LogConsole.log('Folder selected: ' + r.path, 'success');
       } else if (r.cancelled) {
         LogConsole.log('Folder pick cancelled', 'info');
@@ -74,7 +74,7 @@ const FolderPicker = {
     try {
       const r = JSON.parse(res);
       if (r.ok) {
-        this._setDisplay(r.path);
+        this._showPath(r.path);
         LogConsole.log('Folder path set: ' + r.path, 'success');
       } else LogConsole.log('Set path failed: ' + r.error, 'error');
     } catch (e) { LogConsole.log('Set path: bad reply', 'error'); }
